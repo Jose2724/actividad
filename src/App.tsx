@@ -1,5 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { activeBetween, addLine, cartDone, dayOf, DEPTS, deptStop, endRun, endStop, fmtDur, fmtTime, myDept, openRun, openStop, REASONS, removeLine, reset, runStats, startRun, startStop, stopsOf, store, today, user, type Dept, type Line, type State } from './store'
+import { buildPdf, loadPdf } from './pdf'
 
 /** a clock that ticks every second, so every timer on screen moves */
 function useNow() {
@@ -192,6 +193,15 @@ function StopDialog({ title, onClose, onPick }: { title: string; onClose: () => 
 
 function Report({ s, now }: { s: State; now: number }) {
   const [date, setDate] = useState(today())
+  useEffect(() => { void loadPdf() }, [])
+  /** opens the PDF in a new tab (to look at, share or print); if the tab cannot open, it downloads */
+  const pdf = async () => {
+    const name = 'actividad-' + date + '.pdf'
+    let doc = buildPdf(s, date, now, user.get())
+    if (!doc) { await loadPdf(); doc = buildPdf(s, date, now, user.get()); doc?.save(name); return }
+    const win = window.open(doc.output('bloburl'), '_blank')
+    if (!win) doc.save(name)
+  }
   const runs = s.runs.filter((r) => r.date === date).sort((a, b) => a.startedAt - b.startedAt)
   const stops = s.stops.filter((x) => dayOf(x.startedAt) === date).sort((a, b) => a.startedAt - b.startedAt)
   const rows = runs.map((r) => ({ r, st: runStats(s, r, now) }))
@@ -217,8 +227,8 @@ function Report({ s, now }: { s: State; now: number }) {
       <div className="rhead">
         <h2>Reporte del día</h2>
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-        <button type="button" className="btn" onClick={csv} disabled={!rows.length}>⬇ Exportar Excel (CSV)</button>
-        <button type="button" className="btn" onClick={() => window.print()} disabled={!rows.length}>🖨 Imprimir / PDF</button>
+        <button type="button" className="btn" onClick={csv} disabled={!rows.length}>⬇ Excel (CSV)</button>
+        <button type="button" className="btn primary" onClick={() => void pdf()} disabled={!rows.length}>📄 Ver PDF / imprimir</button>
       </div>
       <div className="totals">
         <div className="stat"><label>Códigos</label><b>{rows.length}</b></div>
