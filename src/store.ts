@@ -25,10 +25,13 @@ let state = load()
 const subs = new Set<() => void>()
 function set(next: State) { state = next; try { localStorage.setItem(KEY, JSON.stringify(state)) } catch { /* full */ } subs.forEach((f) => f()) }
 export const store = { get: () => state, subscribe: (f: () => void) => { subs.add(f); return () => { subs.delete(f) } } }
-export const user = {
-  get: () => { try { return localStorage.getItem('act_user') || '' } catch { return '' } },
-  set: (v: string) => { try { localStorage.setItem('act_user', v) } catch { /* private */ } },
-}
+const pref = (k: string) => ({
+  get: () => { try { return localStorage.getItem(k) || '' } catch { return '' } },
+  set: (v: string) => { try { localStorage.setItem(k, v) } catch { /* private */ } },
+})
+/** who is using this device, and the department they picked when entering */
+export const user = pref('act_user')
+export const myDept = pref('act_dept')
 
 export function addLine(dept: Dept) { const n = state.lines.filter((l) => l.dept === dept).length + 1; set({ ...state, lines: [...state.lines, { id: uid(), dept, name: 'Línea ' + n }] }) }
 export function removeLine(id: string) { set({ ...state, lines: state.lines.filter((l) => l.id !== id) }) }

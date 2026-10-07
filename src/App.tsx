@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import { activeBetween, addLine, cartDone, dayOf, DEPTS, deptStop, endRun, endStop, fmtDur, fmtTime, openRun, openStop, REASONS, removeLine, reset, runStats, startRun, startStop, stopsOf, store, today, user, type Dept, type Line, type State } from './store'
+import { activeBetween, addLine, cartDone, dayOf, DEPTS, deptStop, endRun, endStop, fmtDur, fmtTime, myDept, openRun, openStop, REASONS, removeLine, reset, runStats, startRun, startStop, stopsOf, store, today, user, type Dept, type Line, type State } from './store'
 
 /** a clock that ticks every second, so every timer on screen moves */
 function useNow() {
@@ -8,31 +8,45 @@ function useNow() {
   return n
 }
 
+const isDept = (v: string): v is Dept => (DEPTS as string[]).includes(v)
+
 export default function App() {
   const [name, setName] = useState(user.get())
-  if (!name) return <NameGate onDone={(n) => { user.set(n); setName(n) }} />
-  return <Main name={name} onLogout={() => { user.set(''); setName('') }} />
+  const [dept, setDept] = useState(myDept.get())
+  if (!isDept(dept) || !name) return <Gate dept={isDept(dept) ? dept : null} onDept={(d) => { myDept.set(d); setDept(d) }} onName={(n) => { user.set(n); setName(n) }} />
+  return <Main name={name} home={dept} onLogout={() => { user.set(''); myDept.set(''); setName(''); setDept('') }} />
 }
 
-function NameGate({ onDone }: { onDone: (n: string) => void }) {
+/** entering: first the department this person works in, then their name */
+function Gate({ dept, onDept, onName }: { dept: Dept | null; onDept: (d: Dept) => void; onName: (n: string) => void }) {
   const [v, setV] = useState('')
   return (
     <div className="gate">
       <h1>Actividad</h1>
-      <p>Escribe tu nombre para entrar. Todo lo que registres lleva tu nombre.</p>
-      <form onSubmit={(e) => { e.preventDefault(); if (v.trim()) onDone(v.trim()) }}>
-        <input autoFocus placeholder="Tu nombre" value={v} onChange={(e) => setV(e.target.value)} />
-        <button className="btn primary" type="submit" disabled={!v.trim()}>Entrar</button>
-      </form>
+      {!dept ? (
+        <>
+          <p>¿De qué departamento eres?</p>
+          <div className="pick">{DEPTS.map((d) => <button key={d} type="button" className="btn" onClick={() => onDept(d)}>{d}</button>)}</div>
+        </>
+      ) : (
+        <>
+          <p><b>{dept}</b> · Ahora escribe tu nombre. Todo lo que registres lleva tu nombre.</p>
+          <form onSubmit={(e) => { e.preventDefault(); if (v.trim()) onName(v.trim()) }}>
+            <input autoFocus placeholder="Tu nombre" value={v} onChange={(e) => setV(e.target.value)} />
+            <button className="btn primary" type="submit" disabled={!v.trim()}>Entrar</button>
+          </form>
+          <button type="button" className="lnk" onClick={() => { myDept.set(''); location.reload() }}>Otro departamento</button>
+        </>
+      )}
       <small>Demo · los datos se guardan solo en este dispositivo</small>
     </div>
   )
 }
 
-function Main({ name, onLogout }: { name: string; onLogout: () => void }) {
+function Main({ name, home, onLogout }: { name: string; home: Dept; onLogout: () => void }) {
   const s = useSyncExternalStore(store.subscribe, store.get)
   const now = useNow()
-  const [dept, setDept] = useState<Dept>(DEPTS[0])
+  const [dept, setDept] = useState<Dept>(home)
   const [tab, setTab] = useState<'act' | 'rep'>('act')
   return (
     <div className="app">
@@ -42,7 +56,7 @@ function Main({ name, onLogout }: { name: string; onLogout: () => void }) {
           <button type="button" className={tab === 'act' ? 'on' : ''} onClick={() => setTab('act')}>Actividad</button>
           <button type="button" className={tab === 'rep' ? 'on' : ''} onClick={() => setTab('rep')}>Reporte del día</button>
         </nav>
-        <div className="me">{name} <button type="button" className="lnk" onClick={onLogout}>Cambiar</button></div>
+        <div className="me">{name} · {home} <button type="button" className="lnk" onClick={onLogout}>Cambiar</button></div>
       </header>
       {tab === 'act' ? (
         <div className="main">
