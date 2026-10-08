@@ -130,18 +130,20 @@ function LineCard({ s, line, now }: { s: State; line: Line; now: number }) {
   const [asking, setAsking] = useState(false)
   const [counting, setCounting] = useState(false)
   if (!run) {
-    // the lot follows the date unless someone typed another one; boxes per pallet come back from the last run of the code
-    const suggested = cfg.defaultQty ? lastPerUnit(s, line.dept, code) : null
+    // the lot follows the date unless someone typed another one; the quantity per unit (boxes per pallet, pouches
+    // per cart) comes back from the last run of the code
+    const needPer = !!cfg.perUnitLabel
+    const suggested = needPer ? lastPerUnit(s, line.dept, code) : null
     const perUnit = per.trim() ? Number(per) : suggested
-    const ok = !!code.trim() && !!lot.trim() && (!cfg.defaultQty || (perUnit != null && perUnit > 0))
+    const ok = !!code.trim() && !!lot.trim() && (!needPer || (perUnit != null && perUnit > 0))
     return (
       <div className="line idle">
-        <div className="lhead"><h3>{line.name}</h3><button type="button" className="lnk" onClick={() => { if (confirm('¿Quitar ' + line.name + ' de ' + line.dept + '?')) removeLine(line.id) }}>Quitar línea</button></div>
-        <form className="start" onSubmit={(e) => { e.preventDefault(); if (ok) startRun(line, code.trim().toUpperCase(), lot.trim(), date, cfg.defaultQty ? perUnit : null) }}>
+        <div className="lhead"><h3>{line.name}</h3><button type="button" className="lnk" onClick={() => { if (confirm('¿Quitar ' + line.name + ' de ' + line.dept + '?')) removeLine(line.id) }}>Quitar {cfg.lineWord.toLowerCase()}</button></div>
+        <form className="start" onSubmit={(e) => { e.preventDefault(); if (ok) startRun(line, code.trim().toUpperCase(), lot.trim(), date, needPer ? perUnit : null) }}>
           <label>Código <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="ej. 0889" autoComplete="off" /></label>
           <label>Lote <input value={lot} onChange={(e) => setLot(e.target.value)} inputMode="numeric" placeholder="ej. 6280" autoComplete="off" /></label>
           <label>Fecha <input type="date" value={date} onChange={(e) => { const v = e.target.value; if (!lot.trim() || lot.trim() === lotFor(date)) setLot(lotFor(v)); setDate(v) }} /></label>
-          {cfg.defaultQty && <label>Cajas por pallet <input value={per} onChange={(e) => setPer(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder={suggested != null ? String(suggested) + ' (como la última vez)' : 'ej. 48'} autoComplete="off" /></label>}
+          {needPer && <label>{cfg.perUnitLabel} <input value={per} onChange={(e) => setPer(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder={suggested != null ? String(suggested) + ' (como la última vez)' : cfg.unit === 'Carro' ? 'ej. 120' : 'ej. 36'} autoComplete="off" /></label>}
           <button className="btn primary" type="submit" disabled={!ok}>▶ Empezar</button>
         </form>
       </div>
@@ -150,7 +152,7 @@ function LineCard({ s, line, now }: { s: State; line: Line; now: number }) {
   const st = runStats(s, run, now)
   const last = run.units.length ? run.units[run.units.length - 1].at : run.startedAt
   const current = activeBetween(last, now, stopsOf(s, run.dept, run.lineId), now)
-  const done = () => (cfg.askQty ? setCounting(true) : unitDone(run.id, null))
+  const done = () => (cfg.qty === 'ask' ? setCounting(true) : unitDone(run.id, cfg.qty === 'auto' ? run.perUnit : null))
   return (
     <div className={'line ' + (stop ? 'stopped' : 'running')}>
       <div className="lhead">
@@ -161,7 +163,7 @@ function LineCard({ s, line, now }: { s: State; line: Line; now: number }) {
       <div className="stats">
         <div className="stat big"><label>Trabajando</label><b>{fmtDur(st.working)}</b></div>
         <div className="stat"><label>{cfg.plural}</label><b>{run.units.length}</b></div>
-        {cfg.askQty && <div className="stat"><label>{cfg.qtyUnit}</label><b>{st.qty}</b></div>}
+        {cfg.qty !== 'none' && <div className="stat"><label>{cfg.qtyUnit}</label><b>{st.qty}</b></div>}
         <div className="stat"><label>{cfg.unit} actual</label><b>{fmtDur(current)}</b></div>
         <div className="stat"><label>Promedio / {cfg.unit.toLowerCase()}</label><b>{run.units.length ? fmtDur(st.avg) : '—'}</b></div>
         <div className="stat"><label>Parado</label><b className={st.down ? 'red' : ''}>{fmtDur(st.down)}</b></div>
@@ -176,7 +178,7 @@ function LineCard({ s, line, now }: { s: State; line: Line; now: number }) {
         <button type="button" className="btn" disabled={!!stop} onClick={() => { if (confirm('¿Terminar el código ' + run.code + '? Se cierra con ' + madeText(run, st.qty) + '.')) endRun(run.id) }}>■ Terminar código</button>
       </div>
       {asking && <StopDialog title={'Parar ' + line.name + ' · ' + run.code} reasons={cfg.reasons} onClose={() => setAsking(false)} onPick={(reason, note) => { startStop(line.dept, line.id, reason, note); setAsking(false) }} />}
-      {counting && <QtyDialog title={cfg.qtyQ} unit={cfg.qtyUnit} initial={run.perUnit} onClose={() => setCounting(false)} onPick={(q) => { unitDone(run.id, q); setCounting(false) }} />}
+      {counting && <QtyDialog title={cfg.qtyQ} unit={cfg.qtyUnit} refLabel={cfg.refLabel} initial={run.perUnit} onClose={() => setCounting(false)} onPick={(q, ref) => { unitDone(run.id, q, ref); setCounting(false) }} />}
     </div>
   )
 }
@@ -202,17 +204,19 @@ function StopDialog({ title, reasons, onClose, onPick }: { title: string; reason
   )
 }
 
-/** departments that type how much a unit carried (boxes on a pallet, quantity in a bill) */
-function QtyDialog({ title, unit, initial, onClose, onPick }: { title: string; unit: string; initial: number | null; onClose: () => void; onPick: (q: number) => void }) {
+/** departments that type how much a unit carried (boxes on a pallet or in a bin) and its tag / bin number */
+function QtyDialog({ title, unit, refLabel, initial, onClose, onPick }: { title: string; unit: string; refLabel: string; initial: number | null; onClose: () => void; onPick: (q: number, ref: string) => void }) {
   const [v, setV] = useState(initial != null ? String(initial) : '')
+  const [ref, setRef] = useState('')
   const n = Number(v)
   const ok = v.trim() !== '' && Number.isFinite(n) && n >= 0
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
         <h3>{title}</h3>
-        <form onSubmit={(e) => { e.preventDefault(); if (ok) onPick(n) }}>
-          <input autoFocus inputMode="numeric" placeholder={unit} value={v} onChange={(e) => setV(e.target.value.replace(/\D/g, ''))} />
+        <form onSubmit={(e) => { e.preventDefault(); if (ok) onPick(n, ref.trim()) }} className="qform">
+          <label>{unit} <input autoFocus inputMode="numeric" placeholder={unit} value={v} onChange={(e) => setV(e.target.value.replace(/\D/g, ''))} /></label>
+          {refLabel && <label>{refLabel} <small>(opcional)</small> <input inputMode="numeric" placeholder="ej. 1749" value={ref} onChange={(e) => setRef(e.target.value)} autoComplete="off" /></label>}
           <div className="dbtns">
             <button type="button" className="btn" onClick={onClose}>Cancelar</button>
             <button type="submit" className="btn primary" disabled={!ok}>✓ Guardar</button>
@@ -243,8 +247,8 @@ function Report({ s, now }: { s: State; now: number }) {
   const lineName = (x: { lineId: string | null; dept: Dept }) => (x.lineId === null ? 'Todo ' + x.dept : s.lines.find((l) => l.id === x.lineId)?.name ?? s.runs.find((r) => r.lineId === x.lineId)?.line ?? 'línea')
   const csv = () => {
     const q = (v: string | number) => '"' + String(v).replace(/"/g, '""') + '"'
-    const head = ['Departamento', 'Línea', 'Código', 'Lote', 'Fecha', 'Inicio', 'Fin', 'Hecho', 'Cantidad', 'Tiempo trabajando', 'Promedio por unidad', 'Tiempo parado', 'Razones de paro', 'Registró']
-    const body = rows.map((x) => [x.r.dept, x.r.line, x.r.code, x.r.lot, x.r.date, fmtTime(x.r.startedAt), x.r.endedAt ? fmtTime(x.r.endedAt) : 'en curso', x.r.units.length + ' ' + CFG[x.r.dept].plural.toLowerCase(), CFG[x.r.dept].askQty ? x.st.qty + ' ' + CFG[x.r.dept].qtyUnit : '', fmtDur(x.st.working), x.r.units.length ? fmtDur(x.st.avg) : '', fmtDur(x.st.down), reasonsText(x), x.r.by])
+    const head = ['Departamento', 'Línea', 'Código', 'Lote', 'Fecha', 'Inicio', 'Fin', 'Hecho', 'Cantidad', 'Tags / bins', 'Tiempo trabajando', 'Promedio por unidad', 'Tiempo parado', 'Razones de paro', 'Registró']
+    const body = rows.map((x) => [x.r.dept, x.r.line, x.r.code, x.r.lot, x.r.date, fmtTime(x.r.startedAt), x.r.endedAt ? fmtTime(x.r.endedAt) : 'en curso', x.r.units.length + ' ' + CFG[x.r.dept].plural.toLowerCase(), CFG[x.r.dept].qty !== 'none' ? x.st.qty + ' ' + CFG[x.r.dept].qtyUnit : '', x.r.units.map((u) => u.ref).filter(Boolean).join(', '), fmtDur(x.st.working), x.r.units.length ? fmtDur(x.st.avg) : '', fmtDur(x.st.down), reasonsText(x), x.r.by])
     const stopHead = ['', 'PAROS', 'Departamento', 'Línea', 'Razón', 'Detalle', 'Inicio', 'Fin', 'Duración', 'Registró']
     const stopBody = stops.map((x) => ['', '', x.dept, lineName(x), x.reason, x.note, fmtTime(x.startedAt), x.endedAt ? fmtTime(x.endedAt) : 'en curso', fmtDur((x.endedAt ?? now) - x.startedAt), x.by])
     const text = [head, ...body, [], stopHead, ...stopBody].map((r) => r.map(q).join(',')).join('\r\n')
@@ -273,7 +277,7 @@ function Report({ s, now }: { s: State; now: number }) {
             <tbody>{rows.map((x) => (
               <tr key={x.r.id} className={x.r.endedAt ? '' : 'live'}>
                 <td>{x.r.dept}</td><td>{x.r.line}</td><td><b>{x.r.code}</b></td><td>{x.r.lot}</td><td>{fmtTime(x.r.startedAt)}</td><td>{x.r.endedAt ? fmtTime(x.r.endedAt) : <i>en curso</i>}</td>
-                <td>{madeText(x.r, x.st.qty)}</td><td>{fmtDur(x.st.working)}</td><td>{x.r.units.length ? fmtDur(x.st.avg) : '—'}</td><td className={x.st.down ? 'red' : ''}>{fmtDur(x.st.down)}</td><td>{reasonsText(x) || '—'}</td><td>{x.r.by}</td>
+                <td>{madeText(x.r, x.st.qty, true)}</td><td>{fmtDur(x.st.working)}</td><td>{x.r.units.length ? fmtDur(x.st.avg) : '—'}</td><td className={x.st.down ? 'red' : ''}>{fmtDur(x.st.down)}</td><td>{reasonsText(x) || '—'}</td><td>{x.r.by}</td>
               </tr>
             ))}</tbody>
           </table>

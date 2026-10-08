@@ -27,7 +27,7 @@ export function buildPdf(s: State, date: string, now: number, by: string) {
   autoTable(doc, {
     startY: 78, theme: 'grid', styles: { font: 'helvetica', fontSize: 9, cellPadding: 5, textColor: [22, 32, 42] }, headStyles: { fillColor: teal, textColor: 255, fontStyle: 'bold' },
     head: [['Depto', 'Línea', 'Código', 'Lote', 'Inicio', 'Fin', 'Hecho', 'Trabajando', 'Prom. / unidad', 'Parado', 'Razones de paro', 'Registró']],
-    body: rows.map((x) => [x.r.dept, x.r.line, x.r.code, x.r.lot, fmtTime(x.r.startedAt), x.r.endedAt ? fmtTime(x.r.endedAt) : 'en curso', madeText(x.r, x.st.qty), fmtDur(x.st.working), x.r.units.length ? fmtDur(x.st.avg) : '—', fmtDur(x.st.down), Object.entries(x.st.reasons).map(([k, v]) => k + ' ' + fmtDur(v)).join(', ') || '—', x.r.by]),
+    body: rows.map((x) => [x.r.dept, x.r.line, x.r.code, x.r.lot, fmtTime(x.r.startedAt), x.r.endedAt ? fmtTime(x.r.endedAt) : 'en curso', madeText(x.r, x.st.qty, true), fmtDur(x.st.working), x.r.units.length ? fmtDur(x.st.avg) : '—', fmtDur(x.st.down), Object.entries(x.st.reasons).map(([k, v]) => k + ' ' + fmtDur(v)).join(', ') || '—', x.r.by]),
     foot: [['Total', '', '', '', '', '', '', fmtDur(working), '', fmtDur(down), '', '']], footStyles: { fillColor: [243, 246, 249], textColor: [22, 32, 42], fontStyle: 'bold' },
   })
   if (stops.length) {
