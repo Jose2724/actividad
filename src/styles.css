@@ -64,6 +64,9 @@ input[type=text],input:not([type]),input[type=date]{min-height:48px;padding:0 12
 .start{display:grid;gap:10px;grid-template-columns:1fr 1fr}
 .start label{display:grid;gap:4px;font-size:13px;font-weight:600;color:var(--muted)}
 .start .btn{grid-column:1/-1}
+.start .cartrow{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:end}
+.start .cartrow .eq{grid-column:1/-1;font-size:14px;color:var(--muted)}
+.start .cartrow .eq b{color:var(--accent);font-size:16px}
 .stopbar{background:var(--red-soft);color:var(--warn);border-radius:10px;padding:8px 12px;font-weight:600}
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px}
 .stat{background:var(--bg);border-radius:12px;padding:8px 10px;display:grid;gap:2px}

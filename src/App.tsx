@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import { activeBetween, addLine, CFG, dayOf, DEPTS, deptStop, endRun, endStop, fmtDur, fmtTime, lastPerUnit, lotFor, madeText, myDept, openRun, openStop, removeLine, removeProduct, reset, runStats, saveProduct, setSchedule, startRun, startStop, stopsOf, store, today, unitDone, user, type Dept, type Line, type Product, type State } from './store'
+import { activeBetween, addLine, CFG, dayOf, DEPTS, deptStop, endRun, endStop, fmtDur, fmtTime, lastPerUnit, lotFor, madeText, myDept, openRun, openStop, productOf, removeLine, removeProduct, reset, runStats, saveProduct, setSchedule, startRun, startStop, stopsOf, store, today, unitDone, user, type Dept, type Line, type Product, type State } from './store'
 import { avanceRows, n1, pending, type AvanceRow } from './avance'
 import { buildPdf, loadPdf } from './pdf'
 
@@ -140,21 +140,22 @@ function Products({ s }: { s: State }) {
       <h3>Productos · la tabla maestra de la oficina</h3>
       <div className="twrap">
         <table>
-          <thead><tr><th>Código</th><th>Producto</th><th>Pouches / caja</th><th>Cajas / mezcla (yield)</th><th>Pouches / carro</th><th>Cajas / pallet</th><th></th></tr></thead>
+          <thead><tr><th>Código</th><th>Producto</th><th>Pouches / caja</th><th>Cajas / mezcla (yield)</th><th>Guacales / carro</th><th>Pouches / guacal</th><th>Cajas / pallet</th><th></th></tr></thead>
           <tbody>{s.products.map((p, i) => (
             <tr key={s.products.length + ':' + i}>
               <td><input className="code" value={p.code} onChange={(e) => upd(i, p, { code: e.target.value.toUpperCase() })} autoComplete="off" /></td>
               <td><input className="name" value={p.name} onChange={(e) => upd(i, p, { name: e.target.value })} autoComplete="off" /></td>
               <td><input className="num" inputMode="decimal" defaultValue={p.pouchesPerCase || ''} onBlur={(e) => upd(i, p, { pouchesPerCase: num(e.target.value) })} /></td>
               <td><input className="num" inputMode="decimal" defaultValue={p.casesPerMix || ''} onBlur={(e) => upd(i, p, { casesPerMix: num(e.target.value) })} /></td>
-              <td><input className="num" inputMode="decimal" defaultValue={p.pouchesPerCart || ''} onBlur={(e) => upd(i, p, { pouchesPerCart: num(e.target.value) })} /></td>
+              <td><input className="num" inputMode="decimal" defaultValue={p.cratesPerCart || ''} onBlur={(e) => upd(i, p, { cratesPerCart: num(e.target.value) })} /></td>
+              <td><input className="num" inputMode="decimal" defaultValue={p.pouchesPerCrate || ''} onBlur={(e) => upd(i, p, { pouchesPerCrate: num(e.target.value) })} /></td>
               <td><input className="num" inputMode="decimal" defaultValue={p.casesPerPallet || ''} onBlur={(e) => upd(i, p, { casesPerPallet: num(e.target.value) })} /></td>
               <td><button type="button" className="lnk" onClick={() => { if (confirm('¿Quitar ' + (p.code || 'este producto') + '?')) removeProduct(i) }}>✕</button></td>
             </tr>
           ))}</tbody>
         </table>
       </div>
-      <button type="button" className="btn" onClick={() => saveProduct(s.products.length, { code: '', name: '', pouchesPerCase: 0, casesPerMix: 0, pouchesPerCart: 0, casesPerPallet: 0 })}>+ Agregar producto</button>
+      <button type="button" className="btn" onClick={() => saveProduct(s.products.length, { code: '', name: '', pouchesPerCase: 0, casesPerMix: 0, cratesPerCart: 12, pouchesPerCrate: 0, casesPerPallet: 0 })}>+ Agregar producto</button>
       <p className="hint">Los productos de ejemplo son inventados. Escribe aquí los códigos y números reales de la planta: se guardan solo en este dispositivo.</p>
     </div>
   )
@@ -206,14 +207,20 @@ function LineCard({ s, line, now }: { s: State; line: Line; now: number }) {
   const [lot, setLot] = useState(lotFor(today()))
   const [date, setDate] = useState(today())
   const [per, setPer] = useState('')
+  const [crates, setCrates] = useState('')
   const [asking, setAsking] = useState(false)
   const [counting, setCounting] = useState(false)
   if (!run) {
     // the lot follows the date unless someone typed another one; the quantity per unit (boxes per pallet, pouches
-    // per cart) comes back from the last run of the code
+    // per cart) comes from the products table or the last run of the code. RTE types it the office's way: crates
+    // per cart × pouches per crate ("12x10")
     const needPer = !!cfg.perUnitLabel
+    const isCart = cfg.unit === 'Carro'
+    const prod = productOf(s, code)
     const suggested = needPer ? lastPerUnit(s, line.dept, code) : null
-    const perUnit = per.trim() ? Number(per) : suggested
+    const cratesN = crates.trim() ? Number(crates) : prod?.cratesPerCart || 12
+    const perCrateN = per.trim() ? Number(per) : prod?.pouchesPerCrate || (suggested != null ? Math.round(suggested / cratesN) : null)
+    const perUnit = isCart ? (perCrateN ? cratesN * perCrateN : null) : per.trim() ? Number(per) : suggested
     const ok = !!code.trim() && !!lot.trim() && (!needPer || (perUnit != null && perUnit > 0))
     return (
       <div className="line idle">
@@ -222,7 +229,14 @@ function LineCard({ s, line, now }: { s: State; line: Line; now: number }) {
           <label>Código <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="ej. 0889" autoComplete="off" /></label>
           <label>Lote <input value={lot} onChange={(e) => setLot(e.target.value)} inputMode="numeric" placeholder="ej. 6280" autoComplete="off" /></label>
           <label>Fecha <input type="date" value={date} onChange={(e) => { const v = e.target.value; if (!lot.trim() || lot.trim() === lotFor(date)) setLot(lotFor(v)); setDate(v) }} /></label>
-          {needPer && <label>{cfg.perUnitLabel} <input value={per} onChange={(e) => setPer(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder={suggested != null ? String(suggested) + ' (como la última vez)' : cfg.unit === 'Carro' ? 'ej. 120' : 'ej. 36'} autoComplete="off" /></label>}
+          {needPer && !isCart && <label>{cfg.perUnitLabel} <input value={per} onChange={(e) => setPer(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder={suggested != null ? String(suggested) + ' (como la última vez)' : 'ej. 36'} autoComplete="off" /></label>}
+          {isCart && (
+            <div className="cartrow">
+              <label>Guacales por carro <input value={crates} onChange={(e) => setCrates(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder={String(cratesN)} autoComplete="off" /></label>
+              <label>Pouches por guacal <input value={per} onChange={(e) => setPer(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder={perCrateN ? String(perCrateN) : 'ej. 10'} autoComplete="off" /></label>
+              <span className="eq">= <b>{perUnit ?? '—'}</b> pouches por carro</span>
+            </div>
+          )}
           <button className="btn primary" type="submit" disabled={!ok}>▶ Empezar</button>
         </form>
       </div>

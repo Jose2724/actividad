@@ -30,16 +30,18 @@ export type Stop = { id: string; dept: Dept; lineId: string | null; reason: stri
  * The office's master table ("YIEL CALCULO" + cases per pallet + pouches per cart): with it, mezclas become expected
  * pouches, cases and pallets. The demo ships with made-up example products; the real ones are typed on the device.
  */
-export type Product = { code: string; name: string; pouchesPerCase: number; casesPerMix: number; pouchesPerCart: number; casesPerPallet: number }
+export type Product = { code: string; name: string; pouchesPerCase: number; casesPerMix: number; cratesPerCart: number; pouchesPerCrate: number; casesPerPallet: number }
+/** "12x10" in the office's RTE sheet: crates per cart × pouches per crate */
+export const cartPouches = (p: Product) => p.cratesPerCart * p.pouchesPerCrate
 /** mezclas scheduled per day and code ("SCHEDULE" in the office's AVANCE sheet) */
 export type Schedule = Record<string, Record<string, number>>
 export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Product[]; schedule: Schedule }
 const SAMPLE_PRODUCTS: Product[] = [
-  { code: 'A100', name: 'Meatballs 2.4 oz · pouch 48 oz', pouchesPerCase: 8, casesPerMix: 18, pouchesPerCart: 120, casesPerPallet: 36 },
-  { code: 'B200', name: 'Stuffed peppers · pouch 60 oz', pouchesPerCase: 8, casesPerMix: 6, pouchesPerCart: 72, casesPerPallet: 40 },
-  { code: 'C300', name: 'Turkey meatballs 1.1 oz · pouch 16 oz', pouchesPerCase: 6, casesPerMix: 70, pouchesPerCart: 240, casesPerPallet: 105 },
-  { code: 'D400', name: 'Meatballs 2.4 oz · pouch 4.5 lb', pouchesPerCase: 2, casesPerMix: 50, pouchesPerCart: 72, casesPerPallet: 105 },
-  { code: 'E500', name: 'Rice · pouch 60 oz', pouchesPerCase: 5, casesPerMix: 20, pouchesPerCart: 72, casesPerPallet: 105 },
+  { code: 'A100', name: 'Meatballs 2.4 oz · pouch 48 oz', pouchesPerCase: 8, casesPerMix: 18, cratesPerCart: 12, pouchesPerCrate: 10, casesPerPallet: 36 },
+  { code: 'B200', name: 'Stuffed peppers · pouch 60 oz', pouchesPerCase: 8, casesPerMix: 6, cratesPerCart: 12, pouchesPerCrate: 6, casesPerPallet: 40 },
+  { code: 'C300', name: 'Turkey meatballs 1.1 oz · pouch 16 oz', pouchesPerCase: 6, casesPerMix: 70, cratesPerCart: 12, pouchesPerCrate: 20, casesPerPallet: 105 },
+  { code: 'D400', name: 'Meatballs 2.4 oz · pouch 4.5 lb', pouchesPerCase: 2, casesPerMix: 50, cratesPerCart: 12, pouchesPerCrate: 6, casesPerPallet: 105 },
+  { code: 'E500', name: 'Rice · pouch 60 oz', pouchesPerCase: 5, casesPerMix: 20, cratesPerCart: 12, pouchesPerCrate: 6, casesPerPallet: 105 },
 ]
 
 const KEY = 'act_v1'
@@ -58,12 +60,14 @@ export function lotFor(ds: string) {
 function fresh(): State { return { lines: DEPTS.map((d) => ({ id: uid(), dept: d, name: CFG[d].lineWord + ' 1' })), runs: [], stops: [], products: SAMPLE_PRODUCTS, schedule: {} } }
 function load(): State {
   try {
-    type Raw = { lines: Line[]; stops: Stop[]; runs: (Omit<Run, 'units' | 'perUnit'> & { units?: Partial<Unit>[]; perUnit?: number | null; carts?: number[] })[]; products?: Product[]; schedule?: Schedule }
+    type Raw = { lines: Line[]; stops: Stop[]; runs: (Omit<Run, 'units' | 'perUnit'> & { units?: Partial<Unit>[]; perUnit?: number | null; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule }
     const s = JSON.parse(localStorage.getItem(KEY) || 'null') as Raw | null
-    // runs saved by earlier demos counted carts as plain timestamps, then units without a tag number
+    // runs saved by earlier demos counted carts as plain timestamps, then units without a tag number; products had
+    // the pouches per cart as one number
     if (s && s.lines && s.runs && s.stops) {
       const units = (r: Raw['runs'][number]): Unit[] => (r.units ? r.units.map((u) => ({ at: u.at ?? 0, qty: u.qty ?? null, ref: u.ref ?? '' })) : (r.carts ?? []).map((at) => ({ at, qty: null, ref: '' })))
-      return { lines: s.lines, stops: s.stops, runs: s.runs.map((r) => ({ ...r, units: units(r), perUnit: r.perUnit ?? null })), products: s.products ?? SAMPLE_PRODUCTS, schedule: s.schedule ?? {} }
+      const products: Product[] = s.products ? s.products.map((p) => ({ code: p.code ?? '', name: p.name ?? '', pouchesPerCase: p.pouchesPerCase ?? 0, casesPerMix: p.casesPerMix ?? 0, cratesPerCart: p.cratesPerCart ?? (p.pouchesPerCart ? 12 : 0), pouchesPerCrate: p.pouchesPerCrate ?? (p.pouchesPerCart ? Math.round(p.pouchesPerCart / 12) : 0), casesPerPallet: p.casesPerPallet ?? 0 })) : SAMPLE_PRODUCTS
+      return { lines: s.lines, stops: s.stops, runs: s.runs.map((r) => ({ ...r, units: units(r), perUnit: r.perUnit ?? null })), products, schedule: s.schedule ?? {} }
     }
   } catch { /* empty */ }
   return fresh()
@@ -108,7 +112,7 @@ export function lastPerUnit(s: State, dept: Dept, code: string) {
   const last = [...s.runs].reverse().find((r) => r.dept === dept && r.code === code.trim().toUpperCase() && r.perUnit != null)?.perUnit
   if (last != null) return last
   const p = productOf(s, code)
-  return p ? (dept === 'RTE' ? p.pouchesPerCart : dept === 'Packing' ? p.casesPerPallet : null) || null : null
+  return p ? (dept === 'RTE' ? cartPouches(p) : dept === 'Packing' ? p.casesPerPallet : null) || null : null
 }
 
 const overlap = (a: number, b: number, x: Stop, now: number) => Math.max(0, Math.min(b, x.endedAt ?? now) - Math.max(a, x.startedAt))

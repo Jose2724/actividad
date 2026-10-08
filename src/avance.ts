@@ -1,4 +1,4 @@
-import { productOf, type Product, type State } from './store'
+import { cartPouches, productOf, type Product, type State } from './store'
 
 /**
  * The day's progress per product, the way the office's AVANCE sheet computes it by hand: the mezclas Kitchen made,
@@ -27,7 +27,7 @@ export function avanceRows(s: State, date: string): AvanceRow[] {
     const palletsExp = product && casesExp != null && product.casesPerPallet ? casesExp / product.casesPerPallet : null
     return {
       code, product, scheduled, mixesDone, mixesPending: Math.max(0, scheduled - mixesDone), spiralDone: units('Spiral'),
-      pouchesExp, pouchesDone: qty('RTE', product?.pouchesPerCart ?? 0), casesExp, casesDone: qty('Packing', product?.casesPerPallet ?? 0), mfoCases: qty('MFO', 0), palletsExp, palletsDone: units('Packing'),
+      pouchesExp, pouchesDone: qty('RTE', product ? cartPouches(product) : 0), casesExp, casesDone: qty('Packing', product?.casesPerPallet ?? 0), mfoCases: qty('MFO', 0), palletsExp, palletsDone: units('Packing'),
     }
   })
 }
