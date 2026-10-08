@@ -1,5 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import { activeBetween, addLine, CFG, dayOf, DEPTS, deptStop, endRun, endStop, fmtDur, fmtTime, lastPerUnit, lotFor, madeText, myDept, openRun, openStop, removeLine, reset, runStats, startRun, startStop, stopsOf, store, today, unitDone, user, type Dept, type Line, type State } from './store'
+import { activeBetween, addLine, CFG, dayOf, DEPTS, deptStop, endRun, endStop, fmtDur, fmtTime, lastPerUnit, lotFor, madeText, myDept, openRun, openStop, removeLine, removeProduct, reset, runStats, saveProduct, setSchedule, startRun, startStop, stopsOf, store, today, unitDone, user, type Dept, type Line, type Product, type State } from './store'
+import { avanceRows, n1, pending, type AvanceRow } from './avance'
 import { buildPdf, loadPdf } from './pdf'
 
 /** a clock that ticks every second, so every timer on screen moves */
@@ -48,14 +49,15 @@ function Main({ name, home, onLogout }: { name: string; home: Dept; onLogout: ()
   const s = useSyncExternalStore(store.subscribe, store.get)
   const now = useNow()
   const [dept, setDept] = useState<Dept>(home)
-  const [tab, setTab] = useState<'act' | 'rep'>('act')
+  const [tab, setTab] = useState<'act' | 'av' | 'rep'>('act')
   return (
     <div className="app">
       <header className="top">
         <div className="brand"><h1>Actividad</h1><small>{new Date(now).toLocaleDateString('es', { weekday: 'long', day: 'numeric', month: 'long' })}</small></div>
         <nav className="tabs">
           <button type="button" className={tab === 'act' ? 'on' : ''} onClick={() => setTab('act')}>Actividad</button>
-          <button type="button" className={tab === 'rep' ? 'on' : ''} onClick={() => setTab('rep')}>Reporte del día</button>
+          <button type="button" className={tab === 'av' ? 'on' : ''} onClick={() => setTab('av')}>Avance</button>
+          <button type="button" className={tab === 'rep' ? 'on' : ''} onClick={() => setTab('rep')}>Reporte</button>
         </nav>
         <div className="me">{name} · {home} <button type="button" className="lnk" onClick={onLogout}>Cambiar</button></div>
       </header>
@@ -76,7 +78,84 @@ function Main({ name, home, onLogout }: { name: string; home: Dept; onLogout: ()
           </aside>
           <DeptPanel key={dept} s={s} dept={dept} now={now} />
         </div>
-      ) : <Report s={s} now={now} />}
+      ) : tab === 'av' ? <Avance s={s} /> : <Report s={s} now={now} />}
+    </div>
+  )
+}
+
+/** the office's AVANCE sheet, live: scheduled → done → pending per room, computed from the products table */
+function Avance({ s }: { s: State }) {
+  const [date, setDate] = useState(today())
+  const [editing, setEditing] = useState(false)
+  const [newCode, setNewCode] = useState('')
+  const rows = avanceRows(s, date)
+  const sum = (f: (r: AvanceRow) => number | null) => rows.reduce((t, r) => t + (f(r) ?? 0), 0)
+  const cls = (v: number | null) => (v == null ? '' : v < 0 ? 'red' : v > 0 ? 'amber' : 'ok')
+  return (
+    <section className="report avance">
+      <div className="rhead">
+        <h2>Avance del día</h2>
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        <form className="addcode" onSubmit={(e) => { e.preventDefault(); if (newCode.trim()) { setSchedule(date, newCode, 0); setNewCode('') } }}>
+          <input placeholder="Código a programar" value={newCode} onChange={(e) => setNewCode(e.target.value)} autoComplete="off" />
+          <button className="btn" type="submit" disabled={!newCode.trim()}>+ Programar</button>
+        </form>
+        <button type="button" className="btn" onClick={() => setEditing(!editing)}>{editing ? 'Cerrar productos' : '⚙ Productos'}</button>
+      </div>
+      <p className="hint">Programado = mezclas planeadas. Lo esperado sale de las mezclas hechas en Kitchen × la tabla de productos (cajas por mezcla, pouches por caja, cajas por pallet). Pendiente en rojo = se hizo de más.</p>
+      {editing && <Products s={s} />}
+      {rows.length === 0 ? <p className="hint">Nada programado ni registrado en esta fecha. Escribe un código y toca "Programar".</p> : (
+        <div className="twrap">
+          <table>
+            <thead>
+              <tr><th rowSpan={2}>Código</th><th rowSpan={2}>Producto</th><th colSpan={3} className="grp">Mezclas (Kitchen)</th><th rowSpan={2}>Spiral</th><th colSpan={3} className="grp">Pouches (RTE)</th><th colSpan={3} className="grp">Cajas (Packing)</th><th rowSpan={2}>MFO cajas</th><th colSpan={2} className="grp">Pallets</th></tr>
+              <tr><th>Progr.</th><th>Hechas</th><th>Pend.</th><th>Esper.</th><th>Hechos</th><th>Pend.</th><th>Esper.</th><th>Hechas</th><th>Pend.</th><th>Esper.</th><th>Hechos</th></tr>
+            </thead>
+            <tbody>{rows.map((r) => (
+              <tr key={r.code}>
+                <td><b>{r.code}</b></td><td>{r.product?.name ?? <i className="red">no está en Productos</i>}</td>
+                <td><input className="num" inputMode="numeric" value={r.scheduled || ''} placeholder="0" onChange={(e) => setSchedule(date, r.code, Number(e.target.value.replace(/\D/g, '')) || 0)} /></td>
+                <td>{r.mixesDone}</td><td className={r.mixesPending ? 'amber' : 'ok'}>{r.mixesPending}</td>
+                <td>{r.spiralDone}</td>
+                <td>{n1(r.pouchesExp)}</td><td>{r.pouchesDone}</td><td className={cls(pending(r.pouchesExp, r.pouchesDone))}>{n1(pending(r.pouchesExp, r.pouchesDone))}</td>
+                <td>{n1(r.casesExp)}</td><td>{r.casesDone}</td><td className={cls(pending(r.casesExp, r.casesDone))}>{n1(pending(r.casesExp, r.casesDone))}</td>
+                <td>{r.mfoCases}</td>
+                <td>{n1(r.palletsExp)}</td><td>{r.palletsDone}</td>
+              </tr>
+            ))}</tbody>
+            <tfoot><tr><td colSpan={2}>Total</td><td>{sum((r) => r.scheduled)}</td><td>{sum((r) => r.mixesDone)}</td><td>{sum((r) => r.mixesPending)}</td><td>{sum((r) => r.spiralDone)}</td><td>{n1(sum((r) => r.pouchesExp))}</td><td>{sum((r) => r.pouchesDone)}</td><td></td><td>{n1(sum((r) => r.casesExp))}</td><td>{sum((r) => r.casesDone)}</td><td></td><td>{sum((r) => r.mfoCases)}</td><td>{n1(sum((r) => r.palletsExp))}</td><td>{sum((r) => r.palletsDone)}</td></tr></tfoot>
+          </table>
+        </div>
+      )}
+    </section>
+  )
+}
+
+/** the master table, typed on the device (the examples are made up) */
+function Products({ s }: { s: State }) {
+  const num = (v: string) => Number(v.replace(',', '.')) || 0
+  const upd = (i: number, p: Product, patch: Partial<Product>) => saveProduct(i, { ...p, ...patch })
+  return (
+    <div className="products">
+      <h3>Productos · la tabla maestra de la oficina</h3>
+      <div className="twrap">
+        <table>
+          <thead><tr><th>Código</th><th>Producto</th><th>Pouches / caja</th><th>Cajas / mezcla (yield)</th><th>Pouches / carro</th><th>Cajas / pallet</th><th></th></tr></thead>
+          <tbody>{s.products.map((p, i) => (
+            <tr key={s.products.length + ':' + i}>
+              <td><input className="code" value={p.code} onChange={(e) => upd(i, p, { code: e.target.value.toUpperCase() })} autoComplete="off" /></td>
+              <td><input className="name" value={p.name} onChange={(e) => upd(i, p, { name: e.target.value })} autoComplete="off" /></td>
+              <td><input className="num" inputMode="decimal" defaultValue={p.pouchesPerCase || ''} onBlur={(e) => upd(i, p, { pouchesPerCase: num(e.target.value) })} /></td>
+              <td><input className="num" inputMode="decimal" defaultValue={p.casesPerMix || ''} onBlur={(e) => upd(i, p, { casesPerMix: num(e.target.value) })} /></td>
+              <td><input className="num" inputMode="decimal" defaultValue={p.pouchesPerCart || ''} onBlur={(e) => upd(i, p, { pouchesPerCart: num(e.target.value) })} /></td>
+              <td><input className="num" inputMode="decimal" defaultValue={p.casesPerPallet || ''} onBlur={(e) => upd(i, p, { casesPerPallet: num(e.target.value) })} /></td>
+              <td><button type="button" className="lnk" onClick={() => { if (confirm('¿Quitar ' + (p.code || 'este producto') + '?')) removeProduct(i) }}>✕</button></td>
+            </tr>
+          ))}</tbody>
+        </table>
+      </div>
+      <button type="button" className="btn" onClick={() => saveProduct(s.products.length, { code: '', name: '', pouchesPerCase: 0, casesPerMix: 0, pouchesPerCart: 0, casesPerPallet: 0 })}>+ Agregar producto</button>
+      <p className="hint">Los productos de ejemplo son inventados. Escribe aquí los códigos y números reales de la planta: se guardan solo en este dispositivo.</p>
     </div>
   )
 }

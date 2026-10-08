@@ -1,4 +1,5 @@
 import { dayOf, fmtDur, fmtTime, madeText, runStats, type State } from './store'
+import { avanceRows, n1, pending } from './avance'
 
 type Libs = { jsPDF: typeof import('jspdf').jsPDF; autoTable: typeof import('jspdf-autotable').default }
 let libs: Libs | null = null
@@ -38,6 +39,20 @@ export function buildPdf(s: State, date: string, now: number, by: string) {
       startY: y + 10, theme: 'grid', styles: { font: 'helvetica', fontSize: 9, cellPadding: 5, textColor: [22, 32, 42] }, headStyles: { fillColor: [179, 38, 30], textColor: 255, fontStyle: 'bold' },
       head: [['Depto', 'Línea', 'Razón', 'Detalle', 'Inicio', 'Fin', 'Duración', 'Registró']],
       body: stops.map((x) => [x.dept, lineName(x), x.reason, x.note || '—', fmtTime(x.startedAt), x.endedAt ? fmtTime(x.endedAt) : 'en curso', fmtDur((x.endedAt ?? now) - x.startedAt), x.by]),
+    })
+  }
+  // the day's progress, as the office's AVANCE sheet
+  const av = avanceRows(s, date)
+  if (av.length) {
+    doc.addPage()
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(16); doc.setTextColor(22, 32, 42)
+    doc.text('Avance del día · ' + fmtDate(date), 40, 42)
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(91, 107, 122)
+    doc.text('Esperado = mezclas hechas en Kitchen × tabla de productos (cajas por mezcla, pouches por caja, cajas por pallet). Pendiente negativo = se hizo de más.', 40, 58)
+    autoTable(doc, {
+      startY: 70, theme: 'grid', styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 4, textColor: [22, 32, 42] }, headStyles: { fillColor: teal, textColor: 255, fontStyle: 'bold' },
+      head: [['Código', 'Producto', 'Progr.', 'Mezclas', 'Pend.', 'Spiral', 'Pouches esp.', 'Pouches', 'Pend.', 'Cajas esp.', 'Cajas', 'Pend.', 'MFO cajas', 'Pallets esp.', 'Pallets']],
+      body: av.map((r) => [r.code, r.product?.name ?? '(no está en Productos)', String(r.scheduled), String(r.mixesDone), String(r.mixesPending), String(r.spiralDone), n1(r.pouchesExp), String(r.pouchesDone), n1(pending(r.pouchesExp, r.pouchesDone)), n1(r.casesExp), String(r.casesDone), n1(pending(r.casesExp, r.casesDone)), String(r.mfoCases), n1(r.palletsExp), String(r.palletsDone)]),
     })
   }
   const pages = doc.getNumberOfPages()

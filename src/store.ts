@@ -26,7 +26,21 @@ export type Unit = { at: number; qty: number | null; ref: string }
 export type Run = { id: string; dept: Dept; lineId: string; line: string; code: string; lot: string; date: string; startedAt: number; endedAt: number | null; units: Unit[]; perUnit: number | null; by: string }
 /** a stop with its reason; lineId null = the whole department */
 export type Stop = { id: string; dept: Dept; lineId: string | null; reason: string; note: string; startedAt: number; endedAt: number | null; by: string }
-export type State = { lines: Line[]; runs: Run[]; stops: Stop[] }
+/**
+ * The office's master table ("YIEL CALCULO" + cases per pallet + pouches per cart): with it, mezclas become expected
+ * pouches, cases and pallets. The demo ships with made-up example products; the real ones are typed on the device.
+ */
+export type Product = { code: string; name: string; pouchesPerCase: number; casesPerMix: number; pouchesPerCart: number; casesPerPallet: number }
+/** mezclas scheduled per day and code ("SCHEDULE" in the office's AVANCE sheet) */
+export type Schedule = Record<string, Record<string, number>>
+export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Product[]; schedule: Schedule }
+const SAMPLE_PRODUCTS: Product[] = [
+  { code: 'A100', name: 'Meatballs 2.4 oz · pouch 48 oz', pouchesPerCase: 8, casesPerMix: 18, pouchesPerCart: 120, casesPerPallet: 36 },
+  { code: 'B200', name: 'Stuffed peppers · pouch 60 oz', pouchesPerCase: 8, casesPerMix: 6, pouchesPerCart: 72, casesPerPallet: 40 },
+  { code: 'C300', name: 'Turkey meatballs 1.1 oz · pouch 16 oz', pouchesPerCase: 6, casesPerMix: 70, pouchesPerCart: 240, casesPerPallet: 105 },
+  { code: 'D400', name: 'Meatballs 2.4 oz · pouch 4.5 lb', pouchesPerCase: 2, casesPerMix: 50, pouchesPerCart: 72, casesPerPallet: 105 },
+  { code: 'E500', name: 'Rice · pouch 60 oz', pouchesPerCase: 5, casesPerMix: 20, pouchesPerCart: 72, casesPerPallet: 105 },
+]
 
 const KEY = 'act_v1'
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2))
@@ -41,15 +55,15 @@ export function lotFor(ds: string) {
   return String(y % 10) + String(day).padStart(3, '0')
 }
 
-function fresh(): State { return { lines: DEPTS.map((d) => ({ id: uid(), dept: d, name: CFG[d].lineWord + ' 1' })), runs: [], stops: [] } }
+function fresh(): State { return { lines: DEPTS.map((d) => ({ id: uid(), dept: d, name: CFG[d].lineWord + ' 1' })), runs: [], stops: [], products: SAMPLE_PRODUCTS, schedule: {} } }
 function load(): State {
   try {
-    type Raw = { lines: Line[]; stops: Stop[]; runs: (Omit<Run, 'units' | 'perUnit'> & { units?: Partial<Unit>[]; perUnit?: number | null; carts?: number[] })[] }
+    type Raw = { lines: Line[]; stops: Stop[]; runs: (Omit<Run, 'units' | 'perUnit'> & { units?: Partial<Unit>[]; perUnit?: number | null; carts?: number[] })[]; products?: Product[]; schedule?: Schedule }
     const s = JSON.parse(localStorage.getItem(KEY) || 'null') as Raw | null
     // runs saved by earlier demos counted carts as plain timestamps, then units without a tag number
     if (s && s.lines && s.runs && s.stops) {
       const units = (r: Raw['runs'][number]): Unit[] => (r.units ? r.units.map((u) => ({ at: u.at ?? 0, qty: u.qty ?? null, ref: u.ref ?? '' })) : (r.carts ?? []).map((at) => ({ at, qty: null, ref: '' })))
-      return { lines: s.lines, stops: s.stops, runs: s.runs.map((r) => ({ ...r, units: units(r), perUnit: r.perUnit ?? null })) }
+      return { lines: s.lines, stops: s.stops, runs: s.runs.map((r) => ({ ...r, units: units(r), perUnit: r.perUnit ?? null })), products: s.products ?? SAMPLE_PRODUCTS, schedule: s.schedule ?? {} }
     }
   } catch { /* empty */ }
   return fresh()
@@ -78,14 +92,24 @@ export function startStop(dept: Dept, lineId: string | null, reason: string, not
 }
 export function endStop(id: string) { set({ ...state, stops: state.stops.map((x) => (x.id === id ? { ...x, endedAt: Date.now() } : x)) }) }
 export function reset() { set(fresh()) }
+export const productOf = (s: State, code: string) => s.products.find((p) => p.code.trim().toUpperCase() === code.trim().toUpperCase())
+/** saves a product by its position in the list (a new one goes at the end) */
+export function saveProduct(i: number, p: Product) { const products = [...state.products]; if (i >= products.length) products.push(p); else products[i] = p; set({ ...state, products }) }
+export function removeProduct(i: number) { set({ ...state, products: state.products.filter((_, k) => k !== i) }) }
+export function setSchedule(date: string, code: string, n: number) { set({ ...state, schedule: { ...state.schedule, [date]: { ...(state.schedule[date] ?? {}), [code.trim().toUpperCase()]: n } } }) }
 
 export const openRun = (s: State, lineId: string) => s.runs.find((r) => r.lineId === lineId && !r.endedAt)
 /** the stop holding this line right now: its own, or one of the whole department */
 export const openStop = (s: State, dept: Dept, lineId: string) => s.stops.find((x) => !x.endedAt && x.dept === dept && (x.lineId === lineId || x.lineId === null))
 export const deptStop = (s: State, dept: Dept) => s.stops.find((x) => !x.endedAt && x.dept === dept && x.lineId === null)
 export const stopsOf = (s: State, dept: Dept, lineId: string) => s.stops.filter((x) => x.dept === dept && (x.lineId === lineId || x.lineId === null))
-/** the quantity per unit the last time this department ran this code (boxes per pallet, pouches per cart) */
-export const lastPerUnit = (s: State, dept: Dept, code: string) => [...s.runs].reverse().find((r) => r.dept === dept && r.code === code.trim().toUpperCase() && r.perUnit != null)?.perUnit ?? null
+/** the quantity per unit for this code: the last time this department ran it, or else the master table */
+export function lastPerUnit(s: State, dept: Dept, code: string) {
+  const last = [...s.runs].reverse().find((r) => r.dept === dept && r.code === code.trim().toUpperCase() && r.perUnit != null)?.perUnit
+  if (last != null) return last
+  const p = productOf(s, code)
+  return p ? (dept === 'RTE' ? p.pouchesPerCart : dept === 'Packing' ? p.casesPerPallet : null) || null : null
+}
 
 const overlap = (a: number, b: number, x: Stop, now: number) => Math.max(0, Math.min(b, x.endedAt ?? now) - Math.max(a, x.startedAt))
 /** time between two moments without what was spent stopped */

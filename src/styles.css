@@ -99,6 +99,22 @@ th,td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--line);white
 th{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
 tr.live td{background:#f1fbf5}
 .report h3{font-size:16px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+
+/* progress of the day (the office's AVANCE sheet) and the products table */
+.avance .addcode{display:flex;gap:6px}
+.avance .addcode input{width:190px}
+.avance th.grp{text-align:center;background:var(--soft);color:var(--accent)}
+.avance tfoot td{font-weight:700;background:var(--bg)}
+.avance td.ok{color:var(--ok)}
+.avance td.amber{color:var(--amber);font-weight:600}
+.avance td.red{font-weight:600}
+.avance input.num,.products input.num{min-height:36px;padding:0 8px;font-size:14px;width:64px;text-align:right;font-variant-numeric:tabular-nums}
+.products{display:grid;gap:10px;background:var(--surface);border:1.5px solid var(--accent);border-radius:14px;padding:12px}
+.products input{min-height:36px;padding:0 8px;font-size:14px}
+.products input.code{width:110px;font-family:ui-monospace,Menlo,Consolas,monospace}
+.products input.name{width:260px}
+.products input.num{width:84px}
+.products .btn{justify-self:start}
 .foot{font-size:13px}
 
 /* phones: the departments become a row on top */
