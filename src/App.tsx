@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import { activeBetween, addLine, CFG, CRATES_PER_CART, dayOf, DEPTS, deptStop, endRun, endStop, fmtDur, fmtTime, lastPerUnit, lotFor, madeText, managerPin, mergeProducts, myDept, openRun, openStop, parseProductsCsv, productOf, productsCsv, removeLine, removeProduct, reset, resetRecords, role, runStats, saveProduct, setSchedule, startRun, startStop, stopsOf, store, today, unitDone, user, type Dept, type Line, type Product, type State } from './store'
+import { activeBetween, addLine, addWaste, CFG, CRATES_PER_CART, dayOf, DEPTS, deptStop, endRun, endStop, fmtDur, fmtTime, lastPerUnit, lotFor, madeText, managerPin, mergeProducts, myDept, openRun, openStop, parseProductsCsv, productOf, productsCsv, removeLine, removeProduct, reset, resetRecords, role, runStats, saveProduct, setSchedule, startRun, startStop, stopsOf, store, today, unitDone, user, type Dept, type Line, type Product, type State } from './store'
 import { avanceRows, n1, pending, type AvanceRow } from './avance'
 import { buildPdf, loadPdf } from './pdf'
 
@@ -127,7 +127,7 @@ function Avance({ s }: { s: State }) {
         <div className="twrap">
           <table>
             <thead>
-              <tr><th rowSpan={2}>Código</th><th rowSpan={2}>Producto</th><th colSpan={3} className="grp g1">Mezclas (Kitchen)</th><th rowSpan={2} className="gs">Spiral</th><th colSpan={3} className="grp g2">Pouches (RTE)</th><th colSpan={3} className="grp g3">Cajas (Packing)</th><th rowSpan={2} className="gs">MFO cajas</th><th colSpan={2} className="grp g4">Pallets</th></tr>
+              <tr><th rowSpan={2}>Código</th><th rowSpan={2}>Producto</th><th colSpan={3} className="grp g1">Mezclas (Kitchen)</th><th rowSpan={2} className="gs">Spiral</th><th colSpan={3} className="grp g2">Pouches (RTE)</th><th colSpan={3} className="grp g3">Cajas (Packing)</th><th rowSpan={2} className="gs">MFO cajas</th><th colSpan={2} className="grp g4">Pallets</th><th rowSpan={2} className="gs">Waste lb</th></tr>
               <tr><th className="g1 gs">Progr.</th><th className="g1">Hechas</th><th className="g1">Pend.</th><th className="g2 gs">Esper.</th><th className="g2">Hechos</th><th className="g2">Pend.</th><th className="g3 gs">Esper.</th><th className="g3">Hechas</th><th className="g3">Pend.</th><th className="g4 gs">Esper.</th><th className="g4">Hechos</th></tr>
             </thead>
             <tbody>{rows.map((r) => (
@@ -140,9 +140,10 @@ function Avance({ s }: { s: State }) {
                 <td>{n1(r.casesExp)}</td><td>{r.casesDone}</td><td className={cls(pending(r.casesExp, r.casesDone))}>{n1(pending(r.casesExp, r.casesDone))}</td>
                 <td>{r.mfoCases}</td>
                 <td>{n1(r.palletsExp)}</td><td>{r.palletsDone}</td>
+                <td className={r.wasteLb ? 'red' : ''}>{r.wasteLb || '—'}</td>
               </tr>
             ))}</tbody>
-            <tfoot><tr><td colSpan={2}>Total</td><td>{sum((r) => r.scheduled)}</td><td>{sum((r) => r.mixesDone)}</td><td>{sum((r) => r.mixesPending)}</td><td>{sum((r) => r.spiralDone)}</td><td>{n1(sum((r) => r.pouchesExp))}</td><td>{sum((r) => r.pouchesDone)}</td><td></td><td>{n1(sum((r) => r.casesExp))}</td><td>{sum((r) => r.casesDone)}</td><td></td><td>{sum((r) => r.mfoCases)}</td><td>{n1(sum((r) => r.palletsExp))}</td><td>{sum((r) => r.palletsDone)}</td></tr></tfoot>
+            <tfoot><tr><td colSpan={2}>Total</td><td>{sum((r) => r.scheduled)}</td><td>{sum((r) => r.mixesDone)}</td><td>{sum((r) => r.mixesPending)}</td><td>{sum((r) => r.spiralDone)}</td><td>{n1(sum((r) => r.pouchesExp))}</td><td>{sum((r) => r.pouchesDone)}</td><td></td><td>{n1(sum((r) => r.casesExp))}</td><td>{sum((r) => r.casesDone)}</td><td></td><td>{sum((r) => r.mfoCases)}</td><td>{n1(sum((r) => r.palletsExp))}</td><td>{sum((r) => r.palletsDone)}</td><td>{n1(Math.round(sum((r) => r.wasteLb) * 100) / 100)}</td></tr></tfoot>
           </table>
         </div>
       )}
@@ -223,7 +224,7 @@ function DeptPanel({ s, dept, now }: { s: State; dept: Dept; now: number }) {
             const st = runStats(s, r, now)
             return (
               <div key={r.id} className="donerow">
-                <b className="code">{r.code}</b> · lote {r.lot} · {r.line} · {fmtTime(r.startedAt)} – {fmtTime(r.endedAt ?? now)} · <b>{madeText(r, st.qty)}</b> · trabajando <b>{fmtDur(st.working)}</b> · parado <b className={st.down ? 'red' : ''}>{fmtDur(st.down)}</b> · {r.by}
+                <b className="code">{r.code}</b> · lote {r.lot} · {r.line} · {fmtTime(r.startedAt)} – {fmtTime(r.endedAt ?? now)} · <b>{madeText(r, st.qty)}</b> · trabajando <b>{fmtDur(st.working)}</b> · parado <b className={st.down ? 'red' : ''}>{fmtDur(st.down)}</b>{r.waste > 0 && <> · waste <b className="red">{r.waste} lb</b></>} · {r.by}
               </div>
             )
           })}
@@ -248,6 +249,7 @@ function LineCard({ s, line, now }: { s: State; line: Line; now: number }) {
   const [ending, setEnding] = useState(false)
   const [removing, setRemoving] = useState(false)
   const [editQty, setEditQty] = useState(false)
+  const [wasting, setWasting] = useState(false)
   if (!run) {
     // the lot follows the date unless someone typed another one; the quantity per unit (boxes per pallet, pouches
     // per cart) comes from the products table or the last run of the code. RTE types it the office's way: crates
@@ -304,9 +306,11 @@ function LineCard({ s, line, now }: { s: State; line: Line; now: number }) {
         <div className="stat"><label>{cfg.unit} actual</label><b>{fmtDur(current)}</b></div>
         <div className="stat"><label>Promedio / {cfg.unit.toLowerCase()}</label><b>{run.units.length ? fmtDur(st.avg) : '—'}</b></div>
         <div className="stat"><label>Parado</label><b className={st.down ? 'red' : ''}>{fmtDur(st.down)}</b></div>
+        {cfg.waste && <div className="stat"><label>Waste</label><b className={run.waste ? 'red' : ''}>{run.waste} lb</b></div>}
       </div>
       <div className="btns">
         <button type="button" className="btn primary huge" disabled={!!stop} onClick={done}>✓ {cfg.done}</button>
+        {cfg.waste && <button type="button" className="btn" onClick={() => setWasting(true)}>Waste (lb)</button>}
         {stop
           ? (stop.lineId === line.id
             ? <button type="button" className="btn danger" onClick={() => endStop(stop.id)}>▶ Reanudar</button>
@@ -317,6 +321,7 @@ function LineCard({ s, line, now }: { s: State; line: Line; now: number }) {
       {ending && <ConfirmDialog title={'¿Terminar el código ' + run.code + ' en ' + line.name + '?'} text={'Se cierra con ' + madeText(run, st.qty) + ' · trabajando ' + fmtDur(st.working) + (st.down ? ' · parado ' + fmtDur(st.down) : '') + '.'} yes="■ Terminar" onYes={() => { endRun(run.id); setEnding(false) }} onNo={() => setEnding(false)} />}
       {asking && <StopDialog title={'Parar ' + line.name + ' · ' + run.code} reasons={cfg.reasons} onClose={() => setAsking(false)} onPick={(reason, note) => { startStop(line.dept, line.id, reason, note); setAsking(false) }} />}
       {counting && <QtyDialog title={cfg.qtyQ} unit={cfg.qtyUnit} refLabel={cfg.refLabel} initial={run.perUnit} onClose={() => setCounting(false)} onPick={(q, ref) => { unitDone(run.id, q, ref); setCounting(false) }} />}
+      {wasting && <QtyDialog title={'Waste de ' + run.code + ' · ¿cuántas libras?'} unit="lb" refLabel="" initial={null} decimal onClose={() => setWasting(false)} onPick={(lb) => { if (lb > 0) addWaste(run.id, lb); setWasting(false) }} />}
     </div>
   )
 }
@@ -372,17 +377,18 @@ function NoticeDialog({ title, text, onClose }: { title: string; text?: string; 
 }
 
 /** departments that type how much a unit carried (boxes on a pallet or in a bin) and its tag / bin number */
-function QtyDialog({ title, unit, refLabel, initial, onClose, onPick }: { title: string; unit: string; refLabel: string; initial: number | null; onClose: () => void; onPick: (q: number, ref: string) => void }) {
+function QtyDialog({ title, unit, refLabel, initial, decimal, onClose, onPick }: { title: string; unit: string; refLabel: string; initial: number | null; decimal?: boolean; onClose: () => void; onPick: (q: number, ref: string) => void }) {
   const [v, setV] = useState(initial != null ? String(initial) : '')
   const [ref, setRef] = useState('')
-  const n = Number(v)
+  const n = Number(v.replace(',', '.'))
   const ok = v.trim() !== '' && Number.isFinite(n) && n >= 0
+  const clean = (t: string) => (decimal ? t.replace(/[^\d.,]/g, '').replace(/([.,].*)[.,]/, '$1') : t.replace(/\D/g, ''))
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
         <h3>{title}</h3>
         <form onSubmit={(e) => { e.preventDefault(); if (ok) onPick(n, ref.trim()) }} className="qform">
-          <label>{unit} <input autoFocus inputMode="numeric" placeholder={unit} value={v} onChange={(e) => setV(e.target.value.replace(/\D/g, ''))} /></label>
+          <label>{unit} <input autoFocus inputMode={decimal ? 'decimal' : 'numeric'} placeholder={unit} value={v} onChange={(e) => setV(clean(e.target.value))} /></label>
           {refLabel && <label>{refLabel} <small>(opcional)</small> <input inputMode="numeric" placeholder="ej. 1749" value={ref} onChange={(e) => setRef(e.target.value)} autoComplete="off" /></label>}
           <div className="dbtns">
             <button type="button" className="btn" onClick={onClose}>Cancelar</button>
@@ -418,8 +424,8 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
   const lineName = (x: { lineId: string | null; dept: Dept }) => (x.lineId === null ? 'Todo ' + x.dept : s.lines.find((l) => l.id === x.lineId)?.name ?? s.runs.find((r) => r.lineId === x.lineId)?.line ?? 'línea')
   const csv = () => {
     const q = (v: string | number) => '"' + String(v).replace(/"/g, '""') + '"'
-    const head = ['Departamento', 'Línea', 'Código', 'Lote', 'Fecha', 'Inicio', 'Fin', 'Hecho', 'Cantidad', 'Tags / bins', 'Tiempo trabajando', 'Promedio por unidad', 'Tiempo parado', 'Razones de paro', 'Registró']
-    const body = rows.map((x) => [x.r.dept, x.r.line, x.r.code, x.r.lot, x.r.date, fmtTime(x.r.startedAt), x.r.endedAt ? fmtTime(x.r.endedAt) : 'en curso', x.r.units.length + ' ' + CFG[x.r.dept].plural.toLowerCase(), CFG[x.r.dept].qty !== 'none' ? x.st.qty + ' ' + CFG[x.r.dept].qtyUnit : '', x.r.units.map((u) => u.ref).filter(Boolean).join(', '), fmtDur(x.st.working), x.r.units.length ? fmtDur(x.st.avg) : '', fmtDur(x.st.down), reasonsText(x), x.r.by])
+    const head = ['Departamento', 'Línea', 'Código', 'Lote', 'Fecha', 'Inicio', 'Fin', 'Hecho', 'Cantidad', 'Tags / bins', 'Waste (lb)', 'Tiempo trabajando', 'Promedio por unidad', 'Tiempo parado', 'Razones de paro', 'Registró']
+    const body = rows.map((x) => [x.r.dept, x.r.line, x.r.code, x.r.lot, x.r.date, fmtTime(x.r.startedAt), x.r.endedAt ? fmtTime(x.r.endedAt) : 'en curso', x.r.units.length + ' ' + CFG[x.r.dept].plural.toLowerCase(), CFG[x.r.dept].qty !== 'none' ? x.st.qty + ' ' + CFG[x.r.dept].qtyUnit : '', x.r.units.map((u) => u.ref).filter(Boolean).join(', '), x.r.waste || '', fmtDur(x.st.working), x.r.units.length ? fmtDur(x.st.avg) : '', fmtDur(x.st.down), reasonsText(x), x.r.by])
     const stopHead = ['', 'PAROS', 'Departamento', 'Línea', 'Razón', 'Detalle', 'Inicio', 'Fin', 'Duración', 'Registró']
     const stopBody = stops.map((x) => ['', '', x.dept, lineName(x), x.reason, x.note, fmtTime(x.startedAt), x.endedAt ? fmtTime(x.endedAt) : 'en curso', fmtDur((x.endedAt ?? now) - x.startedAt), x.by])
     const text = [head, ...body, [], stopHead, ...stopBody].map((r) => r.map(q).join(',')).join('\r\n')
@@ -444,11 +450,11 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
       {rows.length === 0 ? <p className="hint">Nada registrado en esta fecha.</p> : (
         <div className="twrap">
           <table>
-            <thead><tr><th>Depto</th><th>Línea</th><th>Código</th><th>Lote</th><th>Inicio</th><th>Fin</th><th>Hecho</th><th>Trabajando</th><th>Prom./unidad</th><th>Parado</th><th>Razones</th><th>Registró</th></tr></thead>
+            <thead><tr><th>Depto</th><th>Línea</th><th>Código</th><th>Lote</th><th>Inicio</th><th>Fin</th><th>Hecho</th><th>Waste</th><th>Trabajando</th><th>Prom./unidad</th><th>Parado</th><th>Razones</th><th>Registró</th></tr></thead>
             <tbody>{rows.map((x) => (
               <tr key={x.r.id} className={x.r.endedAt ? '' : 'live'}>
                 <td>{x.r.dept}</td><td>{x.r.line}</td><td><b>{x.r.code}</b></td><td>{x.r.lot}</td><td>{fmtTime(x.r.startedAt)}</td><td>{x.r.endedAt ? fmtTime(x.r.endedAt) : <i>en curso</i>}</td>
-                <td>{madeText(x.r, x.st.qty, true)}</td><td>{fmtDur(x.st.working)}</td><td>{x.r.units.length ? fmtDur(x.st.avg) : '—'}</td><td className={x.st.down ? 'red' : ''}>{fmtDur(x.st.down)}</td><td>{reasonsText(x) || '—'}</td><td>{x.r.by}</td>
+                <td>{madeText(x.r, x.st.qty, true)}</td><td className={x.r.waste ? 'red' : ''}>{x.r.waste ? x.r.waste + ' lb' : '—'}</td><td>{fmtDur(x.st.working)}</td><td>{x.r.units.length ? fmtDur(x.st.avg) : '—'}</td><td className={x.st.down ? 'red' : ''}>{fmtDur(x.st.down)}</td><td>{reasonsText(x) || '—'}</td><td>{x.r.by}</td>
               </tr>
             ))}</tbody>
           </table>

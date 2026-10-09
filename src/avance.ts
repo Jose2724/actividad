@@ -9,6 +9,7 @@ export type AvanceRow = {
   code: string; product: Product | undefined; scheduled: number
   mixesDone: number; mixesPending: number; spiralDone: number
   pouchesExp: number | null; pouchesDone: number; casesExp: number | null; casesDone: number; mfoCases: number; palletsExp: number | null; palletsDone: number
+  wasteLb: number
 }
 
 export function avanceRows(s: State, date: string): AvanceRow[] {
@@ -32,6 +33,7 @@ export function avanceRows(s: State, date: string): AvanceRow[] {
     return {
       code, product, scheduled, mixesDone, mixesPending: Math.max(0, scheduled - mixesDone), spiralDone: units('Spiral'),
       pouchesExp, pouchesDone: qty('RTE', product ? cartPouches(product) : 0), casesExp, casesDone: qty('Packing', product?.casesPerPallet ?? 0), mfoCases: qty('MFO', 0), palletsExp, palletsDone: units('Packing'),
+      wasteLb: Math.round(runs.filter((r) => normCode(r.code) === key).reduce((t, r) => t + (r.waste || 0), 0) * 100) / 100,
     }
   })
 }

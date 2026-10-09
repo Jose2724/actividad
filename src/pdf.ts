@@ -27,9 +27,9 @@ export function buildPdf(s: State, date: string, now: number, by: string, only?:
   doc.text(fmtDate(date) + '   ·   ' + rows.length + ' códigos   ·   trabajando ' + fmtDur(working) + '   ·   parado ' + fmtDur(down), 40, 62)
   autoTable(doc, {
     startY: 78, theme: 'grid', styles: { font: 'helvetica', fontSize: 9, cellPadding: 5, textColor: [22, 32, 42] }, headStyles: { fillColor: teal, textColor: 255, fontStyle: 'bold' },
-    head: [['Depto', 'Línea', 'Código', 'Lote', 'Inicio', 'Fin', 'Hecho', 'Trabajando', 'Prom. / unidad', 'Parado', 'Razones de paro', 'Registró']],
-    body: rows.map((x) => [x.r.dept, x.r.line, x.r.code, x.r.lot, fmtTime(x.r.startedAt), x.r.endedAt ? fmtTime(x.r.endedAt) : 'en curso', madeText(x.r, x.st.qty, true), fmtDur(x.st.working), x.r.units.length ? fmtDur(x.st.avg) : '—', fmtDur(x.st.down), Object.entries(x.st.reasons).map(([k, v]) => k + ' ' + fmtDur(v)).join(', ') || '—', x.r.by]),
-    foot: [['Total', '', '', '', '', '', '', fmtDur(working), '', fmtDur(down), '', '']], footStyles: { fillColor: [243, 246, 249], textColor: [22, 32, 42], fontStyle: 'bold' },
+    head: [['Depto', 'Línea', 'Código', 'Lote', 'Inicio', 'Fin', 'Hecho', 'Waste lb', 'Trabajando', 'Prom. / unidad', 'Parado', 'Razones de paro', 'Registró']],
+    body: rows.map((x) => [x.r.dept, x.r.line, x.r.code, x.r.lot, fmtTime(x.r.startedAt), x.r.endedAt ? fmtTime(x.r.endedAt) : 'en curso', madeText(x.r, x.st.qty, true), x.r.waste ? String(x.r.waste) : '—', fmtDur(x.st.working), x.r.units.length ? fmtDur(x.st.avg) : '—', fmtDur(x.st.down), Object.entries(x.st.reasons).map(([k, v]) => k + ' ' + fmtDur(v)).join(', ') || '—', x.r.by]),
+    foot: [['Total', '', '', '', '', '', '', String(Math.round(rows.reduce((t, x) => t + (x.r.waste || 0), 0) * 100) / 100), fmtDur(working), '', fmtDur(down), '', '']], footStyles: { fillColor: [243, 246, 249], textColor: [22, 32, 42], fontStyle: 'bold' },
   })
   if (stops.length) {
     const y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 28
@@ -51,8 +51,8 @@ export function buildPdf(s: State, date: string, now: number, by: string, only?:
     doc.text('Esperado = mezclas hechas en Kitchen × tabla de productos (cajas por mezcla, pouches por caja, cajas por pallet). Pendiente negativo = se hizo de más.', 40, 58)
     autoTable(doc, {
       startY: 70, theme: 'grid', styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 4, textColor: [22, 32, 42] }, headStyles: { fillColor: teal, textColor: 255, fontStyle: 'bold' },
-      head: [['Código', 'Producto', 'Progr.', 'Mezclas', 'Pend.', 'Spiral', 'Pouches esp.', 'Pouches', 'Pend.', 'Cajas esp.', 'Cajas', 'Pend.', 'MFO cajas', 'Pallets esp.', 'Pallets']],
-      body: av.map((r) => [r.code, r.product?.name ?? '(no está en Productos)', String(r.scheduled), String(r.mixesDone), String(r.mixesPending), String(r.spiralDone), n1(r.pouchesExp), String(r.pouchesDone), n1(pending(r.pouchesExp, r.pouchesDone)), n1(r.casesExp), String(r.casesDone), n1(pending(r.casesExp, r.casesDone)), String(r.mfoCases), n1(r.palletsExp), String(r.palletsDone)]),
+      head: [['Código', 'Producto', 'Progr.', 'Mezclas', 'Pend.', 'Spiral', 'Pouches esp.', 'Pouches', 'Pend.', 'Cajas esp.', 'Cajas', 'Pend.', 'MFO cajas', 'Pallets esp.', 'Pallets', 'Waste lb']],
+      body: av.map((r) => [r.code, r.product?.name ?? '(no está en Productos)', String(r.scheduled), String(r.mixesDone), String(r.mixesPending), String(r.spiralDone), n1(r.pouchesExp), String(r.pouchesDone), n1(pending(r.pouchesExp, r.pouchesDone)), n1(r.casesExp), String(r.casesDone), n1(pending(r.casesExp, r.casesDone)), String(r.mfoCases), n1(r.palletsExp), String(r.palletsDone), r.wasteLb ? String(r.wasteLb) : '—']),
     })
   }
   const pages = doc.getNumberOfPages()

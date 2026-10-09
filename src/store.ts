@@ -11,11 +11,11 @@ export const DEPTS: Dept[] = ['Kitchen', 'RTE', 'Spiral', 'MFO', 'Packing']
  * cart, boxes per pallet) so a short cart or pallet is typed on the spot; 'auto' = every unit carries the quantity
  * given at the start, with no question.
  */
-export type DeptCfg = { lineWord: string; unit: string; plural: string; done: string; qty: 'none' | 'ask' | 'auto'; qtyQ: string; qtyUnit: string; perUnitLabel: string; refLabel: string; reasons: string[] }
+export type DeptCfg = { lineWord: string; unit: string; plural: string; done: string; qty: 'none' | 'ask' | 'auto'; qtyQ: string; qtyUnit: string; perUnitLabel: string; refLabel: string; reasons: string[]; waste?: boolean }
 export const CFG: Record<Dept, DeptCfg> = {
   Kitchen: { lineWord: 'Braiser', unit: 'Mezcla', plural: 'Mezclas', done: 'Mezcla lista', qty: 'none', qtyQ: '', qtyUnit: '', perUnitLabel: '', refLabel: '', reasons: ['Braiser apagado', 'Esperando ingredientes', 'Esperando que recojan producto', 'Máquina / mantenimiento', 'Limpieza', 'Falta de personal', 'Break', 'Calidad'] },
   Spiral: { lineWord: 'Línea', unit: 'Mezcla', plural: 'Mezclas', done: 'Mezcla lista', qty: 'none', qtyQ: '', qtyUnit: '', perUnitLabel: '', refLabel: '', reasons: ['Falta de producto de Kitchen', 'Horno (temperatura)', 'Temperatura interna baja', 'Esperando carros / RTE', 'Máquina / mantenimiento', 'Limpieza', 'Falta de personal', 'Break', 'Calidad'] },
-  RTE: { lineWord: 'Línea', unit: 'Carro', plural: 'Carros', done: 'Carro listo', qty: 'ask', qtyQ: '¿Cuántos pouches lleva este carro?', qtyUnit: 'pouches', perUnitLabel: 'Pouches por carro', refLabel: '', reasons: ['Falta de salsa (Kitchen)', 'Falta de arroz / arroz muy frío', 'Falta de carrito vacío', 'Cambio de rollo de plástico', 'Plástico atascado / no corta', 'Máquina corta o rompe paquetes (mecánico)', 'Impresora de sello no imprime', 'Peso fuera de rango (reempaque)', 'Aire en el paquete', 'Conteo / pesado de meatballs', 'Limpieza', 'Falta de personal', 'Break'] },
+  RTE: { lineWord: 'Línea', unit: 'Carro', plural: 'Carros', done: 'Carro listo', qty: 'ask', qtyQ: '¿Cuántos pouches lleva este carro?', qtyUnit: 'pouches', perUnitLabel: 'Pouches por carro', refLabel: '', waste: true, reasons: ['Falta de salsa (Kitchen)', 'Falta de arroz / arroz muy frío', 'Falta de carrito vacío', 'Cambio de rollo de plástico', 'Plástico atascado / no corta', 'Máquina corta o rompe paquetes (mecánico)', 'Impresora de sello no imprime', 'Peso fuera de rango (reempaque)', 'Aire en el paquete', 'Conteo / pesado de meatballs', 'Limpieza', 'Falta de personal', 'Break'] },
   MFO: { lineWord: 'Línea', unit: 'Bin', plural: 'Bins', done: 'Bin listo', qty: 'ask', qtyQ: '¿Cuántas cajas lleva este bin?', qtyUnit: 'cajas', perUnitLabel: '', refLabel: 'N° de bin', reasons: ['Armado de máquina', 'Pegado de labels / stickers', 'Esperando gas', 'Falta de producto del freezer', 'Preparación (picar pollo…)', 'Falta de material', 'Máquina / mantenimiento', 'Limpieza', 'Falta de personal', 'Break'] },
   Packing: { lineWord: 'Línea', unit: 'Pallet', plural: 'Pallets', done: 'Pallet listo', qty: 'ask', qtyQ: '¿Cuántas cajas lleva este pallet?', qtyUnit: 'cajas', perUnitLabel: 'Cajas por pallet', refLabel: 'N° de tag', reasons: ['Falta de producto que empacar', 'Esperando autorización de QC', 'Label equivocado (despegar labels)', 'Plástico / film', 'Falta de cajas / material de empaque', 'Personal pasó a otra línea', 'Etiquetadora / impresora', 'Montacargas / espacio', 'Máquina / mantenimiento', 'Limpieza', 'Falta de personal', 'Break'] },
 }
@@ -23,8 +23,11 @@ export const CFG: Record<Dept, DeptCfg> = {
 export type Line = { id: string; dept: Dept; name: string }
 /** one finished unit of work (a cart, a mezcla, a pallet…), how much it carried and its tag / bin number */
 export type Unit = { at: number; qty: number | null; ref: string }
-/** one product code run on one line: the clock starts at startedAt; perUnit = quantity per unit (boxes per pallet, pouches per cart) */
-export type Run = { id: string; dept: Dept; lineId: string; line: string; code: string; lot: string; date: string; startedAt: number; endedAt: number | null; units: Unit[]; perUnit: number | null; by: string }
+/**
+ * one product code run on one line: the clock starts at startedAt; perUnit = quantity per unit (boxes per pallet,
+ * pouches per cart); waste = pounds thrown away while running it (the WASTE column of the office's RTE sheet)
+ */
+export type Run = { id: string; dept: Dept; lineId: string; line: string; code: string; lot: string; date: string; startedAt: number; endedAt: number | null; units: Unit[]; perUnit: number | null; waste: number; by: string }
 /** a stop with its reason; lineId null = the whole department */
 export type Stop = { id: string; dept: Dept; lineId: string | null; reason: string; note: string; startedAt: number; endedAt: number | null; by: string }
 /**
@@ -63,7 +66,7 @@ export function lotFor(ds: string) {
 function fresh(): State { return { lines: DEPTS.map((d) => ({ id: uid(), dept: d, name: CFG[d].lineWord + ' 1' })), runs: [], stops: [], products: SAMPLE_PRODUCTS, schedule: {} } }
 function load(): State {
   try {
-    type Raw = { lines: Line[]; stops: Stop[]; runs: (Omit<Run, 'units' | 'perUnit'> & { units?: Partial<Unit>[]; perUnit?: number | null; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule }
+    type Raw = { lines: Line[]; stops: Stop[]; runs: (Omit<Run, 'units' | 'perUnit' | 'waste'> & { units?: Partial<Unit>[]; perUnit?: number | null; waste?: number; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule }
     const s = JSON.parse(localStorage.getItem(KEY) || 'null') as Raw | null
     // runs saved by earlier demos counted carts as plain timestamps, then units without a tag number; products had
     // the pouches per cart as one number
@@ -71,7 +74,7 @@ function load(): State {
       const units = (r: Raw['runs'][number]): Unit[] => (r.units ? r.units.map((u) => ({ at: u.at ?? 0, qty: u.qty ?? null, ref: u.ref ?? '' })) : (r.carts ?? []).map((at) => ({ at, qty: null, ref: '' })))
       const sample = (code: string) => SAMPLE_PRODUCTS.some((x) => x.code === code)
       const products: Product[] = s.products ? s.products.map((p) => ({ code: p.code ?? '', name: p.name ?? '', pouchesPerCase: p.pouchesPerCase ?? 0, casesPerMix: p.casesPerMix ?? 0, cratesPerCart: (p.cratesPerCart ?? (p.pouchesPerCart ? 12 : 0)) === 12 && sample(p.code ?? '') ? CRATES_PER_CART : p.cratesPerCart ?? (p.pouchesPerCart ? 12 : 0), pouchesPerCrate: p.pouchesPerCrate ?? (p.pouchesPerCart ? Math.round(p.pouchesPerCart / 12) : 0), casesPerPallet: p.casesPerPallet ?? 0 })) : SAMPLE_PRODUCTS
-      return { lines: s.lines, stops: s.stops, runs: s.runs.map((r) => ({ ...r, units: units(r), perUnit: r.perUnit ?? null })), products, schedule: s.schedule ?? {} }
+      return { lines: s.lines, stops: s.stops, runs: s.runs.map((r) => ({ ...r, units: units(r), perUnit: r.perUnit ?? null, waste: r.waste ?? 0 })), products, schedule: s.schedule ?? {} }
     }
   } catch { /* empty */ }
   return fresh()
@@ -96,8 +99,10 @@ export const managerPin = { get: () => mgrPin.get() || '1234', set: (v: string) 
 export function addLine(dept: Dept) { const n = state.lines.filter((l) => l.dept === dept).length + 1; set({ ...state, lines: [...state.lines, { id: uid(), dept, name: CFG[dept].lineWord + ' ' + n }] }) }
 export function removeLine(id: string) { set({ ...state, lines: state.lines.filter((l) => l.id !== id) }) }
 export function startRun(line: Line, code: string, lot: string, date: string, perUnit: number | null) {
-  set({ ...state, runs: [...state.runs, { id: uid(), dept: line.dept, lineId: line.id, line: line.name, code, lot, date, startedAt: Date.now(), endedAt: null, units: [], perUnit, by: user.get() }] })
+  set({ ...state, runs: [...state.runs, { id: uid(), dept: line.dept, lineId: line.id, line: line.name, code, lot, date, startedAt: Date.now(), endedAt: null, units: [], perUnit, waste: 0, by: user.get() }] })
 }
+/** pounds thrown away, added to what the run already has */
+export function addWaste(runId: string, lb: number) { set({ ...state, runs: state.runs.map((r) => (r.id === runId ? { ...r, waste: Math.round((r.waste + lb) * 100) / 100 } : r)) }) }
 export function unitDone(runId: string, qty: number | null, ref = '') { set({ ...state, runs: state.runs.map((r) => (r.id === runId ? { ...r, units: [...r.units, { at: Date.now(), qty, ref }] } : r)) }) }
 export function endRun(runId: string) { set({ ...state, runs: state.runs.map((r) => (r.id === runId ? { ...r, endedAt: Date.now() } : r)) }) }
 export function startStop(dept: Dept, lineId: string | null, reason: string, note: string) {
