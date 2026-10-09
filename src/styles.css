@@ -68,12 +68,14 @@ input[type=text],input:not([type]),input[type=date]{min-height:48px;padding:0 12
 .start .cartrow .eq{grid-column:1/-1;font-size:14px;color:var(--muted)}
 .start .cartrow .eq b{color:var(--accent);font-size:16px}
 .stopbar{background:var(--red-soft);color:var(--warn);border-radius:10px;padding:8px 12px;font-weight:600}
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px}
-.stat{background:var(--bg);border-radius:12px;padding:8px 10px;display:grid;gap:2px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px}
+.stat{background:var(--bg);border-radius:12px;padding:8px 10px;display:grid;gap:2px;min-width:0}
 .stat label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700}
-.stat b{font-size:22px;font-variant-numeric:tabular-nums}
-.stat.big{background:var(--soft)}
+.stat b{font-size:22px;font-variant-numeric:tabular-nums;white-space:nowrap;letter-spacing:-.01em}
+/* hours make the times long ("13:47:14"): the main clock takes two cells and the figures never spill out of their box */
+.stat.big{background:var(--soft);grid-column:span 2}
 .stat.big b{font-size:30px;color:var(--accent)}
+@media (max-width:420px){.stat.big b{font-size:26px}}
 .btns{display:flex;gap:8px;flex-wrap:wrap}
 .done{display:grid;gap:6px}
 .done h3{font-size:16px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
