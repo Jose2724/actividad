@@ -101,6 +101,11 @@ export function removeLine(id: string) { set({ ...state, lines: state.lines.filt
 export function startRun(line: Line, code: string, lot: string, date: string, perUnit: number | null) {
   set({ ...state, runs: [...state.runs, { id: uid(), dept: line.dept, lineId: line.id, line: line.name, code, lot, date, startedAt: Date.now(), endedAt: null, units: [], perUnit, waste: 0, by: user.get() }] })
 }
+/** corrections: a wrong code, lot, quantity, tag or stop is fixed in place (the server version will also keep who changed what) */
+export function updateRun(id: string, patch: Partial<Pick<Run, 'code' | 'lot' | 'date' | 'perUnit' | 'waste' | 'endedAt' | 'units'>>) { set({ ...state, runs: state.runs.map((r) => (r.id === id ? { ...r, ...patch } : r)) }) }
+export function deleteRun(id: string) { set({ ...state, runs: state.runs.filter((r) => r.id !== id) }) }
+export function updateStop(id: string, patch: Partial<Pick<Stop, 'reason' | 'note' | 'startedAt' | 'endedAt'>>) { set({ ...state, stops: state.stops.map((x) => (x.id === id ? { ...x, ...patch } : x)) }) }
+export function deleteStop(id: string) { set({ ...state, stops: state.stops.filter((x) => x.id !== id) }) }
 /** pounds thrown away, added to what the run already has */
 export function addWaste(runId: string, lb: number) { set({ ...state, runs: state.runs.map((r) => (r.id === runId ? { ...r, waste: Math.round((r.waste + lb) * 100) / 100 } : r)) }) }
 export function unitDone(runId: string, qty: number | null, ref = '') { set({ ...state, runs: state.runs.map((r) => (r.id === runId ? { ...r, units: [...r.units, { at: Date.now(), qty, ref }] } : r)) }) }

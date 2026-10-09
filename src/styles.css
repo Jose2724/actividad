@@ -93,6 +93,12 @@ input[type=text],input:not([type]),input[type=date]{min-height:48px;padding:0 12
 .dlg h3{font-size:20px}
 .dlg p{margin:0;color:var(--muted)}
 .dbtns{display:flex;justify-content:flex-end;gap:8px}
+.dbtns.spread{justify-content:space-between;flex-wrap:wrap}
+.dlg.wide{width:min(760px,100%)}
+.egrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.egrid label{display:grid;gap:4px;font-size:13px;font-weight:600;color:var(--muted)}
+.dlg .twrap{max-height:40vh;overflow:auto}
+.dlg input.num{min-height:36px;padding:0 8px;font-size:14px;width:96px}
 .qform{display:grid;gap:10px}
 .qform label{display:grid;gap:4px;font-size:13px;font-weight:600;color:var(--muted)}
 .qform small{font-weight:400}

@@ -2,6 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react'
 import { activeBetween, addLine, addWaste, CFG, CRATES_PER_CART, dayOf, DEPTS, deptStop, endRun, endStop, fmtDur, fmtTime, lastPerUnit, lotFor, madeText, managerPin, mergeProducts, myDept, openRun, openStop, parseProductsCsv, productOf, productsCsv, removeLine, removeProduct, reset, resetRecords, role, runStats, saveProduct, setSchedule, startRun, startStop, stopsOf, store, today, unitDone, user, type Dept, type Line, type Product, type State } from './store'
 import { avanceRows, n1, pending, type AvanceRow } from './avance'
 import { buildPdf, loadPdf } from './pdf'
+import { RunEditor, StopEditor } from './editors'
 
 /** a clock that ticks every second, so every timer on screen moves */
 function useNow() {
@@ -95,7 +96,7 @@ function Main({ name, home, mgr, onLogout }: { name: string; home: Dept; mgr: bo
               })}
             </aside>
           )}
-          <DeptPanel key={dept} s={s} dept={mgr ? dept : home} now={now} />
+          <DeptPanel key={dept} s={s} dept={mgr ? dept : home} now={now} mgr={mgr} />
         </div>
       ) : tab === 'av' && mgr ? <Avance s={s} /> : <Report s={s} now={now} only={mgr ? undefined : home} mgr={mgr} />}
     </div>
@@ -197,10 +198,13 @@ function Products({ s }: { s: State }) {
   )
 }
 
-function DeptPanel({ s, dept, now }: { s: State; dept: Dept; now: number }) {
+function DeptPanel({ s, dept, now, mgr }: { s: State; dept: Dept; now: number; mgr: boolean }) {
   const lines = s.lines.filter((l) => l.dept === dept)
   const ds = deptStop(s, dept)
   const [stopAll, setStopAll] = useState(false)
+  const [editRun, setEditRun] = useState<string | null>(null)
+  const [editStop, setEditStop] = useState(false)
+  const editing = editRun ? s.runs.find((r) => r.id === editRun) : undefined
   const anyRunning = lines.some((l) => openRun(s, l.id))
   const doneToday = s.runs.filter((r) => r.dept === dept && r.endedAt && r.date === today()).sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0))
   return (
@@ -214,8 +218,9 @@ function DeptPanel({ s, dept, now }: { s: State; dept: Dept; now: number }) {
           <button type="button" className="btn" onClick={() => addLine(dept)}>+ Agregar línea</button>
         </div>
       </div>
-      {ds && <div className="deptstop">⏸ Todo {dept} parado · <b>{ds.reason}</b>{ds.note && ' · ' + ds.note} · desde {fmtTime(ds.startedAt)} · {ds.by}</div>}
-      <div className="lines">{lines.map((l) => <LineCard key={l.id} s={s} line={l} now={now} />)}</div>
+      {ds && <div className="deptstop">⏸ Todo {dept} parado · <b>{ds.reason}</b>{ds.note && ' · ' + ds.note} · desde {fmtTime(ds.startedAt)} · {ds.by} <button type="button" className="lnk" onClick={() => setEditStop(true)}>Corregir</button></div>}
+      {editStop && ds && <StopEditor stop={ds} mgr={mgr} onClose={() => setEditStop(false)} />}
+      <div className="lines">{lines.map((l) => <LineCard key={l.id} s={s} line={l} now={now} mgr={mgr} />)}</div>
       {lines.length === 0 && <p className="hint">Este departamento no tiene líneas. Toca "Agregar línea".</p>}
       {doneToday.length > 0 && (
         <div className="done">
@@ -224,21 +229,24 @@ function DeptPanel({ s, dept, now }: { s: State; dept: Dept; now: number }) {
             const st = runStats(s, r, now)
             return (
               <div key={r.id} className="donerow">
-                <b className="code">{r.code}</b> · lote {r.lot} · {r.line} · {fmtTime(r.startedAt)} – {fmtTime(r.endedAt ?? now)} · <b>{madeText(r, st.qty)}</b> · trabajando <b>{fmtDur(st.working)}</b> · parado <b className={st.down ? 'red' : ''}>{fmtDur(st.down)}</b>{r.waste > 0 && <> · waste <b className="red">{r.waste} lb</b></>} · {r.by}
+                <b className="code">{r.code}</b> · lote {r.lot} · {r.line} · {fmtTime(r.startedAt)} – {fmtTime(r.endedAt ?? now)} · <b>{madeText(r, st.qty)}</b> · trabajando <b>{fmtDur(st.working)}</b> · parado <b className={st.down ? 'red' : ''}>{fmtDur(st.down)}</b>{r.waste > 0 && <> · waste <b className="red">{r.waste} lb</b></>} · {r.by} <button type="button" className="lnk" onClick={() => setEditRun(r.id)}>Corregir</button>
               </div>
             )
           })}
         </div>
       )}
+      {editing && <RunEditor s={s} run={editing} mgr={mgr} onClose={() => setEditRun(null)} />}
       {stopAll && <StopDialog title={'Parar todo ' + dept} reasons={CFG[dept].reasons} onClose={() => setStopAll(false)} onPick={(reason, note) => { startStop(dept, null, reason, note); setStopAll(false) }} />}
     </section>
   )
 }
 
-function LineCard({ s, line, now }: { s: State; line: Line; now: number }) {
+function LineCard({ s, line, now, mgr }: { s: State; line: Line; now: number; mgr: boolean }) {
   const cfg = CFG[line.dept]
   const run = openRun(s, line.id)
   const stop = run ? openStop(s, line.dept, line.id) : undefined
+  const [fixing, setFixing] = useState(false)
+  const [fixingStop, setFixingStop] = useState(false)
   const [code, setCode] = useState('')
   const [lot, setLot] = useState(lotFor(today()))
   const [date, setDate] = useState(today())
@@ -296,9 +304,11 @@ function LineCard({ s, line, now }: { s: State; line: Line; now: number }) {
     <div className={'line ' + (stop ? 'stopped' : 'running')}>
       <div className="lhead">
         <h3>{line.name}</h3>
-        <span className="meta"><b className="code">{run.code}</b> · lote {run.lot} · {run.date} · desde {fmtTime(run.startedAt)}{run.perUnit != null && ' · ' + run.perUnit + ' ' + cfg.qtyUnit + ' por ' + cfg.unit.toLowerCase()}</span>
+        <span className="meta"><b className="code">{run.code}</b> · lote {run.lot} · {run.date} · desde {fmtTime(run.startedAt)}{run.perUnit != null && ' · ' + run.perUnit + ' ' + cfg.qtyUnit + ' por ' + cfg.unit.toLowerCase()} <button type="button" className="lnk" onClick={() => setFixing(true)}>Corregir</button></span>
       </div>
-      {stop && <div className="stopbar">⏸ Parado · <b>{stop.reason}</b>{stop.note && ' · ' + stop.note} · <b>{fmtDur(now - stop.startedAt)}</b>{stop.lineId === null && ' · todo el departamento'}</div>}
+      {stop && <div className="stopbar">⏸ Parado · <b>{stop.reason}</b>{stop.note && ' · ' + stop.note} · <b>{fmtDur(now - stop.startedAt)}</b>{stop.lineId === null && ' · todo el departamento'}{stop.lineId === line.id && <button type="button" className="lnk" onClick={() => setFixingStop(true)}>Corregir</button>}</div>}
+      {fixing && <RunEditor s={s} run={run} mgr={mgr} onClose={() => setFixing(false)} />}
+      {fixingStop && stop && <StopEditor stop={stop} mgr={mgr} onClose={() => setFixingStop(false)} />}
       <div className="stats">
         <div className="stat big"><label>Trabajando</label><b>{fmtDur(st.working)}</b></div>
         <div className="stat"><label>{cfg.plural}</label><b>{run.units.length}</b></div>
@@ -348,7 +358,7 @@ function StopDialog({ title, reasons, onClose, onPick }: { title: string; reason
 }
 
 /** the app's own yes / no box (the browser's "confirm" names the site and looks foreign) */
-function ConfirmDialog({ title, text, yes, danger, onYes, onNo }: { title: string; text?: string; yes: string; danger?: boolean; onYes: () => void; onNo: () => void }) {
+export function ConfirmDialog({ title, text, yes, danger, onYes, onNo }: { title: string; text?: string; yes: string; danger?: boolean; onYes: () => void; onNo: () => void }) {
   return (
     <div className="veil" onClick={onNo}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
@@ -406,6 +416,10 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
   const [clearing, setClearing] = useState(false)
   const [pinOpen, setPinOpen] = useState(false)
   const [newPin, setNewPin] = useState('')
+  const [editRun, setEditRun] = useState<string | null>(null)
+  const [editStop, setEditStop] = useState<string | null>(null)
+  const runToEdit = editRun ? s.runs.find((r) => r.id === editRun) : undefined
+  const stopToEdit = editStop ? s.stops.find((x) => x.id === editStop) : undefined
   useEffect(() => { void loadPdf() }, [])
   /** opens the PDF in a new tab (to look at, share or print); if the tab cannot open, it downloads */
   const pdf = async () => {
@@ -450,11 +464,12 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
       {rows.length === 0 ? <p className="hint">Nada registrado en esta fecha.</p> : (
         <div className="twrap">
           <table>
-            <thead><tr><th>Depto</th><th>Línea</th><th>Código</th><th>Lote</th><th>Inicio</th><th>Fin</th><th>Hecho</th><th>Waste</th><th>Trabajando</th><th>Prom./unidad</th><th>Parado</th><th>Razones</th><th>Registró</th></tr></thead>
+            <thead><tr><th>Depto</th><th>Línea</th><th>Código</th><th>Lote</th><th>Inicio</th><th>Fin</th><th>Hecho</th><th>Waste</th><th>Trabajando</th><th>Prom./unidad</th><th>Parado</th><th>Razones</th><th>Registró</th><th></th></tr></thead>
             <tbody>{rows.map((x) => (
               <tr key={x.r.id} className={x.r.endedAt ? '' : 'live'}>
                 <td>{x.r.dept}</td><td>{x.r.line}</td><td><b>{x.r.code}</b></td><td>{x.r.lot}</td><td>{fmtTime(x.r.startedAt)}</td><td>{x.r.endedAt ? fmtTime(x.r.endedAt) : <i>en curso</i>}</td>
                 <td>{madeText(x.r, x.st.qty, true)}</td><td className={x.r.waste ? 'red' : ''}>{x.r.waste ? x.r.waste + ' lb' : '—'}</td><td>{fmtDur(x.st.working)}</td><td>{x.r.units.length ? fmtDur(x.st.avg) : '—'}</td><td className={x.st.down ? 'red' : ''}>{fmtDur(x.st.down)}</td><td>{reasonsText(x) || '—'}</td><td>{x.r.by}</td>
+                <td><button type="button" className="lnk" onClick={() => setEditRun(x.r.id)}>Corregir</button></td>
               </tr>
             ))}</tbody>
           </table>
@@ -465,10 +480,11 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
           <h3>Paros</h3>
           <div className="twrap">
             <table>
-              <thead><tr><th>Depto</th><th>Línea</th><th>Razón</th><th>Detalle</th><th>Inicio</th><th>Fin</th><th>Duración</th><th>Registró</th></tr></thead>
+              <thead><tr><th>Depto</th><th>Línea</th><th>Razón</th><th>Detalle</th><th>Inicio</th><th>Fin</th><th>Duración</th><th>Registró</th><th></th></tr></thead>
               <tbody>{stops.map((x) => (
                 <tr key={x.id} className={x.endedAt ? '' : 'live'}>
                   <td>{x.dept}</td><td>{lineName(x)}</td><td><b>{x.reason}</b></td><td>{x.note || '—'}</td><td>{fmtTime(x.startedAt)}</td><td>{x.endedAt ? fmtTime(x.endedAt) : <i>en curso</i>}</td><td>{fmtDur((x.endedAt ?? now) - x.startedAt)}</td><td>{x.by}</td>
+                  <td><button type="button" className="lnk" onClick={() => setEditStop(x.id)}>Corregir</button></td>
                 </tr>
               ))}</tbody>
             </table>
@@ -476,6 +492,8 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
         </>
       )}
       <p className="hint foot">Demo guardado en este dispositivo. La versión completa manda todo en vivo al manager (oficina, teléfono o PC) y exporta a Excel, PDF y Google Sheets como la Hoja de Freezer RTE.</p>
+      {runToEdit && <RunEditor s={s} run={runToEdit} mgr={mgr} onClose={() => setEditRun(null)} />}
+      {stopToEdit && <StopEditor stop={stopToEdit} mgr={mgr} onClose={() => setEditStop(null)} />}
       {mgr && (
         <div className="btns">
           <button type="button" className="lnk" onClick={() => setClearing(true)}>Reiniciar registros (conserva productos y líneas)</button>
