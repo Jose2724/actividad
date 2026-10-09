@@ -48,11 +48,11 @@ export function buildPdf(s: State, date: string, now: number, by: string, only?:
     doc.setFont('helvetica', 'bold'); doc.setFontSize(16); doc.setTextColor(22, 32, 42)
     doc.text('Avance del día · ' + fmtDate(date), 40, 42)
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(91, 107, 122)
-    doc.text('Esperado = mezclas hechas en Kitchen × tabla de productos (cajas por mezcla, pouches por caja, cajas por pallet). Pendiente negativo = se hizo de más.', 40, 58)
+    doc.text('Progr. = del programa del día (mezclas programadas × tabla de productos). Esper. = de las mezclas ya hechas. Pend. = esperado − hecho (negativo = de más). Faltan = programado − hecho.', 40, 58)
     autoTable(doc, {
-      startY: 70, theme: 'grid', styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 4, textColor: [22, 32, 42] }, headStyles: { fillColor: teal, textColor: 255, fontStyle: 'bold' },
-      head: [['Código', 'Producto', 'Progr.', 'Mezclas', 'Pend.', 'Spiral', 'Pouches esp.', 'Pouches', 'Pend.', 'Cajas esp.', 'Cajas', 'Pend.', 'MFO cajas', 'Pallets esp.', 'Pallets', 'Waste lb']],
-      body: av.map((r) => [r.code, r.product?.name ?? '(no está en Productos)', String(r.scheduled), String(r.mixesDone), String(r.mixesPending), String(r.spiralDone), n1(r.pouchesExp), String(r.pouchesDone), n1(pending(r.pouchesExp, r.pouchesDone)), n1(r.casesExp), String(r.casesDone), n1(pending(r.casesExp, r.casesDone)), String(r.mfoCases), n1(r.palletsExp), String(r.palletsDone), r.wasteLb ? String(r.wasteLb) : '—']),
+      startY: 70, theme: 'grid', styles: { font: 'helvetica', fontSize: 7.5, cellPadding: 3, textColor: [22, 32, 42] }, headStyles: { fillColor: teal, textColor: 255, fontStyle: 'bold' },
+      head: [['Código', 'Producto', 'Mezclas progr.', 'Hechas', 'Pend.', 'Spiral', 'Pouches progr.', 'Esper.', 'Hechos', 'Pend.', 'Faltan', 'Cajas progr.', 'Esper.', 'Hechas', 'Pend.', 'Faltan', 'MFO cajas', 'Pallets progr.', 'Esper.', 'Hechos', 'Waste lb']],
+      body: av.map((r) => [r.code, r.product?.name ?? '(no está en Productos)', String(r.scheduled), String(r.mixesDone), String(r.mixesPending), String(r.spiralDone), n1(r.pouchesPlan), n1(r.pouchesExp), String(r.pouchesDone), n1(pending(r.pouchesExp, r.pouchesDone)), n1(pending(r.pouchesPlan, r.pouchesDone)), n1(r.casesPlan), n1(r.casesExp), String(r.casesDone), n1(pending(r.casesExp, r.casesDone)), n1(pending(r.casesPlan, r.casesDone)), String(r.mfoCases), n1(r.palletsPlan), n1(r.palletsExp), String(r.palletsDone), r.wasteLb ? String(r.wasteLb) : '—']),
     })
   }
   const pages = doc.getNumberOfPages()

@@ -126,11 +126,12 @@ tr.live td{background:#f1fbf5}
 .avance th.g2{background:#fff3df;color:#9a5a00}
 .avance th.g3{background:#e8f0fe;color:#1d4ed8}
 .avance th.g4{background:#f1e9fb;color:#6d28d9}
-.avance th.gs,.avance tbody td:nth-child(3),.avance tbody td:nth-child(6),.avance tbody td:nth-child(7),.avance tbody td:nth-child(10),.avance tbody td:nth-child(13),.avance tbody td:nth-child(14),.avance tbody td:nth-child(16),.avance tfoot td:nth-child(15),.avance tfoot td:nth-child(2),.avance tfoot td:nth-child(5),.avance tfoot td:nth-child(6),.avance tfoot td:nth-child(9),.avance tfoot td:nth-child(12),.avance tfoot td:nth-child(13){border-left:2px solid #c9d3dc}
+/* body columns: 1 code · 2 product · 3-5 mezclas · 6 spiral · 7-11 pouches · 12-16 cajas · 17 mfo · 18-20 pallets · 21 waste (the foot's first cell spans two) */
+.avance th.gs,.avance tbody td:nth-child(3),.avance tbody td:nth-child(6),.avance tbody td:nth-child(7),.avance tbody td:nth-child(12),.avance tbody td:nth-child(17),.avance tbody td:nth-child(18),.avance tbody td:nth-child(21),.avance tfoot td:nth-child(2),.avance tfoot td:nth-child(5),.avance tfoot td:nth-child(6),.avance tfoot td:nth-child(11),.avance tfoot td:nth-child(16),.avance tfoot td:nth-child(17),.avance tfoot td:nth-child(20){border-left:2px solid #c9d3dc}
 .avance tbody td:nth-child(n+3):nth-child(-n+5){background:#f4faf9}
-.avance tbody td:nth-child(n+7):nth-child(-n+9){background:#fffaf1}
-.avance tbody td:nth-child(n+10):nth-child(-n+12){background:#f4f7fe}
-.avance tbody td:nth-child(n+14):nth-child(-n+15){background:#f8f4fd}
+.avance tbody td:nth-child(n+7):nth-child(-n+11){background:#fffaf1}
+.avance tbody td:nth-child(n+12):nth-child(-n+16){background:#f4f7fe}
+.avance tbody td:nth-child(n+18):nth-child(-n+20){background:#f8f4fd}
 .avance tfoot td{font-weight:700;background:var(--bg)}
 .avance td.ok{color:var(--ok)}
 .avance td.amber{color:var(--amber);font-weight:600}

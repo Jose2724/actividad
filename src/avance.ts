@@ -8,7 +8,10 @@ import { cartPouches, normCode, productOf, type Product, type State } from './st
 export type AvanceRow = {
   code: string; product: Product | undefined; scheduled: number
   mixesDone: number; mixesPending: number; spiralDone: number
-  pouchesExp: number | null; pouchesDone: number; casesExp: number | null; casesDone: number; mfoCases: number; palletsExp: number | null; palletsDone: number
+  /** "plan" = from the mezclas scheduled (the office's Packs / PENDING); "exp" = from the mezclas Kitchen has made so far */
+  pouchesPlan: number | null; pouchesExp: number | null; pouchesDone: number
+  casesPlan: number | null; casesExp: number | null; casesDone: number; mfoCases: number
+  palletsPlan: number | null; palletsExp: number | null; palletsDone: number
   wasteLb: number
 }
 
@@ -27,12 +30,15 @@ export function avanceRows(s: State, date: string): AvanceRow[] {
     const qty = (dept: string, fallback: number) => of(dept).reduce((t, r) => t + r.units.reduce((u, x) => u + (x.qty ?? r.perUnit ?? fallback), 0), 0)
     const scheduled = sched[key] ?? 0
     const mixesDone = units('Kitchen')
-    const casesExp = product ? mixesDone * product.casesPerMix : null
-    const pouchesExp = product && casesExp != null ? casesExp * product.pouchesPerCase : null
-    const palletsExp = product && casesExp != null && product.casesPerPallet ? casesExp / product.casesPerPallet : null
+    const cases = (mixes: number) => (product ? mixes * product.casesPerMix : null)
+    const pouches = (c: number | null) => (product && c != null ? c * product.pouchesPerCase : null)
+    const pallets = (c: number | null) => (product && c != null && product.casesPerPallet ? c / product.casesPerPallet : null)
+    const casesExp = cases(mixesDone), casesPlan = scheduled ? cases(scheduled) : null
     return {
       code, product, scheduled, mixesDone, mixesPending: Math.max(0, scheduled - mixesDone), spiralDone: units('Spiral'),
-      pouchesExp, pouchesDone: qty('RTE', product ? cartPouches(product) : 0), casesExp, casesDone: qty('Packing', product?.casesPerPallet ?? 0), mfoCases: qty('MFO', 0), palletsExp, palletsDone: units('Packing'),
+      pouchesPlan: pouches(casesPlan), pouchesExp: pouches(casesExp), pouchesDone: qty('RTE', product ? cartPouches(product) : 0),
+      casesPlan, casesExp, casesDone: qty('Packing', product?.casesPerPallet ?? 0), mfoCases: qty('MFO', 0),
+      palletsPlan: pallets(casesPlan), palletsExp: pallets(casesExp), palletsDone: units('Packing'),
       wasteLb: Math.round(runs.filter((r) => normCode(r.code) === key).reduce((t, r) => t + (r.waste || 0), 0) * 100) / 100,
     }
   })

@@ -122,14 +122,14 @@ function Avance({ s }: { s: State }) {
         </form>
         <button type="button" className="btn" onClick={() => setEditing(!editing)}>{editing ? 'Cerrar productos' : '⚙ Productos'}</button>
       </div>
-      <p className="hint">Programado = mezclas planeadas. Lo esperado sale de las mezclas hechas en Kitchen × la tabla de productos (cajas por mezcla, pouches por caja, cajas por pallet). Pendiente en rojo = se hizo de más.</p>
+      <p className="hint"><b>Progr.</b> = lo que da el programa del día (mezclas programadas × tabla de productos). <b>Esper.</b> = lo que ya puede salir de las mezclas que Kitchen lleva hechas. <b>Pend.</b> = esperado − hecho (rojo = se hizo de más). <b>Faltan</b> = programado − hecho: lo que queda del día.</p>
       {editing && <Products s={s} />}
       {rows.length === 0 ? <p className="hint">Nada programado ni registrado en esta fecha. Escribe un código y toca "Programar".</p> : (
         <div className="twrap">
           <table>
             <thead>
-              <tr><th rowSpan={2}>Código</th><th rowSpan={2}>Producto</th><th colSpan={3} className="grp g1">Mezclas (Kitchen)</th><th rowSpan={2} className="gs">Spiral</th><th colSpan={3} className="grp g2">Pouches (RTE)</th><th colSpan={3} className="grp g3">Cajas (Packing)</th><th rowSpan={2} className="gs">MFO cajas</th><th colSpan={2} className="grp g4">Pallets</th><th rowSpan={2} className="gs">Waste lb</th></tr>
-              <tr><th className="g1 gs">Progr.</th><th className="g1">Hechas</th><th className="g1">Pend.</th><th className="g2 gs">Esper.</th><th className="g2">Hechos</th><th className="g2">Pend.</th><th className="g3 gs">Esper.</th><th className="g3">Hechas</th><th className="g3">Pend.</th><th className="g4 gs">Esper.</th><th className="g4">Hechos</th></tr>
+              <tr><th rowSpan={2}>Código</th><th rowSpan={2}>Producto</th><th colSpan={3} className="grp g1">Mezclas (Kitchen)</th><th rowSpan={2} className="gs">Spiral</th><th colSpan={5} className="grp g2">Pouches (RTE)</th><th colSpan={5} className="grp g3">Cajas (Packing)</th><th rowSpan={2} className="gs">MFO cajas</th><th colSpan={3} className="grp g4">Pallets</th><th rowSpan={2} className="gs">Waste lb</th></tr>
+              <tr><th className="g1 gs">Progr.</th><th className="g1">Hechas</th><th className="g1">Pend.</th><th className="g2 gs">Progr.</th><th className="g2">Esper.</th><th className="g2">Hechos</th><th className="g2">Pend.</th><th className="g2">Faltan</th><th className="g3 gs">Progr.</th><th className="g3">Esper.</th><th className="g3">Hechas</th><th className="g3">Pend.</th><th className="g3">Faltan</th><th className="g4 gs">Progr.</th><th className="g4">Esper.</th><th className="g4">Hechos</th></tr>
             </thead>
             <tbody>{rows.map((r) => (
               <tr key={r.code}>
@@ -137,14 +137,14 @@ function Avance({ s }: { s: State }) {
                 <td><input className="num" inputMode="numeric" value={r.scheduled || ''} placeholder="0" onChange={(e) => setSchedule(date, r.code, Number(e.target.value.replace(/\D/g, '')) || 0)} /></td>
                 <td>{r.mixesDone}</td><td className={r.mixesPending ? 'amber' : 'ok'}>{r.mixesPending}</td>
                 <td>{r.spiralDone}</td>
-                <td>{n1(r.pouchesExp)}</td><td>{r.pouchesDone}</td><td className={cls(pending(r.pouchesExp, r.pouchesDone))}>{n1(pending(r.pouchesExp, r.pouchesDone))}</td>
-                <td>{n1(r.casesExp)}</td><td>{r.casesDone}</td><td className={cls(pending(r.casesExp, r.casesDone))}>{n1(pending(r.casesExp, r.casesDone))}</td>
+                <td>{n1(r.pouchesPlan)}</td><td>{n1(r.pouchesExp)}</td><td>{r.pouchesDone}</td><td className={cls(pending(r.pouchesExp, r.pouchesDone))}>{n1(pending(r.pouchesExp, r.pouchesDone))}</td><td className={cls(pending(r.pouchesPlan, r.pouchesDone))}>{n1(pending(r.pouchesPlan, r.pouchesDone))}</td>
+                <td>{n1(r.casesPlan)}</td><td>{n1(r.casesExp)}</td><td>{r.casesDone}</td><td className={cls(pending(r.casesExp, r.casesDone))}>{n1(pending(r.casesExp, r.casesDone))}</td><td className={cls(pending(r.casesPlan, r.casesDone))}>{n1(pending(r.casesPlan, r.casesDone))}</td>
                 <td>{r.mfoCases}</td>
-                <td>{n1(r.palletsExp)}</td><td>{r.palletsDone}</td>
+                <td>{n1(r.palletsPlan)}</td><td>{n1(r.palletsExp)}</td><td>{r.palletsDone}</td>
                 <td className={r.wasteLb ? 'red' : ''}>{r.wasteLb || '—'}</td>
               </tr>
             ))}</tbody>
-            <tfoot><tr><td colSpan={2}>Total</td><td>{sum((r) => r.scheduled)}</td><td>{sum((r) => r.mixesDone)}</td><td>{sum((r) => r.mixesPending)}</td><td>{sum((r) => r.spiralDone)}</td><td>{n1(sum((r) => r.pouchesExp))}</td><td>{sum((r) => r.pouchesDone)}</td><td></td><td>{n1(sum((r) => r.casesExp))}</td><td>{sum((r) => r.casesDone)}</td><td></td><td>{sum((r) => r.mfoCases)}</td><td>{n1(sum((r) => r.palletsExp))}</td><td>{sum((r) => r.palletsDone)}</td><td>{n1(Math.round(sum((r) => r.wasteLb) * 100) / 100)}</td></tr></tfoot>
+            <tfoot><tr><td colSpan={2}>Total</td><td>{sum((r) => r.scheduled)}</td><td>{sum((r) => r.mixesDone)}</td><td>{sum((r) => r.mixesPending)}</td><td>{sum((r) => r.spiralDone)}</td><td>{n1(sum((r) => r.pouchesPlan))}</td><td>{n1(sum((r) => r.pouchesExp))}</td><td>{sum((r) => r.pouchesDone)}</td><td></td><td></td><td>{n1(sum((r) => r.casesPlan))}</td><td>{n1(sum((r) => r.casesExp))}</td><td>{sum((r) => r.casesDone)}</td><td></td><td></td><td>{sum((r) => r.mfoCases)}</td><td>{n1(sum((r) => r.palletsPlan))}</td><td>{n1(sum((r) => r.palletsExp))}</td><td>{sum((r) => r.palletsDone)}</td><td>{n1(Math.round(sum((r) => r.wasteLb) * 100) / 100)}</td></tr></tfoot>
           </table>
         </div>
       )}
