@@ -36,12 +36,14 @@ export const cartPouches = (p: Product) => p.cratesPerCart * p.pouchesPerCrate
 /** mezclas scheduled per day and code ("SCHEDULE" in the office's AVANCE sheet) */
 export type Schedule = Record<string, Record<string, number>>
 export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Product[]; schedule: Schedule }
+/** a cart has two columns of 12 crates (the office counts columns: "12x10" = 12 crates × 10 pouches) */
+export const CRATES_PER_CART = 24
 const SAMPLE_PRODUCTS: Product[] = [
-  { code: 'A100', name: 'Meatballs 2.4 oz · pouch 48 oz', pouchesPerCase: 8, casesPerMix: 18, cratesPerCart: 12, pouchesPerCrate: 10, casesPerPallet: 36 },
-  { code: 'B200', name: 'Stuffed peppers · pouch 60 oz', pouchesPerCase: 8, casesPerMix: 6, cratesPerCart: 12, pouchesPerCrate: 6, casesPerPallet: 40 },
-  { code: 'C300', name: 'Turkey meatballs 1.1 oz · pouch 16 oz', pouchesPerCase: 6, casesPerMix: 70, cratesPerCart: 12, pouchesPerCrate: 20, casesPerPallet: 105 },
-  { code: 'D400', name: 'Meatballs 2.4 oz · pouch 4.5 lb', pouchesPerCase: 2, casesPerMix: 50, cratesPerCart: 12, pouchesPerCrate: 6, casesPerPallet: 105 },
-  { code: 'E500', name: 'Rice · pouch 60 oz', pouchesPerCase: 5, casesPerMix: 20, cratesPerCart: 12, pouchesPerCrate: 6, casesPerPallet: 105 },
+  { code: 'A100', name: 'Meatballs 2.4 oz · pouch 48 oz', pouchesPerCase: 8, casesPerMix: 18, cratesPerCart: 24, pouchesPerCrate: 10, casesPerPallet: 36 },
+  { code: 'B200', name: 'Stuffed peppers · pouch 60 oz', pouchesPerCase: 8, casesPerMix: 6, cratesPerCart: 24, pouchesPerCrate: 6, casesPerPallet: 40 },
+  { code: 'C300', name: 'Turkey meatballs 1.1 oz · pouch 16 oz', pouchesPerCase: 6, casesPerMix: 70, cratesPerCart: 24, pouchesPerCrate: 20, casesPerPallet: 105 },
+  { code: 'D400', name: 'Meatballs 2.4 oz · pouch 4.5 lb', pouchesPerCase: 2, casesPerMix: 50, cratesPerCart: 24, pouchesPerCrate: 6, casesPerPallet: 105 },
+  { code: 'E500', name: 'Rice · pouch 60 oz', pouchesPerCase: 5, casesPerMix: 20, cratesPerCart: 24, pouchesPerCrate: 6, casesPerPallet: 105 },
 ]
 
 const KEY = 'act_v1'

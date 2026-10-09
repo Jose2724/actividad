@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import { activeBetween, addLine, CFG, dayOf, DEPTS, deptStop, endRun, endStop, fmtDur, fmtTime, lastPerUnit, lotFor, madeText, mergeProducts, myDept, openRun, openStop, parseProductsCsv, productOf, productsCsv, removeLine, removeProduct, reset, runStats, saveProduct, setSchedule, startRun, startStop, stopsOf, store, today, unitDone, user, type Dept, type Line, type Product, type State } from './store'
+import { activeBetween, addLine, CFG, CRATES_PER_CART, dayOf, DEPTS, deptStop, endRun, endStop, fmtDur, fmtTime, lastPerUnit, lotFor, madeText, mergeProducts, myDept, openRun, openStop, parseProductsCsv, productOf, productsCsv, removeLine, removeProduct, reset, runStats, saveProduct, setSchedule, startRun, startStop, stopsOf, store, today, unitDone, user, type Dept, type Line, type Product, type State } from './store'
 import { avanceRows, n1, pending, type AvanceRow } from './avance'
 import { buildPdf, loadPdf } from './pdf'
 
@@ -156,7 +156,7 @@ function Products({ s }: { s: State }) {
         </table>
       </div>
       <div className="btns">
-        <button type="button" className="btn" onClick={() => saveProduct(s.products.length, { code: '', name: '', pouchesPerCase: 0, casesPerMix: 0, cratesPerCart: 12, pouchesPerCrate: 0, casesPerPallet: 0 })}>+ Agregar producto</button>
+        <button type="button" className="btn" onClick={() => saveProduct(s.products.length, { code: '', name: '', pouchesPerCase: 0, casesPerMix: 0, cratesPerCart: CRATES_PER_CART, pouchesPerCrate: 0, casesPerPallet: 0 })}>+ Agregar producto</button>
         <label className="btn file">⬆ Importar CSV de la oficina
           <input type="file" accept=".csv,text/csv" hidden onChange={async (e) => {
             const f = e.target.files?.[0]; e.target.value = ''
@@ -230,7 +230,7 @@ function LineCard({ s, line, now }: { s: State; line: Line; now: number }) {
     const isCart = cfg.unit === 'Carro'
     const prod = productOf(s, code)
     const suggested = needPer ? lastPerUnit(s, line.dept, code) : null
-    const cratesN = crates.trim() ? Number(crates) : prod?.cratesPerCart || 12
+    const cratesN = crates.trim() ? Number(crates) : prod?.cratesPerCart || CRATES_PER_CART
     const perCrateN = per.trim() ? Number(per) : prod?.pouchesPerCrate || (suggested != null ? Math.round(suggested / cratesN) : null)
     const perUnit = isCart ? (perCrateN ? cratesN * perCrateN : null) : per.trim() ? Number(per) : suggested
     const ok = !!code.trim() && !!lot.trim() && (!needPer || (perUnit != null && perUnit > 0))
@@ -244,7 +244,7 @@ function LineCard({ s, line, now }: { s: State; line: Line; now: number }) {
           {needPer && !isCart && <label>{cfg.perUnitLabel} <input value={per} onChange={(e) => setPer(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder={suggested != null ? String(suggested) + ' (como la última vez)' : 'ej. 36'} autoComplete="off" /></label>}
           {isCart && (
             <div className="cartrow">
-              <label>Guacales por carro <input value={crates} onChange={(e) => setCrates(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder={String(cratesN)} autoComplete="off" /></label>
+              <label>Guacales por carro <small>(12 por columna)</small> <input value={crates} onChange={(e) => setCrates(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder={String(cratesN)} autoComplete="off" /></label>
               <label>Pouches por guacal <input value={per} onChange={(e) => setPer(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder={perCrateN ? String(perCrateN) : 'ej. 10'} autoComplete="off" /></label>
               <span className="eq">= <b>{perUnit ?? '—'}</b> pouches por carro</span>
             </div>
