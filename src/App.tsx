@@ -430,6 +430,7 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
     const win = window.open(doc.output('bloburl'), '_blank')
     if (!win) doc.save(name)
   }
+  // (the "send" below builds the same PDF plus the CSV and hands them to the share sheet)
   const runs = s.runs.filter((r) => r.date === date && (!only || r.dept === only)).sort((a, b) => a.startedAt - b.startedAt)
   const stops = s.stops.filter((x) => dayOf(x.startedAt) === date && (!only || x.dept === only)).sort((a, b) => a.startedAt - b.startedAt)
   const rows = runs.map((r) => ({ r, st: runStats(s, r, now) }))
@@ -437,17 +438,35 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
   const down = rows.reduce((t, x) => t + x.st.down, 0)
   const reasonsText = (x: (typeof rows)[number]) => Object.entries(x.st.reasons).map(([k, v]) => k + ' ' + fmtDur(v)).join(', ')
   const lineName = (x: { lineId: string | null; dept: Dept }) => (x.lineId === null ? 'Todo ' + x.dept : s.lines.find((l) => l.id === x.lineId)?.name ?? s.runs.find((r) => r.lineId === x.lineId)?.line ?? 'línea')
+  const fileName = 'actividad-' + (only ? only.toLowerCase() + '-' : '') + date
+  /** the report as a PDF file and a CSV file, handed to the device's share sheet (Mail, Outlook, WhatsApp…);
+   *  on a PC without one, the files download and the mail opens with the subject ready */
+  const send = async () => {
+    const files: File[] = []
+    const doc = buildPdf(s, date, now, user.get(), only)
+    if (doc) files.push(new File([doc.output('blob')], fileName + '.pdf', { type: 'application/pdf' }))
+    files.push(new File([csvText()], fileName + '.csv', { type: 'text/csv' }))
+    const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean }
+    if (nav.share && nav.canShare?.({ files })) {
+      try { await nav.share({ files, title: 'Actividad · Reporte ' + date, text: 'Reporte del día ' + date + (only ? ' · ' + only : '') }) } catch { /* the person closed the sheet */ }
+      return
+    }
+    for (const f of files) { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click() }
+    location.href = 'mailto:?subject=' + encodeURIComponent('Actividad · Reporte ' + date + (only ? ' · ' + only : '')) + '&body=' + encodeURIComponent('Adjunto el reporte del día (PDF y Excel), recién descargados en la carpeta de Descargas.')
+  }
   const csv = () => {
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(new Blob([csvText()], { type: 'text/csv;charset=utf-8' }))
+    a.download = fileName + '.csv'
+    a.click()
+  }
+  const csvText = () => {
     const q = (v: string | number) => '"' + String(v).replace(/"/g, '""') + '"'
     const head = ['Departamento', 'Línea', 'Código', 'Lote', 'Fecha', 'Inicio', 'Fin', 'Hecho', 'Cantidad', 'Tags / bins', 'Waste (lb)', 'Tiempo trabajando', 'Promedio por unidad', 'Tiempo parado', 'Razones de paro', 'Registró']
     const body = rows.map((x) => [x.r.dept, x.r.line, x.r.code, x.r.lot, x.r.date, fmtTime(x.r.startedAt), x.r.endedAt ? fmtTime(x.r.endedAt) : 'en curso', x.r.units.length + ' ' + CFG[x.r.dept].plural.toLowerCase(), CFG[x.r.dept].qty !== 'none' ? x.st.qty + ' ' + CFG[x.r.dept].qtyUnit : '', x.r.units.map((u) => u.ref).filter(Boolean).join(', '), x.r.waste || '', fmtDur(x.st.working), x.r.units.length ? fmtDur(x.st.avg) : '', fmtDur(x.st.down), reasonsText(x), whoText(x.r)])
     const stopHead = ['', 'PAROS', 'Departamento', 'Línea', 'Razón', 'Detalle', 'Inicio', 'Fin', 'Duración', 'Registró']
     const stopBody = stops.map((x) => ['', '', x.dept, lineName(x), x.reason, x.note, fmtTime(x.startedAt), x.endedAt ? fmtTime(x.endedAt) : 'en curso', fmtDur((x.endedAt ?? now) - x.startedAt), x.by])
-    const text = [head, ...body, [], stopHead, ...stopBody].map((r) => r.map(q).join(',')).join('\r\n')
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(new Blob(['﻿' + text], { type: 'text/csv;charset=utf-8' }))
-    a.download = 'actividad-' + date + '.csv'
-    a.click()
+    return '﻿' + [head, ...body, [], stopHead, ...stopBody].map((r) => r.map(q).join(',')).join('\r\n')
   }
   return (
     <section className="report">
@@ -455,7 +474,8 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
         <h2>Reporte del día{only ? ' · ' + only : ''}</h2>
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         <button type="button" className="btn" onClick={csv} disabled={!rows.length}>⬇ Excel (CSV)</button>
-        <button type="button" className="btn primary" onClick={() => void pdf()} disabled={!rows.length}>📄 Ver PDF / imprimir</button>
+        <button type="button" className="btn" onClick={() => void pdf()} disabled={!rows.length}>📄 Ver PDF / imprimir</button>
+        <button type="button" className="btn primary" onClick={() => void send()} disabled={!rows.length}>✉ Enviar reporte</button>
       </div>
       <div className="totals">
         <div className="stat"><label>Códigos</label><b>{rows.length}</b></div>
