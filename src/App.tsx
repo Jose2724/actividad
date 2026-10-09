@@ -229,6 +229,7 @@ function LineCard({ s, line, now }: { s: State; line: Line; now: number }) {
   const [ending, setEnding] = useState(false)
   const [removing, setRemoving] = useState(false)
   const [editQty, setEditQty] = useState(false)
+  const [partial, setPartial] = useState(false)
   if (!run) {
     // the lot follows the date unless someone typed another one; the quantity per unit (boxes per pallet, pouches
     // per cart) comes from the products table or the last run of the code. RTE types it the office's way: crates
@@ -288,6 +289,8 @@ function LineCard({ s, line, now }: { s: State; line: Line; now: number }) {
       </div>
       <div className="btns">
         <button type="button" className="btn primary huge" disabled={!!stop} onClick={done}>✓ {cfg.done}</button>
+        {/* the last cart of a code is rarely full: the office's RTE sheet has a "PARCIAL" column for it */}
+        {cfg.qty === 'auto' && <button type="button" className="btn" disabled={!!stop} onClick={() => setPartial(true)}>{cfg.unit} parcial…</button>}
         {stop
           ? (stop.lineId === line.id
             ? <button type="button" className="btn danger" onClick={() => endStop(stop.id)}>▶ Reanudar</button>
@@ -298,6 +301,7 @@ function LineCard({ s, line, now }: { s: State; line: Line; now: number }) {
       {ending && <ConfirmDialog title={'¿Terminar el código ' + run.code + ' en ' + line.name + '?'} text={'Se cierra con ' + madeText(run, st.qty) + ' · trabajando ' + fmtDur(st.working) + (st.down ? ' · parado ' + fmtDur(st.down) : '') + '.'} yes="■ Terminar" onYes={() => { endRun(run.id); setEnding(false) }} onNo={() => setEnding(false)} />}
       {asking && <StopDialog title={'Parar ' + line.name + ' · ' + run.code} reasons={cfg.reasons} onClose={() => setAsking(false)} onPick={(reason, note) => { startStop(line.dept, line.id, reason, note); setAsking(false) }} />}
       {counting && <QtyDialog title={cfg.qtyQ} unit={cfg.qtyUnit} refLabel={cfg.refLabel} initial={run.perUnit} onClose={() => setCounting(false)} onPick={(q, ref) => { unitDone(run.id, q, ref); setCounting(false) }} />}
+      {partial && <QtyDialog title={'¿Cuántos ' + cfg.qtyUnit + ' lleva este ' + cfg.unit.toLowerCase() + '?'} unit={cfg.qtyUnit} refLabel="" initial={run.perUnit} onClose={() => setPartial(false)} onPick={(q) => { unitDone(run.id, q); setPartial(false) }} />}
     </div>
   )
 }
