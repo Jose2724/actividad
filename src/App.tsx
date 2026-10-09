@@ -108,8 +108,8 @@ function Avance({ s }: { s: State }) {
         <div className="twrap">
           <table>
             <thead>
-              <tr><th rowSpan={2}>Código</th><th rowSpan={2}>Producto</th><th colSpan={3} className="grp">Mezclas (Kitchen)</th><th rowSpan={2}>Spiral</th><th colSpan={3} className="grp">Pouches (RTE)</th><th colSpan={3} className="grp">Cajas (Packing)</th><th rowSpan={2}>MFO cajas</th><th colSpan={2} className="grp">Pallets</th></tr>
-              <tr><th>Progr.</th><th>Hechas</th><th>Pend.</th><th>Esper.</th><th>Hechos</th><th>Pend.</th><th>Esper.</th><th>Hechas</th><th>Pend.</th><th>Esper.</th><th>Hechos</th></tr>
+              <tr><th rowSpan={2}>Código</th><th rowSpan={2}>Producto</th><th colSpan={3} className="grp g1">Mezclas (Kitchen)</th><th rowSpan={2} className="gs">Spiral</th><th colSpan={3} className="grp g2">Pouches (RTE)</th><th colSpan={3} className="grp g3">Cajas (Packing)</th><th rowSpan={2} className="gs">MFO cajas</th><th colSpan={2} className="grp g4">Pallets</th></tr>
+              <tr><th className="g1 gs">Progr.</th><th className="g1">Hechas</th><th className="g1">Pend.</th><th className="g2 gs">Esper.</th><th className="g2">Hechos</th><th className="g2">Pend.</th><th className="g3 gs">Esper.</th><th className="g3">Hechas</th><th className="g3">Pend.</th><th className="g4 gs">Esper.</th><th className="g4">Hechos</th></tr>
             </thead>
             <tbody>{rows.map((r) => (
               <tr key={r.code}>

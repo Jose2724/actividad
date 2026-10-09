@@ -111,7 +111,17 @@ tr.live td{background:#f1fbf5}
 /* progress of the day (the office's AVANCE sheet) and the products table */
 .avance .addcode{display:flex;gap:6px}
 .avance .addcode input{width:190px}
-.avance th.grp{text-align:center;background:var(--soft);color:var(--accent)}
+/* each room its own tint and a divider, so the groups do not read as one long band */
+.avance th.grp{text-align:center;color:var(--accent)}
+.avance th.g1{background:#e6f3f1;color:#0f766e}
+.avance th.g2{background:#fff3df;color:#9a5a00}
+.avance th.g3{background:#e8f0fe;color:#1d4ed8}
+.avance th.g4{background:#f1e9fb;color:#6d28d9}
+.avance th.gs,.avance tbody td:nth-child(3),.avance tbody td:nth-child(6),.avance tbody td:nth-child(7),.avance tbody td:nth-child(10),.avance tbody td:nth-child(13),.avance tbody td:nth-child(14),.avance tfoot td:nth-child(2),.avance tfoot td:nth-child(5),.avance tfoot td:nth-child(6),.avance tfoot td:nth-child(9),.avance tfoot td:nth-child(12),.avance tfoot td:nth-child(13){border-left:2px solid #c9d3dc}
+.avance tbody td:nth-child(n+3):nth-child(-n+5){background:#f4faf9}
+.avance tbody td:nth-child(n+7):nth-child(-n+9){background:#fffaf1}
+.avance tbody td:nth-child(n+10):nth-child(-n+12){background:#f4f7fe}
+.avance tbody td:nth-child(n+14):nth-child(-n+15){background:#f8f4fd}
 .avance tfoot td{font-weight:700;background:var(--bg)}
 .avance td.ok{color:var(--ok)}
 .avance td.amber{color:var(--amber);font-weight:600}
