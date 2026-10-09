@@ -18,7 +18,7 @@ export function RunEditor({ s, run, mgr, onClose }: { s: State; run: Run; mgr: b
   const [date, setDate] = useState(run.date)
   const [per, setPer] = useState(run.perUnit != null ? String(run.perUnit) : '')
   const [waste, setWaste] = useState(run.waste ? String(run.waste) : '')
-  const [units, setUnits] = useState(run.units.map((u) => ({ at: u.at, qty: u.qty != null ? String(u.qty) : '', ref: u.ref })))
+  const [units, setUnits] = useState(run.units.map((u) => ({ at: u.at, qty: u.qty != null ? String(u.qty) : '', ref: u.ref, by: u.by })))
   const [dropping, setDropping] = useState(false)
   const num = (v: string) => { const n = Number(v.replace(',', '.')); return Number.isFinite(n) ? n : 0 }
   const lineBusy = !!run.endedAt && !!openRun(s, run.lineId)
@@ -26,7 +26,7 @@ export function RunEditor({ s, run, mgr, onClose }: { s: State; run: Run; mgr: b
     updateRun(run.id, {
       code: code.trim().toUpperCase() || run.code, lot: lot.trim(), date: date || run.date,
       perUnit: cfg.perUnitLabel ? (per.trim() ? num(per) : null) : run.perUnit, waste: cfg.waste ? num(waste) : run.waste,
-      units: units.map((u) => ({ at: u.at, qty: cfg.qty === 'none' ? null : u.qty.trim() ? num(u.qty) : null, ref: u.ref.trim() })),
+      units: units.map((u) => ({ at: u.at, qty: cfg.qty === 'none' ? null : u.qty.trim() ? num(u.qty) : null, ref: u.ref.trim(), by: u.by })),
     })
     onClose()
   }
@@ -44,12 +44,13 @@ export function RunEditor({ s, run, mgr, onClose }: { s: State; run: Run; mgr: b
         {units.length > 0 && (
           <div className="twrap">
             <table>
-              <thead><tr><th>#</th><th>Hora</th>{cfg.qty !== 'none' && <th>{cfg.qtyUnit}</th>}{cfg.refLabel && <th>{cfg.refLabel}</th>}<th></th></tr></thead>
+              <thead><tr><th>#</th><th>Hora</th>{cfg.qty !== 'none' && <th>{cfg.qtyUnit}</th>}{cfg.refLabel && <th>{cfg.refLabel}</th>}<th>Por</th><th></th></tr></thead>
               <tbody>{units.map((u, i) => (
                 <tr key={u.at + ':' + i}>
                   <td>{i + 1}</td><td>{fmtTime(u.at)}</td>
                   {cfg.qty !== 'none' && <td><input className="num" inputMode="numeric" value={u.qty} onChange={(e) => setUnits(units.map((x, k) => (k === i ? { ...x, qty: e.target.value.replace(/\D/g, '') } : x)))} /></td>}
                   {cfg.refLabel && <td><input className="num" value={u.ref} onChange={(e) => setUnits(units.map((x, k) => (k === i ? { ...x, ref: e.target.value } : x)))} autoComplete="off" /></td>}
+                  <td>{u.by || '—'}</td>
                   <td><button type="button" className="lnk" title="Quitar esta unidad" onClick={() => setUnits(units.filter((_, k) => k !== i))}>✕</button></td>
                 </tr>
               ))}</tbody>

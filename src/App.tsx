@@ -1,6 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { activeBetween, addLine, addWaste, CFG, CRATES_PER_CART, dayOf, DEPTS, deptStop, endRun, endStop, fmtDur, fmtTime, lastPerUnit, lotFor, madeText, managerPin, mergeProducts, myDept, openRun, openStop, parseProductsCsv, productOf, productsCsv, removeLine, removeProduct, reset, resetRecords, role, runStats, saveProduct, setSchedule, startRun, startStop, stopsOf, store, today, unitDone, user, type Dept, type Line, type Product, type State } from './store'
 import { avanceRows, n1, pending, type AvanceRow } from './avance'
+import { whoText } from './store'
 import { buildPdf, loadPdf } from './pdf'
 import { RunEditor, StopEditor } from './editors'
 
@@ -229,7 +230,7 @@ function DeptPanel({ s, dept, now, mgr }: { s: State; dept: Dept; now: number; m
             const st = runStats(s, r, now)
             return (
               <div key={r.id} className="donerow">
-                <b className="code">{r.code}</b> · lote {r.lot} · {r.line} · {fmtTime(r.startedAt)} – {fmtTime(r.endedAt ?? now)} · <b>{madeText(r, st.qty)}</b> · trabajando <b>{fmtDur(st.working)}</b> · parado <b className={st.down ? 'red' : ''}>{fmtDur(st.down)}</b>{r.waste > 0 && <> · waste <b className="red">{r.waste} lb</b></>} · {r.by} <button type="button" className="lnk" onClick={() => setEditRun(r.id)}>Corregir</button>
+                <b className="code">{r.code}</b> · lote {r.lot} · {r.line} · {fmtTime(r.startedAt)} – {fmtTime(r.endedAt ?? now)} · <b>{madeText(r, st.qty)}</b> · trabajando <b>{fmtDur(st.working)}</b> · parado <b className={st.down ? 'red' : ''}>{fmtDur(st.down)}</b>{r.waste > 0 && <> · waste <b className="red">{r.waste} lb</b></>} · {whoText(r)} <button type="button" className="lnk" onClick={() => setEditRun(r.id)}>Corregir</button>
               </div>
             )
           })}
@@ -439,7 +440,7 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
   const csv = () => {
     const q = (v: string | number) => '"' + String(v).replace(/"/g, '""') + '"'
     const head = ['Departamento', 'Línea', 'Código', 'Lote', 'Fecha', 'Inicio', 'Fin', 'Hecho', 'Cantidad', 'Tags / bins', 'Waste (lb)', 'Tiempo trabajando', 'Promedio por unidad', 'Tiempo parado', 'Razones de paro', 'Registró']
-    const body = rows.map((x) => [x.r.dept, x.r.line, x.r.code, x.r.lot, x.r.date, fmtTime(x.r.startedAt), x.r.endedAt ? fmtTime(x.r.endedAt) : 'en curso', x.r.units.length + ' ' + CFG[x.r.dept].plural.toLowerCase(), CFG[x.r.dept].qty !== 'none' ? x.st.qty + ' ' + CFG[x.r.dept].qtyUnit : '', x.r.units.map((u) => u.ref).filter(Boolean).join(', '), x.r.waste || '', fmtDur(x.st.working), x.r.units.length ? fmtDur(x.st.avg) : '', fmtDur(x.st.down), reasonsText(x), x.r.by])
+    const body = rows.map((x) => [x.r.dept, x.r.line, x.r.code, x.r.lot, x.r.date, fmtTime(x.r.startedAt), x.r.endedAt ? fmtTime(x.r.endedAt) : 'en curso', x.r.units.length + ' ' + CFG[x.r.dept].plural.toLowerCase(), CFG[x.r.dept].qty !== 'none' ? x.st.qty + ' ' + CFG[x.r.dept].qtyUnit : '', x.r.units.map((u) => u.ref).filter(Boolean).join(', '), x.r.waste || '', fmtDur(x.st.working), x.r.units.length ? fmtDur(x.st.avg) : '', fmtDur(x.st.down), reasonsText(x), whoText(x.r)])
     const stopHead = ['', 'PAROS', 'Departamento', 'Línea', 'Razón', 'Detalle', 'Inicio', 'Fin', 'Duración', 'Registró']
     const stopBody = stops.map((x) => ['', '', x.dept, lineName(x), x.reason, x.note, fmtTime(x.startedAt), x.endedAt ? fmtTime(x.endedAt) : 'en curso', fmtDur((x.endedAt ?? now) - x.startedAt), x.by])
     const text = [head, ...body, [], stopHead, ...stopBody].map((r) => r.map(q).join(',')).join('\r\n')
@@ -468,7 +469,7 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
             <tbody>{rows.map((x) => (
               <tr key={x.r.id} className={x.r.endedAt ? '' : 'live'}>
                 <td>{x.r.dept}</td><td>{x.r.line}</td><td><b>{x.r.code}</b></td><td>{x.r.lot}</td><td>{fmtTime(x.r.startedAt)}</td><td>{x.r.endedAt ? fmtTime(x.r.endedAt) : <i>en curso</i>}</td>
-                <td>{madeText(x.r, x.st.qty, true)}</td><td className={x.r.waste ? 'red' : ''}>{x.r.waste ? x.r.waste + ' lb' : '—'}</td><td>{fmtDur(x.st.working)}</td><td>{x.r.units.length ? fmtDur(x.st.avg) : '—'}</td><td className={x.st.down ? 'red' : ''}>{fmtDur(x.st.down)}</td><td>{reasonsText(x) || '—'}</td><td>{x.r.by}</td>
+                <td>{madeText(x.r, x.st.qty, true)}</td><td className={x.r.waste ? 'red' : ''}>{x.r.waste ? x.r.waste + ' lb' : '—'}</td><td>{fmtDur(x.st.working)}</td><td>{x.r.units.length ? fmtDur(x.st.avg) : '—'}</td><td className={x.st.down ? 'red' : ''}>{fmtDur(x.st.down)}</td><td>{reasonsText(x) || '—'}</td><td>{whoText(x.r)}</td>
                 <td><button type="button" className="lnk" onClick={() => setEditRun(x.r.id)}>Corregir</button></td>
               </tr>
             ))}</tbody>

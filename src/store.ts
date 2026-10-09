@@ -21,8 +21,8 @@ export const CFG: Record<Dept, DeptCfg> = {
 }
 
 export type Line = { id: string; dept: Dept; name: string }
-/** one finished unit of work (a cart, a mezcla, a pallet…), how much it carried and its tag / bin number */
-export type Unit = { at: number; qty: number | null; ref: string }
+/** one finished unit of work (a cart, a mezcla, a pallet…), how much it carried, its tag / bin number and who tapped it */
+export type Unit = { at: number; qty: number | null; ref: string; by: string }
 /**
  * one product code run on one line: the clock starts at startedAt; perUnit = quantity per unit (boxes per pallet,
  * pouches per cart); waste = pounds thrown away while running it (the WASTE column of the office's RTE sheet)
@@ -71,7 +71,7 @@ function load(): State {
     // runs saved by earlier demos counted carts as plain timestamps, then units without a tag number; products had
     // the pouches per cart as one number
     if (s && s.lines && s.runs && s.stops) {
-      const units = (r: Raw['runs'][number]): Unit[] => (r.units ? r.units.map((u) => ({ at: u.at ?? 0, qty: u.qty ?? null, ref: u.ref ?? '' })) : (r.carts ?? []).map((at) => ({ at, qty: null, ref: '' })))
+      const units = (r: Raw['runs'][number]): Unit[] => (r.units ? r.units.map((u) => ({ at: u.at ?? 0, qty: u.qty ?? null, ref: u.ref ?? '', by: u.by ?? '' })) : (r.carts ?? []).map((at) => ({ at, qty: null, ref: '', by: '' })))
       const sample = (code: string) => SAMPLE_PRODUCTS.some((x) => x.code === code)
       const products: Product[] = s.products ? s.products.map((p) => ({ code: p.code ?? '', name: p.name ?? '', pouchesPerCase: p.pouchesPerCase ?? 0, casesPerMix: p.casesPerMix ?? 0, cratesPerCart: (p.cratesPerCart ?? (p.pouchesPerCart ? 12 : 0)) === 12 && sample(p.code ?? '') ? CRATES_PER_CART : p.cratesPerCart ?? (p.pouchesPerCart ? 12 : 0), pouchesPerCrate: p.pouchesPerCrate ?? (p.pouchesPerCart ? Math.round(p.pouchesPerCart / 12) : 0), casesPerPallet: p.casesPerPallet ?? 0 })) : SAMPLE_PRODUCTS
       return { lines: s.lines, stops: s.stops, runs: s.runs.map((r) => ({ ...r, units: units(r), perUnit: r.perUnit ?? null, waste: r.waste ?? 0 })), products, schedule: s.schedule ?? {} }
@@ -108,7 +108,9 @@ export function updateStop(id: string, patch: Partial<Pick<Stop, 'reason' | 'not
 export function deleteStop(id: string) { set({ ...state, stops: state.stops.filter((x) => x.id !== id) }) }
 /** pounds thrown away, added to what the run already has */
 export function addWaste(runId: string, lb: number) { set({ ...state, runs: state.runs.map((r) => (r.id === runId ? { ...r, waste: Math.round((r.waste + lb) * 100) / 100 } : r)) }) }
-export function unitDone(runId: string, qty: number | null, ref = '') { set({ ...state, runs: state.runs.map((r) => (r.id === runId ? { ...r, units: [...r.units, { at: Date.now(), qty, ref }] } : r)) }) }
+export function unitDone(runId: string, qty: number | null, ref = '') { set({ ...state, runs: state.runs.map((r) => (r.id === runId ? { ...r, units: [...r.units, { at: Date.now(), qty, ref, by: user.get() }] } : r)) }) }
+/** everyone who took part in a run: who started it and who tapped its units (a break cover shows up by name) */
+export function whoText(r: Run) { return [...new Set([r.by, ...r.units.map((u) => u.by)].filter(Boolean))].join(', ') }
 export function endRun(runId: string) { set({ ...state, runs: state.runs.map((r) => (r.id === runId ? { ...r, endedAt: Date.now() } : r)) }) }
 export function startStop(dept: Dept, lineId: string | null, reason: string, note: string) {
   set({ ...state, stops: [...state.stops, { id: uid(), dept, lineId, reason, note, startedAt: Date.now(), endedAt: null, by: user.get() }] })
