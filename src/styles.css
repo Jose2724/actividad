@@ -1,8 +1,11 @@
 :root{--bg:#f3f6f9;--surface:#fff;--ink:#16202a;--muted:#5b6b7a;--line:#d5dde5;--accent:#0f766e;--accent-ink:#fff;--ok:#1b7446;--warn:#b3261e;--amber:#9a5a00;--soft:#e6f3f1;--red-soft:#fde8e6}
 *{box-sizing:border-box}
-html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-text-size-adjust:100%}
+/* the page itself never pans sideways (only tables scroll inside their frame), and no box has type smaller than
+   16px: below that, iPhone Safari zooms in when a box is tapped and the layout is left shifted */
+html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-text-size-adjust:100%;overflow-x:hidden;max-width:100%}
 button{font:inherit;color:inherit;cursor:pointer}
-input{font:inherit;color:inherit}
+input,select,textarea{font:inherit;color:inherit;font-size:16px}
+input{min-width:0;max-width:100%}
 h1,h2,h3{margin:0;line-height:1.15}
 small{color:var(--muted)}
 .red{color:var(--warn)}
@@ -31,7 +34,9 @@ input[type=text],input:not([type]),input[type=date]{min-height:48px;padding:0 12
 .gate .pick .btn{min-height:56px;font-size:18px}
 
 /* layout */
-.app{min-height:100dvh;display:flex;flex-direction:column}
+.app{min-height:100dvh;display:flex;flex-direction:column;max-width:100vw;overflow-x:hidden}
+.panel,.report,.main{max-width:100%;min-width:0}
+.twrap{max-width:100%}
 .top{display:flex;align-items:center;gap:16px;padding:10px 16px;background:var(--surface);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
 .top .brand h1{font-size:22px}
 .top .brand small{display:block;text-transform:capitalize}
@@ -98,7 +103,7 @@ input[type=text],input:not([type]),input[type=date]{min-height:48px;padding:0 12
 .egrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
 .egrid label{display:grid;gap:4px;font-size:13px;font-weight:600;color:var(--muted)}
 .dlg .twrap{max-height:40vh;overflow:auto}
-.dlg input.num{min-height:36px;padding:0 8px;font-size:14px;width:96px}
+.dlg input.num{min-height:38px;padding:0 8px;font-size:16px;width:96px}
 .qform{display:grid;gap:10px}
 .qform label{display:grid;gap:4px;font-size:13px;font-weight:600;color:var(--muted)}
 .qform small{font-weight:400}
@@ -136,9 +141,9 @@ tr.live td{background:#f1fbf5}
 .avance td.ok{color:var(--ok)}
 .avance td.amber{color:var(--amber);font-weight:600}
 .avance td.red{font-weight:600}
-.avance input.num,.products input.num{min-height:36px;padding:0 8px;font-size:14px;width:64px;text-align:right;font-variant-numeric:tabular-nums}
-.products{display:grid;gap:10px;background:var(--surface);border:1.5px solid var(--accent);border-radius:14px;padding:12px}
-.products input{min-height:36px;padding:0 8px;font-size:14px}
+.avance input.num,.products input.num{min-height:38px;padding:0 8px;font-size:16px;width:72px;text-align:right;font-variant-numeric:tabular-nums}
+.products{display:grid;gap:10px;background:var(--surface);border:1.5px solid var(--accent);border-radius:14px;padding:12px;max-width:100%}
+.products input{min-height:38px;padding:0 8px;font-size:16px}
 .products input.code{width:110px;font-family:ui-monospace,Menlo,Consolas,monospace}
 .products input.name{width:260px}
 .products input.num{width:84px}
@@ -147,15 +152,25 @@ tr.live td{background:#f1fbf5}
 .btn.file{display:inline-flex;align-items:center;cursor:pointer}
 .foot{font-size:13px}
 
-/* phones: the departments become a row on top */
+/* phones: the departments become a row on top; nothing may be wider than the screen */
 @media (max-width:720px){
   .top{flex-wrap:wrap;gap:8px}
   .tabs{order:3;width:100%;margin:0}
+  .tabs button{flex:1;padding:8px 6px}
+  .me{margin-left:auto}
   .main{flex-direction:column}
   .side{width:auto;flex-direction:row;overflow-x:auto;border-right:0;border-bottom:1px solid var(--line)}
   .dept{flex:none;gap:8px}
   .lines{grid-template-columns:1fr}
   .panel,.report{padding:12px}
+  .rhead{gap:8px}
+  .rhead h2{width:100%;margin:0}
+  .rhead input[type=date]{flex:1;min-width:150px}
+  .avance .addcode{width:100%}
+  .avance .addcode input{flex:1;width:auto;min-width:0}
+  .acts .btn,.rhead .btn{padding:0 12px}
+  .dlg{padding:14px}
+  .egrid{grid-template-columns:1fr 1fr}
 }
 @media print{
   .top,.rhead .btn,.lnk,.foot{display:none}
