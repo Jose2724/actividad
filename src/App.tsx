@@ -228,6 +228,7 @@ function LineCard({ s, line, now }: { s: State; line: Line; now: number }) {
   const [counting, setCounting] = useState(false)
   const [ending, setEnding] = useState(false)
   const [removing, setRemoving] = useState(false)
+  const [editQty, setEditQty] = useState(false)
   if (!run) {
     // the lot follows the date unless someone typed another one; the quantity per unit (boxes per pallet, pouches
     // per cart) comes from the products table or the last run of the code. RTE types it the office's way: crates
@@ -248,14 +249,19 @@ function LineCard({ s, line, now }: { s: State; line: Line; now: number }) {
           <label>Código <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="ej. 0889" autoComplete="off" /></label>
           <label>Lote <input value={lot} onChange={(e) => setLot(e.target.value)} inputMode="numeric" placeholder="ej. 6280" autoComplete="off" /></label>
           <label>Fecha <input type="date" value={date} onChange={(e) => { const v = e.target.value; if (!lot.trim() || lot.trim() === lotFor(date)) setLot(lotFor(v)); setDate(v) }} /></label>
-          {needPer && !isCart && <label>{cfg.perUnitLabel} <input value={per} onChange={(e) => setPer(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder={suggested != null ? String(suggested) + ' (como la última vez)' : 'ej. 36'} autoComplete="off" /></label>}
-          {isCart && (
-            <div className="cartrow">
-              <label>Guacales por carro <small>(12 por columna)</small> <input value={crates} onChange={(e) => setCrates(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder={String(cratesN)} autoComplete="off" /></label>
-              <label>Pouches por guacal <input value={per} onChange={(e) => setPer(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder={perCrateN ? String(perCrateN) : 'ej. 10'} autoComplete="off" /></label>
-              <span className="eq">= <b>{perUnit ?? '—'}</b> pouches por carro</span>
-            </div>
-          )}
+          {/* a known product brings its numbers: shown as a line, the boxes only when they want to change them */}
+          {needPer && !isCart && (suggested != null && !editQty
+            ? <div className="known"><b>{suggested}</b> {cfg.qtyUnit} por {cfg.unit.toLowerCase()} <button type="button" className="lnk" onClick={() => setEditQty(true)}>Cambiar</button></div>
+            : <label>{cfg.perUnitLabel} <input value={per} onChange={(e) => setPer(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder={suggested != null ? String(suggested) : 'ej. 36'} autoComplete="off" /></label>)}
+          {isCart && (perCrateN && !editQty
+            ? <div className="known"><b>{cratesN}</b> guacales × <b>{perCrateN}</b> pouches = <b>{perUnit}</b> pouches por carro <button type="button" className="lnk" onClick={() => setEditQty(true)}>Cambiar</button></div>
+            : (
+              <div className="cartrow">
+                <label>Guacales por carro <small>(12 por columna)</small> <input value={crates} onChange={(e) => setCrates(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder={String(cratesN)} autoComplete="off" /></label>
+                <label>Pouches por guacal <input value={per} onChange={(e) => setPer(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder={perCrateN ? String(perCrateN) : 'ej. 10'} autoComplete="off" /></label>
+                <span className="eq">= <b>{perUnit ?? '—'}</b> pouches por carro</span>
+              </div>
+            ))}
           <button className="btn primary" type="submit" disabled={!ok}>▶ Empezar</button>
         </form>
       </div>
