@@ -118,6 +118,8 @@ tr.live td{background:#f1fbf5}
 .products input.name{width:260px}
 .products input.num{width:84px}
 .products .btn{justify-self:start}
+.products .btns{display:flex;gap:8px;flex-wrap:wrap}
+.btn.file{display:inline-flex;align-items:center;cursor:pointer}
 .foot{font-size:13px}
 
 /* phones: the departments become a row on top */

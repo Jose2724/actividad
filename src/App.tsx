@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import { activeBetween, addLine, CFG, dayOf, DEPTS, deptStop, endRun, endStop, fmtDur, fmtTime, lastPerUnit, lotFor, madeText, myDept, openRun, openStop, productOf, removeLine, removeProduct, reset, runStats, saveProduct, setSchedule, startRun, startStop, stopsOf, store, today, unitDone, user, type Dept, type Line, type Product, type State } from './store'
+import { activeBetween, addLine, CFG, dayOf, DEPTS, deptStop, endRun, endStop, fmtDur, fmtTime, lastPerUnit, lotFor, madeText, mergeProducts, myDept, openRun, openStop, parseProductsCsv, productOf, productsCsv, removeLine, removeProduct, reset, runStats, saveProduct, setSchedule, startRun, startStop, stopsOf, store, today, unitDone, user, type Dept, type Line, type Product, type State } from './store'
 import { avanceRows, n1, pending, type AvanceRow } from './avance'
 import { buildPdf, loadPdf } from './pdf'
 
@@ -155,8 +155,20 @@ function Products({ s }: { s: State }) {
           ))}</tbody>
         </table>
       </div>
-      <button type="button" className="btn" onClick={() => saveProduct(s.products.length, { code: '', name: '', pouchesPerCase: 0, casesPerMix: 0, cratesPerCart: 12, pouchesPerCrate: 0, casesPerPallet: 0 })}>+ Agregar producto</button>
-      <p className="hint">Los productos de ejemplo son inventados. Escribe aquí los códigos y números reales de la planta: se guardan solo en este dispositivo.</p>
+      <div className="btns">
+        <button type="button" className="btn" onClick={() => saveProduct(s.products.length, { code: '', name: '', pouchesPerCase: 0, casesPerMix: 0, cratesPerCart: 12, pouchesPerCrate: 0, casesPerPallet: 0 })}>+ Agregar producto</button>
+        <label className="btn file">⬆ Importar CSV de la oficina
+          <input type="file" accept=".csv,text/csv" hidden onChange={async (e) => {
+            const f = e.target.files?.[0]; e.target.value = ''
+            if (!f) return
+            const list = parseProductsCsv(await f.text())
+            if (!list.length) { alert('No encontré productos en ese archivo. Debe tener una columna "Código".'); return }
+            mergeProducts(list); alert(list.length + ' productos cargados o actualizados.')
+          }} />
+        </label>
+        <button type="button" className="btn" onClick={() => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([productsCsv(s.products)], { type: 'text/csv;charset=utf-8' })); a.download = 'productos.csv'; a.click() }}>⬇ Exportar CSV</button>
+      </div>
+      <p className="hint">Los productos de ejemplo son inventados. Escribe aquí los códigos y números reales de la planta, o importa el CSV sacado del Excel de la oficina (columnas: Código, Producto, Pouches por caja, Cajas por mezcla, Cajas por pallet, Guacales por carro, Pouches por guacal). Todo se guarda solo en este dispositivo.</p>
     </div>
   )
 }

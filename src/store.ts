@@ -100,6 +100,49 @@ export const productOf = (s: State, code: string) => s.products.find((p) => p.co
 /** saves a product by its position in the list (a new one goes at the end) */
 export function saveProduct(i: number, p: Product) { const products = [...state.products]; if (i >= products.length) products.push(p); else products[i] = p; set({ ...state, products }) }
 export function removeProduct(i: number) { set({ ...state, products: state.products.filter((_, k) => k !== i) }) }
+/** products loaded from the office's file: an existing code is updated (blank numbers keep what was there), a new one is added */
+export function mergeProducts(list: Product[]) {
+  const products = [...state.products]
+  for (const p of list) {
+    const i = products.findIndex((x) => x.code.trim().toUpperCase() === p.code.trim().toUpperCase())
+    if (i < 0) products.push(p)
+    else products[i] = { ...products[i], name: p.name || products[i].name, pouchesPerCase: p.pouchesPerCase || products[i].pouchesPerCase, casesPerMix: p.casesPerMix || products[i].casesPerMix, cratesPerCart: p.cratesPerCart || products[i].cratesPerCart, pouchesPerCrate: p.pouchesPerCrate || products[i].pouchesPerCrate, casesPerPallet: p.casesPerPallet || products[i].casesPerPallet }
+  }
+  set({ ...state, products })
+}
+/** the office's CSV (columns found by their names, in Spanish or English) → products; returns what could be read */
+export function parseProductsCsv(text: string): Product[] {
+  const rows: string[][] = []
+  let row: string[] = [], cell = '', q = false
+  const src = text.replace(/^﻿/, '')
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i]
+    if (q) { if (ch === '"') { if (src[i + 1] === '"') { cell += '"'; i++ } else q = false } else cell += ch }
+    else if (ch === '"') q = true
+    else if (ch === ',' || ch === ';' || ch === '\t') { row.push(cell); cell = '' }
+    else if (ch === '\n' || ch === '\r') { if (ch === '\r' && src[i + 1] === '\n') i++; row.push(cell); rows.push(row); row = []; cell = '' }
+    else cell += ch
+  }
+  if (cell || row.length) { row.push(cell); rows.push(row) }
+  const head = (rows.shift() ?? []).map((h) => h.trim().toLowerCase())
+  const find = (...keys: string[]) => head.findIndex((h) => keys.some((k) => h.includes(k)))
+  const cCode = find('código', 'codigo', 'code'), cName = find('producto rte', 'producto', 'r-t-e', 'item', 'name')
+  const cPpc = find('pouches por caja', 'pouches/'), cYield = find('cajas por mezcla', 'yield x'), cPallet = find('cajas por pallet', 'palet')
+  const cCrates = find('guacales'), cPerCrate = find('pouches por guacal')
+  const n = (r: string[], c: number) => (c < 0 ? 0 : Number(String(r[c] ?? '').replace(',', '.').trim()) || 0)
+  const out: Product[] = []
+  for (const r of rows) {
+    const code = cCode < 0 ? '' : String(r[cCode] ?? '').trim().toUpperCase()
+    if (!code) continue
+    out.push({ code, name: cName < 0 ? '' : String(r[cName] ?? '').trim(), pouchesPerCase: n(r, cPpc), casesPerMix: n(r, cYield), cratesPerCart: n(r, cCrates), pouchesPerCrate: n(r, cPerCrate), casesPerPallet: n(r, cPallet) })
+  }
+  return out
+}
+export function productsCsv(products: Product[]) {
+  const q = (v: string | number) => '"' + String(v).replace(/"/g, '""') + '"'
+  const head = ['Código', 'Producto', 'Pouches por caja', 'Cajas por mezcla (yield)', 'Cajas por pallet', 'Guacales por carro', 'Pouches por guacal']
+  return '﻿' + [head, ...products.map((p) => [p.code, p.name, p.pouchesPerCase, p.casesPerMix, p.casesPerPallet, p.cratesPerCart, p.pouchesPerCrate])].map((r) => r.map(q).join(',')).join('\r\n')
+}
 export function setSchedule(date: string, code: string, n: number) { set({ ...state, schedule: { ...state.schedule, [date]: { ...(state.schedule[date] ?? {}), [code.trim().toUpperCase()]: n } } }) }
 
 export const openRun = (s: State, lineId: string) => s.runs.find((r) => r.lineId === lineId && !r.endedAt)
