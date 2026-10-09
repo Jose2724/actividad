@@ -135,8 +135,12 @@ function Avance({ s }: { s: State }) {
 function Products({ s }: { s: State }) {
   const num = (v: string) => Number(v.replace(',', '.')) || 0
   const upd = (i: number, p: Product, patch: Partial<Product>) => saveProduct(i, { ...p, ...patch })
+  const [removeIdx, setRemoveIdx] = useState<number | null>(null)
+  const [notice, setNotice] = useState<{ title: string; text?: string } | null>(null)
   return (
     <div className="products">
+      {removeIdx != null && <ConfirmDialog title={'¿Quitar ' + (s.products[removeIdx]?.code || 'este producto') + ' de la tabla?'} yes="Quitar" danger onYes={() => { removeProduct(removeIdx); setRemoveIdx(null) }} onNo={() => setRemoveIdx(null)} />}
+      {notice && <NoticeDialog title={notice.title} text={notice.text} onClose={() => setNotice(null)} />}
       <h3>Productos · la tabla maestra de la oficina</h3>
       <div className="twrap">
         <table>
@@ -150,7 +154,7 @@ function Products({ s }: { s: State }) {
               <td><input className="num" inputMode="decimal" defaultValue={p.cratesPerCart || ''} onBlur={(e) => upd(i, p, { cratesPerCart: num(e.target.value) })} /></td>
               <td><input className="num" inputMode="decimal" defaultValue={p.pouchesPerCrate || ''} onBlur={(e) => upd(i, p, { pouchesPerCrate: num(e.target.value) })} /></td>
               <td><input className="num" inputMode="decimal" defaultValue={p.casesPerPallet || ''} onBlur={(e) => upd(i, p, { casesPerPallet: num(e.target.value) })} /></td>
-              <td><button type="button" className="lnk" onClick={() => { if (confirm('¿Quitar ' + (p.code || 'este producto') + '?')) removeProduct(i) }}>✕</button></td>
+              <td><button type="button" className="lnk" onClick={() => setRemoveIdx(i)}>✕</button></td>
             </tr>
           ))}</tbody>
         </table>
@@ -162,8 +166,8 @@ function Products({ s }: { s: State }) {
             const f = e.target.files?.[0]; e.target.value = ''
             if (!f) return
             const list = parseProductsCsv(await f.text())
-            if (!list.length) { alert('No encontré productos en ese archivo. Debe tener una columna "Código".'); return }
-            mergeProducts(list); alert(list.length + ' productos cargados o actualizados.')
+            if (!list.length) { setNotice({ title: 'No encontré productos en ese archivo', text: 'Debe tener una columna "Código" y una fila por producto.' }); return }
+            mergeProducts(list); setNotice({ title: list.length + ' productos cargados', text: 'Los códigos que ya existían se actualizaron; los nuevos se agregaron.' })
           }} />
         </label>
         <button type="button" className="btn" onClick={() => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([productsCsv(s.products)], { type: 'text/csv;charset=utf-8' })); a.download = 'productos.csv'; a.click() }}>⬇ Exportar CSV</button>
@@ -222,6 +226,8 @@ function LineCard({ s, line, now }: { s: State; line: Line; now: number }) {
   const [crates, setCrates] = useState('')
   const [asking, setAsking] = useState(false)
   const [counting, setCounting] = useState(false)
+  const [ending, setEnding] = useState(false)
+  const [removing, setRemoving] = useState(false)
   if (!run) {
     // the lot follows the date unless someone typed another one; the quantity per unit (boxes per pallet, pouches
     // per cart) comes from the products table or the last run of the code. RTE types it the office's way: crates
@@ -236,7 +242,8 @@ function LineCard({ s, line, now }: { s: State; line: Line; now: number }) {
     const ok = !!code.trim() && !!lot.trim() && (!needPer || (perUnit != null && perUnit > 0))
     return (
       <div className="line idle">
-        <div className="lhead"><h3>{line.name}</h3><button type="button" className="lnk" onClick={() => { if (confirm('¿Quitar ' + line.name + ' de ' + line.dept + '?')) removeLine(line.id) }}>Quitar {cfg.lineWord.toLowerCase()}</button></div>
+        <div className="lhead"><h3>{line.name}</h3><button type="button" className="lnk" onClick={() => setRemoving(true)}>Quitar {cfg.lineWord.toLowerCase()}</button></div>
+        {removing && <ConfirmDialog title={'¿Quitar ' + line.name + ' de ' + line.dept + '?'} text="Se puede volver a agregar cuando haga falta." yes="Quitar" danger onYes={() => removeLine(line.id)} onNo={() => setRemoving(false)} />}
         <form className="start" onSubmit={(e) => { e.preventDefault(); if (ok) startRun(line, code.trim().toUpperCase(), lot.trim(), date, needPer ? perUnit : null) }}>
           <label>Código <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="ej. 0889" autoComplete="off" /></label>
           <label>Lote <input value={lot} onChange={(e) => setLot(e.target.value)} inputMode="numeric" placeholder="ej. 6280" autoComplete="off" /></label>
@@ -280,8 +287,9 @@ function LineCard({ s, line, now }: { s: State; line: Line; now: number }) {
             ? <button type="button" className="btn danger" onClick={() => endStop(stop.id)}>▶ Reanudar</button>
             : <button type="button" className="btn" disabled>Parado por el departamento</button>)
           : <button type="button" className="btn" onClick={() => setAsking(true)}>⏸ Parar</button>}
-        <button type="button" className="btn" disabled={!!stop} onClick={() => { if (confirm('¿Terminar el código ' + run.code + '? Se cierra con ' + madeText(run, st.qty) + '.')) endRun(run.id) }}>■ Terminar código</button>
+        <button type="button" className="btn" disabled={!!stop} onClick={() => setEnding(true)}>■ Terminar código</button>
       </div>
+      {ending && <ConfirmDialog title={'¿Terminar el código ' + run.code + ' en ' + line.name + '?'} text={'Se cierra con ' + madeText(run, st.qty) + ' · trabajando ' + fmtDur(st.working) + (st.down ? ' · parado ' + fmtDur(st.down) : '') + '.'} yes="■ Terminar" onYes={() => { endRun(run.id); setEnding(false) }} onNo={() => setEnding(false)} />}
       {asking && <StopDialog title={'Parar ' + line.name + ' · ' + run.code} reasons={cfg.reasons} onClose={() => setAsking(false)} onPick={(reason, note) => { startStop(line.dept, line.id, reason, note); setAsking(false) }} />}
       {counting && <QtyDialog title={cfg.qtyQ} unit={cfg.qtyUnit} refLabel={cfg.refLabel} initial={run.perUnit} onClose={() => setCounting(false)} onPick={(q, ref) => { unitDone(run.id, q, ref); setCounting(false) }} />}
     </div>
@@ -304,6 +312,35 @@ function StopDialog({ title, reasons, onClose, onPick }: { title: string; reason
           <button type="button" className="btn" onClick={onClose}>Cancelar</button>
           <button type="button" className="btn danger" disabled={!ok} onClick={() => onPick(other ? note.trim() : reason, other ? '' : note.trim())}>⏸ Confirmar paro</button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+/** the app's own yes / no box (the browser's "confirm" names the site and looks foreign) */
+function ConfirmDialog({ title, text, yes, danger, onYes, onNo }: { title: string; text?: string; yes: string; danger?: boolean; onYes: () => void; onNo: () => void }) {
+  return (
+    <div className="veil" onClick={onNo}>
+      <div className="dlg" onClick={(e) => e.stopPropagation()}>
+        <h3>{title}</h3>
+        {text && <p>{text}</p>}
+        <div className="dbtns">
+          <button type="button" className="btn" onClick={onNo}>Cancelar</button>
+          <button type="button" className={'btn ' + (danger ? 'danger' : 'primary')} autoFocus onClick={onYes}>{yes}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** a message with one button */
+function NoticeDialog({ title, text, onClose }: { title: string; text?: string; onClose: () => void }) {
+  return (
+    <div className="veil" onClick={onClose}>
+      <div className="dlg" onClick={(e) => e.stopPropagation()}>
+        <h3>{title}</h3>
+        {text && <p>{text}</p>}
+        <div className="dbtns"><button type="button" className="btn primary" autoFocus onClick={onClose}>Entendido</button></div>
       </div>
     </div>
   )
@@ -334,6 +371,7 @@ function QtyDialog({ title, unit, refLabel, initial, onClose, onPick }: { title:
 
 function Report({ s, now }: { s: State; now: number }) {
   const [date, setDate] = useState(today())
+  const [resetting, setResetting] = useState(false)
   useEffect(() => { void loadPdf() }, [])
   /** opens the PDF in a new tab (to look at, share or print); if the tab cannot open, it downloads */
   const pdf = async () => {
@@ -404,7 +442,8 @@ function Report({ s, now }: { s: State; now: number }) {
         </>
       )}
       <p className="hint foot">Demo guardado en este dispositivo. La versión completa manda todo en vivo al manager (oficina, teléfono o PC) y exporta a Excel, PDF y Google Sheets como la Hoja de Freezer RTE.</p>
-      <button type="button" className="lnk" onClick={() => { if (confirm('¿Borrar todos los datos de prueba de este dispositivo?')) reset() }}>Borrar datos de prueba</button>
+      <button type="button" className="lnk" onClick={() => setResetting(true)}>Borrar datos de prueba</button>
+      {resetting && <ConfirmDialog title="¿Borrar todos los datos de este dispositivo?" text="Se borran las líneas, los registros, los paros, lo programado y la tabla de productos. No se puede deshacer." yes="Borrar todo" danger onYes={() => { reset(); setResetting(false) }} onNo={() => setResetting(false)} />}
     </section>
   )
 }
