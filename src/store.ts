@@ -99,7 +99,9 @@ export function startStop(dept: Dept, lineId: string | null, reason: string, not
 }
 export function endStop(id: string) { set({ ...state, stops: state.stops.map((x) => (x.id === id ? { ...x, endedAt: Date.now() } : x)) }) }
 export function reset() { set(fresh()) }
-export const productOf = (s: State, code: string) => s.products.find((p) => p.code.trim().toUpperCase() === code.trim().toUpperCase())
+/** the office writes 889, the ticket and the boxes say 0889: a numeric code is the same with or without leading zeros */
+export const normCode = (c: string) => { const u = c.trim().toUpperCase(); return /^\d+$/.test(u) ? String(Number(u)) : u }
+export const productOf = (s: State, code: string) => s.products.find((p) => normCode(p.code) === normCode(code))
 /** saves a product by its position in the list (a new one goes at the end) */
 export function saveProduct(i: number, p: Product) { const products = [...state.products]; if (i >= products.length) products.push(p); else products[i] = p; set({ ...state, products }) }
 export function removeProduct(i: number) { set({ ...state, products: state.products.filter((_, k) => k !== i) }) }
@@ -107,7 +109,7 @@ export function removeProduct(i: number) { set({ ...state, products: state.produ
 export function mergeProducts(list: Product[]) {
   const products = [...state.products]
   for (const p of list) {
-    const i = products.findIndex((x) => x.code.trim().toUpperCase() === p.code.trim().toUpperCase())
+    const i = products.findIndex((x) => normCode(x.code) === normCode(p.code))
     if (i < 0) products.push(p)
     else products[i] = { ...products[i], name: p.name || products[i].name, pouchesPerCase: p.pouchesPerCase || products[i].pouchesPerCase, casesPerMix: p.casesPerMix || products[i].casesPerMix, cratesPerCart: p.cratesPerCart || products[i].cratesPerCart, pouchesPerCrate: p.pouchesPerCrate || products[i].pouchesPerCrate, casesPerPallet: p.casesPerPallet || products[i].casesPerPallet }
   }
@@ -155,7 +157,7 @@ export const deptStop = (s: State, dept: Dept) => s.stops.find((x) => !x.endedAt
 export const stopsOf = (s: State, dept: Dept, lineId: string) => s.stops.filter((x) => x.dept === dept && (x.lineId === lineId || x.lineId === null))
 /** the quantity per unit for this code: the last time this department ran it, or else the master table */
 export function lastPerUnit(s: State, dept: Dept, code: string) {
-  const last = [...s.runs].reverse().find((r) => r.dept === dept && r.code === code.trim().toUpperCase() && r.perUnit != null)?.perUnit
+  const last = [...s.runs].reverse().find((r) => r.dept === dept && normCode(r.code) === normCode(code) && r.perUnit != null)?.perUnit
   if (last != null) return last
   const p = productOf(s, code)
   return p ? (dept === 'RTE' ? cartPouches(p) : dept === 'Packing' ? p.casesPerPallet : null) || null : null

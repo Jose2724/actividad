@@ -1,4 +1,4 @@
-import { cartPouches, productOf, type Product, type State } from './store'
+import { cartPouches, normCode, productOf, type Product, type State } from './store'
 
 /**
  * The day's progress per product, the way the office's AVANCE sheet computes it by hand: the mezclas Kitchen made,
@@ -13,14 +13,18 @@ export type AvanceRow = {
 
 export function avanceRows(s: State, date: string): AvanceRow[] {
   const runs = s.runs.filter((r) => r.date === date)
-  const sched = s.schedule[date] ?? {}
-  const codes = [...new Set([...Object.keys(sched).filter((c) => sched[c] > 0), ...runs.map((r) => r.code)])].sort()
-  return codes.map((code) => {
-    const product = productOf(s, code)
-    const of = (dept: string) => runs.filter((r) => r.dept === dept && r.code === code)
+  // 889 and 0889 are one line: scheduled under either spelling, run under either spelling
+  const sched: Record<string, number> = {}
+  for (const [c, n] of Object.entries(s.schedule[date] ?? {})) sched[normCode(c)] = (sched[normCode(c)] ?? 0) + n
+  // a code just programmed (still 0) stays on the list so its number can be typed
+  const keys = [...new Set([...Object.keys(sched), ...runs.map((r) => normCode(r.code))])].sort()
+  return keys.map((key) => {
+    const product = productOf(s, key)
+    const code = product?.code ?? runs.find((r) => normCode(r.code) === key)?.code ?? key
+    const of = (dept: string) => runs.filter((r) => r.dept === dept && normCode(r.code) === key)
     const units = (dept: string) => of(dept).reduce((t, r) => t + r.units.length, 0)
     const qty = (dept: string, fallback: number) => of(dept).reduce((t, r) => t + r.units.reduce((u, x) => u + (x.qty ?? r.perUnit ?? fallback), 0), 0)
-    const scheduled = sched[code] ?? 0
+    const scheduled = sched[key] ?? 0
     const mixesDone = units('Kitchen')
     const casesExp = product ? mixesDone * product.casesPerMix : null
     const pouchesExp = product && casesExp != null ? casesExp * product.pouchesPerCase : null
