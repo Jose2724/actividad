@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import { activeBetween, addLine, CFG, CRATES_PER_CART, dayOf, DEPTS, deptStop, endRun, endStop, fmtDur, fmtTime, lastPerUnit, lotFor, madeText, mergeProducts, myDept, openRun, openStop, parseProductsCsv, productOf, productsCsv, removeLine, removeProduct, reset, runStats, saveProduct, setSchedule, startRun, startStop, stopsOf, store, today, unitDone, user, type Dept, type Line, type Product, type State } from './store'
+import { activeBetween, addLine, CFG, CRATES_PER_CART, dayOf, DEPTS, deptStop, endRun, endStop, fmtDur, fmtTime, lastPerUnit, lotFor, madeText, mergeProducts, myDept, openRun, openStop, parseProductsCsv, productOf, productsCsv, removeLine, removeProduct, reset, resetRecords, runStats, saveProduct, setSchedule, startRun, startStop, stopsOf, store, today, unitDone, user, type Dept, type Line, type Product, type State } from './store'
 import { avanceRows, n1, pending, type AvanceRow } from './avance'
 import { buildPdf, loadPdf } from './pdf'
 
@@ -372,6 +372,7 @@ function QtyDialog({ title, unit, refLabel, initial, onClose, onPick }: { title:
 function Report({ s, now }: { s: State; now: number }) {
   const [date, setDate] = useState(today())
   const [resetting, setResetting] = useState(false)
+  const [clearing, setClearing] = useState(false)
   useEffect(() => { void loadPdf() }, [])
   /** opens the PDF in a new tab (to look at, share or print); if the tab cannot open, it downloads */
   const pdf = async () => {
@@ -442,7 +443,11 @@ function Report({ s, now }: { s: State; now: number }) {
         </>
       )}
       <p className="hint foot">Demo guardado en este dispositivo. La versión completa manda todo en vivo al manager (oficina, teléfono o PC) y exporta a Excel, PDF y Google Sheets como la Hoja de Freezer RTE.</p>
-      <button type="button" className="lnk" onClick={() => setResetting(true)}>Borrar datos de prueba</button>
+      <div className="btns">
+        <button type="button" className="lnk" onClick={() => setClearing(true)}>Reiniciar registros (conserva productos y líneas)</button>
+        <button type="button" className="lnk" onClick={() => setResetting(true)}>Borrar todo</button>
+      </div>
+      {clearing && <ConfirmDialog title="¿Reiniciar los registros?" text="Se borran las corridas, los paros y lo programado de todos los días. La tabla de productos y las líneas se quedan. No se puede deshacer." yes="Reiniciar" danger onYes={() => { resetRecords(); setClearing(false) }} onNo={() => setClearing(false)} />}
       {resetting && <ConfirmDialog title="¿Borrar todos los datos de este dispositivo?" text="Se borran las líneas, los registros, los paros, lo programado y la tabla de productos. No se puede deshacer." yes="Borrar todo" danger onYes={() => { reset(); setResetting(false) }} onNo={() => setResetting(false)} />}
     </section>
   )

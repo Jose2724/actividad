@@ -99,6 +99,8 @@ export function startStop(dept: Dept, lineId: string | null, reason: string, not
 }
 export function endStop(id: string) { set({ ...state, stops: state.stops.map((x) => (x.id === id ? { ...x, endedAt: Date.now() } : x)) }) }
 export function reset() { set(fresh()) }
+/** a clean slate for the records only: runs, stops and the schedule go; the lines and the products table stay */
+export function resetRecords() { set({ ...state, runs: [], stops: [], schedule: {} }) }
 /** the office writes 889, the ticket and the boxes say 0889: a numeric code is the same with or without leading zeros */
 export const normCode = (c: string) => { const u = c.trim().toUpperCase(); return /^\d+$/.test(u) ? String(Number(u)) : u }
 export const productOf = (s: State, code: string) => s.products.find((p) => normCode(p.code) === normCode(code))
