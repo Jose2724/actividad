@@ -25,6 +25,9 @@ input[type=text],input:not([type]),input[type=date]{min-height:48px;padding:0 12
 .gate h1{font-size:34px}
 .gate form{display:grid;gap:10px}
 .gate .pick{display:grid;gap:8px}
+.gate .mgrform{display:grid;gap:10px;background:var(--surface);border:1.5px solid var(--line);border-radius:14px;padding:12px}
+.gate .mgrform label{display:grid;gap:4px;font-size:13px;font-weight:600;color:var(--muted)}
+.gate .err{color:var(--warn);font-size:14px}
 .gate .pick .btn{min-height:56px;font-size:18px}
 
 /* layout */

@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import { activeBetween, addLine, CFG, CRATES_PER_CART, dayOf, DEPTS, deptStop, endRun, endStop, fmtDur, fmtTime, lastPerUnit, lotFor, madeText, mergeProducts, myDept, openRun, openStop, parseProductsCsv, productOf, productsCsv, removeLine, removeProduct, reset, resetRecords, runStats, saveProduct, setSchedule, startRun, startStop, stopsOf, store, today, unitDone, user, type Dept, type Line, type Product, type State } from './store'
+import { activeBetween, addLine, CFG, CRATES_PER_CART, dayOf, DEPTS, deptStop, endRun, endStop, fmtDur, fmtTime, lastPerUnit, lotFor, madeText, managerPin, mergeProducts, myDept, openRun, openStop, parseProductsCsv, productOf, productsCsv, removeLine, removeProduct, reset, resetRecords, role, runStats, saveProduct, setSchedule, startRun, startStop, stopsOf, store, today, unitDone, user, type Dept, type Line, type Product, type State } from './store'
 import { avanceRows, n1, pending, type AvanceRow } from './avance'
 import { buildPdf, loadPdf } from './pdf'
 
@@ -15,37 +15,53 @@ const isDept = (v: string): v is Dept => (DEPTS as string[]).includes(v)
 export default function App() {
   const [name, setName] = useState(user.get())
   const [dept, setDept] = useState(myDept.get())
-  if (!isDept(dept) || !name) return <Gate dept={isDept(dept) ? dept : null} onDept={(d) => { myDept.set(d); setDept(d) }} onName={(n) => { user.set(n); setName(n) }} />
-  return <Main name={name} home={dept} onLogout={() => { user.set(''); myDept.set(''); setName(''); setDept('') }} />
+  const [who, setWho] = useState(role.get())
+  const mgr = who === 'mgr'
+  const out = () => { user.set(''); myDept.set(''); role.set(''); setName(''); setDept(''); setWho('') }
+  if (!(mgr || isDept(dept)) || !name) {
+    return <Gate dept={isDept(dept) ? dept : null} mgr={mgr} onDept={(d) => { myDept.set(d); role.set('op'); setDept(d); setWho('op') }} onManager={() => { role.set('mgr'); myDept.set(''); setWho('mgr'); setDept('') }} onName={(n) => { user.set(n); setName(n) }} onBack={out} />
+  }
+  return <Main name={name} home={isDept(dept) ? dept : DEPTS[0]} mgr={mgr} onLogout={out} />
 }
 
-/** entering: first the department this person works in, then their name */
-function Gate({ dept, onDept, onName }: { dept: Dept | null; onDept: (d: Dept) => void; onName: (n: string) => void }) {
+/** entering: a supervisor or operator picks their department (and sees only that); the manager enters with a code and sees every room */
+function Gate({ dept, mgr, onDept, onManager, onName, onBack }: { dept: Dept | null; mgr: boolean; onDept: (d: Dept) => void; onManager: () => void; onName: (n: string) => void; onBack: () => void }) {
   const [v, setV] = useState('')
+  const [pin, setPin] = useState('')
+  const [asking, setAsking] = useState(false)
+  const [bad, setBad] = useState(false)
+  if (!dept && !mgr) {
+    return (
+      <div className="gate">
+        <h1>Actividad</h1>
+        <p>¿De qué departamento eres?</p>
+        <div className="pick">{DEPTS.map((d) => <button key={d} type="button" className="btn" onClick={() => onDept(d)}>{d}</button>)}</div>
+        {asking ? (
+          <form onSubmit={(e) => { e.preventDefault(); if (pin === managerPin.get()) onManager(); else { setBad(true); setPin('') } }} className="mgrform">
+            <label>Código de manager <input autoFocus type="password" inputMode="numeric" placeholder="código" value={pin} onChange={(e) => { setPin(e.target.value); setBad(false) }} autoComplete="off" /></label>
+            {bad && <span className="err">Código incorrecto.</span>}
+            <div className="dbtns"><button type="button" className="btn" onClick={() => { setAsking(false); setPin(''); setBad(false) }}>Cancelar</button><button type="submit" className="btn primary" disabled={!pin}>Entrar como manager</button></div>
+          </form>
+        ) : <button type="button" className="lnk" onClick={() => setAsking(true)}>Soy el manager / oficina (todos los departamentos)</button>}
+        <small>Demo · los datos se guardan solo en este dispositivo</small>
+      </div>
+    )
+  }
   return (
     <div className="gate">
       <h1>Actividad</h1>
-      {!dept ? (
-        <>
-          <p>¿De qué departamento eres?</p>
-          <div className="pick">{DEPTS.map((d) => <button key={d} type="button" className="btn" onClick={() => onDept(d)}>{d}</button>)}</div>
-        </>
-      ) : (
-        <>
-          <p><b>{dept}</b> · Ahora escribe tu nombre. Todo lo que registres lleva tu nombre.</p>
-          <form onSubmit={(e) => { e.preventDefault(); if (v.trim()) onName(v.trim()) }}>
-            <input autoFocus placeholder="Tu nombre" value={v} onChange={(e) => setV(e.target.value)} />
-            <button className="btn primary" type="submit" disabled={!v.trim()}>Entrar</button>
-          </form>
-          <button type="button" className="lnk" onClick={() => { myDept.set(''); location.reload() }}>Otro departamento</button>
-        </>
-      )}
+      <p><b>{mgr ? 'Manager' : dept}</b> · Ahora escribe tu nombre. Todo lo que registres lleva tu nombre.</p>
+      <form onSubmit={(e) => { e.preventDefault(); if (v.trim()) onName(v.trim()) }}>
+        <input autoFocus placeholder="Tu nombre" value={v} onChange={(e) => setV(e.target.value)} />
+        <button className="btn primary" type="submit" disabled={!v.trim()}>Entrar</button>
+      </form>
+      <button type="button" className="lnk" onClick={onBack}>Volver</button>
       <small>Demo · los datos se guardan solo en este dispositivo</small>
     </div>
   )
 }
 
-function Main({ name, home, onLogout }: { name: string; home: Dept; onLogout: () => void }) {
+function Main({ name, home, mgr, onLogout }: { name: string; home: Dept; mgr: boolean; onLogout: () => void }) {
   const s = useSyncExternalStore(store.subscribe, store.get)
   const now = useNow()
   const [dept, setDept] = useState<Dept>(home)
@@ -56,29 +72,32 @@ function Main({ name, home, onLogout }: { name: string; home: Dept; onLogout: ()
         <div className="brand"><h1>Actividad</h1><small>{new Date(now).toLocaleDateString('es', { weekday: 'long', day: 'numeric', month: 'long' })}</small></div>
         <nav className="tabs">
           <button type="button" className={tab === 'act' ? 'on' : ''} onClick={() => setTab('act')}>Actividad</button>
-          <button type="button" className={tab === 'av' ? 'on' : ''} onClick={() => setTab('av')}>Avance</button>
+          {mgr && <button type="button" className={tab === 'av' ? 'on' : ''} onClick={() => setTab('av')}>Avance</button>}
           <button type="button" className={tab === 'rep' ? 'on' : ''} onClick={() => setTab('rep')}>Reporte</button>
         </nav>
-        <div className="me">{name} · {home} <button type="button" className="lnk" onClick={onLogout}>Cambiar</button></div>
+        <div className="me">{name} · {mgr ? 'Manager' : home} <button type="button" className="lnk" onClick={onLogout}>Cambiar</button></div>
       </header>
       {tab === 'act' ? (
         <div className="main">
-          <aside className="side">
-            {DEPTS.map((d) => {
-              const lines = s.lines.filter((l) => l.dept === d)
-              const running = lines.filter((l) => openRun(s, l.id) && !openStop(s, d, l.id)).length
-              const stopped = lines.filter((l) => openRun(s, l.id) && openStop(s, d, l.id)).length
-              return (
-                <button key={d} type="button" className={'dept' + (dept === d ? ' on' : '')} onClick={() => setDept(d)}>
-                  {d}
-                  <span className="dots">{running > 0 && <i className="dot g">{running}</i>}{stopped > 0 && <i className="dot r">{stopped}</i>}</span>
-                </button>
-              )
-            })}
-          </aside>
-          <DeptPanel key={dept} s={s} dept={dept} now={now} />
+          {/* the manager moves between rooms; a supervisor or operator only has their own */}
+          {mgr && (
+            <aside className="side">
+              {DEPTS.map((d) => {
+                const lines = s.lines.filter((l) => l.dept === d)
+                const running = lines.filter((l) => openRun(s, l.id) && !openStop(s, d, l.id)).length
+                const stopped = lines.filter((l) => openRun(s, l.id) && openStop(s, d, l.id)).length
+                return (
+                  <button key={d} type="button" className={'dept' + (dept === d ? ' on' : '')} onClick={() => setDept(d)}>
+                    {d}
+                    <span className="dots">{running > 0 && <i className="dot g">{running}</i>}{stopped > 0 && <i className="dot r">{stopped}</i>}</span>
+                  </button>
+                )
+              })}
+            </aside>
+          )}
+          <DeptPanel key={dept} s={s} dept={mgr ? dept : home} now={now} />
         </div>
-      ) : tab === 'av' ? <Avance s={s} /> : <Report s={s} now={now} />}
+      ) : tab === 'av' && mgr ? <Avance s={s} /> : <Report s={s} now={now} only={mgr ? undefined : home} mgr={mgr} />}
     </div>
   )
 }
@@ -375,21 +394,23 @@ function QtyDialog({ title, unit, refLabel, initial, onClose, onPick }: { title:
   )
 }
 
-function Report({ s, now }: { s: State; now: number }) {
+function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr: boolean }) {
   const [date, setDate] = useState(today())
   const [resetting, setResetting] = useState(false)
   const [clearing, setClearing] = useState(false)
+  const [pinOpen, setPinOpen] = useState(false)
+  const [newPin, setNewPin] = useState('')
   useEffect(() => { void loadPdf() }, [])
   /** opens the PDF in a new tab (to look at, share or print); if the tab cannot open, it downloads */
   const pdf = async () => {
-    const name = 'actividad-' + date + '.pdf'
-    let doc = buildPdf(s, date, now, user.get())
-    if (!doc) { await loadPdf(); doc = buildPdf(s, date, now, user.get()); doc?.save(name); return }
+    const name = 'actividad-' + (only ? only.toLowerCase() + '-' : '') + date + '.pdf'
+    let doc = buildPdf(s, date, now, user.get(), only)
+    if (!doc) { await loadPdf(); doc = buildPdf(s, date, now, user.get(), only); doc?.save(name); return }
     const win = window.open(doc.output('bloburl'), '_blank')
     if (!win) doc.save(name)
   }
-  const runs = s.runs.filter((r) => r.date === date).sort((a, b) => a.startedAt - b.startedAt)
-  const stops = s.stops.filter((x) => dayOf(x.startedAt) === date).sort((a, b) => a.startedAt - b.startedAt)
+  const runs = s.runs.filter((r) => r.date === date && (!only || r.dept === only)).sort((a, b) => a.startedAt - b.startedAt)
+  const stops = s.stops.filter((x) => dayOf(x.startedAt) === date && (!only || x.dept === only)).sort((a, b) => a.startedAt - b.startedAt)
   const rows = runs.map((r) => ({ r, st: runStats(s, r, now) }))
   const working = rows.reduce((t, x) => t + x.st.working, 0)
   const down = rows.reduce((t, x) => t + x.st.down, 0)
@@ -410,7 +431,7 @@ function Report({ s, now }: { s: State; now: number }) {
   return (
     <section className="report">
       <div className="rhead">
-        <h2>Reporte del día</h2>
+        <h2>Reporte del día{only ? ' · ' + only : ''}</h2>
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         <button type="button" className="btn" onClick={csv} disabled={!rows.length}>⬇ Excel (CSV)</button>
         <button type="button" className="btn primary" onClick={() => void pdf()} disabled={!rows.length}>📄 Ver PDF / imprimir</button>
@@ -449,10 +470,25 @@ function Report({ s, now }: { s: State; now: number }) {
         </>
       )}
       <p className="hint foot">Demo guardado en este dispositivo. La versión completa manda todo en vivo al manager (oficina, teléfono o PC) y exporta a Excel, PDF y Google Sheets como la Hoja de Freezer RTE.</p>
-      <div className="btns">
-        <button type="button" className="lnk" onClick={() => setClearing(true)}>Reiniciar registros (conserva productos y líneas)</button>
-        <button type="button" className="lnk" onClick={() => setResetting(true)}>Borrar todo</button>
-      </div>
+      {mgr && (
+        <div className="btns">
+          <button type="button" className="lnk" onClick={() => setClearing(true)}>Reiniciar registros (conserva productos y líneas)</button>
+          <button type="button" className="lnk" onClick={() => setResetting(true)}>Borrar todo</button>
+          <button type="button" className="lnk" onClick={() => { setNewPin(''); setPinOpen(true) }}>Cambiar código de manager</button>
+        </div>
+      )}
+      {pinOpen && (
+        <div className="veil" onClick={() => setPinOpen(false)}>
+          <div className="dlg" onClick={(e) => e.stopPropagation()}>
+            <h3>Código de manager</h3>
+            <p>Con este código se entra como manager en este dispositivo (ve todos los departamentos, el Avance y puede borrar datos).</p>
+            <form className="qform" onSubmit={(e) => { e.preventDefault(); if (newPin.trim().length >= 4) { managerPin.set(newPin.trim()); setPinOpen(false) } }}>
+              <label>Nuevo código (mínimo 4) <input autoFocus inputMode="numeric" value={newPin} onChange={(e) => setNewPin(e.target.value)} autoComplete="off" /></label>
+              <div className="dbtns"><button type="button" className="btn" onClick={() => setPinOpen(false)}>Cancelar</button><button type="submit" className="btn primary" disabled={newPin.trim().length < 4}>Guardar</button></div>
+            </form>
+          </div>
+        </div>
+      )}
       {clearing && <ConfirmDialog title="¿Reiniciar los registros?" text="Se borran las corridas, los paros y lo programado de todos los días. La tabla de productos y las líneas se quedan. No se puede deshacer." yes="Reiniciar" danger onYes={() => { resetRecords(); setClearing(false) }} onNo={() => setClearing(false)} />}
       {resetting && <ConfirmDialog title="¿Borrar todos los datos de este dispositivo?" text="Se borran las líneas, los registros, los paros, lo programado y la tabla de productos. No se puede deshacer." yes="Borrar todo" danger onYes={() => { reset(); setResetting(false) }} onNo={() => setResetting(false)} />}
     </section>

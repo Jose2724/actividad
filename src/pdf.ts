@@ -1,4 +1,4 @@
-import { dayOf, fmtDur, fmtTime, madeText, runStats, type State } from './store'
+import { dayOf, fmtDur, fmtTime, madeText, runStats, type Dept, type State } from './store'
 import { avanceRows, n1, pending } from './avance'
 
 type Libs = { jsPDF: typeof import('jspdf').jsPDF; autoTable: typeof import('jspdf-autotable').default }
@@ -9,11 +9,11 @@ export const loadPdf = () => (libs ? Promise.resolve(libs) : Promise.all([import
 const fmtDate = (d: string) => { const [y, m, dd] = d.split('-'); return m + '/' + dd + '/' + y }
 
 /** the day's report as the tables on screen: codes first, then the stops. null until the libraries are loaded */
-export function buildPdf(s: State, date: string, now: number, by: string) {
+export function buildPdf(s: State, date: string, now: number, by: string, only?: Dept) {
   if (!libs) return null
   const { jsPDF, autoTable } = libs
-  const runs = s.runs.filter((r) => r.date === date).sort((a, b) => a.startedAt - b.startedAt)
-  const stops = s.stops.filter((x) => dayOf(x.startedAt) === date).sort((a, b) => a.startedAt - b.startedAt)
+  const runs = s.runs.filter((r) => r.date === date && (!only || r.dept === only)).sort((a, b) => a.startedAt - b.startedAt)
+  const stops = s.stops.filter((x) => dayOf(x.startedAt) === date && (!only || x.dept === only)).sort((a, b) => a.startedAt - b.startedAt)
   const rows = runs.map((r) => ({ r, st: runStats(s, r, now) }))
   const working = rows.reduce((t, x) => t + x.st.working, 0)
   const down = rows.reduce((t, x) => t + x.st.down, 0)
@@ -22,7 +22,7 @@ export function buildPdf(s: State, date: string, now: number, by: string) {
   const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' })
   const teal: [number, number, number] = [15, 118, 110]
   doc.setFont('helvetica', 'bold'); doc.setFontSize(18); doc.setTextColor(22, 32, 42)
-  doc.text('Actividad · Reporte del día', 40, 42)
+  doc.text('Actividad · Reporte del día' + (only ? ' · ' + only : ''), 40, 42)
   doc.setFont('helvetica', 'normal'); doc.setFontSize(11); doc.setTextColor(91, 107, 122)
   doc.text(fmtDate(date) + '   ·   ' + rows.length + ' códigos   ·   trabajando ' + fmtDur(working) + '   ·   parado ' + fmtDur(down), 40, 62)
   autoTable(doc, {
@@ -41,8 +41,8 @@ export function buildPdf(s: State, date: string, now: number, by: string) {
       body: stops.map((x) => [x.dept, lineName(x), x.reason, x.note || '—', fmtTime(x.startedAt), x.endedAt ? fmtTime(x.endedAt) : 'en curso', fmtDur((x.endedAt ?? now) - x.startedAt), x.by]),
     })
   }
-  // the day's progress, as the office's AVANCE sheet
-  const av = avanceRows(s, date)
+  // the day's progress, as the office's AVANCE sheet (the manager's report only)
+  const av = only ? [] : avanceRows(s, date)
   if (av.length) {
     doc.addPage()
     doc.setFont('helvetica', 'bold'); doc.setFontSize(16); doc.setTextColor(22, 32, 42)
