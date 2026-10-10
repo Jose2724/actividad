@@ -64,7 +64,7 @@ export function startSync() {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'act_schedule' }, (p) => applyRemote('act_schedule', p.new as Record<string, unknown>))
     .subscribe()
   window.addEventListener('online', () => { void pullAll(); void flushNow() })
-  window.addEventListener('act-resync', () => { void pullAll() })
+  window.addEventListener('act-resync', () => { void pullAll(); void flushNow() })
   window.addEventListener('offline', () => setStatus({ state: 'offline' }))
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { void pullAll(); void flushNow() } })
   setInterval(() => { void flushNow() }, 20_000)
