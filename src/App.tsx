@@ -637,7 +637,7 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
             <table className="changes">
               <thead><tr><th>Hora</th><th>Quién</th><th>Depto</th><th>Qué</th><th>Antes</th><th>Después</th></tr></thead>
               <tbody>{changes.map((c) => (
-                <tr key={c.id}><td>{fmtTime(c.at)}</td><td>{c.by}</td><td>{c.dept ?? '—'}</td><td>{c.what}</td><td className="was">{c.before || '—'}</td><td><b>{c.after || '—'}</b></td></tr>
+                <tr key={c.id}><td>{fmtTime(c.at)}</td><td>{c.by}</td><td>{c.dept ?? '—'}</td><td>{c.what}</td><td className={c.before ? 'was' : ''}>{c.before || '—'}</td><td><b>{c.after || '—'}</b></td></tr>
               ))}</tbody>
             </table>
           </div>
