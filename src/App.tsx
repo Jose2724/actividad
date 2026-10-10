@@ -434,6 +434,8 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
   const runs = s.runs.filter((r) => r.date === date && (!only || r.dept === only)).sort((a, b) => a.startedAt - b.startedAt)
   const stops = s.stops.filter((x) => dayOf(x.startedAt) === date && (!only || x.dept === only)).sort((a, b) => a.startedAt - b.startedAt)
   const rows = runs.map((r) => ({ r, st: runStats(s, r, now) }))
+  // one line per cart, mezcla, bin or pallet, the way the office's sheets are filled (pallet by pallet, with the time)
+  const unitRows = rows.flatMap((x) => x.r.units.map((u, i) => ({ r: x.r, i, u, gap: x.st.unitTimes[i] ?? 0 }))).sort((a, b) => a.u.at - b.u.at)
   const working = rows.reduce((t, x) => t + x.st.working, 0)
   const down = rows.reduce((t, x) => t + x.st.down, 0)
   const reasonsText = (x: (typeof rows)[number]) => Object.entries(x.st.reasons).map(([k, v]) => k + ' ' + fmtDur(v)).join(', ')
@@ -464,9 +466,11 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
     const q = (v: string | number) => '"' + String(v).replace(/"/g, '""') + '"'
     const head = ['Departamento', 'Línea', 'Código', 'Lote', 'Fecha', 'Inicio', 'Fin', 'Hecho', 'Cantidad', 'Tags / bins', 'Waste (lb)', 'Tiempo trabajando', 'Promedio por unidad', 'Tiempo parado', 'Razones de paro', 'Registró']
     const body = rows.map((x) => [x.r.dept, x.r.line, x.r.code, x.r.lot, x.r.date, fmtTime(x.r.startedAt), x.r.endedAt ? fmtTime(x.r.endedAt) : 'en curso', x.r.units.length + ' ' + CFG[x.r.dept].plural.toLowerCase(), CFG[x.r.dept].qty !== 'none' ? x.st.qty + ' ' + CFG[x.r.dept].qtyUnit : '', x.r.units.map((u) => u.ref).filter(Boolean).join(', '), x.r.waste || '', fmtDur(x.st.working), x.r.units.length ? fmtDur(x.st.avg) : '', fmtDur(x.st.down), reasonsText(x), whoText(x.r)])
+    const unitHead = ['', 'UNIDADES', 'Departamento', 'Línea', 'Código', 'Lote', '#', 'Hora', 'Unidad', 'Cantidad', 'Tag / bin', 'Desde la anterior', 'Registró']
+    const unitBody = unitRows.map((x) => ['', '', x.r.dept, x.r.line, x.r.code, x.r.lot, x.i + 1, fmtTime(x.u.at), CFG[x.r.dept].unit, x.u.qty != null ? x.u.qty + ' ' + CFG[x.r.dept].qtyUnit : '', x.u.ref, fmtDur(x.gap), x.u.by])
     const stopHead = ['', 'PAROS', 'Departamento', 'Línea', 'Razón', 'Detalle', 'Inicio', 'Fin', 'Duración', 'Registró']
     const stopBody = stops.map((x) => ['', '', x.dept, lineName(x), x.reason, x.note, fmtTime(x.startedAt), x.endedAt ? fmtTime(x.endedAt) : 'en curso', fmtDur((x.endedAt ?? now) - x.startedAt), x.by])
-    return '﻿' + [head, ...body, [], stopHead, ...stopBody].map((r) => r.map(q).join(',')).join('\r\n')
+    return '﻿' + [head, ...body, [], unitHead, ...unitBody, [], stopHead, ...stopBody].map((r) => r.map(q).join(',')).join('\r\n')
   }
   return (
     <section className="report">
@@ -495,6 +499,22 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
             ))}</tbody>
           </table>
         </div>
+      )}
+      {unitRows.length > 0 && (
+        <>
+          <h3>Detalle por unidad · {unitRows.length}</h3>
+          <div className="twrap">
+            <table>
+              <thead><tr><th>Hora</th><th>Depto</th><th>Línea</th><th>Código</th><th>Lote</th><th>#</th><th>Unidad</th><th>Cantidad</th><th>Tag / bin</th><th>Desde la anterior</th><th>Registró</th></tr></thead>
+              <tbody>{unitRows.map((x) => (
+                <tr key={x.r.id + ':' + x.i}>
+                  <td>{fmtTime(x.u.at)}</td><td>{x.r.dept}</td><td>{x.r.line}</td><td><b>{x.r.code}</b></td><td>{x.r.lot}</td><td>{x.i + 1}</td><td>{CFG[x.r.dept].unit}</td>
+                  <td>{x.u.qty != null ? x.u.qty + ' ' + CFG[x.r.dept].qtyUnit : '—'}</td><td>{x.u.ref || '—'}</td><td>{fmtDur(x.gap)}</td><td>{x.u.by || '—'}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        </>
       )}
       {stops.length > 0 && (
         <>
