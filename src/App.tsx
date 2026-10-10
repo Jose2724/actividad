@@ -1,6 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { activeBetween, addLine, addWaste, CFG, CRATES_PER_CART, dayOf, DEPTS, deptStop, endRun, endStop, fmtDur, fmtTime, lastPerUnit, lotFor, madeText, managerPin, mergeProducts, myDept, openRun, openStop, parseProductsCsv, productOf, productsCsv, removeLine, removeProduct, reset, resetRecords, role, runStats, saveProduct, setSchedule, startRun, startStop, stopsOf, store, today, unitDone, user, type Dept, type Line, type Product, type State } from './store'
 import { avanceRows, n1, pending, type AvanceRow } from './avance'
+import { cellText, xDay, xDur, xTime, xlsxBytes, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 import { whoText } from './store'
 import { buildPdf, loadPdf } from './pdf'
 import { RunEditor, StopEditor } from './editors'
@@ -543,7 +544,7 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
     const files: File[] = []
     const doc = buildPdf(s, date, now, user.get(), only)
     if (doc) files.push(new File([doc.output('blob')], fileName + '.pdf', { type: 'application/pdf' }))
-    files.push(new File([csvText()], fileName + '.csv', { type: 'text/csv' }))
+    files.push(await xlsxFile())
     const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean }
     if (nav.share && nav.canShare?.({ files })) {
       try { await nav.share({ files, title: 'Actividad · Reporte ' + date, text: 'Reporte del día ' + date + (only ? ' · ' + only : '') }) } catch { /* the person closed the sheet */ }
@@ -552,6 +553,28 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
     for (const f of files) { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click() }
     location.href = 'mailto:?subject=' + encodeURIComponent('Actividad · Reporte ' + date + (only ? ' · ' + only : '')) + '&body=' + encodeURIComponent('Adjunto el reporte del día (PDF y Excel), recién descargados en la carpeta de Descargas.')
   }
+  /** the day's tables, typed (numbers, times, spans) so Excel can sort and add them; the CSV takes the same as text */
+  const blocks = () => {
+    const T = (ms: number) => xTime(ms, fmtTime(ms)), D = (ms: number) => xDur(ms, fmtDur(ms))
+    const resumen: Cell[][] = [['Departamento', 'Línea', 'Código', 'Lote', 'Fecha', 'Inicio', 'Fin', 'Unidad', 'Hechas', 'Cantidad', 'Unidad de cantidad', 'Tags / bins', 'Waste (lb)', 'Tiempo trabajando', 'Promedio por unidad', 'Tiempo parado', 'Razones de paro', 'Registró'],
+      ...rows.map((x): Cell[] => [x.r.dept, x.r.line, x.r.code, x.r.lot, xDay(x.r.date), T(x.r.startedAt), x.r.endedAt ? T(x.r.endedAt) : 'en curso', CFG[x.r.dept].unit, x.r.units.length, CFG[x.r.dept].qty !== 'none' ? x.st.qty : '', CFG[x.r.dept].qty !== 'none' ? CFG[x.r.dept].qtyUnit : '', x.r.units.map((u) => u.ref).filter(Boolean).join(', '), x.r.waste || '', D(x.st.working), x.r.units.length ? D(x.st.avg) : '', D(x.st.down), reasonsText(x), whoText(x.r)])]
+    const unidades: Cell[][] = [['Departamento', 'Línea', 'Código', 'Lote', '#', 'Hora', 'Unidad', 'Cantidad', 'Unidad de cantidad', 'Tag / bin', 'Desde la anterior', 'Registró'],
+      ...unitRows.map((x): Cell[] => [x.r.dept, x.r.line, x.r.code, x.r.lot, x.i + 1, T(x.u.at), CFG[x.r.dept].unit, x.u.qty ?? '', x.u.qty != null ? CFG[x.r.dept].qtyUnit : '', x.u.ref, D(x.gap), x.u.by])]
+    const paros: Cell[][] = [['Departamento', 'Línea', 'Razón', 'Detalle', 'Inicio', 'Fin', 'Duración', 'Registró'],
+      ...stops.map((x): Cell[] => [x.dept, lineName(x), x.reason, x.note, T(x.startedAt), x.endedAt ? T(x.endedAt) : 'en curso', D((x.endedAt ?? now) - x.startedAt), x.by])]
+    const cambios: Cell[][] = [['Hora', 'Quién', 'Departamento', 'Qué', 'Antes', 'Después'], ...changes.map((c): Cell[] => [T(c.at), c.by, c.dept ?? '', c.what, c.before, c.after])]
+    const av = mgr && !only ? avanceRows(s, date) : []
+    const avance: Cell[][] = [['Código', 'Producto', 'Mezclas progr.', 'Mezclas hechas', 'Mezclas pend.', 'Spiral', 'Pouches progr.', 'Pouches esper.', 'Pouches hechos', 'Pouches pend.', 'Pouches faltan', 'Cajas progr.', 'Cajas esper.', 'Cajas hechas', 'Cajas pend.', 'Cajas faltan', 'MFO cajas', 'Pallets progr.', 'Pallets esper.', 'Pallets hechos', 'Waste lb'],
+      ...av.map((r): Cell[] => [r.code, r.product?.name ?? '', r.scheduled, r.mixesDone, r.mixesPending, r.spiralDone, r.pouchesPlan, r.pouchesExp, r.pouchesDone, pending(r.pouchesExp, r.pouchesDone), pending(r.pouchesPlan, r.pouchesDone), r.casesPlan, r.casesExp, r.casesDone, pending(r.casesExp, r.casesDone), pending(r.casesPlan, r.casesDone), r.mfoCases, r.palletsPlan, r.palletsExp, r.palletsDone, r.wasteLb])]
+    return { resumen, unidades, paros, cambios, avance }
+  }
+  /** the Excel file: one sheet per table (Cambios and Avance only for the manager and the office) */
+  const xlsxFile = async () => {
+    const b = blocks()
+    const sheets: Sheet[] = [{ name: 'Resumen', rows: b.resumen }, { name: 'Unidades', rows: b.unidades }, { name: 'Paros', rows: b.paros }, ...(mgr ? [{ name: 'Cambios', rows: b.cambios }] : []), ...(b.avance.length > 1 ? [{ name: 'Avance', rows: b.avance }] : [])]
+    return new File([await xlsxBytes(sheets)], fileName + '.xlsx', { type: XLSX_TYPE })
+  }
+  const excel = async () => { const f = await xlsxFile(); const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click() }
   const csv = () => {
     const a = document.createElement('a')
     a.href = URL.createObjectURL(new Blob([csvText()], { type: 'text/csv;charset=utf-8' }))
@@ -559,23 +582,19 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
     a.click()
   }
   const csvText = () => {
-    const q = (v: string | number) => '"' + String(v).replace(/"/g, '""') + '"'
-    const head = ['Departamento', 'Línea', 'Código', 'Lote', 'Fecha', 'Inicio', 'Fin', 'Hecho', 'Cantidad', 'Tags / bins', 'Waste (lb)', 'Tiempo trabajando', 'Promedio por unidad', 'Tiempo parado', 'Razones de paro', 'Registró']
-    const body = rows.map((x) => [x.r.dept, x.r.line, x.r.code, x.r.lot, x.r.date, fmtTime(x.r.startedAt), x.r.endedAt ? fmtTime(x.r.endedAt) : 'en curso', x.r.units.length + ' ' + CFG[x.r.dept].plural.toLowerCase(), CFG[x.r.dept].qty !== 'none' ? x.st.qty + ' ' + CFG[x.r.dept].qtyUnit : '', x.r.units.map((u) => u.ref).filter(Boolean).join(', '), x.r.waste || '', fmtDur(x.st.working), x.r.units.length ? fmtDur(x.st.avg) : '', fmtDur(x.st.down), reasonsText(x), whoText(x.r)])
-    const unitHead = ['', 'UNIDADES', 'Departamento', 'Línea', 'Código', 'Lote', '#', 'Hora', 'Unidad', 'Cantidad', 'Tag / bin', 'Desde la anterior', 'Registró']
-    const unitBody = unitRows.map((x) => ['', '', x.r.dept, x.r.line, x.r.code, x.r.lot, x.i + 1, fmtTime(x.u.at), CFG[x.r.dept].unit, x.u.qty != null ? x.u.qty + ' ' + CFG[x.r.dept].qtyUnit : '', x.u.ref, fmtDur(x.gap), x.u.by])
-    const stopHead = ['', 'PAROS', 'Departamento', 'Línea', 'Razón', 'Detalle', 'Inicio', 'Fin', 'Duración', 'Registró']
-    const stopBody = stops.map((x) => ['', '', x.dept, lineName(x), x.reason, x.note, fmtTime(x.startedAt), x.endedAt ? fmtTime(x.endedAt) : 'en curso', fmtDur((x.endedAt ?? now) - x.startedAt), x.by])
-    const chHead = ['', 'CAMBIOS', 'Hora', 'Quién', 'Departamento', 'Qué', 'Antes', 'Después']
-    const chBody = changes.map((c) => ['', '', fmtTime(c.at), c.by, c.dept ?? '', c.what, c.before, c.after])
-    return '﻿' + [head, ...body, [], unitHead, ...unitBody, [], stopHead, ...stopBody, ...(mgr ? [[], chHead, ...chBody] : [])].map((r) => r.map(q).join(',')).join('\r\n')
+    const q = (c: Cell) => '"' + cellText(c).replace(/"/g, '""') + '"'
+    const b = blocks()
+    const tag = (title: string, t: Cell[][]) => t.map((r, i): Cell[] => (i === 0 ? ['', title, ...r] : ['', '', ...r]))
+    const all: Cell[][] = [...b.resumen, [], ...tag('UNIDADES', b.unidades), [], ...tag('PAROS', b.paros), ...(mgr ? [[], ...tag('CAMBIOS', b.cambios)] : []), ...(b.avance.length > 1 ? [[], ...tag('AVANCE', b.avance)] : [])]
+    return '\ufeff' + all.map((r) => r.map(q).join(',')).join('\r\n')
   }
   return (
     <section className="report">
       <div className="rhead">
         <h2>Reporte del día{only ? ' · ' + only : ''}</h2>
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-        <button type="button" className="btn" onClick={csv} disabled={!rows.length}>⬇ Excel (CSV)</button>
+        <button type="button" className="btn" onClick={() => void excel()} disabled={!rows.length}>⬇ Excel</button>
+        <button type="button" className="lnk" onClick={csv} disabled={!rows.length}>CSV</button>
         <button type="button" className="btn" onClick={() => void pdf()} disabled={!rows.length}>📄 Ver PDF / imprimir</button>
         <button type="button" className="btn primary" onClick={() => void send()} disabled={!rows.length}>✉ Enviar reporte</button>
       </div>
