@@ -42,10 +42,14 @@ export type Product = { code: string; name: string; pouchesPerCase: number; case
 export const cartPouches = (p: Product) => p.cratesPerCart * p.pouchesPerCrate
 /** mezclas scheduled per day and code ("SCHEDULE" in the office's AVANCE sheet) */
 export type Schedule = Record<string, Record<string, number>>
-export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Product[]; schedule: Schedule }
+/** one line of history: who changed what, when, from → to (corrections, the products table, the day's program, the lines) */
+export type Change = { id: string; at: number; by: string; dept: Dept | null; what: string; before: string; after: string; refTable: string; refKey: string; updatedAt: number; deleted?: boolean }
+export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Product[]; schedule: Schedule; changes: Change[] }
 
 /** a cart has two columns of 12 crates (the office counts columns: "12x10" = 12 crates × 10 pouches) */
 export const CRATES_PER_CART = 24
+/** how long a device keeps the history (the server keeps all of it) */
+const KEEP_CHANGES_MS = 120 * 86_400_000
 const SAMPLE_PRODUCTS: Product[] = [
   { code: 'A100', name: 'Meatballs 2.4 oz · pouch 48 oz', pouchesPerCase: 8, casesPerMix: 18, cratesPerCart: 24, pouchesPerCrate: 10, casesPerPallet: 36, updatedAt: 0 },
   { code: 'B200', name: 'Stuffed peppers · pouch 60 oz', pouchesPerCase: 8, casesPerMix: 6, cratesPerCart: 24, pouchesPerCrate: 6, casesPerPallet: 40, updatedAt: 0 },
@@ -71,10 +75,10 @@ export const normCode = (c: string) => { const u = c.trim().toUpperCase(); retur
 
 /** with a server the lines (and products) are shared and come from it; without one, each device starts with a line per room */
 const SERVER = !!import.meta.env.VITE_SUPABASE_URL
-function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: CFG[d].lineWord + ' 1', updatedAt: 0 })), runs: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {} } }
+function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: CFG[d].lineWord + ' 1', updatedAt: 0 })), runs: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [] } }
 function load(): State {
   try {
-    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule }
+    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[] }
     const s = JSON.parse(localStorage.getItem(KEY) || 'null') as Raw | null
     // rows saved by earlier versions: carts as plain timestamps, units without a tag or a name, products with one
     // pouches-per-cart number, nothing with an update time
@@ -87,6 +91,7 @@ function load(): State {
         stops: s.stops.map((x) => ({ id: x.id ?? uid(), dept: (x.dept ?? 'Kitchen') as Dept, lineId: x.lineId ?? null, reason: x.reason ?? '', note: x.note ?? '', startedAt: x.startedAt ?? 0, endedAt: x.endedAt ?? null, by: x.by ?? '', updatedAt: x.updatedAt ?? 0 })),
         runs: s.runs.map((r) => ({ id: r.id ?? uid(), dept: (r.dept ?? 'Kitchen') as Dept, lineId: r.lineId ?? '', line: r.line ?? '', code: r.code ?? '', lot: r.lot ?? '', date: r.date ?? today(), startedAt: r.startedAt ?? 0, endedAt: r.endedAt ?? null, units: units(r), perUnit: r.perUnit ?? null, waste: r.waste ?? 0, by: r.by ?? '', updatedAt: r.updatedAt ?? 0 })),
         products, schedule: s.schedule ?? {},
+        changes: (s.changes ?? []).filter((c) => (c.at ?? 0) > Date.now() - KEEP_CHANGES_MS).map((c) => ({ id: c.id ?? uid(), at: c.at ?? 0, by: c.by ?? '', dept: (c.dept ?? null) as Dept | null, what: c.what ?? '', before: c.before ?? '', after: c.after ?? '', refTable: c.refTable ?? '', refKey: c.refKey ?? '', updatedAt: c.updatedAt ?? 0 })),
       }
     }
   } catch { /* empty */ }
@@ -117,6 +122,7 @@ const rowOfRun = (r: Run) => ({ id: r.id, dept: r.dept, line_id: r.lineId, line:
 const rowOfStop = (x: Stop) => ({ id: x.id, dept: x.dept, line_id: x.lineId, reason: x.reason, note: x.note, started_at: iso(x.startedAt), ended_at: iso(x.endedAt), by_name: x.by, deleted: !!x.deleted, updated_at: iso(x.updatedAt), updated_by: user.get() })
 const rowOfProduct = (p: Product) => ({ code: normCode(p.code), name: p.name, pouches_per_case: p.pouchesPerCase, cases_per_mix: p.casesPerMix, crates_per_cart: p.cratesPerCart, pouches_per_crate: p.pouchesPerCrate, cases_per_pallet: p.casesPerPallet, deleted: !!p.deleted, updated_at: iso(p.updatedAt), updated_by: user.get() })
 const rowOfSchedule = (date: string, code: string, mixes: number) => ({ date, code: normCode(code), mixes, updated_at: iso(Date.now()), updated_by: user.get() })
+const rowOfChange = (c: Change) => ({ id: c.id, at: iso(c.at), by_name: c.by, dept: c.dept, what: c.what, before: c.before, after: c.after, ref_table: c.refTable, ref_key: c.refKey, deleted: !!c.deleted, updated_at: iso(c.updatedAt), updated_by: user.get() })
 
 // ---- the mutations: each one saves on the device and queues the row for the server ----
 const putLine = (l: Line) => { l = { ...l, updatedAt: Date.now() }; set({ ...state, lines: upsertIn(state.lines, l) }); push('act_lines', l.id, rowOfLine(l)) }
@@ -141,8 +147,35 @@ function upsertIn<T extends { id: string; deleted?: boolean }>(list: T[], item: 
   return item.deleted ? rest : [...rest, item]
 }
 
-export function addLine(dept: Dept) { const n = state.lines.filter((l) => l.dept === dept).length + 1; putLine({ id: uid(), dept, name: CFG[dept].lineWord + ' ' + n, updatedAt: 0 }) }
-export function removeLine(id: string) { const l = state.lines.find((x) => x.id === id); if (l) putLine({ ...l, deleted: true }) }
+// ---- the history: who changed what, when ----
+const v = (x: unknown) => (x == null || x === '' || x === 0 ? '' : String(x))
+const COALESCE_MS = 90_000
+/**
+ * one line of history. A value retyped by the same person within a minute and a half (keystrokes, a second thought)
+ * updates the same line instead of adding one; typed back to what it was, the line is withdrawn.
+ */
+function logChange(dept: Dept | null, what: string, before: string, after: string, refTable: string, refKey: string) {
+  if (before === after) return
+  const now = Date.now(), by = user.get()
+  const changes = state.changes
+  let i = changes.length - 1
+  while (i >= 0 && !(changes[i].by === by && changes[i].refTable === refTable && changes[i].what === what && now - changes[i].at < COALESCE_MS)) i--
+  const c: Change = i >= 0 ? { ...changes[i], after, updatedAt: now } : { id: uid(), at: now, by, dept, what, before, after, refTable, refKey, updatedAt: now }
+  if (c.before === c.after) c.deleted = true
+  set({ ...state, changes: upsertIn(changes, c) })
+  push('act_changes', c.id, rowOfChange(c))
+}
+const PRODUCT_FIELDS: [keyof Product, string][] = [['name', 'Producto'], ['pouchesPerCase', 'Pouches / caja'], ['casesPerMix', 'Cajas / mezcla'], ['cratesPerCart', 'Guacales / carro'], ['pouchesPerCrate', 'Pouches / guacal'], ['casesPerPallet', 'Cajas / pallet']]
+function logProductDiff(old: Product | undefined, p: Product) {
+  if (!old) { if (p.code.trim()) logChange(null, 'Producto nuevo', '', p.code, 'act_products', normCode(p.code)); return }
+  if (normCode(old.code) !== normCode(p.code)) logChange(null, 'Producto · Código', old.code, p.code, 'act_products', normCode(p.code))
+  for (const [k, label] of PRODUCT_FIELDS) if (v(old[k]) !== v(p[k])) logChange(null, 'Producto ' + (p.code || old.code) + ' · ' + label, v(old[k]), v(p[k]), 'act_products', normCode(p.code))
+}
+const stopLine = (x: Stop) => (x.lineId === null ? 'todo ' + x.dept : state.lines.find((l) => l.id === x.lineId)?.name ?? state.runs.find((r) => r.lineId === x.lineId)?.line ?? 'línea')
+const endText = (ms: number | null) => (ms ? fmtTime(ms) : 'en curso')
+
+export function addLine(dept: Dept) { const l: Line = { id: uid(), dept, name: CFG[dept].lineWord + ' ' + (state.lines.filter((x) => x.dept === dept).length + 1), updatedAt: 0 }; putLine(l); logChange(dept, 'Línea agregada en ' + dept, '', l.name, 'act_lines', l.id) }
+export function removeLine(id: string) { const l = state.lines.find((x) => x.id === id); if (l) { putLine({ ...l, deleted: true }); logChange(l.dept, 'Línea quitada de ' + l.dept, l.name, '', 'act_lines', l.id) } }
 export function startRun(line: Line, code: string, lot: string, date: string, perUnit: number | null) {
   putRun({ id: uid(), dept: line.dept, lineId: line.id, line: line.name, code, lot, date, startedAt: Date.now(), endedAt: null, units: [], perUnit, waste: 0, by: user.get(), updatedAt: 0 })
 }
@@ -152,15 +185,38 @@ export function endRun(runId: string) { const r = run(runId); if (r) putRun({ ..
 /** pounds thrown away, added to what the run already has */
 export function addWaste(runId: string, lb: number) { const r = run(runId); if (r) putRun({ ...r, waste: Math.round((r.waste + lb) * 100) / 100 }) }
 /** corrections: a wrong code, lot, quantity, tag or stop is fixed in place */
-export function updateRun(id: string, patch: Partial<Pick<Run, 'code' | 'lot' | 'date' | 'perUnit' | 'waste' | 'endedAt' | 'units'>>) { const r = run(id); if (r) putRun({ ...r, ...patch }) }
-export function deleteRun(id: string) { const r = run(id); if (r) putRun({ ...r, deleted: true }) }
+/** a correction from the editor: saved, and every field that differs goes to the history */
+export function updateRun(id: string, patch: Partial<Pick<Run, 'code' | 'lot' | 'date' | 'perUnit' | 'waste' | 'endedAt' | 'units'>>) {
+  const r = run(id)
+  if (!r) return
+  const n = { ...r, ...patch }
+  putRun(n)
+  const cfg = CFG[r.dept], pre = 'Corrida ' + r.code + ' del ' + r.date + ' (' + r.dept + ', ' + r.line + ') · '
+  const log = (what: string, a: string, b: string) => logChange(r.dept, pre + what, a, b, 'act_runs', r.id)
+  log('Código', r.code, n.code); log('Lote', r.lot, n.lot); log('Fecha', r.date, n.date)
+  log(cfg.perUnitLabel || 'Por unidad', v(r.perUnit), v(n.perUnit)); log('Waste lb', v(r.waste), v(n.waste)); log('Fin', endText(r.endedAt), endText(n.endedAt))
+  r.units.forEach((u, i) => {
+    const w = n.units.find((x) => x.at === u.at)
+    if (!w) log('Se quitó ' + cfg.unit.toLowerCase() + ' ' + (i + 1) + ' (' + fmtTime(u.at) + ')', [u.qty != null ? u.qty + ' ' + cfg.qtyUnit : '', u.ref].filter(Boolean).join(' · ') || '1', '')
+    else { log(cfg.unit + ' ' + (i + 1) + ' · cantidad', v(u.qty), v(w.qty)); if (cfg.refLabel) log(cfg.unit + ' ' + (i + 1) + ' · ' + cfg.refLabel, u.ref, w.ref) }
+  })
+}
+export function deleteRun(id: string) { const r = run(id); if (r) { putRun({ ...r, deleted: true }); logChange(r.dept, 'Se borró la corrida ' + r.code + ' del ' + r.date + ' (' + r.dept + ', ' + r.line + ')', r.units.length + ' ' + CFG[r.dept].plural.toLowerCase() + (r.waste ? ' · waste ' + r.waste + ' lb' : ''), '', 'act_runs', r.id) } }
 export function startStop(dept: Dept, lineId: string | null, reason: string, note: string) {
   putStop({ id: uid(), dept, lineId, reason, note, startedAt: Date.now(), endedAt: null, by: user.get(), updatedAt: 0 })
 }
 const stop = (id: string) => state.stops.find((x) => x.id === id)
 export function endStop(id: string) { const x = stop(id); if (x) putStop({ ...x, endedAt: Date.now() }) }
-export function updateStop(id: string, patch: Partial<Pick<Stop, 'reason' | 'note' | 'startedAt' | 'endedAt'>>) { const x = stop(id); if (x) putStop({ ...x, ...patch }) }
-export function deleteStop(id: string) { const x = stop(id); if (x) putStop({ ...x, deleted: true }) }
+export function updateStop(id: string, patch: Partial<Pick<Stop, 'reason' | 'note' | 'startedAt' | 'endedAt'>>) {
+  const x = stop(id)
+  if (!x) return
+  const n = { ...x, ...patch }
+  putStop(n)
+  const pre = 'Paro ' + x.dept + ' ' + dayOf(x.startedAt) + ' ' + fmtTime(x.startedAt) + ' (' + stopLine(x) + ') · '
+  const log = (what: string, a: string, b: string) => logChange(x.dept, pre + what, a, b, 'act_stops', x.id)
+  log('Motivo', x.reason, n.reason); log('Detalle', x.note, n.note); log('Inicio', fmtTime(x.startedAt), fmtTime(n.startedAt)); log('Fin', endText(x.endedAt), endText(n.endedAt))
+}
+export function deleteStop(id: string) { const x = stop(id); if (x) { putStop({ ...x, deleted: true }); logChange(x.dept, 'Se borró el paro ' + x.dept + ' ' + dayOf(x.startedAt) + ' ' + fmtTime(x.startedAt) + ' (' + stopLine(x) + ')', x.reason + (x.note ? ' · ' + x.note : '') + ' · ' + fmtTime(x.startedAt) + '–' + endText(x.endedAt), '', 'act_stops', x.id) } }
 /** everyone who took part in a run: who started it and who tapped its units (a break cover shows up by name) */
 export function whoText(r: Run) { return [...new Set([r.by, ...r.units.map((u) => u.by)].filter(Boolean))].join(', ') }
 
@@ -168,7 +224,7 @@ export function whoText(r: Run) { return [...new Set([r.by, ...r.units.map((u) =
 const resync = () => { if (SERVER) { try { localStorage.removeItem('act_since2'); localStorage.removeItem('act_outbox') } catch { /* private */ } window.dispatchEvent(new Event('act-resync')) } }
 export function reset() { set(fresh()); resync() }
 /** a clean slate for the records only: runs, stops and the schedule go; the lines and the products table stay */
-export function resetRecords() { set({ ...state, runs: [], stops: [], schedule: {} }); resync() }
+export function resetRecords() { set({ ...state, runs: [], stops: [], schedule: {}, changes: [] }); resync() }
 
 export const productOf = (s: State, code: string) => s.products.find((p) => normCode(p.code) === normCode(code))
 /** saves a product by its position in the list (a new one goes at the end); a code that changed retires the old row on the server */
@@ -180,26 +236,32 @@ export function saveProduct(i: number, p: Product) {
   set({ ...state, products })
   if (old && old.code.trim() && normCode(old.code) !== normCode(p.code)) push('act_products', normCode(old.code), rowOfProduct({ ...old, deleted: true, updatedAt: Date.now() }))
   if (p.code.trim()) push('act_products', normCode(p.code), rowOfProduct(p))
+  logProductDiff(old, p)
 }
 export function removeProduct(i: number) {
   const p = state.products[i]
   set({ ...state, products: state.products.filter((_, k) => k !== i) })
   if (p && p.code.trim()) push('act_products', normCode(p.code), rowOfProduct({ ...p, deleted: true, updatedAt: Date.now() }))
+  if (p) logChange(null, 'Producto ' + (p.code || '(sin código)') + ' quitado', p.name || p.code, '', 'act_products', normCode(p.code))
 }
 /** products loaded from the office's file: an existing code is updated (blank numbers keep what was there), a new one is added */
 export function mergeProducts(list: Product[]) {
   const products = [...state.products]
+  let added = 0, changed = 0
   for (const p of list) {
     const i = products.findIndex((x) => normCode(x.code) === normCode(p.code))
     const merged: Product = i < 0 ? { ...p, updatedAt: Date.now() } : { ...products[i], name: p.name || products[i].name, pouchesPerCase: p.pouchesPerCase || products[i].pouchesPerCase, casesPerMix: p.casesPerMix || products[i].casesPerMix, cratesPerCart: p.cratesPerCart || products[i].cratesPerCart, pouchesPerCrate: p.pouchesPerCrate || products[i].pouchesPerCrate, casesPerPallet: p.casesPerPallet || products[i].casesPerPallet, updatedAt: Date.now() }
-    if (i < 0) products.push(merged); else products[i] = merged
+    if (i < 0) { products.push(merged); added++ } else { if (PRODUCT_FIELDS.some(([k]) => v(products[i][k]) !== v(merged[k]))) { changed++; logProductDiff(products[i], merged) } products[i] = merged }
     push('act_products', normCode(merged.code), rowOfProduct(merged))
   }
   set({ ...state, products })
+  logChange(null, 'Importó el CSV de productos', '', list.length + ' productos · ' + added + ' nuevos · ' + changed + ' con cambios', 'act_products', '')
 }
 export function setSchedule(date: string, code: string, n: number) {
-  set({ ...state, schedule: { ...state.schedule, [date]: { ...(state.schedule[date] ?? {}), [code.trim().toUpperCase()]: n } } })
+  const key = code.trim().toUpperCase(), before = state.schedule[date]?.[key] ?? 0
+  set({ ...state, schedule: { ...state.schedule, [date]: { ...(state.schedule[date] ?? {}), [key]: n } } })
   push('act_schedule', date + '|' + normCode(code), rowOfSchedule(date, code, n))
+  logChange(null, 'Programa ' + date + ' · ' + key + ' mezclas', v(before), v(n), 'act_schedule', date + '|' + normCode(code))
 }
 
 /** a row that arrived from the server (another tablet, the office): kept only if it is newer than what this device has */
@@ -233,6 +295,11 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
   } else if (table === 'act_schedule') {
     const date = String(row.date ?? '').slice(0, 10), code = String(row.code ?? '')
     set({ ...state, schedule: { ...state.schedule, [date]: { ...(state.schedule[date] ?? {}), [code]: Number(row.mixes ?? 0) } } })
+  } else if (table === 'act_changes') {
+    const cur = state.changes.find((c) => c.id === row.id)
+    if (!newer(cur)) return
+    const c: Change = { id: String(row.id), at: fromIso(row.at) ?? 0, by: String(row.by_name ?? ''), dept: (row.dept ?? null) as Dept | null, what: String(row.what ?? ''), before: String(row.before ?? ''), after: String(row.after ?? ''), refTable: String(row.ref_table ?? ''), refKey: String(row.ref_key ?? ''), updatedAt: at, deleted: !!row.deleted }
+    set({ ...state, changes: upsertIn(state.changes, c) })
   }
 }
 /** everything this device holds, queued for the server (the pilot's tablets bring their days along) */
@@ -243,6 +310,7 @@ export function uploadAll() {
   for (const x of state.stops) { push('act_stops', x.id, rowOfStop({ ...x, updatedAt: x.updatedAt || Date.now() })); n++ }
   for (const p of state.products) if (p.code.trim()) { push('act_products', normCode(p.code), rowOfProduct({ ...p, updatedAt: p.updatedAt || Date.now() })); n++ }
   for (const [date, codes] of Object.entries(state.schedule)) for (const [code, mixes] of Object.entries(codes)) { push('act_schedule', date + '|' + normCode(code), rowOfSchedule(date, code, mixes)); n++ }
+  for (const c of state.changes) { push('act_changes', c.id, rowOfChange(c)); n++ }
   return n
 }
 /** the office's CSV (columns found by their names, in Spanish or English) → products; returns what could be read */

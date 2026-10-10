@@ -194,3 +194,5 @@ tr.live td{background:#f1fbf5}
 .emps tr.off td{opacity:.55}
 .emps td.btns{display:flex;gap:6px}
 .err{color:var(--warn);font-weight:600}
+.changes td.was{color:var(--muted);text-decoration:line-through}
+.changes td{white-space:normal}

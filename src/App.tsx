@@ -535,6 +535,8 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
   const reasonsText = (x: (typeof rows)[number]) => Object.entries(x.st.reasons).map(([k, v]) => k + ' ' + fmtDur(v)).join(', ')
   const lineName = (x: { lineId: string | null; dept: Dept }) => (x.lineId === null ? 'Todo ' + x.dept : s.lines.find((l) => l.id === x.lineId)?.name ?? s.runs.find((r) => r.lineId === x.lineId)?.line ?? 'línea')
   const fileName = 'actividad-' + (only ? only.toLowerCase() + '-' : '') + date
+  // the history of that day (corrections, products, program, lines): the manager's and the office's
+  const changes = mgr ? s.changes.filter((c) => !c.deleted && dayOf(c.at) === date && (!only || c.dept === only)).sort((a, b) => a.at - b.at) : []
   /** the report as a PDF file and a CSV file, handed to the device's share sheet (Mail, Outlook, WhatsApp…);
    *  on a PC without one, the files download and the mail opens with the subject ready */
   const send = async () => {
@@ -564,7 +566,9 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
     const unitBody = unitRows.map((x) => ['', '', x.r.dept, x.r.line, x.r.code, x.r.lot, x.i + 1, fmtTime(x.u.at), CFG[x.r.dept].unit, x.u.qty != null ? x.u.qty + ' ' + CFG[x.r.dept].qtyUnit : '', x.u.ref, fmtDur(x.gap), x.u.by])
     const stopHead = ['', 'PAROS', 'Departamento', 'Línea', 'Razón', 'Detalle', 'Inicio', 'Fin', 'Duración', 'Registró']
     const stopBody = stops.map((x) => ['', '', x.dept, lineName(x), x.reason, x.note, fmtTime(x.startedAt), x.endedAt ? fmtTime(x.endedAt) : 'en curso', fmtDur((x.endedAt ?? now) - x.startedAt), x.by])
-    return '﻿' + [head, ...body, [], unitHead, ...unitBody, [], stopHead, ...stopBody].map((r) => r.map(q).join(',')).join('\r\n')
+    const chHead = ['', 'CAMBIOS', 'Hora', 'Quién', 'Departamento', 'Qué', 'Antes', 'Después']
+    const chBody = changes.map((c) => ['', '', fmtTime(c.at), c.by, c.dept ?? '', c.what, c.before, c.after])
+    return '﻿' + [head, ...body, [], unitHead, ...unitBody, [], stopHead, ...stopBody, ...(mgr ? [[], chHead, ...chBody] : [])].map((r) => r.map(q).join(',')).join('\r\n')
   }
   return (
     <section className="report">
@@ -626,7 +630,21 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
           </div>
         </>
       )}
-      <p className="hint foot">Demo guardado en este dispositivo. La versión completa manda todo en vivo al manager (oficina, teléfono o PC) y exporta a Excel, PDF y Google Sheets como la Hoja de Freezer RTE.</p>
+      {changes.length > 0 && (
+        <>
+          <h3>Cambios y correcciones · {changes.length}</h3>
+          <div className="twrap">
+            <table className="changes">
+              <thead><tr><th>Hora</th><th>Quién</th><th>Depto</th><th>Qué</th><th>Antes</th><th>Después</th></tr></thead>
+              <tbody>{changes.map((c) => (
+                <tr key={c.id}><td>{fmtTime(c.at)}</td><td>{c.by}</td><td>{c.dept ?? '—'}</td><td>{c.what}</td><td className="was">{c.before || '—'}</td><td><b>{c.after || '—'}</b></td></tr>
+              ))}</tbody>
+            </table>
+          </div>
+          <p className="hint">Cada corrección, cambio en la tabla de productos, en el programa del día o en las líneas queda aquí con quién lo hizo y a qué hora. Lo normal del día (carros, mezclas, paros) no sale aquí: ya lleva el nombre de quien lo registró.</p>
+        </>
+      )}
+      <p className="hint foot">{supabase ? 'Todo se guarda en el servidor y se ve en vivo desde la oficina, el teléfono o la PC.' : 'Demo guardado en este dispositivo. La versión completa manda todo en vivo al manager (oficina, teléfono o PC) y exporta a Excel, PDF y Google Sheets como la Hoja de Freezer RTE.'}</p>
       {runToEdit && <RunEditor s={s} run={runToEdit} mgr={mgr} onClose={() => setEditRun(null)} />}
       {stopToEdit && <StopEditor stop={stopToEdit} mgr={mgr} onClose={() => setEditStop(null)} />}
       {mgr && (

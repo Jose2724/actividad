@@ -13,7 +13,7 @@ const setStatus = (patch: Partial<SyncStatus>) => { status = { ...status, ...pat
 export const syncStore = { get: () => status, subscribe: (f: () => void) => { subs.add(f); return () => { subs.delete(f) } } }
 outbox.subscribe(() => setStatus({ pending: outbox.size() }))
 
-const TABLES: Table[] = ['act_lines', 'act_runs', 'act_stops', 'act_products', 'act_schedule']
+const TABLES: Table[] = ['act_lines', 'act_runs', 'act_stops', 'act_products', 'act_schedule', 'act_changes']
 const SINCE = 'act_since2' // the cursor is the server's synced_at (see migrations/003), not the tablets' clocks
 const since = () => { try { return localStorage.getItem(SINCE) || '' } catch { return '' } }
 const setSince = (v: string) => { try { localStorage.setItem(SINCE, v) } catch { /* full */ } }
@@ -32,6 +32,7 @@ export async function pullAll(): Promise<boolean> {
       let q = supabase.from(t).select('*').order('synced_at', { ascending: true }).limit(5000)
       if (from) q = q.gt('synced_at', from)
       const { data, error } = await q
+      if (error?.code === '42P01') continue // the table's SQL has not been run yet: nothing to pull from it
       if (error) { setStatus({ state: navigator.onLine ? 'online' : 'offline', lastError: error.message }); return false }
       for (const row of data ?? []) { applyRemote(t, row as Record<string, unknown>); const u = String((row as { synced_at?: string }).synced_at ?? ''); if (u > newest) newest = u }
     }
@@ -62,6 +63,7 @@ export function startSync() {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'act_stops' }, (p) => applyRemote('act_stops', p.new as Record<string, unknown>))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'act_products' }, (p) => applyRemote('act_products', p.new as Record<string, unknown>))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'act_schedule' }, (p) => applyRemote('act_schedule', p.new as Record<string, unknown>))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'act_changes' }, (p) => applyRemote('act_changes', p.new as Record<string, unknown>))
     .subscribe()
   window.addEventListener('online', () => { void pullAll(); void flushNow() })
   window.addEventListener('act-resync', () => { void pullAll(); void flushNow() })
