@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { flush, outbox, type Table } from './outbox'
-import { applyRemote } from './store'
+import { applyRemote, shareLocalLines } from './store'
 
 /**
  * Keeps this device and the server in step: what is queued goes up (outbox), what other tablets and the office
@@ -55,7 +55,7 @@ let started = false
 export function startSync() {
   if (!supabase || started) return
   started = true
-  void (async () => { await pullAll(); await flushNow() })()
+  void (async () => { await pullAll(); shareLocalLines(); await flushNow() })()
   supabase.channel('act-live')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'act_lines' }, (p) => applyRemote('act_lines', p.new as Record<string, unknown>))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'act_runs' }, (p) => applyRemote('act_runs', p.new as Record<string, unknown>))
@@ -67,5 +67,5 @@ export function startSync() {
   window.addEventListener('offline', () => setStatus({ state: 'offline' }))
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { void pullAll(); void flushNow() } })
   setInterval(() => { void flushNow() }, 20_000)
-  setInterval(() => { void pullAll() }, 3 * 60_000)
+  setInterval(() => { void pullAll() }, 60_000)
 }

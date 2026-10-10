@@ -69,7 +69,9 @@ export function lotFor(ds: string) {
 /** the office writes 889, the ticket and the boxes say 0889: a numeric code is the same with or without leading zeros */
 export const normCode = (c: string) => { const u = c.trim().toUpperCase(); return /^\d+$/.test(u) ? String(Number(u)) : u }
 
-function fresh(): State { return { lines: DEPTS.map((d) => ({ id: uid(), dept: d, name: CFG[d].lineWord + ' 1', updatedAt: 0 })), runs: [], stops: [], products: SAMPLE_PRODUCTS, schedule: {} } }
+/** with a server the lines (and products) are shared and come from it; without one, each device starts with a line per room */
+const SERVER = !!import.meta.env.VITE_SUPABASE_URL
+function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: CFG[d].lineWord + ' 1', updatedAt: 0 })), runs: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {} } }
 function load(): State {
   try {
     type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule }
@@ -118,7 +120,14 @@ const rowOfSchedule = (date: string, code: string, mixes: number) => ({ date, co
 
 // ---- the mutations: each one saves on the device and queues the row for the server ----
 const putLine = (l: Line) => { l = { ...l, updatedAt: Date.now() }; set({ ...state, lines: upsertIn(state.lines, l) }); push('act_lines', l.id, rowOfLine(l)) }
-const putRun = (r: Run) => { r = { ...r, updatedAt: Date.now() }; set({ ...state, runs: upsertIn(state.runs, r) }); push('act_runs', r.id, rowOfRun(r)) }
+const putRun = (r: Run) => {
+  // a line this device still holds only locally (from before the server) goes up first, so the run is seen on it everywhere
+  const line = state.lines.find((l) => l.id === r.lineId)
+  if (line && !line.updatedAt) putLine(line)
+  r = { ...r, updatedAt: Date.now() }; set({ ...state, runs: upsertIn(state.runs, r) }); push('act_runs', r.id, rowOfRun(r))
+}
+/** lines made before this device had a server: shared once, so every screen shows the same rooms */
+export function shareLocalLines() { for (const l of state.lines) if (!l.updatedAt) putLine(l) }
 const putStop = (x: Stop) => { x = { ...x, updatedAt: Date.now() }; set({ ...state, stops: upsertIn(state.stops, x) }); push('act_stops', x.id, rowOfStop(x)) }
 function upsertIn<T extends { id: string; deleted?: boolean }>(list: T[], item: T): T[] {
   const rest = list.filter((x) => x.id !== item.id)
