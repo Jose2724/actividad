@@ -349,7 +349,7 @@ function TargetDialog({ dept, unit, goal, onClose }: { dept: Dept; unit: string;
         <h3>Meta de {dept}</h3>
         <p>La ven todas las tablets de {dept} y queda en el historial. Deja en blanco la que no aplique.</p>
         <form onSubmit={(e) => { e.preventDefault(); setTarget(dept, num(hour), num(shift)); onClose() }} className="qform">
-          <label>Por hora <input autoFocus inputMode="numeric" placeholder={'ej. 400 ' + unit} value={hour} onChange={(e) => setHour(e.target.value.replace(/\D/g, ''))} /></label>
+          <label>Por hora <input autoFocus={!goal?.perHour && !goal?.perShift} inputMode="numeric" placeholder={'ej. 400 ' + unit} value={hour} onChange={(e) => setHour(e.target.value.replace(/\D/g, ''))} /></label>
           <label>Por turno <input inputMode="numeric" placeholder={'ej. 3200 ' + unit} value={shift} onChange={(e) => setShift(e.target.value.replace(/\D/g, ''))} /></label>
           <div className="dbtns">
             <button type="button" className="btn" onClick={onClose}>Cancelar</button>
@@ -551,6 +551,7 @@ function NoticeDialog({ title, text, onClose }: { title: string; text?: string; 
 }
 
 /** departments that type how much a unit carried (boxes on a pallet or in a bin) and its tag / bin number */
+/** a quantity already suggested (pouches per cart, cases per pallet) opens without the keyboard: a tap on "Guardar" takes it, a tap on the box changes it */
 function QtyDialog({ title, unit, refLabel, initial, decimal, onClose, onPick }: { title: string; unit: string; refLabel: string; initial: number | null; decimal?: boolean; onClose: () => void; onPick: (q: number, ref: string) => void }) {
   const [v, setV] = useState(initial != null ? String(initial) : '')
   const [ref, setRef] = useState('')
@@ -562,7 +563,7 @@ function QtyDialog({ title, unit, refLabel, initial, decimal, onClose, onPick }:
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
         <h3>{title}</h3>
         <form onSubmit={(e) => { e.preventDefault(); if (ok) onPick(n, ref.trim()) }} className="qform">
-          <label>{unit} <input autoFocus inputMode={decimal ? 'decimal' : 'numeric'} placeholder={unit} value={v} onChange={(e) => setV(clean(e.target.value))} /></label>
+          <label>{unit} <input autoFocus={initial == null} inputMode={decimal ? 'decimal' : 'numeric'} placeholder={unit} value={v} onChange={(e) => setV(clean(e.target.value))} /></label>
           {refLabel && <label>{refLabel} <small>(opcional)</small> <input inputMode="numeric" placeholder="ej. 1749" value={ref} onChange={(e) => setRef(e.target.value)} autoComplete="off" /></label>}
           <div className="dbtns">
             <button type="button" className="btn" onClick={onClose}>Cancelar</button>
