@@ -7,6 +7,7 @@ import { RunEditor, StopEditor } from './editors'
 import { fetchMe, loginEmail, supabase, type Me } from './supabase'
 import { startSync, syncStore, flushNow, pullAll } from './sync'
 import { uploadAll } from './store'
+import { Employees } from './Employees'
 
 /** a clock that ticks every second, so every timer on screen moves */
 function useNow() {
@@ -141,7 +142,7 @@ function Main({ name, home, mgr, onLogout }: { name: string; home: Dept; mgr: bo
   const s = useSyncExternalStore(store.subscribe, store.get)
   const now = useNow()
   const [dept, setDept] = useState<Dept>(home)
-  const [tab, setTab] = useState<'act' | 'av' | 'rep'>('act')
+  const [tab, setTab] = useState<'act' | 'av' | 'rep' | 'emp'>('act')
   return (
     <div className="app">
       <header className="top">
@@ -150,6 +151,7 @@ function Main({ name, home, mgr, onLogout }: { name: string; home: Dept; mgr: bo
           <button type="button" className={tab === 'act' ? 'on' : ''} onClick={() => setTab('act')}>Actividad</button>
           {mgr && <button type="button" className={tab === 'av' ? 'on' : ''} onClick={() => setTab('av')}>Avance</button>}
           <button type="button" className={tab === 'rep' ? 'on' : ''} onClick={() => setTab('rep')}>Reporte</button>
+          {mgr && supabase && <button type="button" className={tab === 'emp' ? 'on' : ''} onClick={() => setTab('emp')}>Empleados</button>}
         </nav>
         <div className="me"><SyncDot /> {name} · {mgr ? 'Manager' : home} <button type="button" className="lnk" onClick={onLogout}>{supabase ? 'Salir' : 'Cambiar'}</button></div>
       </header>
@@ -173,7 +175,7 @@ function Main({ name, home, mgr, onLogout }: { name: string; home: Dept; mgr: bo
           )}
           <DeptPanel key={dept} s={s} dept={mgr ? dept : home} now={now} mgr={mgr} />
         </div>
-      ) : tab === 'av' && mgr ? <Avance s={s} /> : <Report s={s} now={now} only={mgr ? undefined : home} mgr={mgr} />}
+      ) : tab === 'av' && mgr ? <Avance s={s} /> : tab === 'emp' && mgr && supabase ? <Employees /> : <Report s={s} now={now} only={mgr ? undefined : home} mgr={mgr} />}
     </div>
   )
 }

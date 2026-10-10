@@ -182,3 +182,11 @@ tr.live td{background:#f1fbf5}
   body{background:#fff}
 }
 .syncerr{font-weight:500;color:var(--warn)}
+/* the manager's people screen */
+.newemp{display:grid;gap:10px;background:var(--surface);border:1.5px solid var(--line);border-radius:14px;padding:12px}
+.newemp h3{margin:0;font-size:15px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.newemp .btn{justify-self:start}
+.emps select{min-height:36px;padding:0 8px;border-radius:10px;border:1.5px solid var(--line);background:var(--surface);font-size:15px}
+.emps tr.off td{opacity:.55}
+.emps td.btns{display:flex;gap:6px}
+.err{color:var(--warn);font-weight:600}
