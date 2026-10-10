@@ -14,7 +14,7 @@ export const syncStore = { get: () => status, subscribe: (f: () => void) => { su
 outbox.subscribe(() => setStatus({ pending: outbox.size() }))
 
 const TABLES: Table[] = ['act_lines', 'act_runs', 'act_stops', 'act_products', 'act_schedule']
-const SINCE = 'act_since'
+const SINCE = 'act_since2' // the cursor is the server's synced_at (see migrations/003), not the tablets' clocks
 const since = () => { try { return localStorage.getItem(SINCE) || '' } catch { return '' } }
 const setSince = (v: string) => { try { localStorage.setItem(SINCE, v) } catch { /* full */ } }
 
@@ -29,11 +29,11 @@ export async function pullAll(): Promise<boolean> {
     const from = since()
     let newest = from
     for (const t of TABLES) {
-      let q = supabase.from(t).select('*').order('updated_at', { ascending: true }).limit(5000)
-      if (from) q = q.gt('updated_at', from)
+      let q = supabase.from(t).select('*').order('synced_at', { ascending: true }).limit(5000)
+      if (from) q = q.gt('synced_at', from)
       const { data, error } = await q
       if (error) { setStatus({ state: navigator.onLine ? 'online' : 'offline', lastError: error.message }); return false }
-      for (const row of data ?? []) { applyRemote(t, row as Record<string, unknown>); const u = String((row as { updated_at?: string }).updated_at ?? ''); if (u > newest) newest = u }
+      for (const row of data ?? []) { applyRemote(t, row as Record<string, unknown>); const u = String((row as { synced_at?: string }).synced_at ?? ''); if (u > newest) newest = u }
     }
     if (newest) setSince(newest)
     setStatus({ state: 'online', lastSync: Date.now(), lastError: '' })
