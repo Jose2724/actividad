@@ -7,7 +7,8 @@ export const supabase: SupabaseClient | null = url && key ? createClient(url, ke
 
 /** the same people and PINs as Freezer RTE: a username becomes an address on a reserved domain */
 export const USER_DOMAIN = 'freezer.example.com'
-export const loginEmail = (username: string) => username.trim().toLowerCase() + '@' + USER_DOMAIN
+/** a username becomes an address on the reserved domain; the owner (a real e-mail, like in Freezer RTE) is used as typed */
+export const loginEmail = (user: string) => (user.includes('@') ? user.trim().toLowerCase() : user.trim().toLowerCase() + '@' + USER_DOMAIN)
 
 export type Me = { id: string; name: string; username: string; role: 'op' | 'mgr' | 'office'; dept: string }
 
