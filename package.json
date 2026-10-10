@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -p tsconfig.json && vite build --outDir docs",
+    "build": "tsc -p tsconfig.json && vite build --mode demo --outDir docs",
+    "build:vercel": "tsc -p tsconfig.json && vite build",
+    "build:localtest": "tsc -p tsconfig.json && vite build --mode localtest --outDir dist-localtest",
     "preview": "vite preview"
   },
   "dependencies": {

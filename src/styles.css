@@ -43,7 +43,11 @@ input[type=text],input:not([type]),input[type=date]{min-height:48px;padding:0 12
 .tabs{display:flex;gap:4px;background:var(--bg);padding:4px;border-radius:12px;margin-left:auto}
 .tabs button{border:0;background:none;padding:8px 14px;border-radius:9px;font-weight:600;color:var(--muted)}
 .tabs button.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
-.me{font-weight:600}
+.me{font-weight:600;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.syncdot{border:0;background:none;font-size:13px;font-weight:600;color:var(--muted);padding:4px 6px;border-radius:8px}
+.syncdot.ok{color:var(--ok)}
+.syncdot.amber{color:var(--amber)}
+.gate form input[type=password]{letter-spacing:.2em}
 .main{display:flex;flex:1;min-height:0}
 .side{width:200px;flex:none;padding:12px;display:flex;flex-direction:column;gap:6px;border-right:1px solid var(--line);background:var(--surface)}
 .dept{display:flex;align-items:center;justify-content:space-between;min-height:54px;padding:0 14px;border-radius:12px;border:1.5px solid transparent;background:none;font-weight:700;font-size:17px;text-align:left}

@@ -4,6 +4,9 @@ import { avanceRows, n1, pending, type AvanceRow } from './avance'
 import { whoText } from './store'
 import { buildPdf, loadPdf } from './pdf'
 import { RunEditor, StopEditor } from './editors'
+import { fetchMe, loginEmail, supabase, type Me } from './supabase'
+import { startSync, syncStore, flushNow, pullAll } from './sync'
+import { uploadAll } from './store'
 
 /** a clock that ticks every second, so every timer on screen moves */
 function useNow() {
@@ -15,6 +18,77 @@ function useNow() {
 const isDept = (v: string): v is Dept => (DEPTS as string[]).includes(v)
 
 export default function App() {
+  return supabase ? <ServerApp /> : <DemoApp />
+}
+
+/** with a server: the same people and PINs as Freezer RTE; the role and department come from the employees table */
+function ServerApp() {
+  const [me, setMe] = useState<Me | null | 'none' | 'loading'>('loading')
+  const [err, setErr] = useState('')
+  const load = async () => {
+    try { setMe(await fetchMe()); setErr('') } catch (e) { setMe(null); setErr(String((e as Error).message ?? e)) }
+  }
+  useEffect(() => { void load() }, [])
+  useEffect(() => {
+    if (me && me !== 'none' && me !== 'loading') { user.set(me.name); role.set(me.role === 'op' ? 'op' : 'mgr'); myDept.set(me.dept); startSync() }
+  }, [me])
+  const out = async () => { await supabase!.auth.signOut(); user.set(''); setMe(null) }
+  if (me === 'loading') return <div className="gate"><h1>Actividad</h1><p>Entrando…</p></div>
+  if (me === null) return <LoginGate error={err} onDone={load} />
+  if (me === 'none') return <NoRole onOut={out} onRetry={load} />
+  const home = isDept(me.dept) ? me.dept : DEPTS[0]
+  if (me.role === 'op' && !isDept(me.dept)) return <NoRole onOut={out} onRetry={load} text={'Tu usuario está en Actividad pero sin departamento. Pide al manager que te asigne uno.'} />
+  return <Main name={me.name} home={home} mgr={me.role !== 'op'} onLogout={() => void out()} />
+}
+
+function LoginGate({ error, onDone }: { error: string; onDone: () => Promise<void> }) {
+  const [u, setU] = useState('')
+  const [pin, setPin] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState(error)
+  const go = async () => {
+    setBusy(true); setMsg('')
+    const { error: e } = await supabase!.auth.signInWithPassword({ email: loginEmail(u), password: pin })
+    setBusy(false)
+    if (e) { setMsg(/invalid/i.test(e.message) ? 'Usuario o PIN incorrectos.' : /fetch|network/i.test(e.message) ? 'Sin conexión. Revisa el WiFi e intenta otra vez.' : e.message); return }
+    await onDone()
+  }
+  return (
+    <div className="gate">
+      <h1>Actividad</h1>
+      <p>Entra con tu usuario y PIN (los mismos de Freezer RTE).</p>
+      <form onSubmit={(e) => { e.preventDefault(); if (u.trim() && pin) void go() }}>
+        <input autoFocus placeholder="Usuario" autoCapitalize="none" autoCorrect="off" autoComplete="username" value={u} onChange={(e) => setU(e.target.value)} />
+        <input type="password" inputMode="numeric" placeholder="PIN" autoComplete="current-password" value={pin} onChange={(e) => setPin(e.target.value)} />
+        {msg && <span className="err">{msg}</span>}
+        <button className="btn primary" type="submit" disabled={busy || !u.trim() || !pin}>{busy ? 'Entrando…' : 'Entrar'}</button>
+      </form>
+      <small>Cada registro lleva el nombre de quien entró. Si no tienes usuario, pídelo al manager.</small>
+    </div>
+  )
+}
+
+function NoRole({ onOut, onRetry, text }: { onOut: () => void; onRetry: () => void; text?: string }) {
+  return (
+    <div className="gate">
+      <h1>Actividad</h1>
+      <p>{text ?? 'Tu usuario existe, pero todavía no tiene acceso a Actividad. Pide al manager que te lo active.'}</p>
+      <div className="btns"><button type="button" className="btn" onClick={onRetry}>Reintentar</button><button type="button" className="lnk" onClick={onOut}>Cerrar sesión</button></div>
+    </div>
+  )
+}
+
+/** the dot next to the name: in step with the server, something waiting to go up, or no signal */
+function SyncDot() {
+  const st = useSyncExternalStore(syncStore.subscribe, syncStore.get)
+  if (st.state === 'local') return null
+  const text = st.pending ? 'Pendiente ' + st.pending : st.state === 'offline' ? 'Sin conexión' : st.state === 'signedOut' ? 'Sin sesión' : st.state === 'connecting' ? 'Conectando…' : 'Sincronizado'
+  const cls = st.pending || st.state === 'offline' ? 'amber' : st.state === 'online' ? 'ok' : ''
+  return <button type="button" className={'syncdot ' + cls} title={st.lastError || text} onClick={() => { void pullAll(); void flushNow() }}>● {text}</button>
+}
+
+/** without a server (the public demo): a department and a name, or the manager with a code */
+function DemoApp() {
   const [name, setName] = useState(user.get())
   const [dept, setDept] = useState(myDept.get())
   const [who, setWho] = useState(role.get())
@@ -77,7 +151,7 @@ function Main({ name, home, mgr, onLogout }: { name: string; home: Dept; mgr: bo
           {mgr && <button type="button" className={tab === 'av' ? 'on' : ''} onClick={() => setTab('av')}>Avance</button>}
           <button type="button" className={tab === 'rep' ? 'on' : ''} onClick={() => setTab('rep')}>Reporte</button>
         </nav>
-        <div className="me">{name} · {mgr ? 'Manager' : home} <button type="button" className="lnk" onClick={onLogout}>Cambiar</button></div>
+        <div className="me"><SyncDot /> {name} · {mgr ? 'Manager' : home} <button type="button" className="lnk" onClick={onLogout}>{supabase ? 'Salir' : 'Cambiar'}</button></div>
       </header>
       {tab === 'act' ? (
         <div className="main">
@@ -182,7 +256,7 @@ function Products({ s }: { s: State }) {
         </table>
       </div>
       <div className="btns">
-        <button type="button" className="btn" onClick={() => saveProduct(s.products.length, { code: '', name: '', pouchesPerCase: 0, casesPerMix: 0, cratesPerCart: CRATES_PER_CART, pouchesPerCrate: 0, casesPerPallet: 0 })}>+ Agregar producto</button>
+        <button type="button" className="btn" onClick={() => saveProduct(s.products.length, { code: '', name: '', pouchesPerCase: 0, casesPerMix: 0, cratesPerCart: CRATES_PER_CART, pouchesPerCrate: 0, casesPerPallet: 0, updatedAt: 0 })}>+ Agregar producto</button>
         <label className="btn file">⬆ Importar CSV de la oficina
           <input type="file" accept=".csv,text/csv" hidden onChange={async (e) => {
             const f = e.target.files?.[0]; e.target.value = ''
@@ -419,6 +493,8 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
   const [newPin, setNewPin] = useState('')
   const [editRun, setEditRun] = useState<string | null>(null)
   const [editStop, setEditStop] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [notice, setNotice] = useState<{ title: string; text?: string } | null>(null)
   const runToEdit = editRun ? s.runs.find((r) => r.id === editRun) : undefined
   const stopToEdit = editStop ? s.stops.find((x) => x.id === editStop) : undefined
   useEffect(() => { void loadPdf() }, [])
@@ -539,9 +615,12 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
         <div className="btns">
           <button type="button" className="lnk" onClick={() => setClearing(true)}>Reiniciar registros (conserva productos y líneas)</button>
           <button type="button" className="lnk" onClick={() => setResetting(true)}>Borrar todo</button>
-          <button type="button" className="lnk" onClick={() => { setNewPin(''); setPinOpen(true) }}>Cambiar código de manager</button>
+          {!supabase && <button type="button" className="lnk" onClick={() => { setNewPin(''); setPinOpen(true) }}>Cambiar código de manager</button>}
+          {supabase && <button type="button" className="lnk" onClick={() => setUploading(true)}>Subir al servidor los registros de este aparato</button>}
         </div>
       )}
+      {uploading && <ConfirmDialog title="¿Subir al servidor todo lo que tiene este aparato?" text="Corridas, paros, líneas, productos y programado de este aparato se mandan al servidor (lo que ya estaba allá se conserva si es más nuevo). Útil una sola vez por tablet, para traer los días del piloto." yes="Subir" onYes={() => { const n = uploadAll(); setUploading(false); setNotice({ title: n + ' registros en cola', text: 'Se envían en cuanto hay señal. El punto junto a tu nombre dice "Sincronizado" cuando terminó.' }) }} onNo={() => setUploading(false)} />}
+      {notice && <NoticeDialog title={notice.title} text={notice.text} onClose={() => setNotice(null)} />}
       {pinOpen && (
         <div className="veil" onClick={() => setPinOpen(false)}>
           <div className="dlg" onClick={(e) => e.stopPropagation()}>
