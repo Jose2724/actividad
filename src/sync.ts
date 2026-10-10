@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { flush, outbox, type Table } from './outbox'
-import { applyRemote, shareLocalLines } from './store'
+import { applyRemote, myDept, role, shareLocalLines } from './store'
 
 /**
  * Keeps this device and the server in step: what is queued goes up (outbox), what other tablets and the office
@@ -55,7 +55,7 @@ let started = false
 export function startSync() {
   if (!supabase || started) return
   started = true
-  void (async () => { await pullAll(); shareLocalLines(); await flushNow() })()
+  void (async () => { await pullAll(); shareLocalLines((dept) => role.get() !== 'op' || dept === myDept.get()); await flushNow() })()
   supabase.channel('act-live')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'act_lines' }, (p) => applyRemote('act_lines', p.new as Record<string, unknown>))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'act_runs' }, (p) => applyRemote('act_runs', p.new as Record<string, unknown>))

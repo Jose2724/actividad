@@ -126,8 +126,15 @@ const putRun = (r: Run) => {
   if (line && !line.updatedAt) putLine(line)
   r = { ...r, updatedAt: Date.now() }; set({ ...state, runs: upsertIn(state.runs, r) }); push('act_runs', r.id, rowOfRun(r))
 }
-/** lines made before this device had a server: shared once, so every screen shows the same rooms */
-export function shareLocalLines() { for (const l of state.lines) if (!l.updatedAt) putLine(l) }
+/**
+ * lines made before this device had a server: the ones of the rooms this person may write are shared once, so every
+ * screen shows the same rooms; the rest (an operator's leftover lines of other rooms) are dropped from the device
+ */
+export function shareLocalLines(canWrite: (dept: Dept) => boolean) {
+  const keep = state.lines.filter((l) => l.updatedAt || canWrite(l.dept))
+  if (keep.length !== state.lines.length) set({ ...state, lines: keep })
+  for (const l of keep) if (!l.updatedAt) putLine(l)
+}
 const putStop = (x: Stop) => { x = { ...x, updatedAt: Date.now() }; set({ ...state, stops: upsertIn(state.stops, x) }); push('act_stops', x.id, rowOfStop(x)) }
 function upsertIn<T extends { id: string; deleted?: boolean }>(list: T[], item: T): T[] {
   const rest = list.filter((x) => x.id !== item.id)
