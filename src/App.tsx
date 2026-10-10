@@ -63,7 +63,8 @@ function LoginGate({ error, onDone }: { error: string; onDone: () => Promise<voi
       <p>Entra con tu usuario y PIN (los mismos de Freezer RTE).</p>
       <form onSubmit={(e) => { e.preventDefault(); if (u.trim() && pin) void go() }}>
         <input autoFocus placeholder="Usuario (o tu correo)" autoCapitalize="none" autoCorrect="off" autoComplete="username" value={u} onChange={(e) => setU(e.target.value)} />
-        <input type="password" inputMode="numeric" placeholder="PIN" autoComplete="current-password" value={pin} onChange={(e) => setPin(e.target.value)} />
+        {/* a department user has a numeric PIN (number pad); an account typed as an e-mail has a real password, so the full keyboard */}
+        <input type="password" inputMode={u.includes('@') ? 'text' : 'numeric'} placeholder={u.includes('@') ? 'Contraseña' : 'PIN'} autoComplete="current-password" value={pin} onChange={(e) => setPin(e.target.value)} />
         {msg && <span className="err">{msg}</span>}
         <button className="btn primary" type="submit" disabled={busy || !u.trim() || !pin}>{busy ? 'Entrando…' : 'Entrar'}</button>
       </form>
