@@ -6,7 +6,7 @@ import { ConfirmDialog } from './App'
 type Emp = { id: string; name: string; username: string | null; role: string; active: boolean; act_role: 'op' | 'mgr' | 'office' | null; act_dept: string | null; deleted?: boolean }
 const ERRORS: Record<string, string> = {
   not_signed_in: 'No hay sesión.', not_manager: 'Solo un manager puede hacer esto.', bad_name: 'Falta el nombre.', bad_username: 'Usuario: 3 a 30 letras, números, punto o guion, sin espacios.',
-  bad_pin: 'PIN: de 4 a 12 números.', bad_dept: 'Un operador necesita departamento.', username_taken: 'Ese usuario ya existe.', not_found: 'No se encontró.', owner_protected: 'Esa cuenta no se puede tocar.', not_self: 'No puedes quitarte el acceso a ti mismo.',
+  bad_pin: 'PIN: de 6 a 12 números.', bad_dept: 'Un operador necesita departamento.', username_taken: 'Ese usuario ya existe.', not_found: 'No se encontró.', owner_protected: 'Esa cuenta no se puede tocar.', not_self: 'No puedes quitarte el acceso a ti mismo.',
 }
 
 /** The manager's people screen: who may use Actividad, with what role and department; new accounts with their PIN. */
@@ -42,11 +42,11 @@ export function Employees() {
         <div className="egrid">
           <label>Nombre <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoComplete="off" /></label>
           <label>Usuario <input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value.toLowerCase() })} autoCapitalize="none" autoComplete="off" placeholder="ej. maria.rte" /></label>
-          <label>PIN (4–12 números) <input value={form.pin} inputMode="numeric" onChange={(e) => setForm({ ...form, pin: e.target.value.replace(/\D/g, '') })} autoComplete="off" /></label>
+          <label>PIN (6–12 números) <input value={form.pin} inputMode="numeric" onChange={(e) => setForm({ ...form, pin: e.target.value.replace(/\D/g, '') })} autoComplete="off" /></label>
           <label>Rol <select value={form.act_role} onChange={(e) => setForm({ ...form, act_role: e.target.value })}><option value="op">Operador</option><option value="mgr">Manager</option><option value="office">Oficina</option></select></label>
           {form.act_role === 'op' && <label>Departamento <select value={form.act_dept} onChange={(e) => setForm({ ...form, act_dept: e.target.value })}>{DEPTS.map((d) => <option key={d} value={d}>{d}</option>)}</select></label>}
         </div>
-        <button className="btn primary" type="submit" disabled={busy || !form.name.trim() || !form.username.trim() || form.pin.length < 4}>Crear usuario</button>
+        <button className="btn primary" type="submit" disabled={busy || !form.name.trim() || !form.username.trim() || form.pin.length < 6}>Crear usuario</button>
       </form>
       {list === null ? <p className="hint">Cargando…</p> : (
         <div className="twrap">
@@ -73,8 +73,8 @@ export function Employees() {
           <div className="dlg" onClick={(ev) => ev.stopPropagation()}>
             <h3>Nuevo PIN para {pinFor.name}</h3>
             <form className="qform" onSubmit={(ev) => { ev.preventDefault(); void call({ action: 'set_pin', id: pinFor.id, pin: newPin }).then((ok) => { if (ok) setPinFor(null) }) }}>
-              <label>PIN (4–12 números) <input autoFocus inputMode="numeric" value={newPin} onChange={(ev) => setNewPin(ev.target.value.replace(/\D/g, ''))} autoComplete="off" /></label>
-              <div className="dbtns"><button type="button" className="btn" onClick={() => setPinFor(null)}>Cancelar</button><button type="submit" className="btn primary" disabled={busy || newPin.length < 4}>Guardar</button></div>
+              <label>PIN (6–12 números) <input autoFocus inputMode="numeric" value={newPin} onChange={(ev) => setNewPin(ev.target.value.replace(/\D/g, ''))} autoComplete="off" /></label>
+              <div className="dbtns"><button type="button" className="btn" onClick={() => setPinFor(null)}>Cancelar</button><button type="submit" className="btn primary" disabled={busy || newPin.length < 6}>Guardar</button></div>
             </form>
           </div>
         </div>

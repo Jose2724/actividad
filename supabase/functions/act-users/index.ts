@@ -28,7 +28,7 @@ Deno.serve(async (req) => {
     const body = await req.json()
     const actRoleOf = (r: unknown) => (['op', 'mgr', 'office'].includes(String(r)) ? String(r) : 'op')
     const deptOf = (d: unknown) => (DEPTS.includes(String(d)) ? String(d) : null)
-    const pinOk = (p: unknown) => /^\d{4,12}$/.test(String(p ?? ''))
+    const pinOk = (p: unknown) => /^\d{6,12}$/.test(String(p ?? ''))  // Supabase Auth wants at least 6
     const target = async () => {
       const { data } = await admin.from('employees').select('id, user_id, role, active, act_role').eq('id', String(body.id ?? '')).maybeSingle()
       return data
