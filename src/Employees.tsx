@@ -4,7 +4,6 @@ import { DEPTS } from './store'
 import { ConfirmDialog } from './App'
 
 type Emp = { id: string; name: string; username: string | null; role: string; active: boolean; act_role: 'op' | 'mgr' | 'office' | null; act_dept: string | null; deleted?: boolean }
-const ROLE_TEXT: Record<string, string> = { op: 'Operador', mgr: 'Manager', office: 'Oficina' }
 const ERRORS: Record<string, string> = {
   not_signed_in: 'No hay sesión.', not_manager: 'Solo un manager puede hacer esto.', bad_name: 'Falta el nombre.', bad_username: 'Usuario: 3 a 30 letras, números, punto o guion, sin espacios.',
   bad_pin: 'PIN: de 4 a 12 números.', bad_dept: 'Un operador necesita departamento.', username_taken: 'Ese usuario ya existe.', not_found: 'No se encontró.', owner_protected: 'Esa cuenta no se puede tocar.', not_self: 'No puedes quitarte el acceso a ti mismo.',
