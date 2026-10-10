@@ -224,3 +224,8 @@ tr.live td{background:#f1fbf5}
 .dname{display:grid;gap:1px}
 .goalmini{font-size:11px;color:var(--muted);font-weight:500;white-space:nowrap}
 @media (max-width:700px){.tc-main{grid-template-columns:1fr}.tc-rate{text-align:left}}
+.psearch{display:flex;align-items:center;gap:6px;flex:1;min-width:220px}
+.psearch input{min-height:40px;padding:0 10px;font-size:16px;width:100%;max-width:320px}
+.psearch small{color:var(--muted);white-space:nowrap}
+.products .twrap{max-height:min(70vh,640px);overflow:auto}
+.products thead th{position:sticky;top:0;z-index:1;background:var(--surface);box-shadow:0 1px 0 var(--line)}

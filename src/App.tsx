@@ -239,9 +239,13 @@ function Products({ s }: { s: State }) {
   const num = (v: string) => Number(v.replace(',', '.')) || 0
   const upd = (i: number, p: Product, patch: Partial<Product>) => saveProduct(i, { ...p, ...patch })
   const [unlocked, setUnlocked] = useState(false)
+  const [q, setQ] = useState('')
   const [removeIdx, setRemoveIdx] = useState<number | null>(null)
   const [notice, setNotice] = useState<{ title: string; text?: string } | null>(null)
   const show = (v: number) => (v ? String(v) : '—')
+  // the search keeps each product's place in the full list, so an edit or a removal lands on the right row
+  const needle = q.trim().toUpperCase()
+  const shown = s.products.map((p, i) => ({ p, i })).filter(({ p }) => !needle || p.code.toUpperCase().includes(needle) || normCode(p.code).includes(normCode(needle)) || p.name.toUpperCase().includes(needle))
   const exportCsv = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([productsCsv(s.products)], { type: 'text/csv;charset=utf-8' })); a.download = 'productos.csv'; a.click() }
   return (
     <div className={'products' + (unlocked ? ' editing' : '')}>
@@ -249,6 +253,11 @@ function Products({ s }: { s: State }) {
       {notice && <NoticeDialog title={notice.title} text={notice.text} onClose={() => setNotice(null)} />}
       <div className="phead">
         <h3>{unlocked ? '✎ Editando productos' : '🔒 Productos · la tabla maestra de la oficina'}</h3>
+        <div className="psearch">
+          <input type="search" placeholder="Buscar código o producto" value={q} onChange={(e) => setQ(e.target.value)} autoComplete="off" autoCapitalize="none" />
+          {q && <button type="button" className="lnk" onClick={() => setQ('')}>✕</button>}
+          <small>{needle ? shown.length + ' de ' : ''}{s.products.length}</small>
+        </div>
         <button type="button" className={'btn' + (unlocked ? ' primary' : '')} onClick={() => setUnlocked(!unlocked)}>{unlocked ? '✓ Listo, bloquear' : '✎ Editar'}</button>
       </div>
       <div className="twrap">
@@ -256,7 +265,8 @@ function Products({ s }: { s: State }) {
           <thead><tr><th>Código</th><th>Producto</th><th>Pouches / caja</th><th>Cajas / mezcla (yield)</th><th>Guacales / carro</th><th>Pouches / guacal</th><th>Cajas / pallet</th>{unlocked && <th></th>}</tr></thead>
           <tbody>
             {s.products.length === 0 && <tr><td colSpan={8}><i>No hay productos todavía.{!unlocked && ' Toca "Editar" para escribirlos o importar el CSV de la oficina.'}</i></td></tr>}
-            {s.products.map((p, i) => unlocked ? (
+            {s.products.length > 0 && shown.length === 0 && <tr><td colSpan={8}><i>Ningún producto con "{q.trim()}".</i></td></tr>}
+            {shown.map(({ p, i }) => unlocked ? (
               <tr key={s.products.length + ':' + i}>
                 <td><input className="code" value={p.code} onChange={(e) => upd(i, p, { code: e.target.value.toUpperCase() })} autoComplete="off" /></td>
                 <td><input className="name" value={p.name} onChange={(e) => upd(i, p, { name: e.target.value })} autoComplete="off" /></td>
@@ -277,7 +287,7 @@ function Products({ s }: { s: State }) {
         </table>
       </div>
       <div className="btns">
-        {unlocked && <button type="button" className="btn" onClick={() => saveProduct(s.products.length, { code: '', name: '', pouchesPerCase: 0, casesPerMix: 0, cratesPerCart: CRATES_PER_CART, pouchesPerCrate: 0, casesPerPallet: 0, updatedAt: 0 })}>+ Agregar producto</button>}
+        {unlocked && <button type="button" className="btn" onClick={() => { setQ(''); saveProduct(s.products.length, { code: '', name: '', pouchesPerCase: 0, casesPerMix: 0, cratesPerCart: CRATES_PER_CART, pouchesPerCrate: 0, casesPerPallet: 0, updatedAt: 0 }) }}>+ Agregar producto</button>}
         {unlocked && <label className="btn file">⬆ Importar CSV de la oficina
           <input type="file" accept=".csv,text/csv" hidden onChange={async (e) => {
             const f = e.target.files?.[0]; e.target.value = ''
