@@ -229,37 +229,51 @@ function Avance({ s }: { s: State }) {
   )
 }
 
-/** the master table, typed on the device (the examples are made up) */
+/** the master table: read-only until "Editar", so a stray tap on a tablet cannot change a yield; every change saves itself */
 function Products({ s }: { s: State }) {
   const num = (v: string) => Number(v.replace(',', '.')) || 0
   const upd = (i: number, p: Product, patch: Partial<Product>) => saveProduct(i, { ...p, ...patch })
+  const [unlocked, setUnlocked] = useState(false)
   const [removeIdx, setRemoveIdx] = useState<number | null>(null)
   const [notice, setNotice] = useState<{ title: string; text?: string } | null>(null)
+  const show = (v: number) => (v ? String(v) : '—')
+  const exportCsv = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([productsCsv(s.products)], { type: 'text/csv;charset=utf-8' })); a.download = 'productos.csv'; a.click() }
   return (
-    <div className="products">
+    <div className={'products' + (unlocked ? ' editing' : '')}>
       {removeIdx != null && <ConfirmDialog title={'¿Quitar ' + (s.products[removeIdx]?.code || 'este producto') + ' de la tabla?'} yes="Quitar" danger onYes={() => { removeProduct(removeIdx); setRemoveIdx(null) }} onNo={() => setRemoveIdx(null)} />}
       {notice && <NoticeDialog title={notice.title} text={notice.text} onClose={() => setNotice(null)} />}
-      <h3>Productos · la tabla maestra de la oficina</h3>
+      <div className="phead">
+        <h3>{unlocked ? '✎ Editando productos' : '🔒 Productos · la tabla maestra de la oficina'}</h3>
+        <button type="button" className={'btn' + (unlocked ? ' primary' : '')} onClick={() => setUnlocked(!unlocked)}>{unlocked ? '✓ Listo, bloquear' : '✎ Editar'}</button>
+      </div>
       <div className="twrap">
         <table>
-          <thead><tr><th>Código</th><th>Producto</th><th>Pouches / caja</th><th>Cajas / mezcla (yield)</th><th>Guacales / carro</th><th>Pouches / guacal</th><th>Cajas / pallet</th><th></th></tr></thead>
-          <tbody>{s.products.map((p, i) => (
-            <tr key={s.products.length + ':' + i}>
-              <td><input className="code" value={p.code} onChange={(e) => upd(i, p, { code: e.target.value.toUpperCase() })} autoComplete="off" /></td>
-              <td><input className="name" value={p.name} onChange={(e) => upd(i, p, { name: e.target.value })} autoComplete="off" /></td>
-              <td><input className="num" inputMode="decimal" defaultValue={p.pouchesPerCase || ''} onBlur={(e) => upd(i, p, { pouchesPerCase: num(e.target.value) })} /></td>
-              <td><input className="num" inputMode="decimal" defaultValue={p.casesPerMix || ''} onBlur={(e) => upd(i, p, { casesPerMix: num(e.target.value) })} /></td>
-              <td><input className="num" inputMode="decimal" defaultValue={p.cratesPerCart || ''} onBlur={(e) => upd(i, p, { cratesPerCart: num(e.target.value) })} /></td>
-              <td><input className="num" inputMode="decimal" defaultValue={p.pouchesPerCrate || ''} onBlur={(e) => upd(i, p, { pouchesPerCrate: num(e.target.value) })} /></td>
-              <td><input className="num" inputMode="decimal" defaultValue={p.casesPerPallet || ''} onBlur={(e) => upd(i, p, { casesPerPallet: num(e.target.value) })} /></td>
-              <td><button type="button" className="lnk" onClick={() => setRemoveIdx(i)}>✕</button></td>
-            </tr>
-          ))}</tbody>
+          <thead><tr><th>Código</th><th>Producto</th><th>Pouches / caja</th><th>Cajas / mezcla (yield)</th><th>Guacales / carro</th><th>Pouches / guacal</th><th>Cajas / pallet</th>{unlocked && <th></th>}</tr></thead>
+          <tbody>
+            {s.products.length === 0 && <tr><td colSpan={8}><i>No hay productos todavía.{!unlocked && ' Toca "Editar" para escribirlos o importar el CSV de la oficina.'}</i></td></tr>}
+            {s.products.map((p, i) => unlocked ? (
+              <tr key={s.products.length + ':' + i}>
+                <td><input className="code" value={p.code} onChange={(e) => upd(i, p, { code: e.target.value.toUpperCase() })} autoComplete="off" /></td>
+                <td><input className="name" value={p.name} onChange={(e) => upd(i, p, { name: e.target.value })} autoComplete="off" /></td>
+                <td><input className="num" inputMode="decimal" defaultValue={p.pouchesPerCase || ''} onBlur={(e) => upd(i, p, { pouchesPerCase: num(e.target.value) })} /></td>
+                <td><input className="num" inputMode="decimal" defaultValue={p.casesPerMix || ''} onBlur={(e) => upd(i, p, { casesPerMix: num(e.target.value) })} /></td>
+                <td><input className="num" inputMode="decimal" defaultValue={p.cratesPerCart || ''} onBlur={(e) => upd(i, p, { cratesPerCart: num(e.target.value) })} /></td>
+                <td><input className="num" inputMode="decimal" defaultValue={p.pouchesPerCrate || ''} onBlur={(e) => upd(i, p, { pouchesPerCrate: num(e.target.value) })} /></td>
+                <td><input className="num" inputMode="decimal" defaultValue={p.casesPerPallet || ''} onBlur={(e) => upd(i, p, { casesPerPallet: num(e.target.value) })} /></td>
+                <td><button type="button" className="lnk" onClick={() => setRemoveIdx(i)}>✕</button></td>
+              </tr>
+            ) : (
+              <tr key={p.code + ':' + i}>
+                <td><b className="mono">{p.code}</b></td><td>{p.name}</td>
+                <td className="r">{show(p.pouchesPerCase)}</td><td className="r">{show(p.casesPerMix)}</td><td className="r">{show(p.cratesPerCart)}</td><td className="r">{show(p.pouchesPerCrate)}</td><td className="r">{show(p.casesPerPallet)}</td>
+              </tr>
+            ))}
+          </tbody>
         </table>
       </div>
       <div className="btns">
-        <button type="button" className="btn" onClick={() => saveProduct(s.products.length, { code: '', name: '', pouchesPerCase: 0, casesPerMix: 0, cratesPerCart: CRATES_PER_CART, pouchesPerCrate: 0, casesPerPallet: 0, updatedAt: 0 })}>+ Agregar producto</button>
-        <label className="btn file">⬆ Importar CSV de la oficina
+        {unlocked && <button type="button" className="btn" onClick={() => saveProduct(s.products.length, { code: '', name: '', pouchesPerCase: 0, casesPerMix: 0, cratesPerCart: CRATES_PER_CART, pouchesPerCrate: 0, casesPerPallet: 0, updatedAt: 0 })}>+ Agregar producto</button>}
+        {unlocked && <label className="btn file">⬆ Importar CSV de la oficina
           <input type="file" accept=".csv,text/csv" hidden onChange={async (e) => {
             const f = e.target.files?.[0]; e.target.value = ''
             if (!f) return
@@ -267,10 +281,12 @@ function Products({ s }: { s: State }) {
             if (!list.length) { setNotice({ title: 'No encontré productos en ese archivo', text: 'Debe tener una columna "Código" y una fila por producto.' }); return }
             mergeProducts(list); setNotice({ title: list.length + ' productos cargados', text: 'Los códigos que ya existían se actualizaron; los nuevos se agregaron.' })
           }} />
-        </label>
-        <button type="button" className="btn" onClick={() => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([productsCsv(s.products)], { type: 'text/csv;charset=utf-8' })); a.download = 'productos.csv'; a.click() }}>⬇ Exportar CSV</button>
+        </label>}
+        <button type="button" className="btn" onClick={exportCsv}>⬇ Exportar CSV</button>
       </div>
-      <p className="hint">Los productos de ejemplo son inventados. Escribe aquí los códigos y números reales de la planta, o importa el CSV sacado del Excel de la oficina (columnas: Código, Producto, Pouches por caja, Cajas por mezcla, Cajas por pallet, Guacales por carro, Pouches por guacal). Todo se guarda solo en este dispositivo.</p>
+      <p className="hint">{unlocked
+        ? 'Cada cambio se guarda solo al salir de la casilla' + (supabase ? ' y baja a todas las tablets' : '') + '. Columnas del CSV de la oficina: Código, Producto, Pouches por caja, Cajas por mezcla, Cajas por pallet, Guacales por carro, Pouches por guacal.'
+        : supabase ? 'Con estos números se calculan el Avance y los pouches por carro en todas las tablets. Para cambiar algo, toca "Editar".' : 'Los productos de ejemplo son inventados; todo se guarda solo en este dispositivo. Para cambiar algo, toca "Editar".'}</p>
     </div>
   )
 }

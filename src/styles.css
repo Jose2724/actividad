@@ -149,6 +149,10 @@ tr.live td{background:#f1fbf5}
 .products{display:grid;gap:10px;background:var(--surface);border:1.5px solid var(--accent);border-radius:14px;padding:12px;max-width:100%}
 .products input{min-height:38px;padding:0 8px;font-size:16px}
 .products input.code{width:110px;font-family:ui-monospace,Menlo,Consolas,monospace}
+.products .phead{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.products .phead h3{margin:0}
+.products td.r{text-align:right;font-variant-numeric:tabular-nums}
+.products b.mono{font-family:ui-monospace,Menlo,Consolas,monospace}
 .products input.name{width:260px}
 .products input.num{width:84px}
 .products .btn{justify-self:start}
