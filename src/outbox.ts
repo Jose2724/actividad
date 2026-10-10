@@ -41,7 +41,7 @@ export async function flush(): Promise<FlushResult> {
       if (!items.length) break
       const it = items[0]
       const { error: e } = await supabase.from(it.table).upsert(it.row, { onConflict: it.table === 'act_schedule' ? 'date,code' : it.table === 'act_products' ? 'code' : 'id' })
-      if (e) { error = e.message; break }
+      if (e) { error = (e.code ? e.code + ' ' : '') + e.message + (e.details ? ' · ' + e.details : '') + ' [' + it.table + ']'; console.warn('actividad sync', it.table, e); break }
       write(read().filter((i) => !(i.table === it.table && i.key === it.key && JSON.stringify(i.row) === JSON.stringify(it.row))))
       sent++; emit()
     }

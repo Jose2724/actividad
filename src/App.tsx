@@ -84,7 +84,7 @@ function SyncDot() {
   if (st.state === 'local') return null
   const text = st.pending ? 'Pendiente ' + st.pending : st.state === 'offline' ? 'Sin conexión' : st.state === 'signedOut' ? 'Sin sesión' : st.state === 'connecting' ? 'Conectando…' : 'Sincronizado'
   const cls = st.pending || st.state === 'offline' ? 'amber' : st.state === 'online' ? 'ok' : ''
-  return <button type="button" className={'syncdot ' + cls} title={st.lastError || text} onClick={() => { void pullAll(); void flushNow() }}>● {text}</button>
+  return <button type="button" className={'syncdot ' + cls} title={st.lastError || text} onClick={() => { void pullAll(); void flushNow() }}>● {text}{st.lastError && st.lastError !== 'signedOut' && <small className="syncerr"> · {st.lastError.slice(0, 140)}</small>}</button>
 }
 
 /** without a server (the public demo): a department and a name, or the manager with a code */

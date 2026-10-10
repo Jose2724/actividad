@@ -181,3 +181,4 @@ tr.live td{background:#f1fbf5}
   .report{padding:0}
   body{background:#fff}
 }
+.syncerr{font-weight:500;color:var(--warn)}
