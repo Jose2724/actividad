@@ -1,7 +1,9 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import { activeBetween, addLine, addWaste, CFG, CRATES_PER_CART, dayOf, DEPTS, deptStop, endRun, endStop, fmtDur, fmtTime, lastPerUnit, lotFor, madeText, managerPin, mergeProducts, myDept, openRun, openStop, parseProductsCsv, productOf, productsCsv, removeLine, removeProduct, reset, resetRecords, role, runStats, saveProduct, setSchedule, startRun, startStop, stopsOf, store, today, unitDone, user, type Dept, type Line, type Product, type State } from './store'
+import { activeBetween, addLine, addWaste, CFG, CRATES_PER_CART, dayOf, DEPTS, deptStop, deptToday, endRun, endStop, fmtDur, fmtTime, lastPerUnit, lotFor, madeText, managerPin, mergeProducts, myDept, normCode, openRun, openStop, parseProductsCsv, productOf, productsCsv, removeLine, removeProduct, reset, resetRecords, role, runStats, saveProduct, setSchedule, setTarget, startRun, startStop, stopsOf, store, targetOf, today, unitDone, user, type Dept, type Line, type Product, type State, type Target } from './store'
 import { avanceRows, n1, pending, type AvanceRow } from './avance'
 import { cellText, xDay, xDur, xTime, xlsxBytes, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
+
+const fmtN = (x: number) => Math.round(x).toLocaleString('en-US')
 import { whoText } from './store'
 import { buildPdf, loadPdf } from './pdf'
 import { RunEditor, StopEditor } from './editors'
@@ -165,9 +167,10 @@ function Main({ name, home, mgr, onLogout }: { name: string; home: Dept; mgr: bo
                 const lines = s.lines.filter((l) => l.dept === d)
                 const running = lines.filter((l) => openRun(s, l.id) && !openStop(s, d, l.id)).length
                 const stopped = lines.filter((l) => openRun(s, l.id) && openStop(s, d, l.id)).length
+                const goal = targetOf(s, d)?.perShift, td = goal ? deptToday(s, d, today(), now) : null
                 return (
                   <button key={d} type="button" className={'dept' + (dept === d ? ' on' : '')} onClick={() => setDept(d)}>
-                    {d}
+                    <span className="dname">{d}{td && goal && <small className="goalmini">{fmtN(td.qty)} / {fmtN(goal)} {td.unitLabel}</small>}</span>
                     <span className="dots">{running > 0 && <i className="dot g">{running}</i>}{stopped > 0 && <i className="dot r">{stopped}</i>}</span>
                   </button>
                 )
@@ -292,6 +295,72 @@ function Products({ s }: { s: State }) {
   )
 }
 
+/** the room today with all its lines together: the total, each code added up across lines, and the manager's goal (per hour, per shift) */
+function TodayCard({ s, dept, now, mgr }: { s: State; dept: Dept; now: number; mgr: boolean }) {
+  const cfg = CFG[dept]
+  const t = deptToday(s, dept, today(), now)
+  const goal = targetOf(s, dept)
+  const [editing, setEditing] = useState(false)
+  const hasGoal = !!(goal && (goal.perHour || goal.perShift))
+  if (!t.runs.length && !hasGoal && !mgr) return null
+  const pct = goal?.perShift ? Math.min(100, Math.round((t.qty / goal.perShift) * 100)) : 0
+  const pace = goal?.perHour && t.rate != null ? t.rate / goal.perHour : null
+  const paceCls = pace == null ? '' : pace >= 1 ? 'ok' : pace >= 0.9 ? 'amber' : 'red'
+  const paceText = pace == null ? '' : pace >= 1 ? 'al ritmo de la meta' : pace >= 0.9 ? 'un poco por debajo' : 'por debajo de la meta'
+  const left = goal?.perShift ? goal.perShift - t.qty : 0
+  const eta = left > 0 && t.rate && !t.allEnded ? now + (left / t.rate) * 3_600_000 : null
+  const many = t.byCode.length > 1 || (t.byCode[0]?.lines.length ?? 0) > 1
+  const unitWord = (n: number) => (n === 1 ? cfg.unit : cfg.plural).toLowerCase()
+  return (
+    <div className="todaycard">
+      <div className="tc-head">
+        <h3>Hoy en {dept} · todas las líneas juntas</h3>
+        {mgr && <button type="button" className="lnk" onClick={() => setEditing(true)}>{hasGoal ? '✎ Cambiar meta' : '+ Poner meta'}</button>}
+      </div>
+      <div className="tc-main">
+        <div className="tc-total"><b>{fmtN(t.qty)}</b> <span>{t.unitLabel}</span>{cfg.qty !== 'none' && <small>{t.units} {unitWord(t.units)}</small>}</div>
+        {goal?.perShift ? (
+          <div className="tc-goal">
+            <div className="tc-goalrow"><span>Meta del turno <b>{fmtN(goal.perShift)}</b> {t.unitLabel}</span><b className={pct >= 100 ? 'ok' : ''}>{pct}%</b></div>
+            <div className="bar"><i className={pct >= 100 ? 'ok' : ''} style={{ width: pct + '%' }} /></div>
+            <div className="tc-sub">{left > 0 ? <>Faltan <b>{fmtN(left)}</b>{eta && <> · a este ritmo se llega a las <b>{fmtTime(eta)}</b></>}</> : <b className="ok">✓ Meta del turno cumplida</b>}</div>
+          </div>
+        ) : <div className="tc-goal tc-none">{mgr ? 'Sin meta del turno todavía.' : ''}</div>}
+        <div className="tc-rate">
+          <label>Ritmo</label>
+          <b className={paceCls}>{t.rate != null ? fmtN(t.rate) : '—'}</b> <span>{t.unitLabel}/h</span>
+          {goal?.perHour ? <small>meta <b>{fmtN(goal.perHour)}</b>/h{pace != null && <> · <span className={paceCls}>{paceText}</span></>}</small> : <small>{t.rate == null ? 'desde el primer inicio de hoy' : 'sin meta por hora'}</small>}
+        </div>
+      </div>
+      {many && <div className="tc-codes">{t.byCode.map((c) => <span key={c.code} className="tc-code"><b>{c.code}</b> {fmtN(c.qty)} {t.unitLabel}{cfg.qty !== 'none' && <> · {c.units} {unitWord(c.units)}</>} · {c.lines.join(', ')}</span>)}</div>}
+      {editing && <TargetDialog dept={dept} unit={t.unitLabel} goal={goal} onClose={() => setEditing(false)} />}
+    </div>
+  )
+}
+
+/** the manager types the goal for a room: so many pouches (cajas, mezclas) per hour and/or in the shift */
+function TargetDialog({ dept, unit, goal, onClose }: { dept: Dept; unit: string; goal: Target | undefined; onClose: () => void }) {
+  const [hour, setHour] = useState(goal?.perHour ? String(goal.perHour) : '')
+  const [shift, setShift] = useState(goal?.perShift ? String(goal.perShift) : '')
+  const num = (t: string) => { const x = Number(t); return x > 0 ? x : null }
+  return (
+    <div className="veil" onClick={onClose}>
+      <div className="dlg" onClick={(e) => e.stopPropagation()}>
+        <h3>Meta de {dept}</h3>
+        <p>La ven todas las tablets de {dept} y queda en el historial. Deja en blanco la que no aplique.</p>
+        <form onSubmit={(e) => { e.preventDefault(); setTarget(dept, num(hour), num(shift)); onClose() }} className="qform">
+          <label>Por hora <input autoFocus inputMode="numeric" placeholder={'ej. 400 ' + unit} value={hour} onChange={(e) => setHour(e.target.value.replace(/\D/g, ''))} /></label>
+          <label>Por turno <input inputMode="numeric" placeholder={'ej. 3200 ' + unit} value={shift} onChange={(e) => setShift(e.target.value.replace(/\D/g, ''))} /></label>
+          <div className="dbtns">
+            <button type="button" className="btn" onClick={onClose}>Cancelar</button>
+            <button type="submit" className="btn primary">✓ Guardar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 function DeptPanel({ s, dept, now, mgr }: { s: State; dept: Dept; now: number; mgr: boolean }) {
   const lines = s.lines.filter((l) => l.dept === dept)
   const ds = deptStop(s, dept)
@@ -314,6 +383,7 @@ function DeptPanel({ s, dept, now, mgr }: { s: State; dept: Dept; now: number; m
       </div>
       {ds && <div className="deptstop">⏸ Todo {dept} parado · <b>{ds.reason}</b>{ds.note && ' · ' + ds.note} · desde {fmtTime(ds.startedAt)} · {ds.by} <button type="button" className="lnk" onClick={() => setEditStop(true)}>Corregir</button></div>}
       {editStop && ds && <StopEditor stop={ds} mgr={mgr} onClose={() => setEditStop(false)} />}
+      <TodayCard s={s} dept={dept} now={now} mgr={mgr} />
       <div className="lines">{lines.map((l) => <LineCard key={l.id} s={s} line={l} now={now} mgr={mgr} />)}</div>
       {lines.length === 0 && <p className="hint">Este departamento no tiene líneas. Toca "Agregar línea".</p>}
       {doneToday.length > 0 && (
@@ -413,7 +483,7 @@ function LineCard({ s, line, now, mgr }: { s: State; line: Line; now: number; mg
         {cfg.waste && <div className="stat"><label>Waste</label><b className={run.waste ? 'red' : ''}>{run.waste} lb</b></div>}
       </div>
       <div className="btns">
-        <button type="button" className="btn primary huge" disabled={!!stop} onClick={done}>✓ {cfg.done}</button>
+        <button type="button" className="btn primary huge" onClick={done}>✓ {cfg.done}</button>
         {cfg.waste && <button type="button" className="btn" onClick={() => setWasting(true)}>Waste (lb)</button>}
         {stop
           ? (stop.lineId === line.id
@@ -538,6 +608,8 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
   const fileName = 'actividad-' + (only ? only.toLowerCase() + '-' : '') + date
   // the history of that day (corrections, products, program, lines): the manager's and the office's
   const changes = mgr ? s.changes.filter((c) => !c.deleted && dayOf(c.at) === date && (!only || c.dept === only)).sort((a, b) => a.at - b.at) : []
+  // the same code on several lines of a room, added up (all lines together)
+  const byCode = [...rows.reduce((m, x) => { const k = x.r.dept + '|' + normCode(x.r.code); const e = m.get(k) ?? { dept: x.r.dept, code: x.r.code, units: 0, qty: 0, waste: 0, lines: [] as string[] }; e.units += x.r.units.length; e.qty += x.st.qty; e.waste += x.r.waste; if (!e.lines.includes(x.r.line)) e.lines.push(x.r.line); return m.set(k, e) }, new Map<string, { dept: Dept; code: string; units: number; qty: number; waste: number; lines: string[] }>()).values()]
   /** the report as a PDF file and a CSV file, handed to the device's share sheet (Mail, Outlook, WhatsApp…);
    *  on a PC without one, the files download and the mail opens with the subject ready */
   const send = async () => {
@@ -558,6 +630,8 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
     const T = (ms: number) => xTime(ms, fmtTime(ms)), D = (ms: number) => xDur(ms, fmtDur(ms))
     const resumen: Cell[][] = [['Departamento', 'Línea', 'Código', 'Lote', 'Fecha', 'Inicio', 'Fin', 'Unidad', 'Hechas', 'Cantidad', 'Unidad de cantidad', 'Tags / bins', 'Waste (lb)', 'Tiempo trabajando', 'Promedio por unidad', 'Tiempo parado', 'Razones de paro', 'Registró'],
       ...rows.map((x): Cell[] => [x.r.dept, x.r.line, x.r.code, x.r.lot, xDay(x.r.date), T(x.r.startedAt), x.r.endedAt ? T(x.r.endedAt) : 'en curso', CFG[x.r.dept].unit, x.r.units.length, CFG[x.r.dept].qty !== 'none' ? x.st.qty : '', CFG[x.r.dept].qty !== 'none' ? CFG[x.r.dept].qtyUnit : '', x.r.units.map((u) => u.ref).filter(Boolean).join(', '), x.r.waste || '', D(x.st.working), x.r.units.length ? D(x.st.avg) : '', D(x.st.down), reasonsText(x), whoText(x.r)])]
+    const porCodigo: Cell[][] = [['Departamento', 'Código', 'Unidad', 'Hechas', 'Cantidad', 'Unidad de cantidad', 'Waste (lb)', 'Líneas'],
+      ...byCode.map((c): Cell[] => [c.dept, c.code, CFG[c.dept].unit, c.units, CFG[c.dept].qty !== 'none' ? c.qty : '', CFG[c.dept].qty !== 'none' ? CFG[c.dept].qtyUnit : '', c.waste || '', c.lines.join(', ')])]
     const unidades: Cell[][] = [['Departamento', 'Línea', 'Código', 'Lote', '#', 'Hora', 'Unidad', 'Cantidad', 'Unidad de cantidad', 'Tag / bin', 'Desde la anterior', 'Registró'],
       ...unitRows.map((x): Cell[] => [x.r.dept, x.r.line, x.r.code, x.r.lot, x.i + 1, T(x.u.at), CFG[x.r.dept].unit, x.u.qty ?? '', x.u.qty != null ? CFG[x.r.dept].qtyUnit : '', x.u.ref, D(x.gap), x.u.by])]
     const paros: Cell[][] = [['Departamento', 'Línea', 'Razón', 'Detalle', 'Inicio', 'Fin', 'Duración', 'Registró'],
@@ -566,12 +640,12 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
     const av = mgr && !only ? avanceRows(s, date) : []
     const avance: Cell[][] = [['Código', 'Producto', 'Mezclas progr.', 'Mezclas hechas', 'Mezclas pend.', 'Spiral', 'Pouches progr.', 'Pouches esper.', 'Pouches hechos', 'Pouches pend.', 'Pouches faltan', 'Cajas progr.', 'Cajas esper.', 'Cajas hechas', 'Cajas pend.', 'Cajas faltan', 'MFO cajas', 'Pallets progr.', 'Pallets esper.', 'Pallets hechos', 'Waste lb'],
       ...av.map((r): Cell[] => [r.code, r.product?.name ?? '', r.scheduled, r.mixesDone, r.mixesPending, r.spiralDone, r.pouchesPlan, r.pouchesExp, r.pouchesDone, pending(r.pouchesExp, r.pouchesDone), pending(r.pouchesPlan, r.pouchesDone), r.casesPlan, r.casesExp, r.casesDone, pending(r.casesExp, r.casesDone), pending(r.casesPlan, r.casesDone), r.mfoCases, r.palletsPlan, r.palletsExp, r.palletsDone, r.wasteLb])]
-    return { resumen, unidades, paros, cambios, avance }
+    return { resumen, porCodigo, unidades, paros, cambios, avance }
   }
   /** the Excel file: one sheet per table (Cambios and Avance only for the manager and the office) */
   const xlsxFile = async () => {
     const b = blocks()
-    const sheets: Sheet[] = [{ name: 'Resumen', rows: b.resumen }, { name: 'Unidades', rows: b.unidades }, { name: 'Paros', rows: b.paros }, ...(mgr ? [{ name: 'Cambios', rows: b.cambios }] : []), ...(b.avance.length > 1 ? [{ name: 'Avance', rows: b.avance }] : [])]
+    const sheets: Sheet[] = [{ name: 'Resumen', rows: b.resumen }, { name: 'Por código', rows: b.porCodigo }, { name: 'Unidades', rows: b.unidades }, { name: 'Paros', rows: b.paros }, ...(mgr ? [{ name: 'Cambios', rows: b.cambios }] : []), ...(b.avance.length > 1 ? [{ name: 'Avance', rows: b.avance }] : [])]
     return new File([await xlsxBytes(sheets)], fileName + '.xlsx', { type: XLSX_TYPE })
   }
   const excel = async () => { const f = await xlsxFile(); const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click() }
@@ -585,7 +659,7 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
     const q = (c: Cell) => '"' + cellText(c).replace(/"/g, '""') + '"'
     const b = blocks()
     const tag = (title: string, t: Cell[][]) => t.map((r, i): Cell[] => (i === 0 ? ['', title, ...r] : ['', '', ...r]))
-    const all: Cell[][] = [...b.resumen, [], ...tag('UNIDADES', b.unidades), [], ...tag('PAROS', b.paros), ...(mgr ? [[], ...tag('CAMBIOS', b.cambios)] : []), ...(b.avance.length > 1 ? [[], ...tag('AVANCE', b.avance)] : [])]
+    const all: Cell[][] = [...b.resumen, [], ...tag('POR CÓDIGO', b.porCodigo), [], ...tag('UNIDADES', b.unidades), [], ...tag('PAROS', b.paros), ...(mgr ? [[], ...tag('CAMBIOS', b.cambios)] : []), ...(b.avance.length > 1 ? [[], ...tag('AVANCE', b.avance)] : [])]
     return '\ufeff' + all.map((r) => r.map(q).join(',')).join('\r\n')
   }
   return (
@@ -616,6 +690,19 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
             ))}</tbody>
           </table>
         </div>
+      )}
+      {byCode.length > 0 && (
+        <>
+          <h3>Por código · todas las líneas juntas</h3>
+          <div className="twrap">
+            <table>
+              <thead><tr><th>Depto</th><th>Código</th><th>Hechas</th><th>Cantidad</th><th>Waste</th><th>Líneas</th></tr></thead>
+              <tbody>{byCode.map((c) => (
+                <tr key={c.dept + c.code}><td>{c.dept}</td><td><b>{c.code}</b></td><td>{c.units} {(c.units === 1 ? CFG[c.dept].unit : CFG[c.dept].plural).toLowerCase()}</td><td>{CFG[c.dept].qty !== 'none' ? <b>{fmtN(c.qty)} {CFG[c.dept].qtyUnit}</b> : '—'}</td><td className={c.waste ? 'red' : ''}>{c.waste ? c.waste + ' lb' : '—'}</td><td>{c.lines.join(', ')}</td></tr>
+              ))}</tbody>
+            </table>
+          </div>
+        </>
       )}
       {unitRows.length > 0 && (
         <>

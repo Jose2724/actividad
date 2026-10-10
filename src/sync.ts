@@ -13,7 +13,7 @@ const setStatus = (patch: Partial<SyncStatus>) => { status = { ...status, ...pat
 export const syncStore = { get: () => status, subscribe: (f: () => void) => { subs.add(f); return () => { subs.delete(f) } } }
 outbox.subscribe(() => setStatus({ pending: outbox.size() }))
 
-const TABLES: Table[] = ['act_lines', 'act_runs', 'act_stops', 'act_products', 'act_schedule', 'act_changes']
+const TABLES: Table[] = ['act_lines', 'act_runs', 'act_stops', 'act_products', 'act_schedule', 'act_changes', 'act_targets']
 const SINCE = 'act_since2' // the cursor is the server's synced_at (see migrations/003), not the tablets' clocks
 const since = () => { try { return localStorage.getItem(SINCE) || '' } catch { return '' } }
 const setSince = (v: string) => { try { localStorage.setItem(SINCE, v) } catch { /* full */ } }
@@ -64,6 +64,7 @@ export function startSync() {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'act_products' }, (p) => applyRemote('act_products', p.new as Record<string, unknown>))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'act_schedule' }, (p) => applyRemote('act_schedule', p.new as Record<string, unknown>))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'act_changes' }, (p) => applyRemote('act_changes', p.new as Record<string, unknown>))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'act_targets' }, (p) => applyRemote('act_targets', p.new as Record<string, unknown>))
     .subscribe()
   window.addEventListener('online', () => { void pullAll(); void flushNow() })
   window.addEventListener('act-resync', () => { void pullAll(); void flushNow() })

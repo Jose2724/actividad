@@ -196,3 +196,31 @@ tr.live td{background:#f1fbf5}
 .err{color:var(--warn);font-weight:600}
 .changes td.was{color:var(--muted);text-decoration:line-through}
 .changes td{white-space:normal}
+.todaycard{background:var(--surface);border:1.5px solid var(--accent);border-radius:14px;padding:12px 14px;display:grid;gap:10px}
+.tc-head{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.tc-head h3{margin:0;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.tc-main{display:grid;grid-template-columns:auto 1fr auto;gap:18px;align-items:center}
+.tc-total b{font-size:36px;line-height:1;font-variant-numeric:tabular-nums;color:var(--accent)}
+.tc-total>span{font-size:16px;color:var(--muted);margin-left:4px}
+.tc-total small{display:block;color:var(--muted);margin-top:4px}
+.tc-goal{min-width:0}
+.tc-goal.tc-none{color:var(--muted);font-size:13px}
+.tc-goalrow{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:14px}
+.tc-goalrow>b:last-child{font-size:18px;font-variant-numeric:tabular-nums}
+.bar{height:12px;background:#e6eaf0;border-radius:999px;overflow:hidden;margin:6px 0}
+.bar i{display:block;height:100%;background:var(--accent);border-radius:999px;transition:width .4s}
+.bar i.ok{background:var(--ok)}
+.tc-sub{color:var(--muted);font-size:13px}
+.tc-rate{text-align:right;white-space:nowrap}
+.tc-rate label{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700}
+.tc-rate b{font-size:26px;font-variant-numeric:tabular-nums}
+.tc-rate>span{color:var(--muted)}
+.tc-rate small{display:block;color:var(--muted)}
+.todaycard .ok{color:var(--ok)}
+.todaycard .amber{color:var(--amber)}
+.tc-codes{display:flex;flex-wrap:wrap;gap:6px}
+.tc-code{background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-size:13px}
+.tc-code b{font-family:ui-monospace,Menlo,Consolas,monospace}
+.dname{display:grid;gap:1px}
+.goalmini{font-size:11px;color:var(--muted);font-weight:500;white-space:nowrap}
+@media (max-width:700px){.tc-main{grid-template-columns:1fr}.tc-rate{text-align:left}}

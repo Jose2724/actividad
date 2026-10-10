@@ -4,7 +4,7 @@ import { supabase } from './supabase'
  * Every change is saved on the device first and queued here; the queue is sent whenever there is signal. One entry
  * per row (a later change to the same row replaces the earlier one), so a weak WiFi never duplicates anything.
  */
-export type Table = 'act_lines' | 'act_runs' | 'act_stops' | 'act_products' | 'act_schedule' | 'act_changes'
+export type Table = 'act_lines' | 'act_runs' | 'act_stops' | 'act_products' | 'act_schedule' | 'act_changes' | 'act_targets'
 type Item = { table: Table; key: string; row: Record<string, unknown> }
 const KEY = 'act_outbox'
 
@@ -41,7 +41,7 @@ export async function flush(): Promise<FlushResult> {
       const items = read().filter((i) => !waiting.has(i.table))
       if (!items.length) break
       const it = items[0]
-      const { error: e } = await supabase.from(it.table).upsert(it.row, { onConflict: it.table === 'act_schedule' ? 'date,code' : it.table === 'act_products' ? 'code' : 'id' })
+      const { error: e } = await supabase.from(it.table).upsert(it.row, { onConflict: it.table === 'act_schedule' ? 'date,code' : it.table === 'act_products' ? 'code' : it.table === 'act_targets' ? 'dept' : 'id' })
       if (e) {
         error = (e.code ? e.code + ' ' : '') + e.message + (e.details ? ' · ' + e.details : '') + ' [' + it.table + ']'
         console.warn('actividad sync', it.table, e)

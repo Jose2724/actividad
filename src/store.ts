@@ -44,7 +44,9 @@ export const cartPouches = (p: Product) => p.cratesPerCart * p.pouchesPerCrate
 export type Schedule = Record<string, Record<string, number>>
 /** one line of history: who changed what, when, from → to (corrections, the products table, the day's program, the lines) */
 export type Change = { id: string; at: number; by: string; dept: Dept | null; what: string; before: string; after: string; refTable: string; refKey: string; updatedAt: number; deleted?: boolean }
-export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Product[]; schedule: Schedule; changes: Change[] }
+/** the goal the manager set for a room: per hour and/or per shift, in the room's own quantity (pouches, cajas, mezclas) */
+export type Target = { dept: Dept; perHour: number | null; perShift: number | null; updatedAt: number }
+export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Product[]; schedule: Schedule; changes: Change[]; targets: Target[] }
 
 /** a cart has two columns of 12 crates (the office counts columns: "12x10" = 12 crates × 10 pouches) */
 export const CRATES_PER_CART = 24
@@ -75,10 +77,10 @@ export const normCode = (c: string) => { const u = c.trim().toUpperCase(); retur
 
 /** with a server the lines (and products) are shared and come from it; without one, each device starts with a line per room */
 const SERVER = !!import.meta.env.VITE_SUPABASE_URL
-function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: CFG[d].lineWord + ' 1', updatedAt: 0 })), runs: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [] } }
+function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: CFG[d].lineWord + ' 1', updatedAt: 0 })), runs: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [] } }
 function load(): State {
   try {
-    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[] }
+    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[] }
     const s = JSON.parse(localStorage.getItem(KEY) || 'null') as Raw | null
     // rows saved by earlier versions: carts as plain timestamps, units without a tag or a name, products with one
     // pouches-per-cart number, nothing with an update time
@@ -92,6 +94,7 @@ function load(): State {
         runs: s.runs.map((r) => ({ id: r.id ?? uid(), dept: (r.dept ?? 'Kitchen') as Dept, lineId: r.lineId ?? '', line: r.line ?? '', code: r.code ?? '', lot: r.lot ?? '', date: r.date ?? today(), startedAt: r.startedAt ?? 0, endedAt: r.endedAt ?? null, units: units(r), perUnit: r.perUnit ?? null, waste: r.waste ?? 0, by: r.by ?? '', updatedAt: r.updatedAt ?? 0 })),
         products, schedule: s.schedule ?? {},
         changes: (s.changes ?? []).filter((c) => (c.at ?? 0) > Date.now() - KEEP_CHANGES_MS).map((c) => ({ id: c.id ?? uid(), at: c.at ?? 0, by: c.by ?? '', dept: (c.dept ?? null) as Dept | null, what: c.what ?? '', before: c.before ?? '', after: c.after ?? '', refTable: c.refTable ?? '', refKey: c.refKey ?? '', updatedAt: c.updatedAt ?? 0 })),
+        targets: (s.targets ?? []).filter((t) => DEPTS.includes(t.dept as Dept)).map((t) => ({ dept: t.dept as Dept, perHour: t.perHour ?? null, perShift: t.perShift ?? null, updatedAt: t.updatedAt ?? 0 })),
       }
     }
   } catch { /* empty */ }
@@ -123,6 +126,7 @@ const rowOfStop = (x: Stop) => ({ id: x.id, dept: x.dept, line_id: x.lineId, rea
 const rowOfProduct = (p: Product) => ({ code: normCode(p.code), name: p.name, pouches_per_case: p.pouchesPerCase, cases_per_mix: p.casesPerMix, crates_per_cart: p.cratesPerCart, pouches_per_crate: p.pouchesPerCrate, cases_per_pallet: p.casesPerPallet, deleted: !!p.deleted, updated_at: iso(p.updatedAt), updated_by: user.get() })
 const rowOfSchedule = (date: string, code: string, mixes: number) => ({ date, code: normCode(code), mixes, updated_at: iso(Date.now()), updated_by: user.get() })
 const rowOfChange = (c: Change) => ({ id: c.id, at: iso(c.at), by_name: c.by, dept: c.dept, what: c.what, before: c.before, after: c.after, ref_table: c.refTable, ref_key: c.refKey, deleted: !!c.deleted, updated_at: iso(c.updatedAt), updated_by: user.get() })
+const rowOfTarget = (t: Target) => ({ dept: t.dept, per_hour: t.perHour, per_shift: t.perShift, updated_at: iso(t.updatedAt), updated_by: user.get() })
 
 // ---- the mutations: each one saves on the device and queues the row for the server ----
 const putLine = (l: Line) => { l = { ...l, updatedAt: Date.now() }; set({ ...state, lines: upsertIn(state.lines, l) }); push('act_lines', l.id, rowOfLine(l)) }
@@ -263,6 +267,34 @@ export function setSchedule(date: string, code: string, n: number) {
   push('act_schedule', date + '|' + normCode(code), rowOfSchedule(date, code, n))
   logChange(null, 'Programa ' + date + ' · ' + key + ' mezclas', v(before), v(n), 'act_schedule', date + '|' + normCode(code))
 }
+export const targetOf = (s: State, dept: Dept) => s.targets.find((t) => t.dept === dept)
+/** the manager's goal for a room (blank = none); it reaches every tablet of the room and the history */
+export function setTarget(dept: Dept, perHour: number | null, perShift: number | null) {
+  const old = targetOf(state, dept)
+  const t: Target = { dept, perHour, perShift, updatedAt: Date.now() }
+  set({ ...state, targets: [...state.targets.filter((x) => x.dept !== dept), t] })
+  push('act_targets', dept, rowOfTarget(t))
+  logChange(dept, 'Meta ' + dept + ' · por hora', v(old?.perHour), v(perHour), 'act_targets', dept)
+  logChange(dept, 'Meta ' + dept + ' · por turno', v(old?.perShift), v(perShift), 'act_targets', dept)
+}
+/** what a room made on a day with all its lines together: in total, per code, and the pace (made ÷ hours since the first start of the day) */
+export function deptToday(s: State, dept: Dept, date: string, now: number) {
+  const cfg = CFG[dept]
+  const runs = s.runs.filter((r) => r.dept === dept && r.date === date)
+  const measure = (r: Run) => (cfg.qty === 'none' ? r.units.length : r.units.reduce((t, u) => t + (u.qty ?? 0), 0))
+  const codes = new Map<string, { code: string; units: number; qty: number; waste: number; lines: string[] }>()
+  for (const r of runs) {
+    const e = codes.get(normCode(r.code)) ?? { code: r.code, units: 0, qty: 0, waste: 0, lines: [] }
+    e.units += r.units.length; e.qty += measure(r); e.waste += r.waste
+    if (!e.lines.includes(r.line)) e.lines.push(r.line)
+    codes.set(normCode(r.code), e)
+  }
+  const units = runs.reduce((t, r) => t + r.units.length, 0), qty = runs.reduce((t, r) => t + measure(r), 0)
+  const first = runs.length ? Math.min(...runs.map((r) => r.startedAt)) : 0
+  const allEnded = runs.length > 0 && runs.every((r) => r.endedAt)
+  const hours = first ? ((allEnded ? Math.max(...runs.map((r) => r.endedAt ?? 0)) : now) - first) / 3_600_000 : 0
+  return { runs, units, qty, unitLabel: cfg.qty === 'none' ? cfg.plural.toLowerCase() : cfg.qtyUnit, byCode: [...codes.values()].sort((a, b) => b.qty - a.qty), hours, rate: hours >= 1 / 6 ? qty / hours : null, allEnded }
+}
 
 /** a row that arrived from the server (another tablet, the office): kept only if it is newer than what this device has */
 export function applyRemote(table: string, row: Record<string, unknown>) {
@@ -300,6 +332,11 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
     if (!newer(cur)) return
     const c: Change = { id: String(row.id), at: fromIso(row.at) ?? 0, by: String(row.by_name ?? ''), dept: (row.dept ?? null) as Dept | null, what: String(row.what ?? ''), before: String(row.before ?? ''), after: String(row.after ?? ''), refTable: String(row.ref_table ?? ''), refKey: String(row.ref_key ?? ''), updatedAt: at, deleted: !!row.deleted }
     set({ ...state, changes: upsertIn(state.changes, c) })
+  } else if (table === 'act_targets') {
+    const dept = row.dept as Dept
+    if (!DEPTS.includes(dept) || !newer(state.targets.find((t) => t.dept === dept))) return
+    const t: Target = { dept, perHour: row.per_hour == null ? null : Number(row.per_hour), perShift: row.per_shift == null ? null : Number(row.per_shift), updatedAt: at }
+    set({ ...state, targets: [...state.targets.filter((x) => x.dept !== dept), t] })
   }
 }
 /** everything this device holds, queued for the server (the pilot's tablets bring their days along) */
@@ -311,6 +348,7 @@ export function uploadAll() {
   for (const p of state.products) if (p.code.trim()) { push('act_products', normCode(p.code), rowOfProduct({ ...p, updatedAt: p.updatedAt || Date.now() })); n++ }
   for (const [date, codes] of Object.entries(state.schedule)) for (const [code, mixes] of Object.entries(codes)) { push('act_schedule', date + '|' + normCode(code), rowOfSchedule(date, code, mixes)); n++ }
   for (const c of state.changes) { push('act_changes', c.id, rowOfChange(c)); n++ }
+  for (const t of state.targets) { push('act_targets', t.dept, rowOfTarget(t)); n++ }
   return n
 }
 /** the office's CSV (columns found by their names, in Spanish or English) → products; returns what could be read */
