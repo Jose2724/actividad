@@ -615,8 +615,8 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
       {stopToEdit && <StopEditor stop={stopToEdit} mgr={mgr} onClose={() => setEditStop(null)} />}
       {mgr && (
         <div className="btns">
-          <button type="button" className="lnk" onClick={() => setClearing(true)}>Reiniciar registros (conserva productos y líneas)</button>
-          <button type="button" className="lnk" onClick={() => setResetting(true)}>Borrar todo</button>
+          {!supabase && <button type="button" className="lnk" onClick={() => setClearing(true)}>Reiniciar registros (conserva productos y líneas)</button>}
+          <button type="button" className="lnk" onClick={() => setResetting(true)}>{supabase ? 'Limpiar este aparato y volver a bajar del servidor' : 'Borrar todo'}</button>
           {!supabase && <button type="button" className="lnk" onClick={() => { setNewPin(''); setPinOpen(true) }}>Cambiar código de manager</button>}
           {supabase && <button type="button" className="lnk" onClick={() => setUploading(true)}>Subir al servidor los registros de este aparato</button>}
         </div>
@@ -636,7 +636,7 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
         </div>
       )}
       {clearing && <ConfirmDialog title="¿Reiniciar los registros?" text="Se borran las corridas, los paros y lo programado de todos los días. La tabla de productos y las líneas se quedan. No se puede deshacer." yes="Reiniciar" danger onYes={() => { resetRecords(); setClearing(false) }} onNo={() => setClearing(false)} />}
-      {resetting && <ConfirmDialog title="¿Borrar todos los datos de este dispositivo?" text="Se borran las líneas, los registros, los paros, lo programado y la tabla de productos. No se puede deshacer." yes="Borrar todo" danger onYes={() => { reset(); setResetting(false) }} onNo={() => setResetting(false)} />}
+      {resetting && <ConfirmDialog title={supabase ? '¿Limpiar este aparato?' : '¿Borrar todos los datos de este dispositivo?'} text={supabase ? 'Se vacía lo guardado en este aparato y se vuelve a bajar todo del servidor. Lo que esté en el servidor no se toca; lo que este aparato no haya subido todavía se pierde.' : 'Se borran las líneas, los registros, los paros, lo programado y la tabla de productos. No se puede deshacer.'} yes={supabase ? 'Limpiar y bajar' : 'Borrar todo'} danger onYes={() => { reset(); setResetting(false) }} onNo={() => setResetting(false)} />}
     </section>
   )
 }

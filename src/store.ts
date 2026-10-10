@@ -164,9 +164,11 @@ export function deleteStop(id: string) { const x = stop(id); if (x) putStop({ ..
 /** everyone who took part in a run: who started it and who tapped its units (a break cover shows up by name) */
 export function whoText(r: Run) { return [...new Set([r.by, ...r.units.map((u) => u.by)].filter(Boolean))].join(', ') }
 
-export function reset() { set(fresh()) }
+/** with a server: the device is emptied and everything comes down again (the server keeps the truth); the pull cursor is cleared so nothing is skipped */
+const resync = () => { if (SERVER) { try { localStorage.removeItem('act_since2'); localStorage.removeItem('act_outbox') } catch { /* private */ } window.dispatchEvent(new Event('act-resync')) } }
+export function reset() { set(fresh()); resync() }
 /** a clean slate for the records only: runs, stops and the schedule go; the lines and the products table stay */
-export function resetRecords() { set({ ...state, runs: [], stops: [], schedule: {} }) }
+export function resetRecords() { set({ ...state, runs: [], stops: [], schedule: {} }); resync() }
 
 export const productOf = (s: State, code: string) => s.products.find((p) => normCode(p.code) === normCode(code))
 /** saves a product by its position in the list (a new one goes at the end); a code that changed retires the old row on the server */
