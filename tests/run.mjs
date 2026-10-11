@@ -883,6 +883,31 @@ calc.use((m) => {
 })
 
 // =====================================================================================================================
+//  Sending the report
+// =====================================================================================================================
+section('Enviar reporte: qué deja compartir cada navegador')
+calc.use((m) => {
+  const takes = (...ok) => (files) => files.every((f) => ok.includes(f)) // a browser that shares only these kinds of file
+  eq('iPhone (Safari): PDF y Excel juntos', [m.sharePick(takes('pdf', 'xlsx', 'csv')).files, m.sharePick(takes('pdf', 'xlsx', 'csv')).label, m.sharePick(takes('pdf', 'xlsx', 'csv')).note], [['pdf', 'xlsx'], 'Compartir PDF y Excel', ''])
+  eq('Chrome (tablet Android, PC): no acepta Excel; van PDF y CSV, y se dice', [m.sharePick(takes('pdf', 'csv')).files, m.sharePick(takes('pdf', 'csv')).label, /también se abre con Excel/.test(m.sharePick(takes('pdf', 'csv')).note)], [['pdf', 'csv'], 'Compartir PDF y CSV', true])
+  eq('un navegador que solo acepta el PDF', [m.sharePick(takes('pdf')).files, m.sharePick(takes('pdf')).label], [['pdf'], 'Compartir PDF'])
+  eq('uno que no comparte archivos: solo se ofrecen las descargas', m.sharePick(() => false), null)
+  eq('si preguntarle al navegador da error, tampoco se ofrece', m.sharePick(() => { throw new Error('x') }), null)
+  eq('cerrar la hoja de compartir no es un problema', m.shareProblem({ name: 'AbortError' }), '')
+  eq('que el aparato no la abra, sí: se dice qué hacer', [/Descarga los archivos/.test(m.shareProblem({ name: 'NotAllowedError' })), /Descarga los archivos/.test(m.shareProblem(new Error('x'))), /Descarga los archivos/.test(m.shareProblem(null))], [true, true, true])
+  eq('iPhone con la app en la pantalla de inicio: el PDF se descarga en vez de abrir pestaña', [m.homeScreenApple({ userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)', standalone: true }), m.homeScreenApple({ userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)', standalone: false }), m.homeScreenApple({ userAgent: 'Mozilla/5.0 (Macintosh)', platform: 'MacIntel', maxTouchPoints: 5, standalone: true }), m.homeScreenApple({ userAgent: 'Mozilla/5.0 (Linux; Android 14)', standalone: undefined }), m.homeScreenApple({ userAgent: 'Mozilla/5.0 (Windows NT 10.0)' })], [true, false, true, false, false])
+})
+section('El Excel se hace al instante cuando su librería ya bajó')
+{
+  const sheets = [{ name: 'Resumen', rows: [['Código', 'Hechas'], ['A100', 12]] }]
+  const before = calc.use((m) => m.xlsxNow(sheets))
+  const bytes = await calc.use(async (m) => { await m.loadZip(); return m.xlsxNow(sheets) })
+  eq('antes de bajar la librería no hay archivo; después sale al instante y es un zip de verdad', [before, bytes instanceof Uint8Array, bytes[0], bytes[1]], [null, true, 0x50, 0x4b])
+  const same = await calc.use((m) => m.xlsxBytes(sheets))
+  eq('y es el mismo archivo que hace el botón de Excel', [same.length === bytes.length, same.length > 500], [true, true])
+}
+
+// =====================================================================================================================
 console.log('')
 if (failed.length) { console.log(failed.length + ' FALLARON de ' + (passed + failed.length) + ':\n'); for (const f of failed) console.log('  ✗ ' + f + '\n'); process.exit(1) }
 console.log('✓ ' + passed + ' comprobaciones, todas correctas')

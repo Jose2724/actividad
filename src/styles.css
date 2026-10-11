@@ -266,3 +266,10 @@ tr.live td{background:#f1fbf5}
 .secret .eye{position:absolute;top:0;right:0;height:100%;width:50px;display:grid;place-items:center;border:0;background:none;color:var(--muted);border-radius:0 12px 12px 0}
 .secret .eye[aria-pressed=true]{color:var(--accent)}
 .secret .eye svg{width:22px;height:22px;display:block}
+/* a box opened from the report keeps the look of every other box, not the report's small-capital section titles */
+.report .dlg h3{font-size:20px;color:var(--ink);text-transform:none;letter-spacing:normal}
+/* the box that sends the report */
+.dlg.send .btn.primary{min-height:56px;font-size:17px}
+.dlg.send .btns{display:flex;gap:8px;flex-wrap:wrap}
+.dlg.send .btns .btn{flex:1;min-width:120px;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;color:inherit}
+.dlg.send .said{color:var(--ok);font-weight:600}

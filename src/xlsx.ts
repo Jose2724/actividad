@@ -1,7 +1,8 @@
 /**
  * A real Excel workbook (.xlsx) written here, without a spreadsheet library: one sheet per table, a bold frozen
  * header row, numbers as numbers, times and spans as Excel times (so the office can sort and add them). An .xlsx is a
- * zip of small XML files; the zip comes from fflate, loaded only when a file is made.
+ * zip of small XML files; the zip comes from fflate, loaded once (when the report opens, or in the background after
+ * the app starts) so that a tap can make the file at once.
  */
 export const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 /** a cell: text, a number, blank, or an Excel number with a style (2 span [h]:mm:ss, 3 time of day, 4 date) and its text for the CSV */
@@ -45,9 +46,15 @@ function sheetXml(sh: Sheet) {
 const STYLES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="3"><numFmt numFmtId="164" formatCode="[h]:mm:ss"/><numFmt numFmtId="165" formatCode="h:mm AM/PM"/><numFmt numFmtId="166" formatCode="yyyy-mm-dd"/></numFmts><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="5"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="166" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`
 
+type Zip = typeof import('fflate')
+let zip: Zip | null = null
+/** brings the zip library; it rejects when it cannot be fetched (no signal and never loaded on this device) */
+export const loadZip = (): Promise<Zip> => (zip ? Promise.resolve(zip) : import('fflate').then((m) => (zip = m)))
 /** the workbook as bytes */
-export async function xlsxBytes(sheets: Sheet[]): Promise<Uint8Array<ArrayBuffer>> {
-  const { zipSync, strToU8 } = await import('fflate')
+export async function xlsxBytes(sheets: Sheet[]): Promise<Uint8Array<ArrayBuffer>> { return build(sheets, await loadZip()) }
+/** the workbook as bytes, at once; null while the zip library has not loaded (see loadZip) */
+export function xlsxNow(sheets: Sheet[]): Uint8Array<ArrayBuffer> | null { return zip ? build(sheets, zip) : null }
+function build(sheets: Sheet[], { zipSync, strToU8 }: Zip): Uint8Array<ArrayBuffer> {
   const names = sheets.map((s, i) => { let n = sheetName(s.name); while (sheets.slice(0, i).some((o) => sheetName(o.name) === n)) n = (n + ' ' + (i + 1)).slice(0, 31); return n })
   const files: Record<string, Uint8Array> = {
     '[Content_Types].xml': strToU8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>

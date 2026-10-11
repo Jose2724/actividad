@@ -2,11 +2,12 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from '
 import type { InputHTMLAttributes, Ref } from 'react'
 import { activeBetween, addLine, addWaste, awayDay, byLineName, cancelDay, CFG, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deptToday, endRun, endStop, fmtDur, fmtTime, freeLineNames, KEEP_DAYS, lastPerUnit, leftOpen, LINE_NAME_MAX, lineNamed, lineNameOf, lotFor, madeText, managerPin, mergeProducts, myDept, nearDay, normCode, numOf, openRun, openStop, parseProductsCsv, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reset, resetRecords, role, runStats, saveProduct, setSchedule, setTarget, startDay, startRun, startStop, stopsOf, store, swapLineNames, targetOf, tidyLineName, unitQty, savedText, unitDone, user, workDay, type Dept, type Line, type Product, type Run, type State, type Target, type Unit, type WorkDay } from './store'
 import { avanceRows, n1, pending, type AvanceRow } from './avance'
-import { cellText, xDay, xDur, xTime, xlsxBytes, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
+import { cellText, loadZip, xDay, xDur, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 
 const fmtN = (x: number) => Math.round(x).toLocaleString('en-US')
 import { whoText } from './store'
 import { buildPdf, loadPdf } from './pdf'
+import { homeScreenApple, sharePick, shareProblem, type Kind } from './send'
 import { RunEditor, StopEditor } from './editors'
 import { fetchMe, finishSignOut, loginEmail, rememberedMe, rememberedUser, rememberMe, rememberUser, signedOut, signOutHere, supabase, type Me } from './supabase'
 import { leaveAsk, loadDay, startSync, syncStore, syncNow, unreachable } from './sync'
@@ -1001,6 +1002,49 @@ function QtyDialog({ title, unit, refLabel, initial, decimal, onClose, onPick }:
   )
 }
 
+/** what makes the report's PDF and Excel files; it rejects when they cannot be fetched (no signal, and never loaded on this device) */
+const libraries = () => Promise.all([loadPdf(), loadZip()])
+const MISSING = 'Faltan partes de la app que se bajan con WiFi la primera vez. Conéctate, abre la app y vuelve a intentarlo. Si sigue pasando, avísale a quien lleva la app.'
+/** saves a file made by the app to the device, the way the browser saves any download */
+function download(f: File) {
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(f); a.download = f.name
+  document.body.appendChild(a); a.click(); a.remove()
+  setTimeout(() => URL.revokeObjectURL(a.href), 60_000)
+}
+
+/** the report, ready to leave the app: share it with what this browser allows, download each file, or open a mail */
+function SendDialog({ files, subject, onClose }: { files: Record<Kind, File>; subject: string; onClose: () => void }) {
+  const [said, setSaid] = useState('')
+  const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean }
+  const pick = sharePick((kinds) => !!nav.share && !!nav.canShare?.({ files: kinds.map((k) => files[k]) }))
+  const share = () => {
+    if (!pick) return
+    setSaid('')
+    // asked in the tap itself, with the files already made: a browser only opens its share sheet for a tap
+    nav.share({ files: pick.files.map((k) => files[k]), title: subject, text: subject }).then(() => setSaid('Listo.'), (e: unknown) => setSaid(shareProblem(e)))
+  }
+  const save = (k: Kind) => { download(files[k]); setSaid('Descargado: ' + files[k].name + '. Queda en la carpeta de Descargas de este aparato.') }
+  const mail = 'mailto:?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent('Adjunto el reporte del día (PDF y Excel).')
+  return (
+    <div className="veil" onClick={onClose}>
+      <div className="dlg send" onClick={(e) => e.stopPropagation()}>
+        <h3>Enviar el reporte</h3>
+        <p>{pick ? 'Toca "Compartir" y elige el correo o WhatsApp. También puedes descargar los archivos y adjuntarlos tú.' : 'Descarga los dos archivos y adjúntalos al correo o al mensaje.'}</p>
+        {pick && <button type="button" className="btn primary" onClick={share}>↗ {pick.label}</button>}
+        {pick?.note && <small>{pick.note}</small>}
+        <div className="btns">
+          <button type="button" className="btn" onClick={() => save('pdf')}>⬇ PDF</button>
+          <button type="button" className="btn" onClick={() => save('xlsx')}>⬇ Excel</button>
+          <a className="btn" href={mail}>✉ Abrir un correo</a>
+        </div>
+        {said && <p className="said" role="status">{said}</p>}
+        <div className="dbtns"><button type="button" className="btn" onClick={onClose}>Cerrar</button></div>
+      </div>
+    </div>
+  )
+}
+
 function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: Dept; mgr: boolean; admin: boolean }) {
   const [date, setDate] = useState(() => workDay(s).date)
   const [wiping, setWiping] = useState(false)
@@ -1012,19 +1056,26 @@ function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: De
   const [editStop, setEditStop] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const [notice, setNotice] = useState<{ title: string; text?: string } | null>(null)
+  const [sending, setSending] = useState<Record<Kind, File> | null>(null)
+  const [preparing, setPreparing] = useState(false)
   const day = useDay(date)
   const runToEdit = editRun ? s.runs.find((r) => r.id === editRun) : undefined
   const stopToEdit = editStop ? s.stops.find((x) => x.id === editStop) : undefined
-  useEffect(() => { void loadPdf() }, [])
-  /** opens the PDF in a new tab (to look at, share or print); if the tab cannot open, it downloads */
+  // what makes the PDF and the Excel comes down when the report opens, so the tap that asks for a file finds it ready
+  useEffect(() => { void libraries().catch(() => undefined) }, [])
+  /** no button of the report fails without a word: what went wrong, and what to do */
+  const failed = (what: string, e?: unknown) => { console.warn('actividad report', what, e); setNotice({ title: 'No se pudo ' + what, text: MISSING }) }
+  /** opens the PDF in a new tab (to look at, share or print); where a tab cannot show it, it downloads */
   const pdf = async () => {
-    const name = 'actividad-' + (only ? only.toLowerCase() + '-' : '') + date + '.pdf'
-    let doc = buildPdf(s, date, now, user.get(), only)
-    if (!doc) { await loadPdf(); doc = buildPdf(s, date, now, user.get(), only); doc?.save(name); return }
-    const win = window.open(doc.output('bloburl'), '_blank')
-    if (!win) doc.save(name)
+    try {
+      const name = fileName + '.pdf'
+      let doc = buildPdf(s, date, now, user.get(), only)
+      if (!doc) { await loadPdf(); doc = buildPdf(s, date, now, user.get(), only); if (!doc) throw new Error('pdf'); doc.save(name); return }
+      if (homeScreenApple(navigator as Parameters<typeof homeScreenApple>[0])) { doc.save(name); return }
+      const win = window.open(doc.output('bloburl'), '_blank')
+      if (!win) doc.save(name)
+    } catch (e) { failed('abrir el PDF', e) }
   }
-  // (the "send" below builds the same PDF plus the CSV and hands them to the share sheet)
   const runs = s.runs.filter((r) => r.date === date && (!only || r.dept === only)).sort((a, b) => a.startedAt - b.startedAt)
   const stops = s.stops.filter((x) => dayOf(x.startedAt) === date && (!only || x.dept === only)).sort((a, b) => a.startedAt - b.startedAt)
   const rows = runs.map((r) => ({ r, st: runStats(s, r, now) }))
@@ -1041,20 +1092,24 @@ function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: De
   const changes = mgr ? s.changes.filter((c) => !c.deleted && dayOf(c.at) === date && (!only || c.dept === only)).sort((a, b) => a.at - b.at) : []
   // the same code on several lines of a room, added up (all lines together)
   const byCode = [...rows.reduce((m, x) => { const k = x.r.dept + '|' + normCode(x.r.code); const e = m.get(k) ?? { dept: x.r.dept, code: x.r.code, units: 0, qty: 0, waste: 0, lines: [] as string[] }; e.units += x.r.units.length; e.qty += x.st.qty; e.waste += x.r.waste; if (!e.lines.includes(lineNameOf(s, x.r.lineId, x.r.line))) e.lines.push(lineNameOf(s, x.r.lineId, x.r.line)); return m.set(k, e) }, new Map<string, { dept: Dept; code: string; units: number; qty: number; waste: number; lines: string[] }>()).values()]
-  /** the report as a PDF file and a CSV file, handed to the device's share sheet (Mail, Outlook, WhatsApp…);
-   *  on a PC without one, the files download and the mail opens with the subject ready */
+  /** the report's three files, made at once; null while what makes them has not come down yet */
+  const filesNow = (): Record<Kind, File> | null => {
+    const doc = buildPdf(s, date, now, user.get(), only), bytes = xlsxNow(sheets())
+    if (!doc || !bytes) return null
+    return { pdf: new File([doc.output('blob')], fileName + '.pdf', { type: 'application/pdf' }), xlsx: new File([bytes], fileName + '.xlsx', { type: XLSX_TYPE }), csv: new File([csvText()], fileName + '.csv', { type: 'text/csv' }) }
+  }
+  /**
+   * "Enviar reporte" makes the files and opens a box with what this device can do with them (share them, download
+   * them, open a mail). The sharing itself is a button of that box: a browser only opens its share sheet for a tap,
+   * and by then the files are ready. Nothing here happens without the person seeing it.
+   */
   const send = async () => {
-    const files: File[] = []
-    const doc = buildPdf(s, date, now, user.get(), only)
-    if (doc) files.push(new File([doc.output('blob')], fileName + '.pdf', { type: 'application/pdf' }))
-    files.push(await xlsxFile())
-    const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean }
-    if (nav.share && nav.canShare?.({ files })) {
-      try { await nav.share({ files, title: 'Actividad · Reporte ' + date, text: 'Reporte del día ' + date + (only ? ' · ' + only : '') }) } catch { /* the person closed the sheet */ }
-      return
-    }
-    for (const f of files) { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click() }
-    location.href = 'mailto:?subject=' + encodeURIComponent('Actividad · Reporte ' + date + (only ? ' · ' + only : '')) + '&body=' + encodeURIComponent('Adjunto el reporte del día (PDF y Excel), recién descargados en la carpeta de Descargas.')
+    try {
+      let files = filesNow()
+      if (!files) { setPreparing(true); try { await libraries() } finally { setPreparing(false) } files = filesNow() }
+      if (!files) throw new Error('files')
+      setSending(files)
+    } catch (e) { failed('preparar el reporte', e) }
   }
   /** the day's tables, typed (numbers, times, spans) so Excel can sort and add them; the CSV takes the same as text */
   const blocks = () => {
@@ -1073,19 +1128,19 @@ function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: De
       ...av.map((r): Cell[] => [r.code, r.product?.name ?? '', r.scheduled, r.mixesDone, r.mixesPending, r.spiralDone, r.pouchesPlan, r.pouchesExp, r.pouchesDone, pending(r.pouchesExp, r.pouchesDone), pending(r.pouchesPlan, r.pouchesDone), r.casesPlan, r.casesExp, r.casesDone, pending(r.casesExp, r.casesDone), pending(r.casesPlan, r.casesDone), r.mfoCases, r.palletsPlan, r.palletsExp, r.palletsDone, r.wasteLb])]
     return { resumen, porCodigo, unidades, paros, cambios, avance }
   }
-  /** the Excel file: one sheet per table (Cambios and Avance only for the manager and the office) */
-  const xlsxFile = async () => {
+  /** the Excel file's sheets: one per table (Cambios and Avance only for the manager and the office) */
+  const sheets = (): Sheet[] => {
     const b = blocks()
-    const sheets: Sheet[] = [{ name: 'Resumen', rows: b.resumen }, { name: 'Por código', rows: b.porCodigo }, { name: 'Unidades', rows: b.unidades }, { name: 'Paros', rows: b.paros }, ...(mgr ? [{ name: 'Cambios', rows: b.cambios }] : []), ...(b.avance.length > 1 ? [{ name: 'Avance', rows: b.avance }] : [])]
-    return new File([await xlsxBytes(sheets)], fileName + '.xlsx', { type: XLSX_TYPE })
+    return [{ name: 'Resumen', rows: b.resumen }, { name: 'Por código', rows: b.porCodigo }, { name: 'Unidades', rows: b.unidades }, { name: 'Paros', rows: b.paros }, ...(mgr ? [{ name: 'Cambios', rows: b.cambios }] : []), ...(b.avance.length > 1 ? [{ name: 'Avance', rows: b.avance }] : [])]
   }
-  const excel = async () => { const f = await xlsxFile(); const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click() }
-  const csv = () => {
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(new Blob([csvText()], { type: 'text/csv;charset=utf-8' }))
-    a.download = fileName + '.csv'
-    a.click()
+  const excel = async () => {
+    try {
+      const bytes = xlsxNow(sheets()) ?? (await loadZip(), xlsxNow(sheets()))
+      if (!bytes) throw new Error('xlsx')
+      download(new File([bytes], fileName + '.xlsx', { type: XLSX_TYPE }))
+    } catch (e) { failed('hacer el Excel', e) }
   }
+  const csv = () => download(new File([csvText()], fileName + '.csv', { type: 'text/csv;charset=utf-8' }))
   const csvText = () => {
     const q = (c: Cell) => '"' + cellText(c).replace(/"/g, '""') + '"'
     const b = blocks()
@@ -1101,8 +1156,9 @@ function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: De
         <button type="button" className="btn" onClick={() => void excel()} disabled={!rows.length}>⬇ Excel</button>
         <button type="button" className="lnk" onClick={csv} disabled={!rows.length}>CSV</button>
         <button type="button" className="btn" onClick={() => void pdf()} disabled={!rows.length}>📄 Ver PDF / imprimir</button>
-        <button type="button" className="btn primary" onClick={() => void send()} disabled={!rows.length}>✉ Enviar reporte</button>
+        <button type="button" className="btn primary" onClick={() => void send()} disabled={!rows.length || preparing}>{preparing ? 'Preparando…' : '✉ Enviar reporte'}</button>
       </div>
+      {sending && <SendDialog files={sending} subject={'Actividad · Reporte ' + date + (only ? ' · ' + only : '')} onClose={() => setSending(null)} />}
       <DayNote day={day} />
       <div className="totals">
         <div className="stat"><label>Códigos</label><b>{rows.length}</b></div>
