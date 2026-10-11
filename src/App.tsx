@@ -471,7 +471,7 @@ function LineCard({ s, line, now, mgr }: { s: State; line: Line; now: number; mg
         <div className="lhead"><h3>{line.name}</h3><button type="button" className="lnk" onClick={() => setRemoving(true)}>Quitar {cfg.lineWord.toLowerCase()}</button></div>
         {removing && <ConfirmDialog title={'¿Quitar ' + line.name + ' de ' + line.dept + '?'} text="Se puede volver a agregar cuando haga falta." yes="Quitar" danger onYes={() => removeLine(line.id)} onNo={() => setRemoving(false)} />}
         <form className="start" onSubmit={(e) => { e.preventDefault(); if (ok) startRun(line, code.trim().toUpperCase(), lot.trim(), date, needPer ? perUnit : null) }}>
-          <label>Código <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="ej. 0889" autoComplete="off" /></label>
+          <label>Código <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="ej. 0100" autoComplete="off" /></label>
           <label>Lote <input value={lot} onChange={(e) => setLot(e.target.value)} inputMode="numeric" placeholder="ej. 6280" autoComplete="off" /></label>
           <label>Fecha <input type="date" value={date} onChange={(e) => { const v = e.target.value; if (!lot.trim() || lot.trim() === lotFor(date)) setLot(lotFor(v)); setDate(v) }} /></label>
           {/* a known product brings its numbers: shown as a line, the boxes only when they want to change them */}

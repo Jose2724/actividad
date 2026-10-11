@@ -72,7 +72,7 @@ export function lotFor(ds: string) {
   const day = Math.round((Date.UTC(y, m - 1, d) - Date.UTC(y, 0, 1)) / 86400000) + 1
   return String(y % 10) + String(day).padStart(3, '0')
 }
-/** the office writes 889, the ticket and the boxes say 0889: a numeric code is the same with or without leading zeros */
+/** the office writes a code without its leading zero, the ticket and the boxes with it: a numeric code is the same either way */
 export const normCode = (c: string) => { const u = c.trim().toUpperCase(); return /^\d+$/.test(u) ? String(Number(u)) : u }
 /**
  * one entry per code and day in the program: "0100" and "100" are the same product. (Earlier versions kept what was

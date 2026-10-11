@@ -64,7 +64,7 @@ calc.use((m) => {
 section('Códigos: 0100 y 100 son el mismo')
 calc.use((m) => {
   eq('ceros a la izquierda', m.normCode('0100'), '100')
-  eq('con letras no se toca', m.normCode(' m14626-849 '), 'M14626-849')
+  eq('con letras no se toca', m.normCode(' zx01-020 '), 'ZX01-020')
   eq('solo ceros', m.normCode('000'), '0')
 })
 
