@@ -21,10 +21,21 @@ export function sessionIsOver(status: number, body: string): boolean {
 }
 /** no renewal is asked of the server before this moment (by the stopwatch) */
 let holdUntil = 0
+/**
+ * How long a request waits for the server to start answering. On a WiFi that is "connected" but dead (the tablet
+ * walked away from its antenna) a request can hang for minutes, and everything behind it waits: what is to go up,
+ * what is to come down. After this long it counts as "no answer", and the next round tries again.
+ */
+export const patience = { ms: 25_000 }
+function patient(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  if (init?.signal) return fetch(input, init) // whoever asked keeps their own patience
+  const stop = new AbortController(), late = setTimeout(() => stop.abort(), patience.ms)
+  return fetch(input, { ...init, signal: stop.signal }).finally(() => clearTimeout(late))
+}
 const notNow = (why: string) => new Response(JSON.stringify({ message: 'La sesión no se pudo renovar ahora (' + why + ')' }), { status: 503, headers: { 'Content-Type': 'application/json' } })
 /**
- * Every request of the library goes through here. It only touches the two answers that decide whether a person stays
- * signed in:
+ * Every request of the library goes through here. None waits for ever (see patience), and it touches the two answers
+ * that decide whether a person stays signed in:
  *  - A new or renewed session says when it expires by the SERVER's clock ("expires_at"), and the library compares
  *    that with the DEVICE's clock. On a tablet whose clock is behind, the pass is renewed late and the server refuses
  *    everything meanwhile; on one whose clock is far ahead, it is renewed on every single request until the server
@@ -39,7 +50,7 @@ export async function sessionFetch(input: RequestInfo | URL, init?: RequestInit)
   const u = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
   const token = isTokenUrl(u), renewal = token && u.includes('grant_type=refresh_token')
   if (renewal && stopwatch() < holdUntil) return notNow('en espera')
-  const res = await fetch(input, init)
+  const res = await patient(input, init)
   if (!token) return res
   try {
     if (res.ok) {

@@ -202,6 +202,33 @@ await m.signOutHere(); await m.signOutHere()
 eq('salir dos veces seguidas no rompe nada', [disk.has(KEY), await who()], [false, 'nobody'])
 eq('un PIN equivocado no deja a nadie dentro', [(await m.supabase.auth.signInWithPassword({ email: 'x@freezer.example.com', password: 'mal' })).error?.message, disk.has(KEY)], ['Invalid login credentials', false])
 
+console.log('· Una petición colgada no deja todo esperando')
+await fresh()
+await enter()
+await m.pullAll()
+{
+  const real = globalThis.fetch
+  let hung = 0
+  // the WiFi says "connected" but nothing comes back: the request just hangs, until whoever asked gives up
+  globalThis.fetch = (input, init = {}) => {
+    const url = typeof input === 'string' ? input : input.url
+    if (!url.includes('/rest/v1/act_')) return real(input, init)
+    hung++
+    return new Promise((_, reject) => init.signal?.addEventListener('abort', () => reject(new DOMException('The operation was aborted.', 'AbortError'))))
+  }
+  m.patience.ms = 250
+  const t2 = realNow()
+  eq('una bajada colgada se deja de esperar y se dice que no hay conexión', [await m.pullAll(), realNow() - t2 < 3000, m.syncStore.get().state, m.syncStore.get().lastError, hung > 0], [false, true, 'offline', '', true])
+  eq('la persona sigue dentro', await who(), 'someone')
+  m.addLine('RTE', 'Línea 7')
+  await sleep(900)
+  eq('lo que se registra mientras tanto queda pendiente, no perdido', [m.outbox.size() > 0, m.syncStore.get().pending > 0, m.syncStore.get().state], [true, true, 'offline'])
+  globalThis.fetch = real
+  m.patience.ms = 25_000
+  await m.syncNow()
+  eq('y cuando la red vuelve a responder, sube y queda sincronizado', [m.outbox.size(), m.syncStore.get().state], [0, 'online'])
+}
+
 console.log('· Lo que guarda el aparato')
 m.keepStorage()
 eq('se pide al navegador que no lo borre si falta espacio', kept.asked, 1)

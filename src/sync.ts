@@ -41,7 +41,7 @@ const OVERLAP_MS = 10_000
  * the request never got an answer: no network, or a network that does not reach the server (a WiFi without internet).
  * Each browser says it its own way. For the app that is "no connection", whatever the device says about its WiFi.
  */
-export const unreachable = (message: unknown) => /failed to fetch|load failed|networkerror|network request failed|fetch failed|err_internet|err_network/i.test(String(message ?? ''))
+export const unreachable = (message: unknown) => /failed to fetch|load failed|networkerror|network request failed|fetch failed|err_internet|err_network|aborted|aborterror|timed? ?out/i.test(String(message ?? ''))
 /**
  * what the dot shows after a request that failed: no connection (said by the dot itself, no technical text), or an
  * error worth reading. A pass the server calls expired is neither: the device believed it still had time (its clock

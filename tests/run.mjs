@@ -878,6 +878,7 @@ calc.use((m) => {
 section('Sin conexión: cómo lo dice cada navegador')
 calc.use((m) => {
   eq('una petición que no llegó a ninguna parte', ['TypeError: Failed to fetch', 'TypeError: Load failed', 'TypeError: NetworkError when attempting to fetch resource.', 'TypeError: fetch failed', 'TypeError: Failed to fetch [act_runs]'].map((t) => m.unreachable(t)), [true, true, true, true, true])
+  eq('una petición que se dejó de esperar', ['AbortError: signal is aborted without reason', 'AbortError: The operation was aborted.', 'AbortError: Fetch is aborted [act_runs]', 'The user aborted a request.'].map((t) => m.unreachable(t)), [true, true, true, true])
   eq('una respuesta del servidor con un error no es falta de conexión', ['42501 new row violates row-level security policy for table "act_runs" [act_runs]', 'Falta ejecutar en Supabase el SQL de act_targets', 'JWT expired', '', null, undefined].map((t) => m.unreachable(t)), [false, false, false, false, false, false])
 })
 

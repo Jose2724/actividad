@@ -9,7 +9,7 @@ import { whoText } from './store'
 import { buildPdf, loadPdf } from './pdf'
 import { RunEditor, StopEditor } from './editors'
 import { fetchMe, finishSignOut, loginEmail, rememberedMe, rememberedUser, rememberMe, rememberUser, signedOut, signOutHere, supabase, type Me } from './supabase'
-import { leaveAsk, loadDay, startSync, syncStore, syncNow } from './sync'
+import { leaveAsk, loadDay, startSync, syncStore, syncNow, unreachable } from './sync'
 import { storageFull } from './storage'
 import { clockNow, clockOffText, otherZone, startClock } from './clock'
 import { appUrl, qrPath } from './qr'
@@ -239,7 +239,7 @@ function LoginGate({ error, onDone }: { error: string; onDone: () => Promise<voi
     await signedOut() // a "Salir" still finishing must be over first, or it could clear the session about to be made
     const { error: e } = await supabase!.auth.signInWithPassword({ email: loginEmail(user), password: secret })
     setBusy(false)
-    if (e) { setMsg(/invalid/i.test(e.message) ? 'Usuario o PIN incorrectos.' : /fetch|network/i.test(e.message) ? 'Sin conexión. Revisa el WiFi e intenta otra vez.' : e.message); return }
+    if (e) { setMsg(/invalid/i.test(e.message) ? 'Usuario o PIN incorrectos.' : /fetch|network/i.test(e.message) || unreachable(e.message) ? 'Sin conexión. Revisa el WiFi e intenta otra vez.' : e.message); return }
     rememberUser(user)
     offerToSave(user.toLowerCase(), secret)
     await onDone()
