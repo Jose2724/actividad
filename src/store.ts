@@ -398,19 +398,36 @@ export function lastPerUnit(s: State, dept: Dept, code: string) {
   return p ? (dept === 'RTE' ? cartPouches(p) : dept === 'Packing' ? p.casesPerPallet : null) || null : null
 }
 
-const overlap = (a: number, b: number, x: Stop, now: number) => Math.max(0, Math.min(b, x.endedAt ?? now) - Math.max(a, x.startedAt))
+/**
+ * the stretches of [a, b] spent stopped, merged: a line's own stop inside a department stop counts once, and a
+ * moment covered by two stops goes to the one that began first (so the reasons add up to the stopped time)
+ */
+function stoppedPieces(a: number, b: number, stops: Stop[], now: number) {
+  const pieces: { from: number; to: number; reason: string }[] = []
+  let cursor = a
+  for (const x of [...stops].sort((p, q) => p.startedAt - q.startedAt)) {
+    const s = Math.max(a, x.startedAt), e = Math.min(b, x.endedAt ?? now)
+    if (e <= s) continue
+    const from = Math.max(s, cursor)
+    if (e > from) pieces.push({ from, to: e, reason: x.reason })
+    cursor = Math.max(cursor, e)
+  }
+  return pieces
+}
+const stoppedBetween = (a: number, b: number, stops: Stop[], now: number) => stoppedPieces(a, b, stops, now).reduce((t, p) => t + (p.to - p.from), 0)
 /** time between two moments without what was spent stopped */
-export const activeBetween = (a: number, b: number, stops: Stop[], now: number) => Math.max(0, b - a - stops.reduce((t, x) => t + overlap(a, b, x, now), 0))
+export const activeBetween = (a: number, b: number, stops: Stop[], now: number) => Math.max(0, b - a - stoppedBetween(a, b, stops, now))
 
 export function runStats(s: State, r: Run, now: number) {
   const stops = stopsOf(s, r.dept, r.lineId), end = r.endedAt ?? now
   const working = activeBetween(r.startedAt, end, stops, now)
-  const down = stops.reduce((t, x) => t + overlap(r.startedAt, end, x, now), 0)
+  const pieces = stoppedPieces(r.startedAt, end, stops, now)
+  const down = pieces.reduce((t, p) => t + (p.to - p.from), 0)
   const unitTimes = r.units.map((u, i) => activeBetween(i ? r.units[i - 1].at : r.startedAt, u.at, stops, now))
   const avg = unitTimes.length ? unitTimes.reduce((a, b) => a + b, 0) / unitTimes.length : 0
   const qty = r.units.reduce((t, u) => t + (u.qty ?? 0), 0)
   const reasons: Record<string, number> = {}
-  for (const x of stops) { const o = overlap(r.startedAt, end, x, now); if (o > 0) reasons[x.reason] = (reasons[x.reason] ?? 0) + o }
+  for (const p of pieces) reasons[p.reason] = (reasons[p.reason] ?? 0) + (p.to - p.from)
   return { working, down, unitTimes, avg, qty, reasons, total: end - r.startedAt }
 }
 /** "2 carros · 240 pouches": what a run produced, in the department's own words (with the tag / bin numbers if asked) */
