@@ -1,4 +1,4 @@
-import { CFG, dayOf, fmtDur, fmtTime, madeText, runStats, whoText, type Dept, type State } from './store'
+import { CFG, dayOf, fmtDur, fmtTime, madeText, runStats, unitQty, whoText, type Dept, type State } from './store'
 import { avanceRows, n1, pending } from './avance'
 
 type Libs = { jsPDF: typeof import('jspdf').jsPDF; autoTable: typeof import('jspdf-autotable').default }
@@ -40,7 +40,7 @@ export function buildPdf(s: State, date: string, now: number, by: string, only?:
     autoTable(doc, {
       startY: y + 10, theme: 'grid', styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 4, textColor: [22, 32, 42] }, headStyles: { fillColor: [91, 107, 122], textColor: 255, fontStyle: 'bold' },
       head: [['Hora', 'Depto', 'Línea', 'Código', 'Lote', '#', 'Unidad', 'Cantidad', 'Tag / bin', 'Desde la anterior', 'Registró']],
-      body: unitRows.map((x) => [fmtTime(x.u.at), x.r.dept, x.r.line, x.r.code, x.r.lot, String(x.i + 1), CFG[x.r.dept].unit, x.u.qty != null ? x.u.qty + ' ' + CFG[x.r.dept].qtyUnit : '—', x.u.ref || '—', fmtDur(x.gap), x.u.by || '—']),
+      body: unitRows.map((x) => [fmtTime(x.u.at), x.r.dept, x.r.line, x.r.code, x.r.lot, String(x.i + 1), CFG[x.r.dept].unit, CFG[x.r.dept].qty !== 'none' ? unitQty(s, x.r, x.u) + ' ' + CFG[x.r.dept].qtyUnit : '—', x.u.ref || '—', fmtDur(x.gap), x.u.by || '—']),
     })
   }
   if (stops.length) {

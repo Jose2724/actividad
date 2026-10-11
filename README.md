@@ -9,3 +9,7 @@ paros con su razón y tiempo parado, y un reporte del día exportable (CSV para 
 - Hecho por José E. García con React + TypeScript + Vite. Página publicada desde la carpeta `docs/`.
 
 Desarrollo: `npm install`, `npm run dev`. Publicar: `npm run build` (genera `docs/`) y subir a GitHub.
+
+Comprobaciones: `npm run check` corre el propio código de la app (cálculos de tiempos, totales, Avance, lectura del CSV
+y lo que pasa cuando dos aparatos cambian la misma corrida) contra resultados sacados a mano. Datos inventados.
+Correrlo antes de publicar cualquier cambio en `src/store.ts`, `src/avance.ts`, `src/outbox.ts` o `src/sync.ts`.

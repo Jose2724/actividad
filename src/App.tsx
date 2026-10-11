@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import { activeBetween, addLine, addWaste, CFG, CRATES_PER_CART, dayOf, DEPTS, deptStop, deptToday, endRun, endStop, fmtDur, fmtTime, lastPerUnit, lotFor, madeText, managerPin, mergeProducts, myDept, normCode, openRun, openStop, parseProductsCsv, productOf, productsCsv, removeLine, removeProduct, reset, resetRecords, role, runStats, saveProduct, setSchedule, setTarget, startRun, startStop, stopsOf, store, targetOf, today, unitDone, user, type Dept, type Line, type Product, type State, type Target } from './store'
+import { activeBetween, addLine, addWaste, CFG, CRATES_PER_CART, dayOf, DEPTS, deptStop, deptToday, endRun, endStop, fmtDur, fmtTime, lastPerUnit, lotFor, madeText, managerPin, mergeProducts, myDept, normCode, numOf, openRun, openStop, parseProductsCsv, productOf, productsCsv, removeLine, removeProduct, reset, resetRecords, role, runStats, saveProduct, setSchedule, setTarget, startRun, startStop, stopsOf, store, targetOf, today, unitQty, unitDone, user, type Dept, type Line, type Product, type Run, type State, type Target, type Unit } from './store'
 import { avanceRows, n1, pending, type AvanceRow } from './avance'
 import { cellText, xDay, xDur, xTime, xlsxBytes, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 
@@ -8,7 +8,7 @@ import { whoText } from './store'
 import { buildPdf, loadPdf } from './pdf'
 import { RunEditor, StopEditor } from './editors'
 import { fetchMe, loginEmail, supabase, type Me } from './supabase'
-import { startSync, syncStore, flushNow, pullAll } from './sync'
+import { startSync, syncStore, syncNow } from './sync'
 import { uploadAll } from './store'
 import { Employees } from './Employees'
 
@@ -89,7 +89,7 @@ function SyncDot() {
   if (st.state === 'local') return null
   const text = st.pending ? 'Pendiente ' + st.pending : st.state === 'offline' ? 'Sin conexión' : st.state === 'signedOut' ? 'Sin sesión' : st.state === 'connecting' ? 'Conectando…' : 'Sincronizado'
   const cls = st.pending || st.state === 'offline' ? 'amber' : st.state === 'online' ? 'ok' : ''
-  return <button type="button" className={'syncdot ' + cls} title={st.lastError || text} onClick={() => { void pullAll(); void flushNow() }}>● {text}{st.lastError && st.lastError !== 'signedOut' && <small className="syncerr"> · {st.lastError.slice(0, 140)}</small>}</button>
+  return <button type="button" className={'syncdot ' + cls} title={st.lastError || text} onClick={() => { void syncNow() }}>● {text}{st.lastError && st.lastError !== 'signedOut' && <small className="syncerr"> · {st.lastError.slice(0, 140)}</small>}</button>
 }
 
 /** without a server (the public demo): a department and a name, or the manager with a code */
@@ -217,7 +217,7 @@ function Avance({ s }: { s: State }) {
               <tr key={r.code}>
                 <td><b>{r.code}</b></td><td>{r.product?.name ?? <i className="red">no está en Productos</i>}</td>
                 <td><input className="num" inputMode="numeric" value={r.scheduled || ''} placeholder="0" onChange={(e) => setSchedule(date, r.code, Number(e.target.value.replace(/\D/g, '')) || 0)} /></td>
-                <td>{r.mixesDone}</td><td className={r.mixesPending ? 'amber' : 'ok'}>{r.mixesPending}</td>
+                <td>{r.mixesDone}</td><td className={cls(r.mixesPending)}>{r.mixesPending}</td>
                 <td>{r.spiralDone}</td>
                 <td>{n1(r.pouchesPlan)}</td><td>{n1(r.pouchesExp)}</td><td>{r.pouchesDone}</td><td className={cls(pending(r.pouchesExp, r.pouchesDone))}>{n1(pending(r.pouchesExp, r.pouchesDone))}</td><td className={cls(pending(r.pouchesPlan, r.pouchesDone))}>{n1(pending(r.pouchesPlan, r.pouchesDone))}</td>
                 <td>{n1(r.casesPlan)}</td><td>{n1(r.casesExp)}</td><td>{r.casesDone}</td><td className={cls(pending(r.casesExp, r.casesDone))}>{n1(pending(r.casesExp, r.casesDone))}</td><td className={cls(pending(r.casesPlan, r.casesDone))}>{n1(pending(r.casesPlan, r.casesDone))}</td>
@@ -234,15 +234,36 @@ function Avance({ s }: { s: State }) {
   )
 }
 
+/** a cell of the products table: it shows the saved value, keeps what is being typed, and saves when the person leaves it (or presses Enter) */
+function Cell({ value, onCommit, className, numeric }: { value: string; onCommit: (text: string) => boolean; className: string; numeric?: boolean }) {
+  const [text, setText] = useState(value)
+  const [typing, setTyping] = useState(false)
+  // the saved value changed from outside (another device, an import, the row now holds another product): show it
+  useEffect(() => { if (!typing) setText(value) }, [value, typing])
+  return (
+    <input className={className} inputMode={numeric ? 'decimal' : undefined} value={text} autoComplete="off"
+      onFocus={() => setTyping(true)} onChange={(e) => setText(e.target.value)}
+      onBlur={() => { setTyping(false); if (text.trim() !== value.trim() && !onCommit(text)) setText(value) }}
+      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }} />
+  )
+}
+
 /** the master table: read-only until "Editar", so a stray tap on a tablet cannot change a yield; every change saves itself */
 function Products({ s }: { s: State }) {
-  const num = (v: string) => Number(v.replace(',', '.')) || 0
-  const upd = (i: number, p: Product, patch: Partial<Product>) => saveProduct(i, { ...p, ...patch })
   const [unlocked, setUnlocked] = useState(false)
   const [q, setQ] = useState('')
   const [removeIdx, setRemoveIdx] = useState<number | null>(null)
   const [notice, setNotice] = useState<{ title: string; text?: string } | null>(null)
   const show = (v: number) => (v ? String(v) : '—')
+  const text = (v: number) => (v ? String(v) : '')
+  /** saves one field of the product at position i; a code that is another product's is refused with a notice */
+  const upd = (i: number, patch: Partial<Product>) => {
+    const p = store.get().products[i]
+    if (!p) return false
+    const ok = saveProduct(i, { ...p, ...patch })
+    if (!ok) setNotice(patch.code?.trim() ? { title: 'Ya hay un producto con el código ' + patch.code.trim().toUpperCase(), text: 'Cada código va una sola vez en la tabla. Corrige ese producto en su fila.' } : { title: 'El código no puede quedar en blanco', text: 'Para sacar un producto de la tabla usa la ✕ de su fila.' })
+    return ok
+  }
   // the search keeps each product's place in the full list, so an edit or a removal lands on the right row
   const needle = q.trim().toUpperCase()
   const shown = s.products.map((p, i) => ({ p, i })).filter(({ p }) => !needle || p.code.toUpperCase().includes(needle) || normCode(p.code).includes(normCode(needle)) || p.name.toUpperCase().includes(needle))
@@ -267,14 +288,14 @@ function Products({ s }: { s: State }) {
             {s.products.length === 0 && <tr><td colSpan={8}><i>No hay productos todavía.{!unlocked && ' Toca "Editar" para escribirlos o importar el CSV de la oficina.'}</i></td></tr>}
             {s.products.length > 0 && shown.length === 0 && <tr><td colSpan={8}><i>Ningún producto con "{q.trim()}".</i></td></tr>}
             {shown.map(({ p, i }) => unlocked ? (
-              <tr key={s.products.length + ':' + i}>
-                <td><input className="code" value={p.code} onChange={(e) => upd(i, p, { code: e.target.value.toUpperCase() })} autoComplete="off" /></td>
-                <td><input className="name" value={p.name} onChange={(e) => upd(i, p, { name: e.target.value })} autoComplete="off" /></td>
-                <td><input className="num" inputMode="decimal" defaultValue={p.pouchesPerCase || ''} onBlur={(e) => upd(i, p, { pouchesPerCase: num(e.target.value) })} /></td>
-                <td><input className="num" inputMode="decimal" defaultValue={p.casesPerMix || ''} onBlur={(e) => upd(i, p, { casesPerMix: num(e.target.value) })} /></td>
-                <td><input className="num" inputMode="decimal" defaultValue={p.cratesPerCart || ''} onBlur={(e) => upd(i, p, { cratesPerCart: num(e.target.value) })} /></td>
-                <td><input className="num" inputMode="decimal" defaultValue={p.pouchesPerCrate || ''} onBlur={(e) => upd(i, p, { pouchesPerCrate: num(e.target.value) })} /></td>
-                <td><input className="num" inputMode="decimal" defaultValue={p.casesPerPallet || ''} onBlur={(e) => upd(i, p, { casesPerPallet: num(e.target.value) })} /></td>
+              <tr key={(p.code || '·') + ':' + i}>
+                <td><Cell className="code" value={p.code} onCommit={(t) => upd(i, { code: t.trim().toUpperCase() })} /></td>
+                <td><Cell className="name" value={p.name} onCommit={(t) => upd(i, { name: t.trim() })} /></td>
+                <td><Cell className="num" numeric value={text(p.pouchesPerCase)} onCommit={(t) => upd(i, { pouchesPerCase: numOf(t) })} /></td>
+                <td><Cell className="num" numeric value={text(p.casesPerMix)} onCommit={(t) => upd(i, { casesPerMix: numOf(t) })} /></td>
+                <td><Cell className="num" numeric value={text(p.cratesPerCart)} onCommit={(t) => upd(i, { cratesPerCart: numOf(t) })} /></td>
+                <td><Cell className="num" numeric value={text(p.pouchesPerCrate)} onCommit={(t) => upd(i, { pouchesPerCrate: numOf(t) })} /></td>
+                <td><Cell className="num" numeric value={text(p.casesPerPallet)} onCommit={(t) => upd(i, { casesPerPallet: numOf(t) })} /></td>
                 <td><button type="button" className="lnk" onClick={() => setRemoveIdx(i)}>✕</button></td>
               </tr>
             ) : (
@@ -300,7 +321,7 @@ function Products({ s }: { s: State }) {
         <button type="button" className="btn" onClick={exportCsv}>⬇ Exportar CSV</button>
       </div>
       <p className="hint">{unlocked
-        ? 'Cada cambio se guarda solo al salir de la casilla' + (supabase ? ' y baja a todas las tablets' : '') + '. Columnas del CSV de la oficina: Código, Producto, Pouches por caja, Cajas por mezcla, Cajas por pallet, Guacales por carro, Pouches por guacal.'
+        ? 'Cada cambio se guarda al salir de la casilla' + (supabase ? ' y baja a todas las tablets' : '') + '. Columnas del CSV de la oficina: Código, Producto, Pouches por caja, Cajas por mezcla, Cajas por pallet, Guacales por carro, Pouches por guacal.'
         : supabase ? 'Con estos números se calculan el Avance y los pouches por carro en todas las tablets. Para cambiar algo, toca "Editar".' : 'Los productos de ejemplo son inventados; todo se guarda solo en este dispositivo. Para cambiar algo, toca "Editar".'}</p>
     </div>
   )
@@ -314,7 +335,7 @@ function TodayCard({ s, dept, now, mgr }: { s: State; dept: Dept; now: number; m
   const [editing, setEditing] = useState(false)
   const hasGoal = !!(goal && (goal.perHour || goal.perShift))
   if (!t.runs.length && !hasGoal && !mgr) return null
-  const pct = goal?.perShift ? Math.min(100, Math.round((t.qty / goal.perShift) * 100)) : 0
+  const pct = goal?.perShift ? Math.min(100, Math.floor((t.qty / goal.perShift) * 100)) : 0
   const pace = goal?.perHour && t.rate != null ? t.rate / goal.perHour : null
   const paceCls = pace == null ? '' : pace >= 1 ? 'ok' : pace >= 0.9 ? 'amber' : 'red'
   const paceText = pace == null ? '' : pace >= 1 ? 'al ritmo de la meta' : pace >= 0.9 ? 'un poco por debajo' : 'por debajo de la meta'
@@ -618,6 +639,8 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
   const reasonsText = (x: (typeof rows)[number]) => Object.entries(x.st.reasons).map(([k, v]) => k + ' ' + fmtDur(v)).join(', ')
   const lineName = (x: { lineId: string | null; dept: Dept }) => (x.lineId === null ? 'Todo ' + x.dept : s.lines.find((l) => l.id === x.lineId)?.name ?? s.runs.find((r) => r.lineId === x.lineId)?.line ?? 'línea')
   const fileName = 'actividad-' + (only ? only.toLowerCase() + '-' : '') + date
+  /** what a unit carried, or null where the room does not count a quantity (a mezcla) */
+  const qtyOf = (r: Run, u: Unit) => (CFG[r.dept].qty === 'none' ? null : unitQty(s, r, u))
   // the history of that day (corrections, products, program, lines): the manager's and the office's
   const changes = mgr ? s.changes.filter((c) => !c.deleted && dayOf(c.at) === date && (!only || c.dept === only)).sort((a, b) => a.at - b.at) : []
   // the same code on several lines of a room, added up (all lines together)
@@ -645,7 +668,7 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
     const porCodigo: Cell[][] = [['Departamento', 'Código', 'Unidad', 'Hechas', 'Cantidad', 'Unidad de cantidad', 'Waste (lb)', 'Líneas'],
       ...byCode.map((c): Cell[] => [c.dept, c.code, CFG[c.dept].unit, c.units, CFG[c.dept].qty !== 'none' ? c.qty : '', CFG[c.dept].qty !== 'none' ? CFG[c.dept].qtyUnit : '', c.waste || '', c.lines.join(', ')])]
     const unidades: Cell[][] = [['Departamento', 'Línea', 'Código', 'Lote', '#', 'Hora', 'Unidad', 'Cantidad', 'Unidad de cantidad', 'Tag / bin', 'Desde la anterior', 'Registró'],
-      ...unitRows.map((x): Cell[] => [x.r.dept, x.r.line, x.r.code, x.r.lot, x.i + 1, T(x.u.at), CFG[x.r.dept].unit, x.u.qty ?? '', x.u.qty != null ? CFG[x.r.dept].qtyUnit : '', x.u.ref, D(x.gap), x.u.by])]
+      ...unitRows.map((x): Cell[] => [x.r.dept, x.r.line, x.r.code, x.r.lot, x.i + 1, T(x.u.at), CFG[x.r.dept].unit, qtyOf(x.r, x.u) ?? '', qtyOf(x.r, x.u) != null ? CFG[x.r.dept].qtyUnit : '', x.u.ref, D(x.gap), x.u.by])]
     const paros: Cell[][] = [['Departamento', 'Línea', 'Razón', 'Detalle', 'Inicio', 'Fin', 'Duración', 'Registró'],
       ...stops.map((x): Cell[] => [x.dept, lineName(x), x.reason, x.note, T(x.startedAt), x.endedAt ? T(x.endedAt) : 'en curso', D((x.endedAt ?? now) - x.startedAt), x.by])]
     const cambios: Cell[][] = [['Hora', 'Quién', 'Departamento', 'Qué', 'Antes', 'Después'], ...changes.map((c): Cell[] => [T(c.at), c.by, c.dept ?? '', c.what, c.before, c.after])]
@@ -725,7 +748,7 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
               <tbody>{unitRows.map((x) => (
                 <tr key={x.r.id + ':' + x.i}>
                   <td>{fmtTime(x.u.at)}</td><td>{x.r.dept}</td><td>{x.r.line}</td><td><b>{x.r.code}</b></td><td>{x.r.lot}</td><td>{x.i + 1}</td><td>{CFG[x.r.dept].unit}</td>
-                  <td>{x.u.qty != null ? x.u.qty + ' ' + CFG[x.r.dept].qtyUnit : '—'}</td><td>{x.u.ref || '—'}</td><td>{fmtDur(x.gap)}</td><td>{x.u.by || '—'}</td>
+                  <td>{qtyOf(x.r, x.u) != null ? qtyOf(x.r, x.u) + ' ' + CFG[x.r.dept].qtyUnit : '—'}</td><td>{x.u.ref || '—'}</td><td>{fmtDur(x.gap)}</td><td>{x.u.by || '—'}</td>
                 </tr>
               ))}</tbody>
             </table>

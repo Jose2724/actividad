@@ -1,10 +1,9 @@
 import { useState } from 'react'
-import { CFG, deleteRun, deleteStop, fmtTime, openRun, updateRun, updateStop, type Run, type State, type Stop } from './store'
+import { applyDraft, CFG, deleteRun, deleteStop, draftOf, fmtTime, nearDay, openRun, updateRun, updateStop, type Run, type State, type Stop } from './store'
 import { ConfirmDialog } from './App'
 
-/** "HH:MM" of a moment, and that time put back on the same day */
+/** "HH:MM" of a moment */
 const hm = (ms: number) => { const d = new Date(ms); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') }
-const onDay = (base: number, v: string) => { const [h, m] = v.split(':').map(Number); const d = new Date(base); if (Number.isFinite(h) && Number.isFinite(m)) d.setHours(h, m, 0, 0); return d.getTime() }
 
 /**
  * Fixing a run after the fact: the code, lot or date typed wrong, the pouches per cart, the waste, and every unit
@@ -13,23 +12,19 @@ const onDay = (base: number, v: string) => { const [h, m] = v.split(':').map(Num
  */
 export function RunEditor({ s, run, mgr, onClose }: { s: State; run: Run; mgr: boolean; onClose: () => void }) {
   const cfg = CFG[run.dept]
-  const [code, setCode] = useState(run.code)
-  const [lot, setLot] = useState(run.lot)
-  const [date, setDate] = useState(run.date)
-  const [per, setPer] = useState(run.perUnit != null ? String(run.perUnit) : '')
-  const [waste, setWaste] = useState(run.waste ? String(run.waste) : '')
-  const [units, setUnits] = useState(run.units.map((u) => ({ at: u.at, qty: u.qty != null ? String(u.qty) : '', ref: u.ref, by: u.by })))
+  // how the form opened: saving applies only what was changed since, on top of what the run is by then
+  const [opened] = useState(() => draftOf(run))
+  const [code, setCode] = useState(opened.code)
+  const [lot, setLot] = useState(opened.lot)
+  const [date, setDate] = useState(opened.date)
+  const [per, setPer] = useState(opened.per)
+  const [waste, setWaste] = useState(opened.waste)
+  const [units, setUnits] = useState(opened.units)
   const [dropping, setDropping] = useState(false)
-  const num = (v: string) => { const n = Number(v.replace(',', '.')); return Number.isFinite(n) ? n : 0 }
   const lineBusy = !!run.endedAt && !!openRun(s, run.lineId)
-  const save = () => {
-    updateRun(run.id, {
-      code: code.trim().toUpperCase() || run.code, lot: lot.trim(), date: date || run.date,
-      perUnit: cfg.perUnitLabel ? (per.trim() ? num(per) : null) : run.perUnit, waste: cfg.waste ? num(waste) : run.waste,
-      units: units.map((u) => ({ at: u.at, qty: cfg.qty === 'none' ? null : u.qty.trim() ? num(u.qty) : null, ref: u.ref.trim(), by: u.by })),
-    })
-    onClose()
-  }
+  // units tapped on the line while this form is open: they are kept as they are
+  const later = run.units.filter((u) => !opened.units.some((o) => o.at === u.at)).length
+  const save = () => { applyDraft(run.id, opened, { code, lot, date, per, waste, units }); onClose() }
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg wide" onClick={(e) => e.stopPropagation()}>
@@ -57,7 +52,7 @@ export function RunEditor({ s, run, mgr, onClose }: { s: State; run: Run; mgr: b
             </table>
           </div>
         )}
-        <p className="hint">Quita con ✕ una unidad tocada de más. Los cambios quedan al tocar Guardar.</p>
+        <p className="hint">Quita con ✕ una unidad tocada de más. Los cambios quedan al tocar Guardar.{later > 0 && ' Mientras corregías se ' + (later === 1 ? 'registró 1 ' + cfg.unit.toLowerCase() + ' más: se conserva.' : 'registraron ' + later + ' ' + cfg.plural.toLowerCase() + ' más: se conservan.')}</p>
         <div className="dbtns spread">
           <div className="btns">
             {run.endedAt && <button type="button" className="btn" disabled={lineBusy} title={lineBusy ? 'La línea ya corre otro código' : ''} onClick={() => { updateRun(run.id, { endedAt: null }); onClose() }}>Reabrir código</button>}
@@ -78,19 +73,27 @@ export function RunEditor({ s, run, mgr, onClose }: { s: State; run: Run; mgr: b
 export function StopEditor({ stop, mgr, onClose }: { stop: Stop; mgr: boolean; onClose: () => void }) {
   const reasons = CFG[stop.dept].reasons
   const known = reasons.includes(stop.reason)
-  const [reason, setReason] = useState(known ? stop.reason : 'Otra')
-  const [other, setOther] = useState(known ? '' : stop.reason)
-  const [note, setNote] = useState(stop.note)
-  const [start, setStart] = useState(hm(stop.startedAt))
-  const [end, setEnd] = useState(stop.endedAt ? hm(stop.endedAt) : '')
+  // how the form opened: saving applies only what was changed since (a stop ended on the line meanwhile stays ended)
+  const [opened] = useState(() => ({ reason: known ? stop.reason : 'Otra', other: known ? '' : stop.reason, note: stop.note, start: hm(stop.startedAt), end: stop.endedAt ? hm(stop.endedAt) : '' }))
+  const [reason, setReason] = useState(opened.reason)
+  const [other, setOther] = useState(opened.other)
+  const [note, setNote] = useState(opened.note)
+  const [start, setStart] = useState(opened.start)
+  const [end, setEnd] = useState(opened.end)
   const [dropping, setDropping] = useState(false)
   const ok = reason === 'Otra' ? other.trim().length > 0 : !!reason
   const save = () => {
-    // a time left as it was keeps its seconds; only a changed one is re-read from HH:MM
-    const startedAt = start === hm(stop.startedAt) ? stop.startedAt : onDay(stop.startedAt, start)
-    let endedAt = stop.endedAt == null ? null : !end ? null : end === hm(stop.endedAt) ? stop.endedAt : onDay(stop.endedAt, end)
-    if (endedAt != null && endedAt < startedAt) endedAt = startedAt
-    updateStop(stop.id, { reason: reason === 'Otra' ? other.trim() : reason, note: note.trim(), startedAt, endedAt })
+    const patch: Parameters<typeof updateStop>[1] = {}
+    const text = (r: string, o: string) => (r === 'Otra' ? o.trim() : r)
+    if (text(reason, other) !== text(opened.reason, opened.other)) patch.reason = text(reason, other)
+    if (note.trim() !== opened.note.trim()) patch.note = note.trim()
+    // a time left as it was keeps its seconds; a changed one is read from HH:MM on the day nearest to the old moment
+    const startedAt = start !== opened.start ? nearDay(stop.startedAt, start) : stop.startedAt
+    if (startedAt !== stop.startedAt) patch.startedAt = startedAt
+    // the end: a new time, or cleared to reopen the stop
+    if (stop.endedAt != null && end !== opened.end) patch.endedAt = end ? Math.max(startedAt, nearDay(stop.endedAt, end)) : null
+    else if (stop.endedAt != null && stop.endedAt < startedAt) patch.endedAt = startedAt
+    if (Object.keys(patch).length) updateStop(stop.id, patch)
     onClose()
   }
   return (

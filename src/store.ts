@@ -1,6 +1,6 @@
 // Everything is saved on this device first (localStorage). With a server configured (see supabase.ts) every change is
 // also queued for upload (outbox.ts) and what other devices send arrives through sync.ts.
-import { push } from './outbox'
+import { drop, justSent, push, queued, rebase, type Row, type Table } from './outbox'
 
 export type Dept = 'Kitchen' | 'RTE' | 'Spiral' | 'MFO' | 'Packing'
 export const DEPTS: Dept[] = ['Kitchen', 'RTE', 'Spiral', 'MFO', 'Packing']
@@ -74,6 +74,21 @@ export function lotFor(ds: string) {
 }
 /** the office writes 889, the ticket and the boxes say 0889: a numeric code is the same with or without leading zeros */
 export const normCode = (c: string) => { const u = c.trim().toUpperCase(); return /^\d+$/.test(u) ? String(Number(u)) : u }
+/**
+ * one entry per code and day in the program: "0889" and "889" are the same product. (Earlier versions kept what was
+ * typed next to what came back from the server, and the two were added up.) The spelling as typed is the newer one
+ * when it carries a number; otherwise the plain spelling stands.
+ */
+function tidySchedule(sch: Schedule): Schedule {
+  const out: Schedule = {}
+  for (const [date, codes] of Object.entries(sch)) {
+    const day: Record<string, number> = {}
+    for (const [c, n] of Object.entries(codes)) if (normCode(c) === c) day[c] = n
+    for (const [c, n] of Object.entries(codes)) if (normCode(c) !== c && (n || !(normCode(c) in day))) day[normCode(c)] = n
+    out[date] = day
+  }
+  return out
+}
 
 /** with a server the lines (and products) are shared and come from it; without one, each device starts with a line per room */
 const SERVER = !!import.meta.env.VITE_SUPABASE_URL
@@ -92,7 +107,7 @@ function load(): State {
         lines: s.lines.map((l) => ({ id: l.id ?? uid(), dept: (l.dept ?? 'Kitchen') as Dept, name: l.name ?? 'Línea 1', updatedAt: l.updatedAt ?? 0 })),
         stops: s.stops.map((x) => ({ id: x.id ?? uid(), dept: (x.dept ?? 'Kitchen') as Dept, lineId: x.lineId ?? null, reason: x.reason ?? '', note: x.note ?? '', startedAt: x.startedAt ?? 0, endedAt: x.endedAt ?? null, by: x.by ?? '', updatedAt: x.updatedAt ?? 0 })),
         runs: s.runs.map((r) => ({ id: r.id ?? uid(), dept: (r.dept ?? 'Kitchen') as Dept, lineId: r.lineId ?? '', line: r.line ?? '', code: r.code ?? '', lot: r.lot ?? '', date: r.date ?? today(), startedAt: r.startedAt ?? 0, endedAt: r.endedAt ?? null, units: units(r), perUnit: r.perUnit ?? null, waste: r.waste ?? 0, by: r.by ?? '', updatedAt: r.updatedAt ?? 0 })),
-        products, schedule: s.schedule ?? {},
+        products, schedule: tidySchedule(s.schedule ?? {}),
         changes: (s.changes ?? []).filter((c) => (c.at ?? 0) > Date.now() - KEEP_CHANGES_MS).map((c) => ({ id: c.id ?? uid(), at: c.at ?? 0, by: c.by ?? '', dept: (c.dept ?? null) as Dept | null, what: c.what ?? '', before: c.before ?? '', after: c.after ?? '', refTable: c.refTable ?? '', refKey: c.refKey ?? '', updatedAt: c.updatedAt ?? 0 })),
         targets: (s.targets ?? []).filter((t) => DEPTS.includes(t.dept as Dept)).map((t) => ({ dept: t.dept as Dept, perHour: t.perHour ?? null, perShift: t.perShift ?? null, updatedAt: t.updatedAt ?? 0 })),
       }
@@ -129,12 +144,22 @@ const rowOfChange = (c: Change) => ({ id: c.id, at: iso(c.at), by_name: c.by, de
 const rowOfTarget = (t: Target) => ({ dept: t.dept, per_hour: t.perHour, per_shift: t.perShift, updated_at: iso(t.updatedAt), updated_by: user.get() })
 
 // ---- the mutations: each one saves on the device and queues the row for the server ----
-const putLine = (l: Line) => { l = { ...l, updatedAt: Date.now() }; set({ ...state, lines: upsertIn(state.lines, l) }); push('act_lines', l.id, rowOfLine(l)) }
+/** a change is always stamped later than the version it was made from, even when this device's clock runs behind another's */
+const stamp = (was: { updatedAt: number } | undefined) => Math.max(Date.now(), (was?.updatedAt ?? 0) + 1)
+/** what the server last had of a row (nothing for one never sent): it travels with the queued change, see outbox.ts */
+const baseOf = <T extends { updatedAt: number }>(was: T | undefined, row: (x: T) => Row) => (was && was.updatedAt ? row(was) : null)
+const putLine = (l: Line) => {
+  const was = state.lines.find((x) => x.id === l.id)
+  l = { ...l, updatedAt: stamp(was) }; if (l.deleted) gone.set('act_lines|' + l.id, l.updatedAt)
+  set({ ...state, lines: upsertIn(state.lines, l) }); push('act_lines', l.id, rowOfLine(l), baseOf(was, rowOfLine))
+}
 const putRun = (r: Run) => {
   // a line this device still holds only locally (from before the server) goes up first, so the run is seen on it everywhere
   const line = state.lines.find((l) => l.id === r.lineId)
   if (line && !line.updatedAt) putLine(line)
-  r = { ...r, updatedAt: Date.now() }; set({ ...state, runs: upsertIn(state.runs, r) }); push('act_runs', r.id, rowOfRun(r))
+  const was = state.runs.find((x) => x.id === r.id)
+  r = { ...r, updatedAt: stamp(was) }; if (r.deleted) gone.set('act_runs|' + r.id, r.updatedAt)
+  set({ ...state, runs: upsertIn(state.runs, r) }); push('act_runs', r.id, rowOfRun(r), baseOf(was, rowOfRun))
 }
 /**
  * lines made before this device had a server: the ones of the rooms this person may write are shared once, so every
@@ -145,10 +170,16 @@ export function shareLocalLines(canWrite: (dept: Dept) => boolean) {
   if (keep.length !== state.lines.length) set({ ...state, lines: keep })
   for (const l of keep) if (!l.updatedAt) putLine(l)
 }
-const putStop = (x: Stop) => { x = { ...x, updatedAt: Date.now() }; set({ ...state, stops: upsertIn(state.stops, x) }); push('act_stops', x.id, rowOfStop(x)) }
+const putStop = (x: Stop) => {
+  const was = state.stops.find((y) => y.id === x.id)
+  x = { ...x, updatedAt: stamp(was) }; if (x.deleted) gone.set('act_stops|' + x.id, x.updatedAt)
+  set({ ...state, stops: upsertIn(state.stops, x) }); push('act_stops', x.id, rowOfStop(x), baseOf(was, rowOfStop))
+}
+/** a row put in its place: a changed one stays where it was (the lines keep their order on the screen), a new one goes last, a deleted one leaves */
 function upsertIn<T extends { id: string; deleted?: boolean }>(list: T[], item: T): T[] {
-  const rest = list.filter((x) => x.id !== item.id)
-  return item.deleted ? rest : [...rest, item]
+  const i = list.findIndex((x) => x.id === item.id)
+  if (item.deleted) return i < 0 ? list : list.filter((x) => x.id !== item.id)
+  return i < 0 ? [...list, item] : list.map((x, k) => (k === i ? item : x))
 }
 
 // ---- the history: who changed what, when ----
@@ -221,6 +252,42 @@ export function updateStop(id: string, patch: Partial<Pick<Stop, 'reason' | 'not
   log('Motivo', x.reason, n.reason); log('Detalle', x.note, n.note); log('Inicio', fmtTime(x.startedAt), fmtTime(n.startedAt)); log('Fin', endText(x.endedAt), endText(n.endedAt))
 }
 export function deleteStop(id: string) { const x = stop(id); if (x) { putStop({ ...x, deleted: true }); logChange(x.dept, 'Se borró el paro ' + x.dept + ' ' + dayOf(x.startedAt) + ' ' + fmtTime(x.startedAt) + ' (' + stopLine(x) + ')', x.reason + (x.note ? ' · ' + x.note : '') + ' · ' + fmtTime(x.startedAt) + '–' + endText(x.endedAt), '', 'act_stops', x.id) } }
+/** the form of a correction, as the text the person sees and types */
+export type RunDraft = { code: string; lot: string; date: string; per: string; waste: string; units: { at: number; qty: string; ref: string; by: string }[] }
+export const draftOf = (r: Run): RunDraft => ({ code: r.code, lot: r.lot, date: r.date, per: r.perUnit != null ? String(r.perUnit) : '', waste: r.waste ? String(r.waste) : '', units: r.units.map((u) => ({ at: u.at, qty: u.qty != null ? String(u.qty) : '', ref: u.ref, by: u.by })) })
+const typed = (t: string) => { const n = Number(t.replace(',', '.')); return Number.isFinite(n) ? n : 0 }
+/**
+ * saves a correction on top of what the run is NOW: only what the person changed in the form (against how the form
+ * opened) is applied, so a cart tapped on the line while the form was open is kept, not wiped by the form's old list
+ */
+export function applyDraft(id: string, opened: RunDraft, draft: RunDraft) {
+  const r = run(id)
+  if (!r) return
+  const cfg = CFG[r.dept], patch: Parameters<typeof updateRun>[1] = {}
+  const changed = (a: string, b: string) => a.trim() !== b.trim()
+  if (changed(draft.code.toUpperCase(), opened.code.toUpperCase()) && draft.code.trim()) patch.code = draft.code.trim().toUpperCase()
+  if (changed(draft.lot, opened.lot)) patch.lot = draft.lot.trim()
+  if (draft.date && draft.date !== opened.date) patch.date = draft.date
+  if (cfg.perUnitLabel && changed(draft.per, opened.per)) patch.perUnit = draft.per.trim() ? typed(draft.per) : null
+  if (cfg.waste && changed(draft.waste, opened.waste)) patch.waste = typed(draft.waste)
+  const was = new Map(opened.units.map((u) => [u.at, u])), now = new Map(draft.units.map((u) => [u.at, u]))
+  const units = r.units.filter((u) => !(was.has(u.at) && !now.has(u.at))).map((u) => {
+    const a = was.get(u.at), b = now.get(u.at)
+    if (!a || !b) return u // tapped after the form opened: untouched
+    const qty = cfg.qty !== 'none' && changed(b.qty, a.qty) ? (b.qty.trim() ? typed(b.qty) : null) : u.qty
+    const ref = changed(b.ref, a.ref) ? b.ref.trim() : u.ref
+    return qty === u.qty && ref === u.ref ? u : { ...u, qty, ref }
+  })
+  if (units.length !== r.units.length || units.some((u, i) => u !== r.units[i])) patch.units = units
+  if (Object.keys(patch).length) updateRun(id, patch)
+}
+/** the moment with this clock time ("HH:MM") nearest to `base`: a correction is a small move, also across midnight */
+export function nearDay(base: number, hm: string) {
+  const [h, m] = hm.split(':').map(Number)
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return base
+  const at = (shift: number) => { const d = new Date(base); d.setDate(d.getDate() + shift); d.setHours(h, m, 0, 0); return d.getTime() }
+  return [at(-1), at(0), at(1)].reduce((best, x) => (Math.abs(x - base) < Math.abs(best - base) ? x : best), at(0))
+}
 /** everyone who took part in a run: who started it and who tapped its units (a break cover shows up by name) */
 export function whoText(r: Run) { return [...new Set([r.by, ...r.units.map((u) => u.by)].filter(Boolean))].join(', ') }
 
@@ -231,16 +298,24 @@ export function reset() { set(fresh()); resync() }
 export function resetRecords() { set({ ...state, runs: [], stops: [], schedule: {}, changes: [] }); resync() }
 
 export const productOf = (s: State, code: string) => s.products.find((p) => normCode(p.code) === normCode(code))
-/** saves a product by its position in the list (a new one goes at the end); a code that changed retires the old row on the server */
-export function saveProduct(i: number, p: Product) {
+/**
+ * saves a product by its position in the list (a new one goes at the end); a code that changed retires the old row on
+ * the server. Refused (false, nothing saved) when the code already belongs to another product, or when it would leave
+ * an existing product without a code.
+ */
+export function saveProduct(i: number, p: Product): boolean {
   const products = [...state.products]
   const old = products[i]
-  p = { ...p, updatedAt: Date.now() }
+  const key = normCode(p.code)
+  if (key && products.some((x, k) => k !== i && normCode(x.code) === key)) return false
+  if (old && old.code.trim() && !key) return false
+  p = { ...p, updatedAt: stamp(old) }
   if (i >= products.length) products.push(p); else products[i] = p
   set({ ...state, products })
-  if (old && old.code.trim() && normCode(old.code) !== normCode(p.code)) push('act_products', normCode(old.code), rowOfProduct({ ...old, deleted: true, updatedAt: Date.now() }))
-  if (p.code.trim()) push('act_products', normCode(p.code), rowOfProduct(p))
+  if (old && old.code.trim() && normCode(old.code) !== key) push('act_products', normCode(old.code), rowOfProduct({ ...old, deleted: true, updatedAt: stamp(old) }))
+  if (key) push('act_products', key, rowOfProduct(p))
   logProductDiff(old, p)
+  return true
 }
 export function removeProduct(i: number) {
   const p = state.products[i]
@@ -262,10 +337,14 @@ export function mergeProducts(list: Product[]) {
   logChange(null, 'Importó el CSV de productos', '', list.length + ' productos · ' + added + ' nuevos · ' + changed + ' con cambios', 'act_products', '')
 }
 export function setSchedule(date: string, code: string, n: number) {
-  const key = code.trim().toUpperCase(), before = state.schedule[date]?.[key] ?? 0
-  set({ ...state, schedule: { ...state.schedule, [date]: { ...(state.schedule[date] ?? {}), [key]: n } } })
-  push('act_schedule', date + '|' + normCode(code), rowOfSchedule(date, code, n))
-  logChange(null, 'Programa ' + date + ' · ' + key + ' mezclas', v(before), v(n), 'act_schedule', date + '|' + normCode(code))
+  const key = normCode(code)
+  if (!key) return
+  const day = { ...(state.schedule[date] ?? {}) }, before = day[key] ?? 0
+  for (const c of Object.keys(day)) if (c !== key && normCode(c) === key) delete day[c]
+  day[key] = n
+  set({ ...state, schedule: { ...state.schedule, [date]: day } })
+  push('act_schedule', date + '|' + key, rowOfSchedule(date, key, n))
+  logChange(null, 'Programa ' + date + ' · ' + key + ' mezclas', v(before), v(n), 'act_schedule', date + '|' + key)
 }
 export const targetOf = (s: State, dept: Dept) => s.targets.find((t) => t.dept === dept)
 /** the manager's goal for a room (blank = none); it reaches every tablet of the room and the history */
@@ -277,56 +356,149 @@ export function setTarget(dept: Dept, perHour: number | null, perShift: number |
   logChange(dept, 'Meta ' + dept + ' · por hora', v(old?.perHour), v(perHour), 'act_targets', dept)
   logChange(dept, 'Meta ' + dept + ' · por turno', v(old?.perShift), v(perShift), 'act_targets', dept)
 }
+/**
+ * what one unit counts for: its own quantity; without one (old records, a blank left in a correction), the run's
+ * quantity per unit, or the master table's. One rule for the line, the report, the room's total and Avance.
+ */
+export function unitQty(s: State, r: Run, u: Unit): number {
+  if (u.qty != null) return u.qty
+  if (CFG[r.dept].qty === 'none') return 0
+  if (r.perUnit != null) return r.perUnit
+  const p = productOf(s, r.code)
+  return p ? (r.dept === 'RTE' ? cartPouches(p) : r.dept === 'Packing' ? p.casesPerPallet : 0) : 0
+}
+/** what a run made, in its room's quantity (pouches, cajas) */
+export const runQty = (s: State, r: Run) => r.units.reduce((t, u) => t + unitQty(s, r, u), 0)
+
 /** what a room made on a day with all its lines together: in total, per code, and the pace (made ÷ hours since the first start of the day) */
 export function deptToday(s: State, dept: Dept, date: string, now: number) {
   const cfg = CFG[dept]
   const runs = s.runs.filter((r) => r.dept === dept && r.date === date)
-  const measure = (r: Run) => (cfg.qty === 'none' ? r.units.length : r.units.reduce((t, u) => t + (u.qty ?? 0), 0))
+  const measure = (r: Run) => (cfg.qty === 'none' ? r.units.length : runQty(s, r))
   const codes = new Map<string, { code: string; units: number; qty: number; waste: number; lines: string[] }>()
   for (const r of runs) {
     const e = codes.get(normCode(r.code)) ?? { code: r.code, units: 0, qty: 0, waste: 0, lines: [] }
-    e.units += r.units.length; e.qty += measure(r); e.waste += r.waste
+    e.units += r.units.length; e.qty += measure(r); e.waste = Math.round((e.waste + r.waste) * 100) / 100
     if (!e.lines.includes(r.line)) e.lines.push(r.line)
     codes.set(normCode(r.code), e)
   }
   const units = runs.reduce((t, r) => t + r.units.length, 0), qty = runs.reduce((t, r) => t + measure(r), 0)
   const first = runs.length ? Math.min(...runs.map((r) => r.startedAt)) : 0
   const allEnded = runs.length > 0 && runs.every((r) => r.endedAt)
-  const hours = first ? ((allEnded ? Math.max(...runs.map((r) => r.endedAt ?? 0)) : now) - first) / 3_600_000 : 0
+  const hours = first ? Math.max(0, (allEnded ? Math.max(...runs.map((r) => r.endedAt ?? 0)) : now) - first) / 3_600_000 : 0
   return { runs, units, qty, unitLabel: cfg.qty === 'none' ? cfg.plural.toLowerCase() : cfg.qtyUnit, byCode: [...codes.values()].sort((a, b) => b.qty - a.qty), hours, rate: hours >= 1 / 6 ? qty / hours : null, allEnded }
 }
 
-/** a row that arrived from the server (another tablet, the office): kept only if it is newer than what this device has */
+// ---- what arrives from the server (another tablet, the office) ----
+const lineOfRow = (row: Row): Line => ({ id: String(row.id), dept: row.dept as Dept, name: String(row.name ?? ''), updatedAt: fromIso(row.updated_at) ?? 0, deleted: !!row.deleted })
+const runOfRow = (row: Row): Run => ({
+  id: String(row.id), dept: row.dept as Dept, lineId: String(row.line_id ?? ''), line: String(row.line ?? ''), code: String(row.code ?? ''), lot: String(row.lot ?? ''), date: String(row.date ?? '').slice(0, 10),
+  startedAt: fromIso(row.started_at) ?? 0, endedAt: fromIso(row.ended_at),
+  units: (Array.isArray(row.units) ? (row.units as Partial<Unit>[]) : []).map((u) => ({ at: u.at ?? 0, qty: u.qty ?? null, ref: u.ref ?? '', by: u.by ?? '' })),
+  perUnit: row.per_unit == null ? null : Number(row.per_unit), waste: Number(row.waste ?? 0), by: String(row.by_name ?? ''), updatedAt: fromIso(row.updated_at) ?? 0, deleted: !!row.deleted,
+})
+const stopOfRow = (row: Row): Stop => ({ id: String(row.id), dept: row.dept as Dept, lineId: row.line_id == null ? null : String(row.line_id), reason: String(row.reason ?? ''), note: String(row.note ?? ''), startedAt: fromIso(row.started_at) ?? 0, endedAt: fromIso(row.ended_at), by: String(row.by_name ?? ''), updatedAt: fromIso(row.updated_at) ?? 0, deleted: !!row.deleted })
+
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
+/** this device's changes (whatever differs from the version it started from) laid over what the server has now */
+function merge3<T extends object>(base: T, mine: T, theirs: T, keys: (keyof T)[]): T {
+  const out = { ...theirs }
+  for (const k of keys) if (!same(mine[k], base[k])) out[k] = mine[k]
+  return out
+}
+const byAt = (a: Unit, b: Unit) => a.at - b.at
+/** every unit of the first, plus the ones only the second has */
+const allUnits = (first: Run, second: Run) => { const have = new Set(first.units.map((u) => u.at)); return [...first.units, ...second.units.filter((u) => !have.has(u.at))].sort(byAt) }
+/**
+ * two devices changed the same run from the same version: each one's changes are kept. Units are matched by their
+ * moment: the ones I added are added, the one I removed stays removed, the one I corrected keeps my correction; the
+ * rest is theirs. Waste is an amount people add to, so both additions count.
+ */
+function mergeRun(base: Run, mine: Run, theirs: Run): Run {
+  const out = merge3(base, mine, theirs, ['dept', 'lineId', 'line', 'code', 'lot', 'date', 'startedAt', 'endedAt', 'perUnit', 'by', 'deleted'])
+  const inBase = new Map(base.units.map((u) => [u.at, u])), inMine = new Map(mine.units.map((u) => [u.at, u])), inTheirs = new Set(theirs.units.map((u) => u.at))
+  out.units = [
+    ...theirs.units.filter((u) => !(inBase.has(u.at) && !inMine.has(u.at))).map((u) => { const m = inMine.get(u.at), b = inBase.get(u.at); return m && b && !same(m, b) ? m : u }),
+    ...mine.units.filter((u) => !inBase.has(u.at) && !inTheirs.has(u.at)),
+  ].sort(byAt)
+  out.waste = mine.waste !== base.waste ? (theirs.waste !== base.waste ? Math.round((theirs.waste + mine.waste - base.waste) * 100) / 100 : mine.waste) : theirs.waste
+  return out
+}
+type Synced = { id: string; updatedAt: number; deleted?: boolean }
+/** how one kind of row is read, written and merged; `keep` is for when no common version is known: the newer one stands, and a run never loses a unit */
+type Kind<T> = { of: (r: Row) => T; row: (x: T) => Row; merge: (base: T, mine: T, theirs: T) => T; keep: (mine: T, theirs: T, theirsNewer: boolean) => T }
+const LINE: Kind<Line> = { of: lineOfRow, row: rowOfLine, merge: (b, m, t) => merge3(b, m, t, ['dept', 'name', 'deleted']), keep: (m, t, n) => (n ? t : m) }
+const STOP: Kind<Stop> = { of: stopOfRow, row: rowOfStop, merge: (b, m, t) => merge3(b, m, t, ['dept', 'lineId', 'reason', 'note', 'startedAt', 'endedAt', 'by', 'deleted']), keep: (m, t, n) => (n ? t : m) }
+const RUN: Kind<Run> = { of: runOfRow, row: rowOfRun, merge: mergeRun, keep: (m, t, n) => (n ? { ...t, units: allUnits(t, m) } : { ...m, units: allUnits(m, t) }) }
+const body = (x: Synced) => JSON.stringify({ ...x, updatedAt: 0 })
+/** rows deleted while this page is open, with when: a late echo of an earlier version must not bring one back */
+const gone = new Map<string, number>()
+/**
+ * A row from the server meets what this device has; returns the row to keep here (null = no change).
+ * Normally the newer one stands. Two cases put a change of this device at stake, and then nothing is thrown away:
+ *  - a change here is still waiting to go up: it is merged with the server's row, from the version both started from;
+ *  - the row that arrived is OLDER than what is here (a tablet that was offline, or one that wrote over a newer row):
+ *    what is here stays, any unit only the other one has is added, and the server is told again.
+ */
+function reconcile<T extends Synced>(table: Table, cur: T | undefined, row: Row, k: Kind<T>): T | null {
+  const theirs = k.of(row)
+  const pend = queued(table, theirs.id)
+  const mine = pend ? k.of(pend.row) : cur ? k.of(k.row(cur)) : undefined
+  if (theirs.deleted) gone.set(table + '|' + theirs.id, Math.max(theirs.updatedAt, gone.get(table + '|' + theirs.id) ?? 0))
+  if (!mine) return !theirs.deleted && theirs.updatedAt < (gone.get(table + '|' + theirs.id) ?? 0) ? null : theirs
+  const tb = body(theirs), mb = body(mine)
+  if (tb === mb) { if (pend) drop(table, theirs.id); return theirs.updatedAt >= mine.updatedAt ? theirs : null } // the same row (an echo of what was sent)
+  const newer = theirs.updatedAt > mine.updatedAt || (theirs.updatedAt === mine.updatedAt && tb > mb)
+  if (!pend && newer) return theirs
+  const base = pend?.base ? k.of(pend.base) : null
+  // a common version is only good for a row that came AFTER it; an older one (a late echo) would undo what lies between
+  const forked = !!base && theirs.updatedAt > base.updatedAt
+  const merged = base && forked ? k.merge(base, mine, theirs) : k.keep(mine, theirs, newer)
+  const gb = body(merged)
+  if (gb === tb) { if (pend) drop(table, theirs.id); return theirs }
+  if (gb === mb) {
+    // nothing of theirs to take. If mine is waiting to go up, it will; if it went up a moment ago this is just a late
+    // echo; otherwise the server has fallen behind and is told again
+    if (!pend && !justSent(table, theirs.id)) push(table, theirs.id, k.row(mine), row)
+    return null
+  }
+  const next = { ...merged, updatedAt: Math.max(Date.now(), mine.updatedAt + 1, theirs.updatedAt + 1) }
+  if (pend && forked) rebase(table, theirs.id, k.row(next), row) // the server's version is theirs now
+  else push(table, theirs.id, k.row(next), pend ? undefined : row)
+  return next
+}
+
+/** a row that arrived from the server: see reconcile() for the lines, runs and stops; the tables only the office edits keep the newer row */
 export function applyRemote(table: string, row: Record<string, unknown>) {
+  if (!row || (row.id == null && row.code == null && row.dept == null)) return // the notice of a row removed by hand in the database carries nothing
   const at = fromIso(row.updated_at) ?? 0
   const newer = <T extends { updatedAt: number }>(cur: T | undefined) => !cur || at >= cur.updatedAt
   if (table === 'act_lines') {
-    const cur = state.lines.find((l) => l.id === row.id)
-    if (!newer(cur)) return
-    const l: Line = { id: String(row.id), dept: row.dept as Dept, name: String(row.name ?? ''), updatedAt: at, deleted: !!row.deleted }
-    set({ ...state, lines: upsertIn(state.lines, l) })
+    const next = reconcile('act_lines', state.lines.find((l) => l.id === row.id), row, LINE)
+    if (next) set({ ...state, lines: upsertIn(state.lines, next) })
   } else if (table === 'act_runs') {
-    const cur = state.runs.find((r) => r.id === row.id)
-    if (!newer(cur)) return
-    const units = Array.isArray(row.units) ? (row.units as Partial<Unit>[]).map((u) => ({ at: u.at ?? 0, qty: u.qty ?? null, ref: u.ref ?? '', by: u.by ?? '' })) : []
-    const r: Run = { id: String(row.id), dept: row.dept as Dept, lineId: String(row.line_id ?? ''), line: String(row.line ?? ''), code: String(row.code ?? ''), lot: String(row.lot ?? ''), date: String(row.date ?? '').slice(0, 10), startedAt: fromIso(row.started_at) ?? 0, endedAt: fromIso(row.ended_at), units, perUnit: row.per_unit == null ? null : Number(row.per_unit), waste: Number(row.waste ?? 0), by: String(row.by_name ?? ''), updatedAt: at, deleted: !!row.deleted }
-    set({ ...state, runs: upsertIn(state.runs, r) })
+    const next = reconcile('act_runs', state.runs.find((r) => r.id === row.id), row, RUN)
+    if (next) set({ ...state, runs: upsertIn(state.runs, next) })
   } else if (table === 'act_stops') {
-    const cur = state.stops.find((x) => x.id === row.id)
-    if (!newer(cur)) return
-    const x: Stop = { id: String(row.id), dept: row.dept as Dept, lineId: row.line_id == null ? null : String(row.line_id), reason: String(row.reason ?? ''), note: String(row.note ?? ''), startedAt: fromIso(row.started_at) ?? 0, endedAt: fromIso(row.ended_at), by: String(row.by_name ?? ''), updatedAt: at, deleted: !!row.deleted }
-    set({ ...state, stops: upsertIn(state.stops, x) })
+    const next = reconcile('act_stops', state.stops.find((x) => x.id === row.id), row, STOP)
+    if (next) set({ ...state, stops: upsertIn(state.stops, next) })
   } else if (table === 'act_products') {
-    const code = String(row.code ?? '')
-    const i = state.products.findIndex((p) => normCode(p.code) === normCode(code))
+    const code = String(row.code ?? ''), key = normCode(code)
+    const i = state.products.findIndex((p) => normCode(p.code) === key)
     const cur = i >= 0 ? state.products[i] : undefined
     if (!newer(cur)) return
     const p: Product = { code, name: String(row.name ?? ''), pouchesPerCase: Number(row.pouches_per_case ?? 0), casesPerMix: Number(row.cases_per_mix ?? 0), cratesPerCart: Number(row.crates_per_cart ?? 0), pouchesPerCrate: Number(row.pouches_per_crate ?? 0), casesPerPallet: Number(row.cases_per_pallet ?? 0), updatedAt: at }
-    const products = state.products.filter((x) => normCode(x.code) !== normCode(code))
-    set({ ...state, products: row.deleted ? products : [...products, p] })
+    // the product stays in its place in the table (a changed row must not jump to the end while someone is editing)
+    const others = (x: Product, k: number) => k === i || normCode(x.code) !== key
+    const products = row.deleted ? state.products.filter((x) => normCode(x.code) !== key) : cur ? state.products.map((x, k) => (k === i ? p : x)).filter(others) : [...state.products, p]
+    set({ ...state, products })
   } else if (table === 'act_schedule') {
-    const date = String(row.date ?? '').slice(0, 10), code = String(row.code ?? '')
-    set({ ...state, schedule: { ...state.schedule, [date]: { ...(state.schedule[date] ?? {}), [code]: Number(row.mixes ?? 0) } } })
+    const date = String(row.date ?? '').slice(0, 10), code = normCode(String(row.code ?? ''))
+    if (!code || queued('act_schedule', date + '|' + code)) return // what was typed here is newer and on its way
+    const day = { ...(state.schedule[date] ?? {}) }
+    for (const c of Object.keys(day)) if (c !== code && normCode(c) === code) delete day[c]
+    day[code] = Number(row.mixes ?? 0)
+    set({ ...state, schedule: { ...state.schedule, [date]: day } })
   } else if (table === 'act_changes') {
     const cur = state.changes.find((c) => c.id === row.id)
     if (!newer(cur)) return
@@ -351,16 +523,33 @@ export function uploadAll() {
   for (const t of state.targets) { push('act_targets', t.dept, rowOfTarget(t)); n++ }
   return n
 }
-/** the office's CSV (columns found by their names, in Spanish or English) → products; returns what could be read */
+/** "71.4", "71,4", "1.234,5" or "1,234.5" → a number (0 for a blank or something that is not one) */
+export function numOf(text: string) {
+  let x = String(text ?? '').replace(/\s/g, '')
+  if (!x) return 0
+  const dot = x.lastIndexOf('.'), comma = x.lastIndexOf(',')
+  if (dot >= 0 && comma >= 0) x = dot > comma ? x.replace(/,/g, '') : x.replace(/\./g, '').replace(',', '.')
+  else if (comma >= 0) x = x.replace(',', '.')
+  const n = Number(x)
+  return Number.isFinite(n) ? n : 0
+}
+/**
+ * the office's CSV (columns found by their names, in Spanish or English) → products; returns what could be read.
+ * The separator is whichever the header line uses (comma, semicolon or tab: Excel picks it by the PC's language), so a
+ * decimal comma inside a semicolon file is a number, not a new column.
+ */
 export function parseProductsCsv(text: string): Product[] {
+  const src = text.replace(/^\uFEFF/, '')
+  const headLine = src.split(/\r?\n/, 1)[0] ?? ''
+  const count = (ch: string) => { let n = 0, q = false; for (const c of headLine) { if (c === '"') q = !q; else if (!q && c === ch) n++ } return n }
+  const sep = [',', ';', '\t'].reduce((best, ch) => (count(ch) > count(best) ? ch : best), ',')
   const rows: string[][] = []
   let row: string[] = [], cell = '', q = false
-  const src = text.replace(/^﻿/, '')
   for (let i = 0; i < src.length; i++) {
     const ch = src[i]
     if (q) { if (ch === '"') { if (src[i + 1] === '"') { cell += '"'; i++ } else q = false } else cell += ch }
     else if (ch === '"') q = true
-    else if (ch === ',' || ch === ';' || ch === '\t') { row.push(cell); cell = '' }
+    else if (ch === sep) { row.push(cell); cell = '' }
     else if (ch === '\n' || ch === '\r') { if (ch === '\r' && src[i + 1] === '\n') i++; row.push(cell); rows.push(row); row = []; cell = '' }
     else cell += ch
   }
@@ -370,7 +559,7 @@ export function parseProductsCsv(text: string): Product[] {
   const cCode = find('código', 'codigo', 'code'), cName = find('producto rte', 'producto', 'r-t-e', 'item', 'name')
   const cPpc = find('pouches por caja', 'pouches/'), cYield = find('cajas por mezcla', 'yield x'), cPallet = find('cajas por pallet', 'palet')
   const cCrates = find('guacales'), cPerCrate = find('pouches por guacal')
-  const n = (r: string[], c: number) => (c < 0 ? 0 : Number(String(r[c] ?? '').replace(',', '.').trim()) || 0)
+  const n = (r: string[], c: number) => (c < 0 ? 0 : numOf(r[c] ?? ''))
   const out: Product[] = []
   for (const r of rows) {
     const code = cCode < 0 ? '' : String(r[cCode] ?? '').trim().toUpperCase()
@@ -390,12 +579,17 @@ export const openRun = (s: State, lineId: string) => s.runs.find((r) => r.lineId
 export const openStop = (s: State, dept: Dept, lineId: string) => s.stops.find((x) => !x.endedAt && x.dept === dept && (x.lineId === lineId || x.lineId === null))
 export const deptStop = (s: State, dept: Dept) => s.stops.find((x) => !x.endedAt && x.dept === dept && x.lineId === null)
 export const stopsOf = (s: State, dept: Dept, lineId: string) => s.stops.filter((x) => x.dept === dept && (x.lineId === lineId || x.lineId === null))
-/** the quantity per unit for this code: the last time this department ran it, or else the master table */
+/**
+ * the quantity per unit suggested for this code: the master table's (pouches per cart in RTE, cases per pallet in
+ * Packing), so a number the office corrects reaches the line; without one, what this room used the last time
+ */
 export function lastPerUnit(s: State, dept: Dept, code: string) {
-  const last = [...s.runs].reverse().find((r) => r.dept === dept && normCode(r.code) === normCode(code) && r.perUnit != null)?.perUnit
-  if (last != null) return last
   const p = productOf(s, code)
-  return p ? (dept === 'RTE' ? cartPouches(p) : dept === 'Packing' ? p.casesPerPallet : null) || null : null
+  const table = p ? (dept === 'RTE' ? cartPouches(p) : dept === 'Packing' ? p.casesPerPallet : 0) : 0
+  if (table) return table
+  const key = normCode(code)
+  const last = s.runs.filter((r) => r.dept === dept && normCode(r.code) === key && r.perUnit != null).sort((a, b) => b.startedAt - a.startedAt)[0]
+  return last?.perUnit ?? null
 }
 
 /**
@@ -425,7 +619,7 @@ export function runStats(s: State, r: Run, now: number) {
   const down = pieces.reduce((t, p) => t + (p.to - p.from), 0)
   const unitTimes = r.units.map((u, i) => activeBetween(i ? r.units[i - 1].at : r.startedAt, u.at, stops, now))
   const avg = unitTimes.length ? unitTimes.reduce((a, b) => a + b, 0) / unitTimes.length : 0
-  const qty = r.units.reduce((t, u) => t + (u.qty ?? 0), 0)
+  const qty = runQty(s, r)
   const reasons: Record<string, number> = {}
   for (const p of pieces) reasons[p.reason] = (reasons[p.reason] ?? 0) + (p.to - p.from)
   return { working, down, unitTimes, avg, qty, reasons, total: end - r.startedAt }
