@@ -8,7 +8,7 @@ const fmtN = (x: number) => Math.round(x).toLocaleString('en-US')
 import { whoText } from './store'
 import { buildPdf, loadPdf } from './pdf'
 import { RunEditor, StopEditor } from './editors'
-import { fetchMe, finishSignOut, loginEmail, rememberedMe, rememberedUser, rememberMe, rememberUser, signOutHere, supabase, type Me } from './supabase'
+import { fetchMe, finishSignOut, loginEmail, rememberedMe, rememberedUser, rememberMe, rememberUser, signedOut, signOutHere, supabase, type Me } from './supabase'
 import { leaveAsk, loadDay, startSync, syncStore, syncNow } from './sync'
 import { storageFull } from './storage'
 import { clockNow, clockOffText, otherZone, startClock } from './clock'
@@ -130,6 +130,8 @@ export default function App() {
 /** a device that was signed in before the last person was kept apart: what the app already had of them */
 const previousMe = (): Me | null => { const name = user.get(), r = role.get(); return name && (r === 'op' || r === 'mgr') ? { id: '', name, username: '', role: r, dept: myDept.get() } : null }
 const NO_SIGNAL = 'Sin conexión con el servidor. La primera vez en este aparato hay que entrar con WiFi.'
+/** said when the server itself ended the session of someone who was inside (a manager changed their PIN, the account was closed): never for lack of signal */
+const CLOSED = 'La sesión de este aparato se cerró. Pasa, por ejemplo, cuando te cambian el PIN. Entra otra vez.'
 
 /**
  * with a server: the same people and PINs as Freezer RTE; the role and department come from the employees table.
@@ -151,9 +153,10 @@ function ServerApp() {
       if (leaving.current) return
       confirmed.current = Date.now()
       const inside = who && who !== 'none' ? who : null
+      const wasIn = !!now.current && now.current !== 'none' && now.current !== 'loading'
       rememberMe(inside)
       if (!inside) user.set('')
-      setMe(who); setErr('')
+      setMe(who); setErr(wasIn && who === null ? CLOSED : '')
     } catch (e) {
       // no signal, or the server did not answer: whoever is in stays in; with nobody remembered, the sign-in screen says why
       confirmed.current = 0
@@ -233,6 +236,7 @@ function LoginGate({ error, onDone }: { error: string; onDone: () => Promise<voi
     if (secret !== pin) setPin(secret)
     if (!user || !secret) { setMsg('Escribe tu usuario y tu PIN.'); return }
     setBusy(true); setMsg('')
+    await signedOut() // a "Salir" still finishing must be over first, or it could clear the session about to be made
     const { error: e } = await supabase!.auth.signInWithPassword({ email: loginEmail(user), password: secret })
     setBusy(false)
     if (e) { setMsg(/invalid/i.test(e.message) ? 'Usuario o PIN incorrectos.' : /fetch|network/i.test(e.message) ? 'Sin conexión. Revisa el WiFi e intenta otra vez.' : e.message); return }
@@ -279,8 +283,10 @@ function LeaveDialog({ onYes, onNo }: { onYes: () => void; onNo: () => void }) {
 function SyncDot() {
   const st = useSyncExternalStore(syncStore.subscribe, syncStore.get)
   if (st.state === 'local') return null
-  const text = st.pending ? 'Pendiente ' + st.pending : st.state === 'offline' ? 'Sin conexión' : st.state === 'signedOut' ? 'Sin sesión' : st.state === 'connecting' ? 'Conectando…' : 'Sincronizado'
-  const cls = st.pending || st.state === 'offline' ? 'amber' : st.state === 'online' ? 'ok' : ''
+  // an error of the server (not of the connection) is not "Sincronizado": the last try did not go through
+  const wrong = !!st.lastError && st.lastError !== 'signedOut'
+  const text = st.pending ? 'Pendiente ' + st.pending : st.state === 'offline' ? 'Sin conexión' : st.state === 'signedOut' ? 'Sin sesión' : st.state === 'connecting' ? 'Conectando…' : wrong ? 'Con error' : 'Sincronizado'
+  const cls = st.pending || st.state === 'offline' || wrong ? 'amber' : st.state === 'online' ? 'ok' : ''
   return <button type="button" className={'syncdot ' + cls} title={st.lastError || text} onClick={() => { void syncNow() }}>● {text}{st.lastError && st.lastError !== 'signedOut' && <small className="syncerr"> · {st.lastError.slice(0, 140)}</small>}</button>
 }
 

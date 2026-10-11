@@ -2,8 +2,80 @@ import { createClient, isAuthRetryableFetchError, type SupabaseClient } from '@s
 
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
+
+// ---- staying signed in: nobody is signed out unless they, a manager or the sign-in server itself say so ----
+/** the page's own stopwatch: it only goes forward, whatever is done to the device's clock */
+const stopwatch = () => (typeof performance !== 'undefined' ? performance.now() : Date.now())
+const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
+const isTokenUrl = (u: string) => /\/auth\/v1\/token(\?|$)/.test(u)
+/**
+ * The sign-in server itself says this session cannot be renewed (closed, revoked, unknown): a 4xx answer with its own
+ * error body. A busy server (429), a timeout, a proxy's block page or anything else without that body is NOT that.
+ */
+export function sessionIsOver(status: number, body: string): boolean {
+  if (status < 400 || status >= 500 || status === 408 || status === 425 || status === 429) return false
+  try {
+    const b = JSON.parse(body) as Record<string, unknown> | null
+    return !!b && typeof b === 'object' && ['error_code', 'error', 'code'].some((k) => typeof b[k] === 'string' && b[k] !== '')
+  } catch { return false }
+}
+/** no renewal is asked of the server before this moment (by the stopwatch) */
+let holdUntil = 0
+const notNow = (why: string) => new Response(JSON.stringify({ message: 'La sesión no se pudo renovar ahora (' + why + ')' }), { status: 503, headers: { 'Content-Type': 'application/json' } })
+/**
+ * Every request of the library goes through here. It only touches the two answers that decide whether a person stays
+ * signed in:
+ *  - A new or renewed session says when it expires by the SERVER's clock ("expires_at"), and the library compares
+ *    that with the DEVICE's clock. On a tablet whose clock is behind, the pass is renewed late and the server refuses
+ *    everything meanwhile; on one whose clock is far ahead, it is renewed on every single request until the server
+ *    stops answering. Without that field the library counts the time left ("expires_in") on the device's own clock,
+ *    which is right whatever hour the device is set to.
+ *  - A renewal the server could not attend to right now is not "this session is over". Told as "try again later",
+ *    the library keeps the session instead of signing the person out, and the server is left alone for a minute.
+ *    Only the sign-in server saying so in its own words ends a session (see sessionIsOver).
+ * Anything unexpected in here hands the server's answer over untouched.
+ */
+export async function sessionFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const u = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+  const token = isTokenUrl(u), renewal = token && u.includes('grant_type=refresh_token')
+  if (renewal && stopwatch() < holdUntil) return notNow('en espera')
+  const res = await fetch(input, init)
+  if (!token) return res
+  try {
+    if (res.ok) {
+      const body = (await res.clone().json()) as Record<string, unknown> | null
+      if (!body || typeof body !== 'object' || !('expires_at' in body) || !(Number(body.expires_in) > 0)) return res
+      delete body.expires_at
+      return new Response(JSON.stringify(body), { status: res.status, statusText: res.statusText, headers: { 'Content-Type': 'application/json' } })
+    }
+    if (!renewal || sessionIsOver(res.status, await res.clone().text())) return res
+    const asked = Number(res.headers.get('retry-after'))
+    holdUntil = stopwatch() + Math.min(300, asked > 0 ? asked : 60) * 1000
+    return notNow(String(res.status))
+  } catch { return res }
+}
+
 /** null = demo mode: everything stays on the device. With keys, the app shares the Freezer RTE project (tables act_*). */
-export const supabase: SupabaseClient | null = url && key ? createClient(url, key, { auth: { persistSession: true, autoRefreshToken: true } }) : null
+export const supabase: SupabaseClient | null = url && key ? createClient(url, key, { auth: { persistSession: true, autoRefreshToken: true }, global: { fetch: sessionFetch } }) : null
+
+/** the server said the pass is too old, while the device believed it still had time (its clock was moved backwards) */
+export const passExpired = (message: unknown) => /jwt expired|PGRST301|PGRST303|token is expired/i.test(String(message ?? ''))
+let renewedAt = -Infinity
+/** asks for a new pass now, at most once a minute. true = renewed */
+export async function renewSession(): Promise<boolean> {
+  if (!supabase || stopwatch() - renewedAt < 60_000) return false
+  renewedAt = stopwatch()
+  try { const { error } = await supabase.auth.refreshSession(); return !error } catch { return false }
+}
+
+/**
+ * Asks the browser not to clear what the app keeps on this device (who is signed in, what is waiting to go up) when
+ * the device runs short of space. Chrome and Safari decide by themselves, without asking the person; Firefox would
+ * show a question, so it is left alone there.
+ */
+export function keepStorage() {
+  try { if (!/firefox/i.test(navigator.userAgent) && navigator.storage?.persist) void navigator.storage.persist().catch(() => false) } catch { /* not offered here */ }
+}
 
 /** the same people and PINs as Freezer RTE: a username becomes an address on a reserved domain */
 export const USER_DOMAIN = 'freezer.example.com'
@@ -59,20 +131,49 @@ const LAST_KEY = 'act_last_user'
 export function rememberUser(u: string) { const v = u.trim().toLowerCase(); try { if (v && !v.includes('@')) localStorage.setItem(LAST_KEY, v) } catch { /* private */ } }
 export const rememberedUser = (): string => { try { return localStorage.getItem(LAST_KEY) || '' } catch { return '' } }
 
-/**
- * signs out of THIS device only (the same user on another tablet stays in). The server is told if it can be reached,
- * but the session kept on the device goes either way, so "Salir" always leaves the device signed out, also without
- * signal and also if the app is closed before it finishes (it is finished at the next start).
- */
+// ---- "Salir" ----
 const OUT_KEY = 'act_out'
-export async function signOutHere() {
-  if (!supabase) return
+/** where the library keeps the session on this device */
+const sessionKeys = () => {
+  const found: string[] = []
+  try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && /^sb-.+-auth-token/.test(k)) found.push(k) } } catch { /* private */ }
+  return found
+}
+let leaving: Promise<void> | null = null
+/** done once a "Salir" in progress has completely finished. A sign-in waits for it: nothing of the old session is left that could clear the new one */
+export const signedOut = (): Promise<void> => leaving ?? Promise.resolve()
+/**
+ * Signs out of THIS device only (the same user on another tablet stays in), at once and with or without signal: the
+ * session is taken off the device first, and only then are the library and the server told. Done in that order the
+ * library has nothing left to ask the server, so no late answer of a slow network can clear the session of whoever
+ * signs in next. If the app is closed before it finishes, it is finished at the next start (finishSignOut).
+ */
+export function signOutHere(): Promise<void> {
+  if (!supabase) return Promise.resolve()
+  leaving ??= leave(supabase).finally(() => { leaving = null })
+  return leaving
+}
+async function leave(client: SupabaseClient) {
+  // the pass the server knows this session by, read before it goes, to tell the server afterwards
+  let pass = ''
+  const keys = sessionKeys()
+  try { for (const k of keys) { const s = JSON.parse(localStorage.getItem(k) || 'null') as { access_token?: string } | null; if (s?.access_token) pass = s.access_token } } catch { /* unreadable: nothing to tell */ }
   try { localStorage.setItem(OUT_KEY, '1') } catch { /* private */ }
-  try { await Promise.race([supabase.auth.signOut({ scope: 'local' }), new Promise((r) => setTimeout(r, 4000))]) } catch { /* no signal */ }
-  try {
-    for (let i = localStorage.length - 1; i >= 0; i--) { const k = localStorage.key(i); if (k && /^sb-.+-auth-token/.test(k)) localStorage.removeItem(k) }
-    localStorage.removeItem(OUT_KEY)
-  } catch { /* private */ }
+  try { for (const k of keys) localStorage.removeItem(k) } catch { /* private */ }
+  // with no session left to read, the library only clears its own state: nothing goes over the network
+  const told = client.auth.signOut({ scope: 'local' }).then(() => undefined, () => undefined)
+  await Promise.race([told, wait(1500)])
+  try { for (const k of sessionKeys()) localStorage.removeItem(k); localStorage.removeItem(OUT_KEY) } catch { /* private */ }
+  // the server forgets this session, if it can be reached; nobody waits for that
+  if (pass && url && key) {
+    try {
+      const stop = new AbortController()
+      setTimeout(() => stop.abort(), 8000)
+      void fetch(url + '/auth/v1/logout?scope=local', { method: 'POST', headers: { apikey: key, Authorization: 'Bearer ' + pass }, keepalive: true, signal: stop.signal }).catch(() => undefined)
+    } catch { /* out of reach: the session is off this device anyway */ }
+  }
+  // (it only takes longer than a moment when the app was opened without signal seconds ago and is still starting up)
+  await told
 }
 /** "Salir" was tapped and the app closed before it finished */
 export async function finishSignOut() {

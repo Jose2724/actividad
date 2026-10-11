@@ -1,4 +1,4 @@
-import { noSignal, supabase } from './supabase'
+import { noSignal, passExpired, renewSession, supabase } from './supabase'
 import { startClock } from './clock'
 import { afterFlush, beforeFlush, flush, outbox, type Row, type Table } from './outbox'
 import { applyRemote, awayDay, batch, closeDay, firstKeptDay, myDept, openDay, prune, role, shareLocalLines } from './store'
@@ -42,8 +42,15 @@ const OVERLAP_MS = 10_000
  * Each browser says it its own way. For the app that is "no connection", whatever the device says about its WiFi.
  */
 export const unreachable = (message: unknown) => /failed to fetch|load failed|networkerror|network request failed|fetch failed|err_internet|err_network/i.test(String(message ?? ''))
-/** what the dot shows after a request that failed: no connection (said by the dot itself, no technical text), or an error worth reading */
-const failed = (message: string): Partial<SyncStatus> => (navigator.onLine === false || unreachable(message) ? { state: 'offline', lastError: '' } : { state: 'online', lastError: message })
+/**
+ * what the dot shows after a request that failed: no connection (said by the dot itself, no technical text), or an
+ * error worth reading. A pass the server calls expired is neither: the device believed it still had time (its clock
+ * was moved back), so a new one is asked for at once and everything is tried again.
+ */
+const failed = (message: string): Partial<SyncStatus> => {
+  if (passExpired(message)) { void renewSession().then((ok) => { if (ok) void syncNow() }); return { state: 'connecting', lastError: '' } }
+  return navigator.onLine === false || unreachable(message) ? { state: 'offline', lastError: '' } : { state: 'online', lastError: message }
+}
 const missing = (code: unknown) => ['42P01', 'PGRST205'].includes(String(code ?? '')) // the table's SQL has not been run yet
 type Page = { data: Row[] | null; error: { code?: string; message: string } | null }
 /**
@@ -161,7 +168,9 @@ export const flushNow = () => flush()
 let started = false
 /** once per page: pull, send, listen live, and keep trying every so often and whenever the signal comes back */
 export function startSync() {
-  if (!supabase || started) return
+  if (!supabase) return
+  // someone signed in again on a page that was already running: the dot must not keep saying "Sin sesión" until the next round
+  if (started) { void syncNow(); return }
   started = true
   prune()
   startClock()
