@@ -1,6 +1,7 @@
 // Keeps the app opening on the tablet when the WiFi drops: the page and its files are kept in a cache.
-// The page is fetched from the network first (so a new build arrives as soon as there is signal) and served
-// from the cache when there is none; the hashed files under assets/ never change, so they come from the cache.
+// The page and the app's manifest (its name and icon) are fetched from the network first, so a new build arrives as
+// soon as there is signal, and served from the cache when there is none; the hashed files under assets/ never
+// change, so they come from the cache.
 const CACHE = 'actividad-v1'
 const BASE = new URL(self.registration.scope).pathname
 self.addEventListener('install', (e) => {
@@ -25,5 +26,7 @@ self.addEventListener('fetch', (e) => {
     e.respondWith(fetch(req).then((res) => { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(BASE, copy)); return res }).catch(() => caches.match(BASE)))
     return
   }
-  e.respondWith(caches.match(req).then((hit) => hit || fetch(req).then((res) => { if (res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(req, copy)) } return res })))
+  const keep = (res) => { if (res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(req, copy)) } return res }
+  if (url.pathname.endsWith('.webmanifest')) { e.respondWith(fetch(req, { cache: 'no-cache' }).then(keep).catch(() => caches.match(req))); return }
+  e.respondWith(caches.match(req).then((hit) => hit || fetch(req).then(keep)))
 })

@@ -229,3 +229,7 @@ tr.live td{background:#f1fbf5}
 .psearch small{color:var(--muted);white-space:nowrap}
 .products .twrap{max-height:min(70vh,640px);overflow:auto}
 .products thead th{position:sticky;top:0;z-index:1;background:var(--surface);box-shadow:0 1px 0 var(--line)}
+.demotag{display:inline-block;margin-left:8px;padding:2px 7px;border-radius:6px;background:#c2410c;color:#fff;font-size:11px;font-weight:800;letter-spacing:.08em;vertical-align:middle}
+.fullbar{background:var(--warn);color:#fff;font-weight:700;padding:10px 14px;text-align:center}
+.daynote{margin:0;padding:10px 14px;border-radius:12px;background:var(--soft);color:var(--accent);font-weight:600}
+.daynote.warn{background:var(--red-soft);color:var(--warn)}

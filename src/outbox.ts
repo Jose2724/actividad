@@ -1,3 +1,4 @@
+import { storageFull } from './storage'
 import { noSignal, supabase } from './supabase'
 
 /**
@@ -14,13 +15,20 @@ export type Row = Record<string, unknown>
 export type Item = { table: Table; key: string; row: Row; base?: Row | null }
 const KEY = 'act_outbox'
 
-function read(): Item[] { try { return JSON.parse(localStorage.getItem(KEY) || '[]') as Item[] } catch { return [] } }
-function write(items: Item[]) { try { localStorage.setItem(KEY, JSON.stringify(items)) } catch { /* full */ } }
+/** the queue when it could not be written to the device (its storage was full): kept in memory, so it still goes up while the app stays open */
+let unsaved: Item[] | null = null
+function read(): Item[] { if (unsaved) return unsaved; try { return JSON.parse(localStorage.getItem(KEY) || '[]') as Item[] } catch { return [] } }
+function write(items: Item[]) {
+  try { localStorage.setItem(KEY, JSON.stringify(items)); unsaved = null }
+  catch { unsaved = items; storageFull.set(true) }
+}
 
 const listeners = new Set<() => void>()
 export const outbox = {
   size: () => read().length,
   items: () => read(),
+  /** tries again to write a queue that is only in memory (the device has made room) */
+  resave() { if (unsaved) write(unsaved) },
   subscribe(l: () => void) { listeners.add(l); return () => { listeners.delete(l) } },
 }
 const emit = () => listeners.forEach((l) => l())

@@ -1,6 +1,7 @@
 // Everything is saved on this device first (localStorage). With a server configured (see supabase.ts) every change is
 // also queued for upload (outbox.ts) and what other devices send arrives through sync.ts.
-import { drop, justSent, push, queued, rebase, type Row, type Table } from './outbox'
+import { drop, justSent, outbox, push, queued, rebase, type Row, type Table } from './outbox'
+import { storageFull } from './storage'
 
 export type Dept = 'Kitchen' | 'RTE' | 'Spiral' | 'MFO' | 'Packing'
 export const DEPTS: Dept[] = ['Kitchen', 'RTE', 'Spiral', 'MFO', 'Packing']
@@ -115,9 +116,67 @@ function load(): State {
   } catch { /* empty */ }
   return fresh()
 }
+// ---- what a device keeps when there is a server ----
+/**
+ * days of runs, stops, history and program a device keeps when there is a server. Older days stay on the server and
+ * are brought when someone opens them (loadDay in sync.ts). Without a server the device is the only copy: it keeps
+ * everything.
+ */
+export const KEEP_DAYS = 14
+let keepDays = KEEP_DAYS // halved when the device's storage fills up
+/** older days opened in this session (Reporte, Avance): they stay until the app is closed */
+const opened = new Set<string>()
+const dayBack = (n: number) => { const d = new Date(Date.now()); d.setDate(d.getDate() - n); return dayOf(d.getTime()) }
+/** the oldest day this device keeps */
+export const firstKeptDay = () => dayBack(keepDays - 1)
+/** a day this device does not hold: the server has to be asked for it */
+export const awayDay = (date: string) => SERVER && /^\d{4}-\d{2}-\d{2}$/.test(date) && date < firstKeptDay() && !opened.has(date)
+export const openDay = (date: string) => { opened.add(date) }
+export const closeDay = (date: string) => { opened.delete(date) }
+/**
+ * the state without the days the device no longer keeps. Never dropped: a run or a stop still open, anything still
+ * waiting to go up, a day someone opened, and the stops of a run that stays. Nothing is ever deleted on the server.
+ */
+function pruned(s: State): State {
+  if (!SERVER) return s
+  const from = firstKeptDay(), fromMs = new Date(from + 'T00:00:00').getTime()
+  const waiting = new Set(outbox.items().map((i) => i.table + '|' + i.key))
+  const runs = s.runs.filter((r) => !r.endedAt || r.date >= from || r.startedAt >= fromMs || opened.has(r.date) || waiting.has('act_runs|' + r.id))
+  const old = runs.filter((r) => r.startedAt < fromMs) // kept although old: their stops stay with them
+  const beside = (x: Stop) => old.some((r) => r.dept === x.dept && (x.lineId === null || x.lineId === r.lineId) && x.startedAt < (r.endedAt ?? Infinity) && (x.endedAt ?? Infinity) > r.startedAt)
+  const stops = s.stops.filter((x) => !x.endedAt || x.startedAt >= fromMs || opened.has(dayOf(x.startedAt)) || waiting.has('act_stops|' + x.id) || beside(x))
+  const changes = s.changes.filter((c) => c.at >= fromMs || opened.has(dayOf(c.at)) || waiting.has('act_changes|' + c.id))
+  const days = Object.keys(s.schedule).filter((d) => d >= from || opened.has(d))
+  if (runs.length === s.runs.length && stops.length === s.stops.length && changes.length === s.changes.length && days.length === Object.keys(s.schedule).length) return s
+  return { ...s, runs, stops, changes, schedule: Object.fromEntries(days.map((d) => [d, s.schedule[d]])) }
+}
+/** lets go of the days the device no longer keeps (see pruned) */
+export function prune() { const next = pruned(state); if (next !== state) set(next) }
+
 let state = load()
 const subs = new Set<() => void>()
-function set(next: State) { state = next; try { localStorage.setItem(KEY, JSON.stringify(state)) } catch { /* full */ } subs.forEach((f) => f()) }
+/**
+ * writes the state to the device. When its storage is full: with a server, older days are let go (the server has
+ * them) and it is tried again; when nothing more can go, or there is no server, the screen is told (storage.ts)
+ */
+function persist() {
+  for (;;) {
+    try { localStorage.setItem(KEY, JSON.stringify(state)); storageFull.set(false); outbox.resave(); return }
+    catch {
+      if (!SERVER || keepDays <= 2) { storageFull.set(true); return }
+      keepDays = Math.max(2, Math.floor(keepDays / 2))
+      state = pruned(state)
+    }
+  }
+}
+let batching = 0, dirty = false
+const commit = () => { persist(); subs.forEach((f) => f()) }
+function set(next: State) { state = next; if (batching) dirty = true; else commit() }
+/** many changes saved and shown once, at the end (a pull of hundreds of rows) */
+export function batch<T>(fn: () => T): T {
+  batching++
+  try { return fn() } finally { if (--batching === 0 && dirty) { dirty = false; commit() } }
+}
 export const store = { get: () => state, subscribe: (f: () => void) => { subs.add(f); return () => { subs.delete(f) } } }
 const pref = (k: string) => ({
   get: () => { try { return localStorage.getItem(k) || '' } catch { return '' } },

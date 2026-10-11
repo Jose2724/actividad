@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { activeBetween, addLine, addWaste, CFG, codeProblem, CRATES_PER_CART, dayOf, DEPTS, deptStop, deptToday, endRun, endStop, fmtDur, fmtTime, lastPerUnit, lotFor, madeText, managerPin, mergeProducts, myDept, normCode, numOf, openRun, openStop, parseProductsCsv, productOf, productsCsv, removeLine, removeProduct, reset, resetRecords, role, runStats, saveProduct, setSchedule, setTarget, startRun, startStop, stopsOf, store, targetOf, today, unitQty, unitDone, user, type Dept, type Line, type Product, type Run, type State, type Target, type Unit } from './store'
+import { activeBetween, addLine, addWaste, awayDay, CFG, codeProblem, CRATES_PER_CART, dayOf, DEPTS, deptStop, deptToday, endRun, endStop, fmtDur, fmtTime, KEEP_DAYS, lastPerUnit, lotFor, madeText, managerPin, mergeProducts, myDept, normCode, numOf, openRun, openStop, parseProductsCsv, productOf, productsCsv, removeLine, removeProduct, reset, resetRecords, role, runStats, saveProduct, setSchedule, setTarget, startRun, startStop, stopsOf, store, targetOf, today, unitQty, unitDone, user, type Dept, type Line, type Product, type Run, type State, type Target, type Unit } from './store'
 import { avanceRows, n1, pending, type AvanceRow } from './avance'
 import { cellText, xDay, xDur, xTime, xlsxBytes, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 
@@ -8,7 +8,8 @@ import { whoText } from './store'
 import { buildPdf, loadPdf } from './pdf'
 import { RunEditor, StopEditor } from './editors'
 import { fetchMe, finishSignOut, loginEmail, rememberedMe, rememberMe, signOutHere, supabase, type Me } from './supabase'
-import { startSync, syncStore, syncNow } from './sync'
+import { loadDay, startSync, syncStore, syncNow } from './sync'
+import { storageFull } from './storage'
 import { uploadAll } from './store'
 import { Employees } from './Employees'
 
@@ -20,6 +21,25 @@ function useNow() {
 }
 
 const isDept = (v: string): v is Dept => (DEPTS as string[]).includes(v)
+
+/** with a server the device keeps the last days; an older one is brought from the server when someone opens it */
+function useDay(date: string) {
+  const [state, setState] = useState<'here' | 'loading' | 'failed'>('here')
+  const [tries, setTries] = useState(0)
+  useEffect(() => {
+    if (!awayDay(date)) { setState('here'); return }
+    let current = true
+    setState('loading')
+    void loadDay(date).then((ok) => { if (current) setState(ok ? 'here' : 'failed') })
+    return () => { current = false }
+  }, [date, tries])
+  return { state, retry: () => setTries((n) => n + 1) }
+}
+function DayNote({ day }: { day: ReturnType<typeof useDay> }) {
+  if (day.state === 'loading') return <p className="daynote">Trayendo ese día del servidor…</p>
+  if (day.state === 'failed') return <p className="daynote warn">Este aparato guarda los últimos {KEEP_DAYS} días. Ese día está en el servidor y ahora no se pudo traer (sin señal). <button type="button" className="lnk" onClick={day.retry}>Reintentar</button></p>
+  return null
+}
 
 export default function App() {
   return supabase ? <ServerApp /> : <DemoApp />
@@ -155,7 +175,7 @@ function Gate({ dept, mgr, onDept, onManager, onName, onBack }: { dept: Dept | n
   if (!dept && !mgr) {
     return (
       <div className="gate">
-        <h1>Actividad</h1>
+        <h1>Actividad<span className="demotag">DEMO</span></h1>
         <p>¿De qué departamento eres?</p>
         <div className="pick">{DEPTS.map((d) => <button key={d} type="button" className="btn" onClick={() => onDept(d)}>{d}</button>)}</div>
         {asking ? (
@@ -171,7 +191,7 @@ function Gate({ dept, mgr, onDept, onManager, onName, onBack }: { dept: Dept | n
   }
   return (
     <div className="gate">
-      <h1>Actividad</h1>
+      <h1>Actividad<span className="demotag">DEMO</span></h1>
       <p><b>{mgr ? 'Manager' : dept}</b> · Ahora escribe tu nombre. Todo lo que registres lleva tu nombre.</p>
       <form onSubmit={(e) => { e.preventDefault(); if (v.trim()) onName(v.trim()) }}>
         <input autoFocus placeholder="Tu nombre" value={v} onChange={(e) => setV(e.target.value)} />
@@ -188,10 +208,12 @@ function Main({ name, home, mgr, onLogout }: { name: string; home: Dept; mgr: bo
   const now = useNow()
   const [dept, setDept] = useState<Dept>(home)
   const [tab, setTab] = useState<'act' | 'av' | 'rep' | 'emp'>('act')
+  const full = useSyncExternalStore(storageFull.subscribe, storageFull.get)
   return (
     <div className="app">
+      {full && <div className="fullbar">⚠ La memoria de este aparato está llena y lo nuevo no se está guardando aquí. {supabase ? 'Lo que ya subió al servidor está a salvo. Avisa al manager y no cierres la app hasta que diga "Sincronizado".' : 'Manda el reporte del día y avisa al manager antes de cerrar la app: hay que hacer espacio con "Reiniciar registros".'}</div>}
       <header className="top">
-        <div className="brand"><h1>Actividad</h1><small>{new Date(now).toLocaleDateString('es', { weekday: 'long', day: 'numeric', month: 'long' })}</small></div>
+        <div className="brand"><h1>Actividad{!supabase && <span className="demotag">DEMO</span>}</h1><small>{new Date(now).toLocaleDateString('es', { weekday: 'long', day: 'numeric', month: 'long' })}</small></div>
         <nav className="tabs">
           <button type="button" className={tab === 'act' ? 'on' : ''} onClick={() => setTab('act')}>Actividad</button>
           {mgr && <button type="button" className={tab === 'av' ? 'on' : ''} onClick={() => setTab('av')}>Avance</button>}
@@ -234,6 +256,7 @@ function Avance({ s }: { s: State }) {
   const rows = avanceRows(s, date)
   const sum = (f: (r: AvanceRow) => number | null) => rows.reduce((t, r) => t + (f(r) ?? 0), 0)
   const cls = (v: number | null) => (v == null ? '' : v < 0 ? 'red' : v > 0 ? 'amber' : 'ok')
+  const day = useDay(date)
   return (
     <section className="report avance">
       <div className="rhead">
@@ -245,6 +268,7 @@ function Avance({ s }: { s: State }) {
         </form>
         <button type="button" className="btn" onClick={() => setEditing(!editing)}>{editing ? 'Cerrar productos' : '⚙ Productos'}</button>
       </div>
+      <DayNote day={day} />
       <p className="hint"><b>Progr.</b> = lo que da el programa del día (mezclas programadas × tabla de productos). <b>Esper.</b> = lo que ya puede salir de las mezclas que Kitchen lleva hechas. <b>Pend.</b> = esperado − hecho (rojo = se hizo de más). <b>Faltan</b> = programado − hecho: lo que queda del día.</p>
       {editing && <Products s={s} />}
       {rows.length === 0 ? <p className="hint">Nada programado ni registrado en esta fecha. Escribe un código y toca "Programar".</p> : (
@@ -673,6 +697,7 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
   const [editStop, setEditStop] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const [notice, setNotice] = useState<{ title: string; text?: string } | null>(null)
+  const day = useDay(date)
   const runToEdit = editRun ? s.runs.find((r) => r.id === editRun) : undefined
   const stopToEdit = editStop ? s.stops.find((x) => x.id === editStop) : undefined
   useEffect(() => { void loadPdf() }, [])
@@ -763,12 +788,13 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
         <button type="button" className="btn" onClick={() => void pdf()} disabled={!rows.length}>📄 Ver PDF / imprimir</button>
         <button type="button" className="btn primary" onClick={() => void send()} disabled={!rows.length}>✉ Enviar reporte</button>
       </div>
+      <DayNote day={day} />
       <div className="totals">
         <div className="stat"><label>Códigos</label><b>{rows.length}</b></div>
         <div className="stat"><label>Trabajando</label><b>{fmtDur(working)}</b></div>
         <div className="stat"><label>Parado</label><b className={down ? 'red' : ''}>{fmtDur(down)}</b></div>
       </div>
-      {rows.length === 0 ? <p className="hint">Nada registrado en esta fecha.</p> : (
+      {rows.length === 0 ? <p className="hint">{day.state === 'here' ? 'Nada registrado en esta fecha.' : ''}</p> : (
         <div className="twrap">
           <table>
             <thead><tr><th>Depto</th><th>Línea</th><th>Código</th><th>Lote</th><th>Inicio</th><th>Fin</th><th>Hecho</th><th>Waste</th><th>Trabajando</th><th>Prom./unidad</th><th>Parado</th><th>Razones</th><th>Registró</th><th></th></tr></thead>

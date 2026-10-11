@@ -10,9 +10,11 @@ const bundle = pathToFileURL(resolve(dirname(fileURLToPath(import.meta.url)), '.
 const disks = new Map()
 let on = 'main'
 const disk = () => { if (!disks.has(on)) disks.set(on, new Map()); return disks.get(on) }
+const quota = new Map() // device → how many characters its storage takes (none = no limit)
+const used = (but) => [...disk()].reduce((t, [k, v]) => t + (k === but ? 0 : k.length + v.length), 0)
 Object.defineProperty(globalThis, 'localStorage', { configurable: true, writable: true, value: {
   getItem: (k) => (disk().has(k) ? disk().get(k) : null),
-  setItem: (k, v) => { disk().set(k, String(v)) },
+  setItem: (k, v) => { if (quota.has(on) && used(k) + k.length + String(v).length > quota.get(on)) throw new Error('QuotaExceededError'); disk().set(k, String(v)) },
   removeItem: (k) => { disk().delete(k) },
 } })
 globalThis.window = { addEventListener() {}, removeEventListener() {}, dispatchEvent() { return true } }
@@ -475,6 +477,124 @@ calc.use((m) => {
   eq('fila de otro departamento: se descarta (nunca la va a aceptar)', m.verdict('42501', 'new row violates row-level security policy for table "act_lines"'), 'refused')
   eq('fila mal formada: se queda en la cola y las demás siguen', m.verdict('23502', 'null value'), 'bad')
   eq('sesión vencida o sin señal: se reintenta, nunca se descarta', ['PGRST301', '', '500'].map((c) => m.verdict(c, 'JWT expired')), ['later', 'later', 'later'])
+})
+
+// =====================================================================================================================
+//  3. What a device keeps when there is a server
+// =====================================================================================================================
+clock = T0
+const sep = (d, h = 12, mi = 0) => new Date(2026, 8, d, h, mi, 0).getTime() // a day of September 2026
+section('Con servidor, el aparato guarda los últimos 14 días')
+const keep = await device('keep', { user: 'Santiago' })
+keep.use((m) => {
+  eq('hoy es 10 de octubre: el día más viejo que guarda es el 27 de septiembre', [m.KEEP_DAYS, m.firstKeptDay()], [14, '2026-09-27'])
+  const run = (id, date, start, o = {}) => m.applyRemote('act_runs', runRow({ id, date, startedAt: start, endedAt: start + 60 * M, lineId: 'LK', line: 'Línea K', units: [unit(start + 30 * M, 240)], perUnit: 240, ...o }))
+  run('viejo', '2026-09-01', sep(1))
+  run('borde-fuera', '2026-09-26', sep(26))
+  run('borde-dentro', '2026-09-27', sep(27))
+  run('fecha-mal-escrita', '2026-08-01', T0 - 2 * 24 * 60 * M) // typed with an old date, but made two days ago
+  run('abierto', '2026-09-05', sep(5), { endedAt: null, lineId: 'LX', line: 'Línea X' }) // still open: someone has to close it
+  run('con-cambio-sin-subir', '2026-09-02', sep(2))
+  run('hoy', DAY, T0 - 120 * M)
+  m.applyRemote('act_stops', stopRow({ id: 'paro-del-abierto', lineId: 'LX', startedAt: sep(5, 13), endedAt: sep(5, 13, 10) }))
+  m.applyRemote('act_stops', stopRow({ id: 'paro-viejo', lineId: 'LZ', startedAt: sep(6), endedAt: sep(6, 12, 10) }))
+  m.applyRemote('act_stops', stopRow({ id: 'paro-viejo-abierto', lineId: 'LZ', startedAt: sep(7), endedAt: null }))
+  m.applyRemote('act_stops', stopRow({ id: 'paro-reciente', lineId: 'LK', startedAt: T0 - 90 * M, endedAt: T0 - 80 * M }))
+  const change = (id, when, key) => m.applyRemote('act_changes', { id, at: iso(when), by_name: 'x', dept: 'RTE', what: 'w', before: 'a', after: 'b', ref_table: 't', ref_key: key, deleted: false, updated_at: iso(when) })
+  change('cambio-viejo', sep(1), 'k1'); change('cambio-reciente', T0 - M, 'k2')
+  m.applyRemote('act_schedule', { date: '2026-09-01', code: 'A100', mixes: 4, updated_at: iso(sep(1)) })
+  m.applyRemote('act_schedule', { date: DAY, code: 'A100', mixes: 6, updated_at: iso(T0) })
+  m.applyRemote('act_products', productRow('A100', 'Producto', 8, 18.5, 24, 10, 36, sep(1)))
+  m.applyRemote('act_lines', { id: 'LK', dept: 'RTE', name: 'Línea K', deleted: false, updated_at: iso(sep(1)) })
+  m.updateRun('con-cambio-sin-subir', { lot: '6245' }) // a correction that has not gone up yet
+  const queued = m.outbox.items().map((i) => i.table + '|' + i.key).sort()
+  m.prune()
+  const s = m.store.get()
+  eq('corridas que se quedan: las recientes, la abierta y la que tiene un cambio sin subir', s.runs.map((r) => r.id).sort(), ['abierto', 'borde-dentro', 'con-cambio-sin-subir', 'fecha-mal-escrita', 'hoy'])
+  eq('paros que se quedan: el reciente, el abierto y el de la corrida abierta', s.stops.map((x) => x.id).sort(), ['paro-del-abierto', 'paro-reciente', 'paro-viejo-abierto'])
+  eq('historial: el reciente y el del cambio sin subir', s.changes.map((c) => c.refKey).sort(), ['con-cambio-sin-subir', 'k2'])
+  eq('programa: solo los días que guarda', Object.keys(s.schedule), [DAY])
+  eq('productos y líneas se quedan siempre', [s.products.length, s.lines.length], [1, 1])
+  eq('soltar días viejos no manda nada al servidor', m.outbox.items().map((i) => i.table + '|' + i.key).sort(), queued)
+  eq('días que hay que pedir al servidor', ['2026-09-01', '2026-09-26', '2026-09-27', DAY, '2027-01-01', '', 'ayer'].map((d) => m.awayDay(d)), [true, true, false, false, false, false, false])
+  // someone opens 1 September in Reporte: its rows come from the server and stay while the app is open
+  m.openDay('2026-09-01')
+  eq('un día abierto ya no hay que pedirlo otra vez', m.awayDay('2026-09-01'), false)
+  run('viejo', '2026-09-01', sep(1))
+  m.applyRemote('act_schedule', { date: '2026-09-01', code: 'A100', mixes: 4, updated_at: iso(sep(1)) })
+  m.prune()
+  eq('y se queda mientras la app esté abierta', [m.store.get().runs.some((r) => r.id === 'viejo'), Object.keys(m.store.get().schedule).sort()], [true, ['2026-09-01', DAY]])
+  m.closeDay('2026-09-01'); m.prune()
+  eq('hasta que se cierra', m.store.get().runs.some((r) => r.id === 'viejo'), false)
+  // the day changes with the app open: 27 September leaves
+  clock = T0 + 24 * 60 * M; m.prune(); clock = T0
+  eq('al pasar el día, el más viejo sale', m.store.get().runs.some((r) => r.id === 'borde-dentro'), false)
+  // many rows arriving together are saved once
+  let saves = 0
+  const stop = m.store.subscribe(() => { saves++ })
+  m.batch(() => { for (let i = 0; i < 50; i++) run('lote' + i, DAY, T0 - (i + 1) * M) })
+  stop()
+  eq('50 filas que llegan juntas se guardan una vez, no 50', [saves, m.store.get().runs.filter((r) => r.id.startsWith('lote')).length], [1, 50])
+})
+
+section('Memoria del aparato llena')
+const small = await device('small', { user: 'Nino' })
+small.use((m) => {
+  // twelve recent days with 30 runs each
+  m.batch(() => { for (let d = 0; d < 12; d++) for (let i = 0; i < 30; i++) { const start = T0 - d * 24 * 60 * M - (i + 1) * 5 * M; m.applyRemote('act_runs', runRow({ id: 'r' + d + '-' + i, date: m.dayOf(start), startedAt: start, endedAt: start + 4 * M, units: [unit(start + M, 240), unit(start + 2 * M, 240), unit(start + 3 * M, 240)], perUnit: 240 })) } })
+  const size = () => localStorage.getItem('act_v1').length
+  const days = () => new Set(m.store.get().runs.map((r) => r.date)).size
+  eq('caben los 12 días', [days(), m.storageFull.get()], [12, false])
+  // the device only has room for about half of that
+  quota.set('small', Math.round(size() * 0.55) + 2000)
+  m.applyRemote('act_runs', runRow({ id: 'nuevo', date: DAY, startedAt: T0 - M, units: [unit(T0, 240)], perUnit: 240 }))
+  eq('se sueltan los días más viejos (están en el servidor) y lo nuevo sí se guarda', [days() < 12, m.storageFull.get(), JSON.parse(localStorage.getItem('act_v1')).runs.some((r) => r.id === 'nuevo')], [true, false, true])
+  eq('lo que queda son los días más recientes, completos', [m.store.get().runs.filter((r) => r.date === DAY).length >= 30, size() <= quota.get('small')], [true, true])
+  // no room even for two days: it is said on the screen, and what is being sent is not lost
+  quota.set('small', 3000)
+  m.addLine('RTE'); m.startRun(m.store.get().lines[0], 'A100', '6283', DAY, 240)
+  const id = m.store.get().runs.at(-1).id
+  eq('sin espacio ni para dos días: aviso en pantalla', m.storageFull.get(), true)
+  eq('lo que se registra sigue en pantalla y en la cola de envío mientras la app esté abierta', [!!m.store.get().runs.find((r) => r.id === id), m.outbox.items().some((i) => i.key === id)], [true, true])
+  quota.delete('small')
+  m.unitDone(id, 240)
+  eq('al haber espacio otra vez: se guarda todo y el aviso se quita', [m.storageFull.get(), JSON.parse(localStorage.getItem('act_v1')).runs.find((r) => r.id === id).units.length, JSON.parse(localStorage.getItem('act_outbox')).some((i) => i.key === id)], [false, 1, true])
+})
+
+section('Bajar del servidor por páginas, sin saltarse filas')
+await calc.use(async (m) => {
+  const table = Array.from({ length: 2350 }, (_, i) => ({ id: 'f' + String(i).padStart(4, '0') }))
+  const read = async (rows, cap = 1000, onPage) => {
+    const seen = new Set()
+    let calls = 0
+    const get = (from, to) => { const page = rows.slice(from, Math.min(to + 1, from + cap)); calls++; onPage?.(calls, rows); return Promise.resolve({ data: page, error: null }) }
+    const err = await m.pages(get, (rs) => { for (const r of rs) seen.add(r.id) })
+    return { seen: seen.size, calls, err }
+  }
+  eq('2,350 filas de mil en mil: llegan todas', await read(table).then((r) => [r.seen, r.err]), [2350, null])
+  eq('aunque el servidor dé solo 500 por vez', (await read(table, 500)).seen, 2350)
+  eq('una lista corta: una sola pregunta', await read(table.slice(0, 40)).then((r) => [r.seen, r.calls]), [40, 1])
+  eq('una lista vacía', await read([]).then((r) => [r.seen, r.calls, r.err]), [0, 1, null])
+  // while the listing is being read someone saves: that row moves to the end and the rest shift by one
+  eq('una fila que se mueve mientras se lee no hace perder otra', (await read(table.map((x) => ({ ...x })), 1000, (n, rows) => { if (n === 1) rows.push(rows.splice(5, 1)[0]) })).seen, 2350)
+  eq('un error se devuelve, no se disimula', await m.pages(() => Promise.resolve({ data: null, error: { code: 'X', message: 'sin señal' } }), () => {}), { code: 'X', message: 'sin señal' })
+})
+
+section('Qué se le pide al servidor')
+calc.use((m) => {
+  const ask = (table, narrow) => decodeURIComponent(narrow(m.supabase.from(table).select('*')).url.search)
+  const first = m.firstPull('2026-09-27')
+  const day = (d, plus = 0) => new Date(new Date(d + 'T00:00:00').getTime() + plus * 24 * 60 * M).toISOString()
+  eq('primera vez: corridas de los días que guarda, o todavía abiertas', ask('act_runs', first.act_runs), '?select=*&or=(date.gte.2026-09-27,ended_at.is.null)')
+  eq('primera vez: paros desde un día antes, o todavía abiertos', ask('act_stops', first.act_stops), '?select=*&or=(started_at.gte."' + day('2026-09-27', -1) + '",ended_at.is.null)')
+  eq('primera vez: historial y programa de esos días', [ask('act_changes', first.act_changes), ask('act_schedule', first.act_schedule)], ['?select=*&at=gte.' + day('2026-09-27', -1), '?select=*&date=gte.2026-09-27'])
+  eq('primera vez: líneas, productos y metas, completos', [first.act_lines, first.act_products, first.act_targets].map((f) => f === undefined), [true, true, true])
+  eq('un día viejo: sus corridas, los paros de alrededor, su historial y su programa', Object.fromEntries(m.dayPull('2026-09-01').map(([t, narrow]) => [t, ask(t, narrow)])), {
+    act_runs: '?select=*&date=eq.2026-09-01',
+    act_stops: '?select=*&started_at=gte.' + day('2026-09-01', -1) + '&started_at=lt.' + day('2026-09-01', 2),
+    act_changes: '?select=*&at=gte.' + day('2026-09-01') + '&at=lt.' + day('2026-09-01', 1),
+    act_schedule: '?select=*&date=eq.2026-09-01',
+  })
 })
 
 // =====================================================================================================================
