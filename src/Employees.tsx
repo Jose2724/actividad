@@ -1,16 +1,22 @@
 import { useEffect, useState } from 'react'
-import { supabase } from './supabase'
+import { rowRights, supabase } from './supabase'
 import { DEPTS } from './store'
 import { ConfirmDialog } from './App'
 
-type Emp = { id: string; name: string; username: string | null; role: string; active: boolean; act_role: 'op' | 'mgr' | 'office' | null; act_dept: string | null; deleted?: boolean }
+type Emp = { id: string; user_id?: string | null; name: string; username: string | null; role: string; active: boolean; act_role: 'op' | 'mgr' | 'office' | null; act_dept: string | null; deleted?: boolean }
 const ERRORS: Record<string, string> = {
   not_signed_in: 'No hay sesión.', not_manager: 'Solo un manager puede hacer esto.', bad_name: 'Falta el nombre.', bad_username: 'Usuario: 3 a 30 letras, números, punto o guion, sin espacios.',
   bad_pin: 'PIN: de 6 a 12 números.', bad_dept: 'Un operador necesita departamento.', username_taken: 'Ese usuario ya existe.', not_found: 'No se encontró.', owner_protected: 'Esa cuenta no se puede tocar.', not_self: 'No puedes quitarte el acceso a ti mismo.',
 }
 
-/** The manager's people screen: who may use Actividad, with what role and department; new accounts with their PIN. */
-export function Employees() {
+const ROLE: Record<string, string> = { op: 'Operador', mgr: 'Manager', office: 'Oficina' }
+
+/**
+ * The manager's people screen: who may use Actividad, with what role and department; new accounts with their PIN.
+ * meId / admin = who is looking (their row in employees, and whether they are a Freezer RTE admin): a row only shows
+ * what that person may really do to it (see rowRights).
+ */
+export function Employees({ meId, admin }: { meId: string; admin: boolean }) {
   const [list, setList] = useState<Emp[] | null>(null)
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
@@ -19,7 +25,7 @@ export function Employees() {
   const [newPin, setNewPin] = useState('')
   const [toggle, setToggle] = useState<Emp | null>(null)
   const load = async () => {
-    const { data, error } = await supabase!.from('employees').select('id, name, username, role, active, act_role, act_dept, deleted').order('name')
+    const { data, error } = await supabase!.from('employees').select('id, user_id, name, username, role, active, act_role, act_dept, deleted').order('name')
     if (error) { setMsg(error.message); return }
     setList((data as Emp[]).filter((e) => !e.deleted))
   }
@@ -52,19 +58,26 @@ export function Employees() {
         <div className="twrap">
           <table>
             <thead><tr><th>Nombre</th><th>Usuario</th><th>Rol en Actividad</th><th>Departamento</th><th>Activo</th><th></th></tr></thead>
-            <tbody>{list.map((e) => (
-              <tr key={e.id} className={e.active ? '' : 'off'}>
-                <td>{e.name}{e.role === 'admin' && <small> · admin freezer</small>}</td>
-                <td>{e.username ?? '—'}</td>
-                <td><select value={e.act_role ?? ''} disabled={busy} onChange={(ev) => void call({ action: 'set_act', id: e.id, act_role: ev.target.value || null, act_dept: e.act_dept ?? (ev.target.value === 'op' ? 'RTE' : null) })}><option value="">Sin acceso</option><option value="op">Operador</option><option value="mgr">Manager</option><option value="office">Oficina</option></select></td>
-                <td>{e.act_role === 'op' ? <select value={e.act_dept ?? ''} disabled={busy} onChange={(ev) => void call({ action: 'set_act', id: e.id, act_role: 'op', act_dept: ev.target.value })}>{DEPTS.map((d) => <option key={d} value={d}>{d}</option>)}</select> : '—'}</td>
-                <td>{e.active ? 'Sí' : 'No'}</td>
-                <td className="btns">
-                  {e.username && <button type="button" className="lnk" disabled={busy} onClick={() => { setNewPin(''); setPinFor(e) }}>PIN</button>}
-                  <button type="button" className="lnk" disabled={busy} onClick={() => setToggle(e)}>{e.active ? 'Desactivar' : 'Activar'}</button>
-                </td>
-              </tr>
-            ))}</tbody>
+            <tbody>{list.map((e) => {
+              const can = rowRights(e, meId, admin)
+              return (
+                <tr key={e.id} className={e.active ? '' : 'off'}>
+                  <td>{e.name}{e.role === 'admin' && <small> · admin freezer</small>}{can.mine && <small> · tú</small>}{can.locked && <small> · cuenta protegida</small>}</td>
+                  <td>{e.username ?? '—'}</td>
+                  <td>{can.role
+                    ? <select value={e.act_role ?? ''} disabled={busy} onChange={(ev) => void call({ action: 'set_act', id: e.id, act_role: ev.target.value || null, act_dept: e.act_dept ?? (ev.target.value === 'op' ? 'RTE' : null) })}><option value="">Sin acceso</option><option value="op">Operador</option><option value="mgr">Manager</option><option value="office">Oficina</option></select>
+                    : (e.act_role ? ROLE[e.act_role] ?? e.act_role : 'Sin acceso')}</td>
+                  <td>{e.act_role !== 'op' ? '—' : can.role
+                    ? <select value={e.act_dept ?? ''} disabled={busy} onChange={(ev) => void call({ action: 'set_act', id: e.id, act_role: 'op', act_dept: ev.target.value })}>{DEPTS.map((d) => <option key={d} value={d}>{d}</option>)}</select>
+                    : (e.act_dept ?? '—')}</td>
+                  <td>{e.active ? 'Sí' : 'No'}</td>
+                  <td className="btns">
+                    {can.pin && <button type="button" className="lnk" disabled={busy} onClick={() => { setNewPin(''); setPinFor(e) }}>PIN</button>}
+                    {can.active && <button type="button" className="lnk" disabled={busy} onClick={() => setToggle(e)}>{e.active ? 'Desactivar' : 'Activar'}</button>}
+                  </td>
+                </tr>
+              )
+            })}</tbody>
           </table>
         </div>
       )}

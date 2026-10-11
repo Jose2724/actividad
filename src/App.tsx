@@ -185,7 +185,7 @@ function ServerApp() {
   if (me === 'none') return <NoRole onOut={out} onRetry={verify} />
   const home = isDept(me.dept) ? me.dept : DEPTS[0]
   if (me.role === 'op' && !isDept(me.dept)) return <NoRole onOut={out} onRetry={verify} text={'Tu usuario está en Actividad pero sin departamento. Pide al manager que te asigne uno.'} />
-  return <Main name={me.name} home={home} mgr={me.role !== 'op'} admin={!!me.admin} onLogout={() => void out()} />
+  return <Main name={me.name} home={home} mgr={me.role !== 'op'} admin={!!me.admin} meId={me.id} onLogout={() => void out()} />
 }
 
 /**
@@ -335,7 +335,7 @@ function Gate({ dept, mgr, onDept, onManager, onName, onBack }: { dept: Dept | n
   )
 }
 
-function Main({ name, home, mgr, admin, onLogout }: { name: string; home: Dept; mgr: boolean; admin: boolean; onLogout: () => void }) {
+function Main({ name, home, mgr, admin, meId, onLogout }: { name: string; home: Dept; mgr: boolean; admin: boolean; meId?: string; onLogout: () => void }) {
   const s = useSyncExternalStore(store.subscribe, store.get)
   const now = useNow()
   const day = workDay(s, now)
@@ -385,7 +385,7 @@ function Main({ name, home, mgr, admin, onLogout }: { name: string; home: Dept; 
           <DeptPanel key={dept} s={s} dept={mgr ? dept : home} now={now} mgr={mgr} day={day} />
         </div>
         </>
-      ) : tab === 'av' && mgr ? <Avance s={s} /> : tab === 'emp' && mgr && supabase ? <Employees /> : <Report s={s} now={now} only={mgr ? undefined : home} mgr={mgr} admin={admin} />}
+      ) : tab === 'av' && mgr ? <Avance s={s} /> : tab === 'emp' && mgr && supabase ? <Employees meId={meId ?? ''} admin={admin} /> : <Report s={s} now={now} only={mgr ? undefined : home} mgr={mgr} admin={admin} />}
     </div>
   )
 }

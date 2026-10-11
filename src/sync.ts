@@ -1,6 +1,6 @@
 import { noSignal, supabase } from './supabase'
 import { startClock } from './clock'
-import { beforeFlush, flush, outbox, type Row, type Table } from './outbox'
+import { afterFlush, beforeFlush, flush, outbox, type Row, type Table } from './outbox'
 import { applyRemote, awayDay, batch, closeDay, firstKeptDay, myDept, openDay, prune, role, shareLocalLines } from './store'
 
 /**
@@ -37,6 +37,13 @@ const setSince = (v: string) => { try { localStorage.setItem(SINCE, v) } catch {
 
 /** a few seconds of overlap on every pull: a row committed a moment before the last one seen is never skipped (applying a row twice changes nothing) */
 const OVERLAP_MS = 10_000
+/**
+ * the request never got an answer: no network, or a network that does not reach the server (a WiFi without internet).
+ * Each browser says it its own way. For the app that is "no connection", whatever the device says about its WiFi.
+ */
+export const unreachable = (message: unknown) => /failed to fetch|load failed|networkerror|network request failed|fetch failed|err_internet|err_network/i.test(String(message ?? ''))
+/** what the dot shows after a request that failed: no connection (said by the dot itself, no technical text), or an error worth reading */
+const failed = (message: string): Partial<SyncStatus> => (navigator.onLine === false || unreachable(message) ? { state: 'offline', lastError: '' } : { state: 'online', lastError: message })
 const missing = (code: unknown) => ['42P01', 'PGRST205'].includes(String(code ?? '')) // the table's SQL has not been run yet
 type Page = { data: Row[] | null; error: { code?: string; message: string } | null }
 /**
@@ -106,14 +113,14 @@ async function pullNow(): Promise<boolean> {
         for (const row of rows) { applyRemote(t, row); const u = String(row.synced_at ?? ''); if (u && (!newest || Date.parse(u) > Date.parse(newest))) newest = u }
       }))
       if (error && missing(error.code)) continue
-      if (error) { setStatus({ state: navigator.onLine ? 'online' : 'offline', lastError: error.message }); return false }
+      if (error) { setStatus(failed(error.message)); return false }
     }
     if (newest) setSince(newest)
     prune() // the days this device no longer keeps (also when the date changes while the app stays open)
     setStatus({ state: 'online', lastSync: Date.now(), lastError: '' })
     return true
   } catch (e) {
-    setStatus({ state: navigator.onLine ? 'online' : 'offline', lastError: String(e) })
+    setStatus(failed(String(e)))
     return false
   }
 }
@@ -137,12 +144,19 @@ beforeFlush(async () => { if (Date.now() - status.lastSync > 75_000) await pullA
 /** down first, then up: what is queued is merged with what the server has before it is sent */
 export const syncNow = async () => { await pullAll(); await flushNow() }
 
-export async function flushNow() {
-  const r = await flush()
-  const quiet = r.error === 'signedOut' || r.error === 'offline' // not errors to show: the dot already says it
-  setStatus({ pending: r.left, lastError: quiet ? '' : r.error ?? '', state: r.error === 'signedOut' ? 'signedOut' : r.error === 'offline' ? 'offline' : r.error ? (navigator.onLine ? 'online' : 'offline') : 'online' })
-  return r
-}
+/**
+ * How a pass of the queue ended, whoever started it: the dot follows. A pass with nothing to send asked the server
+ * nothing, so it knows nothing about the connection and the dot stays as the last pull left it. (It used to turn
+ * "Sincronizado" on its own, also with the WiFi off.)
+ */
+afterFlush((r) => {
+  if (r.error === 'signedOut') setStatus({ pending: r.left, state: 'signedOut', lastError: '' })
+  else if (r.error === 'offline') setStatus({ pending: r.left, state: 'offline', lastError: '' })
+  else if (r.error) setStatus({ pending: r.left, ...failed(r.error) })
+  else if (r.sent > 0) setStatus({ pending: r.left, state: 'online', lastError: '' })
+  else setStatus({ pending: r.left })
+})
+export const flushNow = () => flush()
 
 let started = false
 /** once per page: pull, send, listen live, and keep trying every so often and whenever the signal comes back */

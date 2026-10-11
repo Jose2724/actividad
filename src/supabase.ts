@@ -40,6 +40,18 @@ export function rememberedMe(): Me | null {
     return m && typeof m.name === 'string' && m.name && ['op', 'mgr', 'office'].includes(m.role) ? m : null
   } catch { return null }
 }
+/**
+ * What the person looking at Empleados may do to one row: the same rules the server applies (the act-users function),
+ * so the screen does not draw a button the server would refuse. The owner's account (the one that signs in with an
+ * e-mail instead of a user name) is off limits to everyone else; nobody turns their own account off; and only a
+ * Freezer RTE admin may change their own role. A row without a user name has no PIN to change.
+ */
+export function rowRights(row: { id: string; user_id?: string | null; username?: string | null }, meId: string, meAdmin: boolean) {
+  const mine = row.id === meId
+  const locked = !mine && !!row.user_id && !row.username
+  return { mine, locked, role: !locked && (!mine || meAdmin), pin: !locked && !!row.username, active: !locked && !mine }
+}
+
 // ---- the user name last used to sign in on this device: written once, offered from then on. Never the PIN: that is
 // for the device's own password store to keep, if the person lets it (see LoginGate). An e-mail is not kept either:
 // on a shared tablet it would be shown to whoever opens the sign-in screen ----

@@ -79,9 +79,21 @@ export function verdict(code: string, message: string): 'notReady' | 'refused' |
 
 let flushing = false
 export type FlushResult = { sent: number; left: number; error?: string }
+let after: ((r: FlushResult) => void) | null = null
+/**
+ * told how every pass ended, whoever started it (a new record sends itself at once, without anyone waiting for the
+ * answer): sync.ts keeps the dot at the top by it
+ */
+export const afterFlush = (f: (r: FlushResult) => void) => { after = f }
 /** sends what is queued, oldest first; a failure of the connection stops the pass (it is retried later) */
 export async function flush(): Promise<FlushResult> {
   if (!supabase || flushing) return { sent: 0, left: read().length }
+  const r = await pass()
+  try { after?.(r) } catch { /* what the dot says is not worth a failed pass */ }
+  return r
+}
+async function pass(): Promise<FlushResult> {
+  if (!supabase) return { sent: 0, left: read().length }
   flushing = true
   let sent = 0, error: string | undefined
   try {

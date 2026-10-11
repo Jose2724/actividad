@@ -854,6 +854,34 @@ mem.use((m) => {
 })
 
 // =====================================================================================================================
+//  Empleados: a row only shows what the person looking may really do to it
+// =====================================================================================================================
+section('Empleados: no se dibuja lo que el servidor rechaza')
+calc.use((m) => {
+  const owner = { id: 'o', user_id: 'uo', username: null } // the owner signs in with an e-mail, not a user name
+  const boss = { id: 'b', user_id: 'ub', username: 'jefe.turno' } // another manager
+  const oper = { id: 'p', user_id: 'up', username: 'maria.rte' }
+  const noAccount = { id: 'n', user_id: null, username: null }
+  // answers in this order: change the role, change the PIN, turn on / off
+  const can = (row, me, admin = false) => { const r = m.rowRights(row, me, admin); return [r.role, r.pin, r.active].map((x) => (x ? 'sí' : 'no')).join(' ') + (r.locked ? ' protegida' : '') + (r.mine ? ' mía' : '') }
+  eq('otro manager no puede hacer nada con la cuenta del dueño', can(owner, 'b'), 'no no no protegida')
+  eq('el dueño en su propia fila: puede cambiar su rol, no desactivarse', can(owner, 'o', true), 'sí no no mía')
+  eq('un manager en su propia fila: su PIN sí; su rol y desactivarse, no', can(boss, 'b'), 'no sí no mía')
+  eq('con la fila de otro manager o de un operador: todo', [can(boss, 'x'), can(oper, 'b'), can(boss, 'o', true)], ['sí sí sí', 'sí sí sí', 'sí sí sí'])
+  eq('una persona sin cuenta: rol y activar; no hay PIN que cambiar', can(noAccount, 'b'), 'sí no sí')
+  eq('si no se sabe quién mira, la cuenta del dueño sigue protegida', can(owner, ''), 'no no no protegida')
+})
+
+// =====================================================================================================================
+//  When is it "no connection"
+// =====================================================================================================================
+section('Sin conexión: cómo lo dice cada navegador')
+calc.use((m) => {
+  eq('una petición que no llegó a ninguna parte', ['TypeError: Failed to fetch', 'TypeError: Load failed', 'TypeError: NetworkError when attempting to fetch resource.', 'TypeError: fetch failed', 'TypeError: Failed to fetch [act_runs]'].map((t) => m.unreachable(t)), [true, true, true, true, true])
+  eq('una respuesta del servidor con un error no es falta de conexión', ['42501 new row violates row-level security policy for table "act_runs" [act_runs]', 'Falta ejecutar en Supabase el SQL de act_targets', 'JWT expired', '', null, undefined].map((t) => m.unreachable(t)), [false, false, false, false, false, false])
+})
+
+// =====================================================================================================================
 console.log('')
 if (failed.length) { console.log(failed.length + ' FALLARON de ' + (passed + failed.length) + ':\n'); for (const f of failed) console.log('  ✗ ' + f + '\n'); process.exit(1) }
 console.log('✓ ' + passed + ' comprobaciones, todas correctas')

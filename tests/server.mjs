@@ -21,8 +21,10 @@ const test = (row, col, op, value) => {
 // The stand-in tells the time like the real one: in every answer, to the second. `ahead` is how far its clock runs
 // from this machine's (as if the tablet's clock were wrong); `mode` breaks it on purpose
 const clockServer = { ahead: 0, mode: 'ok', asked: [] }
+const net = { down: false } // true = no request gets an answer at all, as on a WiFi without internet
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 globalThis.fetch = async (input, init) => {
+  if (net.down) throw new TypeError('fetch failed')
   const url = new URL(typeof input === 'string' ? input : input.url)
   if (init?.method === 'HEAD') {
     clockServer.asked.push(init.headers.Authorization)
@@ -56,6 +58,7 @@ const storage = { getItem: (k) => (disk.has(k) ? disk.get(k) : null), setItem: (
 Object.defineProperty(globalThis, 'localStorage', { configurable: true, writable: true, value: storage })
 globalThis.window = { addEventListener() {}, removeEventListener() {}, dispatchEvent() { return true }, localStorage: storage, location: new URL('http://localhost/') }
 globalThis.document = { addEventListener() {}, removeEventListener() {}, visibilityState: 'visible' }
+Object.defineProperty(globalThis, 'navigator', { configurable: true, writable: true, value: { onLine: true, userAgent: 'node' } })
 disk.set('sb-127-auth-token', JSON.stringify({ access_token: 'x.y.z', refresh_token: 'r', token_type: 'bearer', expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3000, user: { id: 'u1', aud: 'authenticated', email: 'a@b.c' } }))
 disk.set('act_user', 'Santiago')
 const m = await import(pathToFileURL(resolve(dirname(fileURLToPath(import.meta.url)), '../node_modules/.cache/act-check/device.js')).href)
@@ -139,6 +142,38 @@ console.log('· La hora: el aparato se pone en hora con el servidor')
   clockServer.mode = 'ok'; clockServer.ahead = 0
   await m.syncClock()
   eq('con el reloj del aparato otra vez bien, la diferencia vuelve a cero', [near(m.clockOffset(), 0), m.clockOffText()], [true, ''])
+}
+
+console.log('· El punto de arriba no dice "Sincronizado" si no se llega al servidor')
+{
+  db.act_runs = [] // the stand-in answers for every table again
+  const dot = () => { const st = m.syncStore.get(); return [st.state, st.pending, st.lastError] }
+  eq('con el servidor a mano y nada pendiente: sincronizado', [await m.pullAll(), dot()], [true, ['online', 0, '']])
+  await m.flushNow()
+  eq('mandar sin tener nada que mandar no cambia lo que dice', dot(), ['online', 0, ''])
+  net.down = true // the WiFi is on, but nothing reaches the server
+  eq('no se pudo bajar', await m.pullAll(), false)
+  eq('dice que no hay conexión, sin texto técnico al lado', dot(), ['offline', 0, ''])
+  await m.flushNow(); await m.flushNow()
+  eq('y lo sigue diciendo aunque no haya nada pendiente que mandar', dot(), ['offline', 0, ''])
+  eq('"Salir" avisa que sin señal no se puede volver a entrar', m.leaveAsk(m.syncStore.get(), true).title, '¿Salir sin señal?')
+  m.addLine('RTE', 'Línea 9') // recorded with the server cut off: it tries to go up at once, by itself, and cannot
+  await sleep(60)
+  const waiting = m.outbox.size()
+  eq('lo registrado sin conexión queda pendiente, y se dice', [waiting > 0, dot()], [true, ['offline', waiting, '']])
+  eq('"Salir" dice cuántos registros faltan por subir', /registros? que no ha/.test(m.leaveAsk(m.syncStore.get(), true).text), true)
+  net.down = false
+  await m.flushNow()
+  eq('al volver el servidor, lo pendiente sube y vuelve a decir sincronizado', dot(), ['online', 0, ''])
+  net.down = true
+  await m.pullAll()
+  eq('otro corte: vuelve a decir sin conexión', dot(), ['offline', 0, ''])
+  net.down = false
+  m.addLine('RTE', 'Línea 10') // the connection came back and nothing announced it: the record goes up by itself
+  await sleep(60)
+  eq('si la conexión volvió sin avisar, lo primero que se registra sube y el punto lo dice', dot(), ['online', 0, ''])
+  net.down = true; await m.pullAll(); net.down = false
+  eq('y sin registrar nada, basta la siguiente bajada buena', [dot()[0], await m.pullAll(), dot()], ['offline', true, ['online', 0, '']])
 }
 
 console.log('')
