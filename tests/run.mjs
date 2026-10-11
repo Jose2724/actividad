@@ -680,6 +680,77 @@ await calc.use(async (m) => {
 })
 
 // =====================================================================================================================
+//  5. The day of work: starting it, tidying what was left open, wiping tests
+// =====================================================================================================================
+section('Empezar el día')
+const oct = (d, h, mi = 0) => new Date(2026, 9, d, h, mi, 0).getTime() // a moment of October 2026
+const dayDev = await device('day', { user: 'Santiago' })
+dayDev.use((m) => {
+  const st = () => m.store.get()
+  const run = (id) => st().runs.find((x) => x.id === id), stop = (id) => st().stops.find((x) => x.id === id)
+  clock = T0
+  eq('sin empezarlo, el día es el del calendario', m.workDay(st()), { date: DAY, started: null })
+  for (const n of [1, 2, 3]) m.applyRemote('act_lines', { id: 'L' + n, dept: 'RTE', name: 'Línea ' + n, deleted: false, updated_at: iso(oct(1, 8)) })
+  // left from earlier days: a line stopped and abandoned on the 8th, one started on the 9th and never used, and the whole room "stopped" since the 9th
+  m.applyRemote('act_runs', runRow({ id: 'quedo-parada', lineId: 'L1', date: '2026-10-08', startedAt: oct(8, 15), units: [unit(oct(8, 16), 240), unit(oct(8, 17, 30), 240)], perUnit: 240 }))
+  m.applyRemote('act_stops', stopRow({ id: 'su-paro', lineId: 'L1', startedAt: oct(8, 18), endedAt: null, reason: 'Limpieza' }))
+  m.applyRemote('act_runs', runRow({ id: 'quedo-sin-uso', lineId: 'L2', line: 'Línea 2', date: '2026-10-09', startedAt: oct(9, 15), units: [], perUnit: 240 }))
+  m.applyRemote('act_stops', stopRow({ id: 'paro-de-todos', lineId: null, startedAt: oct(9, 20), endedAt: null }))
+  // today, before the real start: tests (one still running), with a correction; and a real change to a product
+  m.applyRemote('act_runs', runRow({ id: 'prueba-1', lineId: 'L3', line: 'Línea 3', date: DAY, startedAt: oct(10, 9), endedAt: oct(10, 10), units: [unit(oct(10, 9, 30), 240)], perUnit: 240 }))
+  m.applyRemote('act_runs', runRow({ id: 'prueba-2', lineId: 'L3', line: 'Línea 3', date: DAY, startedAt: oct(10, 14), units: [unit(oct(10, 14, 30), 240)], perUnit: 240 }))
+  m.applyRemote('act_stops', stopRow({ id: 'paro-de-prueba', lineId: 'L3', startedAt: oct(10, 9, 40), endedAt: oct(10, 9, 50) }))
+  m.applyRemote('act_products', productRow('A100', 'Producto', 8, 18.5, 24, 10, 36, oct(1, 8)))
+  clock = oct(10, 14, 40)
+  m.updateRun('prueba-1', { lot: '9999' })
+  m.saveProduct(0, { ...st().products[0], casesPerMix: 19 })
+  clock = T0
+  // a line of yesterday's date that had a cart an hour ago is really running: it is not "left"
+  m.applyRemote('act_runs', runRow({ id: 'sigue-de-verdad', lineId: 'L3', line: 'Línea 3', date: '2026-10-09', startedAt: oct(9, 22), units: [unit(oct(10, 14, 10), 240)], perUnit: 240 }))
+  eq('lo que quedó corriendo de días anteriores, sin nada registrado en seis horas', m.leftOpen(st(), DAY, clock).map((r) => r.id).sort(), ['quedo-parada', 'quedo-sin-uso'])
+  eq('lo registrado hoy antes de empezar', (({ runs, stops }) => [runs.map((r) => r.id).sort(), stops.map((x) => x.id)])(m.dayRecords(st(), DAY, clock)), [['prueba-1', 'prueba-2'], ['paro-de-prueba']])
+  eq('lo que hace al empezar', m.startDay(clock, { finishLeft: true, purge: true }), { date: DAY, ended: 2, runs: 2, stops: 1 })
+  eq('la línea que quedó parada se termina cuando la pararon, no "ahora"', [run('quedo-parada').endedAt, stop('su-paro').endedAt], [oct(8, 18), oct(8, 18)])
+  eq('la que no llegó a usarse se termina donde empezó', run('quedo-sin-uso').endedAt, oct(9, 15))
+  eq('la que sigue de verdad no se toca', run('sigue-de-verdad').endedAt, null)
+  eq('el paro de todo el departamento se cierra sin sumar horas', stop('paro-de-todos').endedAt, oct(9, 20))
+  eq('las pruebas de hoy ya no están', [run('prueba-1'), run('prueba-2'), stop('paro-de-prueba')].map((x) => !!x), [false, false, false])
+  eq('se van con sus correcciones; lo que se configuró hoy conserva su historial', st().changes.filter((c) => m.dayOf(c.at) === DAY).map((c) => c.refTable).sort(), ['act_days', 'act_days:purge', 'act_products', 'act_runs', 'act_runs', 'act_stops', 'act_stops'])
+  eq('queda escrito qué se borró y quién', st().changes.filter((c) => c.refTable === 'act_days:purge').map((c) => [c.before, c.by]), [['2 corridas · 1 paro', 'Santiago']])
+  eq('el día queda empezado', m.workDay(st()), { date: DAY, started: { at: T0, by: 'Santiago' } })
+  eq('y hoy arranca en cero', m.deptToday(st(), 'RTE', m.workDay(st()).date, clock).qty, 0)
+  clock = oct(11, 0, 30); eq('pasada la medianoche sigue siendo el mismo día', m.workDay(st()).date, DAY)
+  clock = oct(11, 5, 59); eq('hasta las 6 de la mañana', m.workDay(st()).date, DAY)
+  clock = oct(11, 6, 0); eq('a las 6 vuelve a ser el día del calendario', m.workDay(st()), { date: '2026-10-11', started: null })
+  clock = oct(11, 14, 45)
+  eq('empezar el día siguiente, sin nada que ordenar', m.startDay(clock), { date: '2026-10-11', ended: 0, runs: 0, stops: 0 })
+  m.startDay(oct(11, 14, 0), { date: '2026-10-11' })
+  eq('cambiar la hora de inicio no crea otro día', [st().changes.filter((c) => c.refTable === 'act_days').map((c) => c.id).sort(), m.workDay(st()).started.at, st().changes.find((c) => c.id === 'day:2026-10-11').before], [['day:2026-10-10', 'day:2026-10-11'], oct(11, 14, 0), m.fmtTime(oct(11, 14, 45))])
+  clock = oct(11, 13, 0); eq('una hora de inicio que todavía no llega, todavía no cuenta', m.workDay(st()), { date: '2026-10-11', started: null })
+  clock = oct(11, 15, 0); m.cancelDay('2026-10-11')
+  eq('quitar el inicio devuelve el día del calendario', m.workDay(st()), { date: '2026-10-11', started: null })
+  // wiping a whole day of tests
+  m.applyRemote('act_runs', runRow({ id: 'p5a', lineId: 'L1', date: '2026-10-05', startedAt: oct(5, 9), endedAt: oct(5, 10) }))
+  m.applyRemote('act_runs', runRow({ id: 'p5b', lineId: 'L2', date: '2026-10-05', startedAt: oct(5, 11), endedAt: oct(5, 12) }))
+  m.applyRemote('act_stops', stopRow({ id: 'p5s', lineId: 'L1', startedAt: oct(5, 9, 10), endedAt: oct(5, 9, 20) }))
+  const others = st().runs.length - 2
+  eq('borrar un día entero de pruebas', [m.purgeDay('2026-10-05'), st().runs.length, m.dayRecords(st(), '2026-10-05')], [{ runs: 2, stops: 1 }, others, { runs: [], stops: [] }])
+  const lines = st().changes.length
+  eq('un día sin nada no borra ni escribe nada', [m.purgeDay('2026-01-01'), st().changes.length], [{ runs: 0, stops: 0 }, lines])
+})
+{
+  // the manager starts the day and wipes a test: every tablet follows
+  clock = oct(10, 22, 0)
+  const { id } = newRun(1)
+  const at = clock
+  mgr.use((m) => m.startDay(at)); settle()
+  eq('la tablet sigue el día que empezó el manager', tab.use((m) => m.workDay(m.store.get())), { date: DAY, started: { at, by: 'Santiago' } })
+  clock += M
+  mgr.use((m) => m.purgeDay(DAY)); settle()
+  eq('lo que el manager borra desaparece también de la tablet y no vuelve', [!!runOn(tab, id), !!runOn(mgr, id), tab.use((m) => m.store.get().runs.filter((r) => r.date === DAY).length), all.map((d) => d.use((m) => m.outbox.size()))], [false, false, 0, [0, 0]])
+}
+
+// =====================================================================================================================
 console.log('')
 if (failed.length) { console.log(failed.length + ' FALLARON de ' + (passed + failed.length) + ':\n'); for (const f of failed) console.log('  ✗ ' + f + '\n'); process.exit(1) }
 console.log('✓ ' + passed + ' comprobaciones, todas correctas')

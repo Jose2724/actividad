@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { activeBetween, addLine, addWaste, awayDay, byLineName, CFG, codeProblem, CRATES_PER_CART, dayOf, DEPTS, deptStop, deptToday, endRun, endStop, fmtDur, fmtTime, freeLineNames, KEEP_DAYS, lastPerUnit, LINE_NAME_MAX, lineNamed, lineNameOf, lotFor, madeText, managerPin, mergeProducts, myDept, normCode, numOf, openRun, openStop, parseProductsCsv, productOf, productsCsv, removeLine, removeProduct, renameLine, reset, resetRecords, role, runStats, saveProduct, setSchedule, setTarget, startRun, startStop, stopsOf, store, swapLineNames, targetOf, tidyLineName, today, unitQty, unitDone, user, type Dept, type Line, type Product, type Run, type State, type Target, type Unit } from './store'
+import { activeBetween, addLine, addWaste, awayDay, byLineName, cancelDay, CFG, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deptToday, endRun, endStop, fmtDur, fmtTime, freeLineNames, KEEP_DAYS, lastPerUnit, leftOpen, LINE_NAME_MAX, lineNamed, lineNameOf, lotFor, madeText, managerPin, mergeProducts, myDept, nearDay, normCode, numOf, openRun, openStop, parseProductsCsv, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reset, resetRecords, role, runStats, saveProduct, setSchedule, setTarget, startDay, startRun, startStop, stopsOf, store, swapLineNames, targetOf, tidyLineName, unitQty, unitDone, user, workDay, type Dept, type Line, type Product, type Run, type State, type Target, type Unit, type WorkDay } from './store'
 import { avanceRows, n1, pending, type AvanceRow } from './avance'
 import { cellText, xDay, xDur, xTime, xlsxBytes, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 
@@ -176,7 +176,7 @@ function ServerApp() {
   if (me === 'none') return <NoRole onOut={out} onRetry={verify} />
   const home = isDept(me.dept) ? me.dept : DEPTS[0]
   if (me.role === 'op' && !isDept(me.dept)) return <NoRole onOut={out} onRetry={verify} text={'Tu usuario está en Actividad pero sin departamento. Pide al manager que te asigne uno.'} />
-  return <Main name={me.name} home={home} mgr={me.role !== 'op'} onLogout={() => void out()} />
+  return <Main name={me.name} home={home} mgr={me.role !== 'op'} admin={!!me.admin} onLogout={() => void out()} />
 }
 
 function LoginGate({ error, onDone }: { error: string; onDone: () => Promise<void> }) {
@@ -238,7 +238,7 @@ function DemoApp() {
   if (!(mgr || isDept(dept)) || !name) {
     return <Gate dept={isDept(dept) ? dept : null} mgr={mgr} onDept={(d) => { myDept.set(d); role.set('op'); setDept(d); setWho('op') }} onManager={() => { role.set('mgr'); myDept.set(''); setWho('mgr'); setDept('') }} onName={(n) => { user.set(n); setName(n) }} onBack={out} />
   }
-  return <Main name={name} home={isDept(dept) ? dept : DEPTS[0]} mgr={mgr} onLogout={out} />
+  return <Main name={name} home={isDept(dept) ? dept : DEPTS[0]} mgr={mgr} admin={mgr} onLogout={out} />
 }
 
 /** entering: a supervisor or operator picks their department (and sees only that); the manager enters with a code and sees every room */
@@ -279,9 +279,10 @@ function Gate({ dept, mgr, onDept, onManager, onName, onBack }: { dept: Dept | n
   )
 }
 
-function Main({ name, home, mgr, onLogout }: { name: string; home: Dept; mgr: boolean; onLogout: () => void }) {
+function Main({ name, home, mgr, admin, onLogout }: { name: string; home: Dept; mgr: boolean; admin: boolean; onLogout: () => void }) {
   const s = useSyncExternalStore(store.subscribe, store.get)
   const now = useNow()
+  const day = workDay(s, now)
   const [dept, setDept] = useState<Dept>(home)
   const [tab, setTab] = useState<'act' | 'av' | 'rep' | 'emp'>('act')
   const full = useSyncExternalStore(storageFull.subscribe, storageFull.get)
@@ -299,6 +300,8 @@ function Main({ name, home, mgr, onLogout }: { name: string; home: Dept; mgr: bo
         <div className="me"><SyncDot /> {name} · {mgr ? 'Manager' : home} {mgr && <QrLink label="QR" />}<button type="button" className="lnk" onClick={onLogout}>{supabase ? 'Salir' : 'Cambiar'}</button></div>
       </header>
       {tab === 'act' ? (
+        <>
+        <DayBar s={s} now={now} day={day} mgr={mgr} />
         <div className="main">
           {/* the manager moves between rooms; a supervisor or operator only has their own */}
           {mgr && (
@@ -307,7 +310,7 @@ function Main({ name, home, mgr, onLogout }: { name: string; home: Dept; mgr: bo
                 const lines = s.lines.filter((l) => l.dept === d)
                 const running = lines.filter((l) => openRun(s, l.id) && !openStop(s, d, l.id)).length
                 const stopped = lines.filter((l) => openRun(s, l.id) && openStop(s, d, l.id)).length
-                const goal = targetOf(s, d)?.perShift, td = goal ? deptToday(s, d, today(), now) : null
+                const goal = targetOf(s, d)?.perShift, td = goal ? deptToday(s, d, day.date, now) : null
                 return (
                   <button key={d} type="button" className={'dept' + (dept === d ? ' on' : '')} onClick={() => setDept(d)}>
                     <span className="dname">{d}{td && goal && <small className="goalmini">{fmtN(td.qty)} / {fmtN(goal)} {td.unitLabel}</small>}</span>
@@ -317,16 +320,17 @@ function Main({ name, home, mgr, onLogout }: { name: string; home: Dept; mgr: bo
               })}
             </aside>
           )}
-          <DeptPanel key={dept} s={s} dept={mgr ? dept : home} now={now} mgr={mgr} />
+          <DeptPanel key={dept} s={s} dept={mgr ? dept : home} now={now} mgr={mgr} day={day} />
         </div>
-      ) : tab === 'av' && mgr ? <Avance s={s} /> : tab === 'emp' && mgr && supabase ? <Employees /> : <Report s={s} now={now} only={mgr ? undefined : home} mgr={mgr} />}
+        </>
+      ) : tab === 'av' && mgr ? <Avance s={s} /> : tab === 'emp' && mgr && supabase ? <Employees /> : <Report s={s} now={now} only={mgr ? undefined : home} mgr={mgr} admin={admin} />}
     </div>
   )
 }
 
 /** the office's AVANCE sheet, live: scheduled → done → pending per room, computed from the products table */
 function Avance({ s }: { s: State }) {
-  const [date, setDate] = useState(today())
+  const [date, setDate] = useState(() => workDay(s).date)
   const [editing, setEditing] = useState(false)
   const [newCode, setNewCode] = useState('')
   const rows = avanceRows(s, date)
@@ -483,10 +487,126 @@ function Products({ s }: { s: State }) {
   )
 }
 
+const longDate = (date: string) => new Date(date + 'T12:00:00').toLocaleDateString('es', { weekday: 'long', day: 'numeric', month: 'long' })
+const hhmm = (ms: number) => { const d = new Date(ms); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') }
+/** the word to type before records are wiped: always a deliberate act, never a stray tap */
+const WIPE_WORD = 'BORRAR'
+const wipeOk = (typed: string) => typed.trim().toUpperCase() === WIPE_WORD
+/** "1 corrida y 0 paros", "12 corridas y 1 paro" */
+const howMany = (runs: number, stops: number) => runs + (runs === 1 ? ' corrida' : ' corridas') + ' y ' + stops + (stops === 1 ? ' paro' : ' paros')
+
+/** which day of work it is, for everyone; the manager starts it here */
+function DayBar({ s, now, day, mgr }: { s: State; now: number; day: WorkDay; mgr: boolean }) {
+  const [open, setOpen] = useState(false)
+  const [notice, setNotice] = useState<{ title: string; text?: string } | null>(null)
+  if (!day.started && !mgr) return null
+  return (
+    <div className={'daybar' + (day.started ? ' on' : '')}>
+      {day.started
+        ? <span>Día de trabajo: <b>{longDate(day.date)}</b> · empezó a las <b>{fmtTime(day.started.at)}</b>{day.started.by ? ' · ' + day.started.by : ''}</span>
+        : <span>El día de hoy todavía no se ha empezado.</span>}
+      {mgr && <button type="button" className={day.started ? 'lnk' : 'btn primary'} onClick={() => setOpen(true)}>{day.started ? 'Cambiar' : '▶ Empezar el día'}</button>}
+      {open && <StartDayDialog s={s} now={now} day={day} onClose={() => setOpen(false)} onDone={setNotice} />}
+      {notice && <NoticeDialog title={notice.title} text={notice.text} onClose={() => setNotice(null)} />}
+    </div>
+  )
+}
+
+/**
+ * Starting the day of work: from that hour "today" is that date on every tablet, until 6 the next morning. It tidies
+ * up on the way: runs nobody finished on earlier days, and (only if asked, and confirmed by typing a word) what was
+ * recorded today before the start, when it was tests.
+ */
+function StartDayDialog({ s, now, day, onClose, onDone }: { s: State; now: number; day: WorkDay; onClose: () => void; onDone: (n: { title: string; text?: string }) => void }) {
+  const was = day.started
+  const [opened] = useState(() => hhmm(was ? was.at : now))
+  const [time, setTime] = useState(opened)
+  const [left, setLeft] = useState<'finish' | 'keep'>('finish')
+  const [mine, setMine] = useState<'keep' | 'wipe'>('keep')
+  const [word, setWord] = useState('')
+  // an hour left as it came means "this very moment" (or the start it already had); a typed one is that hour, on the nearest day
+  const at = time === opened ? (was ? was.at : now) : nearDay(was ? was.at : now, time)
+  const date = was ? day.date : dayOf(at)
+  const lefts = leftOpen(s, date, at)
+  const had = dayRecords(s, date, at)
+  const some = had.runs.length + had.stops.length > 0
+  const wipe = some && mine === 'wipe'
+  const ok = !!time && (!wipe || wipeOk(word))
+  const go = () => {
+    if (!ok) return
+    const r = startDay(time === opened && !was ? Date.now() : at, { date, finishLeft: lefts.length > 0 && left === 'finish', purge: wipe })
+    onClose()
+    const did = [r.ended ? (r.ended === 1 ? 'Se terminó 1 línea que había quedado corriendo.' : 'Se terminaron ' + r.ended + ' líneas que habían quedado corriendo.') : '', r.runs + r.stops ? 'De las pruebas se ' + (r.runs + r.stops === 1 ? 'borró ' : 'borraron ') + howMany(r.runs, r.stops) + '.' : ''].filter(Boolean)
+    onDone({ title: was ? 'Día actualizado' : 'Día empezado', text: did.join(' ') || 'Los totales, la meta y la fecha de hoy ya siguen este día' + (supabase ? ' en todas las tablets.' : ' en este aparato.') })
+  }
+  return (
+    <div className="veil" onClick={onClose}>
+      <div className="dlg" onClick={(e) => e.stopPropagation()}>
+        <h3>{was ? 'Día de trabajo' : 'Empezar el día'}</h3>
+        <p>Desde esa hora, "hoy" es el <b>{longDate(date)}</b>{supabase ? ' en todas las tablets' : ''}, hasta las 6 de la mañana siguiente. Un turno que pasa de la medianoche conserva su fecha y su lote.</p>
+        <form className="qform" onSubmit={(e) => { e.preventDefault(); go() }}>
+          <label>Hora en que empieza <input type="time" value={time} onChange={(e) => setTime(e.target.value)} /></label>
+          {lefts.length > 0 && (
+            <div className="tidybox">
+              <b>{lefts.length === 1 ? 'Quedó 1 línea corriendo de un día anterior' : 'Quedaron ' + lefts.length + ' líneas corriendo de días anteriores'}</b>
+              <ul>{lefts.slice(0, 6).map((r) => <li key={r.id}>{r.dept} · {lineNameOf(s, r.lineId, r.line)} · {r.code} · desde el {longDate(r.date)}</li>)}{lefts.length > 6 && <li>y {lefts.length - 6} más</li>}</ul>
+              <div className="chips">
+                <button type="button" className={'chip' + (left === 'finish' ? ' on' : '')} onClick={() => setLeft('finish')}>Terminarlas en su último registro</button>
+                <button type="button" className={'chip' + (left === 'keep' ? ' on' : '')} onClick={() => setLeft('keep')}>Dejarlas corriendo</button>
+              </div>
+            </div>
+          )}
+          {some && (
+            <div className={'tidybox' + (wipe ? ' hot' : '')}>
+              <b>Ya hay registrado ese día antes de esa hora: {had.runs.length} {had.runs.length === 1 ? 'corrida' : 'corridas'}{had.runs.some((r) => !r.endedAt) ? ' (' + had.runs.filter((r) => !r.endedAt).length + ' en curso)' : ''} y {had.stops.length} {had.stops.length === 1 ? 'paro' : 'paros'}</b>
+              <div className="chips">
+                <button type="button" className={'chip' + (mine === 'keep' ? ' on' : '')} onClick={() => setMine('keep')}>Son de hoy: se quedan</button>
+                <button type="button" className={'chip' + (mine === 'wipe' ? ' on' : '')} onClick={() => setMine('wipe')}>Eran pruebas: borrarlas</button>
+              </div>
+              {wipe && <>
+                <span>Se quitan de todas las pantallas y del reporte{supabase ? ', en todos los aparatos' : ''}. Desde la app no se pueden recuperar.</span>
+                <label>Escribe {WIPE_WORD} para confirmar <input value={word} onChange={(e) => setWord(e.target.value)} autoComplete="off" autoCapitalize="characters" placeholder={WIPE_WORD} /></label>
+              </>}
+            </div>
+          )}
+          <div className="dbtns spread">
+            <div className="btns">{was && <button type="button" className="lnk" onClick={() => { cancelDay(day.date); onClose() }}>Quitar el inicio del día</button>}</div>
+            <div className="btns">
+              <button type="button" className="btn" onClick={onClose}>Cancelar</button>
+              <button type="submit" className={'btn ' + (wipe ? 'danger' : 'primary')} disabled={!ok}>{was ? '✓ Guardar' : '▶ Empezar el día'}</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+/** wiping everything recorded on a day: for days of tests, and only for the owner */
+function WipeDayDialog({ s, date, onClose, onDone }: { s: State; date: string; onClose: () => void; onDone: (n: { title: string; text?: string }) => void }) {
+  const had = dayRecords(s, date)
+  const [word, setWord] = useState('')
+  return (
+    <div className="veil" onClick={onClose}>
+      <div className="dlg" onClick={(e) => e.stopPropagation()}>
+        <h3>¿Borrar todo lo registrado el {longDate(date)}?</h3>
+        <p>{had.runs.length + had.stops.length === 1 ? 'Es ' : 'Son '}{howMany(had.runs.length, had.stops.length)}. Se quitan de todas las pantallas y reportes{supabase ? ', en todos los aparatos' : ''}. Sirve para limpiar un día de pruebas; desde la app no se puede recuperar.</p>
+        <form className="qform" onSubmit={(e) => { e.preventDefault(); if (!wipeOk(word)) return; const r = purgeDay(date); onClose(); onDone({ title: 'Día borrado', text: 'Del ' + longDate(date) + ' se ' + (r.runs + r.stops === 1 ? 'borró ' : 'borraron ') + howMany(r.runs, r.stops) + '.' }) }}>
+          <label>Escribe {WIPE_WORD} para confirmar <input value={word} onChange={(e) => setWord(e.target.value)} autoComplete="off" autoCapitalize="characters" placeholder={WIPE_WORD} /></label>
+          <div className="dbtns">
+            <button type="button" className="btn" onClick={onClose}>Cancelar</button>
+            <button type="submit" className="btn danger" disabled={!wipeOk(word)}>Borrar el día</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 /** the room today with all its lines together: the total, each code added up across lines, and the manager's goal (per hour, per shift) */
-function TodayCard({ s, dept, now, mgr }: { s: State; dept: Dept; now: number; mgr: boolean }) {
+function TodayCard({ s, dept, now, mgr, date }: { s: State; dept: Dept; now: number; mgr: boolean; date: string }) {
   const cfg = CFG[dept]
-  const t = deptToday(s, dept, today(), now)
+  const t = deptToday(s, dept, date, now)
   const goal = targetOf(s, dept)
   const [editing, setEditing] = useState(false)
   const hasGoal = !!(goal && (goal.perHour || goal.perShift))
@@ -535,13 +655,16 @@ function TargetDialog({ dept, unit, goal, onClose }: { dept: Dept; unit: string;
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
         <h3>Meta de {dept}</h3>
-        <p>La ven todas las tablets de {dept} y queda en el historial. Deja en blanco la que no aplique.</p>
+        <p>La ven todas las tablets de {dept} y queda en el historial. Deja en blanco la que no aplique. Para dejar el departamento sin meta, "Quitar meta".</p>
         <form onSubmit={(e) => { e.preventDefault(); setTarget(dept, num(hour), num(shift)); onClose() }} className="qform">
           <label>Por hora <input autoFocus={!goal?.perHour && !goal?.perShift} inputMode="numeric" placeholder={'ej. 400 ' + unit} value={hour} onChange={(e) => setHour(e.target.value.replace(/\D/g, ''))} /></label>
           <label>Por turno <input inputMode="numeric" placeholder={'ej. 3200 ' + unit} value={shift} onChange={(e) => setShift(e.target.value.replace(/\D/g, ''))} /></label>
-          <div className="dbtns">
-            <button type="button" className="btn" onClick={onClose}>Cancelar</button>
-            <button type="submit" className="btn primary">✓ Guardar</button>
+          <div className="dbtns spread">
+            <div className="btns">{(goal?.perHour || goal?.perShift) ? <button type="button" className="lnk" onClick={() => { setTarget(dept, null, null); onClose() }}>Quitar meta</button> : null}</div>
+            <div className="btns">
+              <button type="button" className="btn" onClick={onClose}>Cancelar</button>
+              <button type="submit" className="btn primary">✓ Guardar</button>
+            </div>
           </div>
         </form>
       </div>
@@ -549,7 +672,7 @@ function TargetDialog({ dept, unit, goal, onClose }: { dept: Dept; unit: string;
   )
 }
 
-function DeptPanel({ s, dept, now, mgr }: { s: State; dept: Dept; now: number; mgr: boolean }) {
+function DeptPanel({ s, dept, now, mgr, day }: { s: State; dept: Dept; now: number; mgr: boolean; day: WorkDay }) {
   const lines = s.lines.filter((l) => l.dept === dept).sort(byLineName)
   const ds = deptStop(s, dept)
   const [stopAll, setStopAll] = useState(false)
@@ -558,7 +681,7 @@ function DeptPanel({ s, dept, now, mgr }: { s: State; dept: Dept; now: number; m
   const [editStop, setEditStop] = useState(false)
   const editing = editRun ? s.runs.find((r) => r.id === editRun) : undefined
   const anyRunning = lines.some((l) => openRun(s, l.id))
-  const doneToday = s.runs.filter((r) => r.dept === dept && r.endedAt && r.date === today()).sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0))
+  const doneToday = s.runs.filter((r) => r.dept === dept && r.endedAt && r.date === day.date).sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0))
   return (
     <section className="panel">
       <div className="phead">
@@ -572,8 +695,8 @@ function DeptPanel({ s, dept, now, mgr }: { s: State; dept: Dept; now: number; m
       </div>
       {ds && <div className="deptstop">⏸ Todo {dept} parado · <b>{ds.reason}</b>{ds.note && ' · ' + ds.note} · desde {fmtTime(ds.startedAt)} · {ds.by} <button type="button" className="lnk" onClick={() => setEditStop(true)}>Corregir</button></div>}
       {editStop && ds && <StopEditor stop={ds} mgr={mgr} onClose={() => setEditStop(false)} />}
-      <TodayCard s={s} dept={dept} now={now} mgr={mgr} />
-      <div className="lines">{lines.map((l) => <LineCard key={l.id} s={s} line={l} now={now} mgr={mgr} />)}</div>
+      <TodayCard s={s} dept={dept} now={now} mgr={mgr} date={day.date} />
+      <div className="lines">{lines.map((l) => <LineCard key={l.id} s={s} line={l} now={now} mgr={mgr} day={day} />)}</div>
       {lines.length === 0 && <p className="hint">Este departamento no tiene líneas. Toca "Agregar {CFG[dept].lineWord.toLowerCase()}".</p>}
       {adding && <LineNameDialog s={s} dept={dept} onClose={() => setAdding(false)} />}
       {doneToday.length > 0 && (
@@ -595,15 +718,18 @@ function DeptPanel({ s, dept, now, mgr }: { s: State; dept: Dept; now: number; m
   )
 }
 
-function LineCard({ s, line, now, mgr }: { s: State; line: Line; now: number; mgr: boolean }) {
+function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: number; mgr: boolean; day: WorkDay }) {
   const cfg = CFG[line.dept]
   const run = openRun(s, line.id)
   const stop = run ? openStop(s, line.dept, line.id) : undefined
   const [fixing, setFixing] = useState(false)
   const [fixingStop, setFixingStop] = useState(false)
   const [code, setCode] = useState('')
-  const [lot, setLot] = useState(lotFor(today()))
-  const [date, setDate] = useState(today())
+  // null = not typed: the date is the day of work and the lot is that date's (they move with the day by themselves)
+  const [dateText, setDateText] = useState<string | null>(null)
+  const [lotText, setLotText] = useState<string | null>(null)
+  const date = dateText ?? day.date
+  const lot = lotText ?? lotFor(date)
   const [per, setPer] = useState('')
   const [crates, setCrates] = useState('')
   const [asking, setAsking] = useState(false)
@@ -632,10 +758,10 @@ function LineCard({ s, line, now, mgr }: { s: State; line: Line; now: number; mg
         <div className="lhead"><h3>{line.name} {nameIt}</h3><button type="button" className="lnk" onClick={() => setRemoving(true)}>Quitar {cfg.lineWord.toLowerCase()}</button></div>
         {naming}
         {removing && <ConfirmDialog title={'¿Quitar ' + line.name + ' de ' + line.dept + '?'} text="Se puede volver a agregar cuando haga falta." yes="Quitar" danger onYes={() => removeLine(line.id)} onNo={() => setRemoving(false)} />}
-        <form className="start" onSubmit={(e) => { e.preventDefault(); if (ok) startRun(line, code.trim().toUpperCase(), lot.trim(), date, needPer ? perUnit : null) }}>
+        <form className="start" onSubmit={(e) => { e.preventDefault(); if (ok) { startRun(line, code.trim().toUpperCase(), lot.trim(), date, needPer ? perUnit : null); setDateText(null); setLotText(null) } }}>
           <label>Código <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="ej. 0100" autoComplete="off" /></label>
-          <label>Lote <input value={lot} onChange={(e) => setLot(e.target.value)} inputMode="numeric" placeholder="ej. 6280" autoComplete="off" /></label>
-          <label>Fecha <input type="date" value={date} onChange={(e) => { const v = e.target.value; if (!lot.trim() || lot.trim() === lotFor(date)) setLot(lotFor(v)); setDate(v) }} /></label>
+          <label>Lote <input value={lot} onChange={(e) => setLotText(e.target.value)} inputMode="numeric" placeholder="ej. 6280" autoComplete="off" /></label>
+          <label>Fecha <input type="date" value={date} onChange={(e) => { if (!lot.trim() || lot.trim() === lotFor(date)) setLotText(null); setDateText(e.target.value || null) }} /></label>
           {/* a known product brings its numbers: shown as a line, the boxes only when they want to change them */}
           {needPer && !isCart && (suggested != null && !editQty
             ? <div className="known"><b>{suggested}</b> {cfg.qtyUnit} por {cfg.unit.toLowerCase()} <button type="button" className="lnk" onClick={() => setEditQty(true)}>Cambiar</button></div>
@@ -770,8 +896,9 @@ function QtyDialog({ title, unit, refLabel, initial, decimal, onClose, onPick }:
   )
 }
 
-function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr: boolean }) {
-  const [date, setDate] = useState(today())
+function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: Dept; mgr: boolean; admin: boolean }) {
+  const [date, setDate] = useState(() => workDay(s).date)
+  const [wiping, setWiping] = useState(false)
   const [resetting, setResetting] = useState(false)
   const [clearing, setClearing] = useState(false)
   const [pinOpen, setPinOpen] = useState(false)
@@ -959,8 +1086,10 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
           <button type="button" className="lnk" onClick={() => setResetting(true)}>{supabase ? 'Limpiar este aparato y volver a bajar del servidor' : 'Borrar todo'}</button>
           {!supabase && <button type="button" className="lnk" onClick={() => { setNewPin(''); setPinOpen(true) }}>Cambiar código de manager</button>}
           {supabase && <button type="button" className="lnk" onClick={() => setUploading(true)}>Subir al servidor los registros de este aparato</button>}
+          {admin && runs.length + stops.length > 0 && <button type="button" className="lnk" onClick={() => setWiping(true)}>Borrar todo lo registrado este día (pruebas)</button>}
         </div>
       )}
+      {wiping && <WipeDayDialog s={s} date={date} onClose={() => setWiping(false)} onDone={setNotice} />}
       {uploading && <ConfirmDialog title="¿Subir al servidor todo lo que tiene este aparato?" text="Corridas, paros, líneas, productos y programado de este aparato se mandan al servidor (lo que ya estaba allá se conserva si es más nuevo). Útil una sola vez por tablet, para traer los días del piloto." yes="Subir" onYes={() => { const n = uploadAll(); setUploading(false); setNotice({ title: n + ' registros en cola', text: 'Se envían en cuanto hay señal. El punto junto a tu nombre dice "Sincronizado" cuando terminó.' }) }} onNo={() => setUploading(false)} />}
       {notice && <NoticeDialog title={notice.title} text={notice.text} onClose={() => setNotice(null)} />}
       {pinOpen && (

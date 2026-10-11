@@ -397,6 +397,85 @@ export function nearDay(base: number, hm: string) {
   const at = (shift: number) => { const d = new Date(base); d.setDate(d.getDate() + shift); d.setHours(h, m, 0, 0); return d.getTime() }
   return [at(-1), at(0), at(1)].reduce((best, x) => (Math.abs(x - base) < Math.abs(best - base) ? x : best), at(0))
 }
+// ---- the day of work ----
+const DAY_REF = 'act_days'
+/** a line of history written as it is (logChange merges retyped values; these are events of their own) */
+const putChange = (c: Change) => { set({ ...state, changes: upsertIn(state.changes, c) }); push('act_changes', c.id, rowOfChange(c)) }
+/**
+ * a day that was started stays the day of work until 6 in the morning of the next one: a shift that runs past
+ * midnight keeps its date and its lot, and the morning shift is never handed yesterday's date
+ */
+const dayEnds = (date: string) => { const d = new Date(date + 'T06:00:00'); d.setDate(d.getDate() + 1); return d.getTime() }
+export type WorkDay = { date: string; started: { at: number; by: string } | null }
+/** the day in course: the one somebody started ("Empezar el día") while it lasts; otherwise the calendar's */
+export function workDay(s: State, now = Date.now()): WorkDay {
+  const m = s.changes.filter((c) => c.refTable === DAY_REF && !c.deleted && c.at <= now && now < dayEnds(c.refKey)).sort((a, b) => b.at - a.at)[0]
+  return m ? { date: m.refKey, started: { at: m.at, by: m.by } } : { date: dayOf(now), started: null }
+}
+/** the last thing recorded on a run: its last unit, its start, or the moment its line was stopped and left */
+const lastRecord = (s: State, r: Run) => Math.max(r.units.length ? r.units[r.units.length - 1].at : r.startedAt, ...s.stops.filter((x) => !x.endedAt && x.dept === r.dept && x.lineId === r.lineId).map((x) => x.startedAt))
+const LEFT_AFTER_MS = 6 * 3_600_000
+/**
+ * runs nobody finished: still open, dated before the day, and with nothing recorded for six hours. (A line that is
+ * really running across midnight, with a cart an hour ago, is not one of them.)
+ */
+export const leftOpen = (s: State, date: string, at = Date.now()) => s.runs.filter((r) => !r.endedAt && r.date < date && lastRecord(s, r) < at - LEFT_AFTER_MS)
+/** what a day holds that began before a moment (all of it when no moment is given) */
+export const dayRecords = (s: State, date: string, before = Infinity) => ({
+  runs: s.runs.filter((r) => r.date === date && r.startedAt < before),
+  stops: s.stops.filter((x) => dayOf(x.startedAt) === date && x.startedAt < before),
+})
+/**
+ * everything recorded on a day (or only what began before a moment) is set aside: it leaves every screen and every
+ * report on every device, with the history of its corrections. The rows stay on the server marked as deleted.
+ * Returns how many.
+ */
+export function purgeDay(date: string, before = Infinity): { runs: number; stops: number } {
+  const { runs, stops } = dayRecords(state, date, before)
+  // the history of those records goes with them; what was set up that day (products, goals, lines, program) keeps its own
+  const lines = state.changes.filter((c) => (c.refTable === 'act_runs' || c.refTable === 'act_stops') && dayOf(c.at) === date && c.at < before)
+  if (!runs.length && !stops.length && !lines.length) return { runs: 0, stops: 0 }
+  batch(() => {
+    for (const r of runs) putRun({ ...r, deleted: true })
+    for (const x of stops) putStop({ ...x, deleted: true })
+    for (const c of lines) putChange({ ...c, deleted: true, updatedAt: stamp(c) })
+    const now = Date.now()
+    putChange({ id: uid(), at: now, by: user.get(), dept: null, what: 'Se borraron los registros del ' + date + (before < Infinity ? ' anteriores a las ' + fmtTime(before) : ''), before: runs.length + (runs.length === 1 ? ' corrida' : ' corridas') + ' · ' + stops.length + (stops.length === 1 ? ' paro' : ' paros'), after: '', refTable: DAY_REF + ':purge', refKey: date, updatedAt: now })
+  })
+  return { runs: runs.length, stops: stops.length }
+}
+/** a run nobody finished is closed at its last record (its last unit, or the moment it was stopped), not at "now" */
+function finishLeft(r: Run) {
+  const open = state.stops.filter((x) => !x.endedAt && x.dept === r.dept && x.lineId === r.lineId)
+  const end = lastRecord(state, r)
+  for (const x of open) updateStop(x.id, { endedAt: end })
+  updateRun(r.id, { endedAt: end })
+  return end
+}
+/**
+ * starts the day of work (or moves its start): from then on "today" is that date for every tablet, until 6 the next
+ * morning. On the way it can finish the runs left open from earlier days, and set aside what was recorded that day
+ * before the start (tests).
+ */
+export function startDay(at: number, opts: { date?: string; finishLeft?: boolean; purge?: boolean } = {}) {
+  const date = opts.date ?? dayOf(at)
+  let ended = 0, gone = { runs: 0, stops: 0 }
+  batch(() => {
+    if (opts.finishLeft) {
+      const last: Partial<Record<Dept, number>> = {}
+      for (const r of leftOpen(state, date, at)) { const end = finishLeft(r); last[r.dept] = Math.max(last[r.dept] ?? 0, end); ended++ }
+      // a whole department left "stopped" since an earlier day: closed with the last of its runs, or where it began
+      for (const x of state.stops.filter((y) => !y.endedAt && y.lineId === null && dayOf(y.startedAt) < date)) updateStop(x.id, { endedAt: Math.max(x.startedAt, last[x.dept] ?? 0) })
+    }
+    if (opts.purge) gone = purgeDay(date, at)
+    const was = state.changes.find((c) => c.id === 'day:' + date)
+    putChange({ id: 'day:' + date, at, by: user.get(), dept: null, what: 'Día empezado', before: was && was.at !== at ? fmtTime(was.at) : '', after: fmtTime(at), refTable: DAY_REF, refKey: date, updatedAt: stamp(was) })
+  })
+  return { date, ended, ...gone }
+}
+/** the day goes back to being the calendar's */
+export function cancelDay(date: string) { const c = state.changes.find((x) => x.id === 'day:' + date); if (c) putChange({ ...c, deleted: true, updatedAt: stamp(c) }) }
+
 /** everyone who took part in a run: who started it and who tapped its units (a break cover shows up by name) */
 export function whoText(r: Run) { return [...new Set([r.by, ...r.units.map((u) => u.by)].filter(Boolean))].join(', ') }
 

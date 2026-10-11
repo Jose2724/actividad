@@ -10,7 +10,8 @@ export const USER_DOMAIN = 'freezer.example.com'
 /** a username becomes an address on the reserved domain; the owner (a real e-mail, like in Freezer RTE) is used as typed */
 export const loginEmail = (user: string) => (user.includes('@') ? user.trim().toLowerCase() : user.trim().toLowerCase() + '@' + USER_DOMAIN)
 
-export type Me = { id: string; name: string; username: string; role: 'op' | 'mgr' | 'office'; dept: string }
+/** admin = an administrator of Freezer RTE (the owner): the only one who may wipe a whole day of tests */
+export type Me = { id: string; name: string; username: string; role: 'op' | 'mgr' | 'office'; dept: string; admin?: boolean }
 
 /** a session that is on the device but could not be renewed for lack of signal (not the same as nobody signed in) */
 export const noSignal = (e: unknown) => !!e && isAuthRetryableFetchError(e)
@@ -24,10 +25,10 @@ export async function fetchMe(): Promise<Me | null | 'none'> {
   if (!supabase) return null
   const { data: { session }, error: authError } = await supabase.auth.getSession()
   if (!session) { if (noSignal(authError)) throw authError; return null }
-  const { data, error } = await supabase.from('employees').select('id, name, username, act_role, act_dept, active').eq('user_id', session.user.id).maybeSingle()
+  const { data, error } = await supabase.from('employees').select('id, name, username, role, act_role, act_dept, active').eq('user_id', session.user.id).maybeSingle()
   if (error) throw error
   if (!data || !data.active || !data.act_role) return 'none'
-  return { id: data.id, name: data.name, username: data.username ?? '', role: data.act_role, dept: data.act_dept ?? '' }
+  return { id: data.id, name: data.name, username: data.username ?? '', role: data.act_role, dept: data.act_dept ?? '', admin: data.role === 'admin' }
 }
 
 // ---- the last person the server confirmed on this device: with it the app opens at once, with or without signal ----
