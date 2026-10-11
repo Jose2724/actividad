@@ -208,11 +208,42 @@ calc.use((m) => {
   eq('ponerle el código de otro producto se rechaza (también 0100 = 100)', [m.saveProduct(3, { ...m.store.get().products[3], code: '0100' }), m.saveProduct(3, { ...m.store.get().products[3], code: 'b200' })], [false, false])
   eq('el producto que ya existía queda intacto', m.store.get().products[0], { code: '100', name: 'Producto de prueba', pouchesPerCase: 8, casesPerMix: 18.5, cratesPerCart: 24, pouchesPerCrate: 10, casesPerPallet: 36, updatedAt: T0 + 2 * M })
   eq('nada sale hacia el servidor por el intento', m.outbox.items().filter((i) => i.table === 'act_products'), [])
+  eq('el motivo: código de otro, en blanco, o ninguno', [m.codeProblem(3, '0100'), m.codeProblem(1, ' '), m.codeProblem(3, 'D400'), m.codeProblem(0, '0100'), m.codeProblem(3, '')], ['taken', 'blank', null, null, null])
   eq('un código libre sí se guarda', m.saveProduct(3, { ...m.store.get().products[3], code: 'D400', name: 'Nuevo' }), true)
   eq('dejar en blanco el código de un producto se rechaza', m.saveProduct(1, { ...m.store.get().products[1], code: ' ' }), false)
   clock += M
   eq('cambiar un código retira el viejo en el servidor', [m.saveProduct(3, { ...m.store.get().products[3], code: 'D401' }), m.outbox.items().filter((i) => i.table === 'act_products').map((i) => [i.key, i.row.deleted])], [true, [['D400', true], ['D401', false]]])
   clock = T0
+})
+
+section('Historial: cada cambio en su línea, con su antes y su después')
+calc.use((m) => {
+  const lines = (from) => m.store.get().changes.slice(from).map((c) => [c.what, c.before, c.after])
+  let n = m.store.get().changes.length
+  clock = T0 + 30 * M
+  // two different products change their code one after the other: two lines, not one glued together
+  m.saveProduct(3, { ...m.store.get().products[3], code: 'D402' })
+  m.saveProduct(1, { ...m.store.get().products[1], code: 'B201' })
+  eq('dos productos distintos, dos líneas', lines(n), [['Producto D401 · Código', 'D401', 'D402'], ['Producto B200 · Código', 'B200', 'B201']])
+  m.saveProduct(1, { ...m.store.get().products[1], code: 'B200' })
+  // the same number retyped within a minute and a half is one line; put back as it was, the line goes away
+  n = m.store.get().changes.length
+  m.saveProduct(0, { ...m.store.get().products[0], casesPerMix: 19 })
+  clock += 20_000; m.saveProduct(0, { ...m.store.get().products[0], casesPerMix: 19.5 })
+  eq('un mismo número corregido enseguida: una línea con el primer antes y el último después', lines(n), [['Producto 100 · Cajas / mezcla', '18.5', '19.5']])
+  clock += 20_000; m.saveProduct(0, { ...m.store.get().products[0], casesPerMix: 18.5 })
+  eq('si vuelve a como estaba, no queda línea', lines(n), [])
+  clock += 5 * M; m.saveProduct(0, { ...m.store.get().products[0], casesPerMix: 20 })
+  clock += 5 * M; m.saveProduct(0, { ...m.store.get().products[0], casesPerMix: 18.5 })
+  eq('pasado ese rato, cada cambio es su propia línea', lines(n), [['Producto 100 · Cajas / mezcla', '18.5', '20'], ['Producto 100 · Cajas / mezcla', '20', '18.5']])
+  // two runs of the same code, line and day corrected one after the other
+  const row = (id, start) => runRow({ id, code: 'H1', date: '2026-10-03', lineId: 'L5', line: 'Línea 5', startedAt: start, endedAt: start + 30 * M, units: [unit(start + 10 * M, 240)], perUnit: 240 })
+  m.applyRemote('act_runs', row('h1', T0)); m.applyRemote('act_runs', row('h2', T0 + 60 * M))
+  n = m.store.get().changes.length
+  m.updateRun('h1', { lot: '7001' }); m.updateRun('h2', { lot: '7002' })
+  eq('dos corridas del mismo código y línea: cada una su línea', lines(n).map((l) => [l[1], l[2]]), [['6283', '7001'], ['6283', '7002']])
+  clock = T0
+  for (const it of m.outbox.items()) m.markSent(it)
 })
 
 section('Archivo CSV de la oficina: coma, punto y coma o tabulador')

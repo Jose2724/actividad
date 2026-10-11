@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import { activeBetween, addLine, addWaste, CFG, CRATES_PER_CART, dayOf, DEPTS, deptStop, deptToday, endRun, endStop, fmtDur, fmtTime, lastPerUnit, lotFor, madeText, managerPin, mergeProducts, myDept, normCode, numOf, openRun, openStop, parseProductsCsv, productOf, productsCsv, removeLine, removeProduct, reset, resetRecords, role, runStats, saveProduct, setSchedule, setTarget, startRun, startStop, stopsOf, store, targetOf, today, unitQty, unitDone, user, type Dept, type Line, type Product, type Run, type State, type Target, type Unit } from './store'
+import { activeBetween, addLine, addWaste, CFG, codeProblem, CRATES_PER_CART, dayOf, DEPTS, deptStop, deptToday, endRun, endStop, fmtDur, fmtTime, lastPerUnit, lotFor, madeText, managerPin, mergeProducts, myDept, normCode, numOf, openRun, openStop, parseProductsCsv, productOf, productsCsv, removeLine, removeProduct, reset, resetRecords, role, runStats, saveProduct, setSchedule, setTarget, startRun, startStop, stopsOf, store, targetOf, today, unitQty, unitDone, user, type Dept, type Line, type Product, type Run, type State, type Target, type Unit } from './store'
 import { avanceRows, n1, pending, type AvanceRow } from './avance'
 import { cellText, xDay, xDur, xTime, xlsxBytes, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 
@@ -257,12 +257,26 @@ function Products({ s }: { s: State }) {
   const show = (v: number) => (v ? String(v) : '—')
   const text = (v: number) => (v ? String(v) : '')
   /** saves one field of the product at position i; a code that is another product's is refused with a notice */
+  const [rename, setRename] = useState<{ i: number; from: string; to: string; name: string } | null>(null)
+  const refused = (why: 'taken' | 'blank', code: string) => setNotice(why === 'taken' ? { title: 'Ya hay un producto con el código ' + code.trim().toUpperCase(), text: 'Cada código va una sola vez en la tabla. Corrige ese producto en su fila.' } : { title: 'El código no puede quedar en blanco', text: 'Para sacar un producto de la tabla usa la ✕ de su fila.' })
+  /** saves one field of the product at position i; false = not saved (the cell goes back to what it showed) */
   const upd = (i: number, patch: Partial<Product>) => {
     const p = store.get().products[i]
     if (!p) return false
-    const ok = saveProduct(i, { ...p, ...patch })
-    if (!ok) setNotice(patch.code?.trim() ? { title: 'Ya hay un producto con el código ' + patch.code.trim().toUpperCase(), text: 'Cada código va una sola vez en la tabla. Corrige ese producto en su fila.' } : { title: 'El código no puede quedar en blanco', text: 'Para sacar un producto de la tabla usa la ✕ de su fila.' })
-    return ok
+    if (patch.code !== undefined) {
+      const why = codeProblem(i, patch.code)
+      if (why) { refused(why, patch.code); return false }
+      // another code on a product that already has one is a rename every tablet will see: asked first
+      if (p.code.trim() && normCode(p.code) !== normCode(patch.code)) { setRename({ i, from: p.code, to: patch.code, name: p.name }); return false }
+    }
+    return saveProduct(i, { ...p, ...patch })
+  }
+  const doRename = () => {
+    if (!rename) return
+    const p = store.get().products[rename.i]
+    // the row must still hold the product the question was about
+    if (p && normCode(p.code) === normCode(rename.from) && !saveProduct(rename.i, { ...p, code: rename.to })) refused(codeProblem(rename.i, rename.to) ?? 'taken', rename.to)
+    setRename(null)
   }
   // the search keeps each product's place in the full list, so an edit or a removal lands on the right row
   const needle = q.trim().toUpperCase()
@@ -272,6 +286,7 @@ function Products({ s }: { s: State }) {
     <div className={'products' + (unlocked ? ' editing' : '')}>
       {removeIdx != null && <ConfirmDialog title={'¿Quitar ' + (s.products[removeIdx]?.code || 'este producto') + ' de la tabla?'} yes="Quitar" danger onYes={() => { removeProduct(removeIdx); setRemoveIdx(null) }} onNo={() => setRemoveIdx(null)} />}
       {notice && <NoticeDialog title={notice.title} text={notice.text} onClose={() => setNotice(null)} />}
+      {rename && <ConfirmDialog title={'¿Cambiar el código ' + rename.from + ' por ' + rename.to + '?'} text={'El producto ' + (rename.name ? '"' + rename.name + '" ' : '') + 'pasa a ser el ' + rename.to + (supabase ? ' en todas las tablets' : '') + ' y el código ' + rename.from + ' sale de la tabla. Lo que ya se registró con ' + rename.from + ' se queda con ' + rename.from + '. Si fue sin querer, toca Cancelar.'} yes="Cambiar código" onYes={doRename} onNo={() => setRename(null)} />}
       <div className="phead">
         <h3>{unlocked ? '✎ Editando productos' : '🔒 Productos · la tabla maestra de la oficina'}</h3>
         <div className="psearch">

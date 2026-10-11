@@ -186,15 +186,16 @@ function upsertIn<T extends { id: string; deleted?: boolean }>(list: T[], item: 
 const v = (x: unknown) => (x == null || x === '' || x === 0 ? '' : String(x))
 const COALESCE_MS = 90_000
 /**
- * one line of history. A value retyped by the same person within a minute and a half (keystrokes, a second thought)
- * updates the same line instead of adding one; typed back to what it was, the line is withdrawn.
+ * one line of history. The SAME value of the SAME record retyped by the same person within a minute and a half
+ * (keystrokes, a second thought) updates its line instead of adding one; typed back to what it was, the line is
+ * withdrawn. Another record never shares a line, even with the same wording.
  */
 function logChange(dept: Dept | null, what: string, before: string, after: string, refTable: string, refKey: string) {
   if (before === after) return
   const now = Date.now(), by = user.get()
   const changes = state.changes
   let i = changes.length - 1
-  while (i >= 0 && !(changes[i].by === by && changes[i].refTable === refTable && changes[i].what === what && now - changes[i].at < COALESCE_MS)) i--
+  while (i >= 0 && !(changes[i].by === by && changes[i].refTable === refTable && changes[i].refKey === refKey && changes[i].what === what && now - changes[i].at < COALESCE_MS)) i--
   const c: Change = i >= 0 ? { ...changes[i], after, updatedAt: now } : { id: uid(), at: now, by, dept, what, before, after, refTable, refKey, updatedAt: now }
   if (c.before === c.after) c.deleted = true
   set({ ...state, changes: upsertIn(changes, c) })
@@ -203,7 +204,7 @@ function logChange(dept: Dept | null, what: string, before: string, after: strin
 const PRODUCT_FIELDS: [keyof Product, string][] = [['name', 'Producto'], ['pouchesPerCase', 'Pouches / caja'], ['casesPerMix', 'Cajas / mezcla'], ['cratesPerCart', 'Guacales / carro'], ['pouchesPerCrate', 'Pouches / guacal'], ['casesPerPallet', 'Cajas / pallet']]
 function logProductDiff(old: Product | undefined, p: Product) {
   if (!old) { if (p.code.trim()) logChange(null, 'Producto nuevo', '', p.code, 'act_products', normCode(p.code)); return }
-  if (normCode(old.code) !== normCode(p.code)) logChange(null, 'Producto · Código', old.code, p.code, 'act_products', normCode(p.code))
+  if (normCode(old.code) !== normCode(p.code)) logChange(null, old.code.trim() ? 'Producto ' + old.code + ' · Código' : 'Producto nuevo', old.code, p.code, 'act_products', normCode(p.code))
   for (const [k, label] of PRODUCT_FIELDS) if (v(old[k]) !== v(p[k])) logChange(null, 'Producto ' + (p.code || old.code) + ' · ' + label, v(old[k]), v(p[k]), 'act_products', normCode(p.code))
 }
 const stopLine = (x: Stop) => (x.lineId === null ? 'todo ' + x.dept : state.lines.find((l) => l.id === x.lineId)?.name ?? state.runs.find((r) => r.lineId === x.lineId)?.line ?? 'línea')
@@ -298,17 +299,23 @@ export function reset() { set(fresh()); resync() }
 export function resetRecords() { set({ ...state, runs: [], stops: [], schedule: {}, changes: [] }); resync() }
 
 export const productOf = (s: State, code: string) => s.products.find((p) => normCode(p.code) === normCode(code))
+/** why a code cannot go on the product at position i: it is already another product's ('taken'), or it would leave an existing product without one ('blank') */
+export function codeProblem(i: number, code: string): 'taken' | 'blank' | null {
+  const key = normCode(code), old = state.products[i]
+  if (key && state.products.some((x, k) => k !== i && normCode(x.code) === key)) return 'taken'
+  if (old && old.code.trim() && !key) return 'blank'
+  return null
+}
 /**
  * saves a product by its position in the list (a new one goes at the end); a code that changed retires the old row on
  * the server. Refused (false, nothing saved) when the code already belongs to another product, or when it would leave
  * an existing product without a code.
  */
 export function saveProduct(i: number, p: Product): boolean {
+  if (codeProblem(i, p.code)) return false
   const products = [...state.products]
   const old = products[i]
   const key = normCode(p.code)
-  if (key && products.some((x, k) => k !== i && normCode(x.code) === key)) return false
-  if (old && old.code.trim() && !key) return false
   p = { ...p, updatedAt: stamp(old) }
   if (i >= products.length) products.push(p); else products[i] = p
   set({ ...state, products })
