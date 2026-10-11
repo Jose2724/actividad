@@ -1,4 +1,4 @@
-import { supabase } from './supabase'
+import { noSignal, supabase } from './supabase'
 import { beforeFlush, flush, outbox, type Table } from './outbox'
 import { applyRemote, myDept, role, shareLocalLines } from './store'
 
@@ -31,8 +31,8 @@ export function pullAll(): Promise<boolean> {
 async function pullNow(): Promise<boolean> {
   if (!supabase) return false
   try {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) { setStatus({ state: 'signedOut' }); return false }
+    const { data: { session }, error: authError } = await supabase.auth.getSession()
+    if (!session) { setStatus({ state: noSignal(authError) ? 'offline' : 'signedOut' }); return false }
     const cursor = since()
     const from = cursor ? new Date(Date.parse(cursor) - OVERLAP_MS).toISOString() : ''
     let newest = cursor
@@ -59,7 +59,8 @@ export const syncNow = async () => { await pullAll(); await flushNow() }
 
 export async function flushNow() {
   const r = await flush()
-  setStatus({ pending: r.left, lastError: r.error ?? '', state: r.error === 'signedOut' ? 'signedOut' : r.error ? (navigator.onLine ? 'online' : 'offline') : 'online' })
+  const quiet = r.error === 'signedOut' || r.error === 'offline' // not errors to show: the dot already says it
+  setStatus({ pending: r.left, lastError: quiet ? '' : r.error ?? '', state: r.error === 'signedOut' ? 'signedOut' : r.error === 'offline' ? 'offline' : r.error ? (navigator.onLine ? 'online' : 'offline') : 'online' })
   return r
 }
 

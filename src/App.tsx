@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { activeBetween, addLine, addWaste, CFG, codeProblem, CRATES_PER_CART, dayOf, DEPTS, deptStop, deptToday, endRun, endStop, fmtDur, fmtTime, lastPerUnit, lotFor, madeText, managerPin, mergeProducts, myDept, normCode, numOf, openRun, openStop, parseProductsCsv, productOf, productsCsv, removeLine, removeProduct, reset, resetRecords, role, runStats, saveProduct, setSchedule, setTarget, startRun, startStop, stopsOf, store, targetOf, today, unitQty, unitDone, user, type Dept, type Line, type Product, type Run, type State, type Target, type Unit } from './store'
 import { avanceRows, n1, pending, type AvanceRow } from './avance'
 import { cellText, xDay, xDur, xTime, xlsxBytes, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
@@ -7,7 +7,7 @@ const fmtN = (x: number) => Math.round(x).toLocaleString('en-US')
 import { whoText } from './store'
 import { buildPdf, loadPdf } from './pdf'
 import { RunEditor, StopEditor } from './editors'
-import { fetchMe, loginEmail, supabase, type Me } from './supabase'
+import { fetchMe, finishSignOut, loginEmail, rememberedMe, rememberMe, signOutHere, supabase, type Me } from './supabase'
 import { startSync, syncStore, syncNow } from './sync'
 import { uploadAll } from './store'
 import { Employees } from './Employees'
@@ -25,23 +25,63 @@ export default function App() {
   return supabase ? <ServerApp /> : <DemoApp />
 }
 
-/** with a server: the same people and PINs as Freezer RTE; the role and department come from the employees table */
+/** a device that was signed in before the last person was kept apart: what the app already had of them */
+const previousMe = (): Me | null => { const name = user.get(), r = role.get(); return name && (r === 'op' || r === 'mgr') ? { id: '', name, username: '', role: r, dept: myDept.get() } : null }
+const NO_SIGNAL = 'Sin conexión con el servidor. La primera vez en este aparato hay que entrar con WiFi.'
+
+/**
+ * with a server: the same people and PINs as Freezer RTE; the role and department come from the employees table.
+ * Whoever the server confirmed on this device last time comes straight in, with or without signal, and the server is
+ * asked again in the background: it can change their role, or send them to the sign-in screen if the account was
+ * closed, but a lack of signal never throws anyone out.
+ */
 function ServerApp() {
-  const [me, setMe] = useState<Me | null | 'none' | 'loading'>('loading')
+  const [me, setMe] = useState<Me | null | 'none' | 'loading'>(() => rememberedMe() ?? previousMe() ?? 'loading')
   const [err, setErr] = useState('')
-  const load = async () => {
-    try { setMe(await fetchMe()); setErr('') } catch (e) { setMe(null); setErr(String((e as Error).message ?? e)) }
-  }
-  useEffect(() => { void load() }, [])
+  const now = useRef(me); now.current = me
+  // asking: one question to the server at a time; confirmed: it answered; leaving: "Salir" was tapped and nobody has signed in since
+  const asking = useRef(false), confirmed = useRef(0), leaving = useRef(false)
+  const verify = useCallback(async () => {
+    if (asking.current || leaving.current) return
+    asking.current = true
+    try {
+      const who = await fetchMe()
+      if (leaving.current) return
+      confirmed.current = Date.now()
+      const inside = who && who !== 'none' ? who : null
+      rememberMe(inside)
+      if (!inside) user.set('')
+      setMe(who); setErr('')
+    } catch (e) {
+      // no signal, or the server did not answer: whoever is in stays in; with nobody remembered, the sign-in screen says why
+      confirmed.current = 0
+      const text = String((e as Error)?.message ?? e)
+      setErr(/fetch|network|load failed/i.test(text) || !navigator.onLine ? NO_SIGNAL : text)
+      setMe((cur) => (cur === 'loading' ? null : cur))
+    } finally { asking.current = false }
+  }, [])
+  useEffect(() => {
+    void finishSignOut().then(verify)
+    // with nobody remembered there is nothing to show until the server answers, but not for ever
+    const slow = setTimeout(() => { if (now.current === 'loading') { setErr(NO_SIGNAL); setMe(null) } }, 8000)
+    const again = () => { void verify() }
+    // back on the screen: asked again if the server has not answered yet, or not for the last ten minutes (a role changed, an account closed)
+    const seen = () => { if (document.visibilityState === 'visible' && Date.now() - confirmed.current > 600_000) void verify() }
+    window.addEventListener('online', again); document.addEventListener('visibilitychange', seen)
+    const t = setInterval(() => { if (!confirmed.current) void verify() }, 60_000)
+    return () => { clearTimeout(slow); clearInterval(t); window.removeEventListener('online', again); document.removeEventListener('visibilitychange', seen) }
+  }, [verify])
   useEffect(() => {
     if (me && me !== 'none' && me !== 'loading') { user.set(me.name); role.set(me.role === 'op' ? 'op' : 'mgr'); myDept.set(me.dept); startSync() }
   }, [me])
-  const out = async () => { await supabase!.auth.signOut(); user.set(''); setMe(null) }
+  const out = async () => { leaving.current = true; rememberMe(null); user.set(''); confirmed.current = 0; setErr(''); setMe(null); await signOutHere() }
+  /** the PIN was accepted: the server is asked who that is */
+  const entered = async () => { leaving.current = false; await verify() }
   if (me === 'loading') return <div className="gate"><h1>Actividad</h1><p>Entrando…</p></div>
-  if (me === null) return <LoginGate error={err} onDone={load} />
-  if (me === 'none') return <NoRole onOut={out} onRetry={load} />
+  if (me === null) return <LoginGate error={err} onDone={entered} />
+  if (me === 'none') return <NoRole onOut={out} onRetry={verify} />
   const home = isDept(me.dept) ? me.dept : DEPTS[0]
-  if (me.role === 'op' && !isDept(me.dept)) return <NoRole onOut={out} onRetry={load} text={'Tu usuario está en Actividad pero sin departamento. Pide al manager que te asigne uno.'} />
+  if (me.role === 'op' && !isDept(me.dept)) return <NoRole onOut={out} onRetry={verify} text={'Tu usuario está en Actividad pero sin departamento. Pide al manager que te asigne uno.'} />
   return <Main name={me.name} home={home} mgr={me.role !== 'op'} onLogout={() => void out()} />
 }
 
@@ -50,6 +90,7 @@ function LoginGate({ error, onDone }: { error: string; onDone: () => Promise<voi
   const [pin, setPin] = useState('')
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState(error)
+  useEffect(() => { if (error) setMsg(error) }, [error])
   const go = async () => {
     setBusy(true); setMsg('')
     const { error: e } = await supabase!.auth.signInWithPassword({ email: loginEmail(u), password: pin })

@@ -1,4 +1,4 @@
-import { supabase } from './supabase'
+import { noSignal, supabase } from './supabase'
 
 /**
  * Every change is saved on the device first and queued here; the queue is sent whenever there is signal. One entry
@@ -77,8 +77,8 @@ export async function flush(): Promise<FlushResult> {
   flushing = true
   let sent = 0, error: string | undefined
   try {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return { sent: 0, left: read().length, error: 'signedOut' }
+    const { data: { session }, error: authError } = await supabase.auth.getSession()
+    if (!session) return { sent: 0, left: read().length, error: noSignal(authError) ? 'offline' : 'signedOut' }
     if (before && read().length) await before()
     const waiting = new Set<string>() // tables the server does not have ready yet
     const skipped = new Set<string>() // rows the database rejects as they are: they stay queued, the rest goes on
