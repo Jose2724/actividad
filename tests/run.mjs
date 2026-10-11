@@ -753,6 +753,68 @@ dayDev.use((m) => {
 }
 
 // =====================================================================================================================
+//  6. One clock for every device: the server's
+// =====================================================================================================================
+section('La hora del servidor')
+calc.use((m) => {
+  // a device asks the server the time eight times. The server stamps each answer with its own time, to the second.
+  // `truth` is how far the device's clock is from the server's (server − device, ms); the trips up and down take
+  // different, uneven times, as on a real network
+  const ask = (truth, n = 8, seed = 7) => {
+    let x = seed
+    const rnd = () => { x = (x * 1103515245 + 12345) % 2147483648; return x / 2147483648 }
+    const out = []
+    let device = 1_791_700_000_333
+    for (let i = 0; i < n; i++) {
+      const up = 30 + rnd() * 90, down = 30 + rnd() * 90
+      out.push({ server: Math.floor((device + up + truth) / 1000) * 1000, mid: device + (up + down) / 2, rtt: up + down })
+      device += up + down + 137
+    }
+    return out
+  }
+  for (const [what, truth] of [['1.1 segundos adelantado, como tu PC', -1102], ['en hora', 0], ['4 segundos atrasado', 4321], ['5 minutos adelantado, puesto a mano', -305_000], ['un día entero corrido', 86_400_017]]) {
+    for (const seed of [7, 11, 23]) {
+      const e = m.estimate(ask(truth, 8, seed))
+      eq('un aparato ' + what + ': se mide bien, con menos de un cuarto de segundo de margen', [e !== null && Math.abs(e.offset - truth) <= e.within + 1, e !== null && e.within <= 250], [true, true])
+    }
+  }
+  eq('con muy pocas respuestas no se decide nada', m.estimate(ask(-1102, 2)), null)
+  const jumped = [...ask(-1102, 4), ...ask(6000, 4, 9)]
+  eq('si el reloj del aparato cambió mientras se medía, tampoco', m.estimate(jumped), null)
+  eq('la zona de la planta va 4 horas detrás de la hora universal en verano y 5 en invierno', [m.zoneMinutes('America/New_York', Date.UTC(2026, 9, 11, 12)), m.zoneMinutes('America/New_York', Date.UTC(2026, 0, 15, 12))], [-240, -300])
+  eq('otras zonas se distinguen', [m.zoneMinutes('UTC', Date.UTC(2026, 9, 11, 12)), m.zoneMinutes('America/Los_Angeles', Date.UTC(2026, 9, 11, 12)), m.zoneMinutes('America/Santo_Domingo', Date.UTC(2026, 0, 15, 12))], [0, -420, -240])
+  eq('la misma zona preguntada muchas veces da siempre lo mismo', [1, 2, 3].map(() => m.zoneMinutes('America/New_York', Date.UTC(2026, 9, 11, 12))), [-240, -240, -240])
+  eq('el cambio de hora de noviembre se nota a la hora justa', [m.zoneMinutes('America/New_York', Date.UTC(2026, 10, 1, 5, 59)), m.zoneMinutes('America/New_York', Date.UTC(2026, 10, 1, 6, 0))], [-240, -300])
+  eq('un reloj corrido menos de un minuto no se menciona', [m.clockOffText(0), m.clockOffText(-1102), m.clockOffText(59_000)], ['', '', ''])
+  eq('uno corrido más, sí: cuánto y hacia dónde', [m.clockOffText(-305_000), m.clockOffText(240_000), m.clockOffText(-3 * 3_600_000), m.clockOffText(9_000_000), m.clockOffText(3 * 86_400_017)], ['5 min adelantado', '4 min atrasado', '3 h adelantado', '2,5 h atrasado', '3 días atrasado'])
+})
+const clk = await device('clk', { user: 'Nino' })
+clk.use((m) => {
+  clock = T0
+  eq('sin medir todavía, vale el reloj del aparato', [m.clockOffset(), m.clockNow()], [0, T0])
+  m.setOffset(-1102)
+  eq('medido: la hora es la del aparato más la diferencia', [m.clockOffset(), m.clockNow()], [-1102, T0 - 1102])
+  m.setOffset(-1150)
+  eq('una diferencia menor que la precisión de la medida no mueve los contadores', m.clockOffset(), -1102)
+  eq('se recuerda para la próxima vez que se abra la app, también sin señal', JSON.parse(localStorage.getItem('act_clock')).offset, -1102)
+  // everything recorded carries the shared time, not the device's
+  m.addLine('RTE'); m.startRun(m.store.get().lines[0], 'A100', '6283', DAY, 240)
+  const id = m.store.get().runs[0].id, run = () => m.store.get().runs[0]
+  clock = T0 + 10 * M; m.unitDone(id, 240)
+  eq('el inicio y el carro llevan la hora del servidor', [run().startedAt, run().units[0].at, run().updatedAt], [T0 - 1102, T0 + 10 * M - 1102, T0 + 10 * M - 1102])
+  eq('el día de trabajo también se decide con ella', m.workDay(m.store.get()).date, DAY)
+  // the clock is corrected 9 seconds back between two taps: what is recorded still goes forward
+  m.setOffset(-10_102)
+  clock = T0 + 10 * M + 2000; m.unitDone(id, 240)
+  eq('si la hora se corrige hacia atrás entre dos toques, lo registrado no retrocede', run().units[1].at > run().units[0].at, true)
+  m.endRun(id)
+  eq('y el fin nunca queda antes del último carro', run().endedAt >= run().units[1].at, true)
+  m.startStop('RTE', null, 'Break', ''); m.setOffset(-30_000); m.endStop(m.store.get().stops[0].id)
+  eq('ni el fin de un paro antes de su inicio', m.store.get().stops[0].endedAt >= m.store.get().stops[0].startedAt, true)
+})
+clock = T0
+
+// =====================================================================================================================
 console.log('')
 if (failed.length) { console.log(failed.length + ' FALLARON de ' + (passed + failed.length) + ':\n'); for (const f of failed) console.log('  ✗ ' + f + '\n'); process.exit(1) }
 console.log('✓ ' + passed + ' comprobaciones, todas correctas')

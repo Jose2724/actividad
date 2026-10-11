@@ -247,3 +247,4 @@ tr.live td{background:#f1fbf5}
 .tidybox{display:grid;gap:8px;border-radius:12px;padding:10px 12px;font-size:14px;background:var(--bg)}
 .tidybox.hot{background:var(--red-soft)}
 .tidybox ul{margin:0;padding-left:18px;color:var(--muted)}
+.zonebar{background:var(--amber);color:#fff;font-weight:700;padding:10px 14px;text-align:center}

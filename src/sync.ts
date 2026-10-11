@@ -1,4 +1,5 @@
 import { noSignal, supabase } from './supabase'
+import { startClock } from './clock'
 import { beforeFlush, flush, outbox, type Row, type Table } from './outbox'
 import { applyRemote, awayDay, batch, closeDay, firstKeptDay, myDept, openDay, prune, role, shareLocalLines } from './store'
 
@@ -133,6 +134,7 @@ export function startSync() {
   if (!supabase || started) return
   started = true
   prune()
+  startClock()
   void (async () => { await pullAll(); shareLocalLines((dept) => role.get() !== 'op' || dept === myDept.get()); await flushNow() })()
   supabase.channel('act-live')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'act_lines' }, (p) => applyRemote('act_lines', p.new as Record<string, unknown>))

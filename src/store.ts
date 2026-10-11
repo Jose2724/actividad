@@ -2,6 +2,7 @@
 // also queued for upload (outbox.ts) and what other devices send arrives through sync.ts.
 import { drop, justSent, outbox, push, queued, rebase, type Row, type Table } from './outbox'
 import { storageFull } from './storage'
+import { clockNow } from './clock'
 
 export type Dept = 'Kitchen' | 'RTE' | 'Spiral' | 'MFO' | 'Packing'
 export const DEPTS: Dept[] = ['Kitchen', 'RTE', 'Spiral', 'MFO', 'Packing']
@@ -65,7 +66,7 @@ const KEY = 'act_v1'
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2))
 const pad = (n: number) => String(n).padStart(2, '0')
 export const dayOf = (ms: number) => { const d = new Date(ms); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) }
-export const today = () => dayOf(Date.now())
+export const today = () => dayOf(clockNow())
 /** the plant's lot number is the Julian date: last digit of the year + day of the year (10/07/2026 → 6280) */
 export function lotFor(ds: string) {
   const [y, m, d] = ds.split('-').map(Number)
@@ -109,7 +110,7 @@ function load(): State {
         stops: s.stops.map((x) => ({ id: x.id ?? uid(), dept: (x.dept ?? 'Kitchen') as Dept, lineId: x.lineId ?? null, reason: x.reason ?? '', note: x.note ?? '', startedAt: x.startedAt ?? 0, endedAt: x.endedAt ?? null, by: x.by ?? '', updatedAt: x.updatedAt ?? 0 })),
         runs: s.runs.map((r) => ({ id: r.id ?? uid(), dept: (r.dept ?? 'Kitchen') as Dept, lineId: r.lineId ?? '', line: r.line ?? '', code: r.code ?? '', lot: r.lot ?? '', date: r.date ?? today(), startedAt: r.startedAt ?? 0, endedAt: r.endedAt ?? null, units: units(r), perUnit: r.perUnit ?? null, waste: r.waste ?? 0, by: r.by ?? '', updatedAt: r.updatedAt ?? 0 })),
         products, schedule: tidySchedule(s.schedule ?? {}),
-        changes: (s.changes ?? []).filter((c) => (c.at ?? 0) > Date.now() - KEEP_CHANGES_MS).map((c) => ({ id: c.id ?? uid(), at: c.at ?? 0, by: c.by ?? '', dept: (c.dept ?? null) as Dept | null, what: c.what ?? '', before: c.before ?? '', after: c.after ?? '', refTable: c.refTable ?? '', refKey: c.refKey ?? '', updatedAt: c.updatedAt ?? 0 })),
+        changes: (s.changes ?? []).filter((c) => (c.at ?? 0) > clockNow() - KEEP_CHANGES_MS).map((c) => ({ id: c.id ?? uid(), at: c.at ?? 0, by: c.by ?? '', dept: (c.dept ?? null) as Dept | null, what: c.what ?? '', before: c.before ?? '', after: c.after ?? '', refTable: c.refTable ?? '', refKey: c.refKey ?? '', updatedAt: c.updatedAt ?? 0 })),
         targets: (s.targets ?? []).filter((t) => DEPTS.includes(t.dept as Dept)).map((t) => ({ dept: t.dept as Dept, perHour: t.perHour ?? null, perShift: t.perShift ?? null, updatedAt: t.updatedAt ?? 0 })),
       }
     }
@@ -126,7 +127,7 @@ export const KEEP_DAYS = 14
 let keepDays = KEEP_DAYS // halved when the device's storage fills up
 /** older days opened in this session (Reporte, Avance): they stay until the app is closed */
 const opened = new Set<string>()
-const dayBack = (n: number) => { const d = new Date(Date.now()); d.setDate(d.getDate() - n); return dayOf(d.getTime()) }
+const dayBack = (n: number) => { const d = new Date(clockNow()); d.setDate(d.getDate() - n); return dayOf(d.getTime()) }
 /** the oldest day this device keeps */
 export const firstKeptDay = () => dayBack(keepDays - 1)
 /** a day this device does not hold: the server has to be asked for it */
@@ -198,13 +199,13 @@ const rowOfLine = (l: Line) => ({ id: l.id, dept: l.dept, name: l.name, deleted:
 const rowOfRun = (r: Run) => ({ id: r.id, dept: r.dept, line_id: r.lineId, line: r.line, code: r.code, lot: r.lot, date: r.date, started_at: iso(r.startedAt), ended_at: iso(r.endedAt), units: r.units, per_unit: r.perUnit, waste: r.waste, by_name: r.by, deleted: !!r.deleted, updated_at: iso(r.updatedAt), updated_by: user.get() })
 const rowOfStop = (x: Stop) => ({ id: x.id, dept: x.dept, line_id: x.lineId, reason: x.reason, note: x.note, started_at: iso(x.startedAt), ended_at: iso(x.endedAt), by_name: x.by, deleted: !!x.deleted, updated_at: iso(x.updatedAt), updated_by: user.get() })
 const rowOfProduct = (p: Product) => ({ code: normCode(p.code), name: p.name, pouches_per_case: p.pouchesPerCase, cases_per_mix: p.casesPerMix, crates_per_cart: p.cratesPerCart, pouches_per_crate: p.pouchesPerCrate, cases_per_pallet: p.casesPerPallet, deleted: !!p.deleted, updated_at: iso(p.updatedAt), updated_by: user.get() })
-const rowOfSchedule = (date: string, code: string, mixes: number) => ({ date, code: normCode(code), mixes, updated_at: iso(Date.now()), updated_by: user.get() })
+const rowOfSchedule = (date: string, code: string, mixes: number) => ({ date, code: normCode(code), mixes, updated_at: iso(clockNow()), updated_by: user.get() })
 const rowOfChange = (c: Change) => ({ id: c.id, at: iso(c.at), by_name: c.by, dept: c.dept, what: c.what, before: c.before, after: c.after, ref_table: c.refTable, ref_key: c.refKey, deleted: !!c.deleted, updated_at: iso(c.updatedAt), updated_by: user.get() })
 const rowOfTarget = (t: Target) => ({ dept: t.dept, per_hour: t.perHour, per_shift: t.perShift, updated_at: iso(t.updatedAt), updated_by: user.get() })
 
 // ---- the mutations: each one saves on the device and queues the row for the server ----
 /** a change is always stamped later than the version it was made from, even when this device's clock runs behind another's */
-const stamp = (was: { updatedAt: number } | undefined) => Math.max(Date.now(), (was?.updatedAt ?? 0) + 1)
+const stamp = (was: { updatedAt: number } | undefined) => Math.max(clockNow(), (was?.updatedAt ?? 0) + 1)
 /** what the server last had of a row (nothing for one never sent): it travels with the queued change, see outbox.ts */
 const baseOf = <T extends { updatedAt: number }>(was: T | undefined, row: (x: T) => Row) => (was && was.updatedAt ? row(was) : null)
 const putLine = (l: Line) => {
@@ -251,7 +252,7 @@ const COALESCE_MS = 90_000
  */
 function logChange(dept: Dept | null, what: string, before: string, after: string, refTable: string, refKey: string) {
   if (before === after) return
-  const now = Date.now(), by = user.get()
+  const now = clockNow(), by = user.get()
   const changes = state.changes
   let i = changes.length - 1
   while (i >= 0 && !(changes[i].by === by && changes[i].refTable === refTable && changes[i].refKey === refKey && changes[i].what === what && now - changes[i].at < COALESCE_MS)) i--
@@ -321,11 +322,13 @@ export function swapLineNames(idA: string, idB: string): boolean {
 }
 export function removeLine(id: string) { const l = state.lines.find((x) => x.id === id); if (l) { putLine({ ...l, deleted: true }); logChange(l.dept, 'Línea quitada de ' + l.dept, l.name, '', 'act_lines', l.id) } }
 export function startRun(line: Line, code: string, lot: string, date: string, perUnit: number | null) {
-  putRun({ id: uid(), dept: line.dept, lineId: line.id, line: line.name, code, lot, date, startedAt: Date.now(), endedAt: null, units: [], perUnit, waste: 0, by: user.get(), updatedAt: 0 })
+  putRun({ id: uid(), dept: line.dept, lineId: line.id, line: line.name, code, lot, date, startedAt: clockNow(), endedAt: null, units: [], perUnit, waste: 0, by: user.get(), updatedAt: 0 })
 }
 const run = (id: string) => state.runs.find((r) => r.id === id)
-export function unitDone(runId: string, qty: number | null, ref = '') { const r = run(runId); if (r) putRun({ ...r, units: [...r.units, { at: Date.now(), qty, ref, by: user.get() }] }) }
-export function endRun(runId: string) { const r = run(runId); if (r) putRun({ ...r, endedAt: Date.now() }) }
+/** the last moment already on a run: nothing recorded after it may be stamped earlier (the clock can be corrected between two taps) */
+const after = (r: Run) => Math.max(r.startedAt, r.units.length ? r.units[r.units.length - 1].at + 1 : 0)
+export function unitDone(runId: string, qty: number | null, ref = '') { const r = run(runId); if (r) putRun({ ...r, units: [...r.units, { at: Math.max(clockNow(), after(r)), qty, ref, by: user.get() }] }) }
+export function endRun(runId: string) { const r = run(runId); if (r) putRun({ ...r, endedAt: Math.max(clockNow(), after(r)) }) }
 /** pounds thrown away, added to what the run already has */
 export function addWaste(runId: string, lb: number) { const r = run(runId); if (r) putRun({ ...r, waste: Math.round((r.waste + lb) * 100) / 100 }) }
 /** corrections: a wrong code, lot, quantity, tag or stop is fixed in place */
@@ -347,10 +350,10 @@ export function updateRun(id: string, patch: Partial<Pick<Run, 'code' | 'lot' | 
 }
 export function deleteRun(id: string) { const r = run(id); if (r) { putRun({ ...r, deleted: true }); logChange(r.dept, 'Se borró la corrida ' + r.code + ' del ' + r.date + ' (' + r.dept + ', ' + lineNameOf(state, r.lineId, r.line) + ')', r.units.length + ' ' + CFG[r.dept].plural.toLowerCase() + (r.waste ? ' · waste ' + r.waste + ' lb' : ''), '', 'act_runs', r.id) } }
 export function startStop(dept: Dept, lineId: string | null, reason: string, note: string) {
-  putStop({ id: uid(), dept, lineId, reason, note, startedAt: Date.now(), endedAt: null, by: user.get(), updatedAt: 0 })
+  putStop({ id: uid(), dept, lineId, reason, note, startedAt: clockNow(), endedAt: null, by: user.get(), updatedAt: 0 })
 }
 const stop = (id: string) => state.stops.find((x) => x.id === id)
-export function endStop(id: string) { const x = stop(id); if (x) putStop({ ...x, endedAt: Date.now() }) }
+export function endStop(id: string) { const x = stop(id); if (x) putStop({ ...x, endedAt: Math.max(clockNow(), x.startedAt) }) }
 export function updateStop(id: string, patch: Partial<Pick<Stop, 'reason' | 'note' | 'startedAt' | 'endedAt'>>) {
   const x = stop(id)
   if (!x) return
@@ -408,7 +411,7 @@ const putChange = (c: Change) => { set({ ...state, changes: upsertIn(state.chang
 const dayEnds = (date: string) => { const d = new Date(date + 'T06:00:00'); d.setDate(d.getDate() + 1); return d.getTime() }
 export type WorkDay = { date: string; started: { at: number; by: string } | null }
 /** the day in course: the one somebody started ("Empezar el día") while it lasts; otherwise the calendar's */
-export function workDay(s: State, now = Date.now()): WorkDay {
+export function workDay(s: State, now = clockNow()): WorkDay {
   const m = s.changes.filter((c) => c.refTable === DAY_REF && !c.deleted && c.at <= now && now < dayEnds(c.refKey)).sort((a, b) => b.at - a.at)[0]
   return m ? { date: m.refKey, started: { at: m.at, by: m.by } } : { date: dayOf(now), started: null }
 }
@@ -419,7 +422,7 @@ const LEFT_AFTER_MS = 6 * 3_600_000
  * runs nobody finished: still open, dated before the day, and with nothing recorded for six hours. (A line that is
  * really running across midnight, with a cart an hour ago, is not one of them.)
  */
-export const leftOpen = (s: State, date: string, at = Date.now()) => s.runs.filter((r) => !r.endedAt && r.date < date && lastRecord(s, r) < at - LEFT_AFTER_MS)
+export const leftOpen = (s: State, date: string, at = clockNow()) => s.runs.filter((r) => !r.endedAt && r.date < date && lastRecord(s, r) < at - LEFT_AFTER_MS)
 /** what a day holds that began before a moment (all of it when no moment is given) */
 export const dayRecords = (s: State, date: string, before = Infinity) => ({
   runs: s.runs.filter((r) => r.date === date && r.startedAt < before),
@@ -439,7 +442,7 @@ export function purgeDay(date: string, before = Infinity): { runs: number; stops
     for (const r of runs) putRun({ ...r, deleted: true })
     for (const x of stops) putStop({ ...x, deleted: true })
     for (const c of lines) putChange({ ...c, deleted: true, updatedAt: stamp(c) })
-    const now = Date.now()
+    const now = clockNow()
     putChange({ id: uid(), at: now, by: user.get(), dept: null, what: 'Se borraron los registros del ' + date + (before < Infinity ? ' anteriores a las ' + fmtTime(before) : ''), before: runs.length + (runs.length === 1 ? ' corrida' : ' corridas') + ' · ' + stops.length + (stops.length === 1 ? ' paro' : ' paros'), after: '', refTable: DAY_REF + ':purge', refKey: date, updatedAt: now })
   })
   return { runs: runs.length, stops: stops.length }
@@ -514,7 +517,7 @@ export function saveProduct(i: number, p: Product): boolean {
 export function removeProduct(i: number) {
   const p = state.products[i]
   set({ ...state, products: state.products.filter((_, k) => k !== i) })
-  if (p && p.code.trim()) push('act_products', normCode(p.code), rowOfProduct({ ...p, deleted: true, updatedAt: Date.now() }))
+  if (p && p.code.trim()) push('act_products', normCode(p.code), rowOfProduct({ ...p, deleted: true, updatedAt: clockNow() }))
   if (p) logChange(null, 'Producto ' + (p.code || '(sin código)') + ' quitado', p.name || p.code, '', 'act_products', normCode(p.code))
 }
 /** products loaded from the office's file: an existing code is updated (blank numbers keep what was there), a new one is added */
@@ -523,7 +526,7 @@ export function mergeProducts(list: Product[]) {
   let added = 0, changed = 0
   for (const p of list) {
     const i = products.findIndex((x) => normCode(x.code) === normCode(p.code))
-    const merged: Product = i < 0 ? { ...p, updatedAt: Date.now() } : { ...products[i], name: p.name || products[i].name, pouchesPerCase: p.pouchesPerCase || products[i].pouchesPerCase, casesPerMix: p.casesPerMix || products[i].casesPerMix, cratesPerCart: p.cratesPerCart || products[i].cratesPerCart, pouchesPerCrate: p.pouchesPerCrate || products[i].pouchesPerCrate, casesPerPallet: p.casesPerPallet || products[i].casesPerPallet, updatedAt: Date.now() }
+    const merged: Product = i < 0 ? { ...p, updatedAt: clockNow() } : { ...products[i], name: p.name || products[i].name, pouchesPerCase: p.pouchesPerCase || products[i].pouchesPerCase, casesPerMix: p.casesPerMix || products[i].casesPerMix, cratesPerCart: p.cratesPerCart || products[i].cratesPerCart, pouchesPerCrate: p.pouchesPerCrate || products[i].pouchesPerCrate, casesPerPallet: p.casesPerPallet || products[i].casesPerPallet, updatedAt: clockNow() }
     if (i < 0) { products.push(merged); added++ } else { if (PRODUCT_FIELDS.some(([k]) => v(products[i][k]) !== v(merged[k]))) { changed++; logProductDiff(products[i], merged) } products[i] = merged }
     push('act_products', normCode(merged.code), rowOfProduct(merged))
   }
@@ -544,7 +547,7 @@ export const targetOf = (s: State, dept: Dept) => s.targets.find((t) => t.dept =
 /** the manager's goal for a room (blank = none); it reaches every tablet of the room and the history */
 export function setTarget(dept: Dept, perHour: number | null, perShift: number | null) {
   const old = targetOf(state, dept)
-  const t: Target = { dept, perHour, perShift, updatedAt: Date.now() }
+  const t: Target = { dept, perHour, perShift, updatedAt: clockNow() }
   set({ ...state, targets: [...state.targets.filter((x) => x.dept !== dept), t] })
   push('act_targets', dept, rowOfTarget(t))
   logChange(dept, 'Meta ' + dept + ' · por hora', v(old?.perHour), v(perHour), 'act_targets', dept)
@@ -657,7 +660,7 @@ function reconcile<T extends Synced>(table: Table, cur: T | undefined, row: Row,
     if (!pend && !justSent(table, theirs.id)) push(table, theirs.id, k.row(mine), row)
     return null
   }
-  const next = { ...merged, updatedAt: Math.max(Date.now(), mine.updatedAt + 1, theirs.updatedAt + 1) }
+  const next = { ...merged, updatedAt: Math.max(clockNow(), mine.updatedAt + 1, theirs.updatedAt + 1) }
   if (pend && forked) rebase(table, theirs.id, k.row(next), row) // the server's version is theirs now
   else push(table, theirs.id, k.row(next), pend ? undefined : row)
   return next
@@ -709,10 +712,10 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
 /** everything this device holds, queued for the server (the pilot's tablets bring their days along) */
 export function uploadAll() {
   let n = 0
-  for (const l of state.lines) { push('act_lines', l.id, rowOfLine({ ...l, updatedAt: l.updatedAt || Date.now() })); n++ }
-  for (const r of state.runs) { push('act_runs', r.id, rowOfRun({ ...r, updatedAt: r.updatedAt || Date.now() })); n++ }
-  for (const x of state.stops) { push('act_stops', x.id, rowOfStop({ ...x, updatedAt: x.updatedAt || Date.now() })); n++ }
-  for (const p of state.products) if (p.code.trim()) { push('act_products', normCode(p.code), rowOfProduct({ ...p, updatedAt: p.updatedAt || Date.now() })); n++ }
+  for (const l of state.lines) { push('act_lines', l.id, rowOfLine({ ...l, updatedAt: l.updatedAt || clockNow() })); n++ }
+  for (const r of state.runs) { push('act_runs', r.id, rowOfRun({ ...r, updatedAt: r.updatedAt || clockNow() })); n++ }
+  for (const x of state.stops) { push('act_stops', x.id, rowOfStop({ ...x, updatedAt: x.updatedAt || clockNow() })); n++ }
+  for (const p of state.products) if (p.code.trim()) { push('act_products', normCode(p.code), rowOfProduct({ ...p, updatedAt: p.updatedAt || clockNow() })); n++ }
   for (const [date, codes] of Object.entries(state.schedule)) for (const [code, mixes] of Object.entries(codes)) { push('act_schedule', date + '|' + normCode(code), rowOfSchedule(date, code, mixes)); n++ }
   for (const c of state.changes) { push('act_changes', c.id, rowOfChange(c)); n++ }
   for (const t of state.targets) { push('act_targets', t.dept, rowOfTarget(t)); n++ }

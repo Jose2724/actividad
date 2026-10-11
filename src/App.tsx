@@ -10,14 +10,21 @@ import { RunEditor, StopEditor } from './editors'
 import { fetchMe, finishSignOut, loginEmail, rememberedMe, rememberMe, signOutHere, supabase, type Me } from './supabase'
 import { loadDay, startSync, syncStore, syncNow } from './sync'
 import { storageFull } from './storage'
+import { clockNow, clockOffText, otherZone, startClock } from './clock'
 import { appUrl, qrPath } from './qr'
 import { uploadAll } from './store'
 import { Employees } from './Employees'
 
 /** a clock that ticks every second, so every timer on screen moves */
 function useNow() {
-  const [n, setN] = useState(Date.now())
-  useEffect(() => { const t = setInterval(() => setN(Date.now()), 1000); return () => clearInterval(t) }, [])
+  const [n, setN] = useState(clockNow())
+  useEffect(() => {
+    // the tick lands just after each second of the shared clock (see clock.ts), so two screens change at the same moment
+    let t: ReturnType<typeof setTimeout>
+    const tick = () => { setN(clockNow()); t = setTimeout(tick, 1000 - (clockNow() % 1000) + 8) }
+    tick()
+    return () => clearTimeout(t)
+  }, [])
   return n
 }
 
@@ -155,6 +162,7 @@ function ServerApp() {
     } finally { asking.current = false }
   }, [])
   useEffect(() => {
+    startClock() // the shared clock is set while the person signs in, so the first thing they record already carries it
     void finishSignOut().then(verify)
     // with nobody remembered there is nothing to show until the server answers, but not for ever
     const slow = setTimeout(() => { if (now.current === 'loading') { setErr(NO_SIGNAL); setMe(null) } }, 8000)
@@ -286,8 +294,12 @@ function Main({ name, home, mgr, admin, onLogout }: { name: string; home: Dept; 
   const [dept, setDept] = useState<Dept>(home)
   const [tab, setTab] = useState<'act' | 'av' | 'rep' | 'emp'>('act')
   const full = useSyncExternalStore(storageFull.subscribe, storageFull.get)
+  // only with a server is there a time to share; on its own, a device simply shows its own clock
+  const away = !!supabase && otherZone(now), off = supabase ? clockOffText() : ''
   return (
     <div className="app">
+      {away ? <div className="zonebar">⚠ Este aparato está puesto en otra zona horaria que la planta: las horas y la fecha saldrán corridas. En los ajustes del aparato, activa la zona horaria automática.</div>
+        : off && <div className="zonebar">⚠ El reloj de este aparato está {off}. La app usa la hora correcta, la del servidor. Para arreglarlo, activa la hora automática en los ajustes del aparato.</div>}
       {full && <div className="fullbar">⚠ La memoria de este aparato está llena y lo nuevo no se está guardando aquí. {supabase ? 'Lo que ya subió al servidor está a salvo. Avisa al manager y no cierres la app hasta que diga "Sincronizado".' : 'Manda el reporte del día y avisa al manager antes de cerrar la app: hay que hacer espacio con "Reiniciar registros".'}</div>}
       <header className="top">
         <div className="brand"><h1>Actividad{!supabase && <span className="demotag">DEMO</span>}</h1><small>{new Date(now).toLocaleDateString('es', { weekday: 'long', day: 'numeric', month: 'long' })}</small></div>
@@ -538,7 +550,7 @@ function StartDayDialog({ s, now, day, onClose, onDone }: { s: State; now: numbe
   const ok = !!time && (!wipe || wipeOk(word))
   const go = () => {
     if (!ok) return
-    const r = startDay(time === opened && !was ? Date.now() : at, { date, finishLeft: lefts.length > 0 && left === 'finish', purge: wipe })
+    const r = startDay(time === opened && !was ? clockNow() : at, { date, finishLeft: lefts.length > 0 && left === 'finish', purge: wipe })
     onClose()
     const did = [r.ended ? (r.ended === 1 ? 'Se terminó 1 línea que había quedado corriendo.' : 'Se terminaron ' + r.ended + ' líneas que habían quedado corriendo.') : '', r.runs + r.stops ? 'De las pruebas se ' + (r.runs + r.stops === 1 ? 'borró ' : 'borraron ') + howMany(r.runs, r.stops) + '.' : ''].filter(Boolean)
     onDone({ title: was ? 'Día actualizado' : 'Día empezado', text: did.join(' ') || 'Los totales, la meta y la fecha de hoy ya siguen este día' + (supabase ? ' en todas las tablets.' : ' en este aparato.') })

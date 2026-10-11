@@ -18,8 +18,20 @@ const test = (row, col, op, value) => {
   const [x, y] = /T\d\d:/.test(b) ? [Date.parse(a), Date.parse(b)] : [a, b]
   return op === 'eq' ? x === y : op === 'gt' ? x > y : op === 'gte' ? x >= y : op === 'lt' ? x < y : false
 }
-globalThis.fetch = async (input) => {
+// The stand-in tells the time like the real one: in every answer, to the second. `ahead` is how far its clock runs
+// from this machine's (as if the tablet's clock were wrong); `mode` breaks it on purpose
+const clockServer = { ahead: 0, mode: 'ok', asked: [] }
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+globalThis.fetch = async (input, init) => {
   const url = new URL(typeof input === 'string' ? input : input.url)
+  if (init?.method === 'HEAD') {
+    clockServer.asked.push(init.headers.Authorization)
+    if (clockServer.mode === 'down') throw new TypeError('fetch failed')
+    await sleep(15 + Math.random() * 30) // the way up
+    const stamp = Date.now() + clockServer.ahead
+    await sleep(15 + Math.random() * 30) // the way down
+    return new Response(null, { status: 200, headers: clockServer.mode === 'mute' ? {} : { Date: new Date(Math.floor(stamp / 1000) * 1000).toUTCString() } })
+  }
   const table = url.pathname.split('/').pop()
   if (!url.pathname.includes('/rest/v1/') || !db[table]) return new Response('{}', { status: 404 })
   let rows = db[table]
@@ -107,6 +119,27 @@ const other = dayOf(now - 30 * DAYMS)
 delete db.act_runs // the stand-in stops answering for the runs
 eq('no se pudo bajar: se dice, y la tablet conserva lo que tenía', [await m.pullAll(), m.store.get().runs.length], [false, before])
 eq('un día viejo no se pudo traer, y se puede volver a pedir', [await m.loadDay(other), m.awayDay(other)], [false, true])
+
+console.log('· La hora: el aparato se pone en hora con el servidor')
+{
+  const near = (got, want) => Math.abs(got - want) <= 500
+  clockServer.ahead = 5000 // the tablet's clock is 5 seconds behind
+  eq('se pudo medir', await m.syncClock(), true)
+  eq('una tablet 5 segundos atrasada queda en hora, a menos de medio segundo', [near(m.clockOffset(), 5000), near(m.clockNow(), Date.now() + 5000)], [true, true])
+  eq('pregunta 8 veces, con la sesión de quien entró', [clockServer.asked.length, [...new Set(clockServer.asked)]], [8, ['Bearer x.y.z']])
+  eq('la medida queda guardada en el aparato', JSON.parse(disk.get('act_clock')).offset, m.clockOffset())
+  clockServer.ahead = -305_000 // someone set the tablet 5 minutes fast while the app was open
+  await m.syncClock()
+  eq('si adelantan el reloj del aparato 5 minutos, la app sigue en la hora correcta y lo dice', [near(m.clockOffset(), -305_000), m.clockOffText()], [true, '5 min adelantado'])
+  const had = m.clockOffset()
+  clockServer.asked = []; clockServer.mode = 'down'
+  eq('sin señal no se mide: se queda con la última medida, y no insiste', [await m.syncClock(), m.clockOffset(), clockServer.asked.length], [false, had, 2])
+  clockServer.mode = 'mute'
+  eq('si el servidor no dice la hora, no se inventa', [await m.syncClock(), m.clockOffset()], [false, had])
+  clockServer.mode = 'ok'; clockServer.ahead = 0
+  await m.syncClock()
+  eq('con el reloj del aparato otra vez bien, la diferencia vuelve a cero', [near(m.clockOffset(), 0), m.clockOffText()], [true, ''])
+}
 
 console.log('')
 if (failed.length) { console.log(failed.length + ' FALLARON de ' + (passed + failed.length) + ':\n'); for (const f of failed) console.log('  ✗ ' + f + '\n'); process.exit(1) }
