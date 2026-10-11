@@ -1,4 +1,4 @@
-import { CFG, dayOf, fmtDur, fmtTime, madeText, runStats, unitQty, whoText, type Dept, type State } from './store'
+import { CFG, dayOf, fmtDur, fmtTime, lineNameOf, madeText, runStats, unitQty, whoText, type Dept, type State } from './store'
 import { avanceRows, n1, pending } from './avance'
 
 type Libs = { jsPDF: typeof import('jspdf').jsPDF; autoTable: typeof import('jspdf-autotable').default }
@@ -28,7 +28,7 @@ export function buildPdf(s: State, date: string, now: number, by: string, only?:
   autoTable(doc, {
     startY: 78, theme: 'grid', styles: { font: 'helvetica', fontSize: 9, cellPadding: 5, textColor: [22, 32, 42] }, headStyles: { fillColor: teal, textColor: 255, fontStyle: 'bold' },
     head: [['Depto', 'Línea', 'Código', 'Lote', 'Inicio', 'Fin', 'Hecho', 'Waste lb', 'Trabajando', 'Prom. / unidad', 'Parado', 'Razones de paro', 'Registró']],
-    body: rows.map((x) => [x.r.dept, x.r.line, x.r.code, x.r.lot, fmtTime(x.r.startedAt), x.r.endedAt ? fmtTime(x.r.endedAt) : 'en curso', madeText(x.r, x.st.qty, true), x.r.waste ? String(x.r.waste) : '—', fmtDur(x.st.working), x.r.units.length ? fmtDur(x.st.avg) : '—', fmtDur(x.st.down), Object.entries(x.st.reasons).map(([k, v]) => k + ' ' + fmtDur(v)).join(', ') || '—', whoText(x.r)]),
+    body: rows.map((x) => [x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.r.lot, fmtTime(x.r.startedAt), x.r.endedAt ? fmtTime(x.r.endedAt) : 'en curso', madeText(x.r, x.st.qty, true), x.r.waste ? String(x.r.waste) : '—', fmtDur(x.st.working), x.r.units.length ? fmtDur(x.st.avg) : '—', fmtDur(x.st.down), Object.entries(x.st.reasons).map(([k, v]) => k + ' ' + fmtDur(v)).join(', ') || '—', whoText(x.r)]),
     foot: [['Total', '', '', '', '', '', '', String(Math.round(rows.reduce((t, x) => t + (x.r.waste || 0), 0) * 100) / 100), fmtDur(working), '', fmtDur(down), '', '']], footStyles: { fillColor: [243, 246, 249], textColor: [22, 32, 42], fontStyle: 'bold' },
   })
   // one line per cart, mezcla, bin or pallet with its time, as the office's sheets are filled
@@ -40,7 +40,7 @@ export function buildPdf(s: State, date: string, now: number, by: string, only?:
     autoTable(doc, {
       startY: y + 10, theme: 'grid', styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 4, textColor: [22, 32, 42] }, headStyles: { fillColor: [91, 107, 122], textColor: 255, fontStyle: 'bold' },
       head: [['Hora', 'Depto', 'Línea', 'Código', 'Lote', '#', 'Unidad', 'Cantidad', 'Tag / bin', 'Desde la anterior', 'Registró']],
-      body: unitRows.map((x) => [fmtTime(x.u.at), x.r.dept, x.r.line, x.r.code, x.r.lot, String(x.i + 1), CFG[x.r.dept].unit, CFG[x.r.dept].qty !== 'none' ? unitQty(s, x.r, x.u) + ' ' + CFG[x.r.dept].qtyUnit : '—', x.u.ref || '—', fmtDur(x.gap), x.u.by || '—']),
+      body: unitRows.map((x) => [fmtTime(x.u.at), x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.r.lot, String(x.i + 1), CFG[x.r.dept].unit, CFG[x.r.dept].qty !== 'none' ? unitQty(s, x.r, x.u) + ' ' + CFG[x.r.dept].qtyUnit : '—', x.u.ref || '—', fmtDur(x.gap), x.u.by || '—']),
     })
   }
   if (stops.length) {

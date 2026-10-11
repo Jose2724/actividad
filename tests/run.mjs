@@ -598,6 +598,88 @@ calc.use((m) => {
 })
 
 // =====================================================================================================================
+//  4. The names of the lines, and the QR code
+// =====================================================================================================================
+clock = T0
+section('Nombres de las líneas')
+const names = await device('names', { user: 'Santiago' })
+names.use((m) => {
+  const st = () => m.store.get()
+  const list = (dept = 'RTE') => st().lines.filter((l) => l.dept === dept).sort(m.byLineName).map((l) => l.name)
+  const idOf = (name, dept = 'RTE') => st().lines.find((l) => l.dept === dept && l.name === name).id
+  eq('sin decir nombre toma el primero libre', [m.addLine('RTE'), m.addLine('RTE'), list()], [true, true, ['Línea 1', 'Línea 2']])
+  m.removeLine(idOf('Línea 1')); m.addLine('RTE')
+  eq('al quitar la 1 y agregar otra, es la 1 de nuevo y no una segunda "Línea 2"', list(), ['Línea 1', 'Línea 2'])
+  eq('nombres libres que se ofrecen', [m.freeLineNames(st(), 'RTE', 3), m.freeLineNames(st(), 'Kitchen', 2)], [['Línea 3', 'Línea 4', 'Línea 5'], ['Braiser 1', 'Braiser 2']])
+  eq('con el nombre elegido, limpio de espacios', [m.addLine('RTE', '  Línea   4 '), list()], [true, ['Línea 1', 'Línea 2', 'Línea 4']])
+  eq('un nombre repetido se rechaza aunque cambien mayúsculas, acentos o espacios; uno en blanco también', [m.addLine('RTE', 'LINEA  2'), m.addLine('RTE', '   '), list().length], [false, false, 3])
+  eq('el mismo nombre en otro departamento sí vale', [m.addLine('Packing', 'Línea 2'), list('Packing')], [true, ['Línea 2']])
+  eq('"Línea 10" va después de "Línea 2"', [m.addLine('RTE', 'Línea 10'), list()], [true, ['Línea 1', 'Línea 2', 'Línea 4', 'Línea 10']])
+  eq('un nombre larguísimo se corta', m.tidyLineName('x'.repeat(40)).length, m.LINE_NAME_MAX)
+
+  // line "Línea 1" is really the plant's line 2, and the other way round (what happened on Friday)
+  const A = idOf('Línea 1'), B = idOf('Línea 2')
+  const line = (id) => st().lines.find((l) => l.id === id)
+  clock = T0 + 10 * M; m.startRun(line(A), 'A100', '6283', DAY, 240); const done = st().runs.at(-1).id
+  clock = T0 + 20 * M; m.unitDone(done, 240); clock = T0 + 30 * M; m.endRun(done)
+  clock = T0 + 40 * M; m.startRun(line(A), 'B200', '6283', DAY, 144); const open = st().runs.at(-1).id
+  clock = T0 + 50 * M; m.unitDone(open, 144)
+  const before = (({ startedAt, endedAt, units }) => ({ startedAt, endedAt, units }))(st().runs.find((r) => r.id === done))
+  clock = T0 + 60 * M
+  eq('renombrar a un nombre que tiene otra línea se rechaza', [m.renameLine(A, 'linea 2'), m.renameLine(A, ' '), line(A).name], [false, false, 'Línea 1'])
+  eq('la línea que ya tiene ese nombre', m.lineNamed(st(), 'RTE', 'línea 2', A)?.id, B)
+  eq('intercambiar nombres', [m.swapLineNames(A, B), line(A).name, line(B).name], [true, 'Línea 2', 'Línea 1'])
+  const run = (id) => st().runs.find((r) => r.id === id)
+  eq('lo ya terminado en esa línea lleva el nombre nuevo', [run(done).line, m.lineNameOf(st(), run(done).lineId, run(done).line)], ['Línea 2', 'Línea 2'])
+  eq('lo que está corriendo lo muestra ya, y lo guarda en cuanto se toca', [m.lineNameOf(st(), run(open).lineId, run(open).line), run(open).line], ['Línea 2', 'Línea 1'])
+  clock = T0 + 61 * M; m.unitDone(open, 144)
+  eq('al marcar el siguiente carro queda guardado', run(open).line, 'Línea 2')
+  eq('los tiempos y carros de lo registrado no cambian', (({ startedAt, endedAt, units }) => ({ startedAt, endedAt, units }))(run(done)), before)
+  eq('el total del departamento nombra la línea como se llama ahora', m.deptToday(st(), 'RTE', DAY, clock).byCode.map((c) => [c.code, c.lines]), [['B200', ['Línea 2']], ['A100', ['Línea 2']]])
+  eq('queda en el historial quién cambió qué', st().changes.filter((c) => c.what === 'Línea renombrada en RTE').map((c) => [c.before, c.after, c.by]), [['Línea 1', 'Línea 2', 'Santiago'], ['Línea 2', 'Línea 1', 'Santiago']])
+  clock = T0 + 5 * 60 * M
+  eq('renombrar con un nombre libre', [m.renameLine(B, 'Línea de sándwich'), list()], [true, ['Línea 2', 'Línea 4', 'Línea 10', 'Línea de sándwich']])
+  eq('guardar el mismo nombre no hace nada', [m.renameLine(B, 'Línea de sándwich'), st().changes.filter((c) => c.what === 'Línea renombrada en RTE').length], [true, 3])
+  // a line that is removed: its records keep the name they had
+  m.endRun(open); m.removeLine(A)
+  eq('si luego se quita la línea, lo registrado conserva su nombre', [run(done), run(open)].map((r) => m.lineNameOf(st(), r.lineId, r.line)), ['Línea 2', 'Línea 2'])
+})
+clock = T0 + 6 * 60 * M
+{
+  // on another device: the manager renames the tablet's line, with a finished run and one running on it
+  const { id, base } = newRun(2)
+  tab.use((m) => m.endRun(id)); settle()
+  const { id: running } = newRun(1)
+  const lineId = runOn(tab, id).lineId
+  clock += M; mgr.use((m) => m.renameLine(lineId, 'Línea 7')); settle()
+  eq('el nombre nuevo llega a la tablet: la línea, lo terminado y lo que corre', tab.use((m) => { const s = m.store.get(); return [s.lines.find((l) => l.id === lineId).name, runOn(tab, id).line, m.lineNameOf(s, lineId, runOn(tab, running).line)] }), ['Línea 7', 'Línea 7', 'Línea 7'])
+  clock += M; tab.use((m) => m.unitDone(running, 240)); settle()
+  agreed('y la tablet sigue marcando sin perder nada', running, { units: [...cartsAt(runOn(tab, running).startedAt, [10]), [Math.round((clock - T0) / M), 240]], waste: 0, code: 'A100', ended: false })
+  eq('con el nombre nuevo guardado en la corrida', [runOn(tab, running).line, runOn(mgr, running).line, server.get('act_runs|' + running).line], ['Línea 7', 'Línea 7', 'Línea 7'])
+  void base
+}
+
+section('Código QR')
+await calc.use(async (m) => {
+  // the 15 "format" bits beside the top-left corner only make a valid word when the code is the right way round
+  const valid = (q, flip) => {
+    const dark = new Set([...q.d.matchAll(/M(\d+) (\d+)h1v1h-1z/g)].map((x) => (Number(x[1]) - 4) + ',' + (Number(x[2]) - 4)))
+    const at = (x, y) => dark.has(flip ? y + ',' + x : x + ',' + y)
+    const bits = [...[0, 1, 2, 3, 4, 5].map((x) => at(x, 8)), at(7, 8), at(8, 8), at(8, 7), ...[5, 4, 3, 2, 1, 0].map((y) => at(8, y))]
+    let v = parseInt(bits.map((b) => (b ? 1 : 0)).join(''), 2) ^ 0x5412
+    const level = v >> 13
+    for (let i = 14; i >= 10; i--) if ((v >> i) & 1) v ^= 0x537 << (i - 10)
+    return v === 0 && level === 0 // 0 = medium error correction, the one asked for
+  }
+  for (const url of ['https://ejemplo.test/', 'https://ejemplo.test/actividad/']) {
+    const q = await m.qrPath(url)
+    const xs = [...q.d.matchAll(/M(\d+) (\d+)h/g)].flatMap((x) => [Number(x[1]), Number(x[2])])
+    eq('código de ' + url + ': derecho, no volteado', [valid(q, false), valid(q, true)], [true, false])
+    eq('con su margen blanco de 4 módulos alrededor', [Math.min(...xs), Math.max(...xs)], [4, q.size - 5])
+  }
+})
+
+// =====================================================================================================================
 console.log('')
 if (failed.length) { console.log(failed.length + ' FALLARON de ' + (passed + failed.length) + ':\n'); for (const f of failed) console.log('  ✗ ' + f + '\n'); process.exit(1) }
 console.log('✓ ' + passed + ' comprobaciones, todas correctas')

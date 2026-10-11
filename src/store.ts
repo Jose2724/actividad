@@ -217,7 +217,7 @@ const putRun = (r: Run) => {
   const line = state.lines.find((l) => l.id === r.lineId)
   if (line && !line.updatedAt) putLine(line)
   const was = state.runs.find((x) => x.id === r.id)
-  r = { ...r, updatedAt: stamp(was) }; if (r.deleted) gone.set('act_runs|' + r.id, r.updatedAt)
+  r = { ...r, line: line?.name ?? r.line, updatedAt: stamp(was) }; if (r.deleted) gone.set('act_runs|' + r.id, r.updatedAt)
   set({ ...state, runs: upsertIn(state.runs, r) }); push('act_runs', r.id, rowOfRun(r), baseOf(was, rowOfRun))
 }
 /**
@@ -269,7 +269,56 @@ function logProductDiff(old: Product | undefined, p: Product) {
 const stopLine = (x: Stop) => (x.lineId === null ? 'todo ' + x.dept : state.lines.find((l) => l.id === x.lineId)?.name ?? state.runs.find((r) => r.lineId === x.lineId)?.line ?? 'línea')
 const endText = (ms: number | null) => (ms ? fmtTime(ms) : 'en curso')
 
-export function addLine(dept: Dept) { const l: Line = { id: uid(), dept, name: CFG[dept].lineWord + ' ' + (state.lines.filter((x) => x.dept === dept).length + 1), updatedAt: 0 }; putLine(l); logChange(dept, 'Línea agregada en ' + dept, '', l.name, 'act_lines', l.id) }
+// ---- the lines of a room and their names ----
+/**
+ * the name a line has NOW: a renamed line shows its new name on everything recorded on it (the card, the reports,
+ * the files). A line that was removed keeps the name its records carried.
+ */
+export const lineNameOf = (s: State, lineId: string | null, was = '') => s.lines.find((l) => l.id === lineId)?.name || was
+/** "Línea 2" before "Línea 10" */
+export const byLineName = (a: Line, b: Line) => a.name.localeCompare(b.name, 'es', { numeric: true, sensitivity: 'base' })
+export const LINE_NAME_MAX = 24
+export const tidyLineName = (t: string) => t.replace(/\s+/g, ' ').trim().slice(0, LINE_NAME_MAX).trim()
+/** two names are the same line name whatever the capitals, accents or spaces: "linea  2" = "Línea 2" */
+const sameName = (a: string, b: string) => { const f = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toLowerCase(); return f(a) === f(b) }
+/** the line of that room that already has this name, other than `selfId` */
+export const lineNamed = (s: State, dept: Dept, name: string, selfId?: string) => s.lines.find((l) => l.dept === dept && l.id !== selfId && sameName(l.name, name))
+/** the standard names nobody has yet in a room ("Línea 1", "Línea 3"…), lowest first */
+export function freeLineNames(s: State, dept: Dept, count = 4): string[] {
+  const out: string[] = []
+  for (let n = 1; out.length < count && n <= 99; n++) { const name = CFG[dept].lineWord + ' ' + n; if (!lineNamed(s, dept, name)) out.push(name) }
+  return out
+}
+/** adds a line; without a name it takes the lowest standard one that is free. false = blank after tidying, or the name is taken */
+export function addLine(dept: Dept, name?: string): boolean {
+  const final = tidyLineName(name ?? freeLineNames(state, dept, 1)[0] ?? '')
+  if (!final || lineNamed(state, dept, final)) return false
+  const l: Line = { id: uid(), dept, name: final, updatedAt: 0 }
+  putLine(l); logChange(dept, 'Línea agregada en ' + dept, '', l.name, 'act_lines', l.id)
+  return true
+}
+/** the finished records of a line take its name too (the one running takes it by itself the next time it is touched) */
+const renameRecords = (lineId: string, name: string) => { for (const r of state.runs.filter((x) => x.lineId === lineId && x.endedAt && x.line !== name)) putRun({ ...r, line: name }) }
+/** gives a line another name. false = blank, or another line of the room has it (see swapLineNames) */
+export function renameLine(id: string, name: string): boolean {
+  const l = state.lines.find((x) => x.id === id), final = tidyLineName(name)
+  if (!l || !final || lineNamed(state, l.dept, final, id)) return false
+  if (final === l.name) return true
+  batch(() => { putLine({ ...l, name: final }); renameRecords(id, final); logChange(l.dept, 'Línea renombrada en ' + l.dept, l.name, final, 'act_lines', id) })
+  return true
+}
+/** two lines of a room trade names (the one called "Línea 1" was really line 2, and the other way round) */
+export function swapLineNames(idA: string, idB: string): boolean {
+  const a = state.lines.find((x) => x.id === idA), b = state.lines.find((x) => x.id === idB)
+  if (!a || !b || a.id === b.id || a.dept !== b.dept) return false
+  batch(() => {
+    putLine({ ...a, name: b.name }); putLine({ ...b, name: a.name })
+    renameRecords(a.id, b.name); renameRecords(b.id, a.name)
+    logChange(a.dept, 'Línea renombrada en ' + a.dept, a.name, b.name, 'act_lines', a.id)
+    logChange(b.dept, 'Línea renombrada en ' + b.dept, b.name, a.name, 'act_lines', b.id)
+  })
+  return true
+}
 export function removeLine(id: string) { const l = state.lines.find((x) => x.id === id); if (l) { putLine({ ...l, deleted: true }); logChange(l.dept, 'Línea quitada de ' + l.dept, l.name, '', 'act_lines', l.id) } }
 export function startRun(line: Line, code: string, lot: string, date: string, perUnit: number | null) {
   putRun({ id: uid(), dept: line.dept, lineId: line.id, line: line.name, code, lot, date, startedAt: Date.now(), endedAt: null, units: [], perUnit, waste: 0, by: user.get(), updatedAt: 0 })
@@ -286,7 +335,7 @@ export function updateRun(id: string, patch: Partial<Pick<Run, 'code' | 'lot' | 
   if (!r) return
   const n = { ...r, ...patch }
   putRun(n)
-  const cfg = CFG[r.dept], pre = 'Corrida ' + r.code + ' del ' + r.date + ' (' + r.dept + ', ' + r.line + ') · '
+  const cfg = CFG[r.dept], pre = 'Corrida ' + r.code + ' del ' + r.date + ' (' + r.dept + ', ' + lineNameOf(state, r.lineId, r.line) + ') · '
   const log = (what: string, a: string, b: string) => logChange(r.dept, pre + what, a, b, 'act_runs', r.id)
   log('Código', r.code, n.code); log('Lote', r.lot, n.lot); log('Fecha', r.date, n.date)
   log(cfg.perUnitLabel || 'Por unidad', v(r.perUnit), v(n.perUnit)); log('Waste lb', v(r.waste), v(n.waste)); log('Fin', endText(r.endedAt), endText(n.endedAt))
@@ -296,7 +345,7 @@ export function updateRun(id: string, patch: Partial<Pick<Run, 'code' | 'lot' | 
     else { log(cfg.unit + ' ' + (i + 1) + ' · cantidad', v(u.qty), v(w.qty)); if (cfg.refLabel) log(cfg.unit + ' ' + (i + 1) + ' · ' + cfg.refLabel, u.ref, w.ref) }
   })
 }
-export function deleteRun(id: string) { const r = run(id); if (r) { putRun({ ...r, deleted: true }); logChange(r.dept, 'Se borró la corrida ' + r.code + ' del ' + r.date + ' (' + r.dept + ', ' + r.line + ')', r.units.length + ' ' + CFG[r.dept].plural.toLowerCase() + (r.waste ? ' · waste ' + r.waste + ' lb' : ''), '', 'act_runs', r.id) } }
+export function deleteRun(id: string) { const r = run(id); if (r) { putRun({ ...r, deleted: true }); logChange(r.dept, 'Se borró la corrida ' + r.code + ' del ' + r.date + ' (' + r.dept + ', ' + lineNameOf(state, r.lineId, r.line) + ')', r.units.length + ' ' + CFG[r.dept].plural.toLowerCase() + (r.waste ? ' · waste ' + r.waste + ' lb' : ''), '', 'act_runs', r.id) } }
 export function startStop(dept: Dept, lineId: string | null, reason: string, note: string) {
   putStop({ id: uid(), dept, lineId, reason, note, startedAt: Date.now(), endedAt: null, by: user.get(), updatedAt: 0 })
 }
@@ -445,7 +494,8 @@ export function deptToday(s: State, dept: Dept, date: string, now: number) {
   for (const r of runs) {
     const e = codes.get(normCode(r.code)) ?? { code: r.code, units: 0, qty: 0, waste: 0, lines: [] }
     e.units += r.units.length; e.qty += measure(r); e.waste = Math.round((e.waste + r.waste) * 100) / 100
-    if (!e.lines.includes(r.line)) e.lines.push(r.line)
+    const ln = lineNameOf(s, r.lineId, r.line)
+    if (!e.lines.includes(ln)) e.lines.push(ln)
     codes.set(normCode(r.code), e)
   }
   const units = runs.reduce((t, r) => t + r.units.length, 0), qty = runs.reduce((t, r) => t + measure(r), 0)

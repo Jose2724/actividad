@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { activeBetween, addLine, addWaste, awayDay, CFG, codeProblem, CRATES_PER_CART, dayOf, DEPTS, deptStop, deptToday, endRun, endStop, fmtDur, fmtTime, KEEP_DAYS, lastPerUnit, lotFor, madeText, managerPin, mergeProducts, myDept, normCode, numOf, openRun, openStop, parseProductsCsv, productOf, productsCsv, removeLine, removeProduct, reset, resetRecords, role, runStats, saveProduct, setSchedule, setTarget, startRun, startStop, stopsOf, store, targetOf, today, unitQty, unitDone, user, type Dept, type Line, type Product, type Run, type State, type Target, type Unit } from './store'
+import { activeBetween, addLine, addWaste, awayDay, byLineName, CFG, codeProblem, CRATES_PER_CART, dayOf, DEPTS, deptStop, deptToday, endRun, endStop, fmtDur, fmtTime, freeLineNames, KEEP_DAYS, lastPerUnit, LINE_NAME_MAX, lineNamed, lineNameOf, lotFor, madeText, managerPin, mergeProducts, myDept, normCode, numOf, openRun, openStop, parseProductsCsv, productOf, productsCsv, removeLine, removeProduct, renameLine, reset, resetRecords, role, runStats, saveProduct, setSchedule, setTarget, startRun, startStop, stopsOf, store, swapLineNames, targetOf, tidyLineName, today, unitQty, unitDone, user, type Dept, type Line, type Product, type Run, type State, type Target, type Unit } from './store'
 import { avanceRows, n1, pending, type AvanceRow } from './avance'
 import { cellText, xDay, xDur, xTime, xlsxBytes, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 
@@ -10,6 +10,7 @@ import { RunEditor, StopEditor } from './editors'
 import { fetchMe, finishSignOut, loginEmail, rememberedMe, rememberMe, signOutHere, supabase, type Me } from './supabase'
 import { loadDay, startSync, syncStore, syncNow } from './sync'
 import { storageFull } from './storage'
+import { appUrl, qrPath } from './qr'
 import { uploadAll } from './store'
 import { Employees } from './Employees'
 
@@ -35,6 +36,79 @@ function useDay(date: string) {
   }, [date, tries])
   return { state, retry: () => setTries((n) => n + 1) }
 }
+/**
+ * This app's own address as a QR code: another phone or tablet points its camera at it and opens the same app (the
+ * demo shows the demo's, the one with a server shows its own), without typing the address.
+ */
+function QrDialog({ onClose }: { onClose: () => void }) {
+  const url = appUrl()
+  const [qr, setQr] = useState<{ size: number; d: string } | null>(null)
+  const [copied, setCopied] = useState(false)
+  useEffect(() => { void qrPath(url).then(setQr).catch(() => setQr(null)) }, [url])
+  const copy = async () => { try { await navigator.clipboard.writeText(url); setCopied(true) } catch { /* the address is on the screen to be typed */ } }
+  return (
+    <div className="veil" onClick={onClose}>
+      <div className="dlg qrdlg" onClick={(e) => e.stopPropagation()}>
+        <h3>{supabase ? 'Abrir Actividad en otro aparato' : 'Abrir el DEMO en otro aparato'}</h3>
+        <p>Apunta la cámara del otro teléfono o tablet a este código y toca el enlace que sale.</p>
+        <div className="qrbox">{qr ? <svg viewBox={'0 0 ' + qr.size + ' ' + qr.size} shapeRendering="crispEdges" role="img" aria-label={'Código QR de ' + url}><rect width={qr.size} height={qr.size} fill="#fff" /><path d={qr.d} fill="#000" /></svg> : <span>…</span>}</div>
+        <code className="qrurl">{url}</code>
+        <div className="btns">
+          <button type="button" className="btn" onClick={() => void copy()}>{copied ? '✓ Copiado' : 'Copiar enlace'}</button>
+          {'share' in navigator && <button type="button" className="btn" onClick={() => { void navigator.share({ title: document.title, url }).catch(() => undefined) }}>Compartir enlace</button>}
+        </div>
+        <p className="hint">Para dejarla como app: en Android, los tres puntos de Chrome y "Instalar app" o "Agregar a pantalla principal". En iPhone o iPad, botón Compartir de Safari y "Agregar a inicio". {supabase ? 'La primera vez se entra con usuario y PIN, con WiFi.' : 'Este es el DEMO: lo que se registre queda guardado solo en ese aparato.'}</p>
+        <div className="dbtns"><button type="button" className="btn primary" onClick={onClose}>Cerrar</button></div>
+      </div>
+    </div>
+  )
+}
+/** a link that opens the QR code (on the entry screens, and for the manager beside their name) */
+function QrLink({ label }: { label: string }) {
+  const [open, setOpen] = useState(false)
+  return <><button type="button" className="lnk" onClick={() => setOpen(true)}>{label}</button>{open && <QrDialog onClose={() => setOpen(false)} />}</>
+}
+
+/**
+ * The name of a line: asked when one is added (which line of the plant is it?) and changed when it was wrong. A name
+ * that another line of the room already has can be traded with it in one tap.
+ */
+function LineNameDialog({ s, dept, line, onClose }: { s: State; dept: Dept; line?: Line; onClose: () => void }) {
+  const cfg = CFG[dept], word = cfg.lineWord.toLowerCase()
+  const [name, setName] = useState(line ? line.name : freeLineNames(s, dept, 1)[0] ?? '')
+  const tidy = tidyLineName(name)
+  const taken = tidy ? lineNamed(s, dept, tidy, line?.id) : undefined
+  const same = !!line && tidy === line.name
+  const others = line ? s.lines.filter((l) => l.dept === dept && l.id !== line.id).sort(byLineName) : []
+  const save = () => { if (tidy && !taken && !same && (line ? renameLine(line.id, tidy) : addLine(dept, tidy))) onClose() }
+  return (
+    <div className="veil" onClick={onClose}>
+      <div className="dlg" onClick={(e) => e.stopPropagation()}>
+        <h3>{line ? 'Nombre de ' + line.name : 'Agregar ' + word + ' en ' + dept}</h3>
+        <p>{line ? 'El nombre nuevo sale en todo lo registrado en ella: la pantalla, el reporte y los archivos. Los tiempos no cambian.' : '¿Cuál es? Ponle el nombre que tiene en la planta.'}</p>
+        <form className="qform" onSubmit={(e) => { e.preventDefault(); save() }}>
+          <div className="chips">
+            {freeLineNames(s, dept, 4).map((n) => <button key={n} type="button" className={'chip' + (tidy === n ? ' on' : '')} onClick={() => setName(n)}>{n}</button>)}
+            {others.map((o) => <button key={o.id} type="button" className={'chip swap' + (taken?.id === o.id ? ' on' : '')} title={'Intercambiar con ' + o.name} onClick={() => setName(o.name)}>⇄ {o.name}</button>)}
+          </div>
+          <label>Nombre <input value={name} maxLength={LINE_NAME_MAX} onChange={(e) => setName(e.target.value)} autoComplete="off" placeholder={'ej. ' + cfg.lineWord + ' 2'} /></label>
+          {taken && line && (
+            <div className="swapbox">
+              <span>Ya hay una <b>{taken.name}</b> en {dept}. Se pueden intercambiar: esta pasa a llamarse <b>{taken.name}</b> y la otra <b>{line.name}</b>.</span>
+              <button type="button" className="btn primary" onClick={() => { if (swapLineNames(line.id, taken.id)) onClose() }}>⇄ Intercambiar nombres</button>
+            </div>
+          )}
+          {taken && !line && <span className="err">Ya hay una {taken.name} en {dept}. Elige otro nombre.</span>}
+          <div className="dbtns">
+            <button type="button" className="btn" onClick={onClose}>Cancelar</button>
+            <button type="submit" className="btn primary" disabled={!tidy || !!taken || same}>{line ? '✓ Guardar' : '+ Agregar'}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 function DayNote({ day }: { day: ReturnType<typeof useDay> }) {
   if (day.state === 'loading') return <p className="daynote">Trayendo ese día del servidor…</p>
   if (day.state === 'failed') return <p className="daynote warn">Este aparato guarda los últimos {KEEP_DAYS} días. Ese día está en el servidor y ahora no se pudo traer (sin señal). <button type="button" className="lnk" onClick={day.retry}>Reintentar</button></p>
@@ -130,6 +204,7 @@ function LoginGate({ error, onDone }: { error: string; onDone: () => Promise<voi
         <button className="btn primary" type="submit" disabled={busy || !u.trim() || !pin}>{busy ? 'Entrando…' : 'Entrar'}</button>
       </form>
       <small>Cada registro lleva el nombre de quien entró. Si no tienes usuario, pídelo al manager.</small>
+      <QrLink label="Abrir en otro aparato (código QR)" />
     </div>
   )
 }
@@ -178,6 +253,7 @@ function Gate({ dept, mgr, onDept, onManager, onName, onBack }: { dept: Dept | n
         <h1>Actividad<span className="demotag">DEMO</span></h1>
         <p>¿De qué departamento eres?</p>
         <div className="pick">{DEPTS.map((d) => <button key={d} type="button" className="btn" onClick={() => onDept(d)}>{d}</button>)}</div>
+        <QrLink label="Abrir el demo en otro aparato (código QR)" />
         {asking ? (
           <form onSubmit={(e) => { e.preventDefault(); if (pin === managerPin.get()) onManager(); else { setBad(true); setPin('') } }} className="mgrform">
             <label>Código de manager <input autoFocus type="password" inputMode="numeric" placeholder="código" value={pin} onChange={(e) => { setPin(e.target.value); setBad(false) }} autoComplete="off" /></label>
@@ -220,7 +296,7 @@ function Main({ name, home, mgr, onLogout }: { name: string; home: Dept; mgr: bo
           <button type="button" className={tab === 'rep' ? 'on' : ''} onClick={() => setTab('rep')}>Reporte</button>
           {mgr && supabase && <button type="button" className={tab === 'emp' ? 'on' : ''} onClick={() => setTab('emp')}>Empleados</button>}
         </nav>
-        <div className="me"><SyncDot /> {name} · {mgr ? 'Manager' : home} <button type="button" className="lnk" onClick={onLogout}>{supabase ? 'Salir' : 'Cambiar'}</button></div>
+        <div className="me"><SyncDot /> {name} · {mgr ? 'Manager' : home} {mgr && <QrLink label="QR" />}<button type="button" className="lnk" onClick={onLogout}>{supabase ? 'Salir' : 'Cambiar'}</button></div>
       </header>
       {tab === 'act' ? (
         <div className="main">
@@ -474,9 +550,10 @@ function TargetDialog({ dept, unit, goal, onClose }: { dept: Dept; unit: string;
 }
 
 function DeptPanel({ s, dept, now, mgr }: { s: State; dept: Dept; now: number; mgr: boolean }) {
-  const lines = s.lines.filter((l) => l.dept === dept)
+  const lines = s.lines.filter((l) => l.dept === dept).sort(byLineName)
   const ds = deptStop(s, dept)
   const [stopAll, setStopAll] = useState(false)
+  const [adding, setAdding] = useState(false)
   const [editRun, setEditRun] = useState<string | null>(null)
   const [editStop, setEditStop] = useState(false)
   const editing = editRun ? s.runs.find((r) => r.id === editRun) : undefined
@@ -490,14 +567,15 @@ function DeptPanel({ s, dept, now, mgr }: { s: State; dept: Dept; now: number; m
           {ds
             ? <button type="button" className="btn danger" onClick={() => endStop(ds.id)}>▶ Reanudar departamento · {fmtDur(now - ds.startedAt)}</button>
             : <button type="button" className="btn" disabled={!anyRunning} onClick={() => setStopAll(true)}>⏸ Parar departamento</button>}
-          <button type="button" className="btn" onClick={() => addLine(dept)}>+ Agregar línea</button>
+          <button type="button" className="btn" onClick={() => setAdding(true)}>+ Agregar {CFG[dept].lineWord.toLowerCase()}</button>
         </div>
       </div>
       {ds && <div className="deptstop">⏸ Todo {dept} parado · <b>{ds.reason}</b>{ds.note && ' · ' + ds.note} · desde {fmtTime(ds.startedAt)} · {ds.by} <button type="button" className="lnk" onClick={() => setEditStop(true)}>Corregir</button></div>}
       {editStop && ds && <StopEditor stop={ds} mgr={mgr} onClose={() => setEditStop(false)} />}
       <TodayCard s={s} dept={dept} now={now} mgr={mgr} />
       <div className="lines">{lines.map((l) => <LineCard key={l.id} s={s} line={l} now={now} mgr={mgr} />)}</div>
-      {lines.length === 0 && <p className="hint">Este departamento no tiene líneas. Toca "Agregar línea".</p>}
+      {lines.length === 0 && <p className="hint">Este departamento no tiene líneas. Toca "Agregar {CFG[dept].lineWord.toLowerCase()}".</p>}
+      {adding && <LineNameDialog s={s} dept={dept} onClose={() => setAdding(false)} />}
       {doneToday.length > 0 && (
         <div className="done">
           <h3>Terminados hoy en {dept}</h3>
@@ -505,7 +583,7 @@ function DeptPanel({ s, dept, now, mgr }: { s: State; dept: Dept; now: number; m
             const st = runStats(s, r, now)
             return (
               <div key={r.id} className="donerow">
-                <b className="code">{r.code}</b> · lote {r.lot} · {r.line} · {fmtTime(r.startedAt)} – {fmtTime(r.endedAt ?? now)} · <b>{madeText(r, st.qty)}</b> · trabajando <b>{fmtDur(st.working)}</b> · parado <b className={st.down ? 'red' : ''}>{fmtDur(st.down)}</b>{r.waste > 0 && <> · waste <b className="red">{r.waste} lb</b></>} · {whoText(r)} <button type="button" className="lnk" onClick={() => setEditRun(r.id)}>Corregir</button>
+                <b className="code">{r.code}</b> · lote {r.lot} · {lineNameOf(s, r.lineId, r.line)} · {fmtTime(r.startedAt)} – {fmtTime(r.endedAt ?? now)} · <b>{madeText(r, st.qty)}</b> · trabajando <b>{fmtDur(st.working)}</b> · parado <b className={st.down ? 'red' : ''}>{fmtDur(st.down)}</b>{r.waste > 0 && <> · waste <b className="red">{r.waste} lb</b></>} · {whoText(r)} <button type="button" className="lnk" onClick={() => setEditRun(r.id)}>Corregir</button>
               </div>
             )
           })}
@@ -532,7 +610,10 @@ function LineCard({ s, line, now, mgr }: { s: State; line: Line; now: number; mg
   const [counting, setCounting] = useState(false)
   const [ending, setEnding] = useState(false)
   const [removing, setRemoving] = useState(false)
+  const [renaming, setRenaming] = useState(false)
   const [editQty, setEditQty] = useState(false)
+  const nameIt = <button type="button" className="lnk pen" title="Cambiar el nombre" aria-label={'Cambiar el nombre de ' + line.name} onClick={() => setRenaming(true)}>✎</button>
+  const naming = renaming && <LineNameDialog s={s} dept={line.dept} line={line} onClose={() => setRenaming(false)} />
   const [wasting, setWasting] = useState(false)
   if (!run) {
     // the lot follows the date unless someone typed another one; the quantity per unit (boxes per pallet, pouches
@@ -548,7 +629,8 @@ function LineCard({ s, line, now, mgr }: { s: State; line: Line; now: number; mg
     const ok = !!code.trim() && !!lot.trim() && (!needPer || (perUnit != null && perUnit > 0))
     return (
       <div className="line idle">
-        <div className="lhead"><h3>{line.name}</h3><button type="button" className="lnk" onClick={() => setRemoving(true)}>Quitar {cfg.lineWord.toLowerCase()}</button></div>
+        <div className="lhead"><h3>{line.name} {nameIt}</h3><button type="button" className="lnk" onClick={() => setRemoving(true)}>Quitar {cfg.lineWord.toLowerCase()}</button></div>
+        {naming}
         {removing && <ConfirmDialog title={'¿Quitar ' + line.name + ' de ' + line.dept + '?'} text="Se puede volver a agregar cuando haga falta." yes="Quitar" danger onYes={() => removeLine(line.id)} onNo={() => setRemoving(false)} />}
         <form className="start" onSubmit={(e) => { e.preventDefault(); if (ok) startRun(line, code.trim().toUpperCase(), lot.trim(), date, needPer ? perUnit : null) }}>
           <label>Código <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="ej. 0100" autoComplete="off" /></label>
@@ -578,8 +660,9 @@ function LineCard({ s, line, now, mgr }: { s: State; line: Line; now: number; mg
   const done = () => (cfg.qty === 'ask' ? setCounting(true) : unitDone(run.id, cfg.qty === 'auto' ? run.perUnit : null))
   return (
     <div className={'line ' + (stop ? 'stopped' : 'running')}>
+      {naming}
       <div className="lhead">
-        <h3>{line.name}</h3>
+        <h3>{line.name} {nameIt}</h3>
         <span className="meta"><b className="code">{run.code}</b> · lote {run.lot} · {run.date} · desde {fmtTime(run.startedAt)}{run.perUnit != null && ' · ' + run.perUnit + ' ' + cfg.qtyUnit + ' por ' + cfg.unit.toLowerCase()} <button type="button" className="lnk" onClick={() => setFixing(true)}>Corregir</button></span>
       </div>
       {stop && <div className="stopbar">⏸ Parado · <b>{stop.reason}</b>{stop.note && ' · ' + stop.note} · <b>{fmtDur(now - stop.startedAt)}</b>{stop.lineId === null && ' · todo el departamento'}{stop.lineId === line.id && <button type="button" className="lnk" onClick={() => setFixingStop(true)}>Corregir</button>}</div>}
@@ -725,7 +808,7 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
   // the history of that day (corrections, products, program, lines): the manager's and the office's
   const changes = mgr ? s.changes.filter((c) => !c.deleted && dayOf(c.at) === date && (!only || c.dept === only)).sort((a, b) => a.at - b.at) : []
   // the same code on several lines of a room, added up (all lines together)
-  const byCode = [...rows.reduce((m, x) => { const k = x.r.dept + '|' + normCode(x.r.code); const e = m.get(k) ?? { dept: x.r.dept, code: x.r.code, units: 0, qty: 0, waste: 0, lines: [] as string[] }; e.units += x.r.units.length; e.qty += x.st.qty; e.waste += x.r.waste; if (!e.lines.includes(x.r.line)) e.lines.push(x.r.line); return m.set(k, e) }, new Map<string, { dept: Dept; code: string; units: number; qty: number; waste: number; lines: string[] }>()).values()]
+  const byCode = [...rows.reduce((m, x) => { const k = x.r.dept + '|' + normCode(x.r.code); const e = m.get(k) ?? { dept: x.r.dept, code: x.r.code, units: 0, qty: 0, waste: 0, lines: [] as string[] }; e.units += x.r.units.length; e.qty += x.st.qty; e.waste += x.r.waste; if (!e.lines.includes(lineNameOf(s, x.r.lineId, x.r.line))) e.lines.push(lineNameOf(s, x.r.lineId, x.r.line)); return m.set(k, e) }, new Map<string, { dept: Dept; code: string; units: number; qty: number; waste: number; lines: string[] }>()).values()]
   /** the report as a PDF file and a CSV file, handed to the device's share sheet (Mail, Outlook, WhatsApp…);
    *  on a PC without one, the files download and the mail opens with the subject ready */
   const send = async () => {
@@ -745,11 +828,11 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
   const blocks = () => {
     const T = (ms: number) => xTime(ms, fmtTime(ms)), D = (ms: number) => xDur(ms, fmtDur(ms))
     const resumen: Cell[][] = [['Departamento', 'Línea', 'Código', 'Lote', 'Fecha', 'Inicio', 'Fin', 'Unidad', 'Hechas', 'Cantidad', 'Unidad de cantidad', 'Tags / bins', 'Waste (lb)', 'Tiempo trabajando', 'Promedio por unidad', 'Tiempo parado', 'Razones de paro', 'Registró'],
-      ...rows.map((x): Cell[] => [x.r.dept, x.r.line, x.r.code, x.r.lot, xDay(x.r.date), T(x.r.startedAt), x.r.endedAt ? T(x.r.endedAt) : 'en curso', CFG[x.r.dept].unit, x.r.units.length, CFG[x.r.dept].qty !== 'none' ? x.st.qty : '', CFG[x.r.dept].qty !== 'none' ? CFG[x.r.dept].qtyUnit : '', x.r.units.map((u) => u.ref).filter(Boolean).join(', '), x.r.waste || '', D(x.st.working), x.r.units.length ? D(x.st.avg) : '', D(x.st.down), reasonsText(x), whoText(x.r)])]
+      ...rows.map((x): Cell[] => [x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.r.lot, xDay(x.r.date), T(x.r.startedAt), x.r.endedAt ? T(x.r.endedAt) : 'en curso', CFG[x.r.dept].unit, x.r.units.length, CFG[x.r.dept].qty !== 'none' ? x.st.qty : '', CFG[x.r.dept].qty !== 'none' ? CFG[x.r.dept].qtyUnit : '', x.r.units.map((u) => u.ref).filter(Boolean).join(', '), x.r.waste || '', D(x.st.working), x.r.units.length ? D(x.st.avg) : '', D(x.st.down), reasonsText(x), whoText(x.r)])]
     const porCodigo: Cell[][] = [['Departamento', 'Código', 'Unidad', 'Hechas', 'Cantidad', 'Unidad de cantidad', 'Waste (lb)', 'Líneas'],
       ...byCode.map((c): Cell[] => [c.dept, c.code, CFG[c.dept].unit, c.units, CFG[c.dept].qty !== 'none' ? c.qty : '', CFG[c.dept].qty !== 'none' ? CFG[c.dept].qtyUnit : '', c.waste || '', c.lines.join(', ')])]
     const unidades: Cell[][] = [['Departamento', 'Línea', 'Código', 'Lote', '#', 'Hora', 'Unidad', 'Cantidad', 'Unidad de cantidad', 'Tag / bin', 'Desde la anterior', 'Registró'],
-      ...unitRows.map((x): Cell[] => [x.r.dept, x.r.line, x.r.code, x.r.lot, x.i + 1, T(x.u.at), CFG[x.r.dept].unit, qtyOf(x.r, x.u) ?? '', qtyOf(x.r, x.u) != null ? CFG[x.r.dept].qtyUnit : '', x.u.ref, D(x.gap), x.u.by])]
+      ...unitRows.map((x): Cell[] => [x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.r.lot, x.i + 1, T(x.u.at), CFG[x.r.dept].unit, qtyOf(x.r, x.u) ?? '', qtyOf(x.r, x.u) != null ? CFG[x.r.dept].qtyUnit : '', x.u.ref, D(x.gap), x.u.by])]
     const paros: Cell[][] = [['Departamento', 'Línea', 'Razón', 'Detalle', 'Inicio', 'Fin', 'Duración', 'Registró'],
       ...stops.map((x): Cell[] => [x.dept, lineName(x), x.reason, x.note, T(x.startedAt), x.endedAt ? T(x.endedAt) : 'en curso', D((x.endedAt ?? now) - x.startedAt), x.by])]
     const cambios: Cell[][] = [['Hora', 'Quién', 'Departamento', 'Qué', 'Antes', 'Después'], ...changes.map((c): Cell[] => [T(c.at), c.by, c.dept ?? '', c.what, c.before, c.after])]
@@ -800,7 +883,7 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
             <thead><tr><th>Depto</th><th>Línea</th><th>Código</th><th>Lote</th><th>Inicio</th><th>Fin</th><th>Hecho</th><th>Waste</th><th>Trabajando</th><th>Prom./unidad</th><th>Parado</th><th>Razones</th><th>Registró</th><th></th></tr></thead>
             <tbody>{rows.map((x) => (
               <tr key={x.r.id} className={x.r.endedAt ? '' : 'live'}>
-                <td>{x.r.dept}</td><td>{x.r.line}</td><td><b>{x.r.code}</b></td><td>{x.r.lot}</td><td>{fmtTime(x.r.startedAt)}</td><td>{x.r.endedAt ? fmtTime(x.r.endedAt) : <i>en curso</i>}</td>
+                <td>{x.r.dept}</td><td>{lineNameOf(s, x.r.lineId, x.r.line)}</td><td><b>{x.r.code}</b></td><td>{x.r.lot}</td><td>{fmtTime(x.r.startedAt)}</td><td>{x.r.endedAt ? fmtTime(x.r.endedAt) : <i>en curso</i>}</td>
                 <td>{madeText(x.r, x.st.qty, true)}</td><td className={x.r.waste ? 'red' : ''}>{x.r.waste ? x.r.waste + ' lb' : '—'}</td><td>{fmtDur(x.st.working)}</td><td>{x.r.units.length ? fmtDur(x.st.avg) : '—'}</td><td className={x.st.down ? 'red' : ''}>{fmtDur(x.st.down)}</td><td>{reasonsText(x) || '—'}</td><td>{whoText(x.r)}</td>
                 <td><button type="button" className="lnk" onClick={() => setEditRun(x.r.id)}>Corregir</button></td>
               </tr>
@@ -829,7 +912,7 @@ function Report({ s, now, only, mgr }: { s: State; now: number; only?: Dept; mgr
               <thead><tr><th>Hora</th><th>Depto</th><th>Línea</th><th>Código</th><th>Lote</th><th>#</th><th>Unidad</th><th>Cantidad</th><th>Tag / bin</th><th>Desde la anterior</th><th>Registró</th></tr></thead>
               <tbody>{unitRows.map((x) => (
                 <tr key={x.r.id + ':' + x.i}>
-                  <td>{fmtTime(x.u.at)}</td><td>{x.r.dept}</td><td>{x.r.line}</td><td><b>{x.r.code}</b></td><td>{x.r.lot}</td><td>{x.i + 1}</td><td>{CFG[x.r.dept].unit}</td>
+                  <td>{fmtTime(x.u.at)}</td><td>{x.r.dept}</td><td>{lineNameOf(s, x.r.lineId, x.r.line)}</td><td><b>{x.r.code}</b></td><td>{x.r.lot}</td><td>{x.i + 1}</td><td>{CFG[x.r.dept].unit}</td>
                   <td>{qtyOf(x.r, x.u) != null ? qtyOf(x.r, x.u) + ' ' + CFG[x.r.dept].qtyUnit : '—'}</td><td>{x.u.ref || '—'}</td><td>{fmtDur(x.gap)}</td><td>{x.u.by || '—'}</td>
                 </tr>
               ))}</tbody>

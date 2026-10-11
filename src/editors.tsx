@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { applyDraft, CFG, deleteRun, deleteStop, draftOf, fmtTime, nearDay, openRun, updateRun, updateStop, type Run, type State, type Stop } from './store'
+import { applyDraft, CFG, deleteRun, deleteStop, draftOf, fmtTime, lineNameOf, nearDay, openRun, updateRun, updateStop, type Run, type State, type Stop } from './store'
 import { ConfirmDialog } from './App'
 
 /** "HH:MM" of a moment */
@@ -28,7 +28,7 @@ export function RunEditor({ s, run, mgr, onClose }: { s: State; run: Run; mgr: b
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg wide" onClick={(e) => e.stopPropagation()}>
-        <h3>Corregir · {run.code} · {run.line}</h3>
+        <h3>Corregir · {run.code} · {lineNameOf(s, run.lineId, run.line)}</h3>
         <div className="egrid">
           <label>Código <input value={code} onChange={(e) => setCode(e.target.value)} autoComplete="off" /></label>
           <label>Lote <input value={lot} onChange={(e) => setLot(e.target.value)} inputMode="numeric" autoComplete="off" /></label>

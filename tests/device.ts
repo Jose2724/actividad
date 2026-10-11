@@ -8,3 +8,4 @@ export { fetchMe, finishSignOut, rememberedMe, rememberMe, signOutHere } from '.
 export { dayPull, firstPull, loadDay, pages, pullAll } from '../src/sync'
 export { storageFull } from '../src/storage'
 export { supabase } from '../src/supabase'
+export { qrPath } from '../src/qr'
