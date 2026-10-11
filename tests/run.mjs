@@ -824,6 +824,36 @@ clk.use((m) => {
 clock = T0
 
 // =====================================================================================================================
+//  Leaving, and coming back
+// =====================================================================================================================
+section('Salir pide confirmación')
+calc.use((m) => {
+  const ask = (state, pending, online = true) => m.leaveAsk({ state, pending }, online)
+  eq('normal: pregunta, y dice que hay que volver a entrar', [ask('online', 0).title, /usuario y el PIN/.test(ask('online', 0).text), ask('online', 0).yes, ask('online', 0).danger], ['¿Salir de Actividad?', true, 'Salir', false])
+  eq('con registros sin subir: dice cuántos y que espere', [ask('online', 3).title, /Hay 3 registros que no han llegado/.test(ask('online', 3).text), /Sincronizado/.test(ask('online', 3).text), ask('online', 3).yes, ask('online', 3).danger], ['Todavía hay registros sin subir', true, true, 'Salir de todos modos', true])
+  eq('uno solo, en singular', /Hay 1 registro que no ha llegado/.test(ask('online', 1).text), true)
+  eq('sin señal y con registros: que no salga hasta que vuelva', [/no hay señal/.test(ask('offline', 2).text), /No salgas/.test(ask('offline', 2).text), ask('offline', 2).danger], [true, true, true])
+  eq('sin señal y sin nada pendiente: avisa que no podrá volver a entrar', [ask('offline', 0).title, /no vas a poder entrar otra vez/.test(ask('offline', 0).text), ask('offline', 0).yes, ask('offline', 0).danger], ['¿Salir sin señal?', true, 'Salir de todos modos', true])
+  eq('el aparato dice que no hay red aunque la app todavía no lo notó', [ask('online', 0, false).title, /No salgas/.test(ask('connecting', 4, false).text)], ['¿Salir sin señal?', true])
+  eq('sesión cerrada con registros: que vuelva a entrar para que suban', [/la sesión se cerró/.test(ask('signedOut', 2).text), ask('signedOut', 2).yes, ask('signedOut', 2).danger], [true, 'Salir', false])
+  eq('en el demo pregunta por cambiar de usuario, haya lo que haya', [ask('local', 0).title, ask('local', 0).yes, ask('local', 5, false).title, ask('local', 5, false).danger], ['¿Cambiar de usuario?', 'Cambiar', '¿Cambiar de usuario?', false])
+})
+section('El usuario queda escrito para la próxima vez; el PIN no lo guarda la app')
+const mem = await device('mem')
+mem.use((m) => {
+  eq('al principio no hay ninguno', m.rememberedUser(), '')
+  m.rememberUser('  Maria.RTE ')
+  eq('queda el usuario, limpio', m.rememberedUser(), 'maria.rte')
+  m.rememberUser('alguien@correo.example')
+  eq('un correo no se deja escrito en un aparato que puede ser compartido', m.rememberedUser(), 'maria.rte')
+  m.rememberUser('   ')
+  eq('uno vacío no borra el que había', m.rememberedUser(), 'maria.rte')
+  m.rememberUser('pedro.packing')
+  eq('quien entra después pasa a ser el recordado', m.rememberedUser(), 'pedro.packing')
+  eq('y en el aparato solo queda eso: un nombre de usuario', [...disk()].filter(([k]) => /last_user/.test(k)), [['act_last_user', 'pedro.packing']])
+})
+
+// =====================================================================================================================
 console.log('')
 if (failed.length) { console.log(failed.length + ' FALLARON de ' + (passed + failed.length) + ':\n'); for (const f of failed) console.log('  ✗ ' + f + '\n'); process.exit(1) }
 console.log('✓ ' + passed + ' comprobaciones, todas correctas')

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import type { InputHTMLAttributes, Ref } from 'react'
 import { activeBetween, addLine, addWaste, awayDay, byLineName, cancelDay, CFG, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deptToday, endRun, endStop, fmtDur, fmtTime, freeLineNames, KEEP_DAYS, lastPerUnit, leftOpen, LINE_NAME_MAX, lineNamed, lineNameOf, lotFor, madeText, managerPin, mergeProducts, myDept, nearDay, normCode, numOf, openRun, openStop, parseProductsCsv, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reset, resetRecords, role, runStats, saveProduct, setSchedule, setTarget, startDay, startRun, startStop, stopsOf, store, swapLineNames, targetOf, tidyLineName, unitQty, savedText, unitDone, user, workDay, type Dept, type Line, type Product, type Run, type State, type Target, type Unit, type WorkDay } from './store'
 import { avanceRows, n1, pending, type AvanceRow } from './avance'
 import { cellText, xDay, xDur, xTime, xlsxBytes, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
@@ -7,8 +8,8 @@ const fmtN = (x: number) => Math.round(x).toLocaleString('en-US')
 import { whoText } from './store'
 import { buildPdf, loadPdf } from './pdf'
 import { RunEditor, StopEditor } from './editors'
-import { fetchMe, finishSignOut, loginEmail, rememberedMe, rememberMe, signOutHere, supabase, type Me } from './supabase'
-import { loadDay, startSync, syncStore, syncNow } from './sync'
+import { fetchMe, finishSignOut, loginEmail, rememberedMe, rememberedUser, rememberMe, rememberUser, signOutHere, supabase, type Me } from './supabase'
+import { leaveAsk, loadDay, startSync, syncStore, syncNow } from './sync'
 import { storageFull } from './storage'
 import { clockNow, clockOffText, otherZone, startClock } from './clock'
 import { appUrl, qrPath } from './qr'
@@ -187,31 +188,71 @@ function ServerApp() {
   return <Main name={me.name} home={home} mgr={me.role !== 'op'} admin={!!me.admin} onLogout={() => void out()} />
 }
 
+/**
+ * Asks the browser to keep the user and the PIN in its own password store (the phone's, the tablet's or the PC's),
+ * where a page is allowed to ask; elsewhere the browser offers it by itself when it sees the form. The app itself
+ * never keeps a PIN.
+ */
+function offerToSave(id: string, password: string) {
+  try {
+    const Kept = (window as unknown as { PasswordCredential?: new (d: { id: string; password: string }) => Credential }).PasswordCredential
+    if (Kept && navigator.credentials?.store) void navigator.credentials.store(new Kept({ id, password })).catch(() => undefined)
+  } catch { /* this browser offers it on its own, or not at all */ }
+}
+
+/** a PIN or password box with an eye: what is typed stays hidden unless the person asks to see it */
+function SecretInput({ value, onChange, what, hide, inputRef, ...box }: { value: string; onChange: (text: string) => void; what: string; hide?: boolean; inputRef?: Ref<HTMLInputElement> } & Pick<InputHTMLAttributes<HTMLInputElement>, 'placeholder' | 'inputMode' | 'autoComplete' | 'autoFocus' | 'name' | 'id'>) {
+  const [seen, setSeen] = useState(false)
+  const show = seen && !hide
+  // the eye does not take the cursor out of the box, so the keyboard stays as it is
+  const stay = (e: { preventDefault: () => void }) => e.preventDefault()
+  const label = (show ? 'Ocultar ' : 'Ver ') + what
+  return (
+    <span className="secret">
+      <input {...box} ref={inputRef} type={show ? 'text' : 'password'} autoCapitalize="none" autoCorrect="off" spellCheck={false} value={value} onChange={(e) => onChange(e.target.value)} />
+      <button type="button" className="eye" aria-label={label} title={label} aria-pressed={show} onPointerDown={stay} onMouseDown={stay} onClick={() => setSeen(!show)}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" />{show && <path d="M4 4l16 16" />}</svg>
+      </button>
+    </span>
+  )
+}
+
 function LoginGate({ error, onDone }: { error: string; onDone: () => Promise<void> }) {
-  const [u, setU] = useState('')
+  // the user name last used on this device is already written: only the PIN is left (or the browser fills it in)
+  const [u, setU] = useState(rememberedUser)
+  const [known] = useState(() => !!rememberedUser())
   const [pin, setPin] = useState('')
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState(error)
+  const userBox = useRef<HTMLInputElement>(null), pinBox = useRef<HTMLInputElement>(null)
   useEffect(() => { if (error) setMsg(error) }, [error])
   const go = async () => {
+    // what the boxes hold, not only what was typed: a browser that fills them in by itself does not always say so
+    const user = (userBox.current?.value ?? u).trim(), secret = pinBox.current?.value ?? pin
+    if (user !== u) setU(user)
+    if (secret !== pin) setPin(secret)
+    if (!user || !secret) { setMsg('Escribe tu usuario y tu PIN.'); return }
     setBusy(true); setMsg('')
-    const { error: e } = await supabase!.auth.signInWithPassword({ email: loginEmail(u), password: pin })
+    const { error: e } = await supabase!.auth.signInWithPassword({ email: loginEmail(user), password: secret })
     setBusy(false)
     if (e) { setMsg(/invalid/i.test(e.message) ? 'Usuario o PIN incorrectos.' : /fetch|network/i.test(e.message) ? 'Sin conexión. Revisa el WiFi e intenta otra vez.' : e.message); return }
+    rememberUser(user)
+    offerToSave(user.toLowerCase(), secret)
     await onDone()
   }
+  const mail = u.includes('@')
   return (
     <div className="gate">
       <h1>Actividad</h1>
       <p>Entra con tu usuario y PIN (los mismos de Freezer RTE).</p>
-      <form onSubmit={(e) => { e.preventDefault(); if (u.trim() && pin) void go() }}>
-        <input autoFocus placeholder="Usuario (o tu correo)" autoCapitalize="none" autoCorrect="off" autoComplete="username" value={u} onChange={(e) => setU(e.target.value)} />
+      <form onSubmit={(e) => { e.preventDefault(); if (!busy) void go() }}>
+        <input ref={userBox} autoFocus={!known} name="username" id="act-user" placeholder="Usuario (o tu correo)" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="username" value={u} onChange={(e) => setU(e.target.value)} />
         {/* a department user has a numeric PIN (number pad); an account typed as an e-mail has a real password, so the full keyboard */}
-        <input type="password" inputMode={u.includes('@') ? 'text' : 'numeric'} placeholder={u.includes('@') ? 'Contraseña' : 'PIN'} autoComplete="current-password" value={pin} onChange={(e) => setPin(e.target.value)} />
+        <SecretInput inputRef={pinBox} autoFocus={known} name="password" id="act-pin" what={mail ? 'la contraseña' : 'el PIN'} hide={busy} inputMode={mail ? 'text' : 'numeric'} placeholder={mail ? 'Contraseña' : 'PIN'} autoComplete="current-password" value={pin} onChange={setPin} />
         {msg && <span className="err">{msg}</span>}
-        <button className="btn primary" type="submit" disabled={busy || !u.trim() || !pin}>{busy ? 'Entrando…' : 'Entrar'}</button>
+        <button className="btn primary" type="submit" disabled={busy}>{busy ? 'Entrando…' : 'Entrar'}</button>
       </form>
-      <small>Cada registro lleva el nombre de quien entró. Si no tienes usuario, pídelo al manager.</small>
+      <small>Cada registro lleva el nombre de quien entró. Si no tienes usuario, pídelo al manager. Entras una vez y este aparato te recuerda hasta que toques "Salir".</small>
       <QrLink label="Abrir en otro aparato (código QR)" />
     </div>
   )
@@ -225,6 +266,13 @@ function NoRole({ onOut, onRetry, text }: { onOut: () => void; onRetry: () => vo
       <div className="btns"><button type="button" className="btn" onClick={onRetry}>Reintentar</button><button type="button" className="lnk" onClick={onOut}>Cerrar sesión</button></div>
     </div>
   )
+}
+
+/** "Salir" asks first, and says what leaving costs right now (see leaveAsk); the answer follows the sync while the box is open */
+function LeaveDialog({ onYes, onNo }: { onYes: () => void; onNo: () => void }) {
+  const st = useSyncExternalStore(syncStore.subscribe, syncStore.get)
+  const ask = leaveAsk(st, navigator.onLine !== false)
+  return <ConfirmDialog title={ask.title} text={ask.text} yes={ask.yes} danger={ask.danger} onYes={onYes} onNo={onNo} />
 }
 
 /** the dot next to the name: in step with the server, something waiting to go up, or no signal */
@@ -264,7 +312,7 @@ function Gate({ dept, mgr, onDept, onManager, onName, onBack }: { dept: Dept | n
         <QrLink label="Abrir el demo en otro aparato (código QR)" />
         {asking ? (
           <form onSubmit={(e) => { e.preventDefault(); if (pin === managerPin.get()) onManager(); else { setBad(true); setPin('') } }} className="mgrform">
-            <label>Código de manager <input autoFocus type="password" inputMode="numeric" placeholder="código" value={pin} onChange={(e) => { setPin(e.target.value); setBad(false) }} autoComplete="off" /></label>
+            <label>Código de manager <SecretInput autoFocus what="el código" inputMode="numeric" placeholder="código" autoComplete="off" value={pin} onChange={(t) => { setPin(t); setBad(false) }} /></label>
             {bad && <span className="err">Código incorrecto.</span>}
             <div className="dbtns"><button type="button" className="btn" onClick={() => { setAsking(false); setPin(''); setBad(false) }}>Cancelar</button><button type="submit" className="btn primary" disabled={!pin}>Entrar como manager</button></div>
           </form>
@@ -294,6 +342,7 @@ function Main({ name, home, mgr, admin, onLogout }: { name: string; home: Dept; 
   const [dept, setDept] = useState<Dept>(home)
   const [tab, setTab] = useState<'act' | 'av' | 'rep' | 'emp'>('act')
   const full = useSyncExternalStore(storageFull.subscribe, storageFull.get)
+  const [leaving, setLeaving] = useState(false)
   // only with a server is there a time to share; on its own, a device simply shows its own clock
   const away = !!supabase && otherZone(now), off = supabase ? clockOffText() : ''
   return (
@@ -309,8 +358,9 @@ function Main({ name, home, mgr, admin, onLogout }: { name: string; home: Dept; 
           <button type="button" className={tab === 'rep' ? 'on' : ''} onClick={() => setTab('rep')}>Reporte</button>
           {mgr && supabase && <button type="button" className={tab === 'emp' ? 'on' : ''} onClick={() => setTab('emp')}>Empleados</button>}
         </nav>
-        <div className="me"><SyncDot /> {name} · {mgr ? 'Manager' : home} {mgr && <QrLink label="QR" />}<button type="button" className="lnk" onClick={onLogout}>{supabase ? 'Salir' : 'Cambiar'}</button></div>
+        <div className="me"><SyncDot /> {name} · {mgr ? 'Manager' : home} {mgr && <QrLink label="QR" />}<button type="button" className="lnk" onClick={() => setLeaving(true)}>{supabase ? 'Salir' : 'Cambiar'}</button></div>
       </header>
+      {leaving && <LeaveDialog onYes={() => { setLeaving(false); onLogout() }} onNo={() => setLeaving(false)} />}
       {tab === 'act' ? (
         <>
         <DayBar s={s} now={now} day={day} mgr={mgr} />

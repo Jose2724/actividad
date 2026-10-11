@@ -40,6 +40,13 @@ export function rememberedMe(): Me | null {
     return m && typeof m.name === 'string' && m.name && ['op', 'mgr', 'office'].includes(m.role) ? m : null
   } catch { return null }
 }
+// ---- the user name last used to sign in on this device: written once, offered from then on. Never the PIN: that is
+// for the device's own password store to keep, if the person lets it (see LoginGate). An e-mail is not kept either:
+// on a shared tablet it would be shown to whoever opens the sign-in screen ----
+const LAST_KEY = 'act_last_user'
+export function rememberUser(u: string) { const v = u.trim().toLowerCase(); try { if (v && !v.includes('@')) localStorage.setItem(LAST_KEY, v) } catch { /* private */ } }
+export const rememberedUser = (): string => { try { return localStorage.getItem(LAST_KEY) || '' } catch { return '' } }
+
 /**
  * signs out of THIS device only (the same user on another tablet stays in). The server is told if it can be reached,
  * but the session kept on the device goes either way, so "Salir" always leaves the device signed out, also without
