@@ -753,6 +753,15 @@ dayDev.use((m) => {
 }
 
 // =====================================================================================================================
+//  Words of each department
+// =====================================================================================================================
+section('Lo que dice el botón al guardar')
+calc.use((m) => {
+  eq('cada departamento lo dice con su palabra', m.DEPTS.map((d) => m.savedText(d, 12)), ['Mezcla 12 guardada', 'Carro 12 guardado', 'Mezcla 12 guardada', 'Bin 12 guardado', 'Pallet 12 guardado'])
+  eq('y ninguno se queda sin ella', m.DEPTS.filter((d) => !m.CFG[d].saved || !m.CFG[d].done || !m.CFG[d].unit), [])
+})
+
+// =====================================================================================================================
 //  6. One clock for every device: the server's
 // =====================================================================================================================
 section('La hora del servidor')

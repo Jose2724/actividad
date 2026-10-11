@@ -248,3 +248,13 @@ tr.live td{background:#f1fbf5}
 .tidybox.hot{background:var(--red-soft)}
 .tidybox ul{margin:0;padding-left:18px;color:var(--muted)}
 .zonebar{background:var(--amber);color:#fff;font-weight:700;padding:10px 14px;text-align:center}
+/* a unit was just recorded on a line: its button, its counters and a green ring say so for a moment */
+@keyframes ring{from{box-shadow:0 0 0 0 rgba(27,116,70,.55)}to{box-shadow:0 0 0 14px rgba(27,116,70,0)}}
+@keyframes bump{0%{transform:scale(1)}30%{transform:scale(1.22)}100%{transform:scale(1)}}
+@keyframes pop{0%{transform:scale(.96)}55%{transform:scale(1.02)}100%{transform:scale(1)}}
+.line.justdone{animation:ring .9s ease-out}
+.stat{transition:background-color .5s}
+.stat.bumped{background:#d9f2e2}
+.stat.bumped b{color:var(--ok);transform-origin:left center;animation:bump .6s ease-out}
+.btn.huge.saved,.btn.huge.saved:disabled{opacity:1;background:#d9f2e2;border-color:var(--ok);color:var(--ok);animation:pop .35s ease-out}
+@media (prefers-reduced-motion:reduce){.line.justdone,.stat.bumped b,.btn.huge.saved{animation:none}}

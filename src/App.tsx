@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { activeBetween, addLine, addWaste, awayDay, byLineName, cancelDay, CFG, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deptToday, endRun, endStop, fmtDur, fmtTime, freeLineNames, KEEP_DAYS, lastPerUnit, leftOpen, LINE_NAME_MAX, lineNamed, lineNameOf, lotFor, madeText, managerPin, mergeProducts, myDept, nearDay, normCode, numOf, openRun, openStop, parseProductsCsv, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reset, resetRecords, role, runStats, saveProduct, setSchedule, setTarget, startDay, startRun, startStop, stopsOf, store, swapLineNames, targetOf, tidyLineName, unitQty, unitDone, user, workDay, type Dept, type Line, type Product, type Run, type State, type Target, type Unit, type WorkDay } from './store'
+import { activeBetween, addLine, addWaste, awayDay, byLineName, cancelDay, CFG, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deptToday, endRun, endStop, fmtDur, fmtTime, freeLineNames, KEEP_DAYS, lastPerUnit, leftOpen, LINE_NAME_MAX, lineNamed, lineNameOf, lotFor, madeText, managerPin, mergeProducts, myDept, nearDay, normCode, numOf, openRun, openStop, parseProductsCsv, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reset, resetRecords, role, runStats, saveProduct, setSchedule, setTarget, startDay, startRun, startStop, stopsOf, store, swapLineNames, targetOf, tidyLineName, unitQty, savedText, unitDone, user, workDay, type Dept, type Line, type Product, type Run, type State, type Target, type Unit, type WorkDay } from './store'
 import { avanceRows, n1, pending, type AvanceRow } from './avance'
 import { cellText, xDay, xDur, xTime, xlsxBytes, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 
@@ -498,7 +498,7 @@ function Products({ s }: { s: State }) {
       </div>
       <p className="hint">{unlocked
         ? 'Cada cambio se guarda al salir de la casilla' + (supabase ? ' y baja a todas las tablets' : '') + '. Columnas del CSV de la oficina: Código, Producto, Pouches por caja, Cajas por mezcla, Cajas por pallet, Guacales por carro, Pouches por guacal.'
-        : supabase ? 'Con estos números se calculan el Avance y los pouches por carro en todas las tablets. Para cambiar algo, toca "Editar".' : 'Los productos de ejemplo son inventados; todo se guarda solo en este dispositivo. Para cambiar algo, toca "Editar".'}</p>
+        : (supabase ? 'Con estos números se calculan el Avance y los pouches por carro en todas las tablets.' : 'Los productos de ejemplo son inventados; todo se guarda solo en este dispositivo.') + ' Para cambiar algo o importar el CSV de la oficina, toca "Editar".'}</p>
     </div>
   )
 }
@@ -734,6 +734,11 @@ function DeptPanel({ s, dept, now, mgr, day }: { s: State; dept: Dept; now: numb
   )
 }
 
+/** how long a line's card says that a unit was just recorded */
+const SAVED_MS = 2000
+/** a short tick on devices that can vibrate (Android phones, some tablets): the tap is felt as well as seen */
+const buzz = () => { try { (navigator as Navigator & { vibrate?: (ms: number) => boolean }).vibrate?.(35) } catch { /* not on this device */ } }
+
 function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: number; mgr: boolean; day: WorkDay }) {
   const cfg = CFG[line.dept]
   const run = openRun(s, line.id)
@@ -757,6 +762,23 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   const nameIt = <button type="button" className="lnk pen" title="Cambiar el nombre" aria-label={'Cambiar el nombre de ' + line.name} onClick={() => setRenaming(true)}>✎</button>
   const naming = renaming && <LineNameDialog s={s} dept={line.dept} line={line} onClose={() => setRenaming(false)} />
   const [wasting, setWasting] = useState(false)
+  // A unit was just recorded on this run, here or on another tablet: for a moment the button says which one, the
+  // counters light up and the card gets a green ring. So a tap is seen to have landed, on the line it landed on, and
+  // nobody taps twice for the same cart (the button rests while it says so).
+  const units = run ? run.units.length : 0
+  const seen = useRef({ id: run?.id, n: units })
+  const [just, setJust] = useState<{ n: number; at: number } | null>(null)
+  const tapped = useRef(0)
+  useEffect(() => {
+    const was = seen.current
+    seen.current = { id: run?.id, n: units }
+    if (run && was.id === run.id && units > was.n) setJust({ n: units, at: Date.now() })
+  }, [run?.id, units])
+  useEffect(() => {
+    if (!just) return
+    const t = setTimeout(() => setJust(null), SAVED_MS)
+    return () => clearTimeout(t)
+  }, [just])
   if (!run) {
     // the lot follows the date unless someone typed another one; the quantity per unit (boxes per pallet, pouches
     // per cart) comes from the products table or the last run of the code. RTE types it the office's way: crates
@@ -799,9 +821,20 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   const st = runStats(s, run, now)
   const last = run.units.length ? run.units[run.units.length - 1].at : run.startedAt
   const current = activeBetween(last, now, stopsOf(s, run.dept, run.lineId), now)
-  const done = () => (cfg.qty === 'ask' ? setCounting(true) : unitDone(run.id, cfg.qty === 'auto' ? run.perUnit : null))
+  /** records a unit from this screen. A second tap in the same instant (a finger that bounces) is not another unit */
+  const record = (qty: number | null, ref = '') => {
+    if (performance.now() - tapped.current < 800) return
+    tapped.current = performance.now()
+    unitDone(run.id, qty, ref); buzz()
+  }
+  const done = () => {
+    if (just) return
+    if (cfg.qty === 'ask') setCounting(true)
+    else record(cfg.qty === 'auto' ? run.perUnit : null)
+  }
+  const lit = just ? ' bumped' : ''
   return (
-    <div className={'line ' + (stop ? 'stopped' : 'running')}>
+    <div className={'line ' + (stop ? 'stopped' : 'running') + (just ? ' justdone' : '')}>
       {naming}
       <div className="lhead">
         <h3>{line.name} {nameIt}</h3>
@@ -812,15 +845,15 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       {fixingStop && stop && <StopEditor stop={stop} mgr={mgr} onClose={() => setFixingStop(false)} />}
       <div className="stats">
         <div className="stat big"><label>Trabajando</label><b>{fmtDur(st.working)}</b></div>
-        <div className="stat"><label>{cfg.plural}</label><b>{run.units.length}</b></div>
-        {cfg.qty !== 'none' && <div className="stat"><label>{cfg.qtyUnit}</label><b>{st.qty}</b></div>}
+        <div key={'n' + (just?.at ?? 0)} className={'stat' + lit}><label>{cfg.plural}</label><b>{run.units.length}</b></div>
+        {cfg.qty !== 'none' && <div key={'q' + (just?.at ?? 0)} className={'stat' + lit}><label>{cfg.qtyUnit}</label><b>{st.qty}</b></div>}
         <div className="stat"><label>{cfg.unit} actual</label><b>{fmtDur(current)}</b></div>
         <div className="stat"><label>Promedio / {cfg.unit.toLowerCase()}</label><b>{run.units.length ? fmtDur(st.avg) : '—'}</b></div>
         <div className="stat"><label>Parado</label><b className={st.down ? 'red' : ''}>{fmtDur(st.down)}</b></div>
         {cfg.waste && <div className="stat"><label>Waste</label><b className={run.waste ? 'red' : ''}>{run.waste} lb</b></div>}
       </div>
       <div className="btns">
-        <button type="button" className="btn primary huge" onClick={done}>✓ {cfg.done}</button>
+        <button type="button" className={'btn primary huge' + (just ? ' saved' : '')} disabled={!!just} onClick={done}>✓ {just ? savedText(line.dept, just.n) : cfg.done}</button>
         {cfg.waste && <button type="button" className="btn" onClick={() => setWasting(true)}>Waste (lb)</button>}
         {stop
           ? (stop.lineId === line.id
@@ -831,7 +864,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       </div>
       {ending && <ConfirmDialog title={'¿Terminar el código ' + run.code + ' en ' + line.name + '?'} text={'Se cierra con ' + madeText(run, st.qty) + ' · trabajando ' + fmtDur(st.working) + (st.down ? ' · parado ' + fmtDur(st.down) : '') + '.'} yes="■ Terminar" onYes={() => { endRun(run.id); setEnding(false) }} onNo={() => setEnding(false)} />}
       {asking && <StopDialog title={'Parar ' + line.name + ' · ' + run.code} reasons={cfg.reasons} onClose={() => setAsking(false)} onPick={(reason, note) => { startStop(line.dept, line.id, reason, note); setAsking(false) }} />}
-      {counting && <QtyDialog title={cfg.qtyQ} unit={cfg.qtyUnit} refLabel={cfg.refLabel} initial={run.perUnit} onClose={() => setCounting(false)} onPick={(q, ref) => { unitDone(run.id, q, ref); setCounting(false) }} />}
+      {counting && <QtyDialog title={cfg.qtyQ} unit={cfg.qtyUnit} refLabel={cfg.refLabel} initial={run.perUnit} onClose={() => setCounting(false)} onPick={(q, ref) => { record(q, ref); setCounting(false) }} />}
       {wasting && <QtyDialog title={'Waste de ' + run.code + ' · ¿cuántas libras?'} unit="lb" refLabel="" initial={null} decimal onClose={() => setWasting(false)} onPick={(lb) => { if (lb > 0) addWaste(run.id, lb); setWasting(false) }} />}
     </div>
   )
