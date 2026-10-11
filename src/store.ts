@@ -75,7 +75,7 @@ export function lotFor(ds: string) {
 /** the office writes 889, the ticket and the boxes say 0889: a numeric code is the same with or without leading zeros */
 export const normCode = (c: string) => { const u = c.trim().toUpperCase(); return /^\d+$/.test(u) ? String(Number(u)) : u }
 /**
- * one entry per code and day in the program: "0889" and "889" are the same product. (Earlier versions kept what was
+ * one entry per code and day in the program: "0100" and "100" are the same product. (Earlier versions kept what was
  * typed next to what came back from the server, and the two were added up.) The spelling as typed is the newer one
  * when it carries a number; otherwise the plain spelling stands.
  */

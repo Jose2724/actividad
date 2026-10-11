@@ -24,7 +24,7 @@ const r2 = (x: number | null) => (x == null ? null : Math.round(x * 100) / 100)
 
 export function avanceRows(s: State, date: string): AvanceRow[] {
   const runs = s.runs.filter((r) => r.date === date)
-  // 889 and 0889 are one line; the program holds one entry per code (see setSchedule), the spellings are folded here for old data
+  // 100 and 0100 are one line; the program holds one entry per code (see setSchedule), the spellings are folded here for old data
   const sched: Record<string, number> = {}
   for (const [c, n] of Object.entries(s.schedule[date] ?? {})) sched[normCode(c)] = normCode(c) === c ? n : sched[normCode(c)] ?? n
   // a code just programmed (still 0) stays on the list so its number can be typed
