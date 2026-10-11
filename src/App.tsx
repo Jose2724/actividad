@@ -333,7 +333,11 @@ function Avance({ s }: { s: State }) {
   const [date, setDate] = useState(() => workDay(s).date)
   const [editing, setEditing] = useState(false)
   const [newCode, setNewCode] = useState('')
-  const rows = avanceRows(s, date)
+  // codes being worked on in this screen stay listed while their number is typed, also at 0; a code left at 0 is gone the next time
+  const typing = useRef({ date, codes: new Set<string>() })
+  if (typing.current.date !== date) typing.current = { date, codes: new Set() }
+  for (const [c, n] of Object.entries(s.schedule[date] ?? {})) if (n > 0) typing.current.codes.add(normCode(c))
+  const rows = avanceRows(s, date, typing.current.codes)
   const sum = (f: (r: AvanceRow) => number | null) => rows.reduce((t, r) => t + (f(r) ?? 0), 0)
   const cls = (v: number | null) => (v == null ? '' : v < 0 ? 'red' : v > 0 ? 'amber' : 'ok')
   const day = useDay(date)
@@ -342,7 +346,7 @@ function Avance({ s }: { s: State }) {
       <div className="rhead">
         <h2>Avance del día</h2>
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-        <form className="addcode" onSubmit={(e) => { e.preventDefault(); if (newCode.trim()) { setSchedule(date, newCode, 0); setNewCode('') } }}>
+        <form className="addcode" onSubmit={(e) => { e.preventDefault(); if (newCode.trim()) { typing.current.codes.add(normCode(newCode)); setSchedule(date, newCode, 0); setNewCode('') } }}>
           <input placeholder="Código a programar" value={newCode} onChange={(e) => setNewCode(e.target.value)} autoComplete="off" />
           <button className="btn" type="submit" disabled={!newCode.trim()}>+ Programar</button>
         </form>

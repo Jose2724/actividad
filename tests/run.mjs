@@ -177,6 +177,8 @@ calc.use((m) => {
   const c = rows[2]
   eq('se hicieron 5 de 3 programadas: pendiente −2, como en la hoja de la oficina', [c.scheduled, c.mixesDone, c.mixesPending], [3, 5, -2])
   eq('71.4 × 2 × 5 da 714 exacto, sin restos', [c.casesExp, c.pouchesExp], [357, 714])
+  m.setSchedule('2026-10-04', 'Z9', 0)
+  eq('un código en 0 y sin nada hecho no es una fila; mientras se escribe su número, sí', [m.avanceRows(m.store.get(), '2026-10-04').length, m.avanceRows(m.store.get(), '2026-10-04', new Set(['Z9'])).map((r) => [r.code, r.scheduled])], [0, [['Z9', 0]]])
   eq('pallets: 357 ÷ 105', c.palletsExp, 3.4)
 })
 

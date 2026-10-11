@@ -22,14 +22,16 @@ export type AvanceRow = {
 /** two decimals: enough for a yield like 18.33 and free of the stray 0.0000001 that multiplying decimals leaves */
 const r2 = (x: number | null) => (x == null ? null : Math.round(x * 100) / 100)
 
-export function avanceRows(s: State, date: string): AvanceRow[] {
+/** `keep`: codes (in their plain spelling) that stay on the list even with nothing programmed or made: the ones being typed on the screen */
+export function avanceRows(s: State, date: string, keep?: Set<string>): AvanceRow[] {
   const runs = s.runs.filter((r) => r.date === date)
   // 100 and 0100 are one line; the program holds one entry per code (see setSchedule), the spellings are folded here for old data
   const sched: Record<string, number> = {}
   for (const [c, n] of Object.entries(s.schedule[date] ?? {})) sched[normCode(c)] = normCode(c) === c ? n : sched[normCode(c)] ?? n
-  // a code just programmed (still 0) stays on the list so its number can be typed
   const keys = [...new Set([...Object.keys(sched), ...runs.map((r) => normCode(r.code))])].sort()
-  return keys.map((key) => {
+  // a code with nothing programmed and nothing made is not a row (setting a program to 0 takes it off the list)
+  const idle = (r: AvanceRow) => !r.scheduled && !r.mixesDone && !r.spiralDone && !r.pouchesDone && !r.casesDone && !r.mfoCases && !r.palletsDone && !r.wasteLb
+  return keys.map((key): AvanceRow & { key: string } => {
     const product = productOf(s, key)
     const code = product?.code ?? runs.find((r) => normCode(r.code) === key)?.code ?? key
     const of = (dept: string) => runs.filter((r) => r.dept === dept && normCode(r.code) === key)
@@ -43,13 +45,13 @@ export function avanceRows(s: State, date: string): AvanceRow[] {
     const pallets = (c: number | null) => (product && product.casesPerPallet && c != null ? c / product.casesPerPallet : null)
     const casesExp = cases(mixesDone), casesPlan = scheduled ? cases(scheduled) : null
     return {
-      code, product, scheduled, mixesDone, mixesPending: scheduled ? scheduled - mixesDone : 0, spiralDone: units('Spiral'),
+      key, code, product, scheduled, mixesDone, mixesPending: scheduled ? scheduled - mixesDone : 0, spiralDone: units('Spiral'),
       pouchesPlan: r2(pouches(casesPlan)), pouchesExp: r2(pouches(casesExp)), pouchesDone: qty('RTE'),
       casesPlan: r2(casesPlan), casesExp: r2(casesExp), casesDone: qty('Packing'), mfoCases: qty('MFO'),
       palletsPlan: r2(pallets(casesPlan)), palletsExp: r2(pallets(casesExp)), palletsDone: units('Packing'),
       wasteLb: Math.round(runs.filter((r) => normCode(r.code) === key).reduce((t, r) => t + (r.waste || 0), 0) * 100) / 100,
     }
-  })
+  }).filter((r) => !idle(r) || !!keep?.has(r.key)).map(({ key: _key, ...r }) => r)
 }
 
 /** "982" or "-10": what is still missing (negative = more than expected, like the red cells in the office's sheet) */
