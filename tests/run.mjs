@@ -1226,11 +1226,33 @@ fin.use((m) => {
     eq('un pallet corto de un código terminado se completa con otro lote: la cantidad es la suma y el tag se puede cambiar', [st().runs[0].units[0].qty, m.lotsText(st().runs[0].units[0].lots), st().runs[0].units[0].ref, m.shortEnded(st(), l.id, DAY)], [36, '6283: 20 + 6284: 16', '1750', []])
   })
 }
+section('Parar: tres causas y "Otra"')
+const qk = await device('qk', { user: 'Nino' })
+qk.use((m) => {
+  const st = () => m.store.get()
+  eq('"Parar" ofrece tres causas en cada departamento', m.DEPTS.map((d) => m.CFG[d].quick.length), [3, 3, 3, 3, 3])
+  eq('las de RTE: lo mecánico, el plástico y el break', m.CFG.RTE.quick, ['Problema mecánico', 'Sin plástico', 'Break'])
+  eq('las tres están también en la lista completa, al principio, y "Otra" no es una causa guardada', m.DEPTS.map((d) => [m.CFG[d].reasons.slice(0, 3).join() === m.CFG[d].quick.join(), m.CFG[d].reasons.includes('Otra'), new Set(m.CFG[d].reasons).size === m.CFG[d].reasons.length]), m.DEPTS.map(() => [true, false, true]))
+  eq('una causa escrita a mano que ya es del departamento se guarda con su nombre de siempre', [m.tidyReason('RTE', 'break'), m.tidyReason('RTE', ' SET-UP '), m.tidyReason('RTE', 'setup'), m.tidyReason('RTE', 'sin plastico'), m.tidyReason('RTE', 'LIMPIEZA')], ['Break', 'Set up', 'Set up', 'Sin plástico', 'Limpieza'])
+  eq('una que no está en la lista queda como se escribió, sin espacios de más', [m.tidyReason('RTE', '  Se rompió   la banda '), m.tidyReason('RTE', 'Falta de salsa'), m.tidyReason('RTE', ''), m.tidyReason('Kitchen', 'sin plastico')], ['Se rompió la banda', 'Falta de salsa', '', 'sin plastico'])
+  clock = T0
+  m.addLine('RTE', 'Línea 1')
+  const line = st().lines[0]
+  m.startRun(line, 'A100', '6283', DAY, 240)
+  clock = T0 + 10 * M; m.startStop('RTE', line.id, 'setup', '')
+  clock = T0 + 15 * M; m.endStop(st().stops[0].id)
+  eq('"setup" escrito en "Otra" se guarda como Set up: cuenta donde cuenta el Set up', st().stops.map((x) => [x.reason, (x.endedAt - x.startedAt) / M]), [['Set up', 5]])
+  clock = T0 + 20 * M; m.startStop('RTE', line.id, 'Se rompió la banda', '')
+  clock = T0 + 50 * M; m.endStop(st().stops[1].id)
+  const rest = m.splitStop(st().stops[1].id, T0 + 30 * M, 'break')
+  m.updateStop(st().stops[1].id, { reason: 'problema mecanico' })
+  eq('y lo mismo al dividir y al corregir un paro', [st().stops.find((x) => x.id === rest).reason, st().stops[1].reason], ['Break', 'Problema mecánico'])
+})
 section('Set up a mano')
 const man = await device('man', { user: 'Santiago' })
 man.use((m) => {
   const st = () => m.store.get(), open = () => st().stops.filter((x) => !x.endedAt)
-  eq('"Set up" es una razón que se puede elegir en todos los departamentos', m.DEPTS.map((d) => m.CFG[d].reasons.includes('Set up')), [true, true, true, true, true])
+  eq('"Set up" está en la lista completa de causas de todos los departamentos (la de corregir y dividir)', m.DEPTS.map((d) => m.CFG[d].reasons.includes('Set up')), [true, true, true, true, true])
   clock = T0
   m.addLine('RTE', 'Línea 1')
   const line = st().lines[0]

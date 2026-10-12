@@ -787,7 +787,7 @@ function DeptPanel({ s, dept, now, mgr, day }: { s: State; dept: Dept; now: numb
         </div>
       )}
       {editing && <RunEditor s={s} run={editing} mgr={mgr} onClose={() => setEditRun(null)} />}
-      {stopAll && <StopDialog title={'Parar todo ' + dept} reasons={CFG[dept].reasons} onClose={() => setStopAll(false)} onPick={(reason, note) => { startStop(dept, null, reason, note); setStopAll(false) }} />}
+      {stopAll && <StopDialog title={'Parar todo ' + dept} reasons={CFG[dept].quick} onClose={() => setStopAll(false)} onPick={(reason, note) => { startStop(dept, null, reason, note); setStopAll(false) }} />}
     </section>
   )
 }
@@ -1000,7 +1000,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         summary={'Lleva ' + madeText(run, st.qty) + ' · trabajando ' + fmtDur(st.working) + (st.down ? ' · parado ' + fmtDur(st.down) : '') + '.'}
         onClose={() => setEnding(false)} onDone={(next) => { endRun(run.id, next); setEnding(false) }}
         onMissing={(next) => { setEnding(false); if (cfg.qty === 'ask') { setEndAfter(next); setCounting(true) } else { record(cfg.qty === 'auto' ? run.perUnit : null); endRun(run.id, next) } }} />}
-      {asking && <StopDialog title={'Parar ' + line.name + ' · ' + run.code} reasons={cfg.reasons} onClose={() => setAsking(false)} onPick={(reason, note) => { startStop(line.dept, line.id, reason, note); setAsking(false) }} />}
+      {asking && <StopDialog title={'Parar ' + line.name + ' · ' + run.code} reasons={cfg.quick} onClose={() => setAsking(false)} onPick={(reason, note) => { startStop(line.dept, line.id, reason, note); setAsking(false) }} />}
       {fillUi}
       {counting && (cfg.lots
         ? <LotsDialog title={cfg.qtyQ} unit={cfg.qtyUnit} refLabel={cfg.refLabel} lot={run.lot} qty={run.perUnit} onClose={() => { setCounting(false); setEndAfter(null) }} onPick={(q, ref, lots) => { record(q, ref, lots); setCounting(false); if (endAfter !== null) { setEndAfter(null); endRun(run.id, endAfter) } }} />
@@ -1039,6 +1039,7 @@ function EndDialog({ cfg, code, line, summary, lastAt, now, onMissing, onDone, o
   )
 }
 
+/** stopping a line or the department: its three usual causes and "Otra", where any other one is typed */
 function StopDialog({ title, reasons, onClose, onPick }: { title: string; reasons: string[]; onClose: () => void; onPick: (reason: string, note: string) => void }) {
   const [reason, setReason] = useState('')
   const [note, setNote] = useState('')
@@ -1049,7 +1050,7 @@ function StopDialog({ title, reasons, onClose, onPick }: { title: string; reason
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
         <h3>{title}</h3>
         <p>¿Por qué se para? La app cuenta el tiempo parado con esta razón.</p>
-        <div className="chips">{[...reasons, 'Otra'].map((r) => <button key={r} type="button" className={'chip' + (reason === r ? ' on' : '')} onClick={() => setReason(r)}>{r}</button>)}</div>
+        <div className="chips big">{[...reasons, 'Otra'].map((r) => <button key={r} type="button" className={'chip' + (reason === r ? ' on' : '')} onClick={() => setReason(r)}>{r}</button>)}</div>
         <input placeholder={other ? 'Escribe la razón' : 'Detalle (opcional)'} value={note} onChange={(e) => setNote(e.target.value)} />
         <div className="dbtns">
           <button type="button" className="btn" onClick={onClose}>Cancelar</button>

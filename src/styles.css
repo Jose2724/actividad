@@ -308,3 +308,6 @@ tr.live td{background:#f1fbf5}
 .lastcode .lnk,.fillmore .lnk,.setupstart .lnk{padding:6px 0;text-align:left}
 .fillmore{display:flex}
 .setupbar .btns,.lastcode .btns{gap:2px 14px}
+/* the stop box: three causes and "Otra", each big enough for a thumb in a glove */
+.chips.big{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.chips.big .chip{min-height:64px;border-radius:14px;font-size:17px;line-height:1.2;white-space:normal;padding:8px 10px}
