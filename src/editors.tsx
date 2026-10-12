@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { applyDraft, CFG, deleteRun, deleteStop, draftOf, fmtTime, lineNameOf, nearDay, openRun, updateRun, updateStop, type Run, type State, type Stop } from './store'
+import { applyDraft, CFG, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, nearDay, openRun, splitStop, updateRun, updateStop, type Run, type State, type Stop } from './store'
+import { clockNow } from './clock'
 import { ConfirmDialog } from './App'
 
 /** "HH:MM" of a moment */
@@ -81,7 +82,9 @@ export function StopEditor({ stop, mgr, onClose }: { stop: Stop; mgr: boolean; o
   const [start, setStart] = useState(opened.start)
   const [end, setEnd] = useState(opened.end)
   const [dropping, setDropping] = useState(false)
+  const [dividing, setDividing] = useState(false)
   const ok = reason === 'Otra' ? other.trim().length > 0 : !!reason
+  if (dividing) return <StopSplitter stop={stop} onBack={() => setDividing(false)} onClose={onClose} />
   const save = () => {
     const patch: Parameters<typeof updateStop>[1] = {}
     const text = (r: string, o: string) => (r === 'Otra' ? o.trim() : r)
@@ -108,13 +111,61 @@ export function StopEditor({ stop, mgr, onClose }: { stop: Stop; mgr: boolean; o
           {stop.endedAt != null && <label>Fin <input type="time" value={end} onChange={(e) => setEnd(e.target.value)} /></label>}
         </div>
         <div className="dbtns spread">
-          <div className="btns">{mgr && <button type="button" className="lnk" onClick={() => setDropping(true)}>Borrar paro</button>}</div>
+          <div className="btns">
+            {mgr && <button type="button" className="lnk" onClick={() => setDividing(true)}>✂ Dividir en dos causas</button>}
+            {mgr && <button type="button" className="lnk" onClick={() => setDropping(true)}>Borrar paro</button>}
+          </div>
           <div className="btns">
             <button type="button" className="btn" onClick={onClose}>Cancelar</button>
             <button type="button" className="btn primary" disabled={!ok} onClick={save}>Guardar</button>
           </div>
         </div>
         {dropping && <ConfirmDialog title="¿Borrar este paro?" text="Deja de contar como tiempo parado. No se puede deshacer." yes="Borrar" danger onYes={() => { deleteStop(stop.id); onClose() }} onNo={() => setDropping(false)} />}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * One stop, two causes: the manager says how many minutes belong to the reason it has, and which reason the rest was
+ * for. The stopped time of the line stays the same; it is only told apart. A part can be divided again.
+ */
+function StopSplitter({ stop, onBack, onClose }: { stop: Stop; onBack: () => void; onClose: () => void }) {
+  const reasons = CFG[stop.dept].reasons.filter((r) => r !== stop.reason)
+  // the moment the box opened stands in for "now" on a stop still open: the numbers do not move while they are read
+  const [end] = useState(() => stop.endedAt ?? clockNow())
+  const total = Math.floor((end - stop.startedAt) / 60_000)
+  const [mins, setMins] = useState(() => String(Math.max(1, Math.floor(total / 2))))
+  const [reason, setReason] = useState('')
+  const [other, setOther] = useState('')
+  const [note, setNote] = useState('')
+  const first = Number(mins)
+  const cut = stop.startedAt + first * 60_000
+  const second = reason === 'Otra' ? other.trim() : reason
+  const fits = Number.isInteger(first) && first >= 1 && cut < end
+  const ok = fits && !!second
+  const go = () => { if (ok && splitStop(stop.id, cut, second, note)) onClose() }
+  return (
+    <div className="veil" onClick={onClose}>
+      <div className="dlg" onClick={(e) => e.stopPropagation()}>
+        <h3>Dividir paro · {stop.dept}</h3>
+        {total < 2 ? <p>Este paro dura menos de dos minutos: no hay tiempo que dividir.</p> : (
+          <>
+            <p><b>{stop.reason}</b> · {fmtTime(stop.startedAt)} – {stop.endedAt ? fmtTime(stop.endedAt) : 'en curso'} · {fmtDur(end - stop.startedAt)}</p>
+            <label className="splitmins">¿Cuántos minutos fueron por <b>{stop.reason}</b>? <input className="num" inputMode="numeric" value={mins} onChange={(e) => setMins(e.target.value.replace(/\D/g, ''))} /> <small>de {total}</small></label>
+            <p>El resto fue por:</p>
+            <div className="chips">{[...reasons, 'Otra'].map((r) => <button key={r} type="button" className={'chip' + (reason === r ? ' on' : '')} onClick={() => setReason(r)}>{r}</button>)}</div>
+            {reason === 'Otra' && <input placeholder="Escribe la razón" value={other} onChange={(e) => setOther(e.target.value)} />}
+            <input placeholder="Detalle (opcional)" value={note} onChange={(e) => setNote(e.target.value)} />
+            {fits
+              ? <p className="splitsum">Queda así: <b>{stop.reason}</b> {fmtTime(stop.startedAt)} – {fmtTime(cut)} ({first} min) · <b>{second || '…'}</b> {fmtTime(cut)} – {stop.endedAt ? fmtTime(stop.endedAt) : 'en curso'} ({stop.endedAt ? total - first + ' min' : 'sigue'})</p>
+              : <p className="err">Escribe un número entre 1 y {total - 1}.</p>}
+          </>
+        )}
+        <div className="dbtns">
+          <button type="button" className="btn" onClick={onBack}>Volver</button>
+          <button type="button" className="btn primary" disabled={!ok || total < 2} onClick={go}>✂ Dividir</button>
+        </div>
       </div>
     </div>
   )

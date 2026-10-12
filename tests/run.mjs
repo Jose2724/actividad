@@ -908,6 +908,57 @@ section('El Excel se hace al instante cuando su librería ya bajó')
 }
 
 // =====================================================================================================================
+//  A stop with two causes
+// =====================================================================================================================
+section('Dividir un paro en dos causas')
+const cut = await device('cut', { user: 'Santiago' })
+cut.use((m) => {
+  const st = () => m.store.get()
+  clock = T0
+  m.addLine('RTE', 'Línea 1')
+  const line = st().lines[0]
+  m.startRun(line, 'A100', '6283', DAY, 240)
+  const run = () => st().runs[0]
+  clock = T0 + 10 * M; m.startStop('RTE', line.id, 'Limpieza', '')
+  const first = () => st().stops.find((x) => x.reason === 'Limpieza')
+  clock = T0 + 70 * M; m.endStop(first().id)
+  clock = T0 + 90 * M
+  const before = m.runStats(st(), run(), clock)
+  eq('antes: una hora parada por limpieza', [before.down / M, before.reasons], [60, { Limpieza: 60 * M }])
+  const id = m.splitStop(first().id, T0 + 30 * M, 'Máquina / mantenimiento', 'banda rota')
+  const second = () => st().stops.find((x) => x.id === id)
+  eq('quedan dos paros seguidos, sin hueco ni cruce', [st().stops.length, first().startedAt, first().endedAt, second().startedAt, second().endedAt], [2, T0 + 10 * M, T0 + 30 * M, T0 + 30 * M, T0 + 70 * M])
+  eq('el segundo lleva su causa, su detalle y quién lo dividió', [second().reason, second().note, second().by, second().lineId === line.id, second().dept], ['Máquina / mantenimiento', 'banda rota', 'Santiago', true, 'RTE'])
+  const after = m.runStats(st(), run(), clock)
+  eq('el tiempo parado de la línea no cambia; solo se reparte', [after.down / M, after.working === before.working, after.reasons], [60, true, { Limpieza: 20 * M, 'Máquina / mantenimiento': 40 * M }])
+  eq('queda escrito en el historial', st().changes.filter((c) => /Se dividió/.test(c.what)).map((c) => [c.by, c.before, c.after]), [['Santiago', 'Limpieza ' + m.fmtTime(T0 + 10 * M) + '–' + m.fmtTime(T0 + 70 * M), 'Limpieza ' + m.fmtTime(T0 + 10 * M) + '–' + m.fmtTime(T0 + 30 * M) + ' + Máquina / mantenimiento ' + m.fmtTime(T0 + 30 * M) + '–' + m.fmtTime(T0 + 70 * M)]])
+  eq('una parte se puede volver a dividir: tres causas', [!!m.splitStop(id, T0 + 50 * M, 'Break'), st().stops.length, m.runStats(st(), run(), clock).reasons], [true, 3, { Limpieza: 20 * M, 'Máquina / mantenimiento': 20 * M, Break: 20 * M }])
+  eq('una hora fuera del paro, o sin causa, no divide nada', [m.splitStop(first().id, T0 + 5 * M, 'Break'), m.splitStop(first().id, T0 + 30 * M, 'Break'), m.splitStop(first().id, T0 + 10 * M, 'Break'), m.splitStop(first().id, T0 + 20 * M, '  '), m.splitStop('no-existe', T0 + 20 * M, 'Break'), st().stops.length], ['', '', '', '', '', 3])
+  // a stop still running: the cause changed a while ago, and the line is still stopped
+  clock = T0 + 100 * M; m.startStop('RTE', line.id, 'Falta de carrito vacío', '')
+  const open = () => st().stops.find((x) => x.reason === 'Falta de carrito vacío')
+  clock = T0 + 130 * M
+  const rest = m.splitStop(open().id, T0 + 110 * M, 'Falta de personal')
+  eq('un paro en curso se divide y la línea sigue parada, ahora por la segunda causa', [open().endedAt, st().stops.find((x) => x.id === rest).endedAt, m.openStop(st(), 'RTE', line.id)?.reason], [T0 + 110 * M, null, 'Falta de personal'])
+  eq('y no se puede cortar en un momento que todavía no llega', m.splitStop(rest, T0 + 200 * M, 'Break'), '')
+  clock = T0 + 140 * M; m.endStop(rest)
+  eq('al reanudar se cierra la segunda parte', [st().stops.find((x) => x.id === rest).endedAt, m.openStop(st(), 'RTE', line.id)], [T0 + 140 * M, undefined])
+})
+{
+  // the manager divides a stop from the office: the tablet on the line sees both parts
+  clock = T0 + 300 * M
+  const lineId = tab.use((m) => m.store.get().lines.find((l) => l.dept === 'RTE')?.id)
+  tab.use((m) => m.startStop('RTE', lineId, 'Limpieza', '')); settle()
+  const sid = tab.use((m) => m.store.get().stops.find((x) => !x.endedAt && x.reason === 'Limpieza').id)
+  clock += 40 * M
+  tab.use((m) => m.endStop(sid)); settle()
+  const at = clock - 15 * M
+  const newId = mgr.use((m) => m.splitStop(sid, at, 'Break')); settle()
+  eq('la tablet recibe las dos partes del paro que dividió el manager', tab.use((m) => { const st = m.store.get().stops; const a = st.find((x) => x.id === sid), b = st.find((x) => x.id === newId); return [a.endedAt, b.startedAt, b.endedAt, b.reason] }), [at, at, clock, 'Break'])
+  eq('y nada queda pendiente de subir', all.map((d) => d.use((m) => m.outbox.size())), [0, 0])
+}
+
+// =====================================================================================================================
 console.log('')
 if (failed.length) { console.log(failed.length + ' FALLARON de ' + (passed + failed.length) + ':\n'); for (const f of failed) console.log('  ✗ ' + f + '\n'); process.exit(1) }
 console.log('✓ ' + passed + ' comprobaciones, todas correctas')

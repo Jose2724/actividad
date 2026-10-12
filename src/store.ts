@@ -365,6 +365,22 @@ export function updateStop(id: string, patch: Partial<Pick<Stop, 'reason' | 'not
   const log = (what: string, a: string, b: string) => logChange(x.dept, pre + what, a, b, 'act_stops', x.id)
   log('Motivo', x.reason, n.reason); log('Detalle', x.note, n.note); log('Inicio', fmtTime(x.startedAt), fmtTime(n.startedAt)); log('Fin', endText(x.endedAt), endText(n.endedAt))
 }
+/**
+ * A stop that turned out to have two causes: the time up to `at` keeps its reason and the rest becomes another stop
+ * with its own. The two cover the same time, so the stopped time of the line does not change. A stop still open stays
+ * open in its second part. Returns the new stop's id, or '' when there is nothing to divide (`at` is not inside the
+ * stop, or no reason was given). Dividing a part again gives three causes, and so on.
+ */
+export function splitStop(id: string, at: number, reason: string, note = ''): string {
+  const x = stop(id)
+  if (!x || x.deleted || !reason.trim()) return ''
+  if (!(at > x.startedAt && at < (x.endedAt ?? clockNow()))) return ''
+  const rest: Stop = { id: uid(), dept: x.dept, lineId: x.lineId, reason: reason.trim(), note: note.trim(), startedAt: at, endedAt: x.endedAt, by: user.get(), updatedAt: 0 }
+  batch(() => { putStop({ ...x, endedAt: at }); putStop(rest) })
+  logChange(x.dept, 'Paro ' + x.dept + ' ' + dayOf(x.startedAt) + ' ' + fmtTime(x.startedAt) + ' (' + stopLine(x) + ') · Se dividió en dos causas',
+    x.reason + ' ' + fmtTime(x.startedAt) + '–' + endText(x.endedAt), x.reason + ' ' + fmtTime(x.startedAt) + '–' + fmtTime(at) + ' + ' + rest.reason + ' ' + fmtTime(at) + '–' + endText(x.endedAt), 'act_stops', rest.id)
+  return rest.id
+}
 export function deleteStop(id: string) { const x = stop(id); if (x) { putStop({ ...x, deleted: true }); logChange(x.dept, 'Se borró el paro ' + x.dept + ' ' + dayOf(x.startedAt) + ' ' + fmtTime(x.startedAt) + ' (' + stopLine(x) + ')', x.reason + (x.note ? ' · ' + x.note : '') + ' · ' + fmtTime(x.startedAt) + '–' + endText(x.endedAt), '', 'act_stops', x.id) } }
 /** the form of a correction, as the text the person sees and types */
 export type RunDraft = { code: string; lot: string; date: string; per: string; waste: string; units: { at: number; qty: string; ref: string; by: string }[] }
