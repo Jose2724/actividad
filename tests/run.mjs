@@ -1046,6 +1046,74 @@ fil.use((m) => {
 })
 
 // =====================================================================================================================
+//  The set up between two codes
+// =====================================================================================================================
+section('Set up automático entre un código y el siguiente')
+const sup = await device('sup', { user: 'Nino' })
+sup.use((m) => {
+  const st = () => m.store.get()
+  clock = T0
+  m.addLine('RTE', 'Línea 1'); m.addLine('RTE', 'Línea 2')
+  const [l1, l2] = st().lines.slice().sort((a, b) => a.name.localeCompare(b.name))
+  m.startRun(l1, 'A100', '6283', DAY, 240)
+  eq('el primer código del día no trae set up', [st().stops.length, m.setupSince(st(), l1.id, DAY, clock)], [0, null])
+  clock = T0 + 30 * M; m.unitDone(st().runs[0].id, 240)
+  clock = T0 + 60 * M; m.endRun(st().runs[0].id)
+  clock = T0 + 72 * M
+  eq('terminado el código, la línea está en set up desde ese momento', [m.setupSince(st(), l1.id, DAY, clock), st().stops.length], [{ from: T0 + 60 * M, code: 'A100' }, 0])
+  eq('la otra línea, que no ha corrido nada, no', m.setupSince(st(), l2.id, DAY, clock), null)
+  clock = T0 + 75 * M; m.startRun(l1, '0200', '6283', DAY, 240)
+  const setups = () => st().stops.filter((x) => x.reason === m.SETUP)
+  eq('al empezar el siguiente, queda un paro de Set up del fin de uno al inicio del otro', setups().map((x) => [x.lineId === l1.id, x.dept, x.startedAt, x.endedAt, x.note, x.by]), [[true, 'RTE', T0 + 60 * M, T0 + 75 * M, 'De A100 a 0200', 'Nino']])
+  eq('ese tiempo no cuenta como parado de ninguno de los dos códigos', st().runs.map((r) => m.runStats(st(), r, clock).down), [0, 0])
+  eq('y la línea ya no está en set up', m.setupSince(st(), l1.id, DAY, clock), null)
+  const rep = m.reportOf(st(), DAY, clock)
+  eq('sale en los paros del reporte', rep.stops.map((x) => [x.reason, (x.endedAt - x.startedAt) / M]), [['Set up', 15]])
+  // a code started by mistake and ended at once, then the right one: seconds are not a set up
+  clock = T0 + 100 * M; m.endRun(st().runs.find((r) => r.code === '0200').id)
+  clock = T0 + 100 * M + 20_000; m.startRun(l1, '0300', '6283', DAY, 240)
+  eq('menos de un minuto entre dos códigos no es un set up', setups().length, 1)
+  // the last code of the shift: nothing is left open
+  clock = T0 + 130 * M; m.endRun(st().runs.find((r) => r.code === '0300').id)
+  eq('el último código del turno no deja ningún paro abierto', [st().stops.filter((x) => !x.endedAt).length, setups().length], [0, 1])
+  clock = T0 + 130 * M + 7 * 60 * M
+  eq('pasadas las horas ya no se llama set up', m.setupSince(st(), l1.id, DAY, clock), null)
+  m.startRun(l1, '0400', '6283', DAY, 240)
+  eq('y empezar un código entonces no escribe un set up de siete horas', setups().length, 1)
+  // the next day of work starts clean
+  clock = T0 + 24 * 60 * M
+  m.endRun(st().runs.find((r) => r.code === '0400').id)
+  eq('otro día: lo de ayer no es set up de hoy', m.setupSince(st(), l1.id, '2026-10-11', clock + M), null)
+  // ending a code with its last unit still to register: the unit goes in first, then the code ends, then the set up counts
+  clock = T0 + 30 * 60 * M
+  m.startRun(l2, 'Z900', '6284', '2026-10-11', 240)
+  const z = () => st().runs.find((r) => r.code === 'Z900')
+  clock += 10 * M; m.unitDone(z().id, 240)
+  clock += 9 * M; m.unitDone(z().id, 180); m.endRun(z().id)
+  eq('registrar la última unidad y terminar: la unidad queda dentro y el fin después de ella', [z().units.length, z().units[1].qty, z().endedAt > z().units[1].at, m.runQty(st(), z())], [2, 180, true, 420])
+  eq('y el set up de esa línea cuenta desde ese fin', m.setupSince(st(), l2.id, '2026-10-11', clock + 5 * M), { from: z().endedAt, code: 'Z900' })
+  // the manager can divide a set up like any other stop
+  const id = setups()[0].id
+  eq('un set up se puede dividir como cualquier paro', [!!m.splitStop(id, T0 + 65 * M, 'Limpieza'), st().stops.filter((x) => x.lineId === l1.id).map((x) => x.reason).sort()], [true, ['Limpieza', 'Set up']])
+})
+{
+  // one tablet ends the code, another starts the next one: the set up is written once, and both see it
+  clock = T0 + 600 * M
+  const rte = tab.use((m) => m.store.get().lines.find((l) => l.dept === 'RTE'))
+  const open = tab.use((m) => m.store.get().runs.find((r) => r.lineId === rte.id && !r.endedAt))
+  if (open) { tab.use((m) => m.endRun(open.id)); settle() }
+  clock += M
+  tab.use((m) => m.startRun(rte, 'C300', '6283', DAY, 240)); settle()
+  const cid = tab.use((m) => m.store.get().runs.find((r) => r.code === 'C300').id)
+  clock += 20 * M
+  tab.use((m) => m.endRun(cid)); settle()
+  clock += 12 * M
+  mgr.use((m) => m.startRun(rte, 'C400', '6283', DAY, 240)); settle()
+  const seen = (d) => d.use((m) => m.store.get().stops.filter((x) => x.reason === m.SETUP && x.note === 'De C300 a C400').map((x) => (x.endedAt - x.startedAt) / M))
+  eq('una tablet termina y otra empieza: el set up queda una sola vez y lo ven las dos', [seen(tab), seen(mgr), all.map((d) => d.use((m) => m.outbox.size()))], [[12], [12], [0, 0]])
+}
+
+// =====================================================================================================================
 console.log('')
 if (failed.length) { console.log(failed.length + ' FALLARON de ' + (passed + failed.length) + ':\n'); for (const f of failed) console.log('  ✗ ' + f + '\n'); process.exit(1) }
 console.log('✓ ' + passed + ' comprobaciones, todas correctas')

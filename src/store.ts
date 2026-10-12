@@ -336,8 +336,34 @@ export function swapLineNames(idA: string, idB: string): boolean {
   return true
 }
 export function removeLine(id: string) { const l = state.lines.find((x) => x.id === id); if (l) { putLine({ ...l, deleted: true }); logChange(l.dept, 'Línea quitada de ' + l.dept, l.name, '', 'act_lines', l.id) } }
+/** the reason of the stop the app writes by itself for the time a line spends between one code and the next */
+export const SETUP = 'Set up'
+/** a line left without a code for longer than this was not being set up: it was simply not in use */
+const SETUP_MAX_MS = 6 * 3_600_000
+/**
+ * A line between two codes of the same day of work: since when it has had none, and which code it finished. null when
+ * it is running, has not finished a code that day, or finished it too long ago to call it a set up.
+ */
+export function setupSince(s: State, lineId: string, date: string, now: number): { from: number; code: string } | null {
+  if (s.runs.some((r) => r.lineId === lineId && !r.endedAt)) return null
+  const last = s.runs.filter((r) => r.lineId === lineId && !!r.endedAt && r.date === date).sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0))[0]
+  // (the screen's "now" can be a moment behind the end just recorded: that still counts, from zero)
+  if (!last?.endedAt || now - last.endedAt > SETUP_MAX_MS) return null
+  return { from: last.endedAt, code: last.code }
+}
+/**
+ * A code starts on a line. If the line finished another code earlier that day, the time in between was its set up:
+ * it is written as a stop of its own ("Set up", from the end of one code to the start of the next), without anyone
+ * tapping anything. The last code of the shift leaves nothing open: the stop only exists once the next code starts.
+ */
 export function startRun(line: Line, code: string, lot: string, date: string, perUnit: number | null) {
-  putRun({ id: uid(), dept: line.dept, lineId: line.id, line: line.name, code, lot, date, startedAt: clockNow(), endedAt: null, units: [], perUnit, waste: 0, by: user.get(), updatedAt: 0 })
+  const at = clockNow()
+  const gap = setupSince(state, line.id, date, at)
+  batch(() => {
+    if (gap && at - gap.from >= 60_000 && !state.stops.some((x) => x.lineId === line.id && x.startedAt === gap.from && x.reason === SETUP))
+      putStop({ id: uid(), dept: line.dept, lineId: line.id, reason: SETUP, note: 'De ' + gap.code + ' a ' + code, startedAt: gap.from, endedAt: at, by: user.get(), updatedAt: 0 })
+    putRun({ id: uid(), dept: line.dept, lineId: line.id, line: line.name, code, lot, date, startedAt: at, endedAt: null, units: [], perUnit, waste: 0, by: user.get(), updatedAt: 0 })
+  })
 }
 const run = (id: string) => state.runs.find((r) => r.id === id)
 /** the last moment already on a run: nothing recorded after it may be stamped earlier (the clock can be corrected between two taps) */

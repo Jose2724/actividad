@@ -283,3 +283,12 @@ tr.live td{background:#f1fbf5}
 .lottotal{color:var(--ink)}
 .rhead select.rfilter{min-height:48px;padding:0 10px;border-radius:12px;border:1.5px solid var(--line);background:var(--surface);font-size:15px;font-weight:600;max-width:100%}
 .filternote{margin:0;padding:10px 14px;border-radius:12px;background:#fff7e6;color:var(--amber);font-weight:600}
+/* the line between two codes; a long list of the report, ten lines at a time */
+.setupbar{background:#fff7e6;color:var(--amber);border-radius:10px;padding:8px 12px;font-weight:600;display:grid;gap:2px}
+.setupbar small{color:var(--amber);font-weight:500}
+.morebar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;color:var(--muted);font-size:14px}
+.morebar .btn{min-height:40px}
+/* ending a code: was its last unit registered? */
+.endask{color:var(--ink);font-weight:700}
+.endchoices{display:grid;gap:8px}
+.endchoices .btn{min-height:56px;font-size:16px;white-space:normal;text-align:left;padding:10px 14px}

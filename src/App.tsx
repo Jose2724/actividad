@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, Ref } from 'react'
-import { activeBetween, addLine, addWaste, awayDay, byLineName, cancelDay, CFG, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deptToday, endRun, endStop, fmtDur, fmtTime, freeLineNames, KEEP_DAYS, lastPerUnit, leftOpen, LINE_NAME_MAX, lineNamed, lineNameOf, lotFor, madeText, managerPin, mergeProducts, myDept, nearDay, normCode, numOf, openRun, openStop, parseProductsCsv, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reset, resetRecords, role, runStats, saveProduct, setSchedule, setTarget, startDay, startRun, startStop, stopsOf, store, swapLineNames, targetOf, tidyLineName, savedText, unitDone, user, workDay, type Dept, type Line, type Product, type LotPart, type State, type Target, type WorkDay } from './store'
+import { activeBetween, addLine, addWaste, awayDay, byLineName, cancelDay, CFG, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deptToday, endRun, endStop, fmtDur, fmtTime, freeLineNames, KEEP_DAYS, lastPerUnit, leftOpen, LINE_NAME_MAX, lineNamed, lineNameOf, lotFor, madeText, managerPin, mergeProducts, myDept, nearDay, normCode, numOf, openRun, openStop, parseProductsCsv, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reset, resetRecords, role, runStats, saveProduct, setSchedule, setTarget, startDay, startRun, startStop, stopsOf, store, swapLineNames, targetOf, tidyLineName, savedText, SETUP, setupSince, unitDone, user, workDay, type Dept, type DeptCfg, type Line, type Product, type LotPart, type State, type Target, type WorkDay } from './store'
 import { avanceRows, n1, pending, type AvanceRow } from './avance'
 import { cellText, loadZip, xDay, xDur, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 
@@ -814,6 +814,8 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   const [asking, setAsking] = useState(false)
   const [counting, setCounting] = useState(false)
   const [ending, setEnding] = useState(false)
+  // the unit being counted is the last one of the code: once it is saved, the code ends
+  const [endAfter, setEndAfter] = useState(false)
   const [removing, setRemoving] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [editQty, setEditQty] = useState(false)
@@ -849,9 +851,12 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
     const perCrateN = per.trim() ? Number(per) : prod?.pouchesPerCrate || (suggested != null ? Math.round(suggested / cratesN) : null)
     const perUnit = isCart ? (perCrateN ? cratesN * perCrateN : null) : per.trim() ? Number(per) : suggested
     const ok = !!code.trim() && !!lot.trim() && (!needPer || (perUnit != null && perUnit > 0))
+    // between two codes of the day: the time is counting as set up
+    const waiting = setupSince(s, line.id, day.date, now)
     return (
       <div className="line idle">
         <div className="lhead"><h3>{line.name} {nameIt}</h3><button type="button" className="lnk" onClick={() => setRemoving(true)}>Quitar {cfg.lineWord.toLowerCase()}</button></div>
+        {waiting && <div className="setupbar">⏱ Set up · sin código desde {fmtTime(waiting.from)} · <b>{fmtDur(now - waiting.from)}</b><small>Al empezar el siguiente código, este tiempo queda guardado como paro de Set up.</small></div>}
         {naming}
         {removing && <ConfirmDialog title={'¿Quitar ' + line.name + ' de ' + line.dept + '?'} text="Se puede volver a agregar cuando haga falta." yes="Quitar" danger onYes={() => removeLine(line.id)} onNo={() => setRemoving(false)} />}
         <form className="start" onSubmit={(e) => { e.preventDefault(); if (ok) { startRun(line, code.trim().toUpperCase(), lot.trim(), date, needPer ? perUnit : null); setDateText(null); setLotText(null) } }}>
@@ -920,12 +925,41 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
           : <button type="button" className="btn" onClick={() => setAsking(true)}>⏸ Parar</button>}
         <button type="button" className="btn" disabled={!!stop} onClick={() => setEnding(true)}>■ Terminar código</button>
       </div>
-      {ending && <ConfirmDialog title={'¿Terminar el código ' + run.code + ' en ' + line.name + '?'} text={'Se cierra con ' + madeText(run, st.qty) + ' · trabajando ' + fmtDur(st.working) + (st.down ? ' · parado ' + fmtDur(st.down) : '') + '.'} yes="■ Terminar" onYes={() => { endRun(run.id); setEnding(false) }} onNo={() => setEnding(false)} />}
+      {ending && <EndDialog cfg={cfg} code={run.code} line={line.name} now={now} lastAt={run.units.length ? run.units[run.units.length - 1].at : null}
+        summary={'Lleva ' + madeText(run, st.qty) + ' · trabajando ' + fmtDur(st.working) + (st.down ? ' · parado ' + fmtDur(st.down) : '') + '.'}
+        onClose={() => setEnding(false)} onDone={() => { endRun(run.id); setEnding(false) }}
+        onMissing={() => { setEnding(false); if (cfg.qty === 'ask') { setEndAfter(true); setCounting(true) } else { record(cfg.qty === 'auto' ? run.perUnit : null); endRun(run.id) } }} />}
       {asking && <StopDialog title={'Parar ' + line.name + ' · ' + run.code} reasons={cfg.reasons} onClose={() => setAsking(false)} onPick={(reason, note) => { startStop(line.dept, line.id, reason, note); setAsking(false) }} />}
       {counting && (cfg.lots
-        ? <LotsDialog title={cfg.qtyQ} unit={cfg.qtyUnit} refLabel={cfg.refLabel} lot={run.lot} qty={run.perUnit} onClose={() => setCounting(false)} onPick={(q, ref, lots) => { record(q, ref, lots); setCounting(false) }} />
-        : <QtyDialog title={cfg.qtyQ} unit={cfg.qtyUnit} refLabel={cfg.refLabel} initial={run.perUnit} onClose={() => setCounting(false)} onPick={(q, ref) => { record(q, ref); setCounting(false) }} />)}
+        ? <LotsDialog title={cfg.qtyQ} unit={cfg.qtyUnit} refLabel={cfg.refLabel} lot={run.lot} qty={run.perUnit} onClose={() => { setCounting(false); setEndAfter(false) }} onPick={(q, ref, lots) => { record(q, ref, lots); setCounting(false); if (endAfter) { setEndAfter(false); endRun(run.id) } }} />
+        : <QtyDialog title={cfg.qtyQ} unit={cfg.qtyUnit} refLabel={cfg.refLabel} initial={run.perUnit} onClose={() => { setCounting(false); setEndAfter(false) }} onPick={(q, ref) => { record(q, ref); setCounting(false); if (endAfter) { setEndAfter(false); endRun(run.id) } }} />)}
       {wasting && <QtyDialog title={'Waste de ' + run.code + ' · ¿cuántas libras?'} unit="lb" refLabel="" initial={null} decimal onClose={() => setWasting(false)} onPick={(lb) => { if (lb > 0) addWaste(run.id, lb); setWasting(false) }} />}
+    </div>
+  )
+}
+
+/**
+ * Ending a code asks about its last unit first: the cart, pallet, bin or mezcla that came out last is the one people
+ * forget to register. If it is missing, it is registered right there and then the code ends. Neither answer is the
+ * big button: a tap out of habit must not add a unit that does not exist, nor leave out one that does.
+ */
+function EndDialog({ cfg, code, line, summary, lastAt, now, onMissing, onDone, onClose }: { cfg: DeptCfg; code: string; line: string; summary: string; lastAt: number | null; now: number; onMissing: () => void; onDone: () => void; onClose: () => void }) {
+  const fem = cfg.saved.endsWith('a'), unit = cfg.unit.toLowerCase()
+  const last = (fem ? 'la última ' : 'el último ') + unit
+  return (
+    <div className="veil" onClick={onClose}>
+      <div className="dlg" onClick={(e) => e.stopPropagation()}>
+        <h3>¿Terminar el código {code} en {line}?</h3>
+        <p>{summary}</p>
+        <p>{lastAt ? (fem ? 'La última ' : 'El último ') + unit + ' se registró a las ' + fmtTime(lastAt) + ', hace ' + fmtDur(now - lastAt) + '.' : 'Todavía no se ha registrado ' + (fem ? 'ninguna ' : 'ningún ') + unit + '.'}</p>
+        <p className="endask">¿Ya está registrad{fem ? 'a' : 'o'} {last} que salió?</p>
+        <div className="endchoices">
+          <button type="button" className="btn" onClick={onMissing}>No, falta {last}: registrar{fem ? 'la' : 'lo'} y terminar</button>
+          <button type="button" className="btn" onClick={onDone}>Sí, ya está: terminar el código</button>
+        </div>
+        <p className="hint">Al terminar, la línea queda en Set up hasta que empiece su siguiente código.</p>
+        <div className="dbtns"><button type="button" className="btn" onClick={onClose}>Cancelar</button></div>
+      </div>
     </div>
   )
 }
@@ -1109,6 +1143,23 @@ function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: De
   const [preparing, setPreparing] = useState(false)
   const [fCode, setFCode] = useState('')
   const [fLot, setFLot] = useState('')
+  // long lists show ten lines at a time (the files always carry everything)
+  const [more, setMore] = useState<Record<string, number>>({})
+  useEffect(() => { setMore({}) }, [date, fCode, fLot])
+  const PAGE = 10
+  const cut = <T,>(key: string, list: T[]) => list.slice(0, more[key] ?? PAGE)
+  const moreBar = (key: string, total: number) => {
+    const shown = Math.min(more[key] ?? PAGE, total)
+    if (total <= PAGE) return null
+    return (
+      <div className="morebar">
+        <span>Se ven {shown} de {total}</span>
+        {shown < total && <button type="button" className="btn" onClick={() => setMore({ ...more, [key]: shown + PAGE })}>Mostrar {Math.min(PAGE, total - shown)} más</button>}
+        {shown < total && <button type="button" className="lnk" onClick={() => setMore({ ...more, [key]: Number.MAX_SAFE_INTEGER })}>Mostrar todo</button>}
+        {shown > PAGE && <button type="button" className="lnk" onClick={() => setMore({ ...more, [key]: PAGE })}>Mostrar menos</button>}
+      </div>
+    )
+  }
   const day = useDay(date)
   const runToEdit = editRun ? s.runs.find((r) => r.id === editRun) : undefined
   const stopToEdit = editStop ? s.stops.find((x) => x.id === editStop) : undefined
@@ -1131,6 +1182,8 @@ function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: De
   const filter: ReportFilter = { only, code: fCode, lot: fLot }
   const rep = reportOf(s, date, now, filter)
   const { runs, stops, rows, unitRows, working, down, byCode } = rep
+  // the time the lines spent between one code and the next (written by itself when the next code starts)
+  const setup = stops.filter((x) => x.reason === SETUP).reduce((t, x) => t + ((x.endedAt ?? now) - x.startedAt), 0)
   const reasonsText = (x: (typeof rows)[number]) => Object.entries(x.st.reasons).map(([k, v]) => k + ' ' + fmtDur(v)).join(', ')
   const lineName = (x: { lineId: string | null; dept: Dept }) => (x.lineId === null ? 'Todo ' + x.dept : s.lines.find((l) => l.id === x.lineId)?.name ?? s.runs.find((r) => r.lineId === x.lineId)?.line ?? 'línea')
   const fileName = 'actividad-' + (only ? only.toLowerCase() + '-' : '') + date + filterFile(rep.code, rep.lot)
@@ -1211,12 +1264,14 @@ function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: De
         <div className="stat"><label>Códigos</label><b>{rows.length}</b></div>
         <div className="stat"><label>Trabajando</label><b>{fmtDur(working)}</b></div>
         <div className="stat"><label>Parado</label><b className={down ? 'red' : ''}>{fmtDur(down)}</b></div>
+        {setup > 0 && <div className="stat"><label>Set up</label><b>{fmtDur(setup)}</b></div>}
       </div>
       {rows.length === 0 ? <p className="hint">{day.state === 'here' ? 'Nada registrado en esta fecha.' : ''}</p> : (
+        <>
         <div className="twrap">
           <table>
             <thead><tr><th>Depto</th><th>Línea</th><th>Código</th><th>Lote</th><th>Inicio</th><th>Fin</th><th>Hecho</th><th>Waste</th><th>Trabajando</th><th>Prom./unidad</th><th>Parado</th><th>Razones</th><th>Registró</th><th></th></tr></thead>
-            <tbody>{rows.map((x) => (
+            <tbody>{cut('runs', rows).map((x) => (
               <tr key={x.r.id} className={x.r.endedAt ? '' : 'live'}>
                 <td>{x.r.dept}</td><td>{lineNameOf(s, x.r.lineId, x.r.line)}</td><td><b>{x.r.code}</b></td><td>{x.lots}</td><td>{fmtTime(x.r.startedAt)}</td><td>{x.r.endedAt ? fmtTime(x.r.endedAt) : <i>en curso</i>}</td>
                 <td>{madeText(x.view, x.qty, true)}</td><td className={x.r.waste ? 'red' : ''}>{x.r.waste ? x.r.waste + ' lb' : '—'}</td><td>{fmtDur(x.st.working)}</td><td>{x.r.units.length ? fmtDur(x.st.avg) : '—'}</td><td className={x.st.down ? 'red' : ''}>{fmtDur(x.st.down)}</td><td>{reasonsText(x) || '—'}</td><td>{whoText(x.r)}</td>
@@ -1225,6 +1280,8 @@ function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: De
             ))}</tbody>
           </table>
         </div>
+        {moreBar('runs', rows.length)}
+        </>
       )}
       {byCode.length > 0 && (
         <>
@@ -1232,11 +1289,12 @@ function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: De
           <div className="twrap">
             <table>
               <thead><tr><th>Depto</th><th>Código</th><th>Hechas</th><th>Cantidad</th><th>Waste</th><th>Líneas</th></tr></thead>
-              <tbody>{byCode.map((c) => (
+              <tbody>{cut('codes', byCode).map((c) => (
                 <tr key={c.dept + c.code}><td>{c.dept}</td><td><b>{c.code}</b></td><td>{c.units} {(c.units === 1 ? CFG[c.dept].unit : CFG[c.dept].plural).toLowerCase()}</td><td>{CFG[c.dept].qty !== 'none' ? <b>{fmtN(c.qty)} {CFG[c.dept].qtyUnit}</b> : '—'}</td><td className={c.waste ? 'red' : ''}>{c.waste ? c.waste + ' lb' : '—'}</td><td>{c.lines.join(', ')}</td></tr>
               ))}</tbody>
             </table>
           </div>
+          {moreBar('codes', byCode.length)}
         </>
       )}
       {unitRows.length > 0 && (
@@ -1245,7 +1303,7 @@ function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: De
           <div className="twrap">
             <table>
               <thead><tr><th>Hora</th><th>Depto</th><th>Línea</th><th>Código</th><th>Lote</th><th>#</th><th>Unidad</th><th>Cantidad</th><th>Tag / bin</th><th>Desde la anterior</th><th>Registró</th></tr></thead>
-              <tbody>{unitRows.map((x) => (
+              <tbody>{cut('units', unitRows).map((x) => (
                 <tr key={x.r.id + ':' + x.i + ':' + x.lot}>
                   <td>{fmtTime(x.u.at)}</td><td>{x.r.dept}</td><td>{lineNameOf(s, x.r.lineId, x.r.line)}</td><td><b>{x.r.code}</b></td><td>{x.lot}</td><td>{x.i + 1}</td><td>{CFG[x.r.dept].unit}</td>
                   <td>{x.qty != null ? x.qty + ' ' + CFG[x.r.dept].qtyUnit : '—'}</td><td>{x.u.ref || '—'}</td><td>{fmtDur(x.gap)}</td><td>{x.u.by || '—'}</td>
@@ -1253,6 +1311,7 @@ function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: De
               ))}</tbody>
             </table>
           </div>
+          {moreBar('units', unitRows.length)}
         </>
       )}
       {stops.length > 0 && (
@@ -1261,7 +1320,7 @@ function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: De
           <div className="twrap">
             <table>
               <thead><tr><th>Depto</th><th>Línea</th><th>Razón</th><th>Detalle</th><th>Inicio</th><th>Fin</th><th>Duración</th><th>Registró</th><th></th></tr></thead>
-              <tbody>{stops.map((x) => (
+              <tbody>{cut('stops', stops).map((x) => (
                 <tr key={x.id} className={x.endedAt ? '' : 'live'}>
                   <td>{x.dept}</td><td>{lineName(x)}</td><td><b>{x.reason}</b></td><td>{x.note || '—'}</td><td>{fmtTime(x.startedAt)}</td><td>{x.endedAt ? fmtTime(x.endedAt) : <i>en curso</i>}</td><td>{fmtDur((x.endedAt ?? now) - x.startedAt)}</td><td>{x.by}</td>
                   <td><button type="button" className="lnk" onClick={() => setEditStop(x.id)}>Corregir</button></td>
@@ -1269,6 +1328,7 @@ function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: De
               ))}</tbody>
             </table>
           </div>
+          {moreBar('stops', stops.length)}
         </>
       )}
       {changes.length > 0 && (
@@ -1277,11 +1337,12 @@ function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: De
           <div className="twrap">
             <table className="changes">
               <thead><tr><th>Hora</th><th>Quién</th><th>Depto</th><th>Qué</th><th>Antes</th><th>Después</th></tr></thead>
-              <tbody>{changes.map((c) => (
+              <tbody>{cut('changes', changes).map((c) => (
                 <tr key={c.id}><td>{fmtTime(c.at)}</td><td>{c.by}</td><td>{c.dept ?? '—'}</td><td>{c.what}</td><td className={c.before ? 'was' : ''}>{c.before || '—'}</td><td><b>{c.after || '—'}</b></td></tr>
               ))}</tbody>
             </table>
           </div>
+          {moreBar('changes', changes.length)}
           <p className="hint">Cada corrección, cambio en la tabla de productos, en el programa del día o en las líneas queda aquí con quién lo hizo y a qué hora. Lo normal del día (carros, mezclas, paros) no sale aquí: ya lleva el nombre de quien lo registró.</p>
         </>
       )}
