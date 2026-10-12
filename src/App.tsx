@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, Ref } from 'react'
-import { activeBetween, addLine, addWaste, awayDay, byLineName, cancelDay, CFG, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deptToday, endRun, endStop, fmtDur, fmtTime, freeLineNames, KEEP_DAYS, lastPerUnit, leftOpen, LINE_NAME_MAX, lineNamed, lineNameOf, lotFor, madeText, managerPin, mergeProducts, myDept, nearDay, normCode, numOf, openRun, openStop, parseProductsCsv, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reset, resetRecords, role, runStats, saveProduct, setSchedule, setTarget, startDay, startRun, startStop, stopsOf, store, swapLineNames, targetOf, tidyLineName, unitQty, savedText, unitDone, user, workDay, type Dept, type Line, type Product, type Run, type State, type Target, type Unit, type WorkDay } from './store'
+import { activeBetween, addLine, addWaste, awayDay, byLineName, cancelDay, CFG, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deptToday, endRun, endStop, fmtDur, fmtTime, freeLineNames, KEEP_DAYS, lastPerUnit, leftOpen, LINE_NAME_MAX, lineNamed, lineNameOf, lotFor, madeText, managerPin, mergeProducts, myDept, nearDay, normCode, numOf, openRun, openStop, parseProductsCsv, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reset, resetRecords, role, runStats, saveProduct, setSchedule, setTarget, startDay, startRun, startStop, stopsOf, store, swapLineNames, targetOf, tidyLineName, savedText, unitDone, user, workDay, type Dept, type Line, type Product, type LotPart, type State, type Target, type WorkDay } from './store'
 import { avanceRows, n1, pending, type AvanceRow } from './avance'
 import { cellText, loadZip, xDay, xDur, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 
@@ -8,6 +8,7 @@ const fmtN = (x: number) => Math.round(x).toLocaleString('en-US')
 import { whoText } from './store'
 import { buildPdf, loadPdf } from './pdf'
 import { homeScreenApple, sharePick, shareProblem, type Kind } from './send'
+import { filterFile, filterTitle, reportOf, type ReportFilter } from './report'
 import { RunEditor, StopEditor } from './editors'
 import { fetchMe, finishSignOut, loginEmail, rememberedMe, rememberedUser, rememberMe, rememberUser, signedOut, signOutHere, supabase, type Me } from './supabase'
 import { leaveAsk, loadDay, startSync, syncStore, syncNow, unreachable } from './sync'
@@ -879,10 +880,10 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   const last = run.units.length ? run.units[run.units.length - 1].at : run.startedAt
   const current = activeBetween(last, now, stopsOf(s, run.dept, run.lineId), now)
   /** records a unit from this screen. A second tap in the same instant (a finger that bounces) is not another unit */
-  const record = (qty: number | null, ref = '') => {
+  const record = (qty: number | null, ref = '', lots?: LotPart[]) => {
     if (performance.now() - tapped.current < 800) return
     tapped.current = performance.now()
-    unitDone(run.id, qty, ref); buzz()
+    unitDone(run.id, qty, ref, lots); buzz()
   }
   const done = () => {
     if (just) return
@@ -921,7 +922,9 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       </div>
       {ending && <ConfirmDialog title={'¿Terminar el código ' + run.code + ' en ' + line.name + '?'} text={'Se cierra con ' + madeText(run, st.qty) + ' · trabajando ' + fmtDur(st.working) + (st.down ? ' · parado ' + fmtDur(st.down) : '') + '.'} yes="■ Terminar" onYes={() => { endRun(run.id); setEnding(false) }} onNo={() => setEnding(false)} />}
       {asking && <StopDialog title={'Parar ' + line.name + ' · ' + run.code} reasons={cfg.reasons} onClose={() => setAsking(false)} onPick={(reason, note) => { startStop(line.dept, line.id, reason, note); setAsking(false) }} />}
-      {counting && <QtyDialog title={cfg.qtyQ} unit={cfg.qtyUnit} refLabel={cfg.refLabel} initial={run.perUnit} onClose={() => setCounting(false)} onPick={(q, ref) => { record(q, ref); setCounting(false) }} />}
+      {counting && (cfg.lots
+        ? <LotsDialog title={cfg.qtyQ} unit={cfg.qtyUnit} refLabel={cfg.refLabel} lot={run.lot} qty={run.perUnit} onClose={() => setCounting(false)} onPick={(q, ref, lots) => { record(q, ref, lots); setCounting(false) }} />
+        : <QtyDialog title={cfg.qtyQ} unit={cfg.qtyUnit} refLabel={cfg.refLabel} initial={run.perUnit} onClose={() => setCounting(false)} onPick={(q, ref) => { record(q, ref); setCounting(false) }} />)}
       {wasting && <QtyDialog title={'Waste de ' + run.code + ' · ¿cuántas libras?'} unit="lb" refLabel="" initial={null} decimal onClose={() => setWasting(false)} onPick={(lb) => { if (lb > 0) addWaste(run.id, lb); setWasting(false) }} />}
     </div>
   )
@@ -972,6 +975,52 @@ function NoticeDialog({ title, text, onClose }: { title: string; text?: string; 
         <h3>{title}</h3>
         {text && <p>{text}</p>}
         <div className="dbtns"><button type="button" className="btn primary" autoFocus onClick={onClose}>Entendido</button></div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * A unit that can carry more than one lot of the product (a pallet in Packing): each lot with its quantity. One lot
+ * is the usual case: the box opens with the run's lot and the usual quantity, and one tap on "Guardar" takes it.
+ * `start` / `startRef` = what the unit already has, when it is being corrected.
+ */
+export function LotsDialog({ title, unit, refLabel, lot, qty, start, startRef, onClose, onPick }: { title: string; unit: string; refLabel: string; lot: string; qty: number | null; start?: LotPart[]; startRef?: string; onClose: () => void; onPick: (total: number, ref: string, lots: LotPart[] | undefined) => void }) {
+  const [rows, setRows] = useState(() => (start?.length ? start.map((l) => ({ lot: l.lot, qty: String(l.qty) })) : [{ lot, qty: qty != null ? String(qty) : '' }]))
+  const [ref, setRef] = useState(startRef ?? '')
+  const [added, setAdded] = useState(false)
+  const change = (i: number, patch: Partial<{ lot: string; qty: string }>) => setRows(rows.map((r, k) => (k === i ? { ...r, ...patch } : r)))
+  const nums = rows.map((r) => Number(r.qty))
+  const repeated = rows.some((r, i) => !!r.lot.trim() && rows.findIndex((o) => o.lot.trim() === r.lot.trim()) !== i)
+  const ok = !repeated && rows.every((r, i) => !!r.lot.trim() && r.qty.trim() !== '' && Number.isFinite(nums[i]) && nums[i] > 0)
+  const total = nums.reduce((t, n) => t + (Number.isFinite(n) ? n : 0), 0)
+  const save = () => {
+    if (!ok) return
+    const parts = rows.map((r, i) => ({ lot: r.lot.trim(), qty: nums[i] }))
+    // all of it of the run's own lot is the plain case: nothing to write beside the quantity
+    onPick(total, ref.trim(), parts.length === 1 && parts[0].lot === lot ? undefined : parts)
+  }
+  return (
+    <div className="veil" onClick={onClose}>
+      <div className="dlg" onClick={(e) => e.stopPropagation()}>
+        <h3>{title}</h3>
+        <form onSubmit={(e) => { e.preventDefault(); save() }} className="qform">
+          {rows.map((r, i) => (
+            <div className="lotrow" key={i}>
+              <label>Lote <input inputMode="numeric" placeholder="ej. 6280" value={r.lot} autoFocus={added && i === rows.length - 1} onChange={(e) => change(i, { lot: e.target.value })} autoComplete="off" /></label>
+              <label>{unit} <input inputMode="numeric" placeholder={unit} value={r.qty} autoFocus={!added && i === 0 && qty == null && !start} onChange={(e) => change(i, { qty: e.target.value.replace(/\D/g, '') })} /></label>
+              {rows.length > 1 && <button type="button" className="lnk" title="Quitar este lote" onClick={() => setRows(rows.filter((_, k) => k !== i))}>✕</button>}
+            </div>
+          ))}
+          <button type="button" className="lnk addlot" onClick={() => { setAdded(true); setRows([...rows, { lot: '', qty: '' }]) }}>+ Otro lote en este {unit === 'cajas' ? 'pallet' : 'mismo'}</button>
+          {rows.length > 1 && <p className="lottotal">Total: <b>{total} {unit}</b> en {rows.length} lotes</p>}
+          {repeated && <span className="err">Ese lote ya está en la lista: suma sus {unit} en una sola línea.</span>}
+          {refLabel && <label>{refLabel} <small>(opcional)</small> <input inputMode="numeric" placeholder="ej. 1749" value={ref} onChange={(e) => setRef(e.target.value)} autoComplete="off" /></label>}
+          <div className="dbtns">
+            <button type="button" className="btn" onClick={onClose}>Cancelar</button>
+            <button type="submit" className="btn primary" disabled={!ok}>✓ Guardar</button>
+          </div>
+        </form>
       </div>
     </div>
   )
@@ -1058,6 +1107,8 @@ function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: De
   const [notice, setNotice] = useState<{ title: string; text?: string } | null>(null)
   const [sending, setSending] = useState<Record<Kind, File> | null>(null)
   const [preparing, setPreparing] = useState(false)
+  const [fCode, setFCode] = useState('')
+  const [fLot, setFLot] = useState('')
   const day = useDay(date)
   const runToEdit = editRun ? s.runs.find((r) => r.id === editRun) : undefined
   const stopToEdit = editStop ? s.stops.find((x) => x.id === editStop) : undefined
@@ -1069,32 +1120,25 @@ function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: De
   const pdf = async () => {
     try {
       const name = fileName + '.pdf'
-      let doc = buildPdf(s, date, now, user.get(), only)
-      if (!doc) { await loadPdf(); doc = buildPdf(s, date, now, user.get(), only); if (!doc) throw new Error('pdf'); doc.save(name); return }
+      let doc = buildPdf(s, date, now, user.get(), filter)
+      if (!doc) { await loadPdf(); doc = buildPdf(s, date, now, user.get(), filter); if (!doc) throw new Error('pdf'); doc.save(name); return }
       if (homeScreenApple(navigator as Parameters<typeof homeScreenApple>[0])) { doc.save(name); return }
       const win = window.open(doc.output('bloburl'), '_blank')
       if (!win) doc.save(name)
     } catch (e) { failed('abrir el PDF', e) }
   }
-  const runs = s.runs.filter((r) => r.date === date && (!only || r.dept === only)).sort((a, b) => a.startedAt - b.startedAt)
-  const stops = s.stops.filter((x) => dayOf(x.startedAt) === date && (!only || x.dept === only)).sort((a, b) => a.startedAt - b.startedAt)
-  const rows = runs.map((r) => ({ r, st: runStats(s, r, now) }))
-  // one line per cart, mezcla, bin or pallet, the way the office's sheets are filled (pallet by pallet, with the time)
-  const unitRows = rows.flatMap((x) => x.r.units.map((u, i) => ({ r: x.r, i, u, gap: x.st.unitTimes[i] ?? 0 }))).sort((a, b) => a.u.at - b.u.at)
-  const working = rows.reduce((t, x) => t + x.st.working, 0)
-  const down = rows.reduce((t, x) => t + x.st.down, 0)
+  // what the report holds, with the filter by code and by lot when one is chosen (the same for the screen and every file)
+  const filter: ReportFilter = { only, code: fCode, lot: fLot }
+  const rep = reportOf(s, date, now, filter)
+  const { runs, stops, rows, unitRows, working, down, byCode } = rep
   const reasonsText = (x: (typeof rows)[number]) => Object.entries(x.st.reasons).map(([k, v]) => k + ' ' + fmtDur(v)).join(', ')
   const lineName = (x: { lineId: string | null; dept: Dept }) => (x.lineId === null ? 'Todo ' + x.dept : s.lines.find((l) => l.id === x.lineId)?.name ?? s.runs.find((r) => r.lineId === x.lineId)?.line ?? 'línea')
-  const fileName = 'actividad-' + (only ? only.toLowerCase() + '-' : '') + date
-  /** what a unit carried, or null where the room does not count a quantity (a mezcla) */
-  const qtyOf = (r: Run, u: Unit) => (CFG[r.dept].qty === 'none' ? null : unitQty(s, r, u))
+  const fileName = 'actividad-' + (only ? only.toLowerCase() + '-' : '') + date + filterFile(rep.code, rep.lot)
   // the history of that day (corrections, products, program, lines): the manager's and the office's
-  const changes = mgr ? s.changes.filter((c) => !c.deleted && dayOf(c.at) === date && (!only || c.dept === only)).sort((a, b) => a.at - b.at) : []
-  // the same code on several lines of a room, added up (all lines together)
-  const byCode = [...rows.reduce((m, x) => { const k = x.r.dept + '|' + normCode(x.r.code); const e = m.get(k) ?? { dept: x.r.dept, code: x.r.code, units: 0, qty: 0, waste: 0, lines: [] as string[] }; e.units += x.r.units.length; e.qty += x.st.qty; e.waste += x.r.waste; if (!e.lines.includes(lineNameOf(s, x.r.lineId, x.r.line))) e.lines.push(lineNameOf(s, x.r.lineId, x.r.line)); return m.set(k, e) }, new Map<string, { dept: Dept; code: string; units: number; qty: number; waste: number; lines: string[] }>()).values()]
+  const changes = mgr && !rep.filtered ? s.changes.filter((c) => !c.deleted && dayOf(c.at) === date && (!only || c.dept === only)).sort((a, b) => a.at - b.at) : []
   /** the report's three files, made at once; null while what makes them has not come down yet */
   const filesNow = (): Record<Kind, File> | null => {
-    const doc = buildPdf(s, date, now, user.get(), only), bytes = xlsxNow(sheets())
+    const doc = buildPdf(s, date, now, user.get(), filter), bytes = xlsxNow(sheets())
     if (!doc || !bytes) return null
     return { pdf: new File([doc.output('blob')], fileName + '.pdf', { type: 'application/pdf' }), xlsx: new File([bytes], fileName + '.xlsx', { type: XLSX_TYPE }), csv: new File([csvText()], fileName + '.csv', { type: 'text/csv' }) }
   }
@@ -1115,15 +1159,15 @@ function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: De
   const blocks = () => {
     const T = (ms: number) => xTime(ms, fmtTime(ms)), D = (ms: number) => xDur(ms, fmtDur(ms))
     const resumen: Cell[][] = [['Departamento', 'Línea', 'Código', 'Lote', 'Fecha', 'Inicio', 'Fin', 'Unidad', 'Hechas', 'Cantidad', 'Unidad de cantidad', 'Tags / bins', 'Waste (lb)', 'Tiempo trabajando', 'Promedio por unidad', 'Tiempo parado', 'Razones de paro', 'Registró'],
-      ...rows.map((x): Cell[] => [x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.r.lot, xDay(x.r.date), T(x.r.startedAt), x.r.endedAt ? T(x.r.endedAt) : 'en curso', CFG[x.r.dept].unit, x.r.units.length, CFG[x.r.dept].qty !== 'none' ? x.st.qty : '', CFG[x.r.dept].qty !== 'none' ? CFG[x.r.dept].qtyUnit : '', x.r.units.map((u) => u.ref).filter(Boolean).join(', '), x.r.waste || '', D(x.st.working), x.r.units.length ? D(x.st.avg) : '', D(x.st.down), reasonsText(x), whoText(x.r)])]
+      ...rows.map((x): Cell[] => [x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.lots, xDay(x.r.date), T(x.r.startedAt), x.r.endedAt ? T(x.r.endedAt) : 'en curso', CFG[x.r.dept].unit, x.units, CFG[x.r.dept].qty !== 'none' ? x.qty : '', CFG[x.r.dept].qty !== 'none' ? CFG[x.r.dept].qtyUnit : '', x.view.units.map((u) => u.ref).filter(Boolean).join(', '), x.r.waste || '', D(x.st.working), x.r.units.length ? D(x.st.avg) : '', D(x.st.down), reasonsText(x), whoText(x.r)])]
     const porCodigo: Cell[][] = [['Departamento', 'Código', 'Unidad', 'Hechas', 'Cantidad', 'Unidad de cantidad', 'Waste (lb)', 'Líneas'],
       ...byCode.map((c): Cell[] => [c.dept, c.code, CFG[c.dept].unit, c.units, CFG[c.dept].qty !== 'none' ? c.qty : '', CFG[c.dept].qty !== 'none' ? CFG[c.dept].qtyUnit : '', c.waste || '', c.lines.join(', ')])]
     const unidades: Cell[][] = [['Departamento', 'Línea', 'Código', 'Lote', '#', 'Hora', 'Unidad', 'Cantidad', 'Unidad de cantidad', 'Tag / bin', 'Desde la anterior', 'Registró'],
-      ...unitRows.map((x): Cell[] => [x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.r.lot, x.i + 1, T(x.u.at), CFG[x.r.dept].unit, qtyOf(x.r, x.u) ?? '', qtyOf(x.r, x.u) != null ? CFG[x.r.dept].qtyUnit : '', x.u.ref, D(x.gap), x.u.by])]
+      ...unitRows.map((x): Cell[] => [x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.lot, x.i + 1, T(x.u.at), CFG[x.r.dept].unit, x.qty ?? '', x.qty != null ? CFG[x.r.dept].qtyUnit : '', x.u.ref, D(x.gap), x.u.by])]
     const paros: Cell[][] = [['Departamento', 'Línea', 'Razón', 'Detalle', 'Inicio', 'Fin', 'Duración', 'Registró'],
       ...stops.map((x): Cell[] => [x.dept, lineName(x), x.reason, x.note, T(x.startedAt), x.endedAt ? T(x.endedAt) : 'en curso', D((x.endedAt ?? now) - x.startedAt), x.by])]
     const cambios: Cell[][] = [['Hora', 'Quién', 'Departamento', 'Qué', 'Antes', 'Después'], ...changes.map((c): Cell[] => [T(c.at), c.by, c.dept ?? '', c.what, c.before, c.after])]
-    const av = mgr && !only ? avanceRows(s, date) : []
+    const av = mgr && !only && !rep.filtered ? avanceRows(s, date) : []
     const avance: Cell[][] = [['Código', 'Producto', 'Mezclas progr.', 'Mezclas hechas', 'Mezclas pend.', 'Spiral', 'Pouches progr.', 'Pouches esper.', 'Pouches hechos', 'Pouches pend.', 'Pouches faltan', 'Cajas progr.', 'Cajas esper.', 'Cajas hechas', 'Cajas pend.', 'Cajas faltan', 'MFO cajas', 'Pallets progr.', 'Pallets esper.', 'Pallets hechos', 'Waste lb'],
       ...av.map((r): Cell[] => [r.code, r.product?.name ?? '', r.scheduled, r.mixesDone, r.mixesPending, r.spiralDone, r.pouchesPlan, r.pouchesExp, r.pouchesDone, pending(r.pouchesExp, r.pouchesDone), pending(r.pouchesPlan, r.pouchesDone), r.casesPlan, r.casesExp, r.casesDone, pending(r.casesExp, r.casesDone), pending(r.casesPlan, r.casesDone), r.mfoCases, r.palletsPlan, r.palletsExp, r.palletsDone, r.wasteLb])]
     return { resumen, porCodigo, unidades, paros, cambios, avance }
@@ -1153,13 +1197,16 @@ function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: De
       <div className="rhead">
         <h2>Reporte del día{only ? ' · ' + only : ''}</h2>
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        {rep.codes.length > 0 && <select className="rfilter" value={rep.code} onChange={(e) => setFCode(e.target.value)} aria-label="Filtrar por código"><option value="">Todos los códigos</option>{rep.codes.map((c) => <option key={c} value={c}>Código {c}</option>)}</select>}
+        {rep.lots.length > 0 && <select className="rfilter" value={rep.lot} onChange={(e) => setFLot(e.target.value)} aria-label="Filtrar por lote"><option value="">Todos los lotes</option>{rep.lots.map((l) => <option key={l} value={l}>Lote {l}</option>)}</select>}
         <button type="button" className="btn" onClick={() => void excel()} disabled={!rows.length}>⬇ Excel</button>
         <button type="button" className="lnk" onClick={csv} disabled={!rows.length}>CSV</button>
         <button type="button" className="btn" onClick={() => void pdf()} disabled={!rows.length}>📄 Ver PDF / imprimir</button>
         <button type="button" className="btn primary" onClick={() => void send()} disabled={!rows.length || preparing}>{preparing ? 'Preparando…' : '✉ Enviar reporte'}</button>
       </div>
-      {sending && <SendDialog files={sending} subject={'Actividad · Reporte ' + date + (only ? ' · ' + only : '')} onClose={() => setSending(null)} />}
+      {sending && <SendDialog files={sending} subject={'Actividad · Reporte ' + date + (only ? ' · ' + only : '') + filterTitle(rep.code, rep.lot)} onClose={() => setSending(null)} />}
       <DayNote day={day} />
+      {rep.filtered && <p className="filternote">Reporte filtrado{filterTitle(rep.code, rep.lot)}. El Excel, el CSV, el PDF y "Enviar reporte" salen con este filtro.{rep.lot && ' Los tiempos y el waste son los de las corridas completas.'} <button type="button" className="lnk" onClick={() => { setFCode(''); setFLot('') }}>Quitar filtros</button></p>}
       <div className="totals">
         <div className="stat"><label>Códigos</label><b>{rows.length}</b></div>
         <div className="stat"><label>Trabajando</label><b>{fmtDur(working)}</b></div>
@@ -1171,8 +1218,8 @@ function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: De
             <thead><tr><th>Depto</th><th>Línea</th><th>Código</th><th>Lote</th><th>Inicio</th><th>Fin</th><th>Hecho</th><th>Waste</th><th>Trabajando</th><th>Prom./unidad</th><th>Parado</th><th>Razones</th><th>Registró</th><th></th></tr></thead>
             <tbody>{rows.map((x) => (
               <tr key={x.r.id} className={x.r.endedAt ? '' : 'live'}>
-                <td>{x.r.dept}</td><td>{lineNameOf(s, x.r.lineId, x.r.line)}</td><td><b>{x.r.code}</b></td><td>{x.r.lot}</td><td>{fmtTime(x.r.startedAt)}</td><td>{x.r.endedAt ? fmtTime(x.r.endedAt) : <i>en curso</i>}</td>
-                <td>{madeText(x.r, x.st.qty, true)}</td><td className={x.r.waste ? 'red' : ''}>{x.r.waste ? x.r.waste + ' lb' : '—'}</td><td>{fmtDur(x.st.working)}</td><td>{x.r.units.length ? fmtDur(x.st.avg) : '—'}</td><td className={x.st.down ? 'red' : ''}>{fmtDur(x.st.down)}</td><td>{reasonsText(x) || '—'}</td><td>{whoText(x.r)}</td>
+                <td>{x.r.dept}</td><td>{lineNameOf(s, x.r.lineId, x.r.line)}</td><td><b>{x.r.code}</b></td><td>{x.lots}</td><td>{fmtTime(x.r.startedAt)}</td><td>{x.r.endedAt ? fmtTime(x.r.endedAt) : <i>en curso</i>}</td>
+                <td>{madeText(x.view, x.qty, true)}</td><td className={x.r.waste ? 'red' : ''}>{x.r.waste ? x.r.waste + ' lb' : '—'}</td><td>{fmtDur(x.st.working)}</td><td>{x.r.units.length ? fmtDur(x.st.avg) : '—'}</td><td className={x.st.down ? 'red' : ''}>{fmtDur(x.st.down)}</td><td>{reasonsText(x) || '—'}</td><td>{whoText(x.r)}</td>
                 <td><button type="button" className="lnk" onClick={() => setEditRun(x.r.id)}>Corregir</button></td>
               </tr>
             ))}</tbody>
@@ -1199,9 +1246,9 @@ function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: De
             <table>
               <thead><tr><th>Hora</th><th>Depto</th><th>Línea</th><th>Código</th><th>Lote</th><th>#</th><th>Unidad</th><th>Cantidad</th><th>Tag / bin</th><th>Desde la anterior</th><th>Registró</th></tr></thead>
               <tbody>{unitRows.map((x) => (
-                <tr key={x.r.id + ':' + x.i}>
-                  <td>{fmtTime(x.u.at)}</td><td>{x.r.dept}</td><td>{lineNameOf(s, x.r.lineId, x.r.line)}</td><td><b>{x.r.code}</b></td><td>{x.r.lot}</td><td>{x.i + 1}</td><td>{CFG[x.r.dept].unit}</td>
-                  <td>{qtyOf(x.r, x.u) != null ? qtyOf(x.r, x.u) + ' ' + CFG[x.r.dept].qtyUnit : '—'}</td><td>{x.u.ref || '—'}</td><td>{fmtDur(x.gap)}</td><td>{x.u.by || '—'}</td>
+                <tr key={x.r.id + ':' + x.i + ':' + x.lot}>
+                  <td>{fmtTime(x.u.at)}</td><td>{x.r.dept}</td><td>{lineNameOf(s, x.r.lineId, x.r.line)}</td><td><b>{x.r.code}</b></td><td>{x.lot}</td><td>{x.i + 1}</td><td>{CFG[x.r.dept].unit}</td>
+                  <td>{x.qty != null ? x.qty + ' ' + CFG[x.r.dept].qtyUnit : '—'}</td><td>{x.u.ref || '—'}</td><td>{fmtDur(x.gap)}</td><td>{x.u.by || '—'}</td>
                 </tr>
               ))}</tbody>
             </table>

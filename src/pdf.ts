@@ -1,4 +1,5 @@
-import { CFG, dayOf, fmtDur, fmtTime, lineNameOf, madeText, runStats, unitQty, whoText, type Dept, type State } from './store'
+import { CFG, fmtDur, fmtTime, lineNameOf, madeText, whoText, type State } from './store'
+import { filterTitle, reportOf, type ReportFilter } from './report'
 import { avanceRows, n1, pending } from './avance'
 
 type Libs = { jsPDF: typeof import('jspdf').jsPDF; autoTable: typeof import('jspdf-autotable').default }
@@ -9,30 +10,25 @@ export const loadPdf = () => (libs ? Promise.resolve(libs) : Promise.all([import
 const fmtDate = (d: string) => { const [y, m, dd] = d.split('-'); return m + '/' + dd + '/' + y }
 
 /** the day's report as the tables on screen: codes first, then the stops. null until the libraries are loaded */
-export function buildPdf(s: State, date: string, now: number, by: string, only?: Dept) {
+export function buildPdf(s: State, date: string, now: number, by: string, f: ReportFilter = {}) {
   if (!libs) return null
   const { jsPDF, autoTable } = libs
-  const runs = s.runs.filter((r) => r.date === date && (!only || r.dept === only)).sort((a, b) => a.startedAt - b.startedAt)
-  const stops = s.stops.filter((x) => dayOf(x.startedAt) === date && (!only || x.dept === only)).sort((a, b) => a.startedAt - b.startedAt)
-  const rows = runs.map((r) => ({ r, st: runStats(s, r, now) }))
-  const working = rows.reduce((t, x) => t + x.st.working, 0)
-  const down = rows.reduce((t, x) => t + x.st.down, 0)
+  const rep = reportOf(s, date, now, f), { rows, unitRows, stops, working, down } = rep, only = f.only
   const lineName = (x: { lineId: string | null; dept: string }) => (x.lineId === null ? 'Todo ' + x.dept : s.lines.find((l) => l.id === x.lineId)?.name ?? s.runs.find((r) => r.lineId === x.lineId)?.line ?? 'línea')
 
   const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' })
   const teal: [number, number, number] = [15, 118, 110]
   doc.setFont('helvetica', 'bold'); doc.setFontSize(18); doc.setTextColor(22, 32, 42)
-  doc.text('Actividad · Reporte del día' + (only ? ' · ' + only : ''), 40, 42)
+  doc.text('Actividad · Reporte del día' + (only ? ' · ' + only : '') + filterTitle(rep.code, rep.lot), 40, 42)
   doc.setFont('helvetica', 'normal'); doc.setFontSize(11); doc.setTextColor(91, 107, 122)
   doc.text(fmtDate(date) + '   ·   ' + rows.length + ' códigos   ·   trabajando ' + fmtDur(working) + '   ·   parado ' + fmtDur(down), 40, 62)
   autoTable(doc, {
     startY: 78, theme: 'grid', styles: { font: 'helvetica', fontSize: 9, cellPadding: 5, textColor: [22, 32, 42] }, headStyles: { fillColor: teal, textColor: 255, fontStyle: 'bold' },
     head: [['Depto', 'Línea', 'Código', 'Lote', 'Inicio', 'Fin', 'Hecho', 'Waste lb', 'Trabajando', 'Prom. / unidad', 'Parado', 'Razones de paro', 'Registró']],
-    body: rows.map((x) => [x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.r.lot, fmtTime(x.r.startedAt), x.r.endedAt ? fmtTime(x.r.endedAt) : 'en curso', madeText(x.r, x.st.qty, true), x.r.waste ? String(x.r.waste) : '—', fmtDur(x.st.working), x.r.units.length ? fmtDur(x.st.avg) : '—', fmtDur(x.st.down), Object.entries(x.st.reasons).map(([k, v]) => k + ' ' + fmtDur(v)).join(', ') || '—', whoText(x.r)]),
+    body: rows.map((x) => [x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.lots, fmtTime(x.r.startedAt), x.r.endedAt ? fmtTime(x.r.endedAt) : 'en curso', madeText(x.view, x.qty, true), x.r.waste ? String(x.r.waste) : '—', fmtDur(x.st.working), x.r.units.length ? fmtDur(x.st.avg) : '—', fmtDur(x.st.down), Object.entries(x.st.reasons).map(([k, v]) => k + ' ' + fmtDur(v)).join(', ') || '—', whoText(x.r)]),
     foot: [['Total', '', '', '', '', '', '', String(Math.round(rows.reduce((t, x) => t + (x.r.waste || 0), 0) * 100) / 100), fmtDur(working), '', fmtDur(down), '', '']], footStyles: { fillColor: [243, 246, 249], textColor: [22, 32, 42], fontStyle: 'bold' },
   })
-  // one line per cart, mezcla, bin or pallet with its time, as the office's sheets are filled
-  const unitRows = rows.flatMap((x) => x.r.units.map((u, i) => ({ r: x.r, i, u, gap: x.st.unitTimes[i] ?? 0 }))).sort((a, b) => a.u.at - b.u.at)
+  // one line per cart, mezcla, bin or pallet with its time, as the office's sheets are filled (a pallet with two lots: two lines)
   if (unitRows.length) {
     const y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 28
     doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(22, 32, 42)
@@ -40,7 +36,7 @@ export function buildPdf(s: State, date: string, now: number, by: string, only?:
     autoTable(doc, {
       startY: y + 10, theme: 'grid', styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 4, textColor: [22, 32, 42] }, headStyles: { fillColor: [91, 107, 122], textColor: 255, fontStyle: 'bold' },
       head: [['Hora', 'Depto', 'Línea', 'Código', 'Lote', '#', 'Unidad', 'Cantidad', 'Tag / bin', 'Desde la anterior', 'Registró']],
-      body: unitRows.map((x) => [fmtTime(x.u.at), x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.r.lot, String(x.i + 1), CFG[x.r.dept].unit, CFG[x.r.dept].qty !== 'none' ? unitQty(s, x.r, x.u) + ' ' + CFG[x.r.dept].qtyUnit : '—', x.u.ref || '—', fmtDur(x.gap), x.u.by || '—']),
+      body: unitRows.map((x) => [fmtTime(x.u.at), x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.lot, String(x.i + 1), CFG[x.r.dept].unit, x.qty != null ? x.qty + ' ' + CFG[x.r.dept].qtyUnit : '—', x.u.ref || '—', fmtDur(x.gap), x.u.by || '—']),
     })
   }
   if (stops.length) {
@@ -54,7 +50,7 @@ export function buildPdf(s: State, date: string, now: number, by: string, only?:
     })
   }
   // the day's progress, as the office's AVANCE sheet (the manager's report only)
-  const av = only ? [] : avanceRows(s, date)
+  const av = only || rep.filtered ? [] : avanceRows(s, date)
   if (av.length) {
     doc.addPage()
     doc.setFont('helvetica', 'bold'); doc.setFontSize(16); doc.setTextColor(22, 32, 42)

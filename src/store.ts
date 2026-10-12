@@ -15,21 +15,34 @@ export const DEPTS: Dept[] = ['Kitchen', 'RTE', 'Spiral', 'MFO', 'Packing']
  * qty: 'none' = only count the units; 'ask' = ask the quantity each time, proposing the usual one (pouches per
  * cart, boxes per pallet) so a short cart or pallet is typed on the spot; 'auto' = every unit carries the quantity
  * given at the start, with no question. saved = how the unit is said to be recorded ("guardada" for a mezcla).
+ * lots = a unit can carry more than one lot of the product, each with its quantity (a pallet in Packing).
  */
-export type DeptCfg = { lineWord: string; unit: string; plural: string; done: string; saved: string; qty: 'none' | 'ask' | 'auto'; qtyQ: string; qtyUnit: string; perUnitLabel: string; refLabel: string; reasons: string[]; waste?: boolean }
+export type DeptCfg = { lineWord: string; unit: string; plural: string; done: string; saved: string; qty: 'none' | 'ask' | 'auto'; qtyQ: string; qtyUnit: string; perUnitLabel: string; refLabel: string; reasons: string[]; waste?: boolean; lots?: boolean }
 export const CFG: Record<Dept, DeptCfg> = {
   Kitchen: { lineWord: 'Braiser', unit: 'Mezcla', plural: 'Mezclas', done: 'Mezcla lista', saved: 'guardada', qty: 'none', qtyQ: '', qtyUnit: '', perUnitLabel: '', refLabel: '', reasons: ['Braiser apagado', 'Esperando ingredientes', 'Esperando que recojan producto', 'Máquina / mantenimiento', 'Limpieza', 'Falta de personal', 'Break', 'Calidad'] },
   Spiral: { lineWord: 'Línea', unit: 'Mezcla', plural: 'Mezclas', done: 'Mezcla lista', saved: 'guardada', qty: 'none', qtyQ: '', qtyUnit: '', perUnitLabel: '', refLabel: '', reasons: ['Falta de producto de Kitchen', 'Horno (temperatura)', 'Temperatura interna baja', 'Esperando carros / RTE', 'Máquina / mantenimiento', 'Limpieza', 'Falta de personal', 'Break', 'Calidad'] },
   RTE: { lineWord: 'Línea', unit: 'Carro', plural: 'Carros', done: 'Carro listo', saved: 'guardado', qty: 'ask', qtyQ: '¿Cuántos pouches lleva este carro?', qtyUnit: 'pouches', perUnitLabel: 'Pouches por carro', refLabel: '', waste: true, reasons: ['Falta de salsa (Kitchen)', 'Falta de arroz / arroz muy frío', 'Falta de carrito vacío', 'Cambio de rollo de plástico', 'Plástico atascado / no corta', 'Máquina corta o rompe paquetes (mecánico)', 'Impresora de sello no imprime', 'Peso fuera de rango (reempaque)', 'Aire en el paquete', 'Conteo / pesado de meatballs', 'Limpieza', 'Falta de personal', 'Break'] },
   MFO: { lineWord: 'Línea', unit: 'Bin', plural: 'Bins', done: 'Bin listo', saved: 'guardado', qty: 'ask', qtyQ: '¿Cuántas cajas lleva este bin?', qtyUnit: 'cajas', perUnitLabel: '', refLabel: 'N° de bin', reasons: ['Armado de máquina', 'Pegado de labels / stickers', 'Esperando gas', 'Falta de producto del freezer', 'Preparación (picar pollo…)', 'Falta de material', 'Máquina / mantenimiento', 'Limpieza', 'Falta de personal', 'Break'] },
-  Packing: { lineWord: 'Línea', unit: 'Pallet', plural: 'Pallets', done: 'Pallet listo', saved: 'guardado', qty: 'ask', qtyQ: '¿Cuántas cajas lleva este pallet?', qtyUnit: 'cajas', perUnitLabel: 'Cajas por pallet', refLabel: 'N° de tag', reasons: ['Falta de producto que empacar', 'Esperando autorización de QC', 'Label equivocado (despegar labels)', 'Plástico / film', 'Falta de cajas / material de empaque', 'Personal pasó a otra línea', 'Etiquetadora / impresora', 'Montacargas / espacio', 'Máquina / mantenimiento', 'Limpieza', 'Falta de personal', 'Break'] },
+  Packing: { lineWord: 'Línea', unit: 'Pallet', plural: 'Pallets', done: 'Pallet listo', saved: 'guardado', lots: true, qty: 'ask', qtyQ: '¿Cuántas cajas lleva este pallet?', qtyUnit: 'cajas', perUnitLabel: 'Cajas por pallet', refLabel: 'N° de tag', reasons: ['Falta de producto que empacar', 'Esperando autorización de QC', 'Label equivocado (despegar labels)', 'Plástico / film', 'Falta de cajas / material de empaque', 'Personal pasó a otra línea', 'Etiquetadora / impresora', 'Montacargas / espacio', 'Máquina / mantenimiento', 'Limpieza', 'Falta de personal', 'Break'] },
 }
 /** what a line's "listo" button says for a moment once the unit is recorded: "Mezcla 5 guardada", "Carro 12 guardado" */
 export const savedText = (dept: Dept, n: number) => CFG[dept].unit + ' ' + n + ' ' + CFG[dept].saved
 
 export type Line = { id: string; dept: Dept; name: string; updatedAt: number; deleted?: boolean }
 /** one finished unit of work (a cart, a mezcla, a pallet…), how much it carried, its tag / bin number and who tapped it */
-export type Unit = { at: number; qty: number | null; ref: string; by: string }
+export type Unit = { at: number; qty: number | null; ref: string; by: string; lots?: LotPart[] }
+/** the part of a unit that belongs to one lot: a pallet can carry cases of two lots of the same product */
+export type LotPart = { lot: string; qty: number }
+/** the lots written on a unit, as they are kept: only real ones (a lot, and a quantity above zero); none = the run's lot */
+export const cleanLots = (x: unknown): LotPart[] | undefined => {
+  if (!Array.isArray(x)) return undefined
+  const out = x.map((l) => ({ lot: String((l as Partial<LotPart> | null)?.lot ?? '').trim(), qty: Number((l as Partial<LotPart> | null)?.qty) })).filter((l) => l.lot && Number.isFinite(l.qty) && l.qty > 0)
+  return out.length ? out : undefined
+}
+/** a unit as it is kept, whatever shape it arrives in (an older version of the app, the server) */
+const unitOf = (u: Partial<Unit>): Unit => { const lots = cleanLots(u.lots); return { at: u.at ?? 0, qty: u.qty ?? null, ref: u.ref ?? '', by: u.by ?? '', ...(lots ? { lots } : {}) } }
+/** "6283: 20 + 6284: 16" */
+export const lotsText = (lots: LotPart[] | undefined) => (lots?.length ? lots.map((l) => l.lot + ': ' + l.qty).join(' + ') : '')
 /**
  * one product code run on one line: the clock starts at startedAt; perUnit = quantity per unit (boxes per pallet,
  * pouches per cart); waste = pounds thrown away while running it (the WASTE column of the office's RTE sheet)
@@ -104,7 +117,7 @@ function load(): State {
     // rows saved by earlier versions: carts as plain timestamps, units without a tag or a name, products with one
     // pouches-per-cart number, nothing with an update time
     if (s && s.lines && s.runs && s.stops) {
-      const units = (r: Raw['runs'][number]): Unit[] => (r.units ? r.units.map((u) => ({ at: u.at ?? 0, qty: u.qty ?? null, ref: u.ref ?? '', by: u.by ?? '' })) : (r.carts ?? []).map((at) => ({ at, qty: null, ref: '', by: '' })))
+      const units = (r: Raw['runs'][number]): Unit[] => (r.units ? r.units.map(unitOf) : (r.carts ?? []).map((at) => ({ at, qty: null, ref: '', by: '' })))
       const sample = (code: string) => SAMPLE_PRODUCTS.some((x) => x.code === code)
       const products: Product[] = s.products ? s.products.map((p) => ({ code: p.code ?? '', name: p.name ?? '', pouchesPerCase: p.pouchesPerCase ?? 0, casesPerMix: p.casesPerMix ?? 0, cratesPerCart: (p.cratesPerCart ?? (p.pouchesPerCart ? 12 : 0)) === 12 && sample(p.code ?? '') ? CRATES_PER_CART : p.cratesPerCart ?? (p.pouchesPerCart ? 12 : 0), pouchesPerCrate: p.pouchesPerCrate ?? (p.pouchesPerCart ? Math.round(p.pouchesPerCart / 12) : 0), casesPerPallet: p.casesPerPallet ?? 0, updatedAt: p.updatedAt ?? 0 })) : SAMPLE_PRODUCTS
       return {
@@ -329,7 +342,13 @@ export function startRun(line: Line, code: string, lot: string, date: string, pe
 const run = (id: string) => state.runs.find((r) => r.id === id)
 /** the last moment already on a run: nothing recorded after it may be stamped earlier (the clock can be corrected between two taps) */
 const after = (r: Run) => Math.max(r.startedAt, r.units.length ? r.units[r.units.length - 1].at + 1 : 0)
-export function unitDone(runId: string, qty: number | null, ref = '') { const r = run(runId); if (r) putRun({ ...r, units: [...r.units, { at: Math.max(clockNow(), after(r)), qty, ref, by: user.get() }] }) }
+/** a unit finished on the line. `lots` = what it carries of each lot when it is not all of the run's lot; the quantity is then their sum */
+export function unitDone(runId: string, qty: number | null, ref = '', lots?: LotPart[]) {
+  const r = run(runId)
+  if (!r) return
+  const parts = cleanLots(lots)
+  putRun({ ...r, units: [...r.units, { at: Math.max(clockNow(), after(r)), qty: parts ? parts.reduce((t, l) => t + l.qty, 0) : qty, ref, by: user.get(), ...(parts ? { lots: parts } : {}) }] })
+}
 export function endRun(runId: string) { const r = run(runId); if (r) putRun({ ...r, endedAt: Math.max(clockNow(), after(r)) }) }
 /** pounds thrown away, added to what the run already has */
 export function addWaste(runId: string, lb: number) { const r = run(runId); if (r) putRun({ ...r, waste: Math.round((r.waste + lb) * 100) / 100 }) }
@@ -347,7 +366,7 @@ export function updateRun(id: string, patch: Partial<Pick<Run, 'code' | 'lot' | 
   r.units.forEach((u, i) => {
     const w = n.units.find((x) => x.at === u.at)
     if (!w) log('Se quitó ' + cfg.unit.toLowerCase() + ' ' + (i + 1) + ' (' + fmtTime(u.at) + ')', [u.qty != null ? u.qty + ' ' + cfg.qtyUnit : '', u.ref].filter(Boolean).join(' · ') || '1', '')
-    else { log(cfg.unit + ' ' + (i + 1) + ' · cantidad', v(u.qty), v(w.qty)); if (cfg.refLabel) log(cfg.unit + ' ' + (i + 1) + ' · ' + cfg.refLabel, u.ref, w.ref) }
+    else { log(cfg.unit + ' ' + (i + 1) + ' · cantidad', v(u.qty), v(w.qty)); if (cfg.refLabel) log(cfg.unit + ' ' + (i + 1) + ' · ' + cfg.refLabel, u.ref, w.ref); if (cfg.lots) log(cfg.unit + ' ' + (i + 1) + ' · lotes', lotsText(u.lots), lotsText(w.lots)) }
   })
 }
 export function deleteRun(id: string) { const r = run(id); if (r) { putRun({ ...r, deleted: true }); logChange(r.dept, 'Se borró la corrida ' + r.code + ' del ' + r.date + ' (' + r.dept + ', ' + lineNameOf(state, r.lineId, r.line) + ')', r.units.length + ' ' + CFG[r.dept].plural.toLowerCase() + (r.waste ? ' · waste ' + r.waste + ' lb' : ''), '', 'act_runs', r.id) } }
@@ -383,8 +402,8 @@ export function splitStop(id: string, at: number, reason: string, note = ''): st
 }
 export function deleteStop(id: string) { const x = stop(id); if (x) { putStop({ ...x, deleted: true }); logChange(x.dept, 'Se borró el paro ' + x.dept + ' ' + dayOf(x.startedAt) + ' ' + fmtTime(x.startedAt) + ' (' + stopLine(x) + ')', x.reason + (x.note ? ' · ' + x.note : '') + ' · ' + fmtTime(x.startedAt) + '–' + endText(x.endedAt), '', 'act_stops', x.id) } }
 /** the form of a correction, as the text the person sees and types */
-export type RunDraft = { code: string; lot: string; date: string; per: string; waste: string; units: { at: number; qty: string; ref: string; by: string }[] }
-export const draftOf = (r: Run): RunDraft => ({ code: r.code, lot: r.lot, date: r.date, per: r.perUnit != null ? String(r.perUnit) : '', waste: r.waste ? String(r.waste) : '', units: r.units.map((u) => ({ at: u.at, qty: u.qty != null ? String(u.qty) : '', ref: u.ref, by: u.by })) })
+export type RunDraft = { code: string; lot: string; date: string; per: string; waste: string; units: { at: number; qty: string; ref: string; by: string; lots?: LotPart[] }[] }
+export const draftOf = (r: Run): RunDraft => ({ code: r.code, lot: r.lot, date: r.date, per: r.perUnit != null ? String(r.perUnit) : '', waste: r.waste ? String(r.waste) : '', units: r.units.map((u) => ({ at: u.at, qty: u.qty != null ? String(u.qty) : '', ref: u.ref, by: u.by, ...(u.lots ? { lots: u.lots } : {}) })) })
 const typed = (t: string) => { const n = Number(t.replace(',', '.')); return Number.isFinite(n) ? n : 0 }
 /**
  * saves a correction on top of what the run is NOW: only what the person changed in the form (against how the form
@@ -404,8 +423,13 @@ export function applyDraft(id: string, opened: RunDraft, draft: RunDraft) {
   const units = r.units.filter((u) => !(was.has(u.at) && !now.has(u.at))).map((u) => {
     const a = was.get(u.at), b = now.get(u.at)
     if (!a || !b) return u // tapped after the form opened: untouched
-    const qty = cfg.qty !== 'none' && changed(b.qty, a.qty) ? (b.qty.trim() ? typed(b.qty) : null) : u.qty
     const ref = changed(b.ref, a.ref) ? b.ref.trim() : u.ref
+    // the lots of a pallet were changed in the form: they stand, and its quantity is their sum
+    if (JSON.stringify(a.lots ?? null) !== JSON.stringify(b.lots ?? null)) {
+      const lots = cleanLots(b.lots), { lots: _was, ...bare } = u
+      return lots ? { ...bare, ref, lots, qty: lots.reduce((t, l) => t + l.qty, 0) } : { ...bare, ref, qty: cfg.qty !== 'none' && b.qty.trim() ? typed(b.qty) : u.qty }
+    }
+    const qty = cfg.qty !== 'none' && changed(b.qty, a.qty) ? (b.qty.trim() ? typed(b.qty) : null) : u.qty
     return qty === u.qty && ref === u.ref ? u : { ...u, qty, ref }
   })
   if (units.length !== r.units.length || units.some((u, i) => u !== r.units[i])) patch.units = units
@@ -610,7 +634,7 @@ const lineOfRow = (row: Row): Line => ({ id: String(row.id), dept: row.dept as D
 const runOfRow = (row: Row): Run => ({
   id: String(row.id), dept: row.dept as Dept, lineId: String(row.line_id ?? ''), line: String(row.line ?? ''), code: String(row.code ?? ''), lot: String(row.lot ?? ''), date: String(row.date ?? '').slice(0, 10),
   startedAt: fromIso(row.started_at) ?? 0, endedAt: fromIso(row.ended_at),
-  units: (Array.isArray(row.units) ? (row.units as Partial<Unit>[]) : []).map((u) => ({ at: u.at ?? 0, qty: u.qty ?? null, ref: u.ref ?? '', by: u.by ?? '' })),
+  units: (Array.isArray(row.units) ? (row.units as Partial<Unit>[]) : []).map(unitOf),
   perUnit: row.per_unit == null ? null : Number(row.per_unit), waste: Number(row.waste ?? 0), by: String(row.by_name ?? ''), updatedAt: fromIso(row.updated_at) ?? 0, deleted: !!row.deleted,
 })
 const stopOfRow = (row: Row): Stop => ({ id: String(row.id), dept: row.dept as Dept, lineId: row.line_id == null ? null : String(row.line_id), reason: String(row.reason ?? ''), note: String(row.note ?? ''), startedAt: fromIso(row.started_at) ?? 0, endedAt: fromIso(row.ended_at), by: String(row.by_name ?? ''), updatedAt: fromIso(row.updated_at) ?? 0, deleted: !!row.deleted })

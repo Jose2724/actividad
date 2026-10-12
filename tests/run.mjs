@@ -959,6 +959,93 @@ cut.use((m) => {
 }
 
 // =====================================================================================================================
+//  A pallet with more than one lot; the report filtered by code and by lot
+// =====================================================================================================================
+section('Un pallet con más de un lote')
+const pal = await device('pal', { user: 'Nino' })
+pal.use((m) => {
+  const st = () => m.store.get(), run = () => st().runs[0]
+  clock = T0
+  m.addLine('Packing', 'Línea 1')
+  m.startRun(st().lines[0], 'A100', '6283', DAY, 36)
+  clock = T0 + 10 * M; m.unitDone(run().id, 36, '1749') // all of it of the run's lot
+  clock = T0 + 20 * M; m.unitDone(run().id, 0, '1750', [{ lot: '6283', qty: 20 }, { lot: '6284', qty: 16 }])
+  clock = T0 + 30 * M; m.unitDone(run().id, 30, '1751', [{ lot: ' 6284 ', qty: 30 }, { lot: '', qty: 5 }, { lot: '6285', qty: 0 }])
+  eq('Packing es el departamento que lleva lotes por pallet', m.DEPTS.filter((d) => m.CFG[d].lots), ['Packing'])
+  eq('el pallet de un solo lote no lleva lista de lotes', [run().units[0].qty, run().units[0].lots], [36, undefined])
+  eq('el de dos lotes guarda cada uno, y su cantidad es la suma', [run().units[1].qty, run().units[1].lots], [36, [{ lot: '6283', qty: 20 }, { lot: '6284', qty: 16 }]])
+  eq('solo se guardan lotes de verdad (con número y con cajas)', [run().units[2].qty, run().units[2].lots], [30, [{ lot: '6284', qty: 30 }]])
+  eq('el total de la corrida se cuenta igual que siempre', [m.runQty(st(), run()), m.runStats(st(), run(), clock).qty], [102, 102])
+  eq('va al servidor con sus lotes', m.outbox.items().filter((i) => i.table === 'act_runs').pop().row.units.map((u) => u.lots ?? null), [null, [{ lot: '6283', qty: 20 }, { lot: '6284', qty: 16 }], [{ lot: '6284', qty: 30 }]])
+  const rep = m.reportOf(st(), DAY, clock)
+  eq('el reporte ofrece los códigos y los lotes del día para filtrar', [rep.codes, rep.lots, rep.filtered], [['A100'], ['6283', '6284'], false])
+  eq('sin filtro: una línea por cada lote de cada pallet', rep.unitRows.map((x) => [x.i + 1, x.lot, x.qty, x.mixed]), [[1, '6283', 36, false], [2, '6283', 20, true], [2, '6284', 16, true], [3, '6284', 30, false]])
+  eq('y los totales de siempre', [rep.rows[0].units, rep.rows[0].qty, rep.byCode[0].units, rep.byCode[0].qty], [3, 102, 3, 102])
+  eq('la corrida dice todos los lotes que tocó; filtrada, el lote elegido', [rep.rows[0].lots, m.reportOf(st(), DAY, clock, { lot: '6284' }).rows[0].lots], ['6283, 6284', '6284'])
+  const a = m.reportOf(st(), DAY, clock, { lot: '6283' }), b = m.reportOf(st(), DAY, clock, { lot: '6284' })
+  eq('filtrado por el lote 6283: sus pallets, y de cada uno solo sus cajas', [a.filtered, a.lot, a.rows[0].units, a.rows[0].qty, a.unitRows.map((x) => [x.i + 1, x.qty])], [true, '6283', 2, 56, [[1, 36], [2, 20]]])
+  eq('filtrado por el lote 6284', [b.rows[0].units, b.rows[0].qty, b.unitRows.map((x) => [x.i + 1, x.qty]), b.byCode[0].qty, m.madeText(b.rows[0].view, b.rows[0].qty, true)], [2, 46, [[2, 16], [3, 30]], 46, '2 pallets · 46 cajas (tag 1750, 1751)'])
+  eq('lo de un lote más lo del otro da el total', a.rows[0].qty + b.rows[0].qty, 102)
+  const none = m.reportOf(st(), DAY, clock, { lot: '9999', code: 'ZZZ' })
+  eq('un lote o un código que ese día no tiene es como no filtrar', [none.filtered, none.lot, none.code, none.rows.length], [false, '', '', 1])
+  // the lots of a pallet corrected from the form
+  const opened = m.draftOf(run())
+  const draft = { ...opened, units: opened.units.map((u, i) => (i === 0 ? { ...u, lots: [{ lot: '6283', qty: 30 }, { lot: '6282', qty: 6 }] } : i === 1 ? { at: u.at, qty: '40', ref: u.ref, by: u.by } : u)) }
+  clock = T0 + 40 * M
+  m.applyDraft(run().id, opened, draft)
+  eq('corregir: al primero se le ponen dos lotes; al segundo se le quitan y vuelve al lote de la corrida', [run().units[0].lots, run().units[0].qty, 'lots' in run().units[1], run().units[1].qty, run().units[2].lots], [[{ lot: '6283', qty: 30 }, { lot: '6282', qty: 6 }], 36, false, 40, [{ lot: '6284', qty: 30 }]])
+  eq('y queda en el historial', st().changes.filter((c) => /lotes/.test(c.what)).map((c) => [c.before, c.after]).sort(), [['', '6283: 30 + 6282: 6'], ['6283: 20 + 6284: 16', '']])
+  eq('abrir y guardar el formulario sin tocar nada no cambia los lotes', (() => { const o = m.draftOf(run()); const was = JSON.stringify(run().units); m.applyDraft(run().id, o, o); return JSON.stringify(run().units) === was })(), true)
+})
+{
+  // a pallet with two lots recorded on a tablet: the manager sees its lots, corrects them, and the tablet follows
+  clock = T0 + 400 * M
+  tab.use((m) => { m.addLine('Packing', 'Línea 1') }); settle()
+  const pline = tab.use((m) => m.store.get().lines.find((l) => l.dept === 'Packing'))
+  tab.use((m) => m.startRun(pline, 'B200', '6283', DAY, 36)); settle()
+  const rid = tab.use((m) => m.store.get().runs.find((r) => r.code === 'B200').id)
+  clock += M
+  tab.use((m) => m.unitDone(rid, 0, '900', [{ lot: '6283', qty: 10 }, { lot: '6284', qty: 26 }])); settle()
+  const unitOn = (d) => d.use((m) => m.store.get().runs.find((r) => r.id === rid).units[0])
+  eq('el manager ve los lotes del pallet que registró la tablet', [unitOn(mgr).lots, unitOn(mgr).qty], [[{ lot: '6283', qty: 10 }, { lot: '6284', qty: 26 }], 36])
+  clock += M
+  mgr.use((m) => { const r = m.store.get().runs.find((x) => x.id === rid), o = m.draftOf(r); m.applyDraft(rid, o, { ...o, units: o.units.map((u) => ({ ...u, lots: [{ lot: '6283', qty: 12 }, { lot: '6284', qty: 24 }] })) }) }); settle()
+  eq('lo que corrige el manager llega a la tablet', [unitOn(tab).lots, unitOn(tab).qty, all.map((d) => d.use((m) => m.outbox.size()))], [[{ lot: '6283', qty: 12 }, { lot: '6284', qty: 24 }], 36, [0, 0]])
+  clock += M
+  tab.use((m) => m.unitDone(rid, 36, '901')); settle()
+  eq('otro pallet tocado después no borra los lotes del anterior', [unitOn(mgr).lots, mgr.use((m) => m.store.get().runs.find((r) => r.id === rid).units.length)], [[{ lot: '6283', qty: 12 }, { lot: '6284', qty: 24 }], 2])
+}
+section('Reporte filtrado por código')
+const fil = await device('fil', { user: 'Santiago' })
+fil.use((m) => {
+  const st = () => m.store.get()
+  clock = T0
+  m.addLine('RTE', 'Línea 1'); m.addLine('RTE', 'Línea 2')
+  const [l1, l2] = st().lines.slice().sort((a, b) => a.name.localeCompare(b.name))
+  m.startRun(l1, 'A100', '6283', DAY, 240); m.startRun(l2, '0200', '6284', DAY, 240)
+  const r1 = st().runs.find((r) => r.code === 'A100'), r2 = st().runs.find((r) => r.code === '0200')
+  clock = T0 + 10 * M; m.unitDone(r1.id, 240); m.unitDone(r2.id, 240)
+  clock = T0 + 20 * M; m.unitDone(r1.id, 200)
+  clock = T0 + 25 * M; m.startStop('RTE', l1.id, 'Limpieza', ''); clock = T0 + 35 * M; m.endStop(st().stops.find((x) => x.reason === 'Limpieza').id)
+  clock = T0 + 40 * M; m.startStop('RTE', l2.id, 'Break', ''); clock = T0 + 45 * M; m.endStop(st().stops.find((x) => x.reason === 'Break').id)
+  clock = T0 + 50 * M; m.endRun(r1.id)
+  clock = T0 + 55 * M; m.startStop('RTE', l1.id, 'Falta de personal', ''); clock = T0 + 58 * M; m.endStop(st().stops.find((x) => x.reason === 'Falta de personal').id)
+  clock = T0 + 60 * M
+  const full = m.reportOf(st(), DAY, clock)
+  eq('el día completo: dos códigos, tres paros', [full.rows.map((x) => x.r.code), full.stops.map((x) => x.reason), full.codes, full.lots], [['A100', '0200'], ['Limpieza', 'Break', 'Falta de personal'], ['0200', 'A100'], ['6283', '6284']])
+  const a = m.reportOf(st(), DAY, clock, { code: 'A100' })
+  eq('filtrado por A100: solo su corrida, sus carros y su total', [a.filtered, a.code, a.rows.map((x) => [x.r.code, x.units, x.qty]), a.byCode.map((c) => [c.code, c.qty]), a.unitRows.length], [true, 'A100', [['A100', 2, 440]], [['A100', 440]], 2])
+  eq('y solo los paros que pasaron mientras ese código corría en su línea', a.stops.map((x) => x.reason), ['Limpieza'])
+  eq('trabajando y parado son los de ese código', [a.working === a.rows[0].st.working, a.down / M], [true, 10])
+  const b = m.reportOf(st(), DAY, clock, { code: '200' })
+  eq('0200 y 200 son el mismo código también al filtrar', [b.code, b.rows.map((x) => x.r.code), b.stops.map((x) => x.reason)], ['0200', ['0200'], ['Break']])
+  const both = m.reportOf(st(), DAY, clock, { code: 'A100', lot: '6284' })
+  eq('código y lote a la vez: tienen que cumplirse los dos', [both.filtered, both.rows.length, both.unitRows.length, both.stops.length], [true, 0, 0, 0])
+  eq('solo un departamento, como lo ve su operador', [m.reportOf(st(), DAY, clock, { only: 'Packing' }).rows.length, m.reportOf(st(), DAY, clock, { only: 'RTE', code: 'A100' }).rows.length], [0, 1])
+  eq('el nombre de los archivos y el título dicen el filtro', [m.filterFile('A100', '6283'), m.filterTitle('A100', '6283'), m.filterFile('', ''), m.filterTitle('', '6284'), m.filterFile('zx 01/2', '')], ['-cod-A100-lote-6283', ' · código A100 · lote 6283', '', ' · lote 6284', '-cod-zx-01-2'])
+})
+
+// =====================================================================================================================
 console.log('')
 if (failed.length) { console.log(failed.length + ' FALLARON de ' + (passed + failed.length) + ':\n'); for (const f of failed) console.log('  ✗ ' + f + '\n'); process.exit(1) }
 console.log('✓ ' + passed + ' comprobaciones, todas correctas')

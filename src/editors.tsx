@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { applyDraft, CFG, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, nearDay, openRun, splitStop, updateRun, updateStop, type Run, type State, type Stop } from './store'
+import { applyDraft, CFG, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, nearDay, openRun, splitStop, updateRun, updateStop, type Run, type State, type Stop } from './store'
 import { clockNow } from './clock'
-import { ConfirmDialog } from './App'
+import { ConfirmDialog, LotsDialog } from './App'
 
 /** "HH:MM" of a moment */
 const hm = (ms: number) => { const d = new Date(ms); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') }
@@ -22,6 +22,7 @@ export function RunEditor({ s, run, mgr, onClose }: { s: State; run: Run; mgr: b
   const [waste, setWaste] = useState(opened.waste)
   const [units, setUnits] = useState(opened.units)
   const [dropping, setDropping] = useState(false)
+  const [lotsOf, setLotsOf] = useState<number | null>(null)
   const lineBusy = !!run.endedAt && !!openRun(s, run.lineId)
   // units tapped on the line while this form is open: they are kept as they are
   const later = run.units.filter((u) => !opened.units.some((o) => o.at === u.at)).length
@@ -40,11 +41,12 @@ export function RunEditor({ s, run, mgr, onClose }: { s: State; run: Run; mgr: b
         {units.length > 0 && (
           <div className="twrap">
             <table>
-              <thead><tr><th>#</th><th>Hora</th>{cfg.qty !== 'none' && <th>{cfg.qtyUnit}</th>}{cfg.refLabel && <th>{cfg.refLabel}</th>}<th>Por</th><th></th></tr></thead>
+              <thead><tr><th>#</th><th>Hora</th>{cfg.qty !== 'none' && <th>{cfg.qtyUnit}</th>}{cfg.lots && <th>Lotes</th>}{cfg.refLabel && <th>{cfg.refLabel}</th>}<th>Por</th><th></th></tr></thead>
               <tbody>{units.map((u, i) => (
                 <tr key={u.at + ':' + i}>
                   <td>{i + 1}</td><td>{fmtTime(u.at)}</td>
-                  {cfg.qty !== 'none' && <td><input className="num" inputMode="numeric" value={u.qty} onChange={(e) => setUnits(units.map((x, k) => (k === i ? { ...x, qty: e.target.value.replace(/\D/g, '') } : x)))} /></td>}
+                  {cfg.qty !== 'none' && <td><input className="num" inputMode="numeric" value={u.qty} disabled={!!u.lots?.length} title={u.lots?.length ? 'Es la suma de sus lotes' : ''} onChange={(e) => setUnits(units.map((x, k) => (k === i ? { ...x, qty: e.target.value.replace(/\D/g, '') } : x)))} /></td>}
+                  {cfg.lots && <td>{u.lots?.length ? lotsText(u.lots) : <small>{lot || '—'}</small>} <button type="button" className="lnk" title="Cambiar los lotes de esta unidad" onClick={() => setLotsOf(i)}>✎</button></td>}
                   {cfg.refLabel && <td><input className="num" value={u.ref} onChange={(e) => setUnits(units.map((x, k) => (k === i ? { ...x, ref: e.target.value } : x)))} autoComplete="off" /></td>}
                   <td>{u.by || '—'}</td>
                   <td><button type="button" className="lnk" title="Quitar esta unidad" onClick={() => setUnits(units.filter((_, k) => k !== i))}>✕</button></td>
@@ -64,6 +66,8 @@ export function RunEditor({ s, run, mgr, onClose }: { s: State; run: Run; mgr: b
             <button type="button" className="btn primary" onClick={save}>Guardar</button>
           </div>
         </div>
+        {lotsOf != null && units[lotsOf] && <LotsDialog title={'Lotes de ' + cfg.unit.toLowerCase() + ' ' + (lotsOf + 1)} unit={cfg.qtyUnit} refLabel={cfg.refLabel} lot={lot.trim()} qty={units[lotsOf].qty.trim() ? Number(units[lotsOf].qty) : null} start={units[lotsOf].lots} startRef={units[lotsOf].ref} onClose={() => setLotsOf(null)}
+          onPick={(total, ref, lots) => { setUnits(units.map((x, k) => { if (k !== lotsOf) return x; const { lots: _was, ...bare } = x; return { ...bare, qty: String(total), ref, ...(lots ? { lots } : {}) } })); setLotsOf(null) }} />}
         {dropping && <ConfirmDialog title={'¿Borrar la corrida de ' + run.code + '?'} text="Se borran sus unidades y su waste. No se puede deshacer." yes="Borrar" danger onYes={() => { deleteRun(run.id); onClose() }} onNo={() => setDropping(false)} />}
       </div>
     </div>
