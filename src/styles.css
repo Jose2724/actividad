@@ -292,3 +292,7 @@ tr.live td{background:#f1fbf5}
 .endask{color:var(--ink);font-weight:700}
 .endchoices{display:grid;gap:8px}
 .endchoices .btn{min-height:56px;font-size:16px;white-space:normal;text-align:left;padding:10px 14px}
+/* ending a code: is another one coming? ; the set up on the line's card */
+.nextcode{display:flex;align-items:center;gap:10px;font-weight:600;color:var(--ink);min-height:44px}
+.nextcode input{width:22px;height:22px;flex:none}
+.setupbar .btns{display:flex;gap:14px;flex-wrap:wrap}

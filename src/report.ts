@@ -1,4 +1,4 @@
-import { CFG, dayOf, lineNameOf, normCode, runStats, unitQty, type Dept, type Run, type State, type Unit } from './store'
+import { CFG, dayOf, lineNameOf, normCode, runStats, SETUP_MAX_MS, unitQty, type Dept, type Run, type State, type Unit } from './store'
 
 /**
  * The day's report, as the tables on screen and in every file made from them (Excel, CSV, PDF): one place decides
@@ -35,7 +35,9 @@ export function reportOf(s: State, date: string, now: number, f: ReportFilter = 
   })
   // one line per unit; a pallet with two lots gives two lines, each with its lot and its cases
   const unitRows = rows.flatMap((x) => x.parts.flatMap(({ u, i, all, kept }) => kept.map((p) => ({ r: x.r, i, u, lot: p.lot, qty: p.qty, gap: x.st.unitTimes[i] ?? 0, mixed: all.length > 1 })))).sort((a, b) => a.u.at - b.u.at)
-  const dayStops = s.stops.filter((x) => dayOf(x.startedAt) === date && (!f.only || x.dept === f.only)).sort((a, b) => a.startedAt - b.startedAt)
+  // (a set up nobody closed, on a line that never started another code, stops being one after some hours)
+  const stale = (x: (typeof s.stops)[number]) => !x.endedAt && x.lineId !== null && now - x.startedAt > SETUP_MAX_MS && !s.runs.some((r) => r.lineId === x.lineId && !r.endedAt)
+  const dayStops = s.stops.filter((x) => dayOf(x.startedAt) === date && (!f.only || x.dept === f.only) && !stale(x)).sort((a, b) => a.startedAt - b.startedAt)
   // with a filter, the stops that happened while those runs were on their lines
   const stops = filtered ? dayStops.filter((x) => runs.some((r) => x.dept === r.dept && (x.lineId === r.lineId || x.lineId === null) && x.startedAt < (r.endedAt ?? now) && (x.endedAt ?? now) > r.startedAt)) : dayStops
   // the same code on several lines of a room, added up

@@ -336,32 +336,30 @@ export function swapLineNames(idA: string, idB: string): boolean {
   return true
 }
 export function removeLine(id: string) { const l = state.lines.find((x) => x.id === id); if (l) { putLine({ ...l, deleted: true }); logChange(l.dept, 'Línea quitada de ' + l.dept, l.name, '', 'act_lines', l.id) } }
-/** the reason of the stop the app writes by itself for the time a line spends between one code and the next */
+/** the reason of the stop the app writes by itself when a line finishes a code and another one is coming */
 export const SETUP = 'Set up'
 /** a line left without a code for longer than this was not being set up: it was simply not in use */
-const SETUP_MAX_MS = 6 * 3_600_000
+export const SETUP_MAX_MS = 6 * 3_600_000
+const AFTER = 'Después de '
 /**
- * A line between two codes of the same day of work: since when it has had none, and which code it finished. null when
- * it is running, has not finished a code that day, or finished it too long ago to call it a set up.
+ * What a line between two codes is stopped for: the set up written when its last code ended (or the cause a manager
+ * gave to part of that time), while it is still open and recent enough to be one. undefined = it is not between codes.
  */
-export function setupSince(s: State, lineId: string, date: string, now: number): { from: number; code: string } | null {
-  if (s.runs.some((r) => r.lineId === lineId && !r.endedAt)) return null
-  const last = s.runs.filter((r) => r.lineId === lineId && !!r.endedAt && r.date === date).sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0))[0]
-  // (the screen's "now" can be a moment behind the end just recorded: that still counts, from zero)
-  if (!last?.endedAt || now - last.endedAt > SETUP_MAX_MS) return null
-  return { from: last.endedAt, code: last.code }
-}
+export const idleStop = (s: State, lineId: string, now: number) =>
+  s.runs.some((r) => r.lineId === lineId && !r.endedAt) ? undefined : s.stops.find((x) => x.lineId === lineId && !x.endedAt && now - x.startedAt <= SETUP_MAX_MS)
 /**
- * A code starts on a line. If the line finished another code earlier that day, the time in between was its set up:
- * it is written as a stop of its own ("Set up", from the end of one code to the start of the next), without anyone
- * tapping anything. The last code of the shift leaves nothing open: the stop only exists once the next code starts.
+ * A code starts on a line. Whatever the line was stopped for since its last code (its set up, or the causes that time
+ * was divided into) ends at this moment. A set up of seconds is not one, and neither is a stop left open for hours on
+ * a line nobody was using: those are dropped.
  */
 export function startRun(line: Line, code: string, lot: string, date: string, perUnit: number | null) {
   const at = clockNow()
-  const gap = setupSince(state, line.id, date, at)
   batch(() => {
-    if (gap && at - gap.from >= 60_000 && !state.stops.some((x) => x.lineId === line.id && x.startedAt === gap.from && x.reason === SETUP))
-      putStop({ id: uid(), dept: line.dept, lineId: line.id, reason: SETUP, note: 'De ' + gap.code + ' a ' + code, startedAt: gap.from, endedAt: at, by: user.get(), updatedAt: 0 })
+    for (const x of state.stops.filter((y) => y.lineId === line.id && !y.endedAt)) {
+      const age = at - x.startedAt
+      if (age > SETUP_MAX_MS || (x.reason === SETUP && age < 60_000)) putStop({ ...x, deleted: true })
+      else putStop({ ...x, endedAt: Math.max(at, x.startedAt), note: x.reason === SETUP && x.note.startsWith(AFTER) ? 'De ' + x.note.slice(AFTER.length) + ' a ' + code : x.note })
+    }
     putRun({ id: uid(), dept: line.dept, lineId: line.id, line: line.name, code, lot, date, startedAt: at, endedAt: null, units: [], perUnit, waste: 0, by: user.get(), updatedAt: 0 })
   })
 }
@@ -375,7 +373,30 @@ export function unitDone(runId: string, qty: number | null, ref = '', lots?: Lot
   const parts = cleanLots(lots)
   putRun({ ...r, units: [...r.units, { at: Math.max(clockNow(), after(r)), qty: parts ? parts.reduce((t, l) => t + l.qty, 0) : qty, ref, by: user.get(), ...(parts ? { lots: parts } : {}) }] })
 }
-export function endRun(runId: string) { const r = run(runId); if (r) putRun({ ...r, endedAt: Math.max(clockNow(), after(r)) }) }
+/**
+ * A code ends. `setup` = another code is coming on this line: the time until it starts is the line's set up, written
+ * from this moment as a stop like any other, so it is in the report at once and a manager can divide it.
+ */
+export function endRun(runId: string, setup = false) {
+  const r = run(runId)
+  if (!r) return
+  const at = Math.max(clockNow(), after(r))
+  batch(() => {
+    putRun({ ...r, endedAt: at })
+    if (setup && !state.stops.some((x) => x.lineId === r.lineId && !x.endedAt)) putStop({ id: uid(), dept: r.dept, lineId: r.lineId, reason: SETUP, note: AFTER + r.code, startedAt: at, endedAt: null, by: user.get(), updatedAt: 0 })
+  })
+}
+/** no other code is coming after all: what was counting between codes is taken away (it was never a stop of the line) */
+export function dropSetup(id: string) { const x = state.stops.find((y) => y.id === id); if (x && !x.endedAt) putStop({ ...x, deleted: true }) }
+/**
+ * A line that is running a code is not in set up. A set up still open from before that code started (the tablet that
+ * started the code had not heard of it, or runs an older version of the app) ends where the code began.
+ */
+function healSetup(lineId: string) {
+  const r = state.runs.find((x) => x.lineId === lineId && !x.endedAt)
+  if (!r) return
+  for (const x of state.stops.filter((y) => y.lineId === lineId && !y.endedAt && y.reason === SETUP && y.startedAt <= r.startedAt)) putStop({ ...x, endedAt: r.startedAt })
+}
 /** pounds thrown away, added to what the run already has */
 export function addWaste(runId: string, lb: number) { const r = run(runId); if (r) putRun({ ...r, waste: Math.round((r.waste + lb) * 100) / 100 }) }
 /** corrections: a wrong code, lot, quantity, tag or stop is fixed in place */
@@ -385,6 +406,8 @@ export function updateRun(id: string, patch: Partial<Pick<Run, 'code' | 'lot' | 
   if (!r) return
   const n = { ...r, ...patch }
   putRun(n)
+  // reopened: the code goes on, so what started counting when it "ended" was not a set up
+  if (patch.endedAt === null && r.endedAt) for (const x of state.stops.filter((y) => y.lineId === r.lineId && !y.endedAt && y.startedAt >= (r.endedAt ?? 0))) putStop({ ...x, deleted: true })
   const cfg = CFG[r.dept], pre = 'Corrida ' + r.code + ' del ' + r.date + ' (' + r.dept + ', ' + lineNameOf(state, r.lineId, r.line) + ') · '
   const log = (what: string, a: string, b: string) => logChange(r.dept, pre + what, a, b, 'act_runs', r.id)
   log('Código', r.code, n.code); log('Lote', r.lot, n.lot); log('Fecha', r.date, n.date)
@@ -744,10 +767,10 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
     if (next) set({ ...state, lines: upsertIn(state.lines, next) })
   } else if (table === 'act_runs') {
     const next = reconcile('act_runs', state.runs.find((r) => r.id === row.id), row, RUN)
-    if (next) set({ ...state, runs: upsertIn(state.runs, next) })
+    if (next) { set({ ...state, runs: upsertIn(state.runs, next) }); healSetup(next.lineId) }
   } else if (table === 'act_stops') {
     const next = reconcile('act_stops', state.stops.find((x) => x.id === row.id), row, STOP)
-    if (next) set({ ...state, stops: upsertIn(state.stops, next) })
+    if (next) { set({ ...state, stops: upsertIn(state.stops, next) }); if (next.lineId) healSetup(next.lineId) }
   } else if (table === 'act_products') {
     const code = String(row.code ?? ''), key = normCode(code)
     const i = state.products.findIndex((p) => normCode(p.code) === key)

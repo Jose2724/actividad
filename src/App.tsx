@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, Ref } from 'react'
-import { activeBetween, addLine, addWaste, awayDay, byLineName, cancelDay, CFG, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deptToday, endRun, endStop, fmtDur, fmtTime, freeLineNames, KEEP_DAYS, lastPerUnit, leftOpen, LINE_NAME_MAX, lineNamed, lineNameOf, lotFor, madeText, managerPin, mergeProducts, myDept, nearDay, normCode, numOf, openRun, openStop, parseProductsCsv, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reset, resetRecords, role, runStats, saveProduct, setSchedule, setTarget, startDay, startRun, startStop, stopsOf, store, swapLineNames, targetOf, tidyLineName, savedText, SETUP, setupSince, unitDone, user, workDay, type Dept, type DeptCfg, type Line, type Product, type LotPart, type State, type Target, type WorkDay } from './store'
+import { activeBetween, addLine, addWaste, awayDay, byLineName, cancelDay, CFG, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deptToday, dropSetup, endRun, endStop, fmtDur, fmtTime, freeLineNames, idleStop, KEEP_DAYS, lastPerUnit, leftOpen, LINE_NAME_MAX, lineNamed, lineNameOf, lotFor, madeText, managerPin, mergeProducts, myDept, nearDay, normCode, numOf, openRun, openStop, parseProductsCsv, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reset, resetRecords, role, runStats, saveProduct, setSchedule, setTarget, startDay, startRun, startStop, stopsOf, store, swapLineNames, targetOf, tidyLineName, savedText, SETUP, unitDone, user, workDay, type Dept, type DeptCfg, type Line, type Product, type LotPart, type State, type Target, type WorkDay } from './store'
 import { avanceRows, n1, pending, type AvanceRow } from './avance'
 import { cellText, loadZip, xDay, xDur, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 
@@ -815,7 +815,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   const [counting, setCounting] = useState(false)
   const [ending, setEnding] = useState(false)
   // the unit being counted is the last one of the code: once it is saved, the code ends
-  const [endAfter, setEndAfter] = useState(false)
+  const [endAfter, setEndAfter] = useState<null | boolean>(null) // not null = waiting for that unit; the value says whether a set up follows
   const [removing, setRemoving] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [editQty, setEditQty] = useState(false)
@@ -851,12 +851,22 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
     const perCrateN = per.trim() ? Number(per) : prod?.pouchesPerCrate || (suggested != null ? Math.round(suggested / cratesN) : null)
     const perUnit = isCart ? (perCrateN ? cratesN * perCrateN : null) : per.trim() ? Number(per) : suggested
     const ok = !!code.trim() && !!lot.trim() && (!needPer || (perUnit != null && perUnit > 0))
-    // between two codes of the day: the time is counting as set up
-    const waiting = setupSince(s, line.id, day.date, now)
+    // between two codes: what the line is stopped for since its last one ended (its set up)
+    const idle = idleStop(s, line.id, now)
     return (
       <div className="line idle">
         <div className="lhead"><h3>{line.name} {nameIt}</h3><button type="button" className="lnk" onClick={() => setRemoving(true)}>Quitar {cfg.lineWord.toLowerCase()}</button></div>
-        {waiting && <div className="setupbar">⏱ Set up · sin código desde {fmtTime(waiting.from)} · <b>{fmtDur(now - waiting.from)}</b><small>Al empezar el siguiente código, este tiempo queda guardado como paro de Set up.</small></div>}
+        {idle && (
+          <div className="setupbar">
+            <span>⏱ {idle.reason} · desde {fmtTime(idle.startedAt)} · <b>{fmtDur(now - idle.startedAt)}</b></span>
+            <small>Cuenta como paro hasta que empiece el siguiente código. Ya sale en el Reporte.</small>
+            <span className="btns">
+              <button type="button" className="lnk" onClick={() => setFixingStop(true)}>{mgr ? 'Corregir o dividir' : 'Corregir'}</button>
+              <button type="button" className="lnk" onClick={() => dropSetup(idle.id)}>No viene otro código: quitarlo</button>
+            </span>
+          </div>
+        )}
+        {fixingStop && idle && <StopEditor stop={idle} mgr={mgr} onClose={() => setFixingStop(false)} />}
         {naming}
         {removing && <ConfirmDialog title={'¿Quitar ' + line.name + ' de ' + line.dept + '?'} text="Se puede volver a agregar cuando haga falta." yes="Quitar" danger onYes={() => removeLine(line.id)} onNo={() => setRemoving(false)} />}
         <form className="start" onSubmit={(e) => { e.preventDefault(); if (ok) { startRun(line, code.trim().toUpperCase(), lot.trim(), date, needPer ? perUnit : null); setDateText(null); setLotText(null) } }}>
@@ -927,12 +937,12 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       </div>
       {ending && <EndDialog cfg={cfg} code={run.code} line={line.name} now={now} lastAt={run.units.length ? run.units[run.units.length - 1].at : null}
         summary={'Lleva ' + madeText(run, st.qty) + ' · trabajando ' + fmtDur(st.working) + (st.down ? ' · parado ' + fmtDur(st.down) : '') + '.'}
-        onClose={() => setEnding(false)} onDone={() => { endRun(run.id); setEnding(false) }}
-        onMissing={() => { setEnding(false); if (cfg.qty === 'ask') { setEndAfter(true); setCounting(true) } else { record(cfg.qty === 'auto' ? run.perUnit : null); endRun(run.id) } }} />}
+        onClose={() => setEnding(false)} onDone={(next) => { endRun(run.id, next); setEnding(false) }}
+        onMissing={(next) => { setEnding(false); if (cfg.qty === 'ask') { setEndAfter(next); setCounting(true) } else { record(cfg.qty === 'auto' ? run.perUnit : null); endRun(run.id, next) } }} />}
       {asking && <StopDialog title={'Parar ' + line.name + ' · ' + run.code} reasons={cfg.reasons} onClose={() => setAsking(false)} onPick={(reason, note) => { startStop(line.dept, line.id, reason, note); setAsking(false) }} />}
       {counting && (cfg.lots
-        ? <LotsDialog title={cfg.qtyQ} unit={cfg.qtyUnit} refLabel={cfg.refLabel} lot={run.lot} qty={run.perUnit} onClose={() => { setCounting(false); setEndAfter(false) }} onPick={(q, ref, lots) => { record(q, ref, lots); setCounting(false); if (endAfter) { setEndAfter(false); endRun(run.id) } }} />
-        : <QtyDialog title={cfg.qtyQ} unit={cfg.qtyUnit} refLabel={cfg.refLabel} initial={run.perUnit} onClose={() => { setCounting(false); setEndAfter(false) }} onPick={(q, ref) => { record(q, ref); setCounting(false); if (endAfter) { setEndAfter(false); endRun(run.id) } }} />)}
+        ? <LotsDialog title={cfg.qtyQ} unit={cfg.qtyUnit} refLabel={cfg.refLabel} lot={run.lot} qty={run.perUnit} onClose={() => { setCounting(false); setEndAfter(null) }} onPick={(q, ref, lots) => { record(q, ref, lots); setCounting(false); if (endAfter !== null) { setEndAfter(null); endRun(run.id, endAfter) } }} />
+        : <QtyDialog title={cfg.qtyQ} unit={cfg.qtyUnit} refLabel={cfg.refLabel} initial={run.perUnit} onClose={() => { setCounting(false); setEndAfter(null) }} onPick={(q, ref) => { record(q, ref); setCounting(false); if (endAfter !== null) { setEndAfter(null); endRun(run.id, endAfter) } }} />)}
       {wasting && <QtyDialog title={'Waste de ' + run.code + ' · ¿cuántas libras?'} unit="lb" refLabel="" initial={null} decimal onClose={() => setWasting(false)} onPick={(lb) => { if (lb > 0) addWaste(run.id, lb); setWasting(false) }} />}
     </div>
   )
@@ -943,8 +953,10 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
  * forget to register. If it is missing, it is registered right there and then the code ends. Neither answer is the
  * big button: a tap out of habit must not add a unit that does not exist, nor leave out one that does.
  */
-function EndDialog({ cfg, code, line, summary, lastAt, now, onMissing, onDone, onClose }: { cfg: DeptCfg; code: string; line: string; summary: string; lastAt: number | null; now: number; onMissing: () => void; onDone: () => void; onClose: () => void }) {
+function EndDialog({ cfg, code, line, summary, lastAt, now, onMissing, onDone, onClose }: { cfg: DeptCfg; code: string; line: string; summary: string; lastAt: number | null; now: number; onMissing: (next: boolean) => void; onDone: (next: boolean) => void; onClose: () => void }) {
   const fem = cfg.saved.endsWith('a'), unit = cfg.unit.toLowerCase()
+  // another code is coming on this line (the usual case): the time until it starts counts as its set up
+  const [next, setNext] = useState(true)
   const last = (fem ? 'la última ' : 'el último ') + unit
   return (
     <div className="veil" onClick={onClose}>
@@ -954,10 +966,11 @@ function EndDialog({ cfg, code, line, summary, lastAt, now, onMissing, onDone, o
         <p>{lastAt ? (fem ? 'La última ' : 'El último ') + unit + ' se registró a las ' + fmtTime(lastAt) + ', hace ' + fmtDur(now - lastAt) + '.' : 'Todavía no se ha registrado ' + (fem ? 'ninguna ' : 'ningún ') + unit + '.'}</p>
         <p className="endask">¿Ya está registrad{fem ? 'a' : 'o'} {last} que salió?</p>
         <div className="endchoices">
-          <button type="button" className="btn" onClick={onMissing}>No, falta {last}: registrar{fem ? 'la' : 'lo'} y terminar</button>
-          <button type="button" className="btn" onClick={onDone}>Sí, ya está: terminar el código</button>
+          <button type="button" className="btn" onClick={() => onMissing(next)}>No, falta {last}: registrar{fem ? 'la' : 'lo'} y terminar</button>
+          <button type="button" className="btn" onClick={() => onDone(next)}>Sí, ya está: terminar el código</button>
         </div>
-        <p className="hint">Al terminar, la línea queda en Set up hasta que empiece su siguiente código.</p>
+        <label className="nextcode"><input type="checkbox" checked={next} onChange={(e) => setNext(e.target.checked)} /> Después viene otro código en esta línea</label>
+        <p className="hint">{next ? 'Al terminar empieza a contar el Set up, que es un paro: sale en el Reporte y el manager lo puede dividir. Termina solo cuando empiece el siguiente código.' : 'Es el último código de esta línea por hoy: no se cuenta Set up.'}</p>
         <div className="dbtns"><button type="button" className="btn" onClick={onClose}>Cancelar</button></div>
       </div>
     </div>

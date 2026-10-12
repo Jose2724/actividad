@@ -1046,71 +1046,91 @@ fil.use((m) => {
 })
 
 // =====================================================================================================================
-//  The set up between two codes
+//  The set up between two codes: a stop that starts when a code ends
 // =====================================================================================================================
-section('Set up automático entre un código y el siguiente')
+section('Set up: un paro que empieza al terminar un código')
 const sup = await device('sup', { user: 'Nino' })
 sup.use((m) => {
   const st = () => m.store.get()
   clock = T0
   m.addLine('RTE', 'Línea 1'); m.addLine('RTE', 'Línea 2')
   const [l1, l2] = st().lines.slice().sort((a, b) => a.name.localeCompare(b.name))
+  const runOf = (code) => st().runs.find((r) => r.code === code)
+  const open = () => st().stops.filter((x) => !x.endedAt)
   m.startRun(l1, 'A100', '6283', DAY, 240)
-  eq('el primer código del día no trae set up', [st().stops.length, m.setupSince(st(), l1.id, DAY, clock)], [0, null])
-  clock = T0 + 30 * M; m.unitDone(st().runs[0].id, 240)
-  clock = T0 + 60 * M; m.endRun(st().runs[0].id)
-  clock = T0 + 72 * M
-  eq('terminado el código, la línea está en set up desde ese momento', [m.setupSince(st(), l1.id, DAY, clock), st().stops.length], [{ from: T0 + 60 * M, code: 'A100' }, 0])
-  eq('la otra línea, que no ha corrido nada, no', m.setupSince(st(), l2.id, DAY, clock), null)
+  clock = T0 + 30 * M; m.unitDone(runOf('A100').id, 240)
+  clock = T0 + 60 * M; m.endRun(runOf('A100').id, true)
+  eq('al terminar el código empieza un paro de Set up, abierto', open().map((x) => [x.reason, x.lineId === l1.id, x.dept, x.startedAt, x.note, x.by]), [['Set up', true, 'RTE', T0 + 60 * M, 'Después de A100', 'Nino']])
+  clock = T0 + 70 * M
+  eq('la línea, sin código, está parada por Set up; la otra línea no', [m.idleStop(st(), l1.id, clock)?.reason, m.idleStop(st(), l2.id, clock)], ['Set up', undefined])
+  eq('ya sale en el reporte, en curso', m.reportOf(st(), DAY, clock).stops.map((x) => [x.reason, x.endedAt]), [['Set up', null]])
+  // the manager divides it while it is still counting: the last minutes were a break
+  const id = open()[0].id
+  const rest = m.splitStop(id, T0 + 64 * M, 'Break')
+  eq('se puede dividir en curso: el Set up se cierra y la otra causa sigue contando', [st().stops.find((x) => x.id === id).endedAt, st().stops.find((x) => x.id === rest).reason, m.idleStop(st(), l1.id, clock)?.reason], [T0 + 64 * M, 'Break', 'Break'])
   clock = T0 + 75 * M; m.startRun(l1, '0200', '6283', DAY, 240)
-  const setups = () => st().stops.filter((x) => x.reason === m.SETUP)
-  eq('al empezar el siguiente, queda un paro de Set up del fin de uno al inicio del otro', setups().map((x) => [x.lineId === l1.id, x.dept, x.startedAt, x.endedAt, x.note, x.by]), [[true, 'RTE', T0 + 60 * M, T0 + 75 * M, 'De A100 a 0200', 'Nino']])
+  eq('al empezar el siguiente código se cierra lo que estaba contando', [open().length, st().stops.map((x) => [x.reason, (x.endedAt - x.startedAt) / M]).sort()], [0, [['Break', 11], ['Set up', 4]]])
   eq('ese tiempo no cuenta como parado de ninguno de los dos códigos', st().runs.map((r) => m.runStats(st(), r, clock).down), [0, 0])
-  eq('y la línea ya no está en set up', m.setupSince(st(), l1.id, DAY, clock), null)
-  const rep = m.reportOf(st(), DAY, clock)
-  eq('sale en los paros del reporte', rep.stops.map((x) => [x.reason, (x.endedAt - x.startedAt) / M]), [['Set up', 15]])
-  // a code started by mistake and ended at once, then the right one: seconds are not a set up
-  clock = T0 + 100 * M; m.endRun(st().runs.find((r) => r.code === '0200').id)
-  clock = T0 + 100 * M + 20_000; m.startRun(l1, '0300', '6283', DAY, 240)
-  eq('menos de un minuto entre dos códigos no es un set up', setups().length, 1)
-  // the last code of the shift: nothing is left open
-  clock = T0 + 130 * M; m.endRun(st().runs.find((r) => r.code === '0300').id)
-  eq('el último código del turno no deja ningún paro abierto', [st().stops.filter((x) => !x.endedAt).length, setups().length], [0, 1])
-  clock = T0 + 130 * M + 7 * 60 * M
-  eq('pasadas las horas ya no se llama set up', m.setupSince(st(), l1.id, DAY, clock), null)
-  m.startRun(l1, '0400', '6283', DAY, 240)
-  eq('y empezar un código entonces no escribe un set up de siete horas', setups().length, 1)
-  // the next day of work starts clean
-  clock = T0 + 24 * 60 * M
-  m.endRun(st().runs.find((r) => r.code === '0400').id)
-  eq('otro día: lo de ayer no es set up de hoy', m.setupSince(st(), l1.id, '2026-10-11', clock + M), null)
-  // ending a code with its last unit still to register: the unit goes in first, then the code ends, then the set up counts
-  clock = T0 + 30 * 60 * M
-  m.startRun(l2, 'Z900', '6284', '2026-10-11', 240)
-  const z = () => st().runs.find((r) => r.code === 'Z900')
-  clock += 10 * M; m.unitDone(z().id, 240)
-  clock += 9 * M; m.unitDone(z().id, 180); m.endRun(z().id)
-  eq('registrar la última unidad y terminar: la unidad queda dentro y el fin después de ella', [z().units.length, z().units[1].qty, z().endedAt > z().units[1].at, m.runQty(st(), z())], [2, 180, true, 420])
-  eq('y el set up de esa línea cuenta desde ese fin', m.setupSince(st(), l2.id, '2026-10-11', clock + 5 * M), { from: z().endedAt, code: 'Z900' })
-  // the manager can divide a set up like any other stop
-  const id = setups()[0].id
-  eq('un set up se puede dividir como cualquier paro', [!!m.splitStop(id, T0 + 65 * M, 'Limpieza'), st().stops.filter((x) => x.lineId === l1.id).map((x) => x.reason).sort()], [true, ['Limpieza', 'Set up']])
+  // without dividing: the detail says from which code to which
+  clock = T0 + 100 * M; m.endRun(runOf('0200').id, true)
+  clock = T0 + 112 * M; m.startRun(l1, '0300', '6283', DAY, 240)
+  eq('sin dividir: un Set up del fin de uno al inicio del otro, con los dos códigos en el detalle', st().stops.filter((x) => x.note === 'De 0200 a 0300').map((x) => [x.reason, x.startedAt, x.endedAt]), [['Set up', T0 + 100 * M, T0 + 112 * M]])
+  // seconds are not a set up
+  clock = T0 + 120 * M; m.endRun(runOf('0300').id, true)
+  clock = T0 + 120 * M + 20_000; m.startRun(l1, '0400', '6283', DAY, 240)
+  eq('menos de un minuto entre dos códigos no deja un Set up', st().stops.filter((x) => x.reason === 'Set up').length, 2)
+  // the last code of the shift
+  clock = T0 + 150 * M; m.endRun(runOf('0400').id, false)
+  eq('el último código del turno, sin Set up: nada queda abierto', [open().length, m.idleStop(st(), l1.id, clock)], [0, undefined])
+  // "another code is coming" was said and none came
+  m.startRun(l2, 'B100', '6283', DAY, 240); clock = T0 + 160 * M; m.endRun(runOf('B100').id, true)
+  const before = open().length
+  m.dropSetup(open()[0].id)
+  eq('si al final no viene otro código, se quita', [before, open().length, st().changes.filter((c) => /Set up|borr/i.test(c.what)).length], [1, 0, 0])
+  m.startRun(l2, 'B200', '6283', DAY, 240); clock = T0 + 170 * M; m.endRun(runOf('B200').id, true)
+  clock = T0 + 170 * M + 7 * 60 * M
+  eq('uno olvidado deja de contar a las horas: ni en la línea ni en el reporte', [m.idleStop(st(), l2.id, clock), m.reportOf(st(), DAY, clock).stops.filter((x) => !x.endedAt).length], [undefined, 0])
+  m.startRun(l2, 'B300', '6283', DAY, 240)
+  eq('y empezar un código entonces lo descarta, no lo cierra con siete horas', [open().length, st().stops.filter((x) => x.reason === 'Set up' && x.lineId === l2.id).length], [0, 0])
+  // a code ended by mistake and reopened
+  clock += 10 * M; m.endRun(runOf('B300').id, true)
+  const counting = open().length
+  m.updateRun(runOf('B300').id, { endedAt: null })
+  eq('reabrir un código quita el Set up que había empezado', [counting, open().length, runOf('B300').endedAt], [1, 0, null])
+  // the last unit registered at the end
+  clock += 9 * M; m.unitDone(runOf('B300').id, 180); m.endRun(runOf('B300').id, true)
+  eq('registrar la última unidad y terminar: la unidad queda dentro, el fin después de ella, y el Set up desde ese fin', [runOf('B300').units.length, runOf('B300').endedAt > runOf('B300').units[0].at, open()[0].startedAt === runOf('B300').endedAt], [1, true, true])
+  m.endRun(runOf('B300').id, true)
+  eq('terminar dos veces no abre dos Set up', open().length, 1)
+})
+const hl = await device('hl', { user: 'Nino' })
+hl.use((m) => {
+  // the tablet that starts the next code had not heard of the set up yet (no signal, or an older version of the app)
+  clock = T0
+  m.addLine('RTE', 'Línea 1')
+  const l = m.store.get().lines[0]
+  clock = T0 + 20 * M; m.startRun(l, 'A100', '6283', DAY, 240)
+  m.applyRemote('act_stops', stopRow({ id: 'tardio', lineId: l.id, startedAt: T0 + 5 * M, endedAt: null, reason: 'Set up', note: 'Después de Z900' }))
+  eq('un Set up abierto que llega tarde a una línea que ya corre se cierra donde empezó el código', [m.store.get().stops.find((x) => x.id === 'tardio')?.endedAt, m.openStop(m.store.get(), 'RTE', l.id)], [T0 + 20 * M, undefined])
+  clock = T0 + 40 * M; m.startStop('RTE', l.id, 'Limpieza', '')
+  eq('un paro normal de la línea, puesto mientras corre, no se toca', m.openStop(m.store.get(), 'RTE', l.id)?.reason, 'Limpieza')
 })
 {
-  // one tablet ends the code, another starts the next one: the set up is written once, and both see it
+  // one tablet ends the code, another starts the next one: both see the set up, and both see it end
   clock = T0 + 600 * M
   const rte = tab.use((m) => m.store.get().lines.find((l) => l.dept === 'RTE'))
-  const open = tab.use((m) => m.store.get().runs.find((r) => r.lineId === rte.id && !r.endedAt))
-  if (open) { tab.use((m) => m.endRun(open.id)); settle() }
+  const running = tab.use((m) => m.store.get().runs.find((r) => r.lineId === rte.id && !r.endedAt))
+  if (running) { tab.use((m) => m.endRun(running.id)); settle() }
   clock += M
   tab.use((m) => m.startRun(rte, 'C300', '6283', DAY, 240)); settle()
   const cid = tab.use((m) => m.store.get().runs.find((r) => r.code === 'C300').id)
   clock += 20 * M
-  tab.use((m) => m.endRun(cid)); settle()
+  tab.use((m) => m.endRun(cid, true)); settle()
+  eq('el manager ve en curso el Set up que empezó en la tablet', mgr.use((m) => m.store.get().stops.filter((x) => x.reason === m.SETUP && !x.endedAt).map((x) => x.note)), ['Después de C300'])
   clock += 12 * M
   mgr.use((m) => m.startRun(rte, 'C400', '6283', DAY, 240)); settle()
   const seen = (d) => d.use((m) => m.store.get().stops.filter((x) => x.reason === m.SETUP && x.note === 'De C300 a C400').map((x) => (x.endedAt - x.startedAt) / M))
-  eq('una tablet termina y otra empieza: el set up queda una sola vez y lo ven las dos', [seen(tab), seen(mgr), all.map((d) => d.use((m) => m.outbox.size()))], [[12], [12], [0, 0]])
+  eq('una tablet termina y otra empieza: el Set up se cierra una sola vez y lo ven las dos', [seen(tab), seen(mgr), all.map((d) => d.use((m) => m.store.get().stops.filter((x) => !x.endedAt && x.lineId === rte.id).length)), all.map((d) => d.use((m) => m.outbox.size()))], [[12], [12], [0, 0], [0, 0]])
 }
 
 // =====================================================================================================================
