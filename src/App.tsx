@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, Ref } from 'react'
-import { activeBetween, addLine, addWaste, awayDay, byLineName, cancelDay, CFG, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deptToday, dropSetup, endRun, endStop, fmtDur, fmtTime, freeLineNames, idleStop, KEEP_DAYS, lastPerUnit, leftOpen, LINE_NAME_MAX, lineNamed, lineNameOf, lotFor, madeText, managerPin, mergeProducts, myDept, nearDay, normCode, numOf, openRun, openStop, parseProductsCsv, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reset, resetRecords, role, runStats, saveProduct, setSchedule, setTarget, startDay, startRun, startStop, stopsOf, store, swapLineNames, targetOf, tidyLineName, savedText, SETUP, unitDone, user, workDay, type Dept, type DeptCfg, type Line, type Product, type LotPart, type State, type Target, type WorkDay } from './store'
+import { activeBetween, addLine, addWaste, awayDay, byLineName, casesText, cancelDay, CFG, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deptToday, dropSetup, endRun, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineNamed, lineNameOf, lotFor, madeText, managerPin, mergeProducts, myDept, nearDay, normCode, numOf, openRun, openStop, parseProductsCsv, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reopenRun, reset, resetRecords, role, runQty, runStats, saveProduct, setSchedule, setTarget, startDay, startRun, startSetup, startStop, stopsOf, store, swapLineNames, targetOf, tidyLineName, savedText, shortEnded, shortUnit, SETUP, unitDone, user, workDay, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Short, type State, type Target, type WorkDay } from './store'
 import { avanceRows, n1, pending, type AvanceRow } from './avance'
 import { cellText, loadZip, xDay, xDur, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 
@@ -815,6 +815,10 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   const [counting, setCounting] = useState(false)
   const [ending, setEnding] = useState(false)
   // the unit being counted is the last one of the code: once it is saved, the code ends
+  const [filling, setFilling] = useState<Short | null>(null)
+  const [choosing, setChoosing] = useState(false)
+  const [reopening, setReopening] = useState<string | null>(null) // the code (its run) the question is about
+  const [fixingId, setFixingId] = useState<string | null>(null)
   const [endAfter, setEndAfter] = useState<null | boolean>(null) // not null = waiting for that unit; the value says whether a set up follows
   const [removing, setRemoving] = useState(false)
   const [renaming, setRenaming] = useState(false)
@@ -839,6 +843,40 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
     const t = setTimeout(() => setJust(null), SAVED_MS)
     return () => clearTimeout(t)
   }, [just])
+  const unitWord = cfg.unit.toLowerCase()
+  const perCaseOf = (c: string) => (cfg.qtyUnit === 'pouches' ? productOf(s, c)?.pouchesPerCase || undefined : undefined)
+  // Units closed with less than the usual can still be filled, instead of counting another one: the running code's
+  // own (a button beside "listo"), and the last one of every code already ended on this line today (a link: the code
+  // was marked as finished too early, or more of it turned up after the line had gone on to another code).
+  const own = run && cfg.qty === 'ask' ? shortUnit(s, run) : null
+  const ended = cfg.qty === 'ask' ? shortEnded(s, line.id, day.date).filter((x) => x.run.id !== own?.run.id) : []
+  const shortText = (x: Short) => unitWord + ' ' + (x.index + 1) + ' de ' + x.run.code + ' (' + x.unit.qty + ' de ' + x.usual + ')'
+  const fillLink = ended.length > 0 && (
+    <button type="button" className="lnk" onClick={() => (ended.length === 1 ? setFilling(ended[0]) : setChoosing(true))}>
+      ➕ Completar {ended.length === 1 ? shortText(ended[0]) : (cfg.saved.endsWith('a') ? 'una ' : 'un ') + unitWord + ' de un código ya terminado'}
+    </button>
+  )
+  const fixingRun = fixingId ? s.runs.find((r) => r.id === fixingId) : undefined
+  const fillUi = (
+    <>
+      {fixingRun && <RunEditor key={'fix:' + fixingRun.id} s={s} run={fixingRun} mgr={mgr} onClose={() => setFixingId(null)} />}
+      {choosing && (
+        <div className="veil" onClick={() => setChoosing(false)}>
+          <div className="dlg" onClick={(e) => e.stopPropagation()}>
+            <h3>¿Cuál quieres completar?</h3>
+            <p>Códigos ya terminados hoy en {line.name} que cerraron con menos de lo usual.</p>
+            <div className="endchoices">
+              {ended.map((x) => <button key={x.run.id} type="button" className="btn" onClick={() => { setChoosing(false); setFilling(x) }}><b>{x.run.code}</b> · lote {x.run.lot} · {unitWord} {x.index + 1} · tiene {x.unit.qty} de {x.usual} {cfg.qtyUnit} · terminó {fmtTime(x.run.endedAt ?? 0)}</button>)}
+            </div>
+            <div className="dbtns"><button type="button" className="btn" onClick={() => setChoosing(false)}>Cancelar</button></div>
+          </div>
+        </div>
+      )}
+      {filling && (cfg.lots
+        ? <LotsDialog key={'fill:' + filling.run.id} title={'Completar ' + unitWord + ' ' + (filling.index + 1) + ' de ' + filling.run.code + ' · ¿qué lleva ahora en total?'} unit={cfg.qtyUnit} refLabel={cfg.refLabel} lot={filling.run.lot} qty={filling.usual} start={filling.unit.lots ?? [{ lot: filling.run.lot, qty: filling.usual }]} startRef={filling.unit.ref} onClose={() => setFilling(null)} onPick={(total, ref, lots) => { fillUnit(filling.run.id, filling.unit.at, total, lots, ref); setFilling(null) }} />
+        : <QtyDialog key={'fill:' + filling.run.id} title={'Completar ' + unitWord + ' ' + (filling.index + 1) + ' de ' + filling.run.code + ' · tiene ' + filling.unit.qty + ' ' + cfg.qtyUnit + '. ¿Cuántos tiene ahora en total?'} unit={cfg.qtyUnit} refLabel="" initial={filling.usual} perCase={perCaseOf(filling.run.code)} onClose={() => setFilling(null)} onPick={(q) => { fillUnit(filling.run.id, filling.unit.at, q); setFilling(null) }} />)}
+    </>
+  )
   if (!run) {
     // the lot follows the date unless someone typed another one; the quantity per unit (boxes per pallet, pouches
     // per cart) comes from the products table or the last run of the code. RTE types it the office's way: crates
@@ -853,6 +891,8 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
     const ok = !!code.trim() && !!lot.trim() && (!needPer || (perUnit != null && perUnit > 0))
     // between two codes: what the line is stopped for since its last one ended (its set up)
     const idle = idleStop(s, line.id, now)
+    // the code that ended last here today: marked as finished too early, it goes on; short on its last unit, it is filled
+    const prev = lastEnded(s, line.id, day.date)
     return (
       <div className="line idle">
         <div className="lhead"><h3>{line.name} {nameIt}</h3><button type="button" className="lnk" onClick={() => setRemoving(true)}>Quitar {cfg.lineWord.toLowerCase()}</button></div>
@@ -861,11 +901,27 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
             <span>⏱ {idle.reason} · desde {fmtTime(idle.startedAt)} · <b>{fmtDur(now - idle.startedAt)}</b></span>
             <small>Cuenta como paro hasta que empiece el siguiente código. Ya sale en el Reporte.</small>
             <span className="btns">
+              <button type="button" className="lnk" onClick={() => endStop(idle.id)}>■ Terminar {idle.reason}</button>
               <button type="button" className="lnk" onClick={() => setFixingStop(true)}>{mgr ? 'Corregir o dividir' : 'Corregir'}</button>
               <button type="button" className="lnk" onClick={() => dropSetup(idle.id)}>No viene otro código: quitarlo</button>
             </span>
           </div>
         )}
+        {!idle && <div className="setupstart"><button type="button" className="lnk" onClick={() => startSetup(line)}>⏱ Empezar Set up en {line.name}</button></div>}
+        {prev && (
+          <div className="lastcode">
+            <span>Último código: <b className="code">{prev.code}</b> · lote {prev.lot} · terminó {fmtTime(prev.endedAt ?? 0)} · {madeText(prev, runQty(s, prev))}</span>
+            <span className="btns">
+              <button type="button" className="lnk" onClick={() => setReopening(prev.id)}>↩ No había terminado: seguir con {prev.code}</button>
+              {fillLink}
+              <button type="button" className="lnk" onClick={() => setFixingId(prev.id)}>Corregir</button>
+            </span>
+          </div>
+        )}
+        {prev && reopening === prev.id && <ConfirmDialog title={'¿Seguir con ' + prev.code + ' en ' + line.name + '?'}
+          text={'Se marcó terminado a las ' + fmtTime(prev.endedAt ?? 0) + '. Vuelve a correr como si no se hubiera terminado: el tiempo desde entonces cuenta como trabajando y el Set up que empezó se quita. Si la línea estuvo parada y el código vuelve ahora, es mejor empezarlo de nuevo abajo.'}
+          yes={'Seguir con ' + prev.code} onYes={() => { reopenRun(prev.id); setReopening(null) }} onNo={() => setReopening(null)} />}
+        {fillUi}
         {fixingStop && idle && <StopEditor stop={idle} mgr={mgr} onClose={() => setFixingStop(false)} />}
         {naming}
         {removing && <ConfirmDialog title={'¿Quitar ' + line.name + ' de ' + line.dept + '?'} text="Se puede volver a agregar cuando haga falta." yes="Quitar" danger onYes={() => removeLine(line.id)} onNo={() => setRemoving(false)} />}
@@ -906,6 +962,9 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
     else record(cfg.qty === 'auto' ? run.perUnit : null)
   }
   const lit = just ? ' bumped' : ''
+  // pouches are also told as full cases and loose pouches, where the products table says how many go in a case
+  const perCase = perCaseOf(run.code)
+  const cases = perCase && st.qty > 0 ? inCases(s, run.code, st.qty) : null
   return (
     <div className={'line ' + (stop ? 'stopped' : 'running') + (just ? ' justdone' : '')}>
       {naming}
@@ -919,7 +978,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       <div className="stats">
         <div className="stat big"><label>Trabajando</label><b>{fmtDur(st.working)}</b></div>
         <div key={'n' + (just?.at ?? 0)} className={'stat' + lit}><label>{cfg.plural}</label><b>{run.units.length}</b></div>
-        {cfg.qty !== 'none' && <div key={'q' + (just?.at ?? 0)} className={'stat' + lit}><label>{cfg.qtyUnit}</label><b>{st.qty}</b></div>}
+        {cfg.qty !== 'none' && <div key={'q' + (just?.at ?? 0)} className={'stat' + lit}><label>{cfg.qtyUnit}</label><b>{st.qty}</b>{cases && <small>{casesText(cases)}</small>}</div>}
         <div className="stat"><label>{cfg.unit} actual</label><b>{fmtDur(current)}</b></div>
         <div className="stat"><label>Promedio / {cfg.unit.toLowerCase()}</label><b>{run.units.length ? fmtDur(st.avg) : '—'}</b></div>
         <div className="stat"><label>Parado</label><b className={st.down ? 'red' : ''}>{fmtDur(st.down)}</b></div>
@@ -927,6 +986,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       </div>
       <div className="btns">
         <button type="button" className={'btn primary huge' + (just ? ' saved' : '')} disabled={!!just} onClick={done}>✓ {just ? savedText(line.dept, just.n) : cfg.done}</button>
+        {own && <button type="button" className="btn" onClick={() => setFilling(own)}>➕ Completar {unitWord + (own.run.id === run.id ? ' ' + (own.index + 1) : ' de antes')} ({own.unit.qty} de {own.usual})</button>}
         {cfg.waste && <button type="button" className="btn" onClick={() => setWasting(true)}>Waste (lb)</button>}
         {stop
           ? (stop.lineId === line.id
@@ -935,14 +995,16 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
           : <button type="button" className="btn" onClick={() => setAsking(true)}>⏸ Parar</button>}
         <button type="button" className="btn" disabled={!!stop} onClick={() => setEnding(true)}>■ Terminar código</button>
       </div>
+      {fillLink && <div className="fillmore">{fillLink}</div>}
       {ending && <EndDialog cfg={cfg} code={run.code} line={line.name} now={now} lastAt={run.units.length ? run.units[run.units.length - 1].at : null}
         summary={'Lleva ' + madeText(run, st.qty) + ' · trabajando ' + fmtDur(st.working) + (st.down ? ' · parado ' + fmtDur(st.down) : '') + '.'}
         onClose={() => setEnding(false)} onDone={(next) => { endRun(run.id, next); setEnding(false) }}
         onMissing={(next) => { setEnding(false); if (cfg.qty === 'ask') { setEndAfter(next); setCounting(true) } else { record(cfg.qty === 'auto' ? run.perUnit : null); endRun(run.id, next) } }} />}
       {asking && <StopDialog title={'Parar ' + line.name + ' · ' + run.code} reasons={cfg.reasons} onClose={() => setAsking(false)} onPick={(reason, note) => { startStop(line.dept, line.id, reason, note); setAsking(false) }} />}
+      {fillUi}
       {counting && (cfg.lots
         ? <LotsDialog title={cfg.qtyQ} unit={cfg.qtyUnit} refLabel={cfg.refLabel} lot={run.lot} qty={run.perUnit} onClose={() => { setCounting(false); setEndAfter(null) }} onPick={(q, ref, lots) => { record(q, ref, lots); setCounting(false); if (endAfter !== null) { setEndAfter(null); endRun(run.id, endAfter) } }} />
-        : <QtyDialog title={cfg.qtyQ} unit={cfg.qtyUnit} refLabel={cfg.refLabel} initial={run.perUnit} onClose={() => { setCounting(false); setEndAfter(null) }} onPick={(q, ref) => { record(q, ref); setCounting(false); if (endAfter !== null) { setEndAfter(null); endRun(run.id, endAfter) } }} />)}
+        : <QtyDialog title={cfg.qtyQ} unit={cfg.qtyUnit} refLabel={cfg.refLabel} initial={run.perUnit} perCase={perCase} onClose={() => { setCounting(false); setEndAfter(null) }} onPick={(q, ref) => { record(q, ref); setCounting(false); if (endAfter !== null) { setEndAfter(null); endRun(run.id, endAfter) } }} />)}
       {wasting && <QtyDialog title={'Waste de ' + run.code + ' · ¿cuántas libras?'} unit="lb" refLabel="" initial={null} decimal onClose={() => setWasting(false)} onPick={(lb) => { if (lb > 0) addWaste(run.id, lb); setWasting(false) }} />}
     </div>
   )
@@ -1075,7 +1137,7 @@ export function LotsDialog({ title, unit, refLabel, lot, qty, start, startRef, o
 
 /** departments that type how much a unit carried (boxes on a pallet or in a bin) and its tag / bin number */
 /** a quantity already suggested (pouches per cart, cases per pallet) opens without the keyboard: a tap on "Guardar" takes it, a tap on the box changes it */
-function QtyDialog({ title, unit, refLabel, initial, decimal, onClose, onPick }: { title: string; unit: string; refLabel: string; initial: number | null; decimal?: boolean; onClose: () => void; onPick: (q: number, ref: string) => void }) {
+function QtyDialog({ title, unit, refLabel, initial, decimal, perCase, onClose, onPick }: { title: string; unit: string; refLabel: string; initial: number | null; decimal?: boolean; perCase?: number; onClose: () => void; onPick: (q: number, ref: string) => void }) {
   const [v, setV] = useState(initial != null ? String(initial) : '')
   const [ref, setRef] = useState('')
   const n = Number(v.replace(',', '.'))
@@ -1087,6 +1149,7 @@ function QtyDialog({ title, unit, refLabel, initial, decimal, onClose, onPick }:
         <h3>{title}</h3>
         <form onSubmit={(e) => { e.preventDefault(); if (ok) onPick(n, ref.trim()) }} className="qform">
           <label>{unit} <input autoFocus={initial == null} inputMode={decimal ? 'decimal' : 'numeric'} placeholder={unit} value={v} onChange={(e) => setV(clean(e.target.value))} /></label>
+          {perCase && ok ? <p className="incases">= {casesText({ cases: Math.floor(n / perCase), loose: Math.round((n - Math.floor(n / perCase) * perCase) * 100) / 100 })} <small>({perCase} por caja)</small></p> : null}
           {refLabel && <label>{refLabel} <small>(opcional)</small> <input inputMode="numeric" placeholder="ej. 1749" value={ref} onChange={(e) => setRef(e.target.value)} autoComplete="off" /></label>}
           <div className="dbtns">
             <button type="button" className="btn" onClick={onClose}>Cancelar</button>
@@ -1226,8 +1289,9 @@ function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: De
     const T = (ms: number) => xTime(ms, fmtTime(ms)), D = (ms: number) => xDur(ms, fmtDur(ms))
     const resumen: Cell[][] = [['Departamento', 'Línea', 'Código', 'Lote', 'Fecha', 'Inicio', 'Fin', 'Unidad', 'Hechas', 'Cantidad', 'Unidad de cantidad', 'Tags / bins', 'Waste (lb)', 'Tiempo trabajando', 'Promedio por unidad', 'Tiempo parado', 'Razones de paro', 'Registró'],
       ...rows.map((x): Cell[] => [x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.lots, xDay(x.r.date), T(x.r.startedAt), x.r.endedAt ? T(x.r.endedAt) : 'en curso', CFG[x.r.dept].unit, x.units, CFG[x.r.dept].qty !== 'none' ? x.qty : '', CFG[x.r.dept].qty !== 'none' ? CFG[x.r.dept].qtyUnit : '', x.view.units.map((u) => u.ref).filter(Boolean).join(', '), x.r.waste || '', D(x.st.working), x.r.units.length ? D(x.st.avg) : '', D(x.st.down), reasonsText(x), whoText(x.r)])]
-    const porCodigo: Cell[][] = [['Departamento', 'Código', 'Unidad', 'Hechas', 'Cantidad', 'Unidad de cantidad', 'Waste (lb)', 'Líneas'],
-      ...byCode.map((c): Cell[] => [c.dept, c.code, CFG[c.dept].unit, c.units, CFG[c.dept].qty !== 'none' ? c.qty : '', CFG[c.dept].qty !== 'none' ? CFG[c.dept].qtyUnit : '', c.waste || '', c.lines.join(', ')])]
+    const boxes = (c: (typeof byCode)[number]) => (CFG[c.dept].qtyUnit === 'pouches' ? inCases(s, c.code, c.qty) : null)
+    const porCodigo: Cell[][] = [['Departamento', 'Código', 'Unidad', 'Hechas', 'Cantidad', 'Unidad de cantidad', 'Waste (lb)', 'Líneas', 'Cajas completas', 'Pouches sueltos'],
+      ...byCode.map((c): Cell[] => [c.dept, c.code, CFG[c.dept].unit, c.units, CFG[c.dept].qty !== 'none' ? c.qty : '', CFG[c.dept].qty !== 'none' ? CFG[c.dept].qtyUnit : '', c.waste || '', c.lines.join(', '), boxes(c)?.cases ?? '', boxes(c)?.loose ?? ''])]
     const unidades: Cell[][] = [['Departamento', 'Línea', 'Código', 'Lote', '#', 'Hora', 'Unidad', 'Cantidad', 'Unidad de cantidad', 'Tag / bin', 'Desde la anterior', 'Registró'],
       ...unitRows.map((x): Cell[] => [x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.lot, x.i + 1, T(x.u.at), CFG[x.r.dept].unit, x.qty ?? '', x.qty != null ? CFG[x.r.dept].qtyUnit : '', x.u.ref, D(x.gap), x.u.by])]
     const paros: Cell[][] = [['Departamento', 'Línea', 'Razón', 'Detalle', 'Inicio', 'Fin', 'Duración', 'Registró'],
@@ -1301,9 +1365,9 @@ function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: De
           <h3>Por código · todas las líneas juntas</h3>
           <div className="twrap">
             <table>
-              <thead><tr><th>Depto</th><th>Código</th><th>Hechas</th><th>Cantidad</th><th>Waste</th><th>Líneas</th></tr></thead>
+              <thead><tr><th>Depto</th><th>Código</th><th>Hechas</th><th>Cantidad</th><th>En cajas</th><th>Waste</th><th>Líneas</th></tr></thead>
               <tbody>{cut('codes', byCode).map((c) => (
-                <tr key={c.dept + c.code}><td>{c.dept}</td><td><b>{c.code}</b></td><td>{c.units} {(c.units === 1 ? CFG[c.dept].unit : CFG[c.dept].plural).toLowerCase()}</td><td>{CFG[c.dept].qty !== 'none' ? <b>{fmtN(c.qty)} {CFG[c.dept].qtyUnit}</b> : '—'}</td><td className={c.waste ? 'red' : ''}>{c.waste ? c.waste + ' lb' : '—'}</td><td>{c.lines.join(', ')}</td></tr>
+                <tr key={c.dept + c.code}><td>{c.dept}</td><td><b>{c.code}</b></td><td>{c.units} {(c.units === 1 ? CFG[c.dept].unit : CFG[c.dept].plural).toLowerCase()}</td><td>{CFG[c.dept].qty !== 'none' ? <b>{fmtN(c.qty)} {CFG[c.dept].qtyUnit}</b> : '—'}</td><td>{(CFG[c.dept].qtyUnit === 'pouches' && casesText(inCases(s, c.code, c.qty))) || '—'}</td><td className={c.waste ? 'red' : ''}>{c.waste ? c.waste + ' lb' : '—'}</td><td>{c.lines.join(', ')}</td></tr>
               ))}</tbody>
             </table>
           </div>
@@ -1319,7 +1383,7 @@ function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: De
               <tbody>{cut('units', unitRows).map((x) => (
                 <tr key={x.r.id + ':' + x.i + ':' + x.lot}>
                   <td>{fmtTime(x.u.at)}</td><td>{x.r.dept}</td><td>{lineNameOf(s, x.r.lineId, x.r.line)}</td><td><b>{x.r.code}</b></td><td>{x.lot}</td><td>{x.i + 1}</td><td>{CFG[x.r.dept].unit}</td>
-                  <td>{x.qty != null ? x.qty + ' ' + CFG[x.r.dept].qtyUnit : '—'}</td><td>{x.u.ref || '—'}</td><td>{fmtDur(x.gap)}</td><td>{x.u.by || '—'}</td>
+                  <td>{x.qty != null ? x.qty + ' ' + CFG[x.r.dept].qtyUnit : '—'}{x.qty != null && CFG[x.r.dept].qtyUnit === 'pouches' && x.r.perUnit != null && x.qty < x.r.perUnit && !!inCases(s, x.r.code, x.qty) && <small> · {casesText(inCases(s, x.r.code, x.qty))}</small>}</td><td>{x.u.ref || '—'}</td><td>{fmtDur(x.gap)}</td><td>{x.u.by || '—'}</td>
                 </tr>
               ))}</tbody>
             </table>

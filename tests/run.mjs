@@ -1134,6 +1134,124 @@ hl.use((m) => {
 }
 
 // =====================================================================================================================
+//  A cart that came out short; the set up by hand
+// =====================================================================================================================
+section('Carro incompleto: cajas y sueltos, y completarlo después')
+const sho = await device('sho', { user: 'Nino' })
+sho.use((m) => {
+  const st = () => m.store.get(), runOf = (code, n = 0) => st().runs.filter((r) => r.code === code)[n]
+  clock = T0
+  m.saveProduct(st().products.length, { code: 'A100', name: 'Producto de prueba', pouchesPerCase: 12, casesPerMix: 18.5, cratesPerCart: 24, pouchesPerCrate: 10, casesPerPallet: 36, updatedAt: 0 })
+  eq('pouches en cajas completas y sueltos, por los pouches por caja de la tabla', [m.casesText(m.inCases(st(), 'A100', 130)), m.casesText(m.inCases(st(), 'A100', 240)), m.casesText(m.inCases(st(), 'A100', 13)), m.casesText(m.inCases(st(), 'A100', 5)), m.casesText(m.inCases(st(), 'A100', 0))], ['10 cajas y 10 sueltos', '20 cajas', '1 caja y 1 suelto', '0 cajas y 5 sueltos', '0 cajas'])
+  eq('si la tabla no dice cuántos van por caja, no se inventa', [m.inCases(st(), 'NO-ESTA', 130), m.casesText(null), m.inCases(st(), 'A100', null)], [null, '', null])
+  m.addLine('RTE', 'Línea 1')
+  const line = st().lines[0]
+  m.startRun(line, 'A100', '6283', DAY, 240)
+  eq('sin carros todavía no hay nada que completar', m.shortUnit(st(), runOf('A100')), null)
+  clock = T0 + 20 * M; m.unitDone(runOf('A100').id, 240)
+  eq('un carro completo no se ofrece para completar', m.shortUnit(st(), runOf('A100')), null)
+  clock = T0 + 35 * M; m.unitDone(runOf('A100').id, 130) // closed short: they thought the code was over
+  const sh = m.shortUnit(st(), runOf('A100'))
+  eq('el último carro, cerrado con menos de lo usual, se puede completar', [sh.index + 1, sh.unit.qty, sh.usual, sh.run.id === runOf('A100').id], [2, 130, 240, true])
+  clock = T0 + 50 * M
+  m.fillUnit(sh.run.id, sh.unit.at, 240)
+  eq('completarlo sube su cantidad: sigue siendo el mismo carro, no uno más', [runOf('A100').units.length, runOf('A100').units[1].qty, runOf('A100').units[1].at, m.runQty(st(), runOf('A100'))], [2, 240, T0 + 35 * M, 480])
+  eq('queda en el historial quién y cuánto', st().changes.filter((c) => /Carro 2 · cantidad/.test(c.what)).map((c) => [c.by, c.before, c.after]), [['Nino', '130', '240']])
+  eq('ya completo, deja de ofrecerse', m.shortUnit(st(), runOf('A100')), null)
+  // the code ends with a short cart; later the same code and lot comes back and goes on top of that cart
+  clock = T0 + 60 * M; m.unitDone(runOf('A100').id, 100); m.endRun(runOf('A100').id, true)
+  clock = T0 + 90 * M; m.startRun(line, 'A100', '6283', DAY, 240)
+  const again = m.shortUnit(st(), runOf('A100', 1))
+  eq('vuelve el mismo código y lote: se ofrece completar el carro que quedó corto antes', [again.run.id === runOf('A100', 0).id, again.index + 1, again.unit.qty], [true, 3, 100])
+  m.fillUnit(again.run.id, again.unit.at, 180)
+  eq('se completa en la corrida de antes', [runOf('A100', 0).units[2].qty, runOf('A100', 1).units.length], [180, 0])
+  clock = T0 + 95 * M; m.unitDone(runOf('A100', 1).id, 240)
+  eq('con un carro nuevo ya registrado, el de antes no se ofrece más', m.shortUnit(st(), runOf('A100', 1)), null)
+  m.endRun(runOf('A100', 1).id); m.startRun(line, 'A100', '6284', DAY, 240)
+  eq('otro lote del mismo código no mezcla carros', m.shortUnit(st(), st().runs.find((r) => r.lot === '6284')), null)
+})
+section('Carro incompleto de un código ya terminado, y código terminado por error')
+const fin = await device('fin', { user: 'Nino' })
+fin.use((m) => {
+  const st = () => m.store.get(), runOf = (code) => st().runs.find((r) => r.code === code)
+  const open = () => st().stops.filter((x) => !x.endedAt)
+  clock = T0
+  m.addLine('RTE', 'Línea 1'); m.addLine('RTE', 'Línea 2')
+  const [l1, l2] = st().lines.slice().sort((a, b) => a.name.localeCompare(b.name))
+  eq('una línea sin nada terminado hoy no ofrece nada', [m.lastEnded(st(), l1.id, DAY), m.shortEnded(st(), l1.id, DAY)], [undefined, []])
+  m.startRun(l1, 'A100', '6283', DAY, 240)
+  clock = T0 + 20 * M; m.unitDone(runOf('A100').id, 240)
+  clock = T0 + 35 * M; m.unitDone(runOf('A100').id, 100)
+  eq('mientras el código corre, su carro corto no sale entre los terminados', m.shortEnded(st(), l1.id, DAY), [])
+  clock = T0 + 40 * M; m.endRun(runOf('A100').id, true)
+  eq('terminado el código con el último carro corto: es el último código de la línea y se puede completar', [m.lastEnded(st(), l1.id, DAY).code, m.shortEnded(st(), l1.id, DAY).map((x) => [x.run.code, x.index + 1, x.unit.qty, x.usual])], ['A100', [['A100', 2, 100, 240]]])
+  eq('la otra línea no lo ofrece', [m.lastEnded(st(), l2.id, DAY), m.shortEnded(st(), l2.id, DAY)], [undefined, []])
+  // the line goes on to another code, and then more of the first one turns up for its last cart
+  clock = T0 + 50 * M; m.startRun(l1, 'B200', '6283', DAY, 240)
+  eq('el código nuevo no tiene carro propio que completar', m.shortUnit(st(), runOf('B200')), null)
+  const old = m.shortEnded(st(), l1.id, DAY)[0]
+  clock = T0 + 55 * M; m.fillUnit(old.run.id, old.unit.at, 180)
+  eq('con otro código ya corriendo, se completa el carro del código terminado: mismo carro, el código sigue terminado y su fin no se mueve', [runOf('A100').units.map((u) => u.qty), runOf('A100').endedAt, runOf('B200').units.length, m.runQty(st(), runOf('A100'))], [[240, 180], T0 + 40 * M, 0, 420])
+  eq('queda en el historial con el código y la línea', st().changes.filter((c) => /Corrida A100 .*Línea 1.*Carro 2 · cantidad/.test(c.what)).map((c) => [c.by, c.before, c.after]), [['Nino', '100', '180']])
+  eq('sigue corto: se puede volver a completar', m.shortEnded(st(), l1.id, DAY).map((x) => x.unit.qty), [180])
+  m.fillUnit(old.run.id, old.unit.at, 240)
+  eq('lleno, deja de ofrecerse', m.shortEnded(st(), l1.id, DAY), [])
+  // two codes ended short on the same line: both are offered, the newest first
+  clock = T0 + 70 * M; m.unitDone(runOf('B200').id, 60); m.endRun(runOf('B200').id, true)
+  m.updateRun(runOf('A100').id, { units: runOf('A100').units.map((u, i) => (i === 1 ? { ...u, qty: 100 } : u)) })
+  eq('dos códigos terminados con carro corto: salen los dos, el más reciente primero', m.shortEnded(st(), l1.id, DAY).map((x) => x.run.code), ['B200', 'A100'])
+  eq('de otro día no sale ninguno', [m.shortEnded(st(), l1.id, '2099-01-01'), m.lastEnded(st(), l1.id, '2099-01-01')], [[], undefined])
+  // marked as finished by mistake: it goes on
+  clock = T0 + 75 * M
+  eq('el código se marcó terminado y empezó a contar el Set up', [m.lastEnded(st(), l1.id, DAY).code, open().map((x) => x.reason)], ['B200', ['Set up']])
+  eq('se sigue con él: vuelve a correr y el Set up que había empezado se quita', [m.reopenRun(runOf('B200').id), runOf('B200').endedAt, open().length, m.openRun(st(), l1.id).code], [true, null, 0, 'B200'])
+  eq('ya corriendo, su carro corto se completa con el botón de la línea', [m.shortUnit(st(), runOf('B200')).unit.qty, m.shortEnded(st(), l1.id, DAY).map((x) => x.run.code)], [60, ['A100']])
+  eq('reabrirlo queda en el historial', st().changes.filter((c) => /Corrida B200 .*Fin/.test(c.what)).map((c) => c.after), ['en curso'])
+  eq('con otro código corriendo en la línea, el anterior no se reabre', [m.reopenRun(runOf('A100').id), !!runOf('A100').endedAt], [false, true])
+  eq('un código que no está terminado no se "reabre"', m.reopenRun(runOf('B200').id), false)
+})
+{
+  // Packing: the pallet closed short carries its lots; filling it can change them and its tag
+  const pk = await device('pk', { user: 'Nino' })
+  pk.use((m) => {
+    const st = () => m.store.get()
+    clock = T0
+    m.addLine('Packing', 'Línea 1')
+    const l = st().lines[0]
+    m.startRun(l, 'A100', '6283', DAY, 36)
+    clock = T0 + 10 * M; m.unitDone(st().runs[0].id, 20, '1749')
+    clock = T0 + 15 * M; m.endRun(st().runs[0].id)
+    const sh = m.shortEnded(st(), l.id, DAY)[0]
+    m.fillUnit(sh.run.id, sh.unit.at, 0, [{ lot: '6283', qty: 20 }, { lot: '6284', qty: 16 }], '1750')
+    eq('un pallet corto de un código terminado se completa con otro lote: la cantidad es la suma y el tag se puede cambiar', [st().runs[0].units[0].qty, m.lotsText(st().runs[0].units[0].lots), st().runs[0].units[0].ref, m.shortEnded(st(), l.id, DAY)], [36, '6283: 20 + 6284: 16', '1750', []])
+  })
+}
+section('Set up a mano')
+const man = await device('man', { user: 'Santiago' })
+man.use((m) => {
+  const st = () => m.store.get(), open = () => st().stops.filter((x) => !x.endedAt)
+  eq('"Set up" es una razón que se puede elegir en todos los departamentos', m.DEPTS.map((d) => m.CFG[d].reasons.includes('Set up')), [true, true, true, true, true])
+  clock = T0
+  m.addLine('RTE', 'Línea 1')
+  const line = st().lines[0]
+  m.startSetup(line)
+  eq('se puede poner el Set up a mano en una línea sin código', open().map((x) => [x.reason, x.lineId === line.id, x.startedAt, x.by]), [['Set up', true, T0, 'Santiago']])
+  m.startSetup(line)
+  eq('ponerlo dos veces no abre dos', open().length, 1)
+  clock = T0 + 15 * M; m.endStop(open()[0].id)
+  eq('y pararlo a mano: queda como un paro de 15 minutos', [open().length, st().stops.map((x) => [x.reason, (x.endedAt - x.startedAt) / M])], [0, [['Set up', 15]]])
+  clock = T0 + 20 * M; m.startRun(line, 'A100', '6283', DAY, 240)
+  m.startSetup(line)
+  eq('con un código corriendo no se pone así (para eso está "Parar" con la razón Set up)', open().length, 0)
+  clock = T0 + 30 * M; m.startStop('RTE', line.id, 'Set up', '')
+  clock = T0 + 40 * M; m.endStop(open()[0].id)
+  eq('un Set up puesto con "Parar" mientras corre cuenta como parado de ese código', [m.runStats(st(), st().runs[0], clock).down / M, m.runStats(st(), st().runs[0], clock).reasons], [10, { 'Set up': 10 * M }])
+  clock = T0 + 50 * M; m.endRun(st().runs[0].id, false)
+  m.startSetup(line)
+  eq('puesto a mano después de un código, dice después de cuál', open().map((x) => x.note), ['Después de A100'])
+})
+
+// =====================================================================================================================
 console.log('')
 if (failed.length) { console.log(failed.length + ' FALLARON de ' + (passed + failed.length) + ':\n'); for (const f of failed) console.log('  ✗ ' + f + '\n'); process.exit(1) }
 console.log('✓ ' + passed + ' comprobaciones, todas correctas')

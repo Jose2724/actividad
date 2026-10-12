@@ -19,11 +19,11 @@ export const DEPTS: Dept[] = ['Kitchen', 'RTE', 'Spiral', 'MFO', 'Packing']
  */
 export type DeptCfg = { lineWord: string; unit: string; plural: string; done: string; saved: string; qty: 'none' | 'ask' | 'auto'; qtyQ: string; qtyUnit: string; perUnitLabel: string; refLabel: string; reasons: string[]; waste?: boolean; lots?: boolean }
 export const CFG: Record<Dept, DeptCfg> = {
-  Kitchen: { lineWord: 'Braiser', unit: 'Mezcla', plural: 'Mezclas', done: 'Mezcla lista', saved: 'guardada', qty: 'none', qtyQ: '', qtyUnit: '', perUnitLabel: '', refLabel: '', reasons: ['Braiser apagado', 'Esperando ingredientes', 'Esperando que recojan producto', 'Máquina / mantenimiento', 'Limpieza', 'Falta de personal', 'Break', 'Calidad'] },
-  Spiral: { lineWord: 'Línea', unit: 'Mezcla', plural: 'Mezclas', done: 'Mezcla lista', saved: 'guardada', qty: 'none', qtyQ: '', qtyUnit: '', perUnitLabel: '', refLabel: '', reasons: ['Falta de producto de Kitchen', 'Horno (temperatura)', 'Temperatura interna baja', 'Esperando carros / RTE', 'Máquina / mantenimiento', 'Limpieza', 'Falta de personal', 'Break', 'Calidad'] },
-  RTE: { lineWord: 'Línea', unit: 'Carro', plural: 'Carros', done: 'Carro listo', saved: 'guardado', qty: 'ask', qtyQ: '¿Cuántos pouches lleva este carro?', qtyUnit: 'pouches', perUnitLabel: 'Pouches por carro', refLabel: '', waste: true, reasons: ['Falta de salsa (Kitchen)', 'Falta de arroz / arroz muy frío', 'Falta de carrito vacío', 'Cambio de rollo de plástico', 'Plástico atascado / no corta', 'Máquina corta o rompe paquetes (mecánico)', 'Impresora de sello no imprime', 'Peso fuera de rango (reempaque)', 'Aire en el paquete', 'Conteo / pesado de meatballs', 'Limpieza', 'Falta de personal', 'Break'] },
-  MFO: { lineWord: 'Línea', unit: 'Bin', plural: 'Bins', done: 'Bin listo', saved: 'guardado', qty: 'ask', qtyQ: '¿Cuántas cajas lleva este bin?', qtyUnit: 'cajas', perUnitLabel: '', refLabel: 'N° de bin', reasons: ['Armado de máquina', 'Pegado de labels / stickers', 'Esperando gas', 'Falta de producto del freezer', 'Preparación (picar pollo…)', 'Falta de material', 'Máquina / mantenimiento', 'Limpieza', 'Falta de personal', 'Break'] },
-  Packing: { lineWord: 'Línea', unit: 'Pallet', plural: 'Pallets', done: 'Pallet listo', saved: 'guardado', lots: true, qty: 'ask', qtyQ: '¿Cuántas cajas lleva este pallet?', qtyUnit: 'cajas', perUnitLabel: 'Cajas por pallet', refLabel: 'N° de tag', reasons: ['Falta de producto que empacar', 'Esperando autorización de QC', 'Label equivocado (despegar labels)', 'Plástico / film', 'Falta de cajas / material de empaque', 'Personal pasó a otra línea', 'Etiquetadora / impresora', 'Montacargas / espacio', 'Máquina / mantenimiento', 'Limpieza', 'Falta de personal', 'Break'] },
+  Kitchen: { lineWord: 'Braiser', unit: 'Mezcla', plural: 'Mezclas', done: 'Mezcla lista', saved: 'guardada', qty: 'none', qtyQ: '', qtyUnit: '', perUnitLabel: '', refLabel: '', reasons: ['Braiser apagado', 'Esperando ingredientes', 'Esperando que recojan producto', 'Máquina / mantenimiento', 'Limpieza', 'Falta de personal', 'Break', 'Calidad', 'Set up'] },
+  Spiral: { lineWord: 'Línea', unit: 'Mezcla', plural: 'Mezclas', done: 'Mezcla lista', saved: 'guardada', qty: 'none', qtyQ: '', qtyUnit: '', perUnitLabel: '', refLabel: '', reasons: ['Falta de producto de Kitchen', 'Horno (temperatura)', 'Temperatura interna baja', 'Esperando carros / RTE', 'Máquina / mantenimiento', 'Limpieza', 'Falta de personal', 'Break', 'Calidad', 'Set up'] },
+  RTE: { lineWord: 'Línea', unit: 'Carro', plural: 'Carros', done: 'Carro listo', saved: 'guardado', qty: 'ask', qtyQ: '¿Cuántos pouches lleva este carro?', qtyUnit: 'pouches', perUnitLabel: 'Pouches por carro', refLabel: '', waste: true, reasons: ['Falta de salsa (Kitchen)', 'Falta de arroz / arroz muy frío', 'Falta de carrito vacío', 'Cambio de rollo de plástico', 'Plástico atascado / no corta', 'Máquina corta o rompe paquetes (mecánico)', 'Impresora de sello no imprime', 'Peso fuera de rango (reempaque)', 'Aire en el paquete', 'Conteo / pesado de meatballs', 'Limpieza', 'Falta de personal', 'Break', 'Set up'] },
+  MFO: { lineWord: 'Línea', unit: 'Bin', plural: 'Bins', done: 'Bin listo', saved: 'guardado', qty: 'ask', qtyQ: '¿Cuántas cajas lleva este bin?', qtyUnit: 'cajas', perUnitLabel: '', refLabel: 'N° de bin', reasons: ['Armado de máquina', 'Pegado de labels / stickers', 'Esperando gas', 'Falta de producto del freezer', 'Preparación (picar pollo…)', 'Falta de material', 'Máquina / mantenimiento', 'Limpieza', 'Falta de personal', 'Break', 'Set up'] },
+  Packing: { lineWord: 'Línea', unit: 'Pallet', plural: 'Pallets', done: 'Pallet listo', saved: 'guardado', lots: true, qty: 'ask', qtyQ: '¿Cuántas cajas lleva este pallet?', qtyUnit: 'cajas', perUnitLabel: 'Cajas por pallet', refLabel: 'N° de tag', reasons: ['Falta de producto que empacar', 'Esperando autorización de QC', 'Label equivocado (despegar labels)', 'Plástico / film', 'Falta de cajas / material de empaque', 'Personal pasó a otra línea', 'Etiquetadora / impresora', 'Montacargas / espacio', 'Máquina / mantenimiento', 'Limpieza', 'Falta de personal', 'Break', 'Set up'] },
 }
 /** what a line's "listo" button says for a moment once the unit is recorded: "Mezcla 5 guardada", "Carro 12 guardado" */
 export const savedText = (dept: Dept, n: number) => CFG[dept].unit + ' ' + n + ' ' + CFG[dept].saved
@@ -386,6 +386,16 @@ export function endRun(runId: string, setup = false) {
     if (setup && !state.stops.some((x) => x.lineId === r.lineId && !x.endedAt)) putStop({ id: uid(), dept: r.dept, lineId: r.lineId, reason: SETUP, note: AFTER + r.code, startedAt: at, endedAt: null, by: user.get(), updatedAt: 0 })
   })
 }
+/**
+ * The line is put in set up by hand, while it has no code running: the same stop that ending a code opens. (With a
+ * code running, "Set up" is one of the reasons of "Parar".) It ends with "Terminar", or when the next code starts.
+ */
+export function startSetup(line: Line) {
+  const at = clockNow()
+  if (state.runs.some((r) => r.lineId === line.id && !r.endedAt) || state.stops.some((x) => x.lineId === line.id && !x.endedAt)) return
+  const last = state.runs.filter((r) => r.lineId === line.id && !!r.endedAt && at - (r.endedAt ?? 0) <= SETUP_MAX_MS).sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0))[0]
+  putStop({ id: uid(), dept: line.dept, lineId: line.id, reason: SETUP, note: last ? AFTER + last.code : '', startedAt: at, endedAt: null, by: user.get(), updatedAt: 0 })
+}
 /** no other code is coming after all: what was counting between codes is taken away (it was never a stop of the line) */
 export function dropSetup(id: string) { const x = state.stops.find((y) => y.id === id); if (x && !x.endedAt) putStop({ ...x, deleted: true }) }
 /**
@@ -399,6 +409,26 @@ function healSetup(lineId: string) {
 }
 /** pounds thrown away, added to what the run already has */
 export function addWaste(runId: string, lb: number) { const r = run(runId); if (r) putRun({ ...r, waste: Math.round((r.waste + lb) * 100) / 100 }) }
+/**
+ * More product went on a unit that had been closed short: its quantity is raised (with its lots, where a unit carries
+ * them), instead of counting another unit. It is a correction like any other: who and when go to the history.
+ */
+export function fillUnit(runId: string, at: number, qty: number, lots?: LotPart[], ref?: string) {
+  const r = run(runId)
+  if (!r || !r.units.some((u) => u.at === at)) return
+  const parts = cleanLots(lots)
+  updateRun(runId, { units: r.units.map((u) => { if (u.at !== at) return u; const { lots: _was, ...bare } = u; return { ...bare, ...(parts ? { lots: parts, qty: parts.reduce((t, l) => t + l.qty, 0) } : { qty }), ...(ref != null ? { ref } : {}) } }) })
+}
+/**
+ * A code marked as finished too early goes on as if it had not ended (the set up that had started is taken away).
+ * Not while its line runs another code: that one would have to end first.
+ */
+export function reopenRun(id: string): boolean {
+  const r = run(id)
+  if (!r || !r.endedAt || state.runs.some((x) => x.lineId === r.lineId && !x.endedAt)) return false
+  updateRun(id, { endedAt: null })
+  return true
+}
 /** corrections: a wrong code, lot, quantity, tag or stop is fixed in place */
 /** a correction from the editor: saved, and every field that differs goes to the history */
 export function updateRun(id: string, patch: Partial<Pick<Run, 'code' | 'lot' | 'date' | 'perUnit' | 'waste' | 'endedAt' | 'units'>>) {
@@ -580,6 +610,42 @@ export function reset() { set(fresh()); resync() }
 export function resetRecords() { set({ ...state, runs: [], stops: [], schedule: {}, changes: [] }); resync() }
 
 export const productOf = (s: State, code: string) => s.products.find((p) => normCode(p.code) === normCode(code))
+/**
+ * Pouches told the way the floor needs them when a cart comes out short: full cases and the loose pouches left over,
+ * by the product's pouches per case. null when the products table does not say how many go in a case.
+ */
+export function inCases(s: State, code: string, pouches: number | null | undefined): { cases: number; loose: number; perCase: number } | null {
+  const per = productOf(s, code)?.pouchesPerCase ?? 0
+  if (!(per > 0) || pouches == null || !Number.isFinite(pouches) || pouches < 0) return null
+  const cases = Math.floor(pouches / per)
+  return { cases, loose: Math.round((pouches - cases * per) * 100) / 100, perCase: per }
+}
+/** "10 cajas y 10 sueltos" */
+export const casesText = (c: { cases: number; loose: number } | null) => (c ? c.cases + (c.cases === 1 ? ' caja' : ' cajas') + (c.loose ? ' y ' + c.loose + (c.loose === 1 ? ' suelto' : ' sueltos') : '') : '')
+/** a unit closed with less than the usual quantity of its run */
+export type Short = { run: Run; index: number; unit: Unit; usual: number }
+/** the last unit of a run, when it holds less than the usual */
+const shortLast = (x: Run): Short | null => { const u = x.units[x.units.length - 1]; return x.perUnit != null && u && u.qty != null && u.qty < x.perUnit ? { run: x, index: x.units.length - 1, unit: u, usual: x.perUnit } : null }
+/** the newest end first */
+const byEnd = (a: Run, b: Run) => (b.endedAt ?? 0) - (a.endedAt ?? 0)
+/**
+ * The unit of a running code that was closed short and can still be filled: its last one, when it holds less than the
+ * usual quantity; or, while it has none yet, the last one of an earlier run of the same code and lot that day (the
+ * cart closed when the code seemed over, which gets more product when the code comes back).
+ */
+export function shortUnit(s: State, r: Run): Short | null {
+  if (r.units.length) return shortLast(r)
+  const before = s.runs.filter((x) => x.id !== r.id && x.dept === r.dept && x.date === r.date && !!x.endedAt && normCode(x.code) === normCode(r.code) && x.lot === r.lot && x.units.length > 0).sort(byEnd)[0]
+  return before ? shortLast(before) : null
+}
+/** the code that ended last on a line that day */
+export const lastEnded = (s: State, lineId: string, date: string): Run | undefined => s.runs.filter((r) => r.lineId === lineId && r.date === date && !!r.endedAt).sort(byEnd)[0]
+/**
+ * The codes already ended on a line that day whose last unit was closed short, the newest first: a code marked as
+ * finished too early, or one that got more product on its last cart after the line had gone on to another code.
+ */
+export const shortEnded = (s: State, lineId: string, date: string): Short[] =>
+  s.runs.filter((r) => r.lineId === lineId && r.date === date && !!r.endedAt).sort(byEnd).map(shortLast).filter((x): x is Short => !!x)
 /** why a code cannot go on the product at position i: it is already another product's ('taken'), or it would leave an existing product without one ('blank') */
 export function codeProblem(i: number, code: string): 'taken' | 'blank' | null {
   const key = normCode(code), old = state.products[i]
