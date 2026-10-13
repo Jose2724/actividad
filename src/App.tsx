@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, Ref } from 'react'
-import { addLine, addWaste, awayDay, awayOn, byLineName, casesText, cancelDay, CFG, codeProblem, CRATES_PER_CART, dayRecords, DEPTS, deptStop, deptToday, dropSetup, endRun, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineNamed, lineNameOf, lineTargetOf, lotFor, madeText, minuteText, managerPin, mergeProducts, myDept, nightText, nearDay, normCode, numOf, openRun, openStop, parseProductsCsv, plainDay, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reopenRun, reset, resetRecords, role, runQty, runStats, saveProduct, setLineTarget, setSchedule, setShifts, setTarget, startDay, startRun, startSetup, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, savedText, shiftCuts, shiftHours, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type LineTarget, type Product, type LotPart, type ShiftHours, type Short, type State, type Target, type WorkDay } from './store'
+import { addLine, addWaste, awayDay, awayOn, byLineName, byShip, casesText, cancelDay, CFG, closeOrder, codeProblem, CRATES_PER_CART, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endRun, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineNamed, lineNameOf, lineTargetOf, lotFor, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, numOf, openOrdersFor, openRun, openStop, orderLabel, orderMade, parseProductsCsv, plainDay, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reopenRun, reset, resetRecords, role, runQty, runStats, saveOrder, saveProduct, setLineTarget, setSchedule, setShifts, setTarget, startDay, startRun, startSetup, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, savedText, shiftCuts, shiftHours, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type LineTarget, type Product, type LotPart, type Order, type ShiftHours, type Short, type State, type Target, type WorkDay } from './store'
 import { avanceRows, n1, pending, type AvanceRow } from './avance'
 import { cellText, loadZip, xDay, xDur, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 
@@ -677,6 +677,97 @@ function WipeDayDialog({ s, date, onClose, onDone }: { s: State; date: string; o
   )
 }
 
+/** "15 oct" */
+const shipText = (date: string) => new Date(date + 'T12:00:00').toLocaleDateString('es', { day: 'numeric', month: 'short' })
+/** " · faltan 52 de 72 cajas", " · completo", or nothing when the order does not say how many cases it is for */
+const leftText = (s: State, o: Order) => { if (o.cases == null) return ''; const left = o.cases - orderMade(s, o.id); return left > 0 ? ' · faltan ' + fmtN(left) + ' de ' + fmtN(o.cases) + ' cajas' : ' · completo' }
+
+/**
+ * The orders Packing fills: the office (or a manager) types them, with or without a PO number, and everybody in the
+ * room sees the open ones with what has been packed for each. The pallets are given to them one by one, on the line.
+ */
+function OrdersCard({ s, mgr }: { s: State; mgr: boolean }) {
+  const [editing, setEditing] = useState<string | null>(null) // an order's id, or 'new'
+  const [showClosed, setShowClosed] = useState(false)
+  if (!s.orders.length && !mgr) return null
+  const open = s.orders.filter((o) => !o.closed).sort(byShip), closed = s.orders.filter((o) => o.closed).sort(byShip)
+  const table = (list: Order[]) => (
+    <div className="twrap">
+      <table>
+        <thead><tr><th>Cliente</th><th>PO</th><th>Código</th><th>Pedidas</th><th>Hechas</th><th>Faltan</th><th>Envío</th><th>Destino</th>{mgr && <th></th>}</tr></thead>
+        <tbody>{list.map((o) => {
+          const made = orderMade(s, o.id), left = o.cases != null ? o.cases - made : null
+          return (
+            <tr key={o.id}>
+              <td>{o.customer || '—'}</td><td>{o.po || <i>sin PO</i>}</td><td><b>{o.code}</b></td><td>{o.cases != null ? fmtN(o.cases) : '—'}</td><td>{fmtN(made)}</td>
+              <td className={left != null && left <= 0 ? 'ok' : ''}>{left == null ? '—' : left > 0 ? fmtN(left) : '✓ completo' + (left < 0 ? ' (+' + fmtN(-left) + ')' : '')}</td>
+              <td>{o.shipBy ? shipText(o.shipBy) : '—'}</td><td>{o.dest || '—'}</td>
+              {mgr && <td><button type="button" className="lnk" onClick={() => setEditing(o.id)}>Editar</button></td>}
+            </tr>
+          )
+        })}</tbody>
+      </table>
+    </div>
+  )
+  return (
+    <div className="orders">
+      <div className="tc-head">
+        <h3>Pedidos · PO</h3>
+        {mgr && <button type="button" className="lnk" onClick={() => setEditing('new')}>+ Agregar pedido</button>}
+      </div>
+      {open.length ? table(open) : <p className="hint">{mgr ? 'No hay pedidos abiertos. Los que se agreguen aquí los ve Packing al registrar cada pallet de ese código.' : 'No hay pedidos abiertos.'}</p>}
+      {open.length > 0 && <p className="hint">"Hechas" suma los pallets que se le dieron a cada pedido en los días que guarda este aparato.</p>}
+      {closed.length > 0 && <button type="button" className="lnk" onClick={() => setShowClosed(!showClosed)}>{showClosed ? 'Ocultar' : 'Ver'} los completos ({closed.length})</button>}
+      {showClosed && closed.length > 0 && table(closed)}
+      {editing && <OrderDialog key={editing} s={s} order={s.orders.find((o) => o.id === editing)} onClose={() => setEditing(null)} />}
+    </div>
+  )
+}
+
+/** an order is written or changed: only the product code is a must; the PO number can come later, or never */
+function OrderDialog({ s, order, onClose }: { s: State; order: Order | undefined; onClose: () => void }) {
+  const [customer, setCustomer] = useState(order?.customer ?? '')
+  const [po, setPo] = useState(order?.po ?? '')
+  const [code, setCode] = useState(order?.code ?? '')
+  const [cases, setCases] = useState(order?.cases != null ? String(order.cases) : '')
+  const [shipBy, setShipBy] = useState(order?.shipBy ?? '')
+  const [dest, setDest] = useState(order?.dest ?? '')
+  const [dropping, setDropping] = useState(false)
+  const customers = [...new Set(s.orders.map((o) => o.customer).filter(Boolean))].sort()
+  const prod = code.trim() ? productOf(s, code) : undefined
+  const pallets = prod?.casesPerPallet && Number(cases) > 0 ? Number(cases) / prod.casesPerPallet : null
+  const ok = !!code.trim()
+  const save = () => { if (!ok) return; saveOrder(order?.id ?? null, { customer, po, code, cases: Number(cases) > 0 ? Number(cases) : null, shipBy, dest }); onClose() }
+  return (
+    <div className="veil" onClick={onClose}>
+      <div className="dlg" onClick={(e) => e.stopPropagation()}>
+        <h3>{order ? 'Pedido · ' + orderLabel(order) : 'Pedido nuevo'}</h3>
+        <p>Packing lo ve al registrar cada pallet de ese código. Solo el código del producto es obligatorio: el número de PO se puede dejar en blanco y ponerlo después.</p>
+        <form className="qform" onSubmit={(e) => { e.preventDefault(); save() }}>
+          <label>Cliente <input list="order-customers" value={customer} onChange={(e) => setCustomer(e.target.value)} placeholder="ej. Cliente A" autoComplete="off" /></label>
+          <datalist id="order-customers">{customers.map((c) => <option key={c} value={c} />)}</datalist>
+          <label>N° de PO <small>(opcional)</small> <input value={po} onChange={(e) => setPo(e.target.value)} placeholder="ej. 4500012345" autoComplete="off" /></label>
+          <label>Código del producto <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="ej. 0100" autoComplete="off" />{prod && <small> {prod.name}</small>}</label>
+          <label>Cajas pedidas <small>(opcional)</small> <input inputMode="numeric" value={cases} onChange={(e) => setCases(e.target.value.replace(/\D/g, ''))} placeholder="ej. 288" />{pallets != null && <small> = {Math.round(pallets * 100) / 100} {pallets === 1 ? 'pallet' : 'pallets'} de {prod?.casesPerPallet}</small>}</label>
+          <label>Fecha de envío <small>(opcional)</small> <input type="date" value={shipBy} onChange={(e) => setShipBy(e.target.value)} /></label>
+          <label>Destino <small>(opcional)</small> <input value={dest} onChange={(e) => setDest(e.target.value)} placeholder="ej. Almacén Norte" autoComplete="off" /></label>
+          <div className="dbtns spread">
+            <div className="btns">
+              {order && <button type="button" className="btn" onClick={() => { closeOrder(order.id, !order.closed); onClose() }}>{order.closed ? 'Abrir otra vez' : '✓ Marcar completo'}</button>}
+              {order && <button type="button" className="btn danger" onClick={() => setDropping(true)}>🗑 Borrar</button>}
+            </div>
+            <div className="btns">
+              <button type="button" className="btn" onClick={onClose}>Cancelar</button>
+              <button type="submit" className="btn primary" disabled={!ok}>✓ Guardar</button>
+            </div>
+          </div>
+        </form>
+        {dropping && order && <ConfirmDialog title={'¿Borrar el pedido ' + orderLabel(order) + '?'} text="Los pallets que ya se le dieron quedan registrados, pero sin pedido. Si el pedido ya se completó, mejor márcalo completo." yes="Borrar" danger onYes={() => { deleteOrder(order.id); onClose() }} onNo={() => setDropping(false)} />}
+      </div>
+    </div>
+  )
+}
+
 /**
  * the room today with all its lines together: the total (and what each shift made of it), each code added up across
  * lines, and the manager's goal: so much in the whole day, and so much per hour (the pace is the shift's in course,
@@ -775,6 +866,7 @@ function DeptPanel({ s, dept, now, mgr, day }: { s: State; dept: Dept; now: numb
       {ds && <div className="deptstop">⏸ Todo {dept} parado · <b>{ds.reason}</b>{ds.note && ' · ' + ds.note} · desde {fmtTime(ds.startedAt)} · {ds.by} {mgr && <button type="button" className="lnk" onClick={() => setEditStop(true)}>Corregir</button>}</div>}
       {editStop && ds && <StopEditor stop={ds} mgr={mgr} onClose={() => setEditStop(false)} />}
       <TodayCard s={s} dept={dept} now={now} mgr={mgr} date={day.date} />
+      {CFG[dept].orders && <OrdersCard s={s} mgr={mgr} />}
       <div className="lines">{lines.map((l) => <LineCard key={l.id} s={s} line={l} now={now} mgr={mgr} day={day} />)}</div>
       {lines.length === 0 && <p className="hint">Este departamento no tiene líneas. Toca "Agregar {CFG[dept].lineWord.toLowerCase()}".</p>}
       {adding && <LineNameDialog s={s} dept={dept} onClose={() => setAdding(false)} />}
@@ -975,11 +1067,16 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   const last = run.units.length ? run.units[run.units.length - 1].at : run.startedAt
   const current = workedSince(s, run, last, now)
   /** records a unit from this screen. A second tap in the same instant (a finger that bounces) is not another unit */
-  const record = (qty: number | null, ref = '', lots?: LotPart[]) => {
+  const record = (qty: number | null, ref = '', lots?: LotPart[], po?: string) => {
     if (performance.now() - tapped.current < 800) return
     tapped.current = performance.now()
-    unitDone(run.id, qty, ref, lots); buzz()
+    unitDone(run.id, qty, ref, lots, po); buzz()
   }
+  // The orders open for this code (the office types them). The unit about to be recorded is proposed for one of them
+  // (see nextOrderFor); the person can always say another, or none.
+  const openOrders = cfg.orders ? openOrdersFor(s, run.code) : []
+  const nextOrder = cfg.orders ? nextOrderFor(s, run) : ''
+  const orderOptions = openOrders.map((o) => ({ id: o.id, label: orderLabel(o) + leftText(s, o) + (o.shipBy ? ' · envío ' + shipText(o.shipBy) : '') }))
   const done = () => {
     if (just) return
     if (cfg.qty === 'ask') setCounting(true)
@@ -997,6 +1094,13 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         <span className="meta"><b className="code">{run.code}</b> · lote {run.lot} · {run.date} · desde {fmtTime(run.startedAt)}{run.perUnit != null && ' · ' + run.perUnit + ' ' + cfg.qtyUnit + ' por ' + cfg.unit.toLowerCase()} {mgr && <button type="button" className="lnk" onClick={() => setFixing(true)}>Corregir</button>}</span>
       </div>
       {goalStrip}
+      {openOrders.length > 0 && (
+        <div className="orderstrip">
+          <span>📦 {openOrders.length === 1 ? 'Pedido' : 'Pedidos'} de {run.code}:</span>
+          {openOrders.slice(0, 3).map((o) => <span key={o.id} className={o.id === nextOrder ? 'next' : ''}><b>{orderLabel(o)}</b>{leftText(s, o)}{o.shipBy && ' · envío ' + shipText(o.shipBy)}</span>)}
+          {openOrders.length > 3 && <span>y {openOrders.length - 3} más</span>}
+        </div>
+      )}
       {stop && <div className="stopbar">⏸ Parado · <b>{stop.reason}</b>{stop.note && ' · ' + stop.note} · <b>{fmtDur(stopTime(s, stop, now))}</b>{stop.lineId === null && ' · todo el departamento'}{mgr && stop.lineId === line.id && <button type="button" className="lnk" onClick={() => setFixingStop(true)}>Corregir</button>}</div>}
       {awayOn(s, run.lineId, run.date, now - 1000, now).length > 0 && <div className="awaybar">⏱ Fuera del horario de los turnos: este rato no cuenta. Vuelve a contar cuando se registre algo aquí o cuando empiece el turno.</div>}
       {fixing && <RunEditor s={s} run={run} mgr={mgr} onClose={() => setFixing(false)} />}
@@ -1029,7 +1133,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       {asking && <StopDialog title={'Parar ' + line.name + ' · ' + run.code} reasons={cfg.quick} onClose={() => setAsking(false)} onPick={(reason, note) => { startStop(line.dept, line.id, reason, note); setAsking(false) }} />}
       {fillUi}
       {counting && (cfg.lots
-        ? <LotsDialog title={cfg.qtyQ} unit={cfg.qtyUnit} refLabel={cfg.refLabel} lot={run.lot} qty={run.perUnit} onClose={() => { setCounting(false); setEndAfter(null) }} onPick={(q, ref, lots) => { record(q, ref, lots); setCounting(false); if (endAfter !== null) { setEndAfter(null); endRun(run.id, endAfter) } }} />
+        ? <LotsDialog title={cfg.qtyQ} unit={cfg.qtyUnit} refLabel={cfg.refLabel} lot={run.lot} qty={run.perUnit} orders={orderOptions} order={nextOrder} onClose={() => { setCounting(false); setEndAfter(null) }} onPick={(q, ref, lots, po) => { record(q, ref, lots, po); setCounting(false); if (endAfter !== null) { setEndAfter(null); endRun(run.id, endAfter) } }} />
         : <QtyDialog title={cfg.qtyQ} unit={cfg.qtyUnit} refLabel={cfg.refLabel} initial={run.perUnit} perCase={perCase} onClose={() => { setCounting(false); setEndAfter(null) }} onPick={(q, ref) => { record(q, ref); setCounting(false); if (endAfter !== null) { setEndAfter(null); endRun(run.id, endAfter) } }} />)}
       {wasting && <QtyDialog title={'Waste de ' + run.code + ' · ¿cuántas libras?'} unit="lb" refLabel="" initial={null} decimal onClose={() => setWasting(false)} onPick={(lb) => { if (lb > 0) addWaste(run.id, lb); setWasting(false) }} />}
     </div>
@@ -1120,11 +1224,13 @@ function NoticeDialog({ title, text, onClose }: { title: string; text?: string; 
  * A unit that can carry more than one lot of the product (a pallet in Packing): each lot with its quantity. One lot
  * is the usual case: the box opens with the run's lot and the usual quantity, and one tap on "Guardar" takes it.
  * `start` / `startRef` = what the unit already has, when it is being corrected.
+ * `orders` / `order` = the orders open for the product and the one proposed: the unit is given to one of them, or to none.
  */
-export function LotsDialog({ title, unit, refLabel, lot, qty, start, startRef, onClose, onPick }: { title: string; unit: string; refLabel: string; lot: string; qty: number | null; start?: LotPart[]; startRef?: string; onClose: () => void; onPick: (total: number, ref: string, lots: LotPart[] | undefined) => void }) {
+export function LotsDialog({ title, unit, refLabel, lot, qty, start, startRef, orders, order, onClose, onPick }: { title: string; unit: string; refLabel: string; lot: string; qty: number | null; start?: LotPart[]; startRef?: string; orders?: { id: string; label: string }[]; order?: string; onClose: () => void; onPick: (total: number, ref: string, lots: LotPart[] | undefined, po?: string) => void }) {
   const [rows, setRows] = useState(() => (start?.length ? start.map((l) => ({ lot: l.lot, qty: String(l.qty) })) : [{ lot, qty: qty != null ? String(qty) : '' }]))
   const [ref, setRef] = useState(startRef ?? '')
   const [added, setAdded] = useState(false)
+  const [po, setPo] = useState(order ?? '')
   const change = (i: number, patch: Partial<{ lot: string; qty: string }>) => setRows(rows.map((r, k) => (k === i ? { ...r, ...patch } : r)))
   const nums = rows.map((r) => Number(r.qty))
   const repeated = rows.some((r, i) => !!r.lot.trim() && rows.findIndex((o) => o.lot.trim() === r.lot.trim()) !== i)
@@ -1134,7 +1240,7 @@ export function LotsDialog({ title, unit, refLabel, lot, qty, start, startRef, o
     if (!ok) return
     const parts = rows.map((r, i) => ({ lot: r.lot.trim(), qty: nums[i] }))
     // all of it of the run's own lot is the plain case: nothing to write beside the quantity
-    onPick(total, ref.trim(), parts.length === 1 && parts[0].lot === lot ? undefined : parts)
+    onPick(total, ref.trim(), parts.length === 1 && parts[0].lot === lot ? undefined : parts, orders?.length ? po || undefined : undefined)
   }
   return (
     <div className="veil" onClick={onClose}>
@@ -1152,6 +1258,14 @@ export function LotsDialog({ title, unit, refLabel, lot, qty, start, startRef, o
           {rows.length > 1 && <p className="lottotal">Total: <b>{total} {unit}</b> en {rows.length} lotes</p>}
           {repeated && <span className="err">Ese lote ya está en la lista: suma sus {unit} en una sola línea.</span>}
           {refLabel && <label>{refLabel} <small>(opcional)</small> <input inputMode="numeric" placeholder="ej. 1749" value={ref} onChange={(e) => setRef(e.target.value)} autoComplete="off" /></label>}
+          {orders && orders.length > 0 && (
+            <label>Pedido <small>(a cuál va)</small>
+              <select value={po} onChange={(e) => setPo(e.target.value)}>
+                <option value="">Sin pedido</option>
+                {orders.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+              </select>
+            </label>
+          )}
           <div className="dbtns">
             <button type="button" className="btn" onClick={onClose}>Cancelar</button>
             <button type="submit" className="btn primary" disabled={!ok}>✓ Guardar</button>
@@ -1344,6 +1458,7 @@ function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: De
   const filter: ReportFilter = { only, code: fCode, lot: fLot, shift: fShift }
   const rep = reportOf(s, date, now, filter)
   const { runs, stops, rows, unitRows, working, down, byCode, setup } = rep
+  const withOrders = unitRows.some((x) => x.order) // a column says the order of each pallet when any has one
   const unitsText = (dept: Dept, n: number) => n + ' ' + (n === 1 ? CFG[dept].unit : CFG[dept].plural).toLowerCase()
   const reasonsText = (x: (typeof rows)[number]) => Object.entries(x.st.reasons).map(([k, v]) => k + ' ' + fmtDur(v)).join(', ')
   const lineName = (x: { lineId: string | null; dept: Dept }) => (x.lineId === null ? 'Todo ' + x.dept : s.lines.find((l) => l.id === x.lineId)?.name ?? s.runs.find((r) => r.lineId === x.lineId)?.line ?? 'línea')
@@ -1377,8 +1492,8 @@ function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: De
     const boxes = (c: (typeof byCode)[number]) => (CFG[c.dept].qtyUnit === 'pouches' ? inCases(s, c.code, c.qty) : null)
     const porCodigo: Cell[][] = [['Departamento', 'Código', 'Unidad', 'Hechas', 'Cantidad', 'Unidad de cantidad', 'Waste (lb)', 'Líneas', 'Cajas completas', 'Pouches sueltos', ...(rep.shift ? [] : ['Turno 1', 'Turno 2'])],
       ...byCode.map((c): Cell[] => [c.dept, c.code, CFG[c.dept].unit, c.units, CFG[c.dept].qty !== 'none' ? c.qty : '', CFG[c.dept].qty !== 'none' ? CFG[c.dept].qtyUnit : '', c.waste || '', c.lines.join(', '), boxes(c)?.cases ?? '', boxes(c)?.loose ?? '', ...(c.byShift ?? [])])]
-    const unidades: Cell[][] = [['Departamento', 'Línea', 'Código', 'Lote', '#', 'Hora', 'Unidad', 'Cantidad', 'Unidad de cantidad', 'Tag / bin', 'Desde la anterior', 'Registró', 'Turno'],
-      ...unitRows.map((x): Cell[] => [x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.lot, x.i + 1, T(x.u.at), CFG[x.r.dept].unit, x.qty ?? '', x.qty != null ? CFG[x.r.dept].qtyUnit : '', x.u.ref, D(x.gap), x.u.by, x.shift])]
+    const unidades: Cell[][] = [['Departamento', 'Línea', 'Código', 'Lote', '#', 'Hora', 'Unidad', 'Cantidad', 'Unidad de cantidad', 'Tag / bin', 'Desde la anterior', 'Registró', 'Turno', 'Pedido'],
+      ...unitRows.map((x): Cell[] => [x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.lot, x.i + 1, T(x.u.at), CFG[x.r.dept].unit, x.qty ?? '', x.qty != null ? CFG[x.r.dept].qtyUnit : '', x.u.ref, D(x.gap), x.u.by, x.shift, x.order])]
     const paros: Cell[][] = [['Departamento', 'Línea', 'Razón', 'Detalle', 'Inicio', 'Fin', 'Duración', 'Registró', 'Turno'],
       ...stops.map((x): Cell[] => [x.dept, lineName(x), x.reason, x.note, T(x.startedAt), x.endedAt ? T(x.endedAt) : 'en curso', D(x.ms), x.by, spanShifts(rep.plan, x.startedAt, x.endedAt ?? now)])]
     // the whole day first and each shift under it (not when the report is of one shift only)
@@ -1487,11 +1602,11 @@ function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: De
           <h3>Detalle por unidad · {unitRows.length}</h3>
           <div className="twrap">
             <table>
-              <thead><tr><th>Hora</th>{!rep.shift && <th>Turno</th>}<th>Depto</th><th>Línea</th><th>Código</th><th>Lote</th><th>#</th><th>Unidad</th><th>Cantidad</th><th>Tag / bin</th><th>Desde la anterior</th><th>Registró</th></tr></thead>
+              <thead><tr><th>Hora</th>{!rep.shift && <th>Turno</th>}<th>Depto</th><th>Línea</th><th>Código</th><th>Lote</th><th>#</th><th>Unidad</th><th>Cantidad</th><th>Tag / bin</th>{withOrders && <th>Pedido</th>}<th>Desde la anterior</th><th>Registró</th></tr></thead>
               <tbody>{cut('units', unitRows).map((x) => (
                 <tr key={x.r.id + ':' + x.i + ':' + x.lot}>
                   <td>{fmtTime(x.u.at)}</td>{!rep.shift && <td>{x.shift}</td>}<td>{x.r.dept}</td><td>{lineNameOf(s, x.r.lineId, x.r.line)}</td><td><b>{x.r.code}</b></td><td>{x.lot}</td><td>{x.i + 1}</td><td>{CFG[x.r.dept].unit}</td>
-                  <td>{x.qty != null ? x.qty + ' ' + CFG[x.r.dept].qtyUnit : '—'}{x.qty != null && CFG[x.r.dept].qtyUnit === 'pouches' && x.r.perUnit != null && x.qty < x.r.perUnit && !!inCases(s, x.r.code, x.qty) && <small> · {casesText(inCases(s, x.r.code, x.qty))}</small>}</td><td>{x.u.ref || '—'}</td><td>{fmtDur(x.gap)}</td><td>{x.u.by || '—'}</td>
+                  <td>{x.qty != null ? x.qty + ' ' + CFG[x.r.dept].qtyUnit : '—'}{x.qty != null && CFG[x.r.dept].qtyUnit === 'pouches' && x.r.perUnit != null && x.qty < x.r.perUnit && !!inCases(s, x.r.code, x.qty) && <small> · {casesText(inCases(s, x.r.code, x.qty))}</small>}</td><td>{x.u.ref || '—'}</td>{withOrders && <td>{x.order || '—'}</td>}<td>{fmtDur(x.gap)}</td><td>{x.u.by || '—'}</td>
                 </tr>
               ))}</tbody>
             </table>

@@ -16,23 +16,24 @@ export const DEPTS: Dept[] = ['Kitchen', 'RTE', 'Spiral', 'MFO', 'Packing']
  * cart, boxes per pallet) so a short cart or pallet is typed on the spot; 'auto' = every unit carries the quantity
  * given at the start, with no question. saved = how the unit is said to be recorded ("guardada" for a mezcla).
  * lots = a unit can carry more than one lot of the product, each with its quantity (a pallet in Packing).
+ * orders = its units go to customers' orders (see "the orders Packing fills").
  * quick = the three causes "Parar" offers (anything else is typed under "Otra"): the people on the line choose in one
  * tap. reasons = the department's complete list, quick ones first: the manager's, when a stop is corrected or divided.
  */
-export type DeptCfg = { lineWord: string; unit: string; plural: string; done: string; saved: string; qty: 'none' | 'ask' | 'auto'; qtyQ: string; qtyUnit: string; perUnitLabel: string; refLabel: string; quick: string[]; reasons: string[]; waste?: boolean; lots?: boolean }
+export type DeptCfg = { lineWord: string; unit: string; plural: string; done: string; saved: string; qty: 'none' | 'ask' | 'auto'; qtyQ: string; qtyUnit: string; perUnitLabel: string; refLabel: string; quick: string[]; reasons: string[]; waste?: boolean; lots?: boolean; orders?: boolean }
 export const CFG: Record<Dept, DeptCfg> = {
   Kitchen: { lineWord: 'Braiser', unit: 'Mezcla', plural: 'Mezclas', done: 'Mezcla lista', saved: 'guardada', qty: 'none', qtyQ: '', qtyUnit: '', perUnitLabel: '', refLabel: '', quick: ['Problema mecánico', 'Esperando ingredientes', 'Break'], reasons: ['Problema mecánico', 'Esperando ingredientes', 'Break', 'Braiser apagado', 'Esperando que recojan producto', 'Limpieza', 'Falta de personal', 'Calidad', 'Set up'] },
   Spiral: { lineWord: 'Línea', unit: 'Mezcla', plural: 'Mezclas', done: 'Mezcla lista', saved: 'guardada', qty: 'none', qtyQ: '', qtyUnit: '', perUnitLabel: '', refLabel: '', quick: ['Problema mecánico', 'Falta de producto de Kitchen', 'Break'], reasons: ['Problema mecánico', 'Falta de producto de Kitchen', 'Break', 'Horno (temperatura)', 'Temperatura interna baja', 'Esperando carros / RTE', 'Limpieza', 'Falta de personal', 'Calidad', 'Set up'] },
   RTE: { lineWord: 'Línea', unit: 'Carro', plural: 'Carros', done: 'Carro listo', saved: 'guardado', qty: 'ask', qtyQ: '¿Cuántos pouches lleva este carro?', qtyUnit: 'pouches', perUnitLabel: 'Pouches por carro', refLabel: '', waste: true, quick: ['Problema mecánico', 'Sin plástico', 'Break'], reasons: ['Problema mecánico', 'Sin plástico', 'Break', 'Falta de salsa (Kitchen)', 'Falta de arroz / arroz muy frío', 'Falta de carrito vacío', 'Cambio de rollo de plástico', 'Plástico atascado / no corta', 'Máquina corta o rompe paquetes (mecánico)', 'Impresora de sello no imprime', 'Peso fuera de rango (reempaque)', 'Aire en el paquete', 'Conteo / pesado de meatballs', 'Limpieza', 'Falta de personal', 'Set up'] },
   MFO: { lineWord: 'Línea', unit: 'Bin', plural: 'Bins', done: 'Bin listo', saved: 'guardado', qty: 'ask', qtyQ: '¿Cuántas cajas lleva este bin?', qtyUnit: 'cajas', perUnitLabel: '', refLabel: 'N° de bin', quick: ['Problema mecánico', 'Falta de producto del freezer', 'Break'], reasons: ['Problema mecánico', 'Falta de producto del freezer', 'Break', 'Armado de máquina', 'Pegado de labels / stickers', 'Esperando gas', 'Preparación (picar pollo…)', 'Falta de material', 'Limpieza', 'Falta de personal', 'Set up'] },
-  Packing: { lineWord: 'Línea', unit: 'Pallet', plural: 'Pallets', done: 'Pallet listo', saved: 'guardado', lots: true, qty: 'ask', qtyQ: '¿Cuántas cajas lleva este pallet?', qtyUnit: 'cajas', perUnitLabel: 'Cajas por pallet', refLabel: 'N° de tag', quick: ['Problema mecánico', 'Falta de producto que empacar', 'Break'], reasons: ['Problema mecánico', 'Falta de producto que empacar', 'Break', 'Esperando autorización de QC', 'Label equivocado (despegar labels)', 'Plástico / film', 'Falta de cajas / material de empaque', 'Personal pasó a otra línea', 'Etiquetadora / impresora', 'Montacargas / espacio', 'Limpieza', 'Falta de personal', 'Set up'] },
+  Packing: { lineWord: 'Línea', unit: 'Pallet', plural: 'Pallets', done: 'Pallet listo', saved: 'guardado', lots: true, orders: true, qty: 'ask', qtyQ: '¿Cuántas cajas lleva este pallet?', qtyUnit: 'cajas', perUnitLabel: 'Cajas por pallet', refLabel: 'N° de tag', quick: ['Problema mecánico', 'Falta de producto que empacar', 'Break'], reasons: ['Problema mecánico', 'Falta de producto que empacar', 'Break', 'Esperando autorización de QC', 'Label equivocado (despegar labels)', 'Plástico / film', 'Falta de cajas / material de empaque', 'Personal pasó a otra línea', 'Etiquetadora / impresora', 'Montacargas / espacio', 'Limpieza', 'Falta de personal', 'Set up'] },
 }
 /** what a line's "listo" button says for a moment once the unit is recorded: "Mezcla 5 guardada", "Carro 12 guardado" */
 export const savedText = (dept: Dept, n: number) => CFG[dept].unit + ' ' + n + ' ' + CFG[dept].saved
 
 export type Line = { id: string; dept: Dept; name: string; updatedAt: number; deleted?: boolean }
 /** one finished unit of work (a cart, a mezcla, a pallet…), how much it carried, its tag / bin number and who tapped it */
-export type Unit = { at: number; qty: number | null; ref: string; by: string; lots?: LotPart[] }
+export type Unit = { at: number; qty: number | null; ref: string; by: string; lots?: LotPart[]; po?: string } // po = the order it goes to (Order.id)
 /** the part of a unit that belongs to one lot: a pallet can carry cases of two lots of the same product */
 export type LotPart = { lot: string; qty: number }
 /** the lots written on a unit, as they are kept: only real ones (a lot, and a quantity above zero); none = the run's lot */
@@ -42,7 +43,7 @@ export const cleanLots = (x: unknown): LotPart[] | undefined => {
   return out.length ? out : undefined
 }
 /** a unit as it is kept, whatever shape it arrives in (an older version of the app, the server) */
-const unitOf = (u: Partial<Unit>): Unit => { const lots = cleanLots(u.lots); return { at: u.at ?? 0, qty: u.qty ?? null, ref: u.ref ?? '', by: u.by ?? '', ...(lots ? { lots } : {}) } }
+const unitOf = (u: Partial<Unit>): Unit => { const lots = cleanLots(u.lots); return { at: u.at ?? 0, qty: u.qty ?? null, ref: u.ref ?? '', by: u.by ?? '', ...(lots ? { lots } : {}), ...(typeof u.po === 'string' && u.po ? { po: u.po } : {}) } }
 /** "6283: 20 + 6284: 16" */
 export const lotsText = (lots: LotPart[] | undefined) => (lots?.length ? lots.map((l) => l.lot + ': ' + l.qty).join(' + ') : '')
 /**
@@ -71,7 +72,19 @@ export type ShiftHours = { first: string; firstEnd: string; second: string; seco
 export type ShiftPlan = ShiftHours & { from: string; updatedAt: number }
 /** the goal of one line: so much per hour and/or in the whole day, in its room's quantity */
 export type LineTarget = { lineId: string; perHour: number | null; perDay: number | null; updatedAt: number }
-export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Product[]; schedule: Schedule; changes: Change[]; targets: Target[]; shifts: ShiftPlan[]; lineTargets: LineTarget[] }
+export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Product[]; schedule: Schedule; changes: Change[]; targets: Target[]; shifts: ShiftPlan[]; lineTargets: LineTarget[]; orders: Order[] }
+/**
+ * An order to fill in Packing: so many cases of one product for a customer, to ship by a date. Most carry the
+ * customer's purchase order number (PO); some never do and some get it later. See "the orders Packing fills".
+ */
+export type Order = { id: string; customer: string; po: string; code: string; cases: number | null; shipBy: string; dest: string; closed: boolean; createdAt: number; by: string; updatedAt: number }
+/** an order as it is kept, whatever arrives (null = not one: it has no product code) */
+function orderOf(id: string, x: Partial<Order> | null | undefined, by: string, updatedAt: number): Order | null {
+  if (!id || !x || typeof x !== 'object') return null
+  const code = String(x.code ?? '').trim().toUpperCase(), cases = Number(x.cases), ship = String(x.shipBy ?? '')
+  if (!code) return null
+  return { id, customer: String(x.customer ?? '').trim(), po: String(x.po ?? '').trim(), code, cases: x.cases != null && Number.isFinite(cases) && cases > 0 ? cases : null, shipBy: /^\d{4}-\d{2}-\d{2}$/.test(ship) ? ship : '', dest: String(x.dest ?? '').trim(), closed: !!x.closed, createdAt: Number(x.createdAt) || 0, by, updatedAt }
+}
 /** the hours the plant works while nobody has set others (see "the shifts" below; these few lines sit here because load() needs them) */
 export const SHIFTS_DEFAULT: ShiftHours = { first: '06:00', firstEnd: '15:00', second: '15:30', secondEnd: '01:00' }
 const hmOk = (t: unknown): t is string => typeof t === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(t)
@@ -130,10 +143,10 @@ function tidySchedule(sch: Schedule): Schedule {
 
 /** with a server the lines (and products) are shared and come from it; without one, each device starts with a line per room */
 const SERVER = !!import.meta.env.VITE_SUPABASE_URL
-function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: CFG[d].lineWord + ' 1', updatedAt: 0 })), runs: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], lineTargets: [] } }
+function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: CFG[d].lineWord + ' 1', updatedAt: 0 })), runs: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], lineTargets: [], orders: [] } }
 function load(): State {
   try {
-    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; lineTargets?: Partial<LineTarget>[] }
+    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[] }
     const s = JSON.parse(localStorage.getItem(KEY) || 'null') as Raw | null
     // rows saved by earlier versions: carts as plain timestamps, units without a tag or a name, products with one
     // pouches-per-cart number, nothing with an update time
@@ -148,8 +161,9 @@ function load(): State {
         products, schedule: tidySchedule(s.schedule ?? {}),
         changes: (s.changes ?? []).filter((c) => (c.at ?? 0) > clockNow() - KEEP_CHANGES_MS).map((c) => ({ id: c.id ?? uid(), at: c.at ?? 0, by: c.by ?? '', dept: (c.dept ?? null) as Dept | null, what: c.what ?? '', before: c.before ?? '', after: c.after ?? '', refTable: c.refTable ?? '', refKey: c.refKey ?? '', updatedAt: c.updatedAt ?? 0 })),
         targets: (s.targets ?? []).filter((t) => DEPTS.includes(t.dept as Dept)).map((t) => ({ dept: t.dept as Dept, perHour: t.perHour ?? null, perShift: t.perShift ?? null, updatedAt: t.updatedAt ?? 0 })),
-        shifts: (s.shifts ?? []).filter((x): x is ShiftPlan => /^\d{4}-\d{2}-\d{2}$/.test(x.from ?? '') && !shiftsProblem(x as ShiftHours)).map((x) => ({ from: x.from, first: x.first, firstEnd: x.firstEnd, second: x.second, secondEnd: x.secondEnd, updatedAt: x.updatedAt ?? 0 })),
-        lineTargets: (s.lineTargets ?? []).filter((t) => !!t.lineId).map((t) => ({ lineId: String(t.lineId), perHour: t.perHour ?? null, perDay: t.perDay ?? null, updatedAt: t.updatedAt ?? 0 })),
+        shifts: (s.shifts ?? []).filter((x): x is ShiftPlan => !!x && /^\d{4}-\d{2}-\d{2}$/.test(x.from ?? '') && !shiftsProblem(x as ShiftHours)).map((x) => ({ from: x.from, first: x.first, firstEnd: x.firstEnd, second: x.second, secondEnd: x.secondEnd, updatedAt: x.updatedAt ?? 0 })),
+        lineTargets: (s.lineTargets ?? []).filter((t) => !!t && !!t.lineId).map((t) => ({ lineId: String(t.lineId), perHour: t.perHour ?? null, perDay: t.perDay ?? null, updatedAt: t.updatedAt ?? 0 })),
+        orders: (s.orders ?? []).map((o) => (o ? orderOf(String(o.id ?? ''), o, String(o.by ?? ''), o.updatedAt ?? 0) : null)).filter((o): o is Order => !!o),
       }
     }
   } catch { /* empty */ }
@@ -390,11 +404,11 @@ const run = (id: string) => state.runs.find((r) => r.id === id)
 /** the last moment already on a run: nothing recorded after it may be stamped earlier (the clock can be corrected between two taps) */
 const after = (r: Run) => Math.max(r.startedAt, r.units.length ? r.units[r.units.length - 1].at + 1 : 0)
 /** a unit finished on the line. `lots` = what it carries of each lot when it is not all of the run's lot; the quantity is then their sum */
-export function unitDone(runId: string, qty: number | null, ref = '', lots?: LotPart[]) {
+export function unitDone(runId: string, qty: number | null, ref = '', lots?: LotPart[], po?: string) {
   const r = run(runId)
   if (!r) return
   const parts = cleanLots(lots)
-  putRun({ ...r, units: [...r.units, { at: Math.max(clockNow(), after(r)), qty: parts ? parts.reduce((t, l) => t + l.qty, 0) : qty, ref, by: user.get(), ...(parts ? { lots: parts } : {}) }] })
+  putRun({ ...r, units: [...r.units, { at: Math.max(clockNow(), after(r)), qty: parts ? parts.reduce((t, l) => t + l.qty, 0) : qty, ref, by: user.get(), ...(parts ? { lots: parts } : {}), ...(po ? { po } : {}) }] })
 }
 /**
  * A code ends. `setup` = another code is coming on this line: the time until it starts is the line's set up, written
@@ -569,6 +583,74 @@ export function nearDay(base: number, hm: string) {
   if (!Number.isFinite(h) || !Number.isFinite(m)) return base
   const at = (shift: number) => { const d = new Date(base); d.setDate(d.getDate() + shift); d.setHours(h, m, 0, 0); return d.getTime() }
   return [at(-1), at(0), at(1)].reduce((best, x) => (Math.abs(x - base) < Math.abs(best - base) ? x : best), at(0))
+}
+// ---- the orders Packing fills ----
+/**
+ * The office types the orders (a manager can too); Packing sees the open ones of the code it is packing and says,
+ * pallet by pallet, which one each goes to, or none: not everything packed is for an order. An order is filled over
+ * several days, and the app adds up what has been packed for it.
+ * They travel in act_changes, the table with room for words, where a row without a room is written only by managers
+ * and the office: id "po:<id>", ref_table "act_orders", the order in `after` as JSON. Their `at` is a fixed far date:
+ * devices let go of history older than two weeks and fetch only the recent one when they sign in, and an order has to
+ * be there for as long as it is open. They are kept apart from the history (state.orders), never among its lines.
+ */
+const ORDER_REF = 'act_orders', ORDER_ID = 'po:', ORDER_LOG = 'act_orders_log'
+const ORDER_AT = Date.UTC(2099, 0, 1, 12)
+const rowOfOrder = (o: Order, deleted = false) => ({ id: ORDER_ID + o.id, at: iso(ORDER_AT), by_name: o.by, dept: null, what: 'Pedido', before: '', after: JSON.stringify({ customer: o.customer, po: o.po, code: o.code, cases: o.cases, shipBy: o.shipBy, dest: o.dest, closed: o.closed, createdAt: o.createdAt }), ref_table: ORDER_REF, ref_key: o.id, deleted, updated_at: iso(o.updatedAt), updated_by: user.get() })
+const putOrder = (o: Order) => { set({ ...state, orders: [...state.orders.filter((x) => x.id !== o.id), o] }); push('act_changes', ORDER_ID + o.id, rowOfOrder(o)) }
+export const orderOfId = (s: State, id: string | undefined) => (id ? s.orders.find((o) => o.id === id) : undefined)
+/** "Cliente · PO 123", or "Cliente · sin PO" while it has no number */
+export const orderLabel = (o: Order) => [o.customer, o.po ? 'PO ' + o.po : 'sin PO'].filter(Boolean).join(' · ')
+const orderText = (o: Order) => [orderLabel(o), 'código ' + o.code, o.cases != null ? o.cases + ' cajas' : '', o.shipBy ? 'envío ' + o.shipBy : '', o.dest, o.closed ? 'completo' : ''].filter(Boolean).join(' · ')
+/** the one that ships first on top; those without a date, last */
+export const byShip = (a: Order, b: Order) => (a.shipBy || '9999').localeCompare(b.shipBy || '9999') || a.createdAt - b.createdAt
+/** the orders still open for a product */
+export const openOrdersFor = (s: State, code: string) => s.orders.filter((o) => !o.closed && normCode(o.code) === normCode(code)).sort(byShip)
+/**
+ * The order the next unit of a run is proposed for: the one its last unit went to, while that one still lacks cases;
+ * otherwise the first open order of the code that still lacks them (the one that ships first). When the person left
+ * the last unit without an order, that choice stands, unless an order has been typed since: a new one is proposed.
+ */
+export function nextOrderFor(s: State, r: Run): string {
+  const lacking = openOrdersFor(s, r.code).filter((o) => o.cases == null || o.cases - orderMade(s, o.id) > 0)
+  const last = r.units[r.units.length - 1]
+  if (last && !last.po) return lacking.find((o) => o.createdAt > last.at)?.id ?? ''
+  return (lacking.find((o) => o.id === last?.po) ?? lacking[0])?.id ?? ''
+}
+/** the cases already packed for an order: every unit that was given to it, on the days this device holds */
+export const orderMade = (s: State, id: string) => s.runs.reduce((t, r) => t + r.units.filter((u) => u.po === id).reduce((a, u) => a + unitQty(s, r, u), 0), 0)
+/** writes an order, or changes one (its PO number can come later). '' when it has no product code */
+export function saveOrder(id: string | null, x: { customer: string; po: string; code: string; cases: number | null; shipBy: string; dest: string }): string {
+  const old = id ? state.orders.find((o) => o.id === id) : undefined
+  const o = orderOf(old?.id ?? uid(), { ...x, closed: old?.closed ?? false, createdAt: old?.createdAt ?? clockNow() }, old?.by ?? user.get(), stamp(old))
+  if (!o) return ''
+  putOrder(o)
+  logChange(null, old ? 'Pedido cambiado' : 'Pedido nuevo', old ? orderText(old) : '', orderText(o), ORDER_LOG, o.id)
+  return o.id
+}
+/** an order is complete (Packing is no longer offered it), or is opened again */
+export function closeOrder(id: string, closed: boolean) {
+  const o = state.orders.find((x) => x.id === id)
+  if (!o || o.closed === closed) return
+  putOrder({ ...o, closed, updatedAt: stamp(o) })
+  logChange(null, closed ? 'Pedido completo' : 'Pedido abierto otra vez', '', orderText({ ...o, closed: false }), ORDER_LOG, o.id + (closed ? ':c' : ':o'))
+}
+/** an order written by mistake is taken away; the units that were given to it stay recorded, with no order */
+export function deleteOrder(id: string) {
+  const o = state.orders.find((x) => x.id === id)
+  if (!o) return
+  set({ ...state, orders: state.orders.filter((x) => x.id !== id) })
+  push('act_changes', ORDER_ID + id, rowOfOrder({ ...o, updatedAt: stamp(o) }, true))
+  logChange(null, 'Pedido borrado', orderText(o), '', ORDER_LOG, id + ':d')
+}
+/** which order a unit already recorded goes to ('' = none): a correction */
+export function setUnitOrder(runId: string, at: number, orderId: string) {
+  const r = run(runId), i = r ? r.units.findIndex((u) => u.at === at) : -1
+  if (!r || i < 0) return
+  const was = orderOfId(state, r.units[i].po), to = orderOfId(state, orderId)
+  if ((was?.id ?? '') === (to?.id ?? '') && !!r.units[i].po === !!to) return
+  putRun({ ...r, units: r.units.map((u) => { if (u.at !== at) return u; const { po: _was, ...bare } = u; return to ? { ...bare, po: to.id } : bare }) })
+  logChange(r.dept, 'Corrida ' + r.code + ' del ' + r.date + ' (' + r.dept + ', ' + lineNameOf(state, r.lineId, r.line) + ') · ' + CFG[r.dept].unit + ' ' + (i + 1) + ' · pedido', was ? orderLabel(was) : '', to ? orderLabel(to) : '', 'act_runs', r.id)
 }
 // ---- the shifts ----
 /**
@@ -1084,6 +1166,14 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
     for (const c of Object.keys(day)) if (c !== code && normCode(c) === code) delete day[c]
     day[code] = Number(row.mixes ?? 0)
     set({ ...state, schedule: { ...state.schedule, [date]: day } })
+  } else if (table === 'act_changes' && row.ref_table === ORDER_REF && String(row.id ?? '').startsWith(ORDER_ID)) {
+    // an order (see "the orders Packing fills"): kept apart from the history
+    const id = String(row.id).slice(ORDER_ID.length)
+    if (!newer(state.orders.find((o) => o.id === id))) return
+    let x: Partial<Order> | null = null
+    try { x = JSON.parse(String(row.after ?? '')) as Partial<Order> } catch { /* not an order */ }
+    const o = row.deleted ? null : orderOf(id, x, String(row.by_name ?? ''), at)
+    set({ ...state, orders: [...state.orders.filter((y) => y.id !== id), ...(o ? [o] : [])] })
   } else if (table === 'act_changes') {
     const cur = state.changes.find((c) => c.id === row.id)
     if (!newer(cur)) return
@@ -1120,6 +1210,7 @@ export function uploadAll() {
   for (const t of state.targets) { push('act_targets', t.dept, rowOfTarget(t)); n++ }
   for (const x of state.shifts) { push('act_targets', SHIFTS_KEY + x.from, rowOfShifts(x)); n++ }
   for (const t of state.lineTargets) { push('act_targets', LINE_KEY + t.lineId, rowOfLineTarget(t)); n++ }
+  for (const o of state.orders) { push('act_changes', ORDER_ID + o.id, rowOfOrder(o)); n++ }
   return n
 }
 /** "71.4", "71,4", "1.234,5" or "1,234.5" → a number (0 for a blank or something that is not one) */

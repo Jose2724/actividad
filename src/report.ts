@@ -1,4 +1,4 @@
-import { CFG, DEPTS, lineNameOf, normCode, plainDay, runInShift, runStats, SETUP, SETUP_MAX_MS, shiftAt, shiftPieces, shiftsOf, stopSpans, unitQty, type Dept, type Run, type ShiftHours, type State, type Unit } from './store'
+import { CFG, DEPTS, lineNameOf, normCode, orderLabel, orderOfId, plainDay, runInShift, runStats, SETUP, SETUP_MAX_MS, shiftAt, shiftPieces, shiftsOf, stopSpans, unitQty, type Dept, type Run, type ShiftHours, type State, type Unit } from './store'
 
 /**
  * The day's report, as the tables on screen and in every file made from them (Excel, CSV, PDF): one place decides
@@ -62,7 +62,7 @@ export function reportOf(s: State, date: string, now: number, f: ReportFilter = 
   const rowsOf = (k: 0 | 1 | 2) => kept.map((r) => rowOf(r, k)).filter((x) => x.here)
   const rows = rowsOf(shift), runs = rows.map((x) => x.r)
   // one line per unit; a pallet with two lots gives two lines, each with its lot and its cases
-  const unitRows = rows.flatMap((x) => x.parts.flatMap(({ u, i, all, kept: mine }) => mine.map((p) => ({ r: x.r, i, u, lot: p.lot, qty: p.qty, gap: x.st.unitTimes[i] ?? 0, mixed: all.length > 1, shift: shiftAt(plan, u.at) })))).sort((a, b) => a.u.at - b.u.at)
+  const unitRows = rows.flatMap((x) => x.parts.flatMap(({ u, i, all, kept: mine }) => mine.map((p) => ({ r: x.r, i, u, lot: p.lot, qty: p.qty, gap: x.st.unitTimes[i] ?? 0, mixed: all.length > 1, shift: shiftAt(plan, u.at), order: ((o) => (o ? orderLabel(o) : ''))(orderOfId(s, u.po)) })))).sort((a, b) => a.u.at - b.u.at)
   // (a set up nobody closed, on a line that never started another code, stops being one after some hours)
   const stale = (x: (typeof s.stops)[number]) => !x.endedAt && x.lineId !== null && now - x.startedAt > SETUP_MAX_MS && !s.runs.some((r) => r.lineId === x.lineId && !r.endedAt)
   // a stop belongs to the day of work it started in: one after midnight is still the second shift's, of the day before

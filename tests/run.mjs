@@ -1399,6 +1399,85 @@ sh2.use((m) => {
   m.setShifts(DAY, { first: '05:00', firstEnd: '13:00', second: '13:20', secondEnd: '22:00' })
   eq('cambiarlo para hoy sí: el corte pasa a la 1:10 PM y los carros se reparten con él', m.reportOf(st(), DAY, oct(10, 19, 0), { code: 'A100' }).byShift.map((d) => [d.first.units, d.second.units]), [[0, 5]])
 })
+section('Pedidos (PO) de Packing')
+const ord = await device('ord', { user: 'Oficina' })
+ord.use((m) => {
+  const st = () => m.store.get(), order = (id) => st().orders.find((o) => o.id === id)
+  clock = T0
+  eq('sin pedidos no hay nada que ofrecer', [st().orders, m.openOrdersFor(st(), 'A100')], [[], []])
+  const a = m.saveOrder(null, { customer: 'Cliente A', po: '4500011', code: 'a100', cases: 72, shipBy: '2026-10-15', dest: 'Almacén Norte' })
+  eq('la oficina escribe un pedido con su PO', [order(a).customer, order(a).po, order(a).code, order(a).cases, order(a).shipBy, order(a).dest, order(a).closed, order(a).by, m.orderLabel(order(a))], ['Cliente A', '4500011', 'A100', 72, '2026-10-15', 'Almacén Norte', false, 'Oficina', 'Cliente A · PO 4500011'])
+  clock = T0 + M
+  const b = m.saveOrder(null, { customer: 'Cliente B', po: '', code: 'A100', cases: 36, shipBy: '2026-10-13', dest: '' })
+  eq('un pedido puede no llevar PO', [order(b).po, m.orderLabel(order(b))], ['', 'Cliente B · sin PO'])
+  eq('sin código de producto no hay pedido', [m.saveOrder(null, { customer: 'Cliente C', po: '1', code: ' ', cases: 5, shipBy: '', dest: '' }), st().orders.length], ['', 2])
+  eq('Packing ve los pedidos abiertos de su código, primero el que se envía antes', [m.openOrdersFor(st(), '0a100').length, m.openOrdersFor(st(), 'A100').map((o) => o.customer), m.openOrdersFor(st(), 'B200')], [0, ['Cliente B', 'Cliente A'], []])
+  const sent = m.outbox.items().filter((i) => i.table === 'act_changes' && i.key.startsWith('po:'))
+  eq('suben al servidor por la tabla del historial, sin departamento (solo managers y oficina), con fecha lejana para que los aparatos no los suelten', sent.map((i) => [i.key === 'po:' + i.row.ref_key, i.row.dept, i.row.ref_table, i.row.what, i.row.at.slice(0, 4), i.row.deleted, JSON.parse(i.row.after).code]), [[true, null, 'act_orders', 'Pedido', '2099', false, 'A100'], [true, null, 'act_orders', 'Pedido', '2099', false, 'A100']])
+  eq('en el historial queda que se crearon, y los pedidos no se mezclan con sus líneas', [st().changes.map((c) => [c.what, c.by, c.after]), st().changes.some((c) => c.refTable === 'act_orders')], [[['Pedido nuevo', 'Oficina', 'Cliente A · PO 4500011 · código A100 · 72 cajas · envío 2026-10-15 · Almacén Norte'], ['Pedido nuevo', 'Oficina', 'Cliente B · sin PO · código A100 · 36 cajas · envío 2026-10-13']], false])
+  // Packing gives each pallet to an order, or to none
+  clock = T0 + 5 * M
+  m.addLine('Packing', 'Línea 1')
+  const line = st().lines[0]
+  m.startRun(line, 'A100', '6283', DAY, 36)
+  const run = () => st().runs[0]
+  clock = T0 + 10 * M; m.unitDone(run().id, 36, '1001', undefined, b)
+  clock = T0 + 20 * M; m.unitDone(run().id, 0, '1002', [{ lot: '6283', qty: 12 }, { lot: '6284', qty: 8 }], a)
+  clock = T0 + 30 * M; m.unitDone(run().id, 36, '1003')
+  eq('cada pallet guarda a qué pedido va (o a ninguno)', run().units.map((u) => [u.qty, u.ref, u.po === a ? 'A' : u.po === b ? 'B' : u.po ?? null]), [[36, '1001', 'B'], [20, '1002', 'A'], [36, '1003', null]])
+  eq('la app suma lo empacado para cada pedido', [m.orderMade(st(), b), m.orderMade(st(), a), order(a).cases - m.orderMade(st(), a)], [36, 20, 52])
+  eq('en el reporte cada pallet dice su pedido', m.reportOf(st(), DAY, clock).unitRows.map((x) => [x.u.ref, x.lot, x.order]), [['1001', '6283', 'Cliente B · sin PO'], ['1002', '6283', 'Cliente A · PO 4500011'], ['1002', '6284', 'Cliente A · PO 4500011'], ['1003', '6283', '']])
+  eq('el siguiente pallet se propone para el pedido del anterior; sin pedido en el anterior, para ninguno', m.nextOrderFor(st(), run()), '')
+  m.setUnitOrder(run().id, run().units[2].at, a)
+  eq('si el anterior fue para un pedido que aún no está completo, para ese', m.nextOrderFor(st(), run()) === a, true)
+  m.setUnitOrder(run().id, run().units[2].at, b)
+  eq('si ese ya se completó, para el siguiente que todavía pide cajas', [m.orderMade(st(), b) >= 36, m.nextOrderFor(st(), run()) === a], [true, true])
+  m.setUnitOrder(run().id, run().units[2].at, '')
+  eq('una corrida sin pallets: el que se envía primero y aún pide cajas', (() => { m.addLine('Packing', 'Línea 2'); const l2 = st().lines.find((l) => l.name === 'Línea 2'); m.startRun(l2, 'A100', '6283', DAY, 36); const r2 = st().runs.find((r) => r.lineId === l2.id); const next = m.nextOrderFor(st(), r2); m.deleteRun(r2.id); return next === a })(), true)
+  clock = T0 + 35 * M
+  const late = m.saveOrder(null, { customer: 'Cliente N', po: '', code: 'A100', cases: 10, shipBy: '2026-10-12', dest: '' })
+  eq('un pedido escrito después del último pallet sí se propone, aunque ese pallet quedó sin pedido', m.nextOrderFor(st(), run()) === late, true)
+  m.deleteOrder(late)
+  eq('(quitado ese pedido, vuelve a no proponerse ninguno)', m.nextOrderFor(st(), run()), '')
+  // the number comes later
+  clock = T0 + 40 * M
+  eq('el PO que faltaba se pone después, en el mismo pedido', [m.saveOrder(b, { customer: 'Cliente B', po: '777', code: 'A100', cases: 36, shipBy: '2026-10-13', dest: '' }) === b, st().orders.length, m.orderLabel(order(b)), m.orderMade(st(), b), order(b).by], [true, 2, 'Cliente B · PO 777', 36, 'Oficina'])
+  eq('y queda en el historial de qué a qué', st().changes.filter((c) => c.what === 'Pedido cambiado').map((c) => [c.before, c.after]), [['Cliente B · sin PO · código A100 · 36 cajas · envío 2026-10-13', 'Cliente B · PO 777 · código A100 · 36 cajas · envío 2026-10-13']])
+  m.closeOrder(b, true)
+  eq('un pedido completo ya no se ofrece a Packing, pero sigue ahí con lo suyo', [m.openOrdersFor(st(), 'A100').map((o) => o.customer), order(b).closed, m.orderMade(st(), b)], [['Cliente A'], true, 36])
+  m.closeOrder(b, false)
+  eq('y se puede abrir otra vez', m.openOrdersFor(st(), 'A100').length, 2)
+  // a pallet given to the wrong order (a manager's correction)
+  m.setUnitOrder(run().id, run().units[2].at, a)
+  eq('el manager corrige a qué pedido va un pallet', [m.orderMade(st(), a), run().units[2].po === a, st().changes.filter((c) => / · pedido$/.test(c.what)).map((c) => [c.before, c.after])], [56, true, [['', 'Cliente A · PO 4500011']]])
+  m.setUnitOrder(run().id, run().units[0].at, '')
+  eq('o lo deja sin pedido', [m.orderMade(st(), b), 'po' in run().units[0]], [0, false])
+  m.deleteOrder(a)
+  eq('un pedido borrado desaparece; sus pallets quedan registrados, sin pedido', [st().orders.map((o) => o.customer), run().units.length, m.reportOf(st(), DAY, clock).unitRows.map((x) => x.order).filter(Boolean), m.outbox.items().filter((i) => i.key === 'po:' + a).map((i) => i.row.deleted)], [['Cliente B'], 3, [], [true]])
+  // from another device
+  m.applyRemote('act_changes', { id: 'po:r1', at: iso(Date.UTC(2099, 0, 1, 12)), by_name: 'Ana', dept: null, what: 'Pedido', before: '', after: JSON.stringify({ customer: 'Cliente D', po: '', code: 'b200', cases: 40, shipBy: '2026-10-20', dest: '', closed: false, createdAt: T0 }), ref_table: 'act_orders', ref_key: 'r1', deleted: false, updated_at: iso(T0 + 50 * M) })
+  eq('un pedido puesto en otro aparato llega', [m.openOrdersFor(st(), 'B200').map((o) => [o.id, o.customer, o.cases, o.by]), st().changes.some((c) => c.id === 'po:r1')], [[['r1', 'Cliente D', 40, 'Ana']], false])
+  m.applyRemote('act_changes', { id: 'po:r1', at: iso(Date.UTC(2099, 0, 1, 12)), by_name: 'Ana', dept: null, what: 'Pedido', before: '', after: JSON.stringify({ customer: 'Viejo', code: 'B200' }), ref_table: 'act_orders', ref_key: 'r1', deleted: false, updated_at: iso(T0 + 45 * M) })
+  eq('uno más viejo no pisa al más nuevo', order('r1').customer, 'Cliente D')
+  m.applyRemote('act_changes', { id: 'po:r2', at: iso(T0), by_name: 'Ana', dept: null, what: 'Pedido', before: '', after: 'esto no es un pedido', ref_table: 'act_orders', ref_key: 'r2', deleted: false, updated_at: iso(T0 + 50 * M) })
+  eq('algo que no es un pedido no rompe nada', [st().orders.length, st().changes.some((c) => c.id === 'po:r2')], [2, false])
+  m.applyRemote('act_changes', { id: 'h1', at: iso(T0 + 51 * M), by_name: 'Ana', dept: null, what: 'Pedido nuevo', before: '', after: 'Cliente D · sin PO', ref_table: 'act_orders_log', ref_key: 'r1', deleted: false, updated_at: iso(T0 + 51 * M) })
+  eq('la línea de historial de un pedido sí va al historial', [st().changes.some((c) => c.id === 'h1'), st().orders.length], [true, 2])
+  m.applyRemote('act_changes', { id: 'po:r1', at: iso(Date.UTC(2099, 0, 1, 12)), by_name: 'Ana', dept: null, what: 'Pedido', before: '', after: '{}', ref_table: 'act_orders', ref_key: 'r1', deleted: true, updated_at: iso(T0 + 55 * M) })
+  eq('borrado en otro aparato, se va de este', st().orders.map((o) => o.id), [b])
+  m.applyRemote('act_runs', { id: 'rr', dept: 'Packing', line_id: line.id, line: 'Línea 1', code: 'B200', lot: '6283', date: DAY, started_at: iso(T0 + 60 * M), ended_at: iso(T0 + 70 * M), units: [{ at: T0 + 65 * M, qty: 40, ref: '2001', by: 'Ana', po: b }, { at: T0 + 66 * M, qty: 40, ref: '2002', by: 'Ana', po: '' }], per_unit: 40, waste: 0, by_name: 'Ana', deleted: false, updated_at: iso(T0 + 70 * M) })
+  eq('un pallet que llega del servidor conserva su pedido', st().runs.find((r) => r.id === 'rr').units.map((u) => u.po ?? null), [b, null])
+})
+{
+  const kept = await device('ord-kept', { seed: { lines: [], runs: [], stops: [], products: [], orders: [{ id: 'k1', customer: 'Cliente A', po: '', code: 'a100', cases: 10, shipBy: '2026-10-15', dest: '', closed: false, createdAt: 5, by: 'Ana', updatedAt: 7 }, { id: 'k2', code: '' }, null] } })
+  eq('al abrir la app otra vez, los pedidos siguen ahí (y uno sin código se suelta)', kept.use((m) => m.store.get().orders.map((o) => [o.id, o.code, o.cases, o.by, o.updatedAt])), [['k1', 'A100', 10, 'Ana', 7]])
+  // the office writes it, Packing's tablet sees it and packs for it, the office sees the cases add up
+  const id = mgr.use((m) => m.saveOrder(null, { customer: 'Cliente Z', po: '', code: 'Z900', cases: 80, shipBy: '', dest: '' })); settle()
+  eq('el pedido que escribe la oficina llega a la tablet', tab.use((m) => m.openOrdersFor(m.store.get(), 'Z900').map((o) => m.orderLabel(o))), ['Cliente Z · sin PO'])
+  clock += M
+  tab.use((m) => { m.addLine('Packing', 'Línea 9'); const l = m.store.get().lines.find((x) => x.name === 'Línea 9'); m.startRun(l, 'Z900', '6283', DAY, 40); const r = m.store.get().runs.find((x) => x.code === 'Z900'); m.unitDone(r.id, 40, '', undefined, id) }); settle()
+  eq('y lo que empaca la tablet para ese pedido lo ve la oficina', [mgr.use((m) => m.orderMade(m.store.get(), id)), all.map((d) => d.use((m) => m.outbox.size()))], [40, [0, 0]])
+}
 section('La meta de cada línea')
 const lg = await device('lg', { user: 'Santiago' })
 lg.use((m) => {

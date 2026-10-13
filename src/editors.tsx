@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { applyDraft, byLineName, CFG, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, openRun, splitStop, updateRun, updateStop, type Run, type State, type Stop } from './store'
+import { applyDraft, byLineName, byShip, CFG, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, setUnitOrder, splitStop, updateRun, updateStop, type Run, type State, type Stop } from './store'
 import { clockNow } from './clock'
 import { ConfirmDialog, LotsDialog } from './App'
 
@@ -27,6 +27,9 @@ export function RunEditor({ s, run, mgr, onClose }: { s: State; run: Run; mgr: b
   const lineBusy = !!run.endedAt && !!openRun(s, run.lineId)
   // units tapped on the line while this form is open: they are kept as they are
   const later = run.units.filter((u) => !opened.units.some((o) => o.at === u.at)).length
+  // the order each unit goes to can be corrected, where the room fills orders and there is any (applied at once)
+  const withOrders = !!cfg.orders && mgr && s.orders.length > 0
+  const ordersFor = (po: string | undefined) => s.orders.filter((o) => normCode(o.code) === normCode(run.code) || o.id === po).sort(byShip)
   // the lines of the room, to pass the run to the one that really made it
   const lines = s.lines.filter((l) => l.dept === run.dept).sort(byLineName)
   const [lineId, setLineId] = useState(run.lineId)
@@ -58,13 +61,17 @@ export function RunEditor({ s, run, mgr, onClose }: { s: State; run: Run; mgr: b
         {units.length > 0 && (
           <div className="twrap">
             <table>
-              <thead><tr><th>#</th><th>Hora</th>{cfg.qty !== 'none' && <th>{cfg.qtyUnit}</th>}{cfg.lots && <th>Lotes</th>}{cfg.refLabel && <th>{cfg.refLabel}</th>}<th>Por</th><th></th></tr></thead>
+              <thead><tr><th>#</th><th>Hora</th>{cfg.qty !== 'none' && <th>{cfg.qtyUnit}</th>}{cfg.lots && <th>Lotes</th>}{cfg.refLabel && <th>{cfg.refLabel}</th>}{withOrders && <th>Pedido</th>}<th>Por</th><th></th></tr></thead>
               <tbody>{units.map((u, i) => (
                 <tr key={u.at + ':' + i}>
                   <td>{i + 1}</td><td>{fmtTime(u.at)}</td>
                   {cfg.qty !== 'none' && <td><input className="num" inputMode="numeric" value={u.qty} disabled={!!u.lots?.length} title={u.lots?.length ? 'Es la suma de sus lotes' : ''} onChange={(e) => setUnits(units.map((x, k) => (k === i ? { ...x, qty: e.target.value.replace(/\D/g, '') } : x)))} /></td>}
                   {cfg.lots && <td>{u.lots?.length ? lotsText(u.lots) : <small>{lot || '—'}</small>} <button type="button" className="lnk" title="Cambiar los lotes de esta unidad" onClick={() => setLotsOf(i)}>✎</button></td>}
                   {cfg.refLabel && <td><input className="num" value={u.ref} onChange={(e) => setUnits(units.map((x, k) => (k === i ? { ...x, ref: e.target.value } : x)))} autoComplete="off" /></td>}
+                  {withOrders && (() => {
+                    const po = run.units.find((x) => x.at === u.at)?.po, known = po && s.orders.some((o) => o.id === po) ? po : ''
+                    return <td><select value={known} onChange={(e) => setUnitOrder(run.id, u.at, e.target.value)}><option value="">Sin pedido</option>{ordersFor(po).map((o) => <option key={o.id} value={o.id}>{orderLabel(o)}</option>)}</select></td>
+                  })()}
                   <td>{u.by || '—'}</td>
                   <td><button type="button" className="lnk" title="Quitar esta unidad" onClick={() => setUnits(units.filter((_, k) => k !== i))}>✕</button></td>
                 </tr>
