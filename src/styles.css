@@ -552,4 +552,7 @@ table.shiftgrid tr.sep td{background:var(--bg);color:var(--muted);font-size:11px
 .linegoal .bar{height:10px;margin:3px 0}
 .lg-sub{font-size:12.5px}
 .linegoal .ok{color:var(--ok)}
+/* The report's date, between its two arrows: on a wide screen its group is only as wide as what it holds, so the box
+   takes the width its date needs (left at "0 and grow", as on a phone, it had nothing to grow into and showed empty) */
+@media (min-width:721px){.daynav input[type=date]{width:auto;min-width:165px;flex:0 0 auto}}
 

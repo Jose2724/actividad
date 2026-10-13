@@ -223,7 +223,7 @@ export const EN: Record<string, string> = {
   'desde las {0}': 'since {0}',
   'Faltan {0}': '{0} to go',
   '· a este ritmo se llega a las {0}': '· at this pace it is reached at {0}',
-  '· a este ritmo no se llega en este turno': '· at this pace it is not reached in this shift',
+  '· a este ritmo se llega el {0} a las {1}': '· at this pace it is reached on {0} at {1}',
   'Ritmo del turno {0}': 'Pace of shift {0}',
   'meta {0}/h': 'goal {0}/h',
   'desde el primer inicio del turno': 'since the shift\'s first start',
