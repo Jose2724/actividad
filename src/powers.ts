@@ -1,3 +1,4 @@
+import { tr } from './i18n'
 /**
  * What each person may do in Actividad beyond working their line. The role says what they start with; the owner (and a
  * manager, for operators and the office) gives or takes powers one by one. A person can also belong to a shift: the
@@ -6,16 +7,16 @@
  */
 export type Power = 'fix' | 'del' | 'goals' | 'shifts' | 'orders' | 'day' | 'depts' | 'products' | 'people' | 'othershift'
 export const POWERS: { key: Power; label: string }[] = [
-  { key: 'fix', label: 'Corregir registros' },
-  { key: 'del', label: 'Borrar corridas y paros' },
-  { key: 'goals', label: 'Poner metas' },
-  { key: 'shifts', label: 'Cambiar el horario de los turnos' },
-  { key: 'orders', label: 'Crear pedidos con PO' },
-  { key: 'day', label: 'Empezar el día' },
-  { key: 'depts', label: 'Ver todos los departamentos' },
-  { key: 'products', label: 'Productos y programa' },
-  { key: 'people', label: 'Manejar empleados' },
-  { key: 'othershift', label: 'Corregir lo del otro turno' },
+  { key: 'fix', label: tr('Corregir registros') },
+  { key: 'del', label: tr('Borrar corridas y paros') },
+  { key: 'goals', label: tr('Poner metas') },
+  { key: 'shifts', label: tr('Cambiar el horario de los turnos') },
+  { key: 'orders', label: tr('Crear pedidos con PO') },
+  { key: 'day', label: tr('Empezar el día') },
+  { key: 'depts', label: tr('Ver todos los departamentos') },
+  { key: 'products', label: tr('Productos y programa') },
+  { key: 'people', label: tr('Manejar empleados') },
+  { key: 'othershift', label: tr('Corregir lo del otro turno') },
 ]
 const ALL = POWERS.map((p) => p.key)
 export type Role = 'op' | 'mgr' | 'office'

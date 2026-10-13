@@ -3,6 +3,7 @@
 import { drop, justSent, outbox, push, queued, rebase, type Row, type Table } from './outbox'
 import { storageFull } from './storage'
 import { clockNow } from './clock'
+import { tr } from './i18n'
 
 export type Dept = 'Kitchen' | 'RTE' | 'Spiral' | 'MFO' | 'Packing'
 export const DEPTS: Dept[] = ['Kitchen', 'RTE', 'Spiral', 'MFO', 'Packing']
@@ -94,9 +95,9 @@ const DAY_MIN = 1440
 const ahead = (from: number, to: number) => (((to - from) % DAY_MIN) + DAY_MIN) % DAY_MIN
 /** '' when the hours make sense: going round the clock, the first shift starts and ends, then the second starts and ends, before the first starts again */
 export function shiftsProblem(h: ShiftHours): string {
-  if (![h.first, h.firstEnd, h.second, h.secondEnd].every(hmOk)) return 'Falta una hora.'
+  if (![h.first, h.firstEnd, h.second, h.secondEnd].every(hmOk)) return tr('Falta una hora.')
   const a = mins(h.first), end1 = ahead(a, mins(h.firstEnd)), start2 = ahead(a, mins(h.second)), end2 = ahead(a, mins(h.secondEnd)) || DAY_MIN
-  return end1 > 0 && end1 <= start2 && start2 < end2 ? '' : 'Las horas tienen que ir en orden: el turno 1 empieza y termina, después el turno 2 empieza y termina, antes de que vuelva a empezar el turno 1.'
+  return end1 > 0 && end1 <= start2 && start2 < end2 ? '' : tr('Las horas tienen que ir en orden: el turno 1 empieza y termina, después el turno 2 empieza y termina, antes de que vuelva a empezar el turno 1.')
 }
 
 /** a cart has two columns of 12 crates (the office counts columns: "12x10" = 12 crates × 10 pouches) */
@@ -155,7 +156,7 @@ function load(): State {
       const sample = (code: string) => SAMPLE_PRODUCTS.some((x) => x.code === code)
       const products: Product[] = s.products ? s.products.map((p) => ({ code: p.code ?? '', name: p.name ?? '', pouchesPerCase: p.pouchesPerCase ?? 0, casesPerMix: p.casesPerMix ?? 0, cratesPerCart: (p.cratesPerCart ?? (p.pouchesPerCart ? 12 : 0)) === 12 && sample(p.code ?? '') ? CRATES_PER_CART : p.cratesPerCart ?? (p.pouchesPerCart ? 12 : 0), pouchesPerCrate: p.pouchesPerCrate ?? (p.pouchesPerCart ? Math.round(p.pouchesPerCart / 12) : 0), casesPerPallet: p.casesPerPallet ?? 0, updatedAt: p.updatedAt ?? 0 })) : SAMPLE_PRODUCTS
       return {
-        lines: s.lines.map((l) => ({ id: l.id ?? uid(), dept: (l.dept ?? 'Kitchen') as Dept, name: l.name ?? 'Línea 1', updatedAt: l.updatedAt ?? 0 })),
+        lines: s.lines.map((l) => ({ id: l.id ?? uid(), dept: (l.dept ?? 'Kitchen') as Dept, name: l.name ?? tr('Línea 1'), updatedAt: l.updatedAt ?? 0 })),
         stops: s.stops.map((x) => ({ id: x.id ?? uid(), dept: (x.dept ?? 'Kitchen') as Dept, lineId: x.lineId ?? null, reason: x.reason ?? '', note: x.note ?? '', startedAt: x.startedAt ?? 0, endedAt: x.endedAt ?? null, by: x.by ?? '', updatedAt: x.updatedAt ?? 0 })),
         runs: s.runs.map((r) => ({ id: r.id ?? uid(), dept: (r.dept ?? 'Kitchen') as Dept, lineId: r.lineId ?? '', line: r.line ?? '', code: r.code ?? '', lot: r.lot ?? '', date: r.date ?? today(), startedAt: r.startedAt ?? 0, endedAt: r.endedAt ?? null, units: units(r), perUnit: r.perUnit ?? null, waste: r.waste ?? 0, by: r.by ?? '', updatedAt: r.updatedAt ?? 0 })),
         products, schedule: tidySchedule(s.schedule ?? {}),
@@ -319,8 +320,8 @@ function logProductDiff(old: Product | undefined, p: Product) {
   if (normCode(old.code) !== normCode(p.code)) logChange(null, old.code.trim() ? 'Producto ' + old.code + ' · Código' : 'Producto nuevo', old.code, p.code, 'act_products', normCode(p.code))
   for (const [k, label] of PRODUCT_FIELDS) if (v(old[k]) !== v(p[k])) logChange(null, 'Producto ' + (p.code || old.code) + ' · ' + label, v(old[k]), v(p[k]), 'act_products', normCode(p.code))
 }
-const stopLine = (x: Stop) => (x.lineId === null ? 'todo ' + x.dept : state.lines.find((l) => l.id === x.lineId)?.name ?? state.runs.find((r) => r.lineId === x.lineId)?.line ?? 'línea')
-const endText = (ms: number | null) => (ms ? fmtTime(ms) : 'en curso')
+const stopLine = (x: Stop) => (x.lineId === null ? 'todo ' + x.dept : state.lines.find((l) => l.id === x.lineId)?.name ?? state.runs.find((r) => r.lineId === x.lineId)?.line ?? tr('línea'))
+const endText = (ms: number | null) => (ms ? fmtTime(ms) : tr('en curso'))
 
 // ---- the lines of a room and their names ----
 /**
@@ -405,7 +406,7 @@ export function startRun(line: Line, code: string, lot: string, date: string, pe
     for (const x of state.stops.filter((y) => y.lineId === line.id && !y.endedAt)) {
       const age = at - x.startedAt
       if (age > SETUP_MAX_MS || fromOtherDay(state, x, at) || (x.reason === SETUP && age < 60_000)) putStop({ ...x, deleted: true })
-      else putStop({ ...x, endedAt: Math.max(at, x.startedAt), note: x.reason === SETUP && x.note.startsWith(AFTER) ? 'De ' + x.note.slice(AFTER.length) + ' a ' + code : x.note })
+      else putStop({ ...x, endedAt: Math.max(at, x.startedAt), note: x.reason === SETUP && x.note.startsWith(AFTER) ? tr('De {0} a {1}', x.note.slice(AFTER.length), code) : x.note })
     }
     putRun({ id: uid(), dept: line.dept, lineId: line.id, line: line.name, code, lot, date, startedAt: at, endedAt: null, units: [], perUnit, waste: 0, by: user.get(), updatedAt: 0 })
   })
@@ -530,14 +531,14 @@ export function updateRun(id: string, patch: Partial<Pick<Run, 'code' | 'lot' | 
   putRun(n)
   // reopened: the code goes on, so what started counting when it "ended" was not a set up
   if (patch.endedAt === null && r.endedAt) for (const x of state.stops.filter((y) => y.lineId === r.lineId && !y.endedAt && y.startedAt >= (r.endedAt ?? 0))) putStop({ ...x, deleted: true })
-  const cfg = CFG[r.dept], pre = 'Corrida ' + r.code + ' del ' + r.date + ' (' + r.dept + ', ' + lineNameOf(state, r.lineId, r.line) + ') · '
+  const cfg = CFG[r.dept], pre = tr('Corrida {0} del {1} ({2}, {3}', r.code, r.date, r.dept, lineNameOf(state, r.lineId, r.line)) + ') · '
   const log = (what: string, a: string, b: string) => logChange(r.dept, pre + what, a, b, 'act_runs', r.id)
-  log('Código', r.code, n.code); log('Lote', r.lot, n.lot); log('Fecha', r.date, n.date)
-  log(cfg.perUnitLabel || 'Por unidad', v(r.perUnit), v(n.perUnit)); log('Waste lb', v(r.waste), v(n.waste)); log('Fin', endText(r.endedAt), endText(n.endedAt))
+  log(tr('Código'), r.code, n.code); log(tr('Lote'), r.lot, n.lot); log(tr('Fecha'), r.date, n.date)
+  log(cfg.perUnitLabel || tr('Por unidad'), v(r.perUnit), v(n.perUnit)); log(tr('Waste lb'), v(r.waste), v(n.waste)); log(tr('Fin'), endText(r.endedAt), endText(n.endedAt))
   r.units.forEach((u, i) => {
     const w = n.units.find((x) => x.at === u.at)
-    if (!w) log('Se quitó ' + cfg.unit.toLowerCase() + ' ' + (i + 1) + ' (' + fmtTime(u.at) + ')', [u.qty != null ? u.qty + ' ' + cfg.qtyUnit : '', u.ref].filter(Boolean).join(' · ') || '1', '')
-    else { log(cfg.unit + ' ' + (i + 1) + ' · cantidad', v(u.qty), v(w.qty)); if (cfg.refLabel) log(cfg.unit + ' ' + (i + 1) + ' · ' + cfg.refLabel, u.ref, w.ref); if (cfg.lots) log(cfg.unit + ' ' + (i + 1) + ' · lotes', lotsText(u.lots), lotsText(w.lots)) }
+    if (!w) log(tr('Se quitó {0} {1} ({2}', cfg.unit.toLowerCase(), (i + 1), fmtTime(u.at)) + ')', [u.qty != null ? u.qty + ' ' + cfg.qtyUnit : '', u.ref].filter(Boolean).join(' · ') || '1', '')
+    else { log(tr('{0} {1} · cantidad', cfg.unit, (i + 1)), v(u.qty), v(w.qty)); if (cfg.refLabel) log(cfg.unit + ' ' + (i + 1) + ' · ' + cfg.refLabel, u.ref, w.ref); if (cfg.lots) log(tr('{0} {1} · lotes', cfg.unit, (i + 1)), lotsText(u.lots), lotsText(w.lots)) }
   })
 }
 export function deleteRun(id: string) { const r = run(id); if (r) { putRun({ ...r, deleted: true }); logChange(r.dept, 'Se borró la corrida ' + r.code + ' del ' + r.date + ' (' + r.dept + ', ' + lineNameOf(state, r.lineId, r.line) + ')', r.units.length + ' ' + CFG[r.dept].plural.toLowerCase() + (r.waste ? ' · waste ' + r.waste + ' lb' : ''), '', 'act_runs', r.id) } }
@@ -558,9 +559,9 @@ export function updateStop(id: string, patch: Partial<Pick<Stop, 'reason' | 'not
   if (!x) return
   const n = { ...x, ...patch, ...(patch.reason != null ? { reason: tidyReason(x.dept, patch.reason) } : {}) }
   putStop(n)
-  const pre = 'Paro ' + x.dept + ' ' + dayOf(x.startedAt) + ' ' + fmtTime(x.startedAt) + ' (' + stopLine(x) + ') · '
+  const pre = tr('Paro {0} {1} {2} ({3}', x.dept, dayOf(x.startedAt), fmtTime(x.startedAt), stopLine(x)) + ') · '
   const log = (what: string, a: string, b: string) => logChange(x.dept, pre + what, a, b, 'act_stops', x.id)
-  log('Motivo', x.reason, n.reason); log('Detalle', x.note, n.note); log('Inicio', fmtTime(x.startedAt), fmtTime(n.startedAt)); log('Fin', endText(x.endedAt), endText(n.endedAt))
+  log(tr('Motivo'), x.reason, n.reason); log(tr('Detalle'), x.note, n.note); log(tr('Inicio'), fmtTime(x.startedAt), fmtTime(n.startedAt)); log(tr('Fin'), endText(x.endedAt), endText(n.endedAt))
 }
 /**
  * A stop that turned out to have two causes: the time up to `at` keeps its reason and the rest becomes another stop
@@ -632,12 +633,12 @@ export function nearDay(base: number, hm: string) {
  */
 const ORDER_REF = 'act_orders', ORDER_ID = 'po:', ORDER_LOG = 'act_orders_log'
 const ORDER_AT = Date.UTC(2099, 0, 1, 12)
-const rowOfOrder = (o: Order, deleted = false) => ({ id: ORDER_ID + o.id, at: iso(ORDER_AT), by_name: o.by, dept: null, what: 'Pedido', before: '', after: JSON.stringify({ customer: o.customer, po: o.po, code: o.code, cases: o.cases, shipBy: o.shipBy, dest: o.dest, closed: o.closed, createdAt: o.createdAt }), ref_table: ORDER_REF, ref_key: o.id, deleted, updated_at: iso(o.updatedAt), updated_by: user.get() })
+const rowOfOrder = (o: Order, deleted = false) => ({ id: ORDER_ID + o.id, at: iso(ORDER_AT), by_name: o.by, dept: null, what: tr('Pedido'), before: '', after: JSON.stringify({ customer: o.customer, po: o.po, code: o.code, cases: o.cases, shipBy: o.shipBy, dest: o.dest, closed: o.closed, createdAt: o.createdAt }), ref_table: ORDER_REF, ref_key: o.id, deleted, updated_at: iso(o.updatedAt), updated_by: user.get() })
 const putOrder = (o: Order) => { set({ ...state, orders: [...state.orders.filter((x) => x.id !== o.id), o] }); push('act_changes', ORDER_ID + o.id, rowOfOrder(o)) }
 export const orderOfId = (s: State, id: string | undefined) => (id ? s.orders.find((o) => o.id === id) : undefined)
 /** "Cliente · PO 123", or "Cliente · sin PO" while it has no number */
-export const orderLabel = (o: Order) => [o.customer, o.po ? 'PO ' + o.po : 'sin PO'].filter(Boolean).join(' · ')
-const orderText = (o: Order) => [orderLabel(o), 'código ' + o.code, o.cases != null ? o.cases + ' cajas' : '', o.shipBy ? 'envío ' + o.shipBy : '', o.dest, o.closed ? 'completo' : ''].filter(Boolean).join(' · ')
+export const orderLabel = (o: Order) => [o.customer, o.po ? 'PO ' + o.po : tr('sin PO')].filter(Boolean).join(' · ')
+const orderText = (o: Order) => [orderLabel(o), tr('código {0}', o.code), o.cases != null ? tr('{0} cajas', o.cases) : '', o.shipBy ? tr('envío {0}', o.shipBy) : '', o.dest, o.closed ? tr('completo') : ''].filter(Boolean).join(' · ')
 /** the one that ships first on top; those without a date, last */
 export const byShip = (a: Order, b: Order) => (a.shipBy || '9999').localeCompare(b.shipBy || '9999') || a.createdAt - b.createdAt
 /** the orders still open for a product */
@@ -722,7 +723,7 @@ export const clockText = (hm: string) => fmtTime(new Date(2000, 0, 1, Number(hm.
 export const minuteText = (m: number) => fmtTime(new Date(2000, 0, 1, Math.floor(m / 60), Math.floor(m % 60)).getTime())
 /** "6:00 AM a 3:00 PM": the hours of one shift */
 export const shiftHours = (h: ShiftHours, shift: 1 | 2) => (shift === 1 ? clockText(h.first) + ' a ' + clockText(h.firstEnd) : clockText(h.second) + ' a ' + clockText(h.secondEnd))
-export const shiftsText = (h: ShiftHours) => 'Turno 1 de ' + shiftHours(h, 1) + ' · Turno 2 de ' + shiftHours(h, 2)
+export const shiftsText = (h: ShiftHours) => tr('Turno 1 de {0} · Turno 2 de {1}', shiftHours(h, 1), shiftHours(h, 2))
 /** the manager sets the hours of the shifts from a date on (the same date again replaces what was set for it) */
 export function setShifts(from: string, h: ShiftHours): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || shiftsProblem(h)) return false
@@ -944,7 +945,7 @@ export function inCases(s: State, code: string, pouches: number | null | undefin
   return { cases, loose: Math.round((pouches - cases * per) * 100) / 100, perCase: per }
 }
 /** "10 cajas y 10 sueltos" */
-export const casesText = (c: { cases: number; loose: number } | null) => (c ? c.cases.toLocaleString('en-US') + (c.cases === 1 ? ' caja' : ' cajas') + (c.loose ? ' y ' + c.loose + (c.loose === 1 ? ' suelto' : ' sueltos') : '') : '')
+export const casesText = (c: { cases: number; loose: number } | null) => (c ? c.cases.toLocaleString('en-US') + (c.cases === 1 ? ' ' + tr('caja') : ' ' + tr('cajas')) + (c.loose ? ' y ' + c.loose + (c.loose === 1 ? ' ' + tr('suelto') : ' ' + tr('sueltos')) : '') : '')
 /** a unit closed with less than the usual quantity of its run */
 export type Short = { run: Run; index: number; unit: Unit; usual: number }
 /** the last unit of a run, when it holds less than the usual */
@@ -1305,7 +1306,7 @@ export function parseProductsCsv(text: string): Product[] {
 }
 export function productsCsv(products: Product[]) {
   const q = (v: string | number) => '"' + String(v).replace(/"/g, '""') + '"'
-  const head = ['Código', 'Producto', 'Pouches por caja', 'Cajas por mezcla (yield)', 'Cajas por pallet', 'Guacales por carro', 'Pouches por guacal']
+  const head = [tr('Código'), tr('Producto'), tr('Pouches por caja'), tr('Cajas por mezcla (yield)'), tr('Cajas por pallet'), tr('Guacales por carro'), tr('Pouches por guacal')]
   return '﻿' + [head, ...products.map((p) => [p.code, p.name, p.pouchesPerCase, p.casesPerMix, p.casesPerPallet, p.cratesPerCart, p.pouchesPerCrate])].map((r) => r.map(q).join(',')).join('\r\n')
 }
 

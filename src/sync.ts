@@ -2,6 +2,7 @@ import { noSignal, passExpired, renewSession, supabase } from './supabase'
 import { startClock } from './clock'
 import { afterFlush, beforeFlush, flush, outbox, type Row, type Table } from './outbox'
 import { applyRemote, awayDay, batch, closeDay, firstKeptDay, myDept, openDay, prune, role, shareLocalLines } from './store'
+import { tr } from './i18n'
 
 /**
  * Keeps this device and the server in step: what is queued goes up (outbox), what other tablets and the office
@@ -20,14 +21,14 @@ outbox.subscribe(() => setStatus({ pending: outbox.size() }))
  * `online` = what the device itself says about its network (the app may not have noticed yet).
  */
 export function leaveAsk(st: Pick<SyncStatus, 'state' | 'pending'>, online = true): { title: string; text: string; yes: string; danger: boolean } {
-  if (st.state === 'local') return { title: '¿Cambiar de usuario?', text: 'Vuelves a la pantalla de entrada. Lo registrado se queda guardado en este aparato y lo que está corriendo sigue contando.', yes: 'Cambiar', danger: false }
+  if (st.state === 'local') return { title: tr('¿Cambiar de usuario?'), text: tr('Vuelves a la pantalla de entrada. Lo registrado se queda guardado en este aparato y lo que está corriendo sigue contando.'), yes: tr('Cambiar'), danger: false }
   const offline = st.state === 'offline' || !online
   const n = st.pending
-  const waiting = n === 1 ? 'Hay 1 registro que no ha llegado al servidor' : 'Hay ' + n + ' registros que no han llegado al servidor'
-  if (n > 0 && st.state === 'signedOut') return { title: 'Todavía hay registros sin subir', text: waiting + ' porque la sesión se cerró. Para que suban, vuelve a entrar en este aparato con tu usuario.', yes: 'Salir', danger: false }
-  if (n > 0) return { title: 'Todavía hay registros sin subir', text: waiting + (offline ? ' y ahora no hay señal. No salgas hasta que vuelva la señal y arriba diga "Sincronizado".' : '. Espera a que arriba diga "Sincronizado" y sal después.'), yes: 'Salir de todos modos', danger: true }
-  if (offline) return { title: '¿Salir sin señal?', text: 'Ahora no hay señal. Si sales, no vas a poder entrar otra vez hasta que vuelva el WiFi, y mientras tanto no se puede registrar nada en este aparato.', yes: 'Salir de todos modos', danger: true }
-  return { title: '¿Salir de Actividad?', text: 'Para volver a entrar hay que poner el usuario y el PIN. Lo que está corriendo sigue contando.', yes: 'Salir', danger: false }
+  const waiting = n === 1 ? tr('Hay 1 registro que no ha llegado al servidor') : tr('Hay {0} registros que no han llegado al servidor', n)
+  if (n > 0 && st.state === 'signedOut') return { title: tr('Todavía hay registros sin subir'), text: tr('{0} porque la sesión se cerró. Para que suban, vuelve a entrar en este aparato con tu usuario.', waiting), yes: tr('Salir'), danger: false }
+  if (n > 0) return { title: tr('Todavía hay registros sin subir'), text: waiting + (offline ? ' ' + tr('y ahora no hay señal. No salgas hasta que vuelva la señal y arriba diga "Sincronizado".') : tr('. Espera a que arriba diga "Sincronizado" y sal después.')), yes: tr('Salir de todos modos'), danger: true }
+  if (offline) return { title: tr('¿Salir sin señal?'), text: tr('Ahora no hay señal. Si sales, no vas a poder entrar otra vez hasta que vuelva el WiFi, y mientras tanto no se puede registrar nada en este aparato.'), yes: tr('Salir de todos modos'), danger: true }
+  return { title: tr('¿Salir de Actividad?'), text: tr('Para volver a entrar hay que poner el usuario y el PIN. Lo que está corriendo sigue contando.'), yes: tr('Salir'), danger: false }
 }
 
 const TABLES: Table[] = ['act_lines', 'act_runs', 'act_stops', 'act_products', 'act_schedule', 'act_changes', 'act_targets']

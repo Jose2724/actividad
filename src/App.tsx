@@ -18,6 +18,8 @@ import { clockNow, clockOffText, otherZone, startClock } from './clock'
 import { appUrl, qrPath } from './qr'
 import { uploadAll } from './store'
 import { Employees } from './Employees'
+import { tr } from './i18n'
+import { trx } from './trx'
 
 /** a clock that ticks every second, so every timer on screen moves */
 function useNow() {
@@ -60,16 +62,16 @@ function QrDialog({ onClose }: { onClose: () => void }) {
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg qrdlg" onClick={(e) => e.stopPropagation()}>
-        <h3>{supabase ? 'Abrir Actividad en otro aparato' : 'Abrir el DEMO en otro aparato'}</h3>
-        <p>Apunta la cámara del otro teléfono o tablet a este código y toca el enlace que sale.</p>
-        <div className="qrbox">{qr ? <svg viewBox={'0 0 ' + qr.size + ' ' + qr.size} shapeRendering="crispEdges" role="img" aria-label={'Código QR de ' + url}><rect width={qr.size} height={qr.size} fill="#fff" /><path d={qr.d} fill="#000" /></svg> : <span>…</span>}</div>
+        <h3>{supabase ? tr('Abrir Actividad en otro aparato') : tr('Abrir el DEMO en otro aparato')}</h3>
+        <p>{tr('Apunta la cámara del otro teléfono o tablet a este código y toca el enlace que sale.')}</p>
+        <div className="qrbox">{qr ? <svg viewBox={'0 0 ' + qr.size + ' ' + qr.size} shapeRendering="crispEdges" role="img" aria-label={tr('Código QR de {0}', url)}><rect width={qr.size} height={qr.size} fill="#fff" /><path d={qr.d} fill="#000" /></svg> : <span>…</span>}</div>
         <code className="qrurl">{url}</code>
         <div className="btns">
-          <button type="button" className="btn" onClick={() => void copy()}>{copied ? '✓ Copiado' : 'Copiar enlace'}</button>
-          {'share' in navigator && <button type="button" className="btn" onClick={() => { void navigator.share({ title: document.title, url }).catch(() => undefined) }}>Compartir enlace</button>}
+          <button type="button" className="btn" onClick={() => void copy()}>{copied ? tr('✓ Copiado') : tr('Copiar enlace')}</button>
+          {'share' in navigator && <button type="button" className="btn" onClick={() => { void navigator.share({ title: document.title, url }).catch(() => undefined) }}>{tr('Compartir enlace')}</button>}
         </div>
-        <p className="hint">Para dejarla como app: en Android, los tres puntos de Chrome y "Instalar app" o "Agregar a pantalla principal". En iPhone o iPad, botón Compartir de Safari y "Agregar a inicio". {supabase ? 'La primera vez se entra con usuario y PIN, con WiFi.' : 'Este es el DEMO: lo que se registre queda guardado solo en ese aparato.'}</p>
-        <div className="dbtns"><button type="button" className="btn primary" onClick={onClose}>Cerrar</button></div>
+        <p className="hint">{trx('Para dejarla como app: en Android, los tres puntos de Chrome y "Instalar app" o "Agregar a pantalla principal". En iPhone o iPad, botón Compartir de Safari y "Agregar a inicio". {0}', supabase ? tr('La primera vez se entra con usuario y PIN, con WiFi.') : tr('Este es el DEMO: lo que se registre queda guardado solo en ese aparato.'))}</p>
+        <div className="dbtns"><button type="button" className="btn primary" onClick={onClose}>{tr('Cerrar')}</button></div>
       </div>
     </div>
   )
@@ -95,24 +97,24 @@ function LineNameDialog({ s, dept, line, onClose }: { s: State; dept: Dept; line
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
-        <h3>{line ? 'Nombre de ' + line.name : 'Agregar ' + word + ' en ' + dept}</h3>
-        <p>{line ? 'El nombre nuevo sale en todo lo registrado en ella: la pantalla, el reporte y los archivos. Los tiempos no cambian.' : '¿Cuál es? Ponle el nombre que tiene en la planta.'}</p>
+        <h3>{line ? tr('Nombre de {0}', line.name) : tr('Agregar {0} en {1}', word, dept)}</h3>
+        <p>{line ? tr('El nombre nuevo sale en todo lo registrado en ella: la pantalla, el reporte y los archivos. Los tiempos no cambian.') : tr('¿Cuál es? Ponle el nombre que tiene en la planta.')}</p>
         <form className="qform" onSubmit={(e) => { e.preventDefault(); save() }}>
           <div className="chips">
             {freeLineNames(s, dept, 4).map((n) => <button key={n} type="button" className={'chip' + (tidy === n ? ' on' : '')} onClick={() => setName(n)}>{n}</button>)}
-            {others.map((o) => <button key={o.id} type="button" className={'chip swap' + (taken?.id === o.id ? ' on' : '')} title={'Intercambiar con ' + o.name} onClick={() => setName(o.name)}>⇄ {o.name}</button>)}
+            {others.map((o) => <button key={o.id} type="button" className={'chip swap' + (taken?.id === o.id ? ' on' : '')} title={tr('Intercambiar con {0}', o.name)} onClick={() => setName(o.name)}>⇄ {o.name}</button>)}
           </div>
-          <label>Nombre <input value={name} maxLength={LINE_NAME_MAX} onChange={(e) => setName(e.target.value)} autoComplete="off" placeholder={'ej. ' + cfg.lineWord + ' 2'} /></label>
+          <label>{tr('Nombre')}{' '}<input value={name} maxLength={LINE_NAME_MAX} onChange={(e) => setName(e.target.value)} autoComplete="off" placeholder={tr('ej. {0}', cfg.lineWord) + ' 2'} /></label>
           {taken && line && (
             <div className="swapbox">
-              <span>Ya hay una <b>{taken.name}</b> en {dept}. Se pueden intercambiar: esta pasa a llamarse <b>{taken.name}</b> y la otra <b>{line.name}</b>.</span>
-              <button type="button" className="btn primary" onClick={() => { if (swapLineNames(line.id, taken.id)) onClose() }}>⇄ Intercambiar nombres</button>
+              <span>{trx('Ya hay una {0} en {1}. Se pueden intercambiar: esta pasa a llamarse {2} y la otra {3}.', <b>{taken.name}</b>, dept, <b>{taken.name}</b>, <b>{line.name}</b>)}</span>
+              <button type="button" className="btn primary" onClick={() => { if (swapLineNames(line.id, taken.id)) onClose() }}>{tr('⇄ Intercambiar nombres')}</button>
             </div>
           )}
-          {taken && !line && <span className="err">Ya hay una {taken.name} en {dept}. Elige otro nombre.</span>}
+          {taken && !line && <span className="err">{trx('Ya hay una {0} en {1}. Elige otro nombre.', taken.name, dept)}</span>}
           <div className="dbtns">
-            <button type="button" className="btn" onClick={onClose}>Cancelar</button>
-            <button type="submit" className="btn primary" disabled={!tidy || !!taken || same}>{line ? '✓ Guardar' : '+ Agregar'}</button>
+            <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
+            <button type="submit" className="btn primary" disabled={!tidy || !!taken || same}>{line ? tr('✓ Guardar') : tr('+ Agregar')}</button>
           </div>
         </form>
       </div>
@@ -121,8 +123,8 @@ function LineNameDialog({ s, dept, line, onClose }: { s: State; dept: Dept; line
 }
 
 function DayNote({ day }: { day: ReturnType<typeof useDay> }) {
-  if (day.state === 'loading') return <p className="daynote">Trayendo ese día del servidor…</p>
-  if (day.state === 'failed') return <p className="daynote warn">Este aparato guarda los últimos {KEEP_DAYS} días. Ese día está en el servidor y ahora no se pudo traer (sin señal). <button type="button" className="lnk" onClick={day.retry}>Reintentar</button></p>
+  if (day.state === 'loading') return <p className="daynote">{tr('Trayendo ese día del servidor…')}</p>
+  if (day.state === 'failed') return <p className="daynote warn">{trx('Este aparato guarda los últimos {0} días. Ese día está en el servidor y ahora no se pudo traer (sin señal).', KEEP_DAYS)}{' '}<button type="button" className="lnk" onClick={day.retry}>{tr('Reintentar')}</button></p>
   return null
 }
 
@@ -132,9 +134,9 @@ export default function App() {
 
 /** a device that was signed in before the last person was kept apart: what the app already had of them */
 const previousMe = (): Me | null => { const name = user.get(), r = role.get(); return name && (r === 'op' || r === 'mgr') ? { id: '', name, username: '', role: r, dept: myDept.get() } : null }
-const NO_SIGNAL = 'Sin conexión con el servidor. La primera vez en este aparato hay que entrar con WiFi.'
+const NO_SIGNAL = tr('Sin conexión con el servidor. La primera vez en este aparato hay que entrar con WiFi.')
 /** said when the server itself ended the session of someone who was inside (a manager changed their PIN, the account was closed): never for lack of signal */
-const CLOSED = 'La sesión de este aparato se cerró. Pasa, por ejemplo, cuando te cambian el PIN. Entra otra vez.'
+const CLOSED = tr('La sesión de este aparato se cerró. Pasa, por ejemplo, cuando te cambian el PIN. Entra otra vez.')
 
 /**
  * with a server: the same people and PINs as Freezer RTE; the role and department come from the employees table.
@@ -186,11 +188,11 @@ function ServerApp() {
   const out = async () => { leaving.current = true; rememberMe(null); user.set(''); confirmed.current = 0; setErr(''); setMe(null); await signOutHere() }
   /** the PIN was accepted: the server is asked who that is */
   const entered = async () => { leaving.current = false; await verify() }
-  if (me === 'loading') return <div className="gate"><h1>Actividad</h1><p>Entrando…</p></div>
+  if (me === 'loading') return <div className="gate"><h1>Actividad</h1><p>{tr('Entrando…')}</p></div>
   if (me === null) return <LoginGate error={err} onDone={entered} />
   if (me === 'none') return <NoRole onOut={out} onRetry={verify} />
   const home = isDept(me.dept) ? me.dept : DEPTS[0]
-  if (me.role === 'op' && !isDept(me.dept)) return <NoRole onOut={out} onRetry={verify} text={'Tu usuario está en Actividad pero sin departamento. Pide al manager que te asigne uno.'} />
+  if (me.role === 'op' && !isDept(me.dept)) return <NoRole onOut={out} onRetry={verify} text={tr('Tu usuario está en Actividad pero sin departamento. Pide al manager que te asigne uno.')} />
   return <WhoCtx.Provider value={{ role: me.role, admin: !!me.admin, powers: me.powers ?? null, shift: me.shift ?? 0 }}><Main name={me.name} home={home} mgr={me.role !== 'op'} admin={!!me.admin} wholeDay={!!me.admin || me.role === 'office'} meId={me.id} onLogout={() => void out()} /></WhoCtx.Provider>
 }
 
@@ -212,7 +214,7 @@ function SecretInput({ value, onChange, what, hide, inputRef, ...box }: { value:
   const show = seen && !hide
   // the eye does not take the cursor out of the box, so the keyboard stays as it is
   const stay = (e: { preventDefault: () => void }) => e.preventDefault()
-  const label = (show ? 'Ocultar ' : 'Ver ') + what
+  const label = (show ? tr('Ocultar') + ' ' : tr('Ver') + ' ') + what
   return (
     <span className="secret">
       <input {...box} ref={inputRef} type={show ? 'text' : 'password'} autoCapitalize="none" autoCorrect="off" spellCheck={false} value={value} onChange={(e) => onChange(e.target.value)} />
@@ -237,12 +239,12 @@ function LoginGate({ error, onDone }: { error: string; onDone: () => Promise<voi
     const user = (userBox.current?.value ?? u).trim(), secret = pinBox.current?.value ?? pin
     if (user !== u) setU(user)
     if (secret !== pin) setPin(secret)
-    if (!user || !secret) { setMsg('Escribe tu usuario y tu PIN.'); return }
+    if (!user || !secret) { setMsg(tr('Escribe tu usuario y tu PIN.')); return }
     setBusy(true); setMsg('')
     await signedOut() // a "Salir" still finishing must be over first, or it could clear the session about to be made
     const { error: e } = await supabase!.auth.signInWithPassword({ email: loginEmail(user), password: secret })
     setBusy(false)
-    if (e) { setMsg(/invalid/i.test(e.message) ? 'Usuario o PIN incorrectos.' : /fetch|network/i.test(e.message) || unreachable(e.message) ? 'Sin conexión. Revisa el WiFi e intenta otra vez.' : e.message); return }
+    if (e) { setMsg(/invalid/i.test(e.message) ? tr('Usuario o PIN incorrectos.') : /fetch|network/i.test(e.message) || unreachable(e.message) ? tr('Sin conexión. Revisa el WiFi e intenta otra vez.') : e.message); return }
     rememberUser(user)
     offerToSave(user.toLowerCase(), secret)
     await onDone()
@@ -251,16 +253,16 @@ function LoginGate({ error, onDone }: { error: string; onDone: () => Promise<voi
   return (
     <div className="gate">
       <h1>Actividad</h1>
-      <p>Entra con tu usuario y PIN (los mismos de Freezer RTE).</p>
+      <p>{tr('Entra con tu usuario y PIN (los mismos de Freezer RTE).')}</p>
       <form onSubmit={(e) => { e.preventDefault(); if (!busy) void go() }}>
-        <input ref={userBox} autoFocus={!known} name="username" id="act-user" placeholder="Usuario (o tu correo)" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="username" value={u} onChange={(e) => setU(e.target.value)} />
+        <input ref={userBox} autoFocus={!known} name="username" id="act-user" placeholder={tr('Usuario (o tu correo)')} autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="username" value={u} onChange={(e) => setU(e.target.value)} />
         {/* a department user has a numeric PIN (number pad); an account typed as an e-mail has a real password, so the full keyboard */}
-        <SecretInput inputRef={pinBox} autoFocus={known} name="password" id="act-pin" what={mail ? 'la contraseña' : 'el PIN'} hide={busy} inputMode={mail ? 'text' : 'numeric'} placeholder={mail ? 'Contraseña' : 'PIN'} autoComplete="current-password" value={pin} onChange={setPin} />
+        <SecretInput inputRef={pinBox} autoFocus={known} name="password" id="act-pin" what={mail ? tr('la contraseña') : tr('el PIN')} hide={busy} inputMode={mail ? 'text' : 'numeric'} placeholder={mail ? tr('Contraseña') : 'PIN'} autoComplete="current-password" value={pin} onChange={setPin} />
         {msg && <span className="err">{msg}</span>}
-        <button className="btn primary" type="submit" disabled={busy}>{busy ? 'Entrando…' : 'Entrar'}</button>
+        <button className="btn primary" type="submit" disabled={busy}>{busy ? tr('Entrando…') : tr('Entrar')}</button>
       </form>
-      <small>Cada registro lleva el nombre de quien entró. Si no tienes usuario, pídelo al manager. Entras una vez y este aparato te recuerda hasta que toques "Salir".</small>
-      <QrLink label="Abrir en otro aparato (código QR)" />
+      <small>{tr('Cada registro lleva el nombre de quien entró. Si no tienes usuario, pídelo al manager. Entras una vez y este aparato te recuerda hasta que toques "Salir".')}</small>
+      <QrLink label={tr('Abrir en otro aparato (código QR)')} />
     </div>
   )
 }
@@ -269,8 +271,8 @@ function NoRole({ onOut, onRetry, text }: { onOut: () => void; onRetry: () => vo
   return (
     <div className="gate">
       <h1>Actividad</h1>
-      <p>{text ?? 'Tu usuario existe, pero todavía no tiene acceso a Actividad. Pide al manager que te lo active.'}</p>
-      <div className="btns"><button type="button" className="btn" onClick={onRetry}>Reintentar</button><button type="button" className="lnk" onClick={onOut}>Cerrar sesión</button></div>
+      <p>{text ?? tr('Tu usuario existe, pero todavía no tiene acceso a Actividad. Pide al manager que te lo active.')}</p>
+      <div className="btns"><button type="button" className="btn" onClick={onRetry}>{tr('Reintentar')}</button><button type="button" className="lnk" onClick={onOut}>{tr('Cerrar sesión')}</button></div>
     </div>
   )
 }
@@ -288,7 +290,7 @@ function SyncDot() {
   if (st.state === 'local') return null
   // an error of the server (not of the connection) is not "Sincronizado": the last try did not go through
   const wrong = !!st.lastError && st.lastError !== 'signedOut'
-  const text = st.pending ? 'Pendiente ' + st.pending : st.state === 'offline' ? 'Sin conexión' : st.state === 'signedOut' ? 'Sin sesión' : st.state === 'connecting' ? 'Conectando…' : wrong ? 'Con error' : 'Sincronizado'
+  const text = st.pending ? tr('Pendiente {0}', st.pending) : st.state === 'offline' ? tr('Sin conexión') : st.state === 'signedOut' ? tr('Sin sesión') : st.state === 'connecting' ? tr('Conectando…') : wrong ? tr('Con error') : tr('Sincronizado')
   const cls = st.pending || st.state === 'offline' || wrong ? 'amber' : st.state === 'online' ? 'ok' : ''
   return <button type="button" className={'syncdot ' + cls} title={st.lastError || text} onClick={() => { void syncNow() }}>● {text}{st.lastError && st.lastError !== 'signedOut' && <small className="syncerr"> · {st.lastError.slice(0, 140)}</small>}</button>
 }
@@ -316,30 +318,30 @@ function Gate({ dept, mgr, onDept, onManager, onName, onBack }: { dept: Dept | n
     return (
       <div className="gate">
         <h1>Actividad<span className="demotag">DEMO</span></h1>
-        <p>¿De qué departamento eres?</p>
+        <p>{tr('¿De qué departamento eres?')}</p>
         <div className="pick">{DEPTS.map((d) => <button key={d} type="button" className="btn" onClick={() => onDept(d)}>{d}</button>)}</div>
-        <QrLink label="Abrir el demo en otro aparato (código QR)" />
+        <QrLink label={tr('Abrir el demo en otro aparato (código QR)')} />
         {asking ? (
           <form onSubmit={(e) => { e.preventDefault(); if (pin === managerPin.get()) onManager(); else { setBad(true); setPin('') } }} className="mgrform">
-            <label>Código de manager <SecretInput autoFocus what="el código" inputMode="numeric" placeholder="código" autoComplete="off" value={pin} onChange={(t) => { setPin(t); setBad(false) }} /></label>
-            {bad && <span className="err">Código incorrecto.</span>}
-            <div className="dbtns"><button type="button" className="btn" onClick={() => { setAsking(false); setPin(''); setBad(false) }}>Cancelar</button><button type="submit" className="btn primary" disabled={!pin}>Entrar como manager</button></div>
+            <label>{tr('Código de manager')}{' '}<SecretInput autoFocus what={tr('el código')} inputMode="numeric" placeholder={tr('código')} autoComplete="off" value={pin} onChange={(t) => { setPin(t); setBad(false) }} /></label>
+            {bad && <span className="err">{tr('Código incorrecto.')}</span>}
+            <div className="dbtns"><button type="button" className="btn" onClick={() => { setAsking(false); setPin(''); setBad(false) }}>{tr('Cancelar')}</button><button type="submit" className="btn primary" disabled={!pin}>{tr('Entrar como manager')}</button></div>
           </form>
-        ) : <button type="button" className="lnk" onClick={() => setAsking(true)}>Soy el manager / oficina (todos los departamentos)</button>}
-        <small>Demo · los datos se guardan solo en este dispositivo</small>
+        ) : <button type="button" className="lnk" onClick={() => setAsking(true)}>{tr('Soy el manager / oficina (todos los departamentos)')}</button>}
+        <small>{tr('Demo · los datos se guardan solo en este dispositivo')}</small>
       </div>
     )
   }
   return (
     <div className="gate">
       <h1>Actividad<span className="demotag">DEMO</span></h1>
-      <p><b>{mgr ? 'Manager' : dept}</b> · Ahora escribe tu nombre. Todo lo que registres lleva tu nombre.</p>
+      <p>{trx('{0} · Ahora escribe tu nombre. Todo lo que registres lleva tu nombre.', <b>{mgr ? tr('Manager') : dept}</b>)}</p>
       <form onSubmit={(e) => { e.preventDefault(); if (v.trim()) onName(v.trim()) }}>
-        <input autoFocus placeholder="Tu nombre" value={v} onChange={(e) => setV(e.target.value)} />
-        <button className="btn primary" type="submit" disabled={!v.trim()}>Entrar</button>
+        <input autoFocus placeholder={tr('Tu nombre')} value={v} onChange={(e) => setV(e.target.value)} />
+        <button className="btn primary" type="submit" disabled={!v.trim()}>{tr('Entrar')}</button>
       </form>
-      <button type="button" className="lnk" onClick={onBack}>Volver</button>
-      <small>Demo · los datos se guardan solo en este dispositivo</small>
+      <button type="button" className="lnk" onClick={onBack}>{tr('Volver')}</button>
+      <small>{tr('Demo · los datos se guardan solo en este dispositivo')}</small>
     </div>
   )
 }
@@ -362,18 +364,18 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
   const away = !!supabase && otherZone(now), off = supabase ? clockOffText() : ''
   return (
     <div className="app">
-      {away ? <div className="zonebar">⚠ Este aparato está puesto en otra zona horaria que la planta: las horas y la fecha saldrán corridas. En los ajustes del aparato, activa la zona horaria automática.</div>
-        : off && <div className="zonebar">⚠ El reloj de este aparato está {off}. La app usa la hora correcta, la del servidor. Para arreglarlo, activa la hora automática en los ajustes del aparato.</div>}
-      {full && <div className="fullbar">⚠ La memoria de este aparato está llena y lo nuevo no se está guardando aquí. {supabase ? 'Lo que ya subió al servidor está a salvo. Avisa al manager y no cierres la app hasta que diga "Sincronizado".' : 'Manda el reporte del día y avisa al manager antes de cerrar la app: hay que hacer espacio con "Reiniciar registros".'}</div>}
+      {away ? <div className="zonebar">{tr('⚠ Este aparato está puesto en otra zona horaria que la planta: las horas y la fecha saldrán corridas. En los ajustes del aparato, activa la zona horaria automática.')}</div>
+        : off && <div className="zonebar">{trx('⚠ El reloj de este aparato está {0}. La app usa la hora correcta, la del servidor. Para arreglarlo, activa la hora automática en los ajustes del aparato.', off)}</div>}
+      {full && <div className="fullbar">{trx('⚠ La memoria de este aparato está llena y lo nuevo no se está guardando aquí. {0}', supabase ? tr('Lo que ya subió al servidor está a salvo. Avisa al manager y no cierres la app hasta que diga "Sincronizado".') : tr('Manda el reporte del día y avisa al manager antes de cerrar la app: hay que hacer espacio con "Reiniciar registros".'))}</div>}
       <header className="top">
         <div className="brand"><h1>Actividad{!supabase && <span className="demotag">DEMO</span>}</h1><small>{new Date(now).toLocaleDateString('es', { weekday: 'long', day: 'numeric', month: 'long' })}</small></div>
         <nav className="tabs">
           <button type="button" className={tab === 'act' ? 'on' : ''} onClick={() => setTab('act')}>Actividad</button>
-          {can('products') && <button type="button" className={tab === 'av' ? 'on' : ''} onClick={() => setTab('av')}>Avance</button>}
-          <button type="button" className={tab === 'rep' ? 'on' : ''} onClick={() => setTab('rep')}>Reporte</button>
-          {can('people') && supabase && <button type="button" className={tab === 'emp' ? 'on' : ''} onClick={() => setTab('emp')}>Empleados</button>}
+          {can('products') && <button type="button" className={tab === 'av' ? 'on' : ''} onClick={() => setTab('av')}>{tr('Avance')}</button>}
+          <button type="button" className={tab === 'rep' ? 'on' : ''} onClick={() => setTab('rep')}>{tr('Reporte')}</button>
+          {can('people') && supabase && <button type="button" className={tab === 'emp' ? 'on' : ''} onClick={() => setTab('emp')}>{tr('Empleados')}</button>}
         </nav>
-        <div className="me"><SyncDot /> {name} · {mgr ? 'Manager' : home} {mgr && <QrLink label="QR" />}<button type="button" className="lnk" onClick={() => setLeaving(true)}>{supabase ? 'Salir' : 'Cambiar'}</button></div>
+        <div className="me"><SyncDot /> {name} · {mgr ? tr('Manager') : home} {mgr && <QrLink label="QR" />}<button type="button" className="lnk" onClick={() => setLeaving(true)}>{supabase ? tr('Salir') : tr('Cambiar')}</button></div>
       </header>
       {leaving && <LeaveDialog onYes={() => { setLeaving(false); onLogout() }} onNo={() => setLeaving(false)} />}
       {tab === 'act' ? (
@@ -421,27 +423,27 @@ function Avance({ s }: { s: State }) {
   return (
     <section className="report avance">
       <div className="rhead">
-        <h2>Avance del día</h2>
+        <h2>{tr('Avance del día')}</h2>
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         <form className="addcode" onSubmit={(e) => { e.preventDefault(); if (newCode.trim()) { typing.current.codes.add(normCode(newCode)); setSchedule(date, newCode, 0); setNewCode('') } }}>
-          <input placeholder="Código a programar" value={newCode} onChange={(e) => setNewCode(e.target.value)} autoComplete="off" />
-          <button className="btn" type="submit" disabled={!newCode.trim()}>+ Programar</button>
+          <input placeholder={tr('Código a programar')} value={newCode} onChange={(e) => setNewCode(e.target.value)} autoComplete="off" />
+          <button className="btn" type="submit" disabled={!newCode.trim()}>{tr('+ Programar')}</button>
         </form>
-        <button type="button" className="btn" onClick={() => setEditing(!editing)}>{editing ? 'Cerrar productos' : '⚙ Productos'}</button>
+        <button type="button" className="btn" onClick={() => setEditing(!editing)}>{editing ? tr('Cerrar productos') : tr('⚙ Productos')}</button>
       </div>
       <DayNote day={day} />
-      <p className="hint"><b>Progr.</b> = lo que da el programa del día (mezclas programadas × tabla de productos). <b>Esper.</b> = lo que ya puede salir de las mezclas que Kitchen lleva hechas. <b>Pend.</b> = esperado − hecho (rojo = se hizo de más). <b>Faltan</b> = programado − hecho: lo que queda del día.</p>
+      <p className="hint">{trx('{0} = lo que da el programa del día (mezclas programadas × tabla de productos). {1} = lo que ya puede salir de las mezclas que Kitchen lleva hechas. {2} = esperado − hecho (rojo = se hizo de más). {3} = programado − hecho: lo que queda del día.', <b>{tr('Progr.')}</b>, <b>{tr('Esper.')}</b>, <b>{tr('Pend.')}</b>, <b>{tr('Faltan')}</b>)}</p>
       {editing && <Products s={s} />}
-      {rows.length === 0 ? <p className="hint">Nada programado ni registrado en esta fecha. Escribe un código y toca "Programar".</p> : (
+      {rows.length === 0 ? <p className="hint">{tr('Nada programado ni registrado en esta fecha. Escribe un código y toca "Programar".')}</p> : (
         <div className="twrap">
           <table>
             <thead>
-              <tr><th rowSpan={2}>Código</th><th rowSpan={2}>Producto</th><th colSpan={3} className="grp g1">Mezclas (Kitchen)</th><th rowSpan={2} className="gs">Spiral</th><th colSpan={5} className="grp g2">Pouches (RTE)</th><th colSpan={5} className="grp g3">Cajas (Packing)</th><th rowSpan={2} className="gs">MFO cajas</th><th colSpan={3} className="grp g4">Pallets</th><th rowSpan={2} className="gs">Waste lb</th></tr>
-              <tr><th className="g1 gs">Progr.</th><th className="g1">Hechas</th><th className="g1">Pend.</th><th className="g2 gs">Progr.</th><th className="g2">Esper.</th><th className="g2">Hechos</th><th className="g2">Pend.</th><th className="g2">Faltan</th><th className="g3 gs">Progr.</th><th className="g3">Esper.</th><th className="g3">Hechas</th><th className="g3">Pend.</th><th className="g3">Faltan</th><th className="g4 gs">Progr.</th><th className="g4">Esper.</th><th className="g4">Hechos</th></tr>
+              <tr><th rowSpan={2}>{tr('Código')}</th><th rowSpan={2}>{tr('Producto')}</th><th colSpan={3} className="grp g1">{tr('Mezclas (Kitchen)')}</th><th rowSpan={2} className="gs">Spiral</th><th colSpan={5} className="grp g2">{tr('Pouches (RTE)')}</th><th colSpan={5} className="grp g3">{tr('Cajas (Packing)')}</th><th rowSpan={2} className="gs">{tr('MFO cajas')}</th><th colSpan={3} className="grp g4">{tr('Pallets')}</th><th rowSpan={2} className="gs">{tr('Waste lb')}</th></tr>
+              <tr><th className="g1 gs">{tr('Progr.')}</th><th className="g1">{tr('Hechas')}</th><th className="g1">{tr('Pend.')}</th><th className="g2 gs">{tr('Progr.')}</th><th className="g2">{tr('Esper.')}</th><th className="g2">{tr('Hechos')}</th><th className="g2">{tr('Pend.')}</th><th className="g2">{tr('Faltan')}</th><th className="g3 gs">{tr('Progr.')}</th><th className="g3">{tr('Esper.')}</th><th className="g3">{tr('Hechas')}</th><th className="g3">{tr('Pend.')}</th><th className="g3">{tr('Faltan')}</th><th className="g4 gs">{tr('Progr.')}</th><th className="g4">{tr('Esper.')}</th><th className="g4">{tr('Hechos')}</th></tr>
             </thead>
             <tbody>{rows.map((r) => (
               <tr key={r.code}>
-                <td><b>{r.code}</b></td><td>{r.product?.name ?? <i className="red">no está en Productos</i>}</td>
+                <td><b>{r.code}</b></td><td>{r.product?.name ?? <i className="red">{tr('no está en Productos')}</i>}</td>
                 <td><input className="num" inputMode="numeric" value={r.scheduled || ''} placeholder="0" onChange={(e) => setSchedule(date, r.code, Number(e.target.value.replace(/\D/g, '')) || 0)} /></td>
                 <td>{r.mixesDone}</td><td className={cls(r.mixesPending)}>{r.mixesPending}</td>
                 <td>{r.spiralDone}</td>
@@ -452,7 +454,7 @@ function Avance({ s }: { s: State }) {
                 <td className={r.wasteLb ? 'red' : ''}>{r.wasteLb || '—'}</td>
               </tr>
             ))}</tbody>
-            <tfoot><tr><td colSpan={2}>Total</td><td>{sum((r) => r.scheduled)}</td><td>{sum((r) => r.mixesDone)}</td><td>{sum((r) => r.mixesPending)}</td><td>{sum((r) => r.spiralDone)}</td><td>{n1(sum((r) => r.pouchesPlan))}</td><td>{n1(sum((r) => r.pouchesExp))}</td><td>{sum((r) => r.pouchesDone)}</td><td></td><td></td><td>{n1(sum((r) => r.casesPlan))}</td><td>{n1(sum((r) => r.casesExp))}</td><td>{sum((r) => r.casesDone)}</td><td></td><td></td><td>{sum((r) => r.mfoCases)}</td><td>{n1(sum((r) => r.palletsPlan))}</td><td>{n1(sum((r) => r.palletsExp))}</td><td>{sum((r) => r.palletsDone)}</td><td>{n1(Math.round(sum((r) => r.wasteLb) * 100) / 100)}</td></tr></tfoot>
+            <tfoot><tr><td colSpan={2}>{tr('Total')}</td><td>{sum((r) => r.scheduled)}</td><td>{sum((r) => r.mixesDone)}</td><td>{sum((r) => r.mixesPending)}</td><td>{sum((r) => r.spiralDone)}</td><td>{n1(sum((r) => r.pouchesPlan))}</td><td>{n1(sum((r) => r.pouchesExp))}</td><td>{sum((r) => r.pouchesDone)}</td><td></td><td></td><td>{n1(sum((r) => r.casesPlan))}</td><td>{n1(sum((r) => r.casesExp))}</td><td>{sum((r) => r.casesDone)}</td><td></td><td></td><td>{sum((r) => r.mfoCases)}</td><td>{n1(sum((r) => r.palletsPlan))}</td><td>{n1(sum((r) => r.palletsExp))}</td><td>{sum((r) => r.palletsDone)}</td><td>{n1(Math.round(sum((r) => r.wasteLb) * 100) / 100)}</td></tr></tfoot>
           </table>
         </div>
       )}
@@ -484,7 +486,7 @@ function Products({ s }: { s: State }) {
   const text = (v: number) => (v ? String(v) : '')
   /** saves one field of the product at position i; a code that is another product's is refused with a notice */
   const [rename, setRename] = useState<{ i: number; from: string; to: string; name: string } | null>(null)
-  const refused = (why: 'taken' | 'blank', code: string) => setNotice(why === 'taken' ? { title: 'Ya hay un producto con el código ' + code.trim().toUpperCase(), text: 'Cada código va una sola vez en la tabla. Corrige ese producto en su fila.' } : { title: 'El código no puede quedar en blanco', text: 'Para sacar un producto de la tabla usa la ✕ de su fila.' })
+  const refused = (why: 'taken' | 'blank', code: string) => setNotice(why === 'taken' ? { title: tr('Ya hay un producto con el código {0}', code.trim().toUpperCase()), text: tr('Cada código va una sola vez en la tabla. Corrige ese producto en su fila.') } : { title: tr('El código no puede quedar en blanco'), text: tr('Para sacar un producto de la tabla usa la ✕ de su fila.') })
   /** saves one field of the product at position i; false = not saved (the cell goes back to what it showed) */
   const upd = (i: number, patch: Partial<Product>) => {
     const p = store.get().products[i]
@@ -510,24 +512,24 @@ function Products({ s }: { s: State }) {
   const exportCsv = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([productsCsv(s.products)], { type: 'text/csv;charset=utf-8' })); a.download = 'productos.csv'; a.click() }
   return (
     <div className={'products' + (unlocked ? ' editing' : '')}>
-      {removeIdx != null && <ConfirmDialog title={'¿Quitar ' + (s.products[removeIdx]?.code || 'este producto') + ' de la tabla?'} yes="Quitar" danger onYes={() => { removeProduct(removeIdx); setRemoveIdx(null) }} onNo={() => setRemoveIdx(null)} />}
+      {removeIdx != null && <ConfirmDialog title={tr('¿Quitar {0} de la tabla?', (s.products[removeIdx]?.code || tr('este producto')))} yes={tr('Quitar')} danger onYes={() => { removeProduct(removeIdx); setRemoveIdx(null) }} onNo={() => setRemoveIdx(null)} />}
       {notice && <NoticeDialog title={notice.title} text={notice.text} onClose={() => setNotice(null)} />}
-      {rename && <ConfirmDialog title={'¿Cambiar el código ' + rename.from + ' por ' + rename.to + '?'} text={'El producto ' + (rename.name ? '"' + rename.name + '" ' : '') + 'pasa a ser el ' + rename.to + (supabase ? ' en todas las tablets' : '') + ' y el código ' + rename.from + ' sale de la tabla. Lo que ya se registró con ' + rename.from + ' se queda con ' + rename.from + '. Si fue sin querer, toca Cancelar.'} yes="Cambiar código" onYes={doRename} onNo={() => setRename(null)} />}
+      {rename && <ConfirmDialog title={tr('¿Cambiar el código {0} por {1}', rename.from, rename.to) + '?'} text={tr('El producto {0}pasa a ser el {1}{2} y el código {3} sale de la tabla. Lo que ya se registró con {4} se queda con {5}. Si fue sin querer, toca Cancelar.', (rename.name ? '"' + rename.name + '" ' : ''), rename.to, (supabase ? ' ' + tr('en todas las tablets') : ''), rename.from, rename.from, rename.from)} yes={tr('Cambiar código')} onYes={doRename} onNo={() => setRename(null)} />}
       <div className="phead">
-        <h3>{unlocked ? '✎ Editando productos' : '🔒 Productos · la tabla maestra de la oficina'}</h3>
+        <h3>{unlocked ? tr('✎ Editando productos') : tr('🔒 Productos · la tabla maestra de la oficina')}</h3>
         <div className="psearch">
-          <input type="search" placeholder="Buscar código o producto" value={q} onChange={(e) => setQ(e.target.value)} autoComplete="off" autoCapitalize="none" />
+          <input type="search" placeholder={tr('Buscar código o producto')} value={q} onChange={(e) => setQ(e.target.value)} autoComplete="off" autoCapitalize="none" />
           {q && <button type="button" className="lnk" onClick={() => setQ('')}>✕</button>}
-          <small>{needle ? shown.length + ' de ' : ''}{s.products.length}</small>
+          <small>{needle ? tr('{0} de', shown.length) + ' ' : ''}{s.products.length}</small>
         </div>
-        <button type="button" className={'btn' + (unlocked ? ' primary' : '')} onClick={() => setUnlocked(!unlocked)}>{unlocked ? '✓ Listo, bloquear' : '✎ Editar'}</button>
+        <button type="button" className={'btn' + (unlocked ? ' primary' : '')} onClick={() => setUnlocked(!unlocked)}>{unlocked ? tr('✓ Listo, bloquear') : tr('✎ Editar')}</button>
       </div>
       <div className="twrap">
         <table>
-          <thead><tr><th>Código</th><th>Producto</th><th>Pouches / caja</th><th>Cajas / mezcla (yield)</th><th>Guacales / carro</th><th>Pouches / guacal</th><th>Cajas / pallet</th>{unlocked && <th></th>}</tr></thead>
+          <thead><tr><th>{tr('Código')}</th><th>{tr('Producto')}</th><th>{tr('Pouches / caja')}</th><th>{tr('Cajas / mezcla (yield)')}</th><th>{tr('Guacales / carro')}</th><th>{tr('Pouches / guacal')}</th><th>{tr('Cajas / pallet')}</th>{unlocked && <th></th>}</tr></thead>
           <tbody>
-            {s.products.length === 0 && <tr><td colSpan={8}><i>No hay productos todavía.{!unlocked && ' Toca "Editar" para escribirlos o importar el CSV de la oficina.'}</i></td></tr>}
-            {s.products.length > 0 && shown.length === 0 && <tr><td colSpan={8}><i>Ningún producto con "{q.trim()}".</i></td></tr>}
+            {s.products.length === 0 && <tr><td colSpan={8}><i>{tr('No hay productos todavía.')}{!unlocked && ' ' + tr('Toca "Editar" para escribirlos o importar el CSV de la oficina.')}</i></td></tr>}
+            {s.products.length > 0 && shown.length === 0 && <tr><td colSpan={8}><i>{trx('Ningún producto con "{0}".', q.trim())}</i></td></tr>}
             {shown.map(({ p, i }) => unlocked ? (
               <tr key={(p.code || '·') + ':' + i}>
                 <td><Cell className="code" value={p.code} onCommit={(t) => upd(i, { code: t.trim().toUpperCase() })} /></td>
@@ -549,21 +551,21 @@ function Products({ s }: { s: State }) {
         </table>
       </div>
       <div className="btns">
-        {unlocked && <button type="button" className="btn" onClick={() => { setQ(''); saveProduct(s.products.length, { code: '', name: '', pouchesPerCase: 0, casesPerMix: 0, cratesPerCart: CRATES_PER_CART, pouchesPerCrate: 0, casesPerPallet: 0, updatedAt: 0 }) }}>+ Agregar producto</button>}
-        {unlocked && <label className="btn file">⬆ Importar CSV de la oficina
+        {unlocked && <button type="button" className="btn" onClick={() => { setQ(''); saveProduct(s.products.length, { code: '', name: '', pouchesPerCase: 0, casesPerMix: 0, cratesPerCart: CRATES_PER_CART, pouchesPerCrate: 0, casesPerPallet: 0, updatedAt: 0 }) }}>{tr('+ Agregar producto')}</button>}
+        {unlocked && <label className="btn file">{tr('⬆ Importar CSV de la oficina')}
           <input type="file" accept=".csv,text/csv" hidden onChange={async (e) => {
             const f = e.target.files?.[0]; e.target.value = ''
             if (!f) return
             const list = parseProductsCsv(await f.text())
-            if (!list.length) { setNotice({ title: 'No encontré productos en ese archivo', text: 'Debe tener una columna "Código" y una fila por producto.' }); return }
-            mergeProducts(list); setNotice({ title: list.length + ' productos cargados', text: 'Los códigos que ya existían se actualizaron; los nuevos se agregaron.' })
+            if (!list.length) { setNotice({ title: tr('No encontré productos en ese archivo'), text: tr('Debe tener una columna "Código" y una fila por producto.') }); return }
+            mergeProducts(list); setNotice({ title: list.length + ' productos cargados', text: tr('Los códigos que ya existían se actualizaron; los nuevos se agregaron.') })
           }} />
         </label>}
-        <button type="button" className="btn" onClick={exportCsv}>⬇ Exportar CSV</button>
+        <button type="button" className="btn" onClick={exportCsv}>{tr('⬇ Exportar CSV')}</button>
       </div>
       <p className="hint">{unlocked
-        ? 'Cada cambio se guarda al salir de la casilla' + (supabase ? ' y baja a todas las tablets' : '') + '. Columnas del CSV de la oficina: Código, Producto, Pouches por caja, Cajas por mezcla, Cajas por pallet, Guacales por carro, Pouches por guacal.'
-        : (supabase ? 'Con estos números se calculan el Avance y los pouches por carro en todas las tablets.' : 'Los productos de ejemplo son inventados; todo se guarda solo en este dispositivo.') + ' Para cambiar algo o importar el CSV de la oficina, toca "Editar".'}</p>
+        ? tr('Cada cambio se guarda al salir de la casilla{0}. Columnas del CSV de la oficina: Código, Producto, Pouches por caja, Cajas por mezcla, Cajas por pallet, Guacales por carro, Pouches por guacal.', (supabase ? ' ' + tr('y baja a todas las tablets') : ''))
+        : tr('{0} Para cambiar algo o importar el CSV de la oficina, toca "Editar".', (supabase ? tr('Con estos números se calculan el Avance y los pouches por carro en todas las tablets.') : tr('Los productos de ejemplo son inventados; todo se guarda solo en este dispositivo.')))}</p>
     </div>
   )
 }
@@ -574,7 +576,7 @@ const hhmm = (ms: number) => { const d = new Date(ms); return String(d.getHours(
 const WIPE_WORD = 'BORRAR'
 const wipeOk = (typed: string) => typed.trim().toUpperCase() === WIPE_WORD
 /** "1 corrida y 0 paros", "12 corridas y 1 paro" */
-const howMany = (runs: number, stops: number) => runs + (runs === 1 ? ' corrida' : ' corridas') + ' y ' + stops + (stops === 1 ? ' paro' : ' paros')
+const howMany = (runs: number, stops: number) => runs + (runs === 1 ? ' ' + tr('corrida') : ' ' + tr('corridas')) + ' y ' + stops + (stops === 1 ? ' ' + tr('paro') : ' ' + tr('paros'))
 
 /** which day of work it is, for everyone; the manager starts it here */
 function DayBar({ s, now, day, mgr }: { s: State; now: number; day: WorkDay; mgr: boolean }) {
@@ -584,9 +586,9 @@ function DayBar({ s, now, day, mgr }: { s: State; now: number; day: WorkDay; mgr
   return (
     <div className={'daybar' + (day.started ? ' on' : '')}>
       {day.started
-        ? <span>Día de trabajo: <b>{longDate(day.date)}</b> · empezó a las <b>{fmtTime(day.started.at)}</b>{day.started.by ? ' · ' + day.started.by : ''}</span>
-        : <span>El día de hoy todavía no se ha empezado.</span>}
-      {mgr && <button type="button" className={day.started ? 'lnk' : 'btn primary'} onClick={() => setOpen(true)}>{day.started ? 'Cambiar' : '▶ Empezar el día'}</button>}
+        ? <span>{trx('Día de trabajo: {0} · empezó a las {1}', <b>{longDate(day.date)}</b>, <b>{fmtTime(day.started.at)}</b>)}{day.started.by ? ' · ' + day.started.by : ''}</span>
+        : <span>{tr('El día de hoy todavía no se ha empezado.')}</span>}
+      {mgr && <button type="button" className={day.started ? 'lnk' : 'btn primary'} onClick={() => setOpen(true)}>{day.started ? tr('Cambiar') : tr('▶ Empezar el día')}</button>}
       {open && <StartDayDialog s={s} now={now} day={day} onClose={() => setOpen(false)} onDone={setNotice} />}
       {notice && <NoticeDialog title={notice.title} text={notice.text} onClose={() => setNotice(null)} />}
     </div>
@@ -617,44 +619,44 @@ function StartDayDialog({ s, now, day, onClose, onDone }: { s: State; now: numbe
     if (!ok) return
     const r = startDay(time === opened && !was ? clockNow() : at, { date, finishLeft: lefts.length > 0 && left === 'finish', purge: wipe })
     onClose()
-    const did = [r.ended ? (r.ended === 1 ? 'Se terminó 1 línea que había quedado corriendo.' : 'Se terminaron ' + r.ended + ' líneas que habían quedado corriendo.') : '', r.runs + r.stops ? 'De las pruebas se ' + (r.runs + r.stops === 1 ? 'borró ' : 'borraron ') + howMany(r.runs, r.stops) + '.' : ''].filter(Boolean)
-    onDone({ title: was ? 'Día actualizado' : 'Día empezado', text: did.join(' ') || 'Los totales, la meta y la fecha de hoy ya siguen este día' + (supabase ? ' en todas las tablets.' : ' en este aparato.') })
+    const did = [r.ended ? (r.ended === 1 ? tr('Se terminó 1 línea que había quedado corriendo.') : tr('Se terminaron {0} líneas que habían quedado corriendo.', r.ended)) : '', r.runs + r.stops ? tr('De las pruebas se {0}{1}', (r.runs + r.stops === 1 ? tr('borró') + ' ' : tr('borraron') + ' '), howMany(r.runs, r.stops)) + '.' : ''].filter(Boolean)
+    onDone({ title: was ? tr('Día actualizado') : tr('Día empezado'), text: did.join(' ') || tr('Los totales, la meta y la fecha de hoy ya siguen este día') + (supabase ? ' ' + tr('en todas las tablets.') : ' ' + tr('en este aparato.')) })
   }
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
-        <h3>{was ? 'Día de trabajo' : 'Empezar el día'}</h3>
-        <p>Desde esa hora, "hoy" es el <b>{longDate(date)}</b>{supabase ? ' en todas las tablets' : ''}, hasta las {nightText(s, date)} de la madrugada siguiente, cuando el turno 2 le entrega al turno 1. Un turno que pasa de la medianoche conserva su fecha y su lote.</p>
+        <h3>{was ? tr('Día de trabajo') : tr('Empezar el día')}</h3>
+        <p>{trx('Desde esa hora, "hoy" es el {0}{1}, hasta las {2} de la madrugada siguiente, cuando el turno 2 le entrega al turno 1. Un turno que pasa de la medianoche conserva su fecha y su lote.', <b>{longDate(date)}</b>, supabase ? ' ' + tr('en todas las tablets') : '', nightText(s, date))}</p>
         <form className="qform" onSubmit={(e) => { e.preventDefault(); go() }}>
-          <label>Hora en que empieza <input type="time" value={time} onChange={(e) => setTime(e.target.value)} /></label>
+          <label>{tr('Hora en que empieza')}{' '}<input type="time" value={time} onChange={(e) => setTime(e.target.value)} /></label>
           {lefts.length > 0 && (
             <div className="tidybox">
-              <b>{lefts.length === 1 ? 'Quedó 1 línea corriendo de un día anterior' : 'Quedaron ' + lefts.length + ' líneas corriendo de días anteriores'}</b>
-              <ul>{lefts.slice(0, 6).map((r) => <li key={r.id}>{r.dept} · {lineNameOf(s, r.lineId, r.line)} · {r.code} · desde el {longDate(r.date)}</li>)}{lefts.length > 6 && <li>y {lefts.length - 6} más</li>}</ul>
+              <b>{lefts.length === 1 ? tr('Quedó 1 línea corriendo de un día anterior') : tr('Quedaron {0} líneas corriendo de días anteriores', lefts.length)}</b>
+              <ul>{lefts.slice(0, 6).map((r) => <li key={r.id}>{trx('{0} · {1} · {2} · desde el {3}', r.dept, lineNameOf(s, r.lineId, r.line), r.code, longDate(r.date))}</li>)}{lefts.length > 6 && <li>{trx('y {0} más', lefts.length - 6)}</li>}</ul>
               <div className="chips">
-                <button type="button" className={'chip' + (left === 'finish' ? ' on' : '')} onClick={() => setLeft('finish')}>Terminarlas en su último registro</button>
-                <button type="button" className={'chip' + (left === 'keep' ? ' on' : '')} onClick={() => setLeft('keep')}>Dejarlas corriendo</button>
+                <button type="button" className={'chip' + (left === 'finish' ? ' on' : '')} onClick={() => setLeft('finish')}>{tr('Terminarlas en su último registro')}</button>
+                <button type="button" className={'chip' + (left === 'keep' ? ' on' : '')} onClick={() => setLeft('keep')}>{tr('Dejarlas corriendo')}</button>
               </div>
             </div>
           )}
           {some && (
             <div className={'tidybox' + (wipe ? ' hot' : '')}>
-              <b>Ya hay registrado ese día antes de esa hora: {had.runs.length} {had.runs.length === 1 ? 'corrida' : 'corridas'}{had.runs.some((r) => !r.endedAt) ? ' (' + had.runs.filter((r) => !r.endedAt).length + ' en curso)' : ''} y {had.stops.length} {had.stops.length === 1 ? 'paro' : 'paros'}</b>
+              <b>{trx('Ya hay registrado ese día antes de esa hora: {0} {1}{2} y {3}', had.runs.length, had.runs.length === 1 ? tr('corrida') : tr('corridas'), had.runs.some((r) => !r.endedAt) ? ' (' + tr('{0} en curso)', had.runs.filter((r) => !r.endedAt).length) : '', had.stops.length)} {had.stops.length === 1 ? tr('paro') : tr('paros')}</b>
               <div className="chips">
-                <button type="button" className={'chip' + (mine === 'keep' ? ' on' : '')} onClick={() => setMine('keep')}>Son de hoy: se quedan</button>
-                <button type="button" className={'chip' + (mine === 'wipe' ? ' on' : '')} onClick={() => setMine('wipe')}>Eran pruebas: borrarlas</button>
+                <button type="button" className={'chip' + (mine === 'keep' ? ' on' : '')} onClick={() => setMine('keep')}>{tr('Son de hoy: se quedan')}</button>
+                <button type="button" className={'chip' + (mine === 'wipe' ? ' on' : '')} onClick={() => setMine('wipe')}>{tr('Eran pruebas: borrarlas')}</button>
               </div>
               {wipe && <>
-                <span>Se quitan de todas las pantallas y del reporte{supabase ? ', en todos los aparatos' : ''}. Desde la app no se pueden recuperar.</span>
-                <label>Escribe {WIPE_WORD} para confirmar <input value={word} onChange={(e) => setWord(e.target.value)} autoComplete="off" autoCapitalize="characters" placeholder={WIPE_WORD} /></label>
+                <span>{trx('Se quitan de todas las pantallas y del reporte{0}. Desde la app no se pueden recuperar.', supabase ? tr(', en todos los aparatos') : '')}</span>
+                <label>{trx('Escribe {0} para confirmar', WIPE_WORD)}{' '}<input value={word} onChange={(e) => setWord(e.target.value)} autoComplete="off" autoCapitalize="characters" placeholder={WIPE_WORD} /></label>
               </>}
             </div>
           )}
           <div className="dbtns spread">
-            <div className="btns">{was && <button type="button" className="lnk" onClick={() => { cancelDay(day.date); onClose() }}>Quitar el inicio del día</button>}</div>
+            <div className="btns">{was && <button type="button" className="lnk" onClick={() => { cancelDay(day.date); onClose() }}>{tr('Quitar el inicio del día')}</button>}</div>
             <div className="btns">
-              <button type="button" className="btn" onClick={onClose}>Cancelar</button>
-              <button type="submit" className={'btn ' + (wipe ? 'danger' : 'primary')} disabled={!ok}>{was ? '✓ Guardar' : '▶ Empezar el día'}</button>
+              <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
+              <button type="submit" className={'btn ' + (wipe ? 'danger' : 'primary')} disabled={!ok}>{was ? tr('✓ Guardar') : tr('▶ Empezar el día')}</button>
             </div>
           </div>
         </form>
@@ -670,13 +672,13 @@ function WipeDayDialog({ s, date, onClose, onDone }: { s: State; date: string; o
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
-        <h3>¿Borrar todo lo registrado el {longDate(date)}?</h3>
-        <p>{had.runs.length + had.stops.length === 1 ? 'Es ' : 'Son '}{howMany(had.runs.length, had.stops.length)}. Se quitan de todas las pantallas y reportes{supabase ? ', en todos los aparatos' : ''}. Sirve para limpiar un día de pruebas; desde la app no se puede recuperar.</p>
-        <form className="qform" onSubmit={(e) => { e.preventDefault(); if (!wipeOk(word)) return; const r = purgeDay(date); onClose(); onDone({ title: 'Día borrado', text: 'Del ' + longDate(date) + ' se ' + (r.runs + r.stops === 1 ? 'borró ' : 'borraron ') + howMany(r.runs, r.stops) + '.' }) }}>
-          <label>Escribe {WIPE_WORD} para confirmar <input value={word} onChange={(e) => setWord(e.target.value)} autoComplete="off" autoCapitalize="characters" placeholder={WIPE_WORD} /></label>
+        <h3>{trx('¿Borrar todo lo registrado el {0}?', longDate(date))}</h3>
+        <p>{had.runs.length + had.stops.length === 1 ? tr('Es') + ' ' : tr('Son') + ' '}{howMany(had.runs.length, had.stops.length)}{trx('. Se quitan de todas las pantallas y reportes{0}. Sirve para limpiar un día de pruebas; desde la app no se puede recuperar.', supabase ? tr(', en todos los aparatos') : '')}</p>
+        <form className="qform" onSubmit={(e) => { e.preventDefault(); if (!wipeOk(word)) return; const r = purgeDay(date); onClose(); onDone({ title: tr('Día borrado'), text: tr('Del {0} se {1}{2}', longDate(date), (r.runs + r.stops === 1 ? tr('borró') + ' ' : tr('borraron') + ' '), howMany(r.runs, r.stops)) + '.' }) }}>
+          <label>{trx('Escribe {0} para confirmar', WIPE_WORD)}{' '}<input value={word} onChange={(e) => setWord(e.target.value)} autoComplete="off" autoCapitalize="characters" placeholder={WIPE_WORD} /></label>
           <div className="dbtns">
-            <button type="button" className="btn" onClick={onClose}>Cancelar</button>
-            <button type="submit" className="btn danger" disabled={!wipeOk(word)}>Borrar el día</button>
+            <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
+            <button type="submit" className="btn danger" disabled={!wipeOk(word)}>{tr('Borrar el día')}</button>
           </div>
         </form>
       </div>
@@ -691,7 +693,7 @@ const shortDay = (date: string) => new Date(date + 'T12:00:00').toLocaleDateStri
 /** "15 oct" */
 const shipText = (date: string) => new Date(date + 'T12:00:00').toLocaleDateString('es', { day: 'numeric', month: 'short' })
 /** " · faltan 52 de 72 cajas", " · completo", or nothing when the order does not say how many cases it is for */
-const leftText = (s: State, o: Order) => { if (o.cases == null) return ''; const left = o.cases - orderMade(s, o.id); return left > 0 ? ' · faltan ' + fmtN(left) + ' de ' + fmtN(o.cases) + ' cajas' : ' · completo' }
+const leftText = (s: State, o: Order) => { if (o.cases == null) return ''; const left = o.cases - orderMade(s, o.id); return left > 0 ? ' ' + tr('· faltan {0} de {1} cajas', fmtN(left), fmtN(o.cases)) : ' ' + tr('· completo') }
 
 /**
  * The orders Packing fills: the office (or a manager) types them, with or without a PO number, and everybody in the
@@ -705,15 +707,15 @@ function OrdersCard({ s, mgr }: { s: State; mgr: boolean }) {
   const table = (list: Order[]) => (
     <div className="twrap">
       <table>
-        <thead><tr><th>PO</th><th>Código</th><th>Pedidas</th><th>Hechas</th><th>Faltan</th><th>Cliente</th><th>Envío</th><th>Destino</th>{mgr && <th></th>}</tr></thead>
+        <thead><tr><th>PO</th><th>{tr('Código')}</th><th>{tr('Pedidas')}</th><th>{tr('Hechas')}</th><th>{tr('Faltan')}</th><th>{tr('Cliente')}</th><th>{tr('Envío')}</th><th>{tr('Destino')}</th>{mgr && <th></th>}</tr></thead>
         <tbody>{list.map((o) => {
           const made = orderMade(s, o.id), left = o.cases != null ? o.cases - made : null
           return (
             <tr key={o.id}>
-              <td>{o.po ? <b>{o.po}</b> : <i>sin PO</i>}</td><td><b>{o.code}</b></td><td>{o.cases != null ? fmtN(o.cases) : '—'}</td><td>{fmtN(made)}</td>
-              <td className={left != null && left <= 0 ? 'ok' : ''}>{left == null ? '—' : left > 0 ? fmtN(left) : '✓ completo' + (left < 0 ? ' (+' + fmtN(-left) + ')' : '')}</td>
+              <td>{o.po ? <b>{o.po}</b> : <i>{tr('sin PO')}</i>}</td><td><b>{o.code}</b></td><td>{o.cases != null ? fmtN(o.cases) : '—'}</td><td>{fmtN(made)}</td>
+              <td className={left != null && left <= 0 ? 'ok' : ''}>{left == null ? '—' : left > 0 ? fmtN(left) : tr('✓ completo') + (left < 0 ? ' (+' + fmtN(-left) + ')' : '')}</td>
               <td>{o.customer || '—'}</td><td>{o.shipBy ? shipText(o.shipBy) : '—'}</td><td>{o.dest || '—'}</td>
-              {mgr && <td><button type="button" className="lnk" onClick={() => setEditing(o.id)}>Editar</button></td>}
+              {mgr && <td><button type="button" className="lnk" onClick={() => setEditing(o.id)}>{tr('Editar')}</button></td>}
             </tr>
           )
         })}</tbody>
@@ -723,12 +725,12 @@ function OrdersCard({ s, mgr }: { s: State; mgr: boolean }) {
   return (
     <div className="orders">
       <div className="tc-head">
-        <h3>Pedidos · PO</h3>
-        {mgr && <button type="button" className="lnk" onClick={() => setEditing('new')}>+ Agregar pedido</button>}
+        <h3>{tr('Pedidos · PO')}</h3>
+        {mgr && <button type="button" className="lnk" onClick={() => setEditing('new')}>{tr('+ Agregar pedido')}</button>}
       </div>
-      {open.length ? table(open) : <p className="hint">{mgr ? 'No hay pedidos abiertos. Los que se agreguen aquí los ve Packing al registrar cada pallet de ese código.' : 'No hay pedidos abiertos.'}</p>}
-      {open.length > 0 && <p className="hint">"Hechas" suma los pallets que se le dieron a cada pedido en los días que guarda este aparato.</p>}
-      {closed.length > 0 && <button type="button" className="lnk" onClick={() => setShowClosed(!showClosed)}>{showClosed ? 'Ocultar' : 'Ver'} los completos ({closed.length})</button>}
+      {open.length ? table(open) : <p className="hint">{mgr ? tr('No hay pedidos abiertos. Los que se agreguen aquí los ve Packing al registrar cada pallet de ese código.') : tr('No hay pedidos abiertos.')}</p>}
+      {open.length > 0 && <p className="hint">{tr('"Hechas" suma los pallets que se le dieron a cada pedido en los días que guarda este aparato.')}</p>}
+      {closed.length > 0 && <button type="button" className="lnk" onClick={() => setShowClosed(!showClosed)}>{trx('{0} los completos ({1})', showClosed ? tr('Ocultar') : tr('Ver'), closed.length)}</button>}
       {showClosed && closed.length > 0 && table(closed)}
       {editing && <OrderDialog key={editing} s={s} order={s.orders.find((o) => o.id === editing)} onClose={() => setEditing(null)} />}
     </div>
@@ -763,30 +765,30 @@ function OrderDialog({ s, order, onClose }: { s: State; order: Order | undefined
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
-        <h3>{order ? 'Pedido · ' + orderLabel(order) : 'Pedido nuevo'}</h3>
-        <p>Pon el PO y el producto. Packing lo ve al registrar cada pallet de ese código. Lo demás es opcional, y el PO también se puede dejar en blanco y ponerlo después. El mismo PO se puede repetir las veces que haga falta.</p>
+        <h3>{order ? tr('Pedido · {0}', orderLabel(order)) : tr('Pedido nuevo')}</h3>
+        <p>{tr('Pon el PO y el producto. Packing lo ve al registrar cada pallet de ese código. Lo demás es opcional, y el PO también se puede dejar en blanco y ponerlo después. El mismo PO se puede repetir las veces que haga falta.')}</p>
         <form className="qform" onSubmit={(e) => { e.preventDefault(); save() }}>
-          <label>N° de PO <input value={po} onChange={(e) => setPo(e.target.value)} placeholder="ej. 4500012345" autoComplete="off" /></label>
-          <label>Código del producto {!order && <small>(si el PO es de varios, sepáralos con coma)</small>} <input value={code} onChange={(e) => setCode(e.target.value)} placeholder={order ? 'ej. 0100' : 'ej. 0100, 0200'} autoComplete="off" />{prod && <small> {prod.name}</small>}</label>
-          {many && !order && <p className="hint">Se crean {codes.length} pedidos con este PO, uno por producto: {codes.join(', ')}. Las cajas de cada uno se ponen después, con "Editar".</p>}
-          {many && order && <span className="err">Este pedido es de un solo producto. Para otro producto, agrega otro pedido con el mismo PO.</span>}
-          <label>Cajas pedidas <small>(opcional)</small> <input inputMode="numeric" value={many ? '' : cases} disabled={many} onChange={(e) => setCases(e.target.value.replace(/\D/g, ''))} placeholder="ej. 288" />{pallets != null && <small> = {Math.round(pallets * 100) / 100} {pallets === 1 ? 'pallet' : 'pallets'} de {prod?.casesPerPallet}</small>}</label>
-          <label>Cliente <small>(opcional)</small> <input list="order-customers" value={customer} onChange={(e) => setCustomer(e.target.value)} placeholder="ej. Cliente A" autoComplete="off" /></label>
+          <label>{tr('N° de PO')}{' '}<input value={po} onChange={(e) => setPo(e.target.value)} placeholder={tr('ej. 4500012345')} autoComplete="off" /></label>
+          <label>{trx('Código del producto {0}', !order && <small>{tr('(si el PO es de varios, sepáralos con coma)')}</small>)} <input value={code} onChange={(e) => setCode(e.target.value)} placeholder={order ? tr('ej. 0100') : tr('ej. 0100, 0200')} autoComplete="off" />{prod && <small> {prod.name}</small>}</label>
+          {many && !order && <p className="hint">{trx('Se crean {0} pedidos con este PO, uno por producto: {1}. Las cajas de cada uno se ponen después, con "Editar".', codes.length, codes.join(', '))}</p>}
+          {many && order && <span className="err">{tr('Este pedido es de un solo producto. Para otro producto, agrega otro pedido con el mismo PO.')}</span>}
+          <label>{trx('Cajas pedidas {0}', <small>{tr('(opcional)')}</small>)} <input inputMode="numeric" value={many ? '' : cases} disabled={many} onChange={(e) => setCases(e.target.value.replace(/\D/g, ''))} placeholder={tr('ej. 288')} />{pallets != null && <small> {' '}{trx('= {0} {1} de {2}', Math.round(pallets * 100) / 100, pallets === 1 ? 'pallet' : 'pallets', prod?.casesPerPallet)}</small>}</label>
+          <label>{trx('Cliente {0}', <small>{tr('(opcional)')}</small>)} <input list="order-customers" value={customer} onChange={(e) => setCustomer(e.target.value)} placeholder={tr('ej. Cliente A')} autoComplete="off" /></label>
           <datalist id="order-customers">{customers.map((c) => <option key={c} value={c} />)}</datalist>
-          <label>Fecha de envío <small>(opcional)</small> <input type="date" value={shipBy} onChange={(e) => setShipBy(e.target.value)} /></label>
-          <label>Destino <small>(opcional)</small> <input value={dest} onChange={(e) => setDest(e.target.value)} placeholder="ej. Almacén Norte" autoComplete="off" /></label>
+          <label>{trx('Fecha de envío {0}', <small>{tr('(opcional)')}</small>)} <input type="date" value={shipBy} onChange={(e) => setShipBy(e.target.value)} /></label>
+          <label>{trx('Destino {0}', <small>{tr('(opcional)')}</small>)} <input value={dest} onChange={(e) => setDest(e.target.value)} placeholder={tr('ej. Almacén Norte')} autoComplete="off" /></label>
           <div className="dbtns spread">
             <div className="btns">
-              {order && <button type="button" className="btn" onClick={() => { closeOrder(order.id, !order.closed); onClose() }}>{order.closed ? 'Abrir otra vez' : '✓ Marcar completo'}</button>}
-              {order && <button type="button" className="btn danger" onClick={() => setDropping(true)}>🗑 Borrar</button>}
+              {order && <button type="button" className="btn" onClick={() => { closeOrder(order.id, !order.closed); onClose() }}>{order.closed ? tr('Abrir otra vez') : tr('✓ Marcar completo')}</button>}
+              {order && <button type="button" className="btn danger" onClick={() => setDropping(true)}>{tr('🗑 Borrar')}</button>}
             </div>
             <div className="btns">
-              <button type="button" className="btn" onClick={onClose}>Cancelar</button>
-              <button type="submit" className="btn primary" disabled={!ok}>✓ Guardar</button>
+              <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
+              <button type="submit" className="btn primary" disabled={!ok}>{tr('✓ Guardar')}</button>
             </div>
           </div>
         </form>
-        {dropping && order && <ConfirmDialog title={'¿Borrar el pedido ' + orderLabel(order) + '?'} text="Los pallets que ya se le dieron quedan registrados, pero sin pedido. Si el pedido ya se completó, mejor márcalo completo." yes="Borrar" danger onYes={() => { deleteOrder(order.id); onClose() }} onNo={() => setDropping(false)} />}
+        {dropping && order && <ConfirmDialog title={tr('¿Borrar el pedido {0}', orderLabel(order)) + '?'} text={tr('Los pallets que ya se le dieron quedan registrados, pero sin pedido. Si el pedido ya se completó, mejor márcalo completo.')} yes={tr('Borrar')} danger onYes={() => { deleteOrder(order.id); onClose() }} onNo={() => setDropping(false)} />}
       </div>
     </div>
   )
@@ -807,7 +809,7 @@ function TodayCard({ s, dept, now, mgr, date }: { s: State; dept: Dept; now: num
   const pct = goal?.perShift ? Math.min(100, Math.floor((t.qty / goal.perShift) * 100)) : 0
   const pace = goal?.perHour && t.shiftRate != null ? t.shiftRate / goal.perHour : null
   const paceCls = pace == null ? '' : pace >= 1 ? 'ok' : 'red'
-  const paceText = pace == null ? '' : pace >= 1 ? 'al ritmo de la meta' : 'por debajo de la meta'
+  const paceText = pace == null ? '' : pace >= 1 ? tr('al ritmo de la meta') : tr('por debajo de la meta')
   const left = goal?.perShift ? goal.perShift - t.qty : 0
   const speed = t.shiftRate ?? t.rate
   const eta = left > 0 && speed && !t.allEnded ? now + (left / speed) * 3_600_000 : null
@@ -816,30 +818,30 @@ function TodayCard({ s, dept, now, mgr, date }: { s: State; dept: Dept; now: num
   return (
     <div className="todaycard">
       <div className="tc-head">
-        <h3>Hoy en {dept} · todas las líneas juntas</h3>
-        {mgr && <button type="button" className="lnk" onClick={() => setEditing(true)}>{hasGoal ? '✎ Cambiar meta' : '+ Poner meta'}</button>}
+        <h3>{trx('Hoy en {0} · todas las líneas juntas', dept)}</h3>
+        {mgr && <button type="button" className="lnk" onClick={() => setEditing(true)}>{hasGoal ? tr('✎ Cambiar meta') : tr('+ Poner meta')}</button>}
       </div>
       {/* the clock of the shift: from its first code until the last one ends, and from zero again with the next shift */}
       {t.shiftSince > 0 && (
         <div className={'tc-clock' + (t.shiftUntil ? ' over' : '')}>
-          <span>⏱ Turno {t.shift}</span>
+          <span>{trx('⏱ Turno {0}', t.shift)}</span>
           <b>{fmtDur(t.shiftMs)}</b>
-          <small>{t.shiftUntil ? 'de ' + fmtTime(t.shiftSince) + ' a ' + fmtTime(t.shiftUntil) + ' · terminó' : 'desde las ' + fmtTime(t.shiftSince)}</small>
+          <small>{t.shiftUntil ? tr('de {0} a {1} · terminó', fmtTime(t.shiftSince), fmtTime(t.shiftUntil)) : tr('desde las {0}', fmtTime(t.shiftSince))}</small>
         </div>
       )}
       <div className="tc-main">
-        <div className="tc-total"><b>{fmtN(t.qty)}</b> <span>{t.unitLabel}</span>{cfg.qty !== 'none' && <small>{t.units} {unitWord(t.units)}</small>}{t.made[0] > 0 && t.made[1] > 0 && <small className="tc-shifts">Turno 1: <b>{fmtN(t.made[0])}</b> · Turno 2: <b>{fmtN(t.made[1])}</b></small>}</div>
+        <div className="tc-total"><b>{fmtN(t.qty)}</b> <span>{t.unitLabel}</span>{cfg.qty !== 'none' && <small>{t.units} {unitWord(t.units)}</small>}{t.made[0] > 0 && t.made[1] > 0 && <small className="tc-shifts">{trx('Turno 1: {0} · Turno 2: {1}', <b>{fmtN(t.made[0])}</b>, <b>{fmtN(t.made[1])}</b>)}</small>}</div>
         {goal?.perShift ? (
           <div className="tc-goal">
-            <div className="tc-goalrow"><span>Meta del día <b>{fmtN(goal.perShift)}</b> {t.unitLabel}</span><b className={pct >= 100 ? 'ok' : ''}>{pct}%</b></div>
+            <div className="tc-goalrow"><span>{trx('Meta del día {0}', <b>{fmtN(goal.perShift)}</b>)} {t.unitLabel}</span><b className={pct >= 100 ? 'ok' : ''}>{pct}%</b></div>
             <div className="bar"><i className={pct >= 100 ? 'ok' : ''} style={{ width: pct + '%' }} /></div>
-            <div className="tc-sub">{left > 0 ? <>Faltan <b>{fmtN(left)}</b>{eta && <> · a este ritmo se llega a las <b>{fmtTime(eta)}</b></>}</> : <b className="ok">✓ Meta del día cumplida</b>}</div>
+            <div className="tc-sub">{left > 0 ? <>{trx('Faltan {0}', <b>{fmtN(left)}</b>)}{eta && <> {' '}{trx('· a este ritmo se llega a las {0}', <b>{fmtTime(eta)}</b>)}</>}</> : <b className="ok">{tr('✓ Meta del día cumplida')}</b>}</div>
           </div>
-        ) : <div className="tc-goal tc-none">{mgr ? 'Sin meta del día todavía.' : ''}</div>}
+        ) : <div className="tc-goal tc-none">{mgr ? tr('Sin meta del día todavía.') : ''}</div>}
         <div className="tc-rate">
-          <label>Ritmo del turno {t.shift}</label>
+          <label>{trx('Ritmo del turno {0}', t.shift)}</label>
           <b className={paceCls}>{t.shiftRate != null ? fmtN(t.shiftRate) : '—'}</b> <span>{t.unitLabel}/h</span>
-          {goal?.perHour ? <small>meta <b>{fmtN(goal.perHour)}</b>/h{pace != null && <> · <span className={paceCls}>{paceText}</span></>}</small> : <small>{t.shiftRate == null ? 'desde el primer inicio del turno' : 'sin meta por hora'}</small>}
+          {goal?.perHour ? <small>{trx('meta {0}/h', <b>{fmtN(goal.perHour)}</b>)}{pace != null && <> · <span className={paceCls}>{paceText}</span></>}</small> : <small>{t.shiftRate == null ? tr('desde el primer inicio del turno') : tr('sin meta por hora')}</small>}
         </div>
       </div>
       {many && <div className="tc-codes">{t.byCode.map((c) => <span key={c.code} className="tc-code"><b>{c.code}</b> {fmtN(c.qty)} {t.unitLabel}{cfg.qty !== 'none' && <> · {c.units} {unitWord(c.units)}</>} · {c.lines.join(', ')}</span>)}</div>}
@@ -856,16 +858,16 @@ function TargetDialog({ dept, unit, goal, onClose }: { dept: Dept; unit: string;
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
-        <h3>Meta de {dept}</h3>
-        <p>La ven todas las tablets de {dept} y queda en el historial. Deja en blanco la que no aplique. El ritmo sale en rojo cuando baja de la meta por hora. Para dejar el departamento sin meta, "Quitar meta".</p>
+        <h3>{trx('Meta de {0}', dept)}</h3>
+        <p>{trx('La ven todas las tablets de {0} y queda en el historial. Deja en blanco la que no aplique. El ritmo sale en rojo cuando baja de la meta por hora. Para dejar el departamento sin meta, "Quitar meta".', dept)}</p>
         <form onSubmit={(e) => { e.preventDefault(); setTarget(dept, num(hour), num(whole)); onClose() }} className="qform">
-          <label>Por hora <input autoFocus={!goal?.perHour && !goal?.perShift} inputMode="numeric" placeholder={'ej. 400 ' + unit} value={hour} onChange={(e) => setHour(e.target.value.replace(/\D/g, ''))} /></label>
-          <label>En el día completo <small>(los dos turnos)</small> <input inputMode="numeric" placeholder={'ej. 6400 ' + unit} value={whole} onChange={(e) => setWhole(e.target.value.replace(/\D/g, ''))} /></label>
+          <label>{tr('Por hora')}{' '}<input autoFocus={!goal?.perHour && !goal?.perShift} inputMode="numeric" placeholder={tr('ej. 400 {0}', unit)} value={hour} onChange={(e) => setHour(e.target.value.replace(/\D/g, ''))} /></label>
+          <label>{trx('En el día completo {0}', <small>{tr('(los dos turnos)')}</small>)} <input inputMode="numeric" placeholder={tr('ej. 6400 {0}', unit)} value={whole} onChange={(e) => setWhole(e.target.value.replace(/\D/g, ''))} /></label>
           <div className="dbtns spread">
-            <div className="btns">{(goal?.perHour || goal?.perShift) ? <button type="button" className="lnk" onClick={() => { setTarget(dept, null, null); onClose() }}>Quitar meta</button> : null}</div>
+            <div className="btns">{(goal?.perHour || goal?.perShift) ? <button type="button" className="lnk" onClick={() => { setTarget(dept, null, null); onClose() }}>{tr('Quitar meta')}</button> : null}</div>
             <div className="btns">
-              <button type="button" className="btn" onClick={onClose}>Cancelar</button>
-              <button type="submit" className="btn primary">✓ Guardar</button>
+              <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
+              <button type="submit" className="btn primary">{tr('✓ Guardar')}</button>
             </div>
           </div>
         </form>
@@ -893,52 +895,52 @@ function DeptPanel({ s, dept, now, day }: { s: State; dept: Dept; now: number; m
         <h2>{dept}</h2>
         <div className="acts">
           {ds
-            ? <button type="button" className="btn danger" onClick={() => endStop(ds.id)}>▶ Reanudar departamento · {fmtDur(now - ds.startedAt)}</button>
-            : <button type="button" className="btn" disabled={!anyRunning} onClick={() => setStopAll(true)}>⏸ Parar departamento</button>}
-          <button type="button" className="btn" disabled={!left.runs.length && !left.setups.length && !left.stops.length} onClick={() => setLeaving(true)}>🏁 Terminar turno</button>
-          <button type="button" className="btn" onClick={() => setAdding(true)}>+ Agregar {CFG[dept].lineWord.toLowerCase()}</button>
+            ? <button type="button" className="btn danger" onClick={() => endStop(ds.id)}>{trx('▶ Reanudar departamento · {0}', fmtDur(now - ds.startedAt))}</button>
+            : <button type="button" className="btn" disabled={!anyRunning} onClick={() => setStopAll(true)}>{tr('⏸ Parar departamento')}</button>}
+          <button type="button" className="btn" disabled={!left.runs.length && !left.setups.length && !left.stops.length} onClick={() => setLeaving(true)}>{tr('🏁 Terminar turno')}</button>
+          <button type="button" className="btn" onClick={() => setAdding(true)}>{trx('+ Agregar {0}', CFG[dept].lineWord.toLowerCase())}</button>
         </div>
       </div>
       {leaving && (
         <div className="veil" onClick={() => setLeaving(false)}>
           <div className="dlg" onClick={(e) => e.stopPropagation()}>
-            <h3>¿Terminar el turno en {dept}?</h3>
-            <p>Es para cuando ya se van y nada sigue. La app nunca termina nada sola, aunque pase la hora del turno: lo deciden ustedes. Se cierra ahora:</p>
+            <h3>{trx('¿Terminar el turno en {0}?', dept)}</h3>
+            <p>{tr('Es para cuando ya se van y nada sigue. La app nunca termina nada sola, aunque pase la hora del turno: lo deciden ustedes. Se cierra ahora:')}</p>
             <ul className="leavelist">
-              {left.runs.map((r) => <li key={r.id}><b>{lineNameOf(s, r.lineId, r.line)}</b> · código <b>{r.code}</b> · {madeText(r, runQty(s, r))} · <i>se termina</i></li>)}
-              {left.setups.map((x) => <li key={x.id}><b>{lineNameOf(s, x.lineId)}</b> · Set up desde {fmtTime(x.startedAt)} · <i>se quita: no vino otro código</i></li>)}
-              {left.stops.map((x) => <li key={x.id}><b>{x.lineId === null ? 'Todo ' + dept : lineNameOf(s, x.lineId)}</b> · parado por {x.reason} desde {fmtTime(x.startedAt)} · <i>se cierra</i></li>)}
+              {left.runs.map((r) => <li key={r.id}>{trx('{0} · código {1} · {2} · {3}', <b>{lineNameOf(s, r.lineId, r.line)}</b>, <b>{r.code}</b>, madeText(r, runQty(s, r)), <i>{tr('se termina')}</i>)}</li>)}
+              {left.setups.map((x) => <li key={x.id}>{trx('{0} · Set up desde {1} · {2}', <b>{lineNameOf(s, x.lineId)}</b>, fmtTime(x.startedAt), <i>{tr('se quita: no vino otro código')}</i>)}</li>)}
+              {left.stops.map((x) => <li key={x.id}>{trx('{0} · parado por {1} desde {2} · {3}', <b>{x.lineId === null ? tr('Todo {0}', dept) : lineNameOf(s, x.lineId)}</b>, x.reason, fmtTime(x.startedAt), <i>{tr('se cierra')}</i>)}</li>)}
             </ul>
-            <p className="hint">Si falta registrar {CFG[dept].saved.endsWith('a') ? 'la última ' : 'el último '}{CFG[dept].unit.toLowerCase()} de alguna línea, regístral{CFG[dept].saved.endsWith('a') ? 'a' : 'o'} antes. Si el otro turno va a seguir con estos mismos códigos, no hace falta terminar: déjalos corriendo.</p>
+            <p className="hint">{trx('Si falta registrar {0}{1} de alguna línea, regístral{2} antes. Si el otro turno va a seguir con estos mismos códigos, no hace falta terminar: déjalos corriendo.', CFG[dept].saved.endsWith('a') ? tr('la última') + ' ' : tr('el último') + ' ', CFG[dept].unit.toLowerCase(), CFG[dept].saved.endsWith('a') ? 'a' : 'o')}</p>
             <div className="dbtns">
-              <button type="button" className="btn" onClick={() => setLeaving(false)}>Cancelar</button>
-              <button type="button" className="btn primary" onClick={() => { endShift(dept); setLeaving(false) }}>🏁 Terminar turno</button>
+              <button type="button" className="btn" onClick={() => setLeaving(false)}>{tr('Cancelar')}</button>
+              <button type="button" className="btn primary" onClick={() => { endShift(dept); setLeaving(false) }}>{tr('🏁 Terminar turno')}</button>
             </div>
           </div>
         </div>
       )}
-      {ds && <div className="deptstop">⏸ Todo {dept} parado · <b>{ds.reason}</b>{ds.note && ' · ' + ds.note} · desde {fmtTime(ds.startedAt)} · {ds.by} {can('fix') && <button type="button" className="lnk" onClick={() => setEditStop(true)}>Corregir</button>}</div>}
+      {ds && <div className="deptstop">{trx('⏸ Todo {0} parado · {1}{2} · desde {3} · {4}', dept, <b>{ds.reason}</b>, ds.note && ' · ' + ds.note, fmtTime(ds.startedAt), ds.by)} {can('fix') && <button type="button" className="lnk" onClick={() => setEditStop(true)}>{tr('Corregir')}</button>}</div>}
       {editStop && ds && <StopEditor stop={ds} mgr={can('fix')} onClose={() => setEditStop(false)} />}
       <TodayCard s={s} dept={dept} now={now} mgr={can('goals')} date={day.date} />
       {CFG[dept].orders && <OrdersCard s={s} mgr={can('orders')} />}
       <div className="lines">{lines.map((l) => <LineCard key={l.id} s={s} line={l} now={now} mgr={can('fix')} day={day} />)}</div>
-      {lines.length === 0 && <p className="hint">Este departamento no tiene líneas. Toca "Agregar {CFG[dept].lineWord.toLowerCase()}".</p>}
+      {lines.length === 0 && <p className="hint">{trx('Este departamento no tiene líneas. Toca "Agregar {0}".', CFG[dept].lineWord.toLowerCase())}</p>}
       {adding && <LineNameDialog s={s} dept={dept} onClose={() => setAdding(false)} />}
       {doneToday.length > 0 && (
         <div className="done">
-          <h3>Terminados hoy en {dept}</h3>
+          <h3>{trx('Terminados hoy en {0}', dept)}</h3>
           {doneToday.map((r) => {
             const st = runStats(s, r, now)
             return (
               <div key={r.id} className="donerow">
-                <b className="code">{r.code}</b> · lote {r.lot} · {lineNameOf(s, r.lineId, r.line)} · {fmtTime(r.startedAt)} – {fmtTime(r.endedAt ?? now)} · <b>{madeText(r, st.qty)}</b> · trabajando <b>{fmtDur(st.working)}</b> · parado <b className={st.down ? 'red' : ''}>{fmtDur(st.down)}</b>{r.waste > 0 && <> · waste <b className="red">{r.waste} lb</b></>} · {whoText(r)} {can('fix') && canShift(who, spanShifts(shiftsOf(s, r.date), r.startedAt, r.endedAt ?? now)) && <button type="button" className="lnk" onClick={() => setEditRun(r.id)}>Corregir</button>}
+                {trx('{0} · lote {1} · {2} · {3} – {4} · {5} · trabajando {6} · parado {7}{8} · {9}', <b className="code">{r.code}</b>, r.lot, lineNameOf(s, r.lineId, r.line), fmtTime(r.startedAt), fmtTime(r.endedAt ?? now), <b>{madeText(r, st.qty)}</b>, <b>{fmtDur(st.working)}</b>, <b className={st.down ? 'red' : ''}>{fmtDur(st.down)}</b>, r.waste > 0 && <> {' '}{trx('· waste {0}', <b className="red">{r.waste} lb</b>)}</>, whoText(r))} {can('fix') && canShift(who, spanShifts(shiftsOf(s, r.date), r.startedAt, r.endedAt ?? now)) && <button type="button" className="lnk" onClick={() => setEditRun(r.id)}>{tr('Corregir')}</button>}
               </div>
             )
           })}
         </div>
       )}
       {editing && <RunEditor s={s} run={editing} mgr={can('fix')} onClose={() => setEditRun(null)} />}
-      {stopAll && <StopDialog title={'Parar todo ' + dept} reasons={CFG[dept].quick} onClose={() => setStopAll(false)} onPick={(reason, note) => { startStop(dept, null, reason, note); setStopAll(false) }} />}
+      {stopAll && <StopDialog title={tr('Parar todo {0}', dept)} reasons={CFG[dept].quick} onClose={() => setStopAll(false)} onPick={(reason, note) => { startStop(dept, null, reason, note); setStopAll(false) }} />}
     </section>
   )
 }
@@ -981,7 +983,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   const [removing, setRemoving] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [editQty, setEditQty] = useState(false)
-  const nameIt = <button type="button" className="lnk pen" title="Cambiar el nombre" aria-label={'Cambiar el nombre de ' + line.name} onClick={() => setRenaming(true)}>✎</button>
+  const nameIt = <button type="button" className="lnk pen" title={tr('Cambiar el nombre')} aria-label={tr('Cambiar el nombre de {0}', line.name)} onClick={() => setRenaming(true)}>✎</button>
   const naming = renaming && <LineNameDialog s={s} dept={line.dept} line={line} onClose={() => setRenaming(false)} />
   const [wasting, setWasting] = useState(false)
   // A unit was just recorded on this run, here or on another tablet: for a moment the button says which one, the
@@ -1008,10 +1010,11 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   // was marked as finished too early, or more of it turned up after the line had gone on to another code).
   const own = run && cfg.qty === 'ask' ? shortUnit(s, run) : null
   const ended = cfg.qty === 'ask' ? shortEnded(s, line.id, day.date).filter((x) => x.run.id !== own?.run.id) : []
-  const shortText = (x: Short) => unitWord + ' ' + (x.index + 1) + ' de ' + x.run.code + ' (' + x.unit.qty + ' de ' + x.usual + ')'
+  const shortText = (x: Short) => tr('{0} {1} de {2} ({3} de {4}', unitWord, (x.index + 1), x.run.code, x.unit.qty, x.usual) + ')'
   const fillLink = ended.length > 0 && (
     <button type="button" className="lnk" onClick={() => (ended.length === 1 ? setFilling(ended[0]) : setChoosing(true))}>
-      ➕ Completar {ended.length === 1 ? shortText(ended[0]) : (cfg.saved.endsWith('a') ? 'una ' : 'un ') + unitWord + ' de un código ya terminado'}
+      
+      {trx('➕ Completar {0}', ended.length === 1 ? shortText(ended[0]) : tr('{0} de un código ya terminado', (cfg.saved.endsWith('a') ? 'una ' : 'un ') + unitWord))}
     </button>
   )
   const fixingRun = fixingId ? s.runs.find((r) => r.id === fixingId) : undefined
@@ -1021,18 +1024,18 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       {choosing && (
         <div className="veil" onClick={() => setChoosing(false)}>
           <div className="dlg" onClick={(e) => e.stopPropagation()}>
-            <h3>¿Cuál quieres completar?</h3>
-            <p>Códigos ya terminados hoy en {line.name} que cerraron con menos de lo usual.</p>
+            <h3>{tr('¿Cuál quieres completar?')}</h3>
+            <p>{trx('Códigos ya terminados hoy en {0} que cerraron con menos de lo usual.', line.name)}</p>
             <div className="endchoices">
-              {ended.map((x) => <button key={x.run.id} type="button" className="btn" onClick={() => { setChoosing(false); setFilling(x) }}><b>{x.run.code}</b> · lote {x.run.lot} · {unitWord} {x.index + 1} · tiene {x.unit.qty} de {x.usual} {cfg.qtyUnit} · terminó {fmtTime(x.run.endedAt ?? 0)}</button>)}
+              {ended.map((x) => <button key={x.run.id} type="button" className="btn" onClick={() => { setChoosing(false); setFilling(x) }}>{trx('{0} · lote {1} · {2} {3} · tiene {4} de {5} {6} · terminó {7}', <b>{x.run.code}</b>, x.run.lot, unitWord, x.index + 1, x.unit.qty, x.usual, cfg.qtyUnit, fmtTime(x.run.endedAt ?? 0))}</button>)}
             </div>
-            <div className="dbtns"><button type="button" className="btn" onClick={() => setChoosing(false)}>Cancelar</button></div>
+            <div className="dbtns"><button type="button" className="btn" onClick={() => setChoosing(false)}>{tr('Cancelar')}</button></div>
           </div>
         </div>
       )}
       {filling && (cfg.lots
-        ? <LotsDialog key={'fill:' + filling.run.id} title={'Completar ' + unitWord + ' ' + (filling.index + 1) + ' de ' + filling.run.code + ' · ¿qué lleva ahora en total?'} unit={cfg.qtyUnit} refLabel={cfg.refLabel} lot={filling.run.lot} qty={filling.usual} start={filling.unit.lots ?? [{ lot: filling.run.lot, qty: filling.usual }]} startRef={filling.unit.ref} onClose={() => setFilling(null)} onPick={(total, ref, lots) => { fillUnit(filling.run.id, filling.unit.at, total, lots, ref); setFilling(null) }} />
-        : <QtyDialog key={'fill:' + filling.run.id} title={'Completar ' + unitWord + ' ' + (filling.index + 1) + ' de ' + filling.run.code + ' · tiene ' + filling.unit.qty + ' ' + cfg.qtyUnit + '. ¿Cuántos tiene ahora en total?'} unit={cfg.qtyUnit} refLabel="" initial={filling.usual} perCase={perCaseOf(filling.run.code)} onClose={() => setFilling(null)} onPick={(q) => { fillUnit(filling.run.id, filling.unit.at, q); setFilling(null) }} />)}
+        ? <LotsDialog key={'fill:' + filling.run.id} title={tr('Completar {0} {1} de {2} · ¿qué lleva ahora en total?', unitWord, (filling.index + 1), filling.run.code)} unit={cfg.qtyUnit} refLabel={cfg.refLabel} lot={filling.run.lot} qty={filling.usual} start={filling.unit.lots ?? [{ lot: filling.run.lot, qty: filling.usual }]} startRef={filling.unit.ref} onClose={() => setFilling(null)} onPick={(total, ref, lots) => { fillUnit(filling.run.id, filling.unit.at, total, lots, ref); setFilling(null) }} />
+        : <QtyDialog key={'fill:' + filling.run.id} title={tr('Completar {0} {1} de {2} · tiene {3} {4}. ¿Cuántos tiene ahora en total?', unitWord, (filling.index + 1), filling.run.code, filling.unit.qty, cfg.qtyUnit)} unit={cfg.qtyUnit} refLabel="" initial={filling.usual} perCase={perCaseOf(filling.run.code)} onClose={() => setFilling(null)} onPick={(q) => { fillUnit(filling.run.id, filling.unit.at, q); setFilling(null) }} />)}
     </>
   )
   // The line's own goal, set by the manager (the room's goal is of all its lines together): what the line has made
@@ -1041,13 +1044,13 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   const mine = hasGoal ? deptToday(s, line.dept, day.date, now, line.id) : null
   const goalPct = mine && goal?.perDay ? Math.min(100, Math.floor((mine.qty / goal.perDay) * 100)) : 0
   const goalUnit = cfg.qty === 'none' ? cfg.plural.toLowerCase() : cfg.qtyUnit
-  const goalBtn = canGoal && <button type="button" className="lnk sm" onClick={() => setGoalOpen(true)}>{hasGoal ? '✎ Meta' : '+ Meta'}</button>
+  const goalBtn = canGoal && <button type="button" className="lnk sm" onClick={() => setGoalOpen(true)}>{hasGoal ? tr('✎ Meta') : tr('+ Meta')}</button>
   const goalStrip = (
     <>
       {mine && hasGoal && (
         <div className="linegoal">
-          {goal?.perDay ? <span>Meta de hoy <b>{fmtN(mine.qty)}</b> / {fmtN(goal.perDay)} {goalUnit} · <b className={goalPct >= 100 ? 'ok' : ''}>{goalPct}%</b></span> : null}
-          {goal?.perHour ? <span>Ritmo <b className={mine.shiftRate == null ? '' : mine.shiftRate >= goal.perHour ? 'ok' : 'red'}>{mine.shiftRate != null ? fmtN(mine.shiftRate) : '—'}</b> {goalUnit}/h · meta {fmtN(goal.perHour)}</span> : null}
+          {goal?.perDay ? <span>{trx('Meta de hoy {0} / {1} {2} · {3}', <b>{fmtN(mine.qty)}</b>, fmtN(goal.perDay), goalUnit, <b className={goalPct >= 100 ? 'ok' : ''}>{goalPct}%</b>)}</span> : null}
+          {goal?.perHour ? <span>{trx('Ritmo {0} {1}/h · meta {2}', <b className={mine.shiftRate == null ? '' : mine.shiftRate >= goal.perHour ? 'ok' : 'red'}>{mine.shiftRate != null ? fmtN(mine.shiftRate) : '—'}</b>, goalUnit, fmtN(goal.perHour))}</span> : null}
         </div>
       )}
       {goalOpen && <LineTargetDialog line={line} unit={goalUnit} goal={goal} onClose={() => setGoalOpen(false)} />}
@@ -1075,61 +1078,61 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       <div className="line idle">
         <div className="lhead">
           <h3>{line.name} {nameIt}</h3>
-          <span className={'pill ' + (idle ? 'setup' : 'free')}>{idle ? '⏱ ' + idle.reason + ' · ' + fmtDur(stopTime(s, idle, now)) : 'Libre'}</span>
+          <span className={'pill ' + (idle ? 'setup' : 'free')}>{idle ? '⏱ ' + idle.reason + ' · ' + fmtDur(stopTime(s, idle, now)) : tr('Libre')}</span>
           <span className="lacts">{goalBtn}</span>
         </div>
         {goalStrip}
         {idle && (
           <div className="setupbar">
-            <small>Esperando el código siguiente desde las {fmtTime(idle.startedAt)}. Si no viene otro, no cuenta.</small>
+            <small>{trx('Esperando el código siguiente desde las {0}. Si no viene otro, no cuenta.', fmtTime(idle.startedAt))}</small>
             <span className="btns two">
-              <button type="button" className="btn sm" onClick={() => endStop(idle.id)}>■ Terminar {idle.reason}</button>
-              <button type="button" className="btn sm" onClick={() => dropSetup(idle.id)}>No viene otro código: quitarlo</button>
+              <button type="button" className="btn sm" onClick={() => endStop(idle.id)}>{trx('■ Terminar {0}', idle.reason)}</button>
+              <button type="button" className="btn sm" onClick={() => dropSetup(idle.id)}>{tr('No viene otro código: quitarlo')}</button>
             </span>
-            <button type="button" className="lnk sm" onClick={() => setFixingStop(true)}>{mgr ? 'Corregir o dividir' : 'Corregir'}</button>
+            <button type="button" className="lnk sm" onClick={() => setFixingStop(true)}>{mgr ? tr('Corregir o dividir') : tr('Corregir')}</button>
           </div>
         )}
         {prev && (
           <div className="lastcode">
-            <span>Último: <b className="code">{prev.code}</b> · lote {prev.lot} · terminó {fmtTime(prev.endedAt ?? 0)} · {madeText(prev, runQty(s, prev))}</span>
+            <span>{trx('Último: {0} · lote {1} · terminó {2} · {3}', <b className="code">{prev.code}</b>, prev.lot, fmtTime(prev.endedAt ?? 0), madeText(prev, runQty(s, prev)))}</span>
             <span className="btns">
-              <button type="button" className="lnk sm" onClick={() => setReopening(prev.id)}>↩ No había terminado: seguir con {prev.code}</button>
+              <button type="button" className="lnk sm" onClick={() => setReopening(prev.id)}>{trx('↩ No había terminado: seguir con {0}', prev.code)}</button>
               {fillLink}
-              <button type="button" className="lnk sm" onClick={() => setFixingId(prev.id)}>Corregir</button>
+              <button type="button" className="lnk sm" onClick={() => setFixingId(prev.id)}>{tr('Corregir')}</button>
             </span>
           </div>
         )}
-        {prev && reopening === prev.id && <ConfirmDialog title={'¿Seguir con ' + prev.code + ' en ' + line.name + '?'}
-          text={'Se marcó terminado a las ' + fmtTime(prev.endedAt ?? 0) + '. Vuelve a correr como si no se hubiera terminado: el tiempo desde entonces cuenta como trabajando y el Set up que empezó se quita. Si la línea estuvo parada y el código vuelve ahora, es mejor empezarlo de nuevo abajo.'}
-          yes={'Seguir con ' + prev.code} onYes={() => { reopenRun(prev.id); setReopening(null) }} onNo={() => setReopening(null)} />}
+        {prev && reopening === prev.id && <ConfirmDialog title={tr('¿Seguir con {0} en {1}', prev.code, line.name) + '?'}
+          text={tr('Se marcó terminado a las {0}. Vuelve a correr como si no se hubiera terminado: el tiempo desde entonces cuenta como trabajando y el Set up que empezó se quita. Si la línea estuvo parada y el código vuelve ahora, es mejor empezarlo de nuevo abajo.', fmtTime(prev.endedAt ?? 0))}
+          yes={tr('Seguir con {0}', prev.code)} onYes={() => { reopenRun(prev.id); setReopening(null) }} onNo={() => setReopening(null)} />}
         {fillUi}
         {fixingStop && idle && <StopEditor stop={idle} mgr={mgr} onClose={() => setFixingStop(false)} />}
         {naming}
-        {removing && <ConfirmDialog title={'¿Quitar ' + line.name + ' de ' + line.dept + '?'} text="Se puede volver a agregar cuando haga falta." yes="Quitar" danger onYes={() => removeLine(line.id)} onNo={() => setRemoving(false)} />}
+        {removing && <ConfirmDialog title={tr('¿Quitar {0} de {1}', line.name, line.dept) + '?'} text={tr('Se puede volver a agregar cuando haga falta.')} yes={tr('Quitar')} danger onYes={() => removeLine(line.id)} onNo={() => setRemoving(false)} />}
         <form className="start" onSubmit={(e) => { e.preventDefault(); if (ok) { startRun(line, code.trim().toUpperCase(), lot.trim(), date, needPer ? perUnit : null); setDateText(null); setLotText(null); setEditDate(false) } }}>
-          <label>Código <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="ej. 0100" autoComplete="off" /></label>
-          <label>Lote <input value={lot} onChange={(e) => setLotText(e.target.value)} inputMode="numeric" placeholder="ej. 6280" autoComplete="off" /></label>
+          <label>{tr('Código')}{' '}<input value={code} onChange={(e) => setCode(e.target.value)} placeholder={tr('ej. 0100')} autoComplete="off" /></label>
+          <label>{tr('Lote')}{' '}<input value={lot} onChange={(e) => setLotText(e.target.value)} inputMode="numeric" placeholder={tr('ej. 6280')} autoComplete="off" /></label>
           {showDate
-            ? <label className="wide">Fecha <input type="date" value={date} onChange={(e) => { if (!lot.trim() || lot.trim() === lotFor(date)) setLotText(null); setDateText(e.target.value || null) }} /></label>
-            : <div className="dateline">Fecha <b>{shortDay(date)}</b> <button type="button" className="lnk sm" onClick={() => setEditDate(true)}>Cambiar</button></div>}
+            ? <label className="wide">{tr('Fecha')}{' '}<input type="date" value={date} onChange={(e) => { if (!lot.trim() || lot.trim() === lotFor(date)) setLotText(null); setDateText(e.target.value || null) }} /></label>
+            : <div className="dateline">{trx('Fecha {0}', <b>{shortDay(date)}</b>)} <button type="button" className="lnk sm" onClick={() => setEditDate(true)}>{tr('Cambiar')}</button></div>}
           {/* a known product brings its numbers: shown as a line, the boxes only when they want to change them */}
           {needPer && !isCart && (suggested != null && !editQty
-            ? <div className="known"><b>{suggested}</b> {cfg.qtyUnit} por {cfg.unit.toLowerCase()} <button type="button" className="lnk" onClick={() => setEditQty(true)}>Cambiar</button></div>
-            : <label className="wide">{cfg.perUnitLabel} <input value={per} onChange={(e) => setPer(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder={suggested != null ? String(suggested) : 'ej. 36'} autoComplete="off" /></label>)}
+            ? <div className="known"><b>{suggested}</b> {trx('{0} por {1}', cfg.qtyUnit, cfg.unit.toLowerCase())} <button type="button" className="lnk" onClick={() => setEditQty(true)}>{tr('Cambiar')}</button></div>
+            : <label className="wide">{cfg.perUnitLabel} <input value={per} onChange={(e) => setPer(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder={suggested != null ? String(suggested) : tr('ej. 36')} autoComplete="off" /></label>)}
           {isCart && (perCrateN && !editQty
-            ? <div className="known"><b>{cratesN}</b> guacales × <b>{perCrateN}</b> pouches = <b>{perUnit}</b> pouches por carro <button type="button" className="lnk" onClick={() => setEditQty(true)}>Cambiar</button></div>
+            ? <div className="known">{trx('{0} guacales × {1} pouches = {2} pouches por carro', <b>{cratesN}</b>, <b>{perCrateN}</b>, <b>{perUnit}</b>)}{' '}<button type="button" className="lnk" onClick={() => setEditQty(true)}>{tr('Cambiar')}</button></div>
             : (
               <div className="cartrow">
-                <label>Guacales por carro <input value={crates} onChange={(e) => setCrates(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder={String(cratesN)} autoComplete="off" /></label>
-                <label>Pouches por guacal <input value={per} onChange={(e) => setPer(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder={perCrateN ? String(perCrateN) : 'ej. 10'} autoComplete="off" /></label>
-                <span className="eq">= <b>{perUnit ?? '—'}</b> pouches por carro <small>(12 guacales por columna)</small></span>
+                <label>{tr('Guacales por carro')}{' '}<input value={crates} onChange={(e) => setCrates(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder={String(cratesN)} autoComplete="off" /></label>
+                <label>{tr('Pouches por guacal')}{' '}<input value={per} onChange={(e) => setPer(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder={perCrateN ? String(perCrateN) : tr('ej. 10')} autoComplete="off" /></label>
+                <span className="eq">{trx('= {0} pouches por carro {1}', <b>{perUnit ?? '—'}</b>, <small>{tr('(12 guacales por columna)')}</small>)}</span>
               </div>
             ))}
-          <button className="btn primary" type="submit" disabled={!ok}>▶ Empezar</button>
+          <button className="btn primary" type="submit" disabled={!ok}>{tr('▶ Empezar')}</button>
         </form>
         <div className="tools">
-          {!idle ? <button type="button" className="lnk sm" onClick={() => startSetup(line)}>⏱ Empezar Set up</button> : <span />}
-          <button type="button" className="lnk sm muted" onClick={() => setRemoving(true)}>Quitar {cfg.lineWord.toLowerCase()}</button>
+          {!idle ? <button type="button" className="lnk sm" onClick={() => startSetup(line)}>{tr('⏱ Empezar Set up')}</button> : <span />}
+          <button type="button" className="lnk sm muted" onClick={() => setRemoving(true)}>{trx('Quitar {0}', cfg.lineWord.toLowerCase())}</button>
         </div>
       </div>
     )
@@ -1147,7 +1150,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   // (see nextOrderFor); the person can always say another, or none.
   const openOrders = cfg.orders ? openOrdersFor(s, run.code) : []
   const nextOrder = cfg.orders ? nextOrderFor(s, run) : ''
-  const orderOptions = openOrders.map((o) => ({ id: o.id, label: orderLabel(o) + leftText(s, o) + (o.shipBy ? ' · envío ' + shipText(o.shipBy) : '') }))
+  const orderOptions = openOrders.map((o) => ({ id: o.id, label: orderLabel(o) + leftText(s, o) + (o.shipBy ? ' ' + tr('· envío {0}', shipText(o.shipBy)) : '') }))
   const done = () => {
     if (just) return
     if (cfg.qty === 'ask') setCounting(true)
@@ -1162,19 +1165,19 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       {naming}
       <div className="lhead">
         <h3>{line.name} {nameIt}</h3>
-        <span className={'pill ' + (stop ? 'stop' : 'run')}>{stop ? '⏸ Parado' : '● Corriendo'}</span>
-        <span className="lacts">{goalBtn}<button type="button" className="lnk sm" onClick={() => setFixing(true)}>Corregir</button></span>
+        <span className={'pill ' + (stop ? 'stop' : 'run')}>{stop ? tr('⏸ Parado') : tr('● Corriendo')}</span>
+        <span className="lacts">{goalBtn}<button type="button" className="lnk sm" onClick={() => setFixing(true)}>{tr('Corregir')}</button></span>
       </div>
-      <div className="coderow"><b className="code">{run.code}</b><span>lote {run.lot}{run.date !== day.date && ' · ' + shortDay(run.date)} · desde {fmtTime(run.startedAt)}{run.perUnit != null && ' · ' + run.perUnit + ' ' + cfg.qtyUnit + ' por ' + unitWord}</span></div>
+      <div className="coderow"><b className="code">{run.code}</b><span>{trx('lote {0}{1} · desde {2}', run.lot, run.date !== day.date && ' · ' + shortDay(run.date), fmtTime(run.startedAt))}{run.perUnit != null && ' · ' + tr('{0} {1} por {2}', run.perUnit, cfg.qtyUnit, unitWord)}</span></div>
       {goalStrip}
       {openOrders.length > 0 && (
         <div className="orderstrip">
-          <span>📦 {openOrders.length === 1 ? 'Pedido' : 'Pedidos'} de {run.code}:</span>
-          {openOrders.slice(0, 3).map((o) => <span key={o.id} className={o.id === nextOrder ? 'next' : ''}><b>{orderLabel(o)}</b>{leftText(s, o)}{o.shipBy && ' · envío ' + shipText(o.shipBy)}</span>)}
-          {openOrders.length > 3 && <span>y {openOrders.length - 3} más</span>}
+          <span>{trx('📦 {0} de {1}:', openOrders.length === 1 ? tr('Pedido') : tr('Pedidos'), run.code)}</span>
+          {openOrders.slice(0, 3).map((o) => <span key={o.id} className={o.id === nextOrder ? 'next' : ''}><b>{orderLabel(o)}</b>{leftText(s, o)}{o.shipBy && ' ' + tr('· envío {0}', shipText(o.shipBy))}</span>)}
+          {openOrders.length > 3 && <span>{trx('y {0} más', openOrders.length - 3)}</span>}
         </div>
       )}
-      {stop && <div className="stopbar">⏸ <b>{stop.reason}</b>{stop.note && ' · ' + stop.note} · <b>{fmtDur(stopTime(s, stop, now))}</b>{stop.lineId === null && ' · todo el departamento'}{stop.lineId === line.id && <button type="button" className="lnk sm" onClick={() => setFixingStop(true)}>Corregir</button>}</div>}
+      {stop && <div className="stopbar">⏸ <b>{stop.reason}</b>{stop.note && ' · ' + stop.note} · <b>{fmtDur(stopTime(s, stop, now))}</b>{stop.lineId === null && ' ' + tr('· todo el departamento')}{stop.lineId === line.id && <button type="button" className="lnk sm" onClick={() => setFixingStop(true)}>{tr('Corregir')}</button>}</div>}
       {fixing && <RunEditor s={s} run={run} mgr={mgr} onClose={() => setFixing(false)} />}
       {fixingStop && stop && <StopEditor stop={stop} mgr={mgr} onClose={() => setFixingStop(false)} />}
       {/* what is made, big: how many units and how much they carry (with its cases, where pouches are counted); then the
@@ -1182,31 +1185,31 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       <div className={'tiles' + (cfg.qty !== 'none' ? ' four' : '')}>
         <div key={'n' + (just?.at ?? 0)} className={'tile main' + lit}><label>{cfg.plural}</label><b>{run.units.length}</b></div>
         {cfg.qty !== 'none' && <div key={'q' + (just?.at ?? 0)} className={'tile main' + lit}><label>{cfg.qtyUnit}</label><b>{fmtN(st.qty)}</b>{cases && <small>{casesText(cases)}</small>}</div>}
-        <div className="tile"><label>{(cfg.saved.endsWith('a') ? 'Esta ' : 'Este ') + unitWord}</label><b>{fmtDur(current)}</b><small>prom. {run.units.length ? fmtDur(st.avg) : '—'}</small></div>
-        <div className="tile"><label>Trabajando</label><b>{fmtDur(st.working)}</b><small className={st.down ? 'red' : ''}>parado {fmtDur(st.down)}</small></div>
+        <div className="tile"><label>{(cfg.saved.endsWith('a') ? tr('Esta') + ' ' : tr('Este') + ' ') + unitWord}</label><b>{fmtDur(current)}</b><small>{trx('prom. {0}', run.units.length ? fmtDur(st.avg) : '—')}</small></div>
+        <div className="tile"><label>{tr('Trabajando')}</label><b>{fmtDur(st.working)}</b><small className={st.down ? 'red' : ''}>{trx('parado {0}', fmtDur(st.down))}</small></div>
       </div>
       <button type="button" className={'btn primary huge' + (just ? ' saved' : '')} disabled={!!just} onClick={done}>✓ {just ? savedText(line.dept, just.n) : cfg.done}</button>
-      {own && <button type="button" className="btn slim" onClick={() => setFilling(own)}>➕ Completar {unitWord + (own.run.id === run.id ? ' ' + (own.index + 1) : ' de antes')} · tiene {own.unit.qty} de {own.usual}</button>}
+      {own && <button type="button" className="btn slim" onClick={() => setFilling(own)}>{trx('➕ Completar {0} · tiene {1} de {2}', unitWord + (own.run.id === run.id ? ' ' + (own.index + 1) : ' ' + tr('de antes')), own.unit.qty, own.usual)}</button>}
       <div className="acts2">
         {stop
           ? (stop.lineId === line.id
-            ? <button type="button" className="btn danger" onClick={() => endStop(stop.id)}>▶ Reanudar</button>
-            : <button type="button" className="btn" disabled>Parado por el departamento</button>)
-          : <button type="button" className="btn" onClick={() => setAsking(true)}>⏸ Parar</button>}
+            ? <button type="button" className="btn danger" onClick={() => endStop(stop.id)}>{tr('▶ Reanudar')}</button>
+            : <button type="button" className="btn" disabled>{tr('Parado por el departamento')}</button>)
+          : <button type="button" className="btn" onClick={() => setAsking(true)}>{tr('⏸ Parar')}</button>}
         {cfg.waste && <button type="button" className="btn" onClick={() => setWasting(true)}>Waste{run.waste ? <b className="red"> {run.waste} lb</b> : ' (lb)'}</button>}
-        <button type="button" className="btn" disabled={!!stop} onClick={() => setEnding(true)}>■ Terminar<span className="opt"> código</span></button>
+        <button type="button" className="btn" disabled={!!stop} onClick={() => setEnding(true)}>{tr('■ Terminar')}<span className="opt"> {' '}{tr('código')}</span></button>
       </div>
       {fillLink && <div className="fillmore">{fillLink}</div>}
       {ending && <EndDialog cfg={cfg} code={run.code} line={line.name} now={now} lastAt={run.units.length ? run.units[run.units.length - 1].at : null}
-        summary={'Lleva ' + madeText(run, st.qty) + ' · trabajando ' + fmtDur(st.working) + (st.down ? ' · parado ' + fmtDur(st.down) : '') + '.'}
+        summary={tr('Lleva {0} · trabajando {1}{2}', madeText(run, st.qty), fmtDur(st.working), (st.down ? ' ' + tr('· parado {0}', fmtDur(st.down)) : '')) + '.'}
         onClose={() => setEnding(false)} onDone={(next) => { endRun(run.id, next); setEnding(false) }}
         onMissing={(next) => { setEnding(false); if (cfg.qty === 'ask') { setEndAfter(next); setCounting(true) } else { record(cfg.qty === 'auto' ? run.perUnit : null); endRun(run.id, next) } }} />}
-      {asking && <StopDialog title={'Parar ' + line.name + ' · ' + run.code} reasons={cfg.quick} onClose={() => setAsking(false)} onPick={(reason, note) => { startStop(line.dept, line.id, reason, note); setAsking(false) }} />}
+      {asking && <StopDialog title={tr('Parar {0} · {1}', line.name, run.code)} reasons={cfg.quick} onClose={() => setAsking(false)} onPick={(reason, note) => { startStop(line.dept, line.id, reason, note); setAsking(false) }} />}
       {fillUi}
       {counting && (cfg.lots
         ? <LotsDialog title={cfg.qtyQ} unit={cfg.qtyUnit} refLabel={cfg.refLabel} lot={run.lot} qty={run.perUnit} orders={orderOptions} order={nextOrder} onClose={() => { setCounting(false); setEndAfter(null) }} onPick={(q, ref, lots, po) => { record(q, ref, lots, po); setCounting(false); if (endAfter !== null) { setEndAfter(null); endRun(run.id, endAfter) } }} />
         : <QtyDialog title={cfg.qtyQ} unit={cfg.qtyUnit} refLabel={cfg.refLabel} initial={run.perUnit} perCase={perCase} onClose={() => { setCounting(false); setEndAfter(null) }} onPick={(q, ref) => { record(q, ref); setCounting(false); if (endAfter !== null) { setEndAfter(null); endRun(run.id, endAfter) } }} />)}
-      {wasting && <QtyDialog title={'Waste de ' + run.code + ' · ¿cuántas libras?'} unit="lb" refLabel="" initial={null} decimal onClose={() => setWasting(false)} onPick={(lb) => { if (lb > 0) addWaste(run.id, lb); setWasting(false) }} />}
+      {wasting && <QtyDialog title={tr('Waste de {0} · ¿cuántas libras?', run.code)} unit="lb" refLabel="" initial={null} decimal onClose={() => setWasting(false)} onPick={(lb) => { if (lb > 0) addWaste(run.id, lb); setWasting(false) }} />}
     </div>
   )
 }
@@ -1223,23 +1226,23 @@ function EndDialog({ cfg, code, line, summary, lastAt, onMissing, onDone, onClos
   // what comes next on this line is asked, never assumed: with another code coming, the time until it starts counts
   // as its set up; with nothing more today, nothing is left counting when the people go
   const [next, setNext] = useState<boolean | null>(null)
-  const last = (fem ? 'la última ' : 'el último ') + unit
+  const last = (fem ? tr('la última') + ' ' : tr('el último') + ' ') + unit
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
-        <h3>Terminar {code} · {line}</h3>
-        <p>{summary}{lastAt ? ' ' + (fem ? 'Última ' : 'Último ') + unit + ': ' + fmtTime(lastAt) + '.' : ''}</p>
-        <p className="endask">¿Qué sigue en esta línea?</p>
+        <h3>{trx('Terminar {0} · {1}', code, line)}</h3>
+        <p>{summary}{lastAt ? ' ' + (fem ? tr('Última') + ' ' : tr('Último') + ' ') + unit + ': ' + fmtTime(lastAt) + '.' : ''}</p>
+        <p className="endask">{tr('¿Qué sigue en esta línea?')}</p>
         <div className="chips big">
-          <button type="button" className={'chip' + (next === true ? ' on' : '')} onClick={() => setNext(true)}>Viene otro código<small>empieza el Set up</small></button>
-          <button type="button" className={'chip' + (next === false ? ' on' : '')} onClick={() => setNext(false)}>Nada más por hoy<small>no queda nada contando</small></button>
+          <button type="button" className={'chip' + (next === true ? ' on' : '')} onClick={() => setNext(true)}>{tr('Viene otro código')}<small>{tr('empieza el Set up')}</small></button>
+          <button type="button" className={'chip' + (next === false ? ' on' : '')} onClick={() => setNext(false)}>{tr('Nada más por hoy')}<small>{tr('no queda nada contando')}</small></button>
         </div>
-        <p className="endask">¿Ya registraste {last}?</p>
+        <p className="endask">{trx('¿Ya registraste {0}?', last)}</p>
         <div className="endyes">
-          <button type="button" className="btn primary" disabled={next === null} onClick={() => next !== null && onDone(next)}>✓ Sí, terminar</button>
-          <button type="button" className="btn" disabled={next === null} onClick={() => next !== null && onMissing(next)}>＋ Falta: registrar{fem ? 'la' : 'lo'}</button>
+          <button type="button" className="btn primary" disabled={next === null} onClick={() => next !== null && onDone(next)}>{tr('✓ Sí, terminar')}</button>
+          <button type="button" className="btn" disabled={next === null} onClick={() => next !== null && onMissing(next)}>{tr('＋ Falta: registrar')}{fem ? 'la' : 'lo'}</button>
         </div>
-        <div className="dbtns"><button type="button" className="lnk" onClick={onClose}>Cancelar</button></div>
+        <div className="dbtns"><button type="button" className="lnk" onClick={onClose}>{tr('Cancelar')}</button></div>
       </div>
     </div>
   )
@@ -1255,12 +1258,12 @@ function StopDialog({ title, reasons, onClose, onPick }: { title: string; reason
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
         <h3>{title}</h3>
-        <p>¿Por qué se para? La app cuenta el tiempo parado con esta razón.</p>
+        <p>{tr('¿Por qué se para? La app cuenta el tiempo parado con esta razón.')}</p>
         <div className="chips big">{[...reasons, 'Otra'].map((r) => <button key={r} type="button" className={'chip' + (reason === r ? ' on' : '')} onClick={() => setReason(r)}>{r}</button>)}</div>
-        <input placeholder={other ? 'Escribe la razón' : 'Detalle (opcional)'} value={note} onChange={(e) => setNote(e.target.value)} />
+        <input placeholder={other ? tr('Escribe la razón') : tr('Detalle (opcional)')} value={note} onChange={(e) => setNote(e.target.value)} />
         <div className="dbtns">
-          <button type="button" className="btn" onClick={onClose}>Cancelar</button>
-          <button type="button" className="btn danger" disabled={!ok} onClick={() => onPick(other ? note.trim() : reason, other ? '' : note.trim())}>⏸ Confirmar paro</button>
+          <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
+          <button type="button" className="btn danger" disabled={!ok} onClick={() => onPick(other ? note.trim() : reason, other ? '' : note.trim())}>{tr('⏸ Confirmar paro')}</button>
         </div>
       </div>
     </div>
@@ -1275,7 +1278,7 @@ export function ConfirmDialog({ title, text, yes, danger, onYes, onNo }: { title
         <h3>{title}</h3>
         {text && <p>{text}</p>}
         <div className="dbtns">
-          <button type="button" className="btn" onClick={onNo}>Cancelar</button>
+          <button type="button" className="btn" onClick={onNo}>{tr('Cancelar')}</button>
           <button type="button" className={'btn ' + (danger ? 'danger' : 'primary')} autoFocus onClick={onYes}>{yes}</button>
         </div>
       </div>
@@ -1290,7 +1293,7 @@ function NoticeDialog({ title, text, onClose }: { title: string; text?: string; 
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
         <h3>{title}</h3>
         {text && <p>{text}</p>}
-        <div className="dbtns"><button type="button" className="btn primary" autoFocus onClick={onClose}>Entendido</button></div>
+        <div className="dbtns"><button type="button" className="btn primary" autoFocus onClick={onClose}>{tr('Entendido')}</button></div>
       </div>
     </div>
   )
@@ -1325,26 +1328,26 @@ export function LotsDialog({ title, unit, refLabel, lot, qty, start, startRef, o
         <form onSubmit={(e) => { e.preventDefault(); save() }} className="qform">
           {rows.map((r, i) => (
             <div className="lotrow" key={i}>
-              <label>Lote <input inputMode="numeric" placeholder="ej. 6280" value={r.lot} autoFocus={added && i === rows.length - 1} onChange={(e) => change(i, { lot: e.target.value })} autoComplete="off" /></label>
+              <label>{tr('Lote')}{' '}<input inputMode="numeric" placeholder={tr('ej. 6280')} value={r.lot} autoFocus={added && i === rows.length - 1} onChange={(e) => change(i, { lot: e.target.value })} autoComplete="off" /></label>
               <label>{unit} <input inputMode="numeric" placeholder={unit} value={r.qty} autoFocus={!added && i === 0 && qty == null && !start} onChange={(e) => change(i, { qty: e.target.value.replace(/\D/g, '') })} /></label>
-              {rows.length > 1 && <button type="button" className="lnk" title="Quitar este lote" onClick={() => setRows(rows.filter((_, k) => k !== i))}>✕</button>}
+              {rows.length > 1 && <button type="button" className="lnk" title={tr('Quitar este lote')} onClick={() => setRows(rows.filter((_, k) => k !== i))}>✕</button>}
             </div>
           ))}
-          <button type="button" className="lnk addlot" onClick={() => { setAdded(true); setRows([...rows, { lot: '', qty: '' }]) }}>+ Otro lote en este {unit === 'cajas' ? 'pallet' : 'mismo'}</button>
-          {rows.length > 1 && <p className="lottotal">Total: <b>{total} {unit}</b> en {rows.length} lotes</p>}
-          {repeated && <span className="err">Ese lote ya está en la lista: suma sus {unit} en una sola línea.</span>}
-          {refLabel && <label>{refLabel} <small>(opcional)</small> <input inputMode="numeric" placeholder="ej. 1749" value={ref} onChange={(e) => setRef(e.target.value)} autoComplete="off" /></label>}
+          <button type="button" className="lnk addlot" onClick={() => { setAdded(true); setRows([...rows, { lot: '', qty: '' }]) }}>{trx('+ Otro lote en este {0}', unit === 'cajas' ? 'pallet' : tr('mismo'))}</button>
+          {rows.length > 1 && <p className="lottotal">{trx('Total: {0} en {1} lotes', <b>{total} {unit}</b>, rows.length)}</p>}
+          {repeated && <span className="err">{trx('Ese lote ya está en la lista: suma sus {0} en una sola línea.', unit)}</span>}
+          {refLabel && <label>{refLabel} <small>{tr('(opcional)')}</small> <input inputMode="numeric" placeholder={tr('ej. 1749')} value={ref} onChange={(e) => setRef(e.target.value)} autoComplete="off" /></label>}
           {orders && orders.length > 0 && (
-            <label>Pedido <small>(a cuál va)</small>
+            <label>{trx('Pedido {0}', <small>{tr('(a cuál va)')}</small>)}
               <select value={po} onChange={(e) => setPo(e.target.value)}>
-                <option value="">Sin pedido</option>
+                <option value="">{tr('Sin pedido')}</option>
                 {orders.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
               </select>
             </label>
           )}
           <div className="dbtns">
-            <button type="button" className="btn" onClick={onClose}>Cancelar</button>
-            <button type="submit" className="btn primary" disabled={!ok}>✓ Guardar</button>
+            <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
+            <button type="submit" className="btn primary" disabled={!ok}>{tr('✓ Guardar')}</button>
           </div>
         </form>
       </div>
@@ -1366,11 +1369,11 @@ function QtyDialog({ title, unit, refLabel, initial, decimal, perCase, onClose, 
         <h3>{title}</h3>
         <form onSubmit={(e) => { e.preventDefault(); if (ok) onPick(n, ref.trim()) }} className="qform">
           <label>{unit} <input autoFocus={initial == null} inputMode={decimal ? 'decimal' : 'numeric'} placeholder={unit} value={v} onChange={(e) => setV(clean(e.target.value))} /></label>
-          {perCase && ok ? <p className="incases">= {casesText({ cases: Math.floor(n / perCase), loose: Math.round((n - Math.floor(n / perCase) * perCase) * 100) / 100 })} <small>({perCase} por caja)</small></p> : null}
-          {refLabel && <label>{refLabel} <small>(opcional)</small> <input inputMode="numeric" placeholder="ej. 1749" value={ref} onChange={(e) => setRef(e.target.value)} autoComplete="off" /></label>}
+          {perCase && ok ? <p className="incases">= {casesText({ cases: Math.floor(n / perCase), loose: Math.round((n - Math.floor(n / perCase) * perCase) * 100) / 100 })} <small>{trx('({0} por caja)', perCase)}</small></p> : null}
+          {refLabel && <label>{refLabel} <small>{tr('(opcional)')}</small> <input inputMode="numeric" placeholder={tr('ej. 1749')} value={ref} onChange={(e) => setRef(e.target.value)} autoComplete="off" /></label>}
           <div className="dbtns">
-            <button type="button" className="btn" onClick={onClose}>Cancelar</button>
-            <button type="submit" className="btn primary" disabled={!ok}>✓ Guardar</button>
+            <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
+            <button type="submit" className="btn primary" disabled={!ok}>{tr('✓ Guardar')}</button>
           </div>
         </form>
       </div>
@@ -1380,7 +1383,7 @@ function QtyDialog({ title, unit, refLabel, initial, decimal, perCase, onClose, 
 
 /** what makes the report's PDF and Excel files; it rejects when they cannot be fetched (no signal, and never loaded on this device) */
 const libraries = () => Promise.all([loadPdf(), loadZip()])
-const MISSING = 'Faltan partes de la app que se bajan con WiFi la primera vez. Conéctate, abre la app y vuelve a intentarlo. Si sigue pasando, avísale a quien lleva la app.'
+const MISSING = tr('Faltan partes de la app que se bajan con WiFi la primera vez. Conéctate, abre la app y vuelve a intentarlo. Si sigue pasando, avísale a quien lleva la app.')
 /** saves a file made by the app to the device, the way the browser saves any download */
 function download(f: File) {
   const a = document.createElement('a')
@@ -1397,16 +1400,16 @@ function LineTargetDialog({ line, unit, goal, onClose }: { line: Line; unit: str
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
-        <h3>Meta de {line.name} · {line.dept}</h3>
-        <p>Sale en la tarjeta de esta línea, en todas las tablets, y queda en el historial. Deja en blanco la que no aplique. El ritmo de la línea sale en rojo cuando baja de su meta por hora. La meta de todo {line.dept} junto se pone arriba, en "Hoy en {line.dept}".</p>
+        <h3>{trx('Meta de {0} · {1}', line.name, line.dept)}</h3>
+        <p>{trx('Sale en la tarjeta de esta línea, en todas las tablets, y queda en el historial. Deja en blanco la que no aplique. El ritmo de la línea sale en rojo cuando baja de su meta por hora. La meta de todo {0} junto se pone arriba, en "Hoy en {1}".', line.dept, line.dept)}</p>
         <form onSubmit={(e) => { e.preventDefault(); setLineTarget(line, num(hour), num(whole)); onClose() }} className="qform">
-          <label>Por hora <input inputMode="numeric" placeholder={'ej. 150 ' + unit} value={hour} onChange={(e) => setHour(e.target.value.replace(/\D/g, ''))} /></label>
-          <label>En el día completo <small>(los dos turnos)</small> <input inputMode="numeric" placeholder={'ej. 2400 ' + unit} value={whole} onChange={(e) => setWhole(e.target.value.replace(/\D/g, ''))} /></label>
+          <label>{tr('Por hora')}{' '}<input inputMode="numeric" placeholder={tr('ej. 150 {0}', unit)} value={hour} onChange={(e) => setHour(e.target.value.replace(/\D/g, ''))} /></label>
+          <label>{trx('En el día completo {0}', <small>{tr('(los dos turnos)')}</small>)} <input inputMode="numeric" placeholder={tr('ej. 2400 {0}', unit)} value={whole} onChange={(e) => setWhole(e.target.value.replace(/\D/g, ''))} /></label>
           <div className="dbtns spread">
-            <div className="btns">{goal?.perHour || goal?.perDay ? <button type="button" className="lnk" onClick={() => { setLineTarget(line, null, null); onClose() }}>Quitar meta</button> : null}</div>
+            <div className="btns">{goal?.perHour || goal?.perDay ? <button type="button" className="lnk" onClick={() => { setLineTarget(line, null, null); onClose() }}>{tr('Quitar meta')}</button> : null}</div>
             <div className="btns">
-              <button type="button" className="btn" onClick={onClose}>Cancelar</button>
-              <button type="submit" className="btn primary">✓ Guardar</button>
+              <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
+              <button type="submit" className="btn primary">{tr('✓ Guardar')}</button>
             </div>
           </div>
         </form>
@@ -1428,17 +1431,17 @@ function ShiftsDialog({ s, date, onClose }: { s: State; date: string; onClose: (
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
-        <h3>Horario de los turnos</h3>
-        <p>Lo ven todos los aparatos y queda en el historial. Los días anteriores a la fecha que pongas siguen con el horario que tenían.</p>
+        <h3>{tr('Horario de los turnos')}</h3>
+        <p>{tr('Lo ven todos los aparatos y queda en el historial. Los días anteriores a la fecha que pongas siguen con el horario que tenían.')}</p>
         <form className="qform" onSubmit={(e) => { e.preventDefault(); if (!problem && from && setShifts(from, h)) onClose() }}>
-          <div className="egrid">{field('first', 'Turno 1 empieza')}{field('firstEnd', 'Turno 1 termina')}{field('second', 'Turno 2 empieza')}{field('secondEnd', 'Turno 2 termina')}</div>
-          <label>Vale desde el día <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
+          <div className="egrid">{field('first', tr('Turno 1 empieza'))}{field('firstEnd', tr('Turno 1 termina'))}{field('second', tr('Turno 2 empieza'))}{field('secondEnd', tr('Turno 2 termina'))}</div>
+          <label>{tr('Vale desde el día')}{' '}<input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
           {cuts
-            ? <p className="hint">Cada registro cuenta para un turno por su hora: hasta las <b>{minuteText(cuts.toSecond)}</b> es del turno 1 y después del turno 2. Pasada la medianoche sigue siendo del turno 2 hasta las <b>{minuteText(cuts.toFirst)}</b>. El corte es la mitad del rato entre un turno y el otro, para que quien se queda un poco o llega un poco antes cuente con su turno. El tiempo nunca se detiene solo: quien sigue trabajando después de su hora, o empieza antes, sigue contando. Solo cuando ya pasó el rato entre un turno y el otro, si en una línea nadie registró nada en todo ese rato, ese rato se descuenta.</p>
+            ? <p className="hint">{trx('Cada registro cuenta para un turno por su hora: hasta las {0} es del turno 1 y después del turno 2. Pasada la medianoche sigue siendo del turno 2 hasta las {1}. El corte es la mitad del rato entre un turno y el otro, para que quien se queda un poco o llega un poco antes cuente con su turno. El tiempo nunca se detiene solo: quien sigue trabajando después de su hora, o empieza antes, sigue contando. Solo cuando ya pasó el rato entre un turno y el otro, si en una línea nadie registró nada en todo ese rato, ese rato se descuenta.', <b>{minuteText(cuts.toSecond)}</b>, <b>{minuteText(cuts.toFirst)}</b>)}</p>
             : <span className="err">{problem}</span>}
           <div className="dbtns">
-            <button type="button" className="btn" onClick={onClose}>Cancelar</button>
-            <button type="submit" className="btn primary" disabled={!!problem || !from}>✓ Guardar</button>
+            <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
+            <button type="submit" className="btn primary" disabled={!!problem || !from}>{tr('✓ Guardar')}</button>
           </div>
         </form>
       </div>
@@ -1455,24 +1458,24 @@ function SendDialog({ files, subject, onClose }: { files: Record<Kind, File>; su
     if (!pick) return
     setSaid('')
     // asked in the tap itself, with the files already made: a browser only opens its share sheet for a tap
-    nav.share({ files: pick.files.map((k) => files[k]), title: subject, text: subject }).then(() => setSaid('Listo.'), (e: unknown) => setSaid(shareProblem(e)))
+    nav.share({ files: pick.files.map((k) => files[k]), title: subject, text: subject }).then(() => setSaid(tr('Listo.')), (e: unknown) => setSaid(shareProblem(e)))
   }
-  const save = (k: Kind) => { download(files[k]); setSaid('Descargado: ' + files[k].name + '. Queda en la carpeta de Descargas de este aparato.') }
-  const mail = 'mailto:?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent('Adjunto el reporte del día (PDF y Excel).')
+  const save = (k: Kind) => { download(files[k]); setSaid(tr('Descargado: {0}. Queda en la carpeta de Descargas de este aparato.', files[k].name)) }
+  const mail = 'mailto:?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(tr('Adjunto el reporte del día (PDF y Excel).'))
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg send" onClick={(e) => e.stopPropagation()}>
-        <h3>Enviar el reporte</h3>
-        <p>{pick ? 'Toca "Compartir" y elige el correo o WhatsApp. También puedes descargar los archivos y adjuntarlos tú.' : 'Descarga los dos archivos y adjúntalos al correo o al mensaje.'}</p>
+        <h3>{tr('Enviar el reporte')}</h3>
+        <p>{pick ? tr('Toca "Compartir" y elige el correo o WhatsApp. También puedes descargar los archivos y adjuntarlos tú.') : tr('Descarga los dos archivos y adjúntalos al correo o al mensaje.')}</p>
         {pick && <button type="button" className="btn primary" onClick={share}>↗ {pick.label}</button>}
         {pick?.note && <small>{pick.note}</small>}
         <div className="btns">
-          <button type="button" className="btn" onClick={() => save('pdf')}>⬇ PDF</button>
-          <button type="button" className="btn" onClick={() => save('xlsx')}>⬇ Excel</button>
-          <a className="btn" href={mail}>✉ Abrir un correo</a>
+          <button type="button" className="btn" onClick={() => save('pdf')}>{tr('⬇ PDF')}</button>
+          <button type="button" className="btn" onClick={() => save('xlsx')}>{tr('⬇ Excel')}</button>
+          <a className="btn" href={mail}>{tr('✉ Abrir un correo')}</a>
         </div>
         {said && <p className="said" role="status">{said}</p>}
-        <div className="dbtns"><button type="button" className="btn" onClick={onClose}>Cerrar</button></div>
+        <div className="dbtns"><button type="button" className="btn" onClick={onClose}>{tr('Cerrar')}</button></div>
       </div>
     </div>
   )
@@ -1523,10 +1526,10 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
     if (total <= PAGE) return null
     return (
       <div className="morebar">
-        <span>Se ven {shown} de {total}</span>
-        {shown < total && <button type="button" className="btn" onClick={() => setMore({ ...more, [key]: shown + PAGE })}>Mostrar {Math.min(PAGE, total - shown)} más</button>}
-        {shown < total && <button type="button" className="lnk" onClick={() => setMore({ ...more, [key]: Number.MAX_SAFE_INTEGER })}>Mostrar todo</button>}
-        {shown > PAGE && <button type="button" className="lnk" onClick={() => setMore({ ...more, [key]: PAGE })}>Mostrar menos</button>}
+        <span>{trx('Se ven {0} de {1}', shown, total)}</span>
+        {shown < total && <button type="button" className="btn" onClick={() => setMore({ ...more, [key]: shown + PAGE })}>{trx('Mostrar {0} más', Math.min(PAGE, total - shown))}</button>}
+        {shown < total && <button type="button" className="lnk" onClick={() => setMore({ ...more, [key]: Number.MAX_SAFE_INTEGER })}>{tr('Mostrar todo')}</button>}
+        {shown > PAGE && <button type="button" className="lnk" onClick={() => setMore({ ...more, [key]: PAGE })}>{tr('Mostrar menos')}</button>}
       </div>
     )
   }
@@ -1536,7 +1539,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
   // what makes the PDF and the Excel comes down when the report opens, so the tap that asks for a file finds it ready
   useEffect(() => { void libraries().catch(() => undefined) }, [])
   /** no button of the report fails without a word: what went wrong, and what to do */
-  const failed = (what: string, e?: unknown) => { console.warn('actividad report', what, e); setNotice({ title: 'No se pudo ' + what, text: MISSING }) }
+  const failed = (what: string, e?: unknown) => { console.warn('actividad report', what, e); setNotice({ title: tr('No se pudo {0}', what), text: MISSING }) }
   /** opens the PDF in a new tab (to look at, share or print); where a tab cannot show it, it downloads */
   const pdf = async () => {
     try {
@@ -1546,7 +1549,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
       if (homeScreenApple(navigator as Parameters<typeof homeScreenApple>[0])) { doc.save(name); return }
       const win = window.open(doc.output('bloburl'), '_blank')
       if (!win) doc.save(name)
-    } catch (e) { failed('abrir el PDF', e) }
+    } catch (e) { failed(tr('abrir el PDF'), e) }
   }
   // what the report holds, with the filter by code, by lot and by shift when one is chosen (the same for the screen and every file)
   const dept: Dept | undefined = only ?? (fDept || undefined)
@@ -1556,7 +1559,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
   const withOrders = unitRows.some((x) => x.order) // a column says the order of each pallet when any has one
   const unitsText = (dept: Dept, n: number) => n + ' ' + (n === 1 ? CFG[dept].unit : CFG[dept].plural).toLowerCase()
   const reasonsText = (x: (typeof rows)[number]) => Object.entries(x.st.reasons).map(([k, v]) => k + ' ' + fmtDur(v)).join(', ')
-  const lineName = (x: { lineId: string | null; dept: Dept }) => (x.lineId === null ? 'Todo ' + x.dept : s.lines.find((l) => l.id === x.lineId)?.name ?? s.runs.find((r) => r.lineId === x.lineId)?.line ?? 'línea')
+  const lineName = (x: { lineId: string | null; dept: Dept }) => (x.lineId === null ? tr('Todo {0}', x.dept) : s.lines.find((l) => l.id === x.lineId)?.name ?? s.runs.find((r) => r.lineId === x.lineId)?.line ?? tr('línea'))
   const fileName = 'actividad-' + (dept ? dept.toLowerCase() + '-' : '') + date + filterFile(rep.code, rep.lot, rep.shift)
   // the history of that day (corrections, products, program, lines): the manager's and the office's
   const changes = mgr && !rep.filtered ? s.changes.filter((c) => !c.deleted && plainDay(s, c.at) === date && (!dept || c.dept === dept)).sort((a, b) => a.at - b.at) : []
@@ -1577,49 +1580,49 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
       if (!files) { setPreparing(true); try { await libraries() } finally { setPreparing(false) } files = filesNow() }
       if (!files) throw new Error('files')
       setSending(files)
-    } catch (e) { failed('preparar el reporte', e) }
+    } catch (e) { failed(tr('preparar el reporte'), e) }
   }
   /** the day's tables, typed (numbers, times, spans) so Excel can sort and add them; the CSV takes the same as text */
   const blocks = () => {
     const T = (ms: number) => xTime(ms, fmtTime(ms)), D = (ms: number) => xDur(ms, fmtDur(ms))
-    const resumen: Cell[][] = [['Departamento', 'Línea', 'Código', 'Lote', 'Fecha', 'Inicio', 'Fin', 'Unidad', 'Hechas', 'Cantidad', 'Unidad de cantidad', 'Tags / bins', 'Waste (lb)', 'Tiempo trabajando', 'Promedio por unidad', 'Tiempo parado', 'Razones de paro', 'Registró', 'Turno'],
-      ...rows.map((x): Cell[] => [x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.lots, xDay(x.r.date), T(x.r.startedAt), x.r.endedAt ? T(x.r.endedAt) : 'en curso', CFG[x.r.dept].unit, x.units, CFG[x.r.dept].qty !== 'none' ? x.qty : '', CFG[x.r.dept].qty !== 'none' ? CFG[x.r.dept].qtyUnit : '', x.view.units.map((u) => u.ref).filter(Boolean).join(', '), x.waste || '', D(x.st.working), x.timed ? D(x.st.avg) : '', D(x.st.down), reasonsText(x), whoText(x.r), rep.shift ? String(rep.shift) : x.shifts])]
+    const resumen: Cell[][] = [[tr('Departamento'), tr('Línea'), tr('Código'), tr('Lote'), tr('Fecha'), tr('Inicio'), tr('Fin'), tr('Unidad'), tr('Hechas'), tr('Cantidad'), tr('Unidad de cantidad'), tr('Tags / bins'), tr('Waste (lb)'), tr('Tiempo trabajando'), tr('Promedio por unidad'), tr('Tiempo parado'), tr('Razones de paro'), tr('Registró'), tr('Turno')],
+      ...rows.map((x): Cell[] => [x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.lots, xDay(x.r.date), T(x.r.startedAt), x.r.endedAt ? T(x.r.endedAt) : tr('en curso'), CFG[x.r.dept].unit, x.units, CFG[x.r.dept].qty !== 'none' ? x.qty : '', CFG[x.r.dept].qty !== 'none' ? CFG[x.r.dept].qtyUnit : '', x.view.units.map((u) => u.ref).filter(Boolean).join(', '), x.waste || '', D(x.st.working), x.timed ? D(x.st.avg) : '', D(x.st.down), reasonsText(x), whoText(x.r), rep.shift ? String(rep.shift) : x.shifts])]
     const boxes = (c: (typeof byCode)[number]) => (CFG[c.dept].qtyUnit === 'pouches' ? inCases(s, c.code, c.qty) : null)
-    const porCodigo: Cell[][] = [['Departamento', 'Código', 'Unidad', 'Hechas', 'Cantidad', 'Unidad de cantidad', 'Waste (lb)', 'Líneas', 'Cajas completas', 'Pouches sueltos', ...(rep.shift ? [] : ['Turno 1', 'Turno 2'])],
+    const porCodigo: Cell[][] = [[tr('Departamento'), tr('Código'), tr('Unidad'), tr('Hechas'), tr('Cantidad'), tr('Unidad de cantidad'), tr('Waste (lb)'), tr('Líneas'), tr('Cajas completas'), tr('Pouches sueltos'), ...(rep.shift ? [] : [tr('Turno 1'), tr('Turno 2')])],
       ...byCode.map((c): Cell[] => [c.dept, c.code, CFG[c.dept].unit, c.units, CFG[c.dept].qty !== 'none' ? c.qty : '', CFG[c.dept].qty !== 'none' ? CFG[c.dept].qtyUnit : '', c.waste || '', c.lines.join(', '), boxes(c)?.cases ?? '', boxes(c)?.loose ?? '', ...(c.byShift ?? [])])]
-    const porLote: Cell[][] = [['Departamento', 'Código', 'Lote', 'Unidad', 'Hechas', 'Cantidad', 'Unidad de cantidad', ...(rep.shift ? [] : ['Turno 1', 'Turno 2'])],
+    const porLote: Cell[][] = [[tr('Departamento'), tr('Código'), tr('Lote'), tr('Unidad'), tr('Hechas'), tr('Cantidad'), tr('Unidad de cantidad'), ...(rep.shift ? [] : [tr('Turno 1'), tr('Turno 2')])],
       ...byCode.flatMap((c) => c.lots.map((l): Cell[] => [c.dept, c.code, l.lot, CFG[c.dept].unit, l.units, CFG[c.dept].qty !== 'none' ? l.qty : '', CFG[c.dept].qty !== 'none' ? CFG[c.dept].qtyUnit : '', ...(l.byShift ?? [])]))]
-    const unidades: Cell[][] = [['Departamento', 'Línea', 'Código', 'Lote', '#', 'Hora', 'Unidad', 'Cantidad', 'Unidad de cantidad', 'Tag / bin', 'Desde la anterior', 'Registró', 'Turno', 'Pedido'],
+    const unidades: Cell[][] = [[tr('Departamento'), tr('Línea'), tr('Código'), tr('Lote'), '#', tr('Hora'), tr('Unidad'), tr('Cantidad'), tr('Unidad de cantidad'), tr('Tag / bin'), tr('Desde la anterior'), tr('Registró'), tr('Turno'), tr('Pedido')],
       ...unitRows.map((x): Cell[] => [x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.lot, x.i + 1, T(x.u.at), CFG[x.r.dept].unit, x.qty ?? '', x.qty != null ? CFG[x.r.dept].qtyUnit : '', x.u.ref, D(x.gap), x.u.by, x.shift, x.order])]
-    const paros: Cell[][] = [['Departamento', 'Línea', 'Razón', 'Detalle', 'Inicio', 'Fin', 'Duración', 'Registró', 'Turno'],
-      ...stops.map((x): Cell[] => [x.dept, lineName(x), x.reason, x.note, T(x.startedAt), x.endedAt ? T(x.endedAt) : 'en curso', D(x.ms), x.by, spanShifts(rep.plan, x.startedAt, x.endedAt ?? now)])]
+    const paros: Cell[][] = [[tr('Departamento'), tr('Línea'), tr('Razón'), tr('Detalle'), tr('Inicio'), tr('Fin'), tr('Duración'), tr('Registró'), tr('Turno')],
+      ...stops.map((x): Cell[] => [x.dept, lineName(x), x.reason, x.note, T(x.startedAt), x.endedAt ? T(x.endedAt) : tr('en curso'), D(x.ms), x.by, spanShifts(rep.plan, x.startedAt, x.endedAt ?? now)])]
     // the whole day first and each shift under it (not when the report is of one shift only)
-    const porTurno: Cell[][] = [['Departamento', 'Turno', 'Horario', 'Empezó', 'Terminó', 'Duración', 'Líneas', 'Códigos', 'Corridas', 'Hechas', 'Unidad', 'Cantidad', 'Unidad de cantidad', 'Waste (lb)', 'Tiempo trabajando', 'Tiempo parado', 'Set up'],
-      ...rep.byShift.flatMap((d) => [d.day, d.first, d.second].map((x): Cell[] => [d.dept, x.shift ? 'Turno ' + x.shift : 'Total del día', x.shift ? shiftHours(rep.plan, x.shift) : '', x.from ? T(x.from) : '', !x.to ? '' : x.open ? 'en curso' : T(x.to), x.span ? D(x.span) : '', x.lines, x.distinct, x.codes, x.units, CFG[d.dept].unit, CFG[d.dept].qty !== 'none' ? x.qty : '', CFG[d.dept].qty !== 'none' ? CFG[d.dept].qtyUnit : '', x.waste || '', D(x.working), D(x.down), x.setup ? D(x.setup) : '']))]
-    const cambios: Cell[][] = [['Hora', 'Quién', 'Departamento', 'Qué', 'Antes', 'Después'], ...changes.map((c): Cell[] => [T(c.at), c.by, c.dept ?? '', c.what, c.before, c.after])]
+    const porTurno: Cell[][] = [[tr('Departamento'), tr('Turno'), tr('Horario'), tr('Empezó'), tr('Terminó'), tr('Duración'), tr('Líneas'), tr('Códigos'), tr('Corridas'), tr('Hechas'), tr('Unidad'), tr('Cantidad'), tr('Unidad de cantidad'), tr('Waste (lb)'), tr('Tiempo trabajando'), tr('Tiempo parado'), 'Set up'],
+      ...rep.byShift.flatMap((d) => [d.day, d.first, d.second].map((x): Cell[] => [d.dept, x.shift ? tr('Turno {0}', x.shift) : tr('Total del día'), x.shift ? shiftHours(rep.plan, x.shift) : '', x.from ? T(x.from) : '', !x.to ? '' : x.open ? tr('en curso') : T(x.to), x.span ? D(x.span) : '', x.lines, x.distinct, x.codes, x.units, CFG[d.dept].unit, CFG[d.dept].qty !== 'none' ? x.qty : '', CFG[d.dept].qty !== 'none' ? CFG[d.dept].qtyUnit : '', x.waste || '', D(x.working), D(x.down), x.setup ? D(x.setup) : '']))]
+    const cambios: Cell[][] = [[tr('Hora'), tr('Quién'), tr('Departamento'), tr('Qué'), tr('Antes'), tr('Después')], ...changes.map((c): Cell[] => [T(c.at), c.by, c.dept ?? '', c.what, c.before, c.after])]
     const av = mgr && !dept && !rep.filtered ? avanceRows(s, date) : []
-    const avance: Cell[][] = [['Código', 'Producto', 'Mezclas progr.', 'Mezclas hechas', 'Mezclas pend.', 'Spiral', 'Pouches progr.', 'Pouches esper.', 'Pouches hechos', 'Pouches pend.', 'Pouches faltan', 'Cajas progr.', 'Cajas esper.', 'Cajas hechas', 'Cajas pend.', 'Cajas faltan', 'MFO cajas', 'Pallets progr.', 'Pallets esper.', 'Pallets hechos', 'Waste lb'],
+    const avance: Cell[][] = [[tr('Código'), tr('Producto'), tr('Mezclas progr.'), tr('Mezclas hechas'), tr('Mezclas pend.'), 'Spiral', tr('Pouches progr.'), tr('Pouches esper.'), tr('Pouches hechos'), tr('Pouches pend.'), tr('Pouches faltan'), tr('Cajas progr.'), tr('Cajas esper.'), tr('Cajas hechas'), tr('Cajas pend.'), tr('Cajas faltan'), tr('MFO cajas'), tr('Pallets progr.'), tr('Pallets esper.'), tr('Pallets hechos'), tr('Waste lb')],
       ...av.map((r): Cell[] => [r.code, r.product?.name ?? '', r.scheduled, r.mixesDone, r.mixesPending, r.spiralDone, r.pouchesPlan, r.pouchesExp, r.pouchesDone, pending(r.pouchesExp, r.pouchesDone), pending(r.pouchesPlan, r.pouchesDone), r.casesPlan, r.casesExp, r.casesDone, pending(r.casesExp, r.casesDone), pending(r.casesPlan, r.casesDone), r.mfoCases, r.palletsPlan, r.palletsExp, r.palletsDone, r.wasteLb])]
     return { resumen, porTurno, porCodigo, porLote, unidades, paros, cambios, avance }
   }
   /** the Excel file's sheets: one per table (Cambios and Avance only for the manager and the office) */
   const sheets = (): Sheet[] => {
     const b = blocks()
-    return [{ name: 'Resumen', rows: b.resumen }, ...(b.porTurno.length > 1 ? [{ name: 'Por turno', rows: b.porTurno }] : []), { name: 'Por código', rows: b.porCodigo }, { name: 'Por lote', rows: b.porLote }, { name: 'Unidades', rows: b.unidades }, { name: 'Paros', rows: b.paros }, ...(mgr ? [{ name: 'Cambios', rows: b.cambios }] : []), ...(b.avance.length > 1 ? [{ name: 'Avance', rows: b.avance }] : [])]
+    return [{ name: tr('Resumen'), rows: b.resumen }, ...(b.porTurno.length > 1 ? [{ name: tr('Por turno'), rows: b.porTurno }] : []), { name: tr('Por código'), rows: b.porCodigo }, { name: tr('Por lote'), rows: b.porLote }, { name: tr('Unidades'), rows: b.unidades }, { name: tr('Paros'), rows: b.paros }, ...(mgr ? [{ name: tr('Cambios'), rows: b.cambios }] : []), ...(b.avance.length > 1 ? [{ name: tr('Avance'), rows: b.avance }] : [])]
   }
   const excel = async () => {
     try {
       const bytes = xlsxNow(sheets()) ?? (await loadZip(), xlsxNow(sheets()))
       if (!bytes) throw new Error('xlsx')
       download(new File([bytes], fileName + '.xlsx', { type: XLSX_TYPE }))
-    } catch (e) { failed('hacer el Excel', e) }
+    } catch (e) { failed(tr('hacer el Excel'), e) }
   }
   const csv = () => download(new File([csvText()], fileName + '.csv', { type: 'text/csv;charset=utf-8' }))
   const csvText = () => {
     const q = (c: Cell) => '"' + cellText(c).replace(/"/g, '""') + '"'
     const b = blocks()
     const tag = (title: string, t: Cell[][]) => t.map((r, i): Cell[] => (i === 0 ? ['', title, ...r] : ['', '', ...r]))
-    const all: Cell[][] = [...b.resumen, ...(b.porTurno.length > 1 ? [[], ...tag('POR TURNO', b.porTurno)] : []), [], ...tag('POR CÓDIGO', b.porCodigo), [], ...tag('POR LOTE', b.porLote), [], ...tag('UNIDADES', b.unidades), [], ...tag('PAROS', b.paros), ...(mgr ? [[], ...tag('CAMBIOS', b.cambios)] : []), ...(b.avance.length > 1 ? [[], ...tag('AVANCE', b.avance)] : [])]
+    const all: Cell[][] = [...b.resumen, ...(b.porTurno.length > 1 ? [[], ...tag(tr('POR TURNO'), b.porTurno)] : []), [], ...tag(tr('POR CÓDIGO'), b.porCodigo), [], ...tag(tr('POR LOTE'), b.porLote), [], ...tag('UNIDADES', b.unidades), [], ...tag(tr('PAROS'), b.paros), ...(mgr ? [[], ...tag('CAMBIOS', b.cambios)] : []), ...(b.avance.length > 1 ? [[], ...tag('AVANCE', b.avance)] : [])]
     return '\ufeff' + all.map((r) => r.map(q).join(',')).join('\r\n')
   }
   // ---- what the screen needs besides the report itself ----
@@ -1627,51 +1630,51 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
   // the rooms a manager can choose among: the ones with something recorded that day
   const depts = only ? [] : DEPTS.filter((d) => d === fDept || s.runs.some((r) => r.date === date && r.dept === d))
   // what is chosen, said in words (the filters add up: any of them with any other)
-  const active = [!only && dept ? dept : '', rep.shift ? 'Turno ' + rep.shift + (shiftPick === null ? (who.shift ? ' (tu turno)' : ' (en curso)') : '') : '', rep.code ? 'Código ' + rep.code : '', rep.lot ? 'Lote ' + rep.lot : ''].filter(Boolean)
+  const active = [!only && dept ? dept : '', rep.shift ? tr('Turno {0}', rep.shift) + (shiftPick === null ? (who.shift ? ' (tu turno)' : ' ' + tr('(en curso)')) : '') : '', rep.code ? tr('Código {0}', rep.code) : '', rep.lot ? tr('Lote {0}', rep.lot) : ''].filter(Boolean)
   const clear = () => { setFCode(''); setFLot(''); setFShift(0); setFDept('') }
   const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
   /** a shift's hours in two pieces that never break inside: "6:00 AM" and "a 3:00 PM" */
   const hrs = (k: 1 | 2) => { const [from, ...to] = shiftHours(rep.plan, k).split(' a '); return <><span>{from}</span> <span>a {to.join(' a ')}</span></> }
   const dash = (v: number) => (v ? fmtN(v) : '—')
   /** what a time that adds up the lines is the sum of: "suma de 3 líneas" */
-  const linesText = (n: number) => (n === 1 ? 'una línea' : 'suma de ' + n + ' líneas')
+  const linesText = (n: number) => (n === 1 ? tr('una línea') : tr('suma de {0} líneas', n))
   /** the title of a list that opens and closes */
   const secHead = (key: string, title: string, count: number) => (
     <div className="sechead">
       <h3>{title} · {count}</h3>
-      <button type="button" className="lnk sm" aria-expanded={!shut[key]} onClick={() => setShut({ ...shut, [key]: !shut[key] })}>{shut[key] ? 'Mostrar ▾' : 'Ocultar ▴'}</button>
+      <button type="button" className="lnk sm" aria-expanded={!shut[key]} onClick={() => setShut({ ...shut, [key]: !shut[key] })}>{shut[key] ? tr('Mostrar ▾') : tr('Ocultar ▴')}</button>
     </div>
   )
   const colsN = 7 + (rep.shift ? 0 : 2)
   return (
     <section className="report">
       <div className="rhead">
-        <div className="rtitle"><h2>Reporte del día{only ? ' · ' + only : ''}</h2><span>{longDate(date)}</span></div>
+        <div className="rtitle"><h2>{tr('Reporte del día')}{only ? ' · ' + only : ''}</h2><span>{longDate(date)}</span></div>
         <div className="racts">
-          <button type="button" className="btn primary" onClick={() => void send()} disabled={!rows.length || preparing}>{preparing ? 'Preparando…' : <>✉ Enviar<span className="opt"> reporte</span></>}</button>
-          <button type="button" className="btn" onClick={() => void pdf()} disabled={!rows.length}>📄 PDF<span className="opt"> / imprimir</span></button>
-          <button type="button" className="btn" onClick={() => void excel()} disabled={!rows.length}>⬇ Excel</button>
+          <button type="button" className="btn primary" onClick={() => void send()} disabled={!rows.length || preparing}>{preparing ? tr('Preparando…') : <>{tr('✉ Enviar')}<span className="opt"> {' '}{tr('reporte')}</span></>}</button>
+          <button type="button" className="btn" onClick={() => void pdf()} disabled={!rows.length}>{tr('📄 PDF')}<span className="opt"> {' '}{tr('/ imprimir')}</span></button>
+          <button type="button" className="btn" onClick={() => void excel()} disabled={!rows.length}>{tr('⬇ Excel')}</button>
           <button type="button" className="lnk" onClick={csv} disabled={!rows.length}>CSV</button>
         </div>
       </div>
-      {sending && <SendDialog files={sending} subject={'Actividad · Reporte ' + date + (dept ? ' · ' + dept : '') + filterTitle(rep.code, rep.lot, rep.shift)} onClose={() => setSending(null)} />}
+      {sending && <SendDialog files={sending} subject={tr('Actividad · Reporte {0}', date) + (dept ? ' · ' + dept : '') + filterTitle(rep.code, rep.lot, rep.shift)} onClose={() => setSending(null)} />}
       {/* what to look at: the day, the shift, the room, the code and the lot. They add up, any of them with any other */}
       <div className="rfilters">
         <div className="rf-row">
           <div className="rf">
-            <span className="lab">Fecha</span>
+            <span className="lab">{tr('Fecha')}</span>
             <div className="daynav">
-              <button type="button" className="btn" aria-label="Día anterior" onClick={() => setDate(addDays(date, -1))}>‹</button>
-              <input type="date" aria-label="Fecha del reporte" value={date} onChange={(e) => { if (e.target.value) setDate(e.target.value) }} />
-              <button type="button" className="btn" aria-label="Día siguiente" disabled={date >= today} onClick={() => setDate(addDays(date, 1))}>›</button>
-              {date !== today && <button type="button" className="btn" onClick={() => setDate(today)}>Hoy</button>}
+              <button type="button" className="btn" aria-label={tr('Día anterior')} onClick={() => setDate(addDays(date, -1))}>‹</button>
+              <input type="date" aria-label={tr('Fecha del reporte')} value={date} onChange={(e) => { if (e.target.value) setDate(e.target.value) }} />
+              <button type="button" className="btn" aria-label={tr('Día siguiente')} disabled={date >= today} onClick={() => setDate(addDays(date, 1))}>›</button>
+              {date !== today && <button type="button" className="btn" onClick={() => setDate(today)}>{tr('Hoy')}</button>}
             </div>
           </div>
           <div className="rf grow">
-            <span className="lab">Turno{can('shifts') && <button type="button" className="lnk sm" onClick={() => setShiftsOpen(true)}>Cambiar horario</button>}</span>
-            <div className="seg" role="group" aria-label="Turno">
+            <span className="lab">{tr('Turno')}{can('shifts') && <button type="button" className="lnk sm" onClick={() => setShiftsOpen(true)}>{tr('Cambiar horario')}</button>}</span>
+            <div className="seg" role="group" aria-label={tr('Turno')}>
               {([0, 1, 2] as const).map((k) => (
-                <button key={k} type="button" className={rep.shift === k ? 'on' : ''} aria-pressed={rep.shift === k} onClick={() => setFShift(k)}>{k ? 'Turno ' + k : 'Día completo'}<small className="hrs">{k ? hrs(k) : 'los dos turnos'}</small></button>
+                <button key={k} type="button" className={rep.shift === k ? 'on' : ''} aria-pressed={rep.shift === k} onClick={() => setFShift(k)}>{k ? tr('Turno {0}', k) : tr('Día completo')}<small className="hrs">{k ? hrs(k) : tr('los dos turnos')}</small></button>
               ))}
             </div>
           </div>
@@ -1679,33 +1682,33 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
         <div className="rf-row">
           {depts.length > 1 && (
             <div className="rf wide">
-              <span className="lab">Departamento</span>
+              <span className="lab">{tr('Departamento')}</span>
               <div className="chips">
-                <button type="button" className={'chip' + (!dept ? ' on' : '')} aria-pressed={!dept} onClick={() => setFDept('')}>Todos</button>
+                <button type="button" className={'chip' + (!dept ? ' on' : '')} aria-pressed={!dept} onClick={() => setFDept('')}>{tr('Todos')}</button>
                 {depts.map((d) => <button key={d} type="button" className={'chip' + (dept === d ? ' on' : '')} aria-pressed={dept === d} onClick={() => setFDept(d)}>{d}</button>)}
               </div>
             </div>
           )}
           <div className="rf-two">
-            <label className="rf"><span className="lab">Código</span>
-              <select value={rep.code} disabled={!rep.codes.length} onChange={(e) => setFCode(e.target.value)}><option value="">Todos</option>{rep.codes.map((c) => <option key={c} value={c}>{c}</option>)}</select>
+            <label className="rf"><span className="lab">{tr('Código')}</span>
+              <select value={rep.code} disabled={!rep.codes.length} onChange={(e) => setFCode(e.target.value)}><option value="">{tr('Todos')}</option>{rep.codes.map((c) => <option key={c} value={c}>{c}</option>)}</select>
             </label>
-            <label className="rf"><span className="lab">Lote</span>
-              <select value={rep.lot} disabled={!rep.lots.length} onChange={(e) => setFLot(e.target.value)}><option value="">Todos</option>{rep.lots.map((l) => <option key={l} value={l}>{l}</option>)}</select>
+            <label className="rf"><span className="lab">{tr('Lote')}</span>
+              <select value={rep.lot} disabled={!rep.lots.length} onChange={(e) => setFLot(e.target.value)}><option value="">{tr('Todos')}</option>{rep.lots.map((l) => <option key={l} value={l}>{l}</option>)}</select>
             </label>
           </div>
         </div>
         {active.length > 0 && (
           <div className="rf-now">
-            <span>Viendo</span>{active.map((t) => <b key={t} className="tag">{t}</b>)}
-            <button type="button" className="btn sm" onClick={clear}>✕ Quitar filtros</button>
+            <span>{tr('Viendo')}</span>{active.map((t) => <b key={t} className="tag">{t}</b>)}
+            <button type="button" className="btn sm" onClick={clear}>{tr('✕ Quitar filtros')}</button>
           </div>
         )}
-        {active.length > 0 && <p className="rf-foot">Los archivos salen con lo que estás viendo.{rep.lot && !rep.shift && ' Con un lote, los tiempos y el waste son los de las corridas completas.'}</p>}
+        {active.length > 0 && <p className="rf-foot">{tr('Los archivos salen con lo que estás viendo.')}{rep.lot && !rep.shift && ' ' + tr('Con un lote, los tiempos y el waste son los de las corridas completas.')}</p>}
       </div>
       <DayNote day={day} />
       {shiftsOpen && <ShiftsDialog s={s} date={date} onClose={() => setShiftsOpen(false)} />}
-      {rows.length === 0 ? <p className="hint">{day.state === 'here' ? (rep.code || rep.lot || (!only && dept) ? 'Nada registrado con estos filtros.' : rep.shift ? 'Nada registrado en este turno.' : 'Nada registrado en esta fecha.') : ''}</p> : (
+      {rows.length === 0 ? <p className="hint">{day.state === 'here' ? (rep.code || rep.lot || (!only && dept) ? tr('Nada registrado con estos filtros.') : rep.shift ? tr('Nada registrado en este turno.') : tr('Nada registrado en esta fecha.')) : ''}</p> : (
         <>
           {/* what was made, big: each room counts in its own unit */}
           <div className="heads">
@@ -1714,7 +1717,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
               const boxes = q && rep.code && cfg.qtyUnit === 'pouches' ? casesText(inCases(s, rep.code, d.qty)) : ''
               return (
                 <div key={d.dept} className="made">
-                  <label>{d.dept}{rep.code ? ' · código ' + rep.code : ''}{rep.lot ? ' · lote ' + rep.lot : ''}</label>
+                  <label>{d.dept}{rep.code ? ' ' + tr('· código {0}', rep.code) : ''}{rep.lot ? ' ' + tr('· lote {0}', rep.lot) : ''}</label>
                   <b>{fmtN(q ? d.qty : d.units)} <span>{q ? cfg.qtyUnit : (d.units === 1 ? cfg.unit : cfg.plural).toLowerCase()}</span></b>
                   <small>{[q ? unitsText(d.dept, d.units) : '', boxes, d.waste ? 'waste ' + d.waste + ' lb' : ''].filter(Boolean).join(' · ') || '\u00a0'}</small>
                 </div>
@@ -1722,16 +1725,16 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
             })}
           </div>
           <div className="totals">
-            {rep.byDept.length === 1 && <div className="stat"><label>{rep.shift ? 'Duración del turno ' + rep.shift : 'Duración del día'}</label><b>{fmtDur(rep.byDept[0].span)}</b><small>{fmtTime(rep.byDept[0].from)} a {rep.byDept[0].open ? 'ahora' : fmtTime(rep.byDept[0].to)}</small></div>}
-            <div className="stat"><label>Códigos</label><b>{rep.distinct}</b><small>{rows.length} {rows.length === 1 ? 'corrida' : 'corridas'}</small></div>
-            <div className="stat"><label>Trabajando</label><b>{fmtDur(working)}</b><small>{linesText(rep.lines)}</small></div>
-            <div className="stat"><label>Parado</label><b className={down ? 'red' : ''}>{fmtDur(down)}</b><small>{linesText(rep.lines)}</small></div>
-            <div className="stat"><label>Set up</label><b>{setup ? fmtDur(setup) : '—'}</b><small>entre un código y otro</small></div>
+            {rep.byDept.length === 1 && <div className="stat"><label>{rep.shift ? tr('Duración del turno {0}', rep.shift) : tr('Duración del día')}</label><b>{fmtDur(rep.byDept[0].span)}</b><small>{fmtTime(rep.byDept[0].from)} a {rep.byDept[0].open ? tr('ahora') : fmtTime(rep.byDept[0].to)}</small></div>}
+            <div className="stat"><label>{tr('Códigos')}</label><b>{rep.distinct}</b><small>{rows.length} {rows.length === 1 ? tr('corrida') : tr('corridas')}</small></div>
+            <div className="stat"><label>{tr('Trabajando')}</label><b>{fmtDur(working)}</b><small>{linesText(rep.lines)}</small></div>
+            <div className="stat"><label>{tr('Parado')}</label><b className={down ? 'red' : ''}>{fmtDur(down)}</b><small>{linesText(rep.lines)}</small></div>
+            <div className="stat"><label>Set up</label><b>{setup ? fmtDur(setup) : '—'}</b><small>{tr('entre un código y otro')}</small></div>
           </div>
           {/* the whole day and each shift side by side, room by room (with one shift chosen, that shift alone) */}
           {(rep.byShift.length > 0 || rep.byDept.length > 1) && (
             <>
-              <h3>{rep.shift ? 'Por departamento · Turno ' + rep.shift : 'Total del día y cada turno'}</h3>
+              <h3>{rep.shift ? tr('Por departamento · Turno {0}', rep.shift) : tr('Total del día y cada turno')}</h3>
               <div className="deptgrid">
                 {rep.byDept.map((d) => {
                   const b = rep.byShift.find((x) => x.dept === d.dept), cols = b ? [b.day, b.first, b.second] : [d]
@@ -1743,21 +1746,21 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
                       <h4>{d.dept}</h4>
                       <div className="scroll">
                         <table className="shiftgrid">
-                          <thead><tr><th></th>{cols.map((x) => <th key={x.shift} className={mark(x)}>{x.shift ? <>Turno {x.shift}<small className="hrs">{hrs(x.shift)}</small></> : 'Total del día'}</th>)}</tr></thead>
+                          <thead><tr><th></th>{cols.map((x) => <th key={x.shift} className={mark(x)}>{x.shift ? <>{trx('Turno {0}', x.shift)}<small className="hrs">{hrs(x.shift)}</small></> : tr('Total del día')}</th>)}</tr></thead>
                           <tbody>
                             {q && <tr className="q"><td>{cap(cfg.qtyUnit)}</td>{cols.map((x) => cell(x, fmtN(x.qty)))}</tr>}
                             <tr className={q ? '' : 'q'}><td>{cfg.plural}</td>{cols.map((x) => cell(x, fmtN(x.units)))}</tr>
                             {cols.some((x) => x.waste > 0) && <tr><td>Waste</td>{cols.map((x) => cell(x, x.waste ? x.waste + ' lb' : '—', x.waste > 0))}</tr>}
-                            <tr><td>Códigos</td>{cols.map((x) => cell(x, x.distinct))}</tr>
-                            <tr><td>Corridas</td>{cols.map((x) => cell(x, x.codes))}</tr>
-                            <tr><td>Líneas</td>{cols.map((x) => cell(x, x.lines))}</tr>
-                            <tr className="sep"><td colSpan={cols.length + 1}>Reloj del turno</td></tr>
-                            <tr><td>Empezó</td>{cols.map((x) => cell(x, x.from ? fmtTime(x.from) : '—'))}</tr>
-                            <tr><td>Terminó</td>{cols.map((x) => cell(x, !x.to ? '—' : x.open ? 'en curso' : fmtTime(x.to)))}</tr>
-                            <tr><td>Duración</td>{cols.map((x) => cell(x, x.span ? fmtDur(x.span) : '—'))}</tr>
-                            <tr className="sep"><td colSpan={cols.length + 1}>Suma de las líneas</td></tr>
-                            <tr><td>Trabajando</td>{cols.map((x) => cell(x, fmtDur(x.working)))}</tr>
-                            <tr><td>Parado</td>{cols.map((x) => cell(x, fmtDur(x.down), x.down > 0))}</tr>
+                            <tr><td>{tr('Códigos')}</td>{cols.map((x) => cell(x, x.distinct))}</tr>
+                            <tr><td>{tr('Corridas')}</td>{cols.map((x) => cell(x, x.codes))}</tr>
+                            <tr><td>{tr('Líneas')}</td>{cols.map((x) => cell(x, x.lines))}</tr>
+                            <tr className="sep"><td colSpan={cols.length + 1}>{tr('Reloj del turno')}</td></tr>
+                            <tr><td>{tr('Empezó')}</td>{cols.map((x) => cell(x, x.from ? fmtTime(x.from) : '—'))}</tr>
+                            <tr><td>{tr('Terminó')}</td>{cols.map((x) => cell(x, !x.to ? '—' : x.open ? tr('en curso') : fmtTime(x.to)))}</tr>
+                            <tr><td>{tr('Duración')}</td>{cols.map((x) => cell(x, x.span ? fmtDur(x.span) : '—'))}</tr>
+                            <tr className="sep"><td colSpan={cols.length + 1}>{tr('Suma de las líneas')}</td></tr>
+                            <tr><td>{tr('Trabajando')}</td>{cols.map((x) => cell(x, fmtDur(x.working)))}</tr>
+                            <tr><td>{tr('Parado')}</td>{cols.map((x) => cell(x, fmtDur(x.down), x.down > 0))}</tr>
                             <tr><td>Set up</td>{cols.map((x) => cell(x, x.setup ? fmtDur(x.setup) : '—'))}</tr>
                           </tbody>
                         </table>
@@ -1768,21 +1771,21 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
               </div>
               {!rep.shift && (
                 <details className="how">
-                  <summary>¿Cómo se reparte entre los turnos?</summary>
-                  <p>Cada registro cuenta en el turno de su hora. Un código que pasó de un turno al otro cuenta en los dos, cada uno con lo suyo; su waste se reparte según lo hecho en cada turno. El tiempo nunca se detiene solo. Cuando ya pasó el rato entre un turno y el otro, si en una línea nadie registró nada en todo ese rato, ese rato no cuenta.</p>
+                  <summary>{tr('¿Cómo se reparte entre los turnos?')}</summary>
+                  <p>{tr('Cada registro cuenta en el turno de su hora. Un código que pasó de un turno al otro cuenta en los dos, cada uno con lo suyo; su waste se reparte según lo hecho en cada turno. El tiempo nunca se detiene solo. Cuando ya pasó el rato entre un turno y el otro, si en una línea nadie registró nada en todo ese rato, ese rato no cuenta.')}</p>
                 </details>
               )}
               <details className="how">
-                <summary>¿Qué es cada número?</summary>
-                <p><b>Duración</b> es el reloj: desde que empezó el primer código hasta que terminó el último. <b>Trabajando</b> y <b>Parado</b> son la suma de todas las líneas: tres líneas trabajando cinco horas cada una son quince horas. <b>Códigos</b> son los productos distintos. Una <b>corrida</b> es un código en una línea, desde que empieza hasta que termina: el mismo código en dos líneas son dos corridas. <b>Set up</b> es el tiempo entre un código y el siguiente en la misma línea.</p>
+                <summary>{tr('¿Qué es cada número?')}</summary>
+                <p>{trx('{0} es el reloj: desde que empezó el primer código hasta que terminó el último. {1} y {2} son la suma de todas las líneas: tres líneas trabajando cinco horas cada una son quince horas. {3} son los productos distintos. Una {4} es un código en una línea, desde que empieza hasta que termina: el mismo código en dos líneas son dos corridas. {5} es el tiempo entre un código y el siguiente en la misma línea.', <b>{tr('Duración')}</b>, <b>{tr('Trabajando')}</b>, <b>{tr('Parado')}</b>, <b>{tr('Códigos')}</b>, <b>{tr('corrida')}</b>, <b>Set up</b>)}</p>
               </details>
             </>
           )}
           {/* each code with its lots, the total of the code and the total of the room */}
-          <div className="sechead"><h3>Por código y lote</h3>{!(rep.code && rep.lot) && <small>Toca un código o un lote para ver solo eso.</small>}</div>
+          <div className="sechead"><h3>{tr('Por código y lote')}</h3>{!(rep.code && rep.lot) && <small>{tr('Toca un código o un lote para ver solo eso.')}</small>}</div>
           <div className="twrap">
             <table className="bycode">
-              <thead><tr><th>Código</th><th>Lote</th><th className="num">Hechas</th><th className="num">Cantidad</th>{!rep.shift && <><th className="num">Turno 1</th><th className="num">Turno 2</th></>}<th>En cajas</th><th className="num">Waste</th><th>Líneas</th></tr></thead>
+              <thead><tr><th>{tr('Código')}</th><th>{tr('Lote')}</th><th className="num">{tr('Hechas')}</th><th className="num">{tr('Cantidad')}</th>{!rep.shift && <><th className="num">{tr('Turno 1')}</th><th className="num">{tr('Turno 2')}</th></>}<th>{tr('En cajas')}</th><th className="num">Waste</th><th>{tr('Líneas')}</th></tr></thead>
               <tbody>
                 {rep.byDept.map((d) => {
                   const cfg = CFG[d.dept], q = cfg.qty !== 'none', b = rep.byShift.find((x) => x.dept === d.dept)
@@ -1796,7 +1799,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
                         <Fragment key={c.code}>
                           <tr className="crow">
                             <td>{rep.code ? <b className="code">{c.code}</b> : <button type="button" className="drill code" onClick={() => setFCode(c.code)}>{c.code}</button>}</td>
-                            <td>{c.lots.length === 1 ? lotBtn(c.lots[0].lot) : c.lots.length + ' lotes'}</td>
+                            <td>{c.lots.length === 1 ? lotBtn(c.lots[0].lot) : tr('{0} lotes', c.lots.length)}</td>
                             <td className="num">{unitsText(c.dept, c.units)}</td>
                             <td className="num">{qtyText(c.qty)}</td>
                             {c.byShift && <><td className="num">{dash(c.byShift[0])}</td><td className="num">{dash(c.byShift[1])}</td></>}
@@ -1812,7 +1815,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
                         </Fragment>
                       ))}
                       <tr className="trow">
-                        <td colSpan={2}>Total {d.dept}</td><td className="num">{unitsText(d.dept, d.units)}</td><td className="num">{qtyText(d.qty)}</td>
+                        <td colSpan={2}>{trx('Total {0}', d.dept)}</td><td className="num">{unitsText(d.dept, d.units)}</td><td className="num">{qtyText(d.qty)}</td>
                         {b && <><td className="num">{dash(q ? b.first.qty : b.first.units)}</td><td className="num">{dash(q ? b.second.qty : b.second.units)}</td></>}
                         <td></td><td className={'num' + (d.waste ? ' red' : '')}>{d.waste ? d.waste + ' lb' : '—'}</td><td></td>
                       </tr>
@@ -1825,7 +1828,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
           {/* what the "Parado" total is made of */}
           {rep.reasons.length > 0 && (
             <>
-              <h3>Parado por causa</h3>
+              <h3>{tr('Parado por causa')}</h3>
               <div className="reasons">
                 {rep.reasons.map((x) => (
                   <div key={x.reason} className="reason">
@@ -1836,17 +1839,17 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
               </div>
             </>
           )}
-          {secHead('runs', 'Corridas', rows.length)}
+          {secHead('runs', tr('Corridas'), rows.length)}
           {!shut.runs && (
             <>
         <div className="twrap">
           <table>
-            <thead><tr><th>Depto</th><th>Línea</th><th>Código</th><th>Lote</th>{!rep.shift && <th>Turno</th>}<th>Inicio</th><th>Fin</th><th>Hecho</th><th>Waste</th><th>Trabajando</th><th>Prom./unidad</th><th>Parado</th><th>Razones</th><th>Registró</th><th></th></tr></thead>
+            <thead><tr><th>{tr('Depto')}</th><th>{tr('Línea')}</th><th>{tr('Código')}</th><th>{tr('Lote')}</th>{!rep.shift && <th>{tr('Turno')}</th>}<th>{tr('Inicio')}</th><th>{tr('Fin')}</th><th>{tr('Hecho')}</th><th>Waste</th><th>{tr('Trabajando')}</th><th>{tr('Prom./unidad')}</th><th>{tr('Parado')}</th><th>{tr('Razones')}</th><th>{tr('Registró')}</th><th></th></tr></thead>
             <tbody>{cut('runs', rows).map((x) => (
               <tr key={x.r.id} className={x.r.endedAt ? '' : 'live'}>
-                <td>{x.r.dept}</td><td>{lineNameOf(s, x.r.lineId, x.r.line)}</td><td><b>{x.r.code}</b></td><td>{x.lots}</td>{!rep.shift && <td>{x.shifts}</td>}<td>{fmtTime(x.r.startedAt)}</td><td>{x.r.endedAt ? fmtTime(x.r.endedAt) : <i>en curso</i>}</td>
+                <td>{x.r.dept}</td><td>{lineNameOf(s, x.r.lineId, x.r.line)}</td><td><b>{x.r.code}</b></td><td>{x.lots}</td>{!rep.shift && <td>{x.shifts}</td>}<td>{fmtTime(x.r.startedAt)}</td><td>{x.r.endedAt ? fmtTime(x.r.endedAt) : <i>{tr('en curso')}</i>}</td>
                 <td>{madeText(x.view, x.qty, true)}</td><td className={x.waste ? 'red' : ''}>{x.waste ? x.waste + ' lb' : '—'}</td><td>{fmtDur(x.st.working)}</td><td>{x.timed ? fmtDur(x.st.avg) : '—'}</td><td className={x.st.down ? 'red' : ''}>{fmtDur(x.st.down)}</td><td>{reasonsText(x) || '—'}</td><td>{whoText(x.r)}</td>
-                <td>{can('fix') && canShift(who, x.shifts) && <button type="button" className="lnk" onClick={() => setEditRun(x.r.id)}>Corregir</button>}</td>
+                <td>{can('fix') && canShift(who, x.shifts) && <button type="button" className="lnk" onClick={() => setEditRun(x.r.id)}>{tr('Corregir')}</button>}</td>
               </tr>
             ))}</tbody>
           </table>
@@ -1858,12 +1861,12 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
       )}
       {unitRows.length > 0 && (
         <>
-          {secHead('units', 'Detalle por unidad', unitRows.length)}
+          {secHead('units', tr('Detalle por unidad'), unitRows.length)}
           {!shut.units && (
             <>
           <div className="twrap">
             <table>
-              <thead><tr><th>Hora</th>{!rep.shift && <th>Turno</th>}<th>Depto</th><th>Línea</th><th>Código</th><th>Lote</th><th>#</th><th>Unidad</th><th>Cantidad</th><th>Tag / bin</th>{withOrders && <th>Pedido</th>}<th>Desde la anterior</th><th>Registró</th></tr></thead>
+              <thead><tr><th>{tr('Hora')}</th>{!rep.shift && <th>{tr('Turno')}</th>}<th>{tr('Depto')}</th><th>{tr('Línea')}</th><th>{tr('Código')}</th><th>{tr('Lote')}</th><th>#</th><th>{tr('Unidad')}</th><th>{tr('Cantidad')}</th><th>{tr('Tag / bin')}</th>{withOrders && <th>{tr('Pedido')}</th>}<th>{tr('Desde la anterior')}</th><th>{tr('Registró')}</th></tr></thead>
               <tbody>{cut('units', unitRows).map((x) => (
                 <tr key={x.r.id + ':' + x.i + ':' + x.lot}>
                   <td>{fmtTime(x.u.at)}</td>{!rep.shift && <td>{x.shift}</td>}<td>{x.r.dept}</td><td>{lineNameOf(s, x.r.lineId, x.r.line)}</td><td><b>{x.r.code}</b></td><td>{x.lot}</td><td>{x.i + 1}</td><td>{CFG[x.r.dept].unit}</td>
@@ -1879,16 +1882,16 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
       )}
       {stops.length > 0 && (
         <>
-          {secHead('stops', 'Paros', stops.length)}
+          {secHead('stops', tr('Paros'), stops.length)}
           {!shut.stops && (
             <>
           <div className="twrap">
             <table>
-              <thead><tr><th>Depto</th><th>Línea</th><th>Razón</th><th>Detalle</th>{!rep.shift && <th>Turno</th>}<th>Inicio</th><th>Fin</th><th>Duración</th><th>Registró</th><th></th></tr></thead>
+              <thead><tr><th>{tr('Depto')}</th><th>{tr('Línea')}</th><th>{tr('Razón')}</th><th>{tr('Detalle')}</th>{!rep.shift && <th>{tr('Turno')}</th>}<th>{tr('Inicio')}</th><th>{tr('Fin')}</th><th>{tr('Duración')}</th><th>{tr('Registró')}</th><th></th></tr></thead>
               <tbody>{cut('stops', stops).map((x) => (
                 <tr key={x.id} className={x.endedAt ? '' : 'live'}>
-                  <td>{x.dept}</td><td>{lineName(x)}</td><td><b>{x.reason}</b></td><td>{x.note || '—'}</td>{!rep.shift && <td>{spanShifts(rep.plan, x.startedAt, x.endedAt ?? now)}</td>}<td>{fmtTime(x.startedAt)}</td><td>{x.endedAt ? fmtTime(x.endedAt) : <i>en curso</i>}</td><td>{fmtDur(x.ms)}</td><td>{x.by}</td>
-                  <td>{can('fix') && canShift(who, spanShifts(rep.plan, x.startedAt, x.endedAt ?? now)) && <button type="button" className="lnk" onClick={() => setEditStop(x.id)}>Corregir</button>}</td>
+                  <td>{x.dept}</td><td>{lineName(x)}</td><td><b>{x.reason}</b></td><td>{x.note || '—'}</td>{!rep.shift && <td>{spanShifts(rep.plan, x.startedAt, x.endedAt ?? now)}</td>}<td>{fmtTime(x.startedAt)}</td><td>{x.endedAt ? fmtTime(x.endedAt) : <i>{tr('en curso')}</i>}</td><td>{fmtDur(x.ms)}</td><td>{x.by}</td>
+                  <td>{can('fix') && canShift(who, spanShifts(rep.plan, x.startedAt, x.endedAt ?? now)) && <button type="button" className="lnk" onClick={() => setEditStop(x.id)}>{tr('Corregir')}</button>}</td>
                 </tr>
               ))}</tbody>
             </table>
@@ -1900,52 +1903,52 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
       )}
       {changes.length > 0 && (
         <>
-          {secHead('changes', 'Cambios y correcciones', changes.length)}
+          {secHead('changes', tr('Cambios y correcciones'), changes.length)}
           {!shut.changes && (
             <>
           <div className="twrap">
             <table className="changes">
-              <thead><tr><th>Hora</th><th>Quién</th><th>Depto</th><th>Qué</th><th>Antes</th><th>Después</th></tr></thead>
+              <thead><tr><th>{tr('Hora')}</th><th>{tr('Quién')}</th><th>{tr('Depto')}</th><th>{tr('Qué')}</th><th>{tr('Antes')}</th><th>{tr('Después')}</th></tr></thead>
               <tbody>{cut('changes', changes).map((c) => (
                 <tr key={c.id}><td>{fmtTime(c.at)}</td><td>{c.by}</td><td>{c.dept ?? '—'}</td><td>{c.what}</td><td className={c.before ? 'was' : ''}>{c.before || '—'}</td><td><b>{c.after || '—'}</b></td></tr>
               ))}</tbody>
             </table>
           </div>
           {moreBar('changes', changes.length)}
-          <p className="hint">Cada corrección, cambio en la tabla de productos, en el programa del día o en las líneas queda aquí con quién lo hizo y a qué hora. Lo normal del día (carros, mezclas, paros) no sale aquí: ya lleva el nombre de quien lo registró.</p>
+          <p className="hint">{tr('Cada corrección, cambio en la tabla de productos, en el programa del día o en las líneas queda aquí con quién lo hizo y a qué hora. Lo normal del día (carros, mezclas, paros) no sale aquí: ya lleva el nombre de quien lo registró.')}</p>
             </>
           )}
         </>
       )}
-      <p className="hint foot">{supabase ? 'Todo se guarda en el servidor y se ve en vivo desde la oficina, el teléfono o la PC.' : 'Demo guardado en este dispositivo. La versión completa manda todo en vivo al manager (oficina, teléfono o PC) y exporta a Excel, PDF y Google Sheets como la Hoja de Freezer RTE.'}</p>
+      <p className="hint foot">{supabase ? tr('Todo se guarda en el servidor y se ve en vivo desde la oficina, el teléfono o la PC.') : tr('Demo guardado en este dispositivo. La versión completa manda todo en vivo al manager (oficina, teléfono o PC) y exporta a Excel, PDF y Google Sheets como la Hoja de Freezer RTE.')}</p>
       {runToEdit && <RunEditor s={s} run={runToEdit} mgr={can('fix')} onClose={() => setEditRun(null)} />}
       {stopToEdit && <StopEditor stop={stopToEdit} mgr={can('fix')} onClose={() => setEditStop(null)} />}
       {mgr && (
         <div className="btns">
-          {!supabase && <button type="button" className="lnk" onClick={() => setClearing(true)}>Reiniciar registros (conserva productos y líneas)</button>}
-          <button type="button" className="lnk" onClick={() => setResetting(true)}>{supabase ? 'Limpiar este aparato y volver a bajar del servidor' : 'Borrar todo'}</button>
-          {!supabase && <button type="button" className="lnk" onClick={() => { setNewPin(''); setPinOpen(true) }}>Cambiar código de manager</button>}
-          {supabase && <button type="button" className="lnk" onClick={() => setUploading(true)}>Subir al servidor los registros de este aparato</button>}
-          {admin && runs.length + stops.length > 0 && <button type="button" className="lnk" onClick={() => setWiping(true)}>Borrar todo lo registrado este día (pruebas)</button>}
+          {!supabase && <button type="button" className="lnk" onClick={() => setClearing(true)}>{tr('Reiniciar registros (conserva productos y líneas)')}</button>}
+          <button type="button" className="lnk" onClick={() => setResetting(true)}>{supabase ? tr('Limpiar este aparato y volver a bajar del servidor') : tr('Borrar todo')}</button>
+          {!supabase && <button type="button" className="lnk" onClick={() => { setNewPin(''); setPinOpen(true) }}>{tr('Cambiar código de manager')}</button>}
+          {supabase && <button type="button" className="lnk" onClick={() => setUploading(true)}>{tr('Subir al servidor los registros de este aparato')}</button>}
+          {admin && runs.length + stops.length > 0 && <button type="button" className="lnk" onClick={() => setWiping(true)}>{tr('Borrar todo lo registrado este día (pruebas)')}</button>}
         </div>
       )}
       {wiping && <WipeDayDialog s={s} date={date} onClose={() => setWiping(false)} onDone={setNotice} />}
-      {uploading && <ConfirmDialog title="¿Subir al servidor todo lo que tiene este aparato?" text="Corridas, paros, líneas, productos y programado de este aparato se mandan al servidor (lo que ya estaba allá se conserva si es más nuevo). Útil una sola vez por tablet, para traer los días del piloto." yes="Subir" onYes={() => { const n = uploadAll(); setUploading(false); setNotice({ title: n + ' registros en cola', text: 'Se envían en cuanto hay señal. El punto junto a tu nombre dice "Sincronizado" cuando terminó.' }) }} onNo={() => setUploading(false)} />}
+      {uploading && <ConfirmDialog title={tr('¿Subir al servidor todo lo que tiene este aparato?')} text={tr('Corridas, paros, líneas, productos y programado de este aparato se mandan al servidor (lo que ya estaba allá se conserva si es más nuevo). Útil una sola vez por tablet, para traer los días del piloto.')} yes={tr('Subir')} onYes={() => { const n = uploadAll(); setUploading(false); setNotice({ title: tr('{0} registros en cola', n), text: tr('Se envían en cuanto hay señal. El punto junto a tu nombre dice "Sincronizado" cuando terminó.') }) }} onNo={() => setUploading(false)} />}
       {notice && <NoticeDialog title={notice.title} text={notice.text} onClose={() => setNotice(null)} />}
       {pinOpen && (
         <div className="veil" onClick={() => setPinOpen(false)}>
           <div className="dlg" onClick={(e) => e.stopPropagation()}>
-            <h3>Código de manager</h3>
-            <p>Con este código se entra como manager en este dispositivo (ve todos los departamentos, el Avance y puede borrar datos).</p>
+            <h3>{tr('Código de manager')}</h3>
+            <p>{tr('Con este código se entra como manager en este dispositivo (ve todos los departamentos, el Avance y puede borrar datos).')}</p>
             <form className="qform" onSubmit={(e) => { e.preventDefault(); if (newPin.trim().length >= 4) { managerPin.set(newPin.trim()); setPinOpen(false) } }}>
-              <label>Nuevo código (mínimo 4) <input autoFocus inputMode="numeric" value={newPin} onChange={(e) => setNewPin(e.target.value)} autoComplete="off" /></label>
-              <div className="dbtns"><button type="button" className="btn" onClick={() => setPinOpen(false)}>Cancelar</button><button type="submit" className="btn primary" disabled={newPin.trim().length < 4}>Guardar</button></div>
+              <label>{tr('Nuevo código (mínimo 4)')}{' '}<input autoFocus inputMode="numeric" value={newPin} onChange={(e) => setNewPin(e.target.value)} autoComplete="off" /></label>
+              <div className="dbtns"><button type="button" className="btn" onClick={() => setPinOpen(false)}>{tr('Cancelar')}</button><button type="submit" className="btn primary" disabled={newPin.trim().length < 4}>{tr('Guardar')}</button></div>
             </form>
           </div>
         </div>
       )}
-      {clearing && <ConfirmDialog title="¿Reiniciar los registros?" text="Se borran las corridas, los paros y lo programado de todos los días. La tabla de productos y las líneas se quedan. No se puede deshacer." yes="Reiniciar" danger onYes={() => { resetRecords(); setClearing(false) }} onNo={() => setClearing(false)} />}
-      {resetting && <ConfirmDialog title={supabase ? '¿Limpiar este aparato?' : '¿Borrar todos los datos de este dispositivo?'} text={supabase ? 'Se vacía lo guardado en este aparato y se vuelve a bajar todo del servidor. Lo que esté en el servidor no se toca; lo que este aparato no haya subido todavía se pierde.' : 'Se borran las líneas, los registros, los paros, lo programado y la tabla de productos. No se puede deshacer.'} yes={supabase ? 'Limpiar y bajar' : 'Borrar todo'} danger onYes={() => { reset(); setResetting(false) }} onNo={() => setResetting(false)} />}
+      {clearing && <ConfirmDialog title={tr('¿Reiniciar los registros?')} text={tr('Se borran las corridas, los paros y lo programado de todos los días. La tabla de productos y las líneas se quedan. No se puede deshacer.')} yes={tr('Reiniciar')} danger onYes={() => { resetRecords(); setClearing(false) }} onNo={() => setClearing(false)} />}
+      {resetting && <ConfirmDialog title={supabase ? tr('¿Limpiar este aparato?') : tr('¿Borrar todos los datos de este dispositivo?')} text={supabase ? tr('Se vacía lo guardado en este aparato y se vuelve a bajar todo del servidor. Lo que esté en el servidor no se toca; lo que este aparato no haya subido todavía se pierde.') : tr('Se borran las líneas, los registros, los paros, lo programado y la tabla de productos. No se puede deshacer.')} yes={supabase ? tr('Limpiar y bajar') : tr('Borrar todo')} danger onYes={() => { reset(); setResetting(false) }} onNo={() => setResetting(false)} />}
     </section>
   )
 }

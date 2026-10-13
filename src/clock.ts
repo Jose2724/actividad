@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { tr } from './i18n'
 
 /**
  * One clock for every device.
@@ -124,8 +125,8 @@ export function startClock() {
 export function clockOffText(off = offset): string {
   const s = Math.abs(off) / 1000
   if (s < 60) return ''
-  const much = s < 5400 ? Math.round(s / 60) + ' min' : s < 172_800 ? String(Math.round(s / 360) / 10).replace('.', ',') + ' h' : Math.round(s / 86_400) + ' días'
-  return much + (off < 0 ? ' adelantado' : ' atrasado')
+  const much = s < 5400 ? Math.round(s / 60) + ' min' : s < 172_800 ? String(Math.round(s / 360) / 10).replace('.', ',') + ' h' : tr('{0} días', Math.round(s / 86_400))
+  return much + (off < 0 ? ' ' + tr('adelantado') : ' ' + tr('atrasado'))
 }
 
 // ---- the time zone: every hour and date on the screen is the device's own ----
@@ -134,7 +135,7 @@ export const PLANT_ZONE = (import.meta.env.VITE_PLANT_ZONE as string | undefined
 const formats = new Map<string, Intl.DateTimeFormat>()
 const formatOf = (zone: string) => {
   let f = formats.get(zone)
-  if (!f) { f = new Intl.DateTimeFormat('en-US', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }); formats.set(zone, f) }
+  if (!f) { f = new Intl.DateTimeFormat(tr('en-US'), { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }); formats.set(zone, f) }
   return f
 }
 /** how many minutes a zone is ahead of universal time at a moment (−240 for the plant in summer, −300 in winter) */

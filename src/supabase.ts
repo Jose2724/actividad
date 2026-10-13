@@ -1,5 +1,6 @@
 import { createClient, isAuthRetryableFetchError, type SupabaseClient } from '@supabase/supabase-js'
 import { cleanPowers, cleanShift, type Power } from './powers'
+import { tr } from './i18n'
 
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
@@ -33,7 +34,7 @@ function patient(input: RequestInfo | URL, init?: RequestInit): Promise<Response
   const stop = new AbortController(), late = setTimeout(() => stop.abort(), patience.ms)
   return fetch(input, { ...init, signal: stop.signal }).finally(() => clearTimeout(late))
 }
-const notNow = (why: string) => new Response(JSON.stringify({ message: 'La sesión no se pudo renovar ahora (' + why + ')' }), { status: 503, headers: { 'Content-Type': 'application/json' } })
+const notNow = (why: string) => new Response(JSON.stringify({ message: tr('La sesión no se pudo renovar ahora ({0}', why) + ')' }), { status: 503, headers: { 'Content-Type': 'application/json' } })
 /**
  * Every request of the library goes through here. None waits for ever (see patience), and it touches the two answers
  * that decide whether a person stays signed in:
@@ -50,7 +51,7 @@ const notNow = (why: string) => new Response(JSON.stringify({ message: 'La sesi�
 export async function sessionFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const u = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
   const token = isTokenUrl(u), renewal = token && u.includes('grant_type=refresh_token')
-  if (renewal && stopwatch() < holdUntil) return notNow('en espera')
+  if (renewal && stopwatch() < holdUntil) return notNow(tr('en espera'))
   const res = await patient(input, init)
   if (!token) return res
   try {

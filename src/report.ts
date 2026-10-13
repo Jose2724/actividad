@@ -1,4 +1,5 @@
 import { CFG, DEPTS, lineNameOf, normCode, orderLabel, orderOfId, plainDay, runInShift, runStats, SETUP, shiftAt, shiftPieces, shiftsOf, stopSpans, unitQty, waitsForCode, type Dept, type Run, type ShiftHours, type State, type Unit } from './store'
+import { tr } from './i18n'
 
 /**
  * The day's report, as the tables on screen and in every file made from them (Excel, CSV, PDF): one place decides
@@ -130,5 +131,5 @@ export function reportOf(s: State, date: string, now: number, f: ReportFilter = 
   return { runs, rows, unitRows, stops, byCode, byShift, byDept, reasons, distinct, lines, working: rows.reduce((t, x) => t + x.st.working, 0), down: rows.reduce((t, x) => t + x.st.down, 0), setup: setupOf(shift), codes, lots, code, lot, shift, plan, filtered }
 }
 /** the words a filtered report carries in its title and in the name of its files */
-export const filterTitle = (code: string, lot: string, shift: 0 | 1 | 2 = 0) => (shift ? ' · Turno ' + shift : '') + (code ? ' · código ' + code : '') + (lot ? ' · lote ' + lot : '')
-export const filterFile = (code: string, lot: string, shift: 0 | 1 | 2 = 0) => { const clean = (t: string) => t.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, ''); return (shift ? '-turno' + shift : '') + (code ? '-cod-' + clean(code) : '') + (lot ? '-lote-' + clean(lot) : '') }
+export const filterTitle = (code: string, lot: string, shift: 0 | 1 | 2 = 0) => (shift ? ' ' + tr('· Turno {0}', shift) : '') + (code ? ' ' + tr('· código {0}', code) : '') + (lot ? ' ' + tr('· lote {0}', lot) : '')
+export const filterFile = (code: string, lot: string, shift: 0 | 1 | 2 = 0) => { const clean = (t: string) => t.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, ''); return (shift ? '-turno' + shift : '') + (code ? '-cod-' + clean(code) : '') + (lot ? tr('-lote-') + clean(lot) : '') }

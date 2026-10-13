@@ -1,5 +1,6 @@
 import { storageFull } from './storage'
 import { noSignal, supabase } from './supabase'
+import { tr } from './i18n'
 
 /**
  * Every change is saved on the device first and queued here; the queue is sent whenever there is signal. One entry
@@ -110,9 +111,9 @@ async function pass(): Promise<FlushResult> {
         error = (e.code ? e.code + ' ' : '') + e.message + (e.details ? ' · ' + e.details : '') + ' [' + it.table + ']'
         console.warn('actividad sync', it.table, e)
         const v = verdict(String(e.code ?? ''), e.message ?? '')
-        if (v === 'notReady') { waiting.add(it.table); error = 'Falta ejecutar en Supabase el SQL de ' + it.table; continue }
+        if (v === 'notReady') { waiting.add(it.table); error = tr('Falta ejecutar en Supabase el SQL de {0}', it.table); continue }
         // a row of a room this person may not write will never be taken: it is dropped so it does not sit in the queue for ever
-        if (v === 'refused') { drop(it.table, it.key); error += ' · descartado'; continue }
+        if (v === 'refused') { drop(it.table, it.key); error += ' ' + tr('· descartado'); continue }
         if (v === 'bad') { skipped.add(it.table + '|' + it.key); continue }
         break
       }

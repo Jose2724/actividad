@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { applyDraft, byLineName, byShip, CFG, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, setUnitOrder, splitStop, updateRun, updateStop, type Run, type State, type Stop } from './store'
 import { clockNow } from './clock'
 import { ConfirmDialog, LotsDialog, useCan } from './App'
+import { tr } from './i18n'
+import { trx } from './trx'
 
 /** "HH:MM" of a moment */
 const hm = (ms: number) => { const d = new Date(ms); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') }
@@ -36,20 +38,20 @@ export function RunEditor({ s, run, mgr, onClose }: { s: State; run: Run; mgr: b
   const [lineId, setLineId] = useState(run.lineId)
   const [problem, setProblem] = useState('')
   const save = () => {
-    if (lineId !== run.lineId && !moveRun(run.id, lineId)) { setProblem('No se pudo pasar a esa línea: a esa hora tenía otro código, o ahora mismo está parada o en Set up.'); return }
+    if (lineId !== run.lineId && !moveRun(run.id, lineId)) { setProblem(tr('No se pudo pasar a esa línea: a esa hora tenía otro código, o ahora mismo está parada o en Set up.')); return }
     applyDraft(run.id, opened, { code, lot, date, per, waste, units })
     onClose()
   }
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg wide" onClick={(e) => e.stopPropagation()}>
-        <h3>Corregir · {run.code} · {lineNameOf(s, run.lineId, run.line)}</h3>
+        <h3>{trx('Corregir · {0} · {1}', run.code, lineNameOf(s, run.lineId, run.line))}</h3>
         <div className="egrid">
-          <label>Código <input value={code} onChange={(e) => setCode(e.target.value)} autoComplete="off" /></label>
-          <label>Lote <input value={lot} onChange={(e) => setLot(e.target.value)} inputMode="numeric" autoComplete="off" /></label>
-          <label>Fecha <input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label>
+          <label>{tr('Código')}{' '}<input value={code} onChange={(e) => setCode(e.target.value)} autoComplete="off" /></label>
+          <label>{tr('Lote')}{' '}<input value={lot} onChange={(e) => setLot(e.target.value)} inputMode="numeric" autoComplete="off" /></label>
+          <label>{tr('Fecha')}{' '}<input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label>
           {mgr && lines.length > 1 && (
-            <label>{cfg.lineWord} <small>(si se registró en otra)</small>
+            <label>{cfg.lineWord} <small>{tr('(si se registró en otra)')}</small>
               <select value={lineId} onChange={(e) => { setLineId(e.target.value); setProblem('') }}>
                 {!lines.some((l) => l.id === run.lineId) && <option value={run.lineId}>{run.line}</option>}
                 {lines.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
@@ -57,45 +59,45 @@ export function RunEditor({ s, run, mgr, onClose }: { s: State; run: Run; mgr: b
             </label>
           )}
           {cfg.perUnitLabel && <label>{cfg.perUnitLabel} <input value={per} onChange={(e) => setPer(e.target.value.replace(/\D/g, ''))} inputMode="numeric" autoComplete="off" /></label>}
-          {cfg.waste && <label>Waste (lb) <input value={waste} onChange={(e) => setWaste(e.target.value.replace(/[^\d.,]/g, ''))} inputMode="decimal" autoComplete="off" /></label>}
+          {cfg.waste && <label>{tr('Waste (lb)')}{' '}<input value={waste} onChange={(e) => setWaste(e.target.value.replace(/[^\d.,]/g, ''))} inputMode="decimal" autoComplete="off" /></label>}
         </div>
         {units.length > 0 && (
           <div className="twrap">
             <table>
-              <thead><tr><th>#</th><th>Hora</th>{cfg.qty !== 'none' && <th>{cfg.qtyUnit}</th>}{cfg.lots && <th>Lotes</th>}{cfg.refLabel && <th>{cfg.refLabel}</th>}{withOrders && <th>Pedido</th>}<th>Por</th><th></th></tr></thead>
+              <thead><tr><th>#</th><th>{tr('Hora')}</th>{cfg.qty !== 'none' && <th>{cfg.qtyUnit}</th>}{cfg.lots && <th>{tr('Lotes')}</th>}{cfg.refLabel && <th>{cfg.refLabel}</th>}{withOrders && <th>{tr('Pedido')}</th>}<th>{tr('Por')}</th><th></th></tr></thead>
               <tbody>{units.map((u, i) => (
                 <tr key={u.at + ':' + i}>
                   <td>{i + 1}</td><td>{fmtTime(u.at)}</td>
-                  {cfg.qty !== 'none' && <td><input className="num" inputMode="numeric" value={u.qty} disabled={!!u.lots?.length} title={u.lots?.length ? 'Es la suma de sus lotes' : ''} onChange={(e) => setUnits(units.map((x, k) => (k === i ? { ...x, qty: e.target.value.replace(/\D/g, '') } : x)))} /></td>}
-                  {cfg.lots && <td>{u.lots?.length ? lotsText(u.lots) : <small>{lot || '—'}</small>} <button type="button" className="lnk" title="Cambiar los lotes de esta unidad" onClick={() => setLotsOf(i)}>✎</button></td>}
+                  {cfg.qty !== 'none' && <td><input className="num" inputMode="numeric" value={u.qty} disabled={!!u.lots?.length} title={u.lots?.length ? tr('Es la suma de sus lotes') : ''} onChange={(e) => setUnits(units.map((x, k) => (k === i ? { ...x, qty: e.target.value.replace(/\D/g, '') } : x)))} /></td>}
+                  {cfg.lots && <td>{u.lots?.length ? lotsText(u.lots) : <small>{lot || '—'}</small>} <button type="button" className="lnk" title={tr('Cambiar los lotes de esta unidad')} onClick={() => setLotsOf(i)}>✎</button></td>}
                   {cfg.refLabel && <td><input className="num" value={u.ref} onChange={(e) => setUnits(units.map((x, k) => (k === i ? { ...x, ref: e.target.value } : x)))} autoComplete="off" /></td>}
                   {withOrders && (() => {
                     const po = run.units.find((x) => x.at === u.at)?.po, known = po && s.orders.some((o) => o.id === po) ? po : ''
-                    return <td><select value={known} onChange={(e) => setUnitOrder(run.id, u.at, e.target.value)}><option value="">Sin pedido</option>{ordersFor(po).map((o) => <option key={o.id} value={o.id}>{orderLabel(o)}</option>)}</select></td>
+                    return <td><select value={known} onChange={(e) => setUnitOrder(run.id, u.at, e.target.value)}><option value="">{tr('Sin pedido')}</option>{ordersFor(po).map((o) => <option key={o.id} value={o.id}>{orderLabel(o)}</option>)}</select></td>
                   })()}
                   <td>{u.by || '—'}</td>
-                  <td><button type="button" className="lnk" title="Quitar esta unidad" onClick={() => setUnits(units.filter((_, k) => k !== i))}>✕</button></td>
+                  <td><button type="button" className="lnk" title={tr('Quitar esta unidad')} onClick={() => setUnits(units.filter((_, k) => k !== i))}>✕</button></td>
                 </tr>
               ))}</tbody>
             </table>
           </div>
         )}
-        <p className="hint">Quita con ✕ una unidad tocada de más. Los cambios quedan al tocar Guardar.{later > 0 && ' Mientras corregías se ' + (later === 1 ? 'registró 1 ' + cfg.unit.toLowerCase() + ' más: se conserva.' : 'registraron ' + later + ' ' + cfg.plural.toLowerCase() + ' más: se conservan.')}</p>
-        {can('del') && <p className="hint">Si la línea no estaba trabajando y se tocó por error, "Borrar corrida" la saca del reporte. Todo cambio queda en el historial con tu nombre.</p>}
+        <p className="hint">{tr('Quita con ✕ una unidad tocada de más. Los cambios quedan al tocar Guardar.')}{later > 0 && ' ' + tr('Mientras corregías se {0}', (later === 1 ? tr('registró 1 {0} más: se conserva.', cfg.unit.toLowerCase()) : tr('registraron {0} {1} más: se conservan.', later, cfg.plural.toLowerCase())))}</p>
+        {can('del') && <p className="hint">{tr('Si la línea no estaba trabajando y se tocó por error, "Borrar corrida" la saca del reporte. Todo cambio queda en el historial con tu nombre.')}</p>}
         {problem && <span className="err">{problem}</span>}
         <div className="dbtns spread">
           <div className="btns">
-            {run.endedAt && <button type="button" className="btn" disabled={lineBusy} title={lineBusy ? 'La línea ya corre otro código' : ''} onClick={() => { updateRun(run.id, { endedAt: null }); onClose() }}>Reabrir código</button>}
-            {can('del') && <button type="button" className="btn danger" onClick={() => setDropping(true)}>🗑 Borrar corrida</button>}
+            {run.endedAt && <button type="button" className="btn" disabled={lineBusy} title={lineBusy ? tr('La línea ya corre otro código') : ''} onClick={() => { updateRun(run.id, { endedAt: null }); onClose() }}>{tr('Reabrir código')}</button>}
+            {can('del') && <button type="button" className="btn danger" onClick={() => setDropping(true)}>{tr('🗑 Borrar corrida')}</button>}
           </div>
           <div className="btns">
-            <button type="button" className="btn" onClick={onClose}>Cancelar</button>
-            <button type="button" className="btn primary" onClick={save}>Guardar</button>
+            <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
+            <button type="button" className="btn primary" onClick={save}>{tr('Guardar')}</button>
           </div>
         </div>
-        {lotsOf != null && units[lotsOf] && <LotsDialog title={'Lotes de ' + cfg.unit.toLowerCase() + ' ' + (lotsOf + 1)} unit={cfg.qtyUnit} refLabel={cfg.refLabel} lot={lot.trim()} qty={units[lotsOf].qty.trim() ? Number(units[lotsOf].qty) : null} start={units[lotsOf].lots} startRef={units[lotsOf].ref} onClose={() => setLotsOf(null)}
+        {lotsOf != null && units[lotsOf] && <LotsDialog title={tr('Lotes de {0} {1}', cfg.unit.toLowerCase(), (lotsOf + 1))} unit={cfg.qtyUnit} refLabel={cfg.refLabel} lot={lot.trim()} qty={units[lotsOf].qty.trim() ? Number(units[lotsOf].qty) : null} start={units[lotsOf].lots} startRef={units[lotsOf].ref} onClose={() => setLotsOf(null)}
           onPick={(total, ref, lots) => { setUnits(units.map((x, k) => { if (k !== lotsOf) return x; const { lots: _was, ...bare } = x; return { ...bare, qty: String(total), ref, ...(lots ? { lots } : {}) } })); setLotsOf(null) }} />}
-        {dropping && <ConfirmDialog title={'¿Borrar la corrida de ' + run.code + '?'} text="Se borran sus unidades y su waste. No se puede deshacer." yes="Borrar" danger onYes={() => { deleteRun(run.id); onClose() }} onNo={() => setDropping(false)} />}
+        {dropping && <ConfirmDialog title={tr('¿Borrar la corrida de {0}', run.code) + '?'} text={tr('Se borran sus unidades y su waste. No se puede deshacer.')} yes={tr('Borrar')} danger onYes={() => { deleteRun(run.id); onClose() }} onNo={() => setDropping(false)} />}
       </div>
     </div>
   )
@@ -134,25 +136,25 @@ export function StopEditor({ stop, mgr, onClose }: { stop: Stop; mgr: boolean; o
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
-        <h3>Corregir paro · {stop.dept}</h3>
+        <h3>{trx('Corregir paro · {0}', stop.dept)}</h3>
         <div className="chips">{[...reasons, 'Otra'].map((r) => <button key={r} type="button" className={'chip' + (reason === r ? ' on' : '')} onClick={() => setReason(r)}>{r}</button>)}</div>
-        {reason === 'Otra' && <input placeholder="Escribe la razón" value={other} onChange={(e) => setOther(e.target.value)} />}
-        <input placeholder="Detalle (opcional)" value={note} onChange={(e) => setNote(e.target.value)} />
+        {reason === 'Otra' && <input placeholder={tr('Escribe la razón')} value={other} onChange={(e) => setOther(e.target.value)} />}
+        <input placeholder={tr('Detalle (opcional)')} value={note} onChange={(e) => setNote(e.target.value)} />
         <div className="egrid">
-          <label>Inicio <input type="time" value={start} onChange={(e) => setStart(e.target.value)} /></label>
-          {stop.endedAt != null && <label>Fin <input type="time" value={end} onChange={(e) => setEnd(e.target.value)} /></label>}
+          <label>{tr('Inicio')}{' '}<input type="time" value={start} onChange={(e) => setStart(e.target.value)} /></label>
+          {stop.endedAt != null && <label>{tr('Fin')}{' '}<input type="time" value={end} onChange={(e) => setEnd(e.target.value)} /></label>}
         </div>
         <div className="dbtns spread">
           <div className="btns">
-            {mgr && <button type="button" className="lnk" onClick={() => setDividing(true)}>✂ Dividir en dos causas</button>}
-            {can('del') && <button type="button" className="btn danger" onClick={() => setDropping(true)}>🗑 Borrar paro</button>}
+            {mgr && <button type="button" className="lnk" onClick={() => setDividing(true)}>{tr('✂ Dividir en dos causas')}</button>}
+            {can('del') && <button type="button" className="btn danger" onClick={() => setDropping(true)}>{tr('🗑 Borrar paro')}</button>}
           </div>
           <div className="btns">
-            <button type="button" className="btn" onClick={onClose}>Cancelar</button>
-            <button type="button" className="btn primary" disabled={!ok} onClick={save}>Guardar</button>
+            <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
+            <button type="button" className="btn primary" disabled={!ok} onClick={save}>{tr('Guardar')}</button>
           </div>
         </div>
-        {dropping && <ConfirmDialog title="¿Borrar este paro?" text="Deja de contar como tiempo parado. No se puede deshacer." yes="Borrar" danger onYes={() => { deleteStop(stop.id); onClose() }} onNo={() => setDropping(false)} />}
+        {dropping && <ConfirmDialog title={tr('¿Borrar este paro?')} text={tr('Deja de contar como tiempo parado. No se puede deshacer.')} yes={tr('Borrar')} danger onYes={() => { deleteStop(stop.id); onClose() }} onNo={() => setDropping(false)} />}
       </div>
     </div>
   )
@@ -180,23 +182,23 @@ function StopSplitter({ stop, onBack, onClose }: { stop: Stop; onBack: () => voi
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
-        <h3>Dividir paro · {stop.dept}</h3>
-        {total < 2 ? <p>Este paro dura menos de dos minutos: no hay tiempo que dividir.</p> : (
+        <h3>{trx('Dividir paro · {0}', stop.dept)}</h3>
+        {total < 2 ? <p>{tr('Este paro dura menos de dos minutos: no hay tiempo que dividir.')}</p> : (
           <>
-            <p><b>{stop.reason}</b> · {fmtTime(stop.startedAt)} – {stop.endedAt ? fmtTime(stop.endedAt) : 'en curso'} · {fmtDur(end - stop.startedAt)}</p>
-            <label className="splitmins">¿Cuántos minutos fueron por <b>{stop.reason}</b>? <input className="num" inputMode="numeric" value={mins} onChange={(e) => setMins(e.target.value.replace(/\D/g, ''))} /> <small>de {total}</small></label>
-            <p>El resto fue por:</p>
+            <p><b>{stop.reason}</b> · {fmtTime(stop.startedAt)} – {stop.endedAt ? fmtTime(stop.endedAt) : tr('en curso')} · {fmtDur(end - stop.startedAt)}</p>
+            <label className="splitmins">{trx('¿Cuántos minutos fueron por {0}?', <b>{stop.reason}</b>)}{' '}<input className="num" inputMode="numeric" value={mins} onChange={(e) => setMins(e.target.value.replace(/\D/g, ''))} /> <small>{trx('de {0}', total)}</small></label>
+            <p>{tr('El resto fue por:')}</p>
             <div className="chips">{[...reasons, 'Otra'].map((r) => <button key={r} type="button" className={'chip' + (reason === r ? ' on' : '')} onClick={() => setReason(r)}>{r}</button>)}</div>
-            {reason === 'Otra' && <input placeholder="Escribe la razón" value={other} onChange={(e) => setOther(e.target.value)} />}
-            <input placeholder="Detalle (opcional)" value={note} onChange={(e) => setNote(e.target.value)} />
+            {reason === 'Otra' && <input placeholder={tr('Escribe la razón')} value={other} onChange={(e) => setOther(e.target.value)} />}
+            <input placeholder={tr('Detalle (opcional)')} value={note} onChange={(e) => setNote(e.target.value)} />
             {fits
-              ? <p className="splitsum">Queda así: <b>{stop.reason}</b> {fmtTime(stop.startedAt)} – {fmtTime(cut)} ({first} min) · <b>{second || '…'}</b> {fmtTime(cut)} – {stop.endedAt ? fmtTime(stop.endedAt) : 'en curso'} ({stop.endedAt ? total - first + ' min' : 'sigue'})</p>
-              : <p className="err">Escribe un número entre 1 y {total - 1}.</p>}
+              ? <p className="splitsum">{trx('Queda así: {0} {1} – {2} ({3} min) · {4} {5} – {6} ({7})', <b>{stop.reason}</b>, fmtTime(stop.startedAt), fmtTime(cut), first, <b>{second || '…'}</b>, fmtTime(cut), stop.endedAt ? fmtTime(stop.endedAt) : tr('en curso'), stop.endedAt ? total - first + ' min' : tr('sigue'))}</p>
+              : <p className="err">{trx('Escribe un número entre 1 y {0}.', total - 1)}</p>}
           </>
         )}
         <div className="dbtns">
-          <button type="button" className="btn" onClick={onBack}>Volver</button>
-          <button type="button" className="btn primary" disabled={!ok || total < 2} onClick={go}>✂ Dividir</button>
+          <button type="button" className="btn" onClick={onBack}>{tr('Volver')}</button>
+          <button type="button" className="btn primary" disabled={!ok || total < 2} onClick={go}>{tr('✂ Dividir')}</button>
         </div>
       </div>
     </div>

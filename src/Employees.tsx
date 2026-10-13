@@ -3,14 +3,16 @@ import { missingColumn, rowRights, supabase } from './supabase'
 import { cleanPowers, defaultPowers, POWERS, type Power } from './powers'
 import { DEPTS } from './store'
 import { ConfirmDialog } from './App'
+import { tr } from './i18n'
+import { trx } from './trx'
 
 type Emp = { id: string; user_id?: string | null; name: string; username: string | null; role: string; active: boolean; act_role: 'op' | 'mgr' | 'office' | null; act_dept: string | null; deleted?: boolean; act_powers?: string[] | null; act_shift?: number | null }
 const ERRORS: Record<string, string> = {
-  not_signed_in: 'No hay sesión.', not_manager: 'Solo un manager puede hacer esto.', bad_name: 'Falta el nombre.', bad_username: 'Usuario: 3 a 30 letras, números, punto o guion, sin espacios.',
-  bad_pin: 'PIN: de 6 a 12 números.', bad_dept: 'Un operador necesita departamento.', username_taken: 'Ese usuario ya existe.', not_found: 'No se encontró.', owner_protected: 'Esa cuenta no se puede tocar.', not_self: 'No puedes quitarte el acceso a ti mismo.', owner_only: 'Los poderes de un manager solo los cambia el dueño.', no_columns: 'Falta aplicar el cambio de poderes en la base de datos.', unknown_action: 'Falta actualizar la función de usuarios en el servidor.',
+  not_signed_in: tr('No hay sesión.'), not_manager: tr('Solo un manager puede hacer esto.'), bad_name: tr('Falta el nombre.'), bad_username: tr('Usuario: 3 a 30 letras, números, punto o guion, sin espacios.'),
+  bad_pin: tr('PIN: de 6 a 12 números.'), bad_dept: tr('Un operador necesita departamento.'), username_taken: tr('Ese usuario ya existe.'), not_found: tr('No se encontró.'), owner_protected: tr('Esa cuenta no se puede tocar.'), not_self: tr('No puedes quitarte el acceso a ti mismo.'), owner_only: tr('Los poderes de un manager solo los cambia el dueño.'), no_columns: tr('Falta aplicar el cambio de poderes en la base de datos.'), unknown_action: tr('Falta actualizar la función de usuarios en el servidor.'),
 }
 
-const ROLE: Record<string, string> = { op: 'Operador', mgr: 'Manager', office: 'Oficina' }
+const ROLE: Record<string, string> = { op: tr('Operador'), mgr: tr('Manager'), office: tr('Oficina') }
 
 /**
  * The manager's people screen: who may use Actividad, with what role and department; new accounts with their PIN.
@@ -52,42 +54,42 @@ export function Employees({ meId, admin }: { meId: string; admin: boolean }) {
   }
   return (
     <section className="report emps">
-      <div className="rhead"><h2>Empleados</h2></div>
-      <p className="hint">Los mismos usuarios y PIN que Freezer RTE. <b>Operador</b> solo ve su departamento; <b>Manager</b> ve todo y corrige; <b>Oficina</b> ve todo y lleva productos y programa. Sin rol = no entra a Actividad.</p>
+      <div className="rhead"><h2>{tr('Empleados')}</h2></div>
+      <p className="hint">{trx('Los mismos usuarios y PIN que Freezer RTE. {0} solo ve su departamento; {1} ve todo y corrige; {2} ve todo y lleva productos y programa. Sin rol = no entra a Actividad.', <b>{tr('Operador')}</b>, <b>{tr('Manager')}</b>, <b>{tr('Oficina')}</b>)}</p>
       {msg && <p className="err">{msg}</p>}
       <form className="newemp" onSubmit={(e) => { e.preventDefault(); void call({ action: 'create', ...form }).then((ok) => { if (ok) setForm({ name: '', username: '', pin: '', act_role: 'op', act_dept: 'RTE' }) }) }}>
-        <h3>Nuevo usuario</h3>
+        <h3>{tr('Nuevo usuario')}</h3>
         <div className="egrid">
-          <label>Nombre <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoComplete="off" /></label>
-          <label>Usuario <input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value.toLowerCase() })} autoCapitalize="none" autoComplete="off" placeholder="ej. maria.rte" /></label>
-          <label>PIN (6–12 números) <input value={form.pin} inputMode="numeric" onChange={(e) => setForm({ ...form, pin: e.target.value.replace(/\D/g, '') })} autoComplete="off" /></label>
-          <label>Rol <select value={form.act_role} onChange={(e) => setForm({ ...form, act_role: e.target.value })}><option value="op">Operador</option><option value="mgr">Manager</option><option value="office">Oficina</option></select></label>
-          {form.act_role === 'op' && <label>Departamento <select value={form.act_dept} onChange={(e) => setForm({ ...form, act_dept: e.target.value })}>{DEPTS.map((d) => <option key={d} value={d}>{d}</option>)}</select></label>}
+          <label>{tr('Nombre')}{' '}<input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoComplete="off" /></label>
+          <label>{tr('Usuario')}{' '}<input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value.toLowerCase() })} autoCapitalize="none" autoComplete="off" placeholder={tr('ej. maria.rte')} /></label>
+          <label>{tr('PIN (6–12 números)')}{' '}<input value={form.pin} inputMode="numeric" onChange={(e) => setForm({ ...form, pin: e.target.value.replace(/\D/g, '') })} autoComplete="off" /></label>
+          <label>{tr('Rol')}{' '}<select value={form.act_role} onChange={(e) => setForm({ ...form, act_role: e.target.value })}><option value="op">{tr('Operador')}</option><option value="mgr">{tr('Manager')}</option><option value="office">{tr('Oficina')}</option></select></label>
+          {form.act_role === 'op' && <label>{tr('Departamento')}{' '}<select value={form.act_dept} onChange={(e) => setForm({ ...form, act_dept: e.target.value })}>{DEPTS.map((d) => <option key={d} value={d}>{d}</option>)}</select></label>}
         </div>
-        <button className="btn primary" type="submit" disabled={busy || !form.name.trim() || !form.username.trim() || form.pin.length < 6}>Crear usuario</button>
+        <button className="btn primary" type="submit" disabled={busy || !form.name.trim() || !form.username.trim() || form.pin.length < 6}>{tr('Crear usuario')}</button>
       </form>
-      {list === null ? <p className="hint">Cargando…</p> : (
+      {list === null ? <p className="hint">{tr('Cargando…')}</p> : (
         <div className="twrap">
           <table>
-            <thead><tr><th>Nombre</th><th>Usuario</th><th>Rol en Actividad</th><th>Departamento</th>{hasPowers && <><th>Turno</th><th>Poderes</th></>}<th>Activo</th><th></th></tr></thead>
+            <thead><tr><th>{tr('Nombre')}</th><th>{tr('Usuario')}</th><th>{tr('Rol en Actividad')}</th><th>{tr('Departamento')}</th>{hasPowers && <><th>{tr('Turno')}</th><th>{tr('Poderes')}</th></>}<th>{tr('Activo')}</th><th></th></tr></thead>
             <tbody>{list.map((e) => {
               const can = rowRights(e, meId, admin)
               return (
                 <tr key={e.id} className={e.active ? '' : 'off'}>
-                  <td>{e.name}{e.role === 'admin' && <small> · admin freezer</small>}{can.mine && <small> · tú</small>}{can.locked && <small> · cuenta protegida</small>}</td>
+                  <td>{e.name}{e.role === 'admin' && <small> {' '}{tr('· admin freezer')}</small>}{can.mine && <small> {' '}{tr('· tú')}</small>}{can.locked && <small> {' '}{tr('· cuenta protegida')}</small>}</td>
                   <td>{e.username ?? '—'}</td>
                   <td>{can.role
-                    ? <select value={e.act_role ?? ''} disabled={busy} onChange={(ev) => void call({ action: 'set_act', id: e.id, act_role: ev.target.value || null, act_dept: e.act_dept ?? (ev.target.value === 'op' ? 'RTE' : null) })}><option value="">Sin acceso</option><option value="op">Operador</option><option value="mgr">Manager</option><option value="office">Oficina</option></select>
-                    : (e.act_role ? ROLE[e.act_role] ?? e.act_role : 'Sin acceso')}</td>
+                    ? <select value={e.act_role ?? ''} disabled={busy} onChange={(ev) => void call({ action: 'set_act', id: e.id, act_role: ev.target.value || null, act_dept: e.act_dept ?? (ev.target.value === 'op' ? 'RTE' : null) })}><option value="">{tr('Sin acceso')}</option><option value="op">{tr('Operador')}</option><option value="mgr">{tr('Manager')}</option><option value="office">{tr('Oficina')}</option></select>
+                    : (e.act_role ? ROLE[e.act_role] ?? e.act_role : tr('Sin acceso'))}</td>
                   <td>{e.act_role !== 'op' ? '—' : can.role
                     ? <select value={e.act_dept ?? ''} disabled={busy} onChange={(ev) => void call({ action: 'set_act', id: e.id, act_role: 'op', act_dept: ev.target.value })}>{DEPTS.map((d) => <option key={d} value={d}>{d}</option>)}</select>
                     : (e.act_dept ?? '—')}</td>
-                  {hasPowers && <><td>{e.act_role ? (e.act_shift === 1 || e.act_shift === 2 ? 'Turno ' + e.act_shift : 'Los dos') : '—'}</td><td>{!e.act_role ? '—' : e.role === 'admin' ? 'Todos' : e.act_powers == null ? 'Los de su rol' : (cleanPowers(e.act_powers) ?? []).length + ' de ' + POWERS.length}</td></>}
-                  <td>{e.active ? 'Sí' : 'No'}</td>
+                  {hasPowers && <><td>{e.act_role ? (e.act_shift === 1 || e.act_shift === 2 ? tr('Turno {0}', e.act_shift) : tr('Los dos')) : '—'}</td><td>{!e.act_role ? '—' : e.role === 'admin' ? tr('Todos') : e.act_powers == null ? tr('Los de su rol') : tr('{0} de {1}', (cleanPowers(e.act_powers) ?? []).length, POWERS.length)}</td></>}
+                  <td>{e.active ? tr('Sí') : tr('No')}</td>
                   <td className="btns">
-                    {hasPowers && !!e.act_role && !can.locked && !can.mine && e.role !== 'admin' && (admin || e.act_role !== 'mgr') && <button type="button" className="lnk" disabled={busy} onClick={() => { setPicked(cleanPowers(e.act_powers) ?? defaultPowers(e.act_role)); setShift(e.act_shift === 1 || e.act_shift === 2 ? e.act_shift : 0); setPowersFor(e) }}>Poderes</button>}
+                    {hasPowers && !!e.act_role && !can.locked && !can.mine && e.role !== 'admin' && (admin || e.act_role !== 'mgr') && <button type="button" className="lnk" disabled={busy} onClick={() => { setPicked(cleanPowers(e.act_powers) ?? defaultPowers(e.act_role)); setShift(e.act_shift === 1 || e.act_shift === 2 ? e.act_shift : 0); setPowersFor(e) }}>{tr('Poderes')}</button>}
                     {can.pin && <button type="button" className="lnk" disabled={busy} onClick={() => { setNewPin(''); setPinFor(e) }}>PIN</button>}
-                    {can.active && <button type="button" className="lnk" disabled={busy} onClick={() => setToggle(e)}>{e.active ? 'Desactivar' : 'Activar'}</button>}
+                    {can.active && <button type="button" className="lnk" disabled={busy} onClick={() => setToggle(e)}>{e.active ? tr('Desactivar') : tr('Activar')}</button>}
                   </td>
                 </tr>
               )
@@ -98,34 +100,34 @@ export function Employees({ meId, admin }: { meId: string; admin: boolean }) {
       {pinFor && (
         <div className="veil" onClick={() => setPinFor(null)}>
           <div className="dlg" onClick={(ev) => ev.stopPropagation()}>
-            <h3>Nuevo PIN para {pinFor.name}</h3>
+            <h3>{trx('Nuevo PIN para {0}', pinFor.name)}</h3>
             <form className="qform" onSubmit={(ev) => { ev.preventDefault(); void call({ action: 'set_pin', id: pinFor.id, pin: newPin }).then((ok) => { if (ok) setPinFor(null) }) }}>
-              <label>PIN (6–12 números) <input autoFocus inputMode="numeric" value={newPin} onChange={(ev) => setNewPin(ev.target.value.replace(/\D/g, ''))} autoComplete="off" /></label>
-              <div className="dbtns"><button type="button" className="btn" onClick={() => setPinFor(null)}>Cancelar</button><button type="submit" className="btn primary" disabled={busy || newPin.length < 6}>Guardar</button></div>
+              <label>{tr('PIN (6–12 números)')}{' '}<input autoFocus inputMode="numeric" value={newPin} onChange={(ev) => setNewPin(ev.target.value.replace(/\D/g, ''))} autoComplete="off" /></label>
+              <div className="dbtns"><button type="button" className="btn" onClick={() => setPinFor(null)}>{tr('Cancelar')}</button><button type="submit" className="btn primary" disabled={busy || newPin.length < 6}>{tr('Guardar')}</button></div>
             </form>
           </div>
         </div>
       )}
-      {hasPowers === false && <p className="hint">Los poderes y el turno de cada persona aparecen aquí cuando se aplique el cambio en la base de datos. Mientras tanto cada quien tiene los de su rol.</p>}
+      {hasPowers === false && <p className="hint">{tr('Los poderes y el turno de cada persona aparecen aquí cuando se aplique el cambio en la base de datos. Mientras tanto cada quien tiene los de su rol.')}</p>}
       {powersFor && (
         <div className="veil" onClick={() => setPowersFor(null)}>
           <div className="dlg" onClick={(ev) => ev.stopPropagation()}>
-            <h3>Poderes de {powersFor.name}</h3>
-            <p>{ROLE[powersFor.act_role ?? ''] ?? 'Sin rol'}{powersFor.act_role === 'op' && powersFor.act_dept ? ' de ' + powersFor.act_dept : ''}. Marca lo que puede hacer además de trabajar su línea. Lo que no esté marcado no le sale en la pantalla.</p>
+            <h3>{trx('Poderes de {0}', powersFor.name)}</h3>
+            <p>{ROLE[powersFor.act_role ?? ''] ?? tr('Sin rol')}{powersFor.act_role === 'op' && powersFor.act_dept ? ' ' + tr('de {0}', powersFor.act_dept) : ''}{tr('. Marca lo que puede hacer además de trabajar su línea. Lo que no esté marcado no le sale en la pantalla.')}</p>
             <div className="powers">{POWERS.map((x) => <label key={x.key}><input type="checkbox" checked={picked.includes(x.key)} onChange={(ev) => setPicked(ev.target.checked ? [...picked, x.key] : picked.filter((k) => k !== x.key))} /> {x.label}</label>)}</div>
-            <label>Turno <select value={shift} onChange={(ev) => setShift(Number(ev.target.value))}><option value={0}>Los dos turnos</option><option value={1}>Turno 1</option><option value={2}>Turno 2</option></select></label>
-            <p className="hint">Con un turno, el Reporte le abre en ese turno y solo corrige lo de su turno, salvo que tenga "Corregir lo del otro turno". Tiene que cerrar y abrir la app para que tome los cambios.</p>
+            <label>{tr('Turno')}{' '}<select value={shift} onChange={(ev) => setShift(Number(ev.target.value))}><option value={0}>{tr('Los dos turnos')}</option><option value={1}>{tr('Turno 1')}</option><option value={2}>{tr('Turno 2')}</option></select></label>
+            <p className="hint">{tr('Con un turno, el Reporte le abre en ese turno y solo corrige lo de su turno, salvo que tenga "Corregir lo del otro turno". Tiene que cerrar y abrir la app para que tome los cambios.')}</p>
             <div className="dbtns spread">
-              <div className="btns"><button type="button" className="lnk" disabled={busy} onClick={() => { const t = powersFor; void call({ action: 'set_powers', id: t.id, powers: null, shift: shift || null }).then((ok) => { if (ok) setPowersFor(null) }) }}>Volver a los de su rol</button></div>
+              <div className="btns"><button type="button" className="lnk" disabled={busy} onClick={() => { const t = powersFor; void call({ action: 'set_powers', id: t.id, powers: null, shift: shift || null }).then((ok) => { if (ok) setPowersFor(null) }) }}>{tr('Volver a los de su rol')}</button></div>
               <div className="btns">
-                <button type="button" className="btn" onClick={() => setPowersFor(null)}>Cancelar</button>
-                <button type="button" className="btn primary" disabled={busy} onClick={() => { const t = powersFor; void call({ action: 'set_powers', id: t.id, powers: picked, shift: shift || null }).then((ok) => { if (ok) setPowersFor(null) }) }}>Guardar</button>
+                <button type="button" className="btn" onClick={() => setPowersFor(null)}>{tr('Cancelar')}</button>
+                <button type="button" className="btn primary" disabled={busy} onClick={() => { const t = powersFor; void call({ action: 'set_powers', id: t.id, powers: picked, shift: shift || null }).then((ok) => { if (ok) setPowersFor(null) }) }}>{tr('Guardar')}</button>
               </div>
             </div>
           </div>
         </div>
       )}
-      {toggle && <ConfirmDialog title={(toggle.active ? '¿Desactivar a ' : '¿Activar a ') + toggle.name + '?'} text={toggle.active ? 'No podrá entrar a Actividad ni a Freezer RTE hasta que se active de nuevo.' : 'Podrá entrar otra vez con su PIN.'} yes={toggle.active ? 'Desactivar' : 'Activar'} danger={toggle.active} onYes={() => { const t = toggle; setToggle(null); void call({ action: 'set_active', id: t.id, active: !t.active }) }} onNo={() => setToggle(null)} />}
+      {toggle && <ConfirmDialog title={(toggle.active ? tr('¿Desactivar a') + ' ' : tr('¿Activar a') + ' ') + toggle.name + '?'} text={toggle.active ? tr('No podrá entrar a Actividad ni a Freezer RTE hasta que se active de nuevo.') : tr('Podrá entrar otra vez con su PIN.')} yes={toggle.active ? tr('Desactivar') : tr('Activar')} danger={toggle.active} onYes={() => { const t = toggle; setToggle(null); void call({ action: 'set_active', id: t.id, active: !t.active }) }} onNo={() => setToggle(null)} />}
     </section>
   )
 }

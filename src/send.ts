@@ -1,3 +1,4 @@
+import { tr } from './i18n'
 /**
  * Handing the day's report to another app (mail, WhatsApp…). Each browser lets a page share different kinds of file:
  * Safari on the iPhone takes the PDF and the Excel; Chrome (Android tablets, PCs) refuses Excel files but takes the
@@ -10,9 +11,9 @@ export type SharePick = { files: Kind[]; label: string; note: string }
 /** what to offer on this browser, the fullest first; null = this browser shares no files (only the downloads are offered) */
 export function sharePick(can: (files: Kind[]) => boolean): SharePick | null {
   const ask = (files: Kind[]) => { try { return can(files) } catch { return false } }
-  if (ask(['pdf', 'xlsx'])) return { files: ['pdf', 'xlsx'], label: 'Compartir PDF y Excel', note: '' }
-  if (ask(['pdf', 'csv'])) return { files: ['pdf', 'csv'], label: 'Compartir PDF y CSV', note: 'Este navegador no deja compartir archivos de Excel. Va el CSV, que también se abre con Excel. El Excel se descarga con el botón de abajo.' }
-  if (ask(['pdf'])) return { files: ['pdf'], label: 'Compartir PDF', note: 'Este navegador solo deja compartir el PDF. El Excel se descarga con el botón de abajo.' }
+  if (ask(['pdf', 'xlsx'])) return { files: ['pdf', 'xlsx'], label: tr('Compartir PDF y Excel'), note: '' }
+  if (ask(['pdf', 'csv'])) return { files: ['pdf', 'csv'], label: tr('Compartir PDF y CSV'), note: tr('Este navegador no deja compartir archivos de Excel. Va el CSV, que también se abre con Excel. El Excel se descarga con el botón de abajo.') }
+  if (ask(['pdf'])) return { files: ['pdf'], label: tr('Compartir PDF'), note: tr('Este navegador solo deja compartir el PDF. El Excel se descarga con el botón de abajo.') }
   return null
 }
 
@@ -20,7 +21,7 @@ export function sharePick(can: (files: Kind[]) => boolean): SharePick | null {
 export function shareProblem(error: unknown): string {
   const name = String((error as { name?: string } | null)?.name ?? '')
   if (name === 'AbortError') return ''
-  return 'No se pudo abrir la hoja de compartir en este aparato. Descarga los archivos con los botones de abajo y adjúntalos al correo o al mensaje.'
+  return tr('No se pudo abrir la hoja de compartir en este aparato. Descarga los archivos con los botones de abajo y adjúntalos al correo o al mensaje.')
 }
 
 /** an iPhone or iPad running the app from its home-screen icon: there a PDF cannot be opened in a new tab, so it is downloaded */
