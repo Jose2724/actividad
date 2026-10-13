@@ -1208,7 +1208,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
  * asks what comes next on the line, with no answer given beforehand: a set up left counting on a line whose people
  * had gone home was the price of a box that came ticked.
  */
-function EndDialog({ cfg, code, line, summary, lastAt, now, onMissing, onDone, onClose }: { cfg: DeptCfg; code: string; line: string; summary: string; lastAt: number | null; now: number; onMissing: (next: boolean) => void; onDone: (next: boolean) => void; onClose: () => void }) {
+function EndDialog({ cfg, code, line, summary, lastAt, onMissing, onDone, onClose }: { cfg: DeptCfg; code: string; line: string; summary: string; lastAt: number | null; now: number; onMissing: (next: boolean) => void; onDone: (next: boolean) => void; onClose: () => void }) {
   const fem = cfg.saved.endsWith('a'), unit = cfg.unit.toLowerCase()
   // what comes next on this line is asked, never assumed: with another code coming, the time until it starts counts
   // as its set up; with nothing more today, nothing is left counting when the people go
@@ -1217,21 +1217,19 @@ function EndDialog({ cfg, code, line, summary, lastAt, now, onMissing, onDone, o
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
-        <h3>¿Terminar el código {code} en {line}?</h3>
-        <p>{summary}</p>
-        <p>{lastAt ? (fem ? 'La última ' : 'El último ') + unit + ' se registró a las ' + fmtTime(lastAt) + ', hace ' + fmtDur(now - lastAt) + '.' : 'Todavía no se ha registrado ' + (fem ? 'ninguna ' : 'ningún ') + unit + '.'}</p>
-        <p className="endask">1. ¿Qué sigue en {line}?</p>
+        <h3>Terminar {code} · {line}</h3>
+        <p>{summary}{lastAt ? ' ' + (fem ? 'Última ' : 'Último ') + unit + ': ' + fmtTime(lastAt) + '.' : ''}</p>
+        <p className="endask">¿Qué sigue en esta línea?</p>
         <div className="chips big">
-          <button type="button" className={'chip' + (next === true ? ' on' : '')} onClick={() => setNext(true)}>Viene otro código</button>
-          <button type="button" className={'chip' + (next === false ? ' on' : '')} onClick={() => setNext(false)}>Nada más por hoy</button>
+          <button type="button" className={'chip' + (next === true ? ' on' : '')} onClick={() => setNext(true)}>Viene otro código<small>empieza el Set up</small></button>
+          <button type="button" className={'chip' + (next === false ? ' on' : '')} onClick={() => setNext(false)}>Nada más por hoy<small>no queda nada contando</small></button>
         </div>
-        <p className="hint">{next === null ? 'Elige una de las dos.' : next ? 'Al terminar empieza a contar el Set up, que es un paro: sale en el Reporte y el manager lo puede dividir. Termina solo cuando empiece el siguiente código.' : 'Es el último código de esta línea por hoy: no queda nada contando.'}</p>
-        <p className="endask">2. ¿Ya está registrad{fem ? 'a' : 'o'} {last} que salió?</p>
-        <div className="endchoices">
-          <button type="button" className="btn" disabled={next === null} onClick={() => next !== null && onMissing(next)}>No, falta {last}: registrar{fem ? 'la' : 'lo'} y terminar</button>
-          <button type="button" className="btn" disabled={next === null} onClick={() => next !== null && onDone(next)}>Sí, ya está: terminar el código</button>
+        <p className="endask">¿Ya registraste {last}?</p>
+        <div className="endyes">
+          <button type="button" className="btn primary" disabled={next === null} onClick={() => next !== null && onDone(next)}>✓ Sí, terminar</button>
+          <button type="button" className="btn" disabled={next === null} onClick={() => next !== null && onMissing(next)}>＋ Falta: registrar{fem ? 'la' : 'lo'}</button>
         </div>
-        <div className="dbtns"><button type="button" className="btn" onClick={onClose}>Cancelar</button></div>
+        <div className="dbtns"><button type="button" className="lnk" onClick={onClose}>Cancelar</button></div>
       </div>
     </div>
   )

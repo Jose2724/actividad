@@ -412,3 +412,8 @@ table.byshift small{color:var(--muted);font-weight:500;white-space:nowrap}
 .powers{display:grid;gap:4px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
 .powers label{display:flex;align-items:center;gap:10px;min-height:40px;font-weight:600}
 .powers input{width:22px;height:22px;flex:none}
+/* ending a code: few words, and buttons that look like buttons */
+.chips.big .chip{border-width:2px;box-shadow:0 1px 3px rgba(0,0,0,.14)}
+.chips.big .chip small{display:block;font-size:12px;font-weight:500;opacity:.85;margin-top:2px}
+.endyes{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.endyes .btn{min-height:60px;font-size:17px;font-weight:700;white-space:normal;line-height:1.15;box-shadow:0 1px 3px rgba(0,0,0,.14)}
