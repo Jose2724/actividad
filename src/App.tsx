@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, Ref } from 'react'
-import { addLine, addWaste, awayDay, byLineName, byShip, casesText, cancelDay, CFG, closeOrder, codeProblem, CRATES_PER_CART, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endRun, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineNamed, lineNameOf, lineTargetOf, lotFor, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, numOf, openOrdersFor, openRun, openStop, orderCodes, orderLabel, orderMade, parseProductsCsv, plainDay, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reopenRun, reset, resetRecords, role, runQty, runStats, saveOrder, saveProduct, setLineTarget, setSchedule, setShifts, setTarget, startDay, startRun, startSetup, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, savedText, shiftCuts, shiftHours, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type LineTarget, type Product, type LotPart, type Order, type ShiftHours, type Short, type State, type Target, type WorkDay } from './store'
+import { addLine, addWaste, awayDay, byLineName, byShip, casesText, cancelDay, CFG, closeOrder, codeProblem, CRATES_PER_CART, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineNamed, lineNameOf, lineTargetOf, lotFor, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, numOf, openIn, openOrdersFor, openRun, openStop, orderCodes, orderLabel, orderMade, parseProductsCsv, plainDay, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reopenRun, reset, resetRecords, role, runQty, runStats, saveOrder, saveProduct, setLineTarget, setSchedule, setShifts, setTarget, startDay, startRun, startSetup, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, savedText, shiftCuts, shiftHours, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type LineTarget, type Product, type LotPart, type Order, type ShiftHours, type Short, type State, type Target, type WorkDay } from './store'
 import { avanceRows, n1, pending, type AvanceRow } from './avance'
 import { cellText, loadZip, xDay, xDur, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 
@@ -860,8 +860,10 @@ function DeptPanel({ s, dept, now, mgr, day }: { s: State; dept: Dept; now: numb
   const ds = deptStop(s, dept)
   const [stopAll, setStopAll] = useState(false)
   const [adding, setAdding] = useState(false)
+  const [leaving, setLeaving] = useState(false)
   const [editRun, setEditRun] = useState<string | null>(null)
   const [editStop, setEditStop] = useState(false)
+  const left = openIn(s, dept) // what is still open in the room: what "Terminar turno" would close
   const editing = editRun ? s.runs.find((r) => r.id === editRun) : undefined
   const anyRunning = lines.some((l) => openRun(s, l.id))
   const doneToday = s.runs.filter((r) => r.dept === dept && r.endedAt && r.date === day.date).sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0))
@@ -873,9 +875,28 @@ function DeptPanel({ s, dept, now, mgr, day }: { s: State; dept: Dept; now: numb
           {ds
             ? <button type="button" className="btn danger" onClick={() => endStop(ds.id)}>▶ Reanudar departamento · {fmtDur(now - ds.startedAt)}</button>
             : <button type="button" className="btn" disabled={!anyRunning} onClick={() => setStopAll(true)}>⏸ Parar departamento</button>}
+          <button type="button" className="btn" disabled={!left.runs.length && !left.setups.length && !left.stops.length} onClick={() => setLeaving(true)}>🏁 Terminar turno</button>
           <button type="button" className="btn" onClick={() => setAdding(true)}>+ Agregar {CFG[dept].lineWord.toLowerCase()}</button>
         </div>
       </div>
+      {leaving && (
+        <div className="veil" onClick={() => setLeaving(false)}>
+          <div className="dlg" onClick={(e) => e.stopPropagation()}>
+            <h3>¿Terminar el turno en {dept}?</h3>
+            <p>Es para cuando ya se van y nada sigue. La app nunca termina nada sola, aunque pase la hora del turno: lo deciden ustedes. Se cierra ahora:</p>
+            <ul className="leavelist">
+              {left.runs.map((r) => <li key={r.id}><b>{lineNameOf(s, r.lineId, r.line)}</b> · código <b>{r.code}</b> · {madeText(r, runQty(s, r))} · <i>se termina</i></li>)}
+              {left.setups.map((x) => <li key={x.id}><b>{lineNameOf(s, x.lineId)}</b> · Set up desde {fmtTime(x.startedAt)} · <i>se quita: no vino otro código</i></li>)}
+              {left.stops.map((x) => <li key={x.id}><b>{x.lineId === null ? 'Todo ' + dept : lineNameOf(s, x.lineId)}</b> · parado por {x.reason} desde {fmtTime(x.startedAt)} · <i>se cierra</i></li>)}
+            </ul>
+            <p className="hint">Si falta registrar {CFG[dept].saved.endsWith('a') ? 'la última ' : 'el último '}{CFG[dept].unit.toLowerCase()} de alguna línea, regístral{CFG[dept].saved.endsWith('a') ? 'a' : 'o'} antes. Si el otro turno va a seguir con estos mismos códigos, no hace falta terminar: déjalos corriendo.</p>
+            <div className="dbtns">
+              <button type="button" className="btn" onClick={() => setLeaving(false)}>Cancelar</button>
+              <button type="button" className="btn primary" onClick={() => { endShift(dept); setLeaving(false) }}>🏁 Terminar turno</button>
+            </div>
+          </div>
+        </div>
+      )}
       {ds && <div className="deptstop">⏸ Todo {dept} parado · <b>{ds.reason}</b>{ds.note && ' · ' + ds.note} · desde {fmtTime(ds.startedAt)} · {ds.by} {mgr && <button type="button" className="lnk" onClick={() => setEditStop(true)}>Corregir</button>}</div>}
       {editStop && ds && <StopEditor stop={ds} mgr={mgr} onClose={() => setEditStop(false)} />}
       <TodayCard s={s} dept={dept} now={now} mgr={mgr} date={day.date} />
@@ -1155,12 +1176,15 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
 /**
  * Ending a code asks about its last unit first: the cart, pallet, bin or mezcla that came out last is the one people
  * forget to register. If it is missing, it is registered right there and then the code ends. Neither answer is the
- * big button: a tap out of habit must not add a unit that does not exist, nor leave out one that does.
+ * big button: a tap out of habit must not add a unit that does not exist, nor leave out one that does. Before that it
+ * asks what comes next on the line, with no answer given beforehand: a set up left counting on a line whose people
+ * had gone home was the price of a box that came ticked.
  */
 function EndDialog({ cfg, code, line, summary, lastAt, now, onMissing, onDone, onClose }: { cfg: DeptCfg; code: string; line: string; summary: string; lastAt: number | null; now: number; onMissing: (next: boolean) => void; onDone: (next: boolean) => void; onClose: () => void }) {
   const fem = cfg.saved.endsWith('a'), unit = cfg.unit.toLowerCase()
-  // another code is coming on this line (the usual case): the time until it starts counts as its set up
-  const [next, setNext] = useState(true)
+  // what comes next on this line is asked, never assumed: with another code coming, the time until it starts counts
+  // as its set up; with nothing more today, nothing is left counting when the people go
+  const [next, setNext] = useState<boolean | null>(null)
   const last = (fem ? 'la última ' : 'el último ') + unit
   return (
     <div className="veil" onClick={onClose}>
@@ -1168,13 +1192,17 @@ function EndDialog({ cfg, code, line, summary, lastAt, now, onMissing, onDone, o
         <h3>¿Terminar el código {code} en {line}?</h3>
         <p>{summary}</p>
         <p>{lastAt ? (fem ? 'La última ' : 'El último ') + unit + ' se registró a las ' + fmtTime(lastAt) + ', hace ' + fmtDur(now - lastAt) + '.' : 'Todavía no se ha registrado ' + (fem ? 'ninguna ' : 'ningún ') + unit + '.'}</p>
-        <p className="endask">¿Ya está registrad{fem ? 'a' : 'o'} {last} que salió?</p>
-        <div className="endchoices">
-          <button type="button" className="btn" onClick={() => onMissing(next)}>No, falta {last}: registrar{fem ? 'la' : 'lo'} y terminar</button>
-          <button type="button" className="btn" onClick={() => onDone(next)}>Sí, ya está: terminar el código</button>
+        <p className="endask">1. ¿Qué sigue en {line}?</p>
+        <div className="chips big">
+          <button type="button" className={'chip' + (next === true ? ' on' : '')} onClick={() => setNext(true)}>Viene otro código</button>
+          <button type="button" className={'chip' + (next === false ? ' on' : '')} onClick={() => setNext(false)}>Nada más por hoy</button>
         </div>
-        <label className="nextcode"><input type="checkbox" checked={next} onChange={(e) => setNext(e.target.checked)} /> Después viene otro código en esta línea</label>
-        <p className="hint">{next ? 'Al terminar empieza a contar el Set up, que es un paro: sale en el Reporte y el manager lo puede dividir. Termina solo cuando empiece el siguiente código.' : 'Es el último código de esta línea por hoy: no se cuenta Set up.'}</p>
+        <p className="hint">{next === null ? 'Elige una de las dos.' : next ? 'Al terminar empieza a contar el Set up, que es un paro: sale en el Reporte y el manager lo puede dividir. Termina solo cuando empiece el siguiente código.' : 'Es el último código de esta línea por hoy: no queda nada contando.'}</p>
+        <p className="endask">2. ¿Ya está registrad{fem ? 'a' : 'o'} {last} que salió?</p>
+        <div className="endchoices">
+          <button type="button" className="btn" disabled={next === null} onClick={() => next !== null && onMissing(next)}>No, falta {last}: registrar{fem ? 'la' : 'lo'} y terminar</button>
+          <button type="button" className="btn" disabled={next === null} onClick={() => next !== null && onDone(next)}>Sí, ya está: terminar el código</button>
+        </div>
         <div className="dbtns"><button type="button" className="btn" onClick={onClose}>Cancelar</button></div>
       </div>
     </div>

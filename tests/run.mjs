@@ -1554,6 +1554,37 @@ mov.use((m) => {
   m.endStop(st().stops.find((x) => x.reason === 'Set up').id)
   eq('terminado ese Set up, sí', [m.moveRun(runOf('C300').id, L('Línea 2').id), runOf('C300').line, m.openRun(st(), L('Línea 2').id)?.code, m.openRun(st(), L('Línea 1').id)], [true, 'Línea 2', 'C300', undefined])
 })
+section('Terminar el turno en un departamento')
+const lea = await device('lea', { user: 'Santiago' })
+lea.use((m) => {
+  const st = () => m.store.get(), runOf = (code) => st().runs.find((r) => r.code === code)
+  clock = T0
+  for (const n of [1, 2, 3, 4]) m.addLine('RTE', 'Línea ' + n)
+  m.addLine('Packing', 'Línea 1')
+  const L = (name, dept = 'RTE') => st().lines.find((l) => l.name === name && l.dept === dept)
+  const quiet = st().changes.length
+  eq('sin nada abierto no hay nada que terminar, ni queda nada en el historial', [m.openIn(st(), 'RTE'), m.endShift('RTE'), st().changes.length - quiet], [{ runs: [], setups: [], stops: [] }, { runs: 0, setups: 0, stops: 0 }, 0])
+  // line 1 ended its code saying another was coming (set up counting); line 2 runs; line 3 runs and is stopped; line 4 was stopped by hand with nothing running
+  m.startRun(L('Línea 1'), 'A100', '6283', DAY, 240); m.startRun(L('Línea 2'), 'B200', '6283', DAY, 144); m.startRun(L('Línea 3'), 'C300', '6283', DAY, 480)
+  m.startRun(L('Línea 1', 'Packing'), 'P900', '6283', DAY, 36)
+  clock = T0 + 20 * M; m.unitDone(runOf('B200').id, 144); m.endRun(runOf('A100').id, true)
+  clock = T0 + 30 * M; m.startStop('RTE', L('Línea 3').id, 'Break', '')
+  clock = T0 + 40 * M; m.startSetup(L('Línea 4'))
+  const open = m.openIn(st(), 'RTE')
+  eq('lo que está abierto: códigos corriendo, Set up esperando otro código y otros paros', [open.runs.map((r) => r.code).sort(), open.setups.map((x) => m.lineNameOf(st(), x.lineId)).sort(), open.stops.map((x) => x.reason)], [['B200', 'C300'], ['Línea 1', 'Línea 4'], ['Break']])
+  clock = T0 + 50 * M
+  eq('terminar el turno cierra todo lo del departamento', m.endShift('RTE'), { runs: 2, setups: 2, stops: 1 })
+  eq('los códigos terminan en ese momento, sin Set up detrás', [runOf('B200').endedAt, runOf('C300').endedAt, st().stops.filter((x) => !x.endedAt).length], [T0 + 50 * M, T0 + 50 * M, 0])
+  eq('el Set up que esperaba otro código se quita (no vino); el otro paro se cierra con su tiempo', st().stops.map((x) => [x.reason, (x.endedAt - x.startedAt) / M]), [['Break', 20]])
+  eq('no queda nada abierto ni contando en ese departamento', [m.openIn(st(), 'RTE'), st().lines.filter((l) => l.dept === 'RTE').map((l) => m.idleStop(st(), l.id, clock)).filter(Boolean).length], [{ runs: [], setups: [], stops: [] }, 0])
+  eq('el otro departamento no se toca', [runOf('P900').endedAt, m.openIn(st(), 'Packing').runs.length], [null, 1])
+  eq('queda en el historial quién terminó el turno y qué se cerró', st().changes.filter((c) => /^Turno terminado/.test(c.what)).map((c) => [c.what, c.by, c.dept, c.after]), [['Turno terminado en RTE', 'Santiago', 'RTE', '2 códigos terminados · 2 Set up quitados · 1 paro cerrado']])
+  eq('la corrida que tenía un paro abierto cuenta su paro hasta el final', [Math.round(m.runStats(st(), runOf('C300'), clock).working / M), Math.round(m.runStats(st(), runOf('C300'), clock).down / M)], [30, 20])
+  // a stop of the whole room
+  clock = T0 + 60 * M; m.startRun(L('Línea 1'), 'D400', '6283', DAY, 144); m.startStop('RTE', null, 'Limpieza', '')
+  clock = T0 + 75 * M
+  eq('un paro de todo el departamento también se cierra', [m.endShift('RTE'), st().stops.filter((x) => x.reason === 'Limpieza').map((x) => (x.endedAt - x.startedAt) / M), runOf('D400').endedAt], [{ runs: 1, setups: 0, stops: 1 }, [15], T0 + 75 * M])
+})
 section('Turnos: el tiempo no se detiene solo; un rato entre turnos sin ningún registro no cuenta')
 const gap = await device('gap', { user: 'Nino', usual: true })
 gap.use((m) => {

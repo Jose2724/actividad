@@ -433,6 +433,31 @@ export function startSetup(line: Line) {
   const last = state.runs.filter((r) => r.lineId === line.id && !!r.endedAt && at - (r.endedAt ?? 0) <= SETUP_MAX_MS).sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0))[0]
   putStop({ id: uid(), dept: line.dept, lineId: line.id, reason: SETUP, note: last ? AFTER + last.code : '', startedAt: at, endedAt: null, by: user.get(), updatedAt: 0 })
 }
+/** what is still open in a room: the codes running, the set ups waiting for a code that has not come, and any other stop */
+export function openIn(s: State, dept: Dept) {
+  const runs = s.runs.filter((r) => r.dept === dept && !r.endedAt), busy = new Set(runs.map((r) => r.lineId))
+  const open = s.stops.filter((x) => x.dept === dept && !x.endedAt)
+  const setups = open.filter((x) => x.reason === SETUP && x.lineId !== null && !busy.has(x.lineId))
+  return { runs, setups, stops: open.filter((x) => !setups.includes(x)) }
+}
+/**
+ * The people of a room are leaving and nothing goes on: every code still running ends now, with no set up after it;
+ * a set up that was waiting for another code is taken away (none came); any other stop ends now. It is theirs to say
+ * when the shift ends: the hours of the shifts never end anything. (When the next shift goes on with the same codes
+ * there is nothing to do: they are left running.) Returns how many of each it closed.
+ */
+export function endShift(dept: Dept) {
+  const { runs, setups, stops } = openIn(state, dept), at = clockNow()
+  if (!runs.length && !setups.length && !stops.length) return { runs: 0, setups: 0, stops: 0 }
+  batch(() => {
+    for (const x of stops) putStop({ ...x, endedAt: Math.max(at, x.startedAt) })
+    for (const x of setups) putStop({ ...x, deleted: true })
+    for (const r of runs) putRun({ ...r, endedAt: Math.max(at, after(r)) })
+  })
+  const n = (k: number, one: string, many: string) => (k ? k + ' ' + (k === 1 ? one : many) : '')
+  logChange(dept, 'Turno terminado en ' + dept, '', [n(runs.length, 'código terminado', 'códigos terminados'), n(setups.length, 'Set up quitado', 'Set up quitados'), n(stops.length, 'paro cerrado', 'paros cerrados')].filter(Boolean).join(' · '), 'act_shift_end', dept + ':' + at)
+  return { runs: runs.length, setups: setups.length, stops: stops.length }
+}
 /** no other code is coming after all: what was counting between codes is taken away (it was never a stop of the line) */
 export function dropSetup(id: string) { const x = state.stops.find((y) => y.id === id); if (x && !x.endedAt) putStop({ ...x, deleted: true }) }
 /**
