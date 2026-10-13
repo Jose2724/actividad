@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, Ref } from 'react'
-import { addLine, addWaste, awayDay, awayOn, byLineName, byShip, casesText, cancelDay, CFG, closeOrder, codeProblem, CRATES_PER_CART, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endRun, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineNamed, lineNameOf, lineTargetOf, lotFor, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, numOf, openOrdersFor, openRun, openStop, orderCodes, orderLabel, orderMade, parseProductsCsv, plainDay, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reopenRun, reset, resetRecords, role, runQty, runStats, saveOrder, saveProduct, setLineTarget, setSchedule, setShifts, setTarget, startDay, startRun, startSetup, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, savedText, shiftCuts, shiftHours, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type LineTarget, type Product, type LotPart, type Order, type ShiftHours, type Short, type State, type Target, type WorkDay } from './store'
+import { addLine, addWaste, awayDay, byLineName, byShip, casesText, cancelDay, CFG, closeOrder, codeProblem, CRATES_PER_CART, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endRun, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineNamed, lineNameOf, lineTargetOf, lotFor, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, numOf, openOrdersFor, openRun, openStop, orderCodes, orderLabel, orderMade, parseProductsCsv, plainDay, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reopenRun, reset, resetRecords, role, runQty, runStats, saveOrder, saveProduct, setLineTarget, setSchedule, setShifts, setTarget, startDay, startRun, startSetup, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, savedText, shiftCuts, shiftHours, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type LineTarget, type Product, type LotPart, type Order, type ShiftHours, type Short, type State, type Target, type WorkDay } from './store'
 import { avanceRows, n1, pending, type AvanceRow } from './avance'
 import { cellText, loadZip, xDay, xDur, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 
@@ -1115,7 +1115,6 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         </div>
       )}
       {stop && <div className="stopbar">⏸ Parado · <b>{stop.reason}</b>{stop.note && ' · ' + stop.note} · <b>{fmtDur(stopTime(s, stop, now))}</b>{stop.lineId === null && ' · todo el departamento'}{mgr && stop.lineId === line.id && <button type="button" className="lnk" onClick={() => setFixingStop(true)}>Corregir</button>}</div>}
-      {awayOn(s, run.lineId, run.date, now - 1000, now).length > 0 && <div className="awaybar">⏱ Fuera del horario de los turnos: este rato no cuenta. Vuelve a contar cuando se registre algo aquí o cuando empiece el turno.</div>}
       {fixing && <RunEditor s={s} run={run} mgr={mgr} onClose={() => setFixing(false)} />}
       {fixingStop && stop && <StopEditor stop={stop} mgr={mgr} onClose={() => setFixingStop(false)} />}
       <div className="stats">
@@ -1371,7 +1370,7 @@ function ShiftsDialog({ s, date, onClose }: { s: State; date: string; onClose: (
           <div className="egrid">{field('first', 'Turno 1 empieza')}{field('firstEnd', 'Turno 1 termina')}{field('second', 'Turno 2 empieza')}{field('secondEnd', 'Turno 2 termina')}</div>
           <label>Vale desde el día <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
           {cuts
-            ? <p className="hint">Cada registro cuenta para un turno por su hora: hasta las <b>{minuteText(cuts.toSecond)}</b> es del turno 1 y después del turno 2. Pasada la medianoche sigue siendo del turno 2 hasta las <b>{minuteText(cuts.toFirst)}</b>. El corte es la mitad del rato entre un turno y el otro, para que quien se queda un poco o llega un poco antes cuente con su turno. Fuera de estas horas el tiempo no cuenta: un código que se deja corriendo en el cambio de turno o de noche no suma trabajando.</p>
+            ? <p className="hint">Cada registro cuenta para un turno por su hora: hasta las <b>{minuteText(cuts.toSecond)}</b> es del turno 1 y después del turno 2. Pasada la medianoche sigue siendo del turno 2 hasta las <b>{minuteText(cuts.toFirst)}</b>. El corte es la mitad del rato entre un turno y el otro, para que quien se queda un poco o llega un poco antes cuente con su turno. El tiempo nunca se detiene solo: quien sigue trabajando después de su hora, o empieza antes, sigue contando. Solo cuando ya pasó el rato entre un turno y el otro, si en una línea nadie registró nada en todo ese rato, ese rato se descuenta.</p>
             : <span className="err">{problem}</span>}
           <div className="dbtns">
             <button type="button" className="btn" onClick={onClose}>Cancelar</button>
@@ -1576,7 +1575,7 @@ function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: De
               )))}</tbody>
             </table>
           </div>
-          <p className="hint">Se reparte por la hora de cada registro. Un código que pasó de un turno al otro cuenta en los dos, cada uno con lo suyo; su waste se reparte según lo hecho en cada turno. El rato entre un turno y el otro no cuenta, ni como trabajando ni como parado, salvo hasta el último registro del turno que sale y desde el primero del que entra.</p>
+          <p className="hint">Se reparte por la hora de cada registro. Un código que pasó de un turno al otro cuenta en los dos, cada uno con lo suyo; su waste se reparte según lo hecho en cada turno. El tiempo nunca se detiene solo. Cuando ya pasó el rato entre un turno y el otro, si en una línea nadie registró nada en todo ese rato, ese rato no cuenta.</p>
         </>
       )}
       {rows.length === 0 ? <p className="hint">{day.state === 'here' ? (rep.shift ? 'Nada registrado en este turno.' : 'Nada registrado en esta fecha.') : ''}</p> : (

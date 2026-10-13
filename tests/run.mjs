@@ -1363,19 +1363,19 @@ sh2.use((m) => {
   clock = oct(10, 19, 0)
   const day = m.reportOf(st(), DAY, clock)
   const line3 = (x) => [x.shift, x.codes, x.units, x.qty, x.waste, min(x.working), min(x.down), min(x.setup)]
-  eq('el día completo, como siempre', [day.rows.map((x) => [x.r.code, x.units, x.qty, x.waste, min(x.st.working), min(x.st.down)]), min(day.working), min(day.down), min(day.setup), day.filtered], [[['A100', 5, 1060, 6, 230, 20], ['B200', 1, 144, 0, 60, 0]], 290, 20, 30, false])
-  eq('arriba el total del día y debajo cada turno', day.byShift.map((d) => [d.dept, line3(d.day), line3(d.first), line3(d.second)]), [['RTE', [0, 2, 6, 1204, 6, 290, 20, 30], [1, 1, 3, 580, 3.28, 120, 10, 0], [2, 2, 3, 624, 2.72, 170, 10, 30]]])
+  eq('el día completo, como siempre', [day.rows.map((x) => [x.r.code, x.units, x.qty, x.waste, min(x.st.working), min(x.st.down)]), min(day.working), min(day.down), min(day.setup), day.filtered], [[['A100', 5, 1060, 6, 230, 40], ['B200', 1, 144, 0, 60, 0]], 290, 40, 30, false])
+  eq('arriba el total del día y debajo cada turno', day.byShift.map((d) => [d.dept, line3(d.day), line3(d.first), line3(d.second)]), [['RTE', [0, 2, 6, 1204, 6, 290, 40, 30], [1, 1, 3, 580, 3.28, 120, 15, 0], [2, 2, 3, 624, 2.72, 170, 25, 30]]])
   const d = day.byShift[0]
-  eq('los dos turnos suman el día: unidades, cantidad, waste, trabajando, parado y set up', [d.first.units + d.second.units, d.first.qty + d.second.qty, Math.round((d.first.waste + d.second.waste) * 100) / 100, min(d.first.working + d.second.working), min(d.first.down + d.second.down), min(d.first.setup + d.second.setup)], [6, 1204, 6, 290, 20, 30])
+  eq('los dos turnos suman el día: unidades, cantidad, waste, trabajando, parado y set up', [d.first.units + d.second.units, d.first.qty + d.second.qty, Math.round((d.first.waste + d.second.waste) * 100) / 100, min(d.first.working + d.second.working), min(d.first.down + d.second.down), min(d.first.setup + d.second.setup)], [6, 1204, 6, 290, 40, 30])
   eq('cada línea del día dice su turno: el código que pasó de uno a otro, los dos', [day.rows.map((x) => x.shifts), day.unitRows.map((x) => x.shift), day.stops.map((x) => [x.reason, m.spanShifts(day.plan, x.startedAt, x.endedAt ?? clock)])], [['1 y 2', '2'], [1, 1, 1, 2, 2, 2], [['Break', '1'], ['Problema mecánico', '1 y 2'], ['Set up', '2']]])
   eq('por código, lo que hizo cada turno', day.byCode.map((c) => [c.code, c.qty, c.byShift]), [['A100', 1060, [580, 480]], ['B200', 144, [0, 144]]])
   // the report of one shift only
   const one = m.reportOf(st(), DAY, clock, { shift: 1 })
-  eq('turno 1 solo: lo que hizo del código que siguió en el turno 2, con su tiempo y sus paros', [one.rows.map((x) => [x.r.code, x.units, x.qty, x.waste, min(x.st.working), min(x.st.down), Object.fromEntries(Object.entries(x.st.reasons).map(([k, v]) => [k, min(v)])), x.timed]), one.filtered, one.byShift, one.shift], [[['A100', 3, 580, 3.28, 120, 10, { Break: 10 }, 3]], true, [], 1])
+  eq('turno 1 solo: lo que hizo del código que siguió en el turno 2, con su tiempo y sus paros', [one.rows.map((x) => [x.r.code, x.units, x.qty, x.waste, min(x.st.working), min(x.st.down), Object.fromEntries(Object.entries(x.st.reasons).map(([k, v]) => [k, min(v)])), x.timed]), one.filtered, one.byShift, one.shift], [[['A100', 3, 580, 3.28, 120, 15, { Break: 10, 'Problema mecánico': 5 }, 3]], true, [], 1])
   near('su promedio por carro es el de sus carros (30, 60 y 25 minutos)', one.rows[0].st.avg / M, 115 / 3)
-  eq('sus unidades, sus paros (el que empezó a las 3:10 PM, con el turno ya saliendo, cuenta desde que entra el otro) y sin set up', [one.unitRows.map((x) => x.qty), one.stops.map((x) => [x.reason, min(x.ms)]), min(one.setup), min(one.working), min(one.down)], [[240, 240, 100], [['Break', 10]], 0, 120, 10])
+  eq('sus unidades, sus paros (del que pasa de un turno al otro, lo que le toca a este) y sin set up', [one.unitRows.map((x) => x.qty), one.stops.map((x) => [x.reason, min(x.ms)]), min(one.setup), min(one.working), min(one.down)], [[240, 240, 100], [['Break', 10], ['Problema mecánico', 5]], 0, 120, 15])
   const two = m.reportOf(st(), DAY, clock, { shift: 2 })
-  eq('turno 2 solo', [two.rows.map((x) => [x.r.code, x.units, x.qty, x.waste, min(x.st.working), min(x.st.down)]), two.stops.map((x) => x.reason), min(two.setup), two.byCode.map((c) => [c.code, c.qty, c.byShift])], [[['A100', 2, 480, 2.72, 110, 10], ['B200', 1, 144, 0, 60, 0]], ['Problema mecánico', 'Set up'], 30, [['A100', 480, null], ['B200', 144, null]]])
+  eq('turno 2 solo', [two.rows.map((x) => [x.r.code, x.units, x.qty, x.waste, min(x.st.working), min(x.st.down)]), two.stops.map((x) => x.reason), min(two.setup), two.byCode.map((c) => [c.code, c.qty, c.byShift])], [[['A100', 2, 480, 2.72, 110, 25], ['B200', 1, 144, 0, 60, 0]], ['Problema mecánico', 'Set up'], 30, [['A100', 480, null], ['B200', 144, null]]])
   eq('con código y turno a la vez', m.reportOf(st(), DAY, clock, { shift: 2, code: 'B200' }).rows.map((x) => [x.r.code, x.qty]), [['B200', 144]])
   eq('el título y el nombre del archivo dicen el turno', [m.filterTitle('', '', 2), m.filterTitle('A100', '6283', 1), m.filterFile('A100', '', 1), m.filterTitle('', ''), m.filterFile('', '')], [' · Turno 2', ' · Turno 1 · código A100 · lote 6283', '-turno1-cod-A100', '', ''])
   // today's card
@@ -1554,7 +1554,7 @@ mov.use((m) => {
   m.endStop(st().stops.find((x) => x.reason === 'Set up').id)
   eq('terminado ese Set up, sí', [m.moveRun(runOf('C300').id, L('Línea 2').id), runOf('C300').line, m.openRun(st(), L('Línea 2').id)?.code, m.openRun(st(), L('Línea 1').id)], [true, 'Línea 2', 'C300', undefined])
 })
-section('Turnos: el rato entre un turno y el otro no cuenta')
+section('Turnos: el tiempo no se detiene solo; un rato entre turnos sin ningún registro no cuenta')
 const gap = await device('gap', { user: 'Nino', usual: true })
 gap.use((m) => {
   const st = () => m.store.get(), min = (x) => Math.round(x / M), runOf = (code) => st().runs.find((r) => r.code === code), lastStop = () => st().stops[st().stops.length - 1]
@@ -1564,52 +1564,53 @@ gap.use((m) => {
   clock = oct(10, 14, 0)
   m.startRun(lineOf(1), 'A100', '6283', DAY, 240)
   clock = oct(10, 14, 40); m.unitDone(runOf('A100').id, 240)
-  eq('a las 3:10 PM, con el turno 1 ya fuera, el tiempo está quieto en las 3:00', [stats('A100', oct(10, 15, 10)), stats('A100', oct(10, 15, 29))], [[60, 0], [60, 0]])
-  eq('a las 3:30 entra el turno 2 y vuelve a contar', stats('A100', oct(10, 15, 31)), [61, 0])
+  eq('mientras pasa el cambio de turno el tiempo NO se detiene: quien sigue trabajando sigue contando', [stats('A100', oct(10, 15, 10)), stats('A100', oct(10, 15, 29))], [[70, 0], [89, 0]])
+  eq('pasado el cambio (3:30 PM), si en la línea nadie registró nada en esa media hora, esa media hora no cuenta', stats('A100', oct(10, 15, 31)), [61, 0])
   clock = oct(10, 16, 0); m.unitDone(runOf('A100').id, 240)
   clock = oct(10, 16, 30)
   const a = m.runStats(st(), runOf('A100'), clock)
-  eq('dos horas y media en el reloj son dos de trabajo: la media hora del cambio no cuenta', [min(a.working), min(a.down), a.unitTimes.map(min), min(a.total)], [120, 0, [40, 50], 150])
-  eq('el carro en curso tampoco la cuenta', [min(m.workedSince(st(), runOf('A100'), oct(10, 14, 40), oct(10, 15, 45))), min(m.workedSince(st(), runOf('A100'), oct(10, 16, 0), clock))], [35, 30])
+  eq('dos horas y media en el reloj son dos de trabajo', [min(a.working), min(a.down), a.unitTimes.map(min), min(a.total)], [120, 0, [40, 50], 150])
+  eq('el carro en curso tampoco cuenta esa media hora, una vez pasada', [min(m.workedSince(st(), runOf('A100'), oct(10, 14, 40), oct(10, 15, 45))), min(m.workedSince(st(), runOf('A100'), oct(10, 14, 40), oct(10, 15, 20))), min(m.workedSince(st(), runOf('A100'), oct(10, 16, 0), clock))], [35, 40, 30])
   const day = m.reportOf(st(), DAY, clock).byShift[0]
   eq('cada turno con su hora de trabajo, y los dos suman el día', [min(day.first.working), min(day.second.working), min(day.day.working), day.first.units, day.second.units], [60, 60, 120, 1, 1])
-  // 2. the shift that leaves stays a few minutes: its time counts up to its last record
+  // 2. the shift that leaves stays a few minutes and records a cart: somebody was there, so all of it counts
   clock = oct(10, 14, 0); m.startRun(lineOf(2), 'B200', '6283', DAY, 144)
   clock = oct(10, 15, 6); m.unitDone(runOf('B200').id, 144)
-  eq('el turno que sale se queda 6 minutos y registra un carro: cuenta hasta ese carro', [stats('B200', oct(10, 15, 20)), stats('B200', oct(10, 16, 0))], [[66, 0], [96, 0]])
-  // 3. the shift that comes in starts a few minutes early: its time counts from its first record
+  eq('si alguien registró algo en ese rato (un carro a las 3:06), hubo gente: cuenta todo', [stats('B200', oct(10, 15, 20)), stats('B200', oct(10, 16, 0))], [[80, 0], [120, 0]])
+  // 3. the shift that comes in starts a few minutes early: it started, so it counts from there
   clock = oct(10, 15, 20); m.startRun(lineOf(3), 'C300', '6283', DAY, 480)
-  eq('el turno que entra empieza un código a las 3:20: cuenta desde ahí', [stats('C300', oct(10, 15, 25)), stats('C300', oct(10, 16, 0))], [[5, 0], [40, 0]])
-  // 4. a stop left open through the change
+  eq('el turno que entra empieza un código a las 3:20: cuenta desde que empezó', [stats('C300', oct(10, 15, 25)), stats('C300', oct(10, 16, 0))], [[5, 0], [40, 0]])
+  // 4. a stop left open through the change, nobody tapping
   clock = oct(10, 14, 0); m.startRun(lineOf(4), 'D400', '6283', DAY, 144)
   clock = oct(10, 14, 50); m.startStop('RTE', runOf('D400').lineId, 'Break', '')
   const brk = lastStop().id
-  eq('un paro que queda abierto en el cambio deja de contar a las 3:00', [stats('D400', oct(10, 15, 20)), min(m.stopTime(st(), st().stops.find((x) => x.id === brk), oct(10, 15, 20)))], [[50, 10], 10])
+  eq('un paro abierto sigue contando mientras pasa el cambio', [stats('D400', oct(10, 15, 20)), min(m.stopTime(st(), st().stops.find((x) => x.id === brk), oct(10, 15, 20)))], [[50, 30], 30])
   clock = oct(10, 15, 40); m.endStop(brk)
   clock = oct(10, 16, 0)
-  eq('y sigue contando cuando entra el turno 2: 10 minutos de un lado y 10 del otro', [stats('D400', clock), min(m.stopTime(st(), st().stops.find((x) => x.id === brk), clock)), m.reportOf(st(), DAY, clock, { code: 'D400' }).stops.map((x) => [x.reason, min(x.ms)]), [1, 2].map((k) => min(m.reportOf(st(), DAY, clock, { code: 'D400', shift: k }).down))], [[70, 20], 20, [['Break', 20]], [10, 10]])
+  eq('pasado el cambio sin ningún registro en la línea, esa media hora sale del paro: 10 minutos de un lado y 10 del otro', [stats('D400', clock), min(m.stopTime(st(), st().stops.find((x) => x.id === brk), clock)), m.reportOf(st(), DAY, clock, { code: 'D400' }).stops.map((x) => [x.reason, min(x.ms)]), [1, 2].map((k) => min(m.reportOf(st(), DAY, clock, { code: 'D400', shift: k }).down))], [[70, 20], 20, [['Break', 20]], [10, 10]])
   // 5. the set up between two codes, with the change of shift in the middle
   clock = oct(10, 14, 0); m.startRun(lineOf(5), 'E500', '6283', DAY, 144)
   clock = oct(10, 14, 50); m.endRun(runOf('E500').id, true)
   const setup = lastStop().id
-  eq('un Set up que cruza el cambio de turno cuenta lo que hubo gente', min(m.stopTime(st(), st().stops.find((x) => x.id === setup), oct(10, 15, 25))), 10)
+  eq('un Set up sigue contando mientras pasa el cambio', min(m.stopTime(st(), st().stops.find((x) => x.id === setup), oct(10, 15, 25))), 35)
   clock = oct(10, 15, 40); m.startRun(st().lines.find((l) => l.name === 'Línea 5'), 'F600', '6283', DAY, 144)
   clock = oct(10, 16, 0)
-  eq('50 minutos en el reloj, 20 de Set up', [st().stops.filter((x) => x.id === setup).map((x) => [x.note, min(x.endedAt - x.startedAt)]), min(m.stopTime(st(), st().stops.find((x) => x.id === setup), clock)), min(m.reportOf(st(), DAY, clock).setup)], [[['De E500 a F600', 50]], 20, 20])
-  // 6. the night: a code nobody ended, and the first shift coming in a little early
+  eq('50 minutos en el reloj; pasado el cambio sin registros, 20 de Set up', [st().stops.filter((x) => x.id === setup).map((x) => [x.note, min(x.endedAt - x.startedAt)]), min(m.stopTime(st(), st().stops.find((x) => x.id === setup), clock)), min(m.reportOf(st(), DAY, clock).setup)], [[['De E500 a F600', 50]], 20, 20])
+  // 6. the night
   clock = oct(10, 23, 0); m.startRun(lineOf(6), 'G700', '6283', DAY, 240)
   clock = oct(11, 0, 40); m.unitDone(runOf('G700').id, 240)
-  eq('un código que se queda corriendo de noche cuenta hasta la 1:00 AM y otra vez desde las 6:00', [stats('G700', oct(11, 2, 0)), stats('G700', oct(11, 5, 59)), stats('G700', oct(11, 7, 0))], [[120, 0], [120, 0], [180, 0]])
+  eq('de noche tampoco se detiene solo: pasada la 1:00 AM, un código que sigue corriendo sigue contando', [stats('G700', oct(11, 1, 30)), stats('G700', oct(11, 2, 0))], [[150, 0], [180, 0]])
+  eq('llegada la hora del turno 1 (6:00 AM), una línea que pasó toda la noche sin un solo registro no cuenta esa noche', [stats('G700', oct(11, 6, 0)), stats('G700', oct(11, 7, 0))], [[120, 0], [180, 0]])
   clock = oct(11, 1, 20); m.unitDone(runOf('G700').id, 240)
-  eq('si el turno 2 se queda hasta la 1:20 y registra un carro, cuenta hasta ese carro', stats('G700', oct(11, 2, 0)), [140, 0])
+  eq('si el turno 2 siguió y registró un carro a la 1:20, hubo gente: esa noche cuenta hasta que ellos terminen el código', stats('G700', oct(11, 7, 0)), [480, 0])
   clock = oct(11, 5, 52); m.startRun(lineOf(7), 'H800', '6284', '2026-10-11', 240)
-  eq('el turno 1 que empieza a las 5:52 no espera a las 6:00 para contar', stats('H800', oct(11, 6, 10)), [18, 0])
+  eq('el turno 1 que empieza a las 5:52 cuenta desde las 5:52: si le dieron es porque empezaron', stats('H800', oct(11, 6, 10)), [18, 0])
   // 7. a stop of the whole room goes by its own start and end
   clock = oct(10, 14, 55); m.startStop('RTE', null, 'Limpieza', '')
   const all = lastStop().id
   clock = oct(10, 15, 45); m.endStop(all)
-  eq('un paro de todo el departamento que cruza el cambio: 5 minutos antes y 15 después', min(m.stopTime(st(), st().stops.find((x) => x.id === all), oct(10, 16, 0))), 20)
-  eq('ese paro de todos también le cuenta a cada línea solo con gente: a la línea 1, 20 minutos', stats('A100', oct(10, 16, 30)), [100, 20])
+  eq('un paro de todo el departamento que cruza el cambio sin tocarse en ese rato: 5 minutos antes y 15 después', min(m.stopTime(st(), st().stops.find((x) => x.id === all), oct(10, 16, 0))), 20)
+  eq('y a la línea 1, que tampoco registró nada en ese rato, le cuenta esos 20 minutos', stats('A100', oct(10, 16, 30)), [100, 20])
   // other hours: no minute between the shifts, nothing to take out
   m.setShifts(DAY, { first: '06:00', firstEnd: '15:00', second: '15:00', secondEnd: '01:00' })
   eq('con un horario sin hueco entre turnos, todo ese tiempo cuenta: los 50 minutos del paro', [stats('A100', oct(10, 16, 30)), min(m.stopTime(st(), st().stops.find((x) => x.id === all), oct(10, 16, 30)))], [[100, 50], 50])

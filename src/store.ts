@@ -736,17 +736,17 @@ function without(a: number, b: number, out: Span[]): Span[] {
 }
 /**
  * The stretches around [a, b) in which no shift is on, by the hours set: between the first shift and the second, and
- * between the second and the next first. Each with its hand-over (see shiftCuts).
+ * between the second and the next first.
  */
 function gapsNear(h: ShiftHours, a: number, b: number) {
   const f = mins(h.first), len1 = ahead(f, mins(h.firstEnd)), gap1 = ahead(mins(h.firstEnd), mins(h.second)), len2 = ahead(mins(h.second), mins(h.secondEnd)), gap2 = ahead(mins(h.secondEnd), f)
   const d = new Date(a)
   d.setHours(0, 0, 0, 0)
-  const out: (Span & { cut: number })[] = []
+  const out: Span[] = []
   for (let day = d.getTime() - 86_400_000; day <= b; day += 86_400_000) {
     const g1 = day + (f + len1) * 60_000, g2 = g1 + (gap1 + len2) * 60_000
-    if (gap1 > 0) out.push({ from: g1, to: g1 + gap1 * 60_000, cut: g1 + (gap1 / 2) * 60_000 })
-    if (gap2 > 0) out.push({ from: g2, to: g2 + gap2 * 60_000, cut: g2 + (gap2 / 2) * 60_000 })
+    if (gap1 > 0) out.push({ from: g1, to: g1 + gap1 * 60_000 })
+    if (gap2 > 0) out.push({ from: g2, to: g2 + gap2 * 60_000 })
   }
   return out.filter((g) => g.to > a && g.from < b)
 }
@@ -760,37 +760,35 @@ function marksOf(s: State, lineId: string) {
   return m
 }
 /**
- * The stretches of [a, b) when nobody was on a line: outside the hours of both shifts (the time in which one shift
- * leaves and the other comes in, and the night). A code left running through them was not being worked, and a stop
- * left open was not costing anything. People who stay a little after their hour, or come in a little before it, leave
- * records (a unit, a stop, a code started or ended): the time counts up to the last record of the shift that leaves
- * and from the first record of the shift that comes in. `own` = the records to go by when it is not one line's (a
- * stop of the whole room).
+ * The stretches of [a, b) that do not count on a line. Time never stops by itself while it is happening: people who
+ * stay after their hour or start before it are working, and it is theirs to say when they stop. Only afterwards, once
+ * a whole stretch between two shifts is over (the time in which one shift leaves and the other comes in, or the
+ * night), and only when nothing at all was recorded on the line in it (no unit, no stop, no code started or ended), is
+ * that stretch taken out: nobody was there, so it was neither worked nor a stop. One record in it and all of it
+ * counts. `own` = the records to go by when it is not one line's (a stop of the whole room).
  */
-export function awayOn(s: State, lineId: string | null, date: string, a: number, b: number, own: number[] = []): Span[] {
+export function awayOn(s: State, lineId: string | null, date: string, a: number, b: number, now: number, own: number[] = []): Span[] {
   if (!(b > a)) return []
   const marks = lineId ? marksOf(s, lineId) : own
-  return gapsNear(shiftsOf(s, date), a, b).map((g) => {
-    let out = g.from, inn = g.to
-    for (const m of marks) { if (m >= g.from && m < g.cut) out = Math.max(out, m); else if (m >= g.cut && m < g.to) inn = Math.min(inn, m) }
-    return { from: Math.max(out, a), to: Math.min(inn, b) }
-  }).filter((x) => x.to > x.from)
+  return gapsNear(shiftsOf(s, date), a, b)
+    .filter((g) => g.to <= now && !marks.some((m) => m >= g.from && m < g.to))
+    .map((g) => ({ from: Math.max(g.from, a), to: Math.min(g.to, b) })).filter((x) => x.to > x.from)
 }
-/** the time a run has counted since a moment (its last unit, or its start): working, with somebody there */
+/** the time a run has counted since a moment (its last unit, or its start) */
 export function workedSince(s: State, r: Run, from: number, now: number) {
   const stops = stopsOf(s, r.dept, r.lineId)
-  return without(from, now, awayOn(s, r.lineId, r.date, from, now)).reduce((t, x) => t + activeBetween(x.from, x.to, stops, now), 0)
+  return without(from, now, awayOn(s, r.lineId, r.date, from, now, now)).reduce((t, x) => t + activeBetween(x.from, x.to, stops, now), 0)
 }
-/** the stretches a stop counts: its time with somebody there */
+/** the stretches a stop counts (see awayOn) */
 export function stopSpans(s: State, x: Stop, now: number): Span[] {
   const end = x.endedAt ?? now
-  return without(x.startedAt, end, awayOn(s, x.lineId, plainDay(s, x.startedAt), x.startedAt, end, [x.startedAt, ...(x.endedAt ? [x.endedAt] : [])]))
+  return without(x.startedAt, end, awayOn(s, x.lineId, plainDay(s, x.startedAt), x.startedAt, end, now, [x.startedAt, ...(x.endedAt ? [x.endedAt] : [])]))
 }
 /** how long a stop counts */
 export const stopTime = (s: State, x: Stop, now: number) => stopSpans(s, x, now).reduce((t, p) => t + (p.to - p.from), 0)
 /** a run's time within one shift: what it worked and what it was stopped in it, with the causes */
 export function runInShift(s: State, r: Run, now: number, h: ShiftHours, shift: 1 | 2) {
-  const stops = stopsOf(s, r.dept, r.lineId), end = r.endedAt ?? now, away = awayOn(s, r.lineId, r.date, r.startedAt, end)
+  const stops = stopsOf(s, r.dept, r.lineId), end = r.endedAt ?? now, away = awayOn(s, r.lineId, r.date, r.startedAt, end, now)
   const mine = shiftPieces(h, r.startedAt, end).filter((x) => x.shift === shift).flatMap((x) => without(x.from, x.to, away))
   const reasons: Record<string, number> = {}
   let working = 0, down = 0
@@ -1307,10 +1305,10 @@ const stoppedBetween = (a: number, b: number, stops: Stop[], now: number) => sto
 /** time between two moments without what was spent stopped */
 export const activeBetween = (a: number, b: number, stops: Stop[], now: number) => Math.max(0, b - a - stoppedBetween(a, b, stops, now))
 
-/** a run's numbers: only the time somebody was on its line counts, as working or as stopped (see awayOn) */
+/** a run's numbers. A stretch between two shifts that the line went through without a single record does not count (see awayOn) */
 export function runStats(s: State, r: Run, now: number) {
   const stops = stopsOf(s, r.dept, r.lineId), end = r.endedAt ?? now
-  const away = awayOn(s, r.lineId, r.date, r.startedAt, end)
+  const away = awayOn(s, r.lineId, r.date, r.startedAt, end, now)
   const there = (a: number, b: number) => (away.length ? without(a, b, away) : b > a ? [{ from: a, to: b }] : [])
   const worked = (a: number, b: number) => there(a, b).reduce((t, x) => t + activeBetween(x.from, x.to, stops, now), 0)
   const working = worked(r.startedAt, end)

@@ -323,8 +323,6 @@ table.byshift small{color:var(--muted);font-weight:500;white-space:nowrap}
 .linegoal b.ok{color:var(--ok)}
 .linegoal b.red{color:var(--warn)}
 .linegoal .lnk{padding:6px 0}
-/* between two shifts, on a line whose code was left running: its time is not counting */
-.awaybar{background:var(--bg);border-radius:10px;padding:8px 12px;font-size:14px;font-weight:600;color:var(--muted)}
 /* the orders Packing fills: the room's card, and the line's strip with the orders of its code */
 .orders{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px 16px;display:grid;gap:8px}
 .orders td.ok{color:var(--ok);font-weight:700}
