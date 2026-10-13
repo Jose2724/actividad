@@ -337,7 +337,8 @@ export function noteLabel(note: string) { const a = /^Después de (.+)$/.exec(no
 export const byLineName = (a: Line, b: Line) => a.name.localeCompare(b.name, 'es', { numeric: true, sensitivity: 'base' })
 export const LINE_NAME_MAX = 24
 /** the word a room's lines are named with when the app names them: the name that is KEPT, the same in any language */
-const lineWordKept = (d: Dept) => (d === 'Kitchen' ? 'Braiser' : 'Línea')
+// (a function, not a const: it is used while the very first state of a new device is being made, further up this file)
+function lineWordKept(d: Dept) { return d === 'Kitchen' ? 'Braiser' : 'Línea' }
 /** a name as it is kept: tidy, and with the app's own word for a line (somebody typing "Line 4" on an English screen means "Línea 4") */
 export const tidyLineName = (t: string) => (lang === 'en' ? t.trim().replace(/^Line(?=\s|$)/i, 'Línea') : t).replace(/\s+/g, ' ').trim().slice(0, LINE_NAME_MAX).trim()
 /** two names are the same line name whatever the capitals, accents or spaces: "linea  2" = "Línea 2" */
