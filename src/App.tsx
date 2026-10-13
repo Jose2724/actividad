@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, Ref } from 'react'
-import { activeBetween, addLine, addWaste, awayDay, byLineName, casesText, cancelDay, CFG, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deptToday, dropSetup, endRun, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineNamed, lineNameOf, lotFor, madeText, managerPin, mergeProducts, myDept, nearDay, normCode, numOf, openRun, openStop, parseProductsCsv, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reopenRun, reset, resetRecords, role, runQty, runStats, saveProduct, setSchedule, setTarget, startDay, startRun, startSetup, startStop, stopsOf, store, swapLineNames, targetOf, tidyLineName, savedText, shortEnded, shortUnit, SETUP, unitDone, user, workDay, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Short, type State, type Target, type WorkDay } from './store'
+import { addLine, addWaste, awayDay, awayOn, byLineName, casesText, cancelDay, CFG, codeProblem, CRATES_PER_CART, dayRecords, DEPTS, deptStop, deptToday, dropSetup, endRun, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineNamed, lineNameOf, lineTargetOf, lotFor, madeText, minuteText, managerPin, mergeProducts, myDept, nightText, nearDay, normCode, numOf, openRun, openStop, parseProductsCsv, plainDay, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reopenRun, reset, resetRecords, role, runQty, runStats, saveProduct, setLineTarget, setSchedule, setShifts, setTarget, startDay, startRun, startSetup, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, savedText, shiftCuts, shiftHours, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type LineTarget, type Product, type LotPart, type ShiftHours, type Short, type State, type Target, type WorkDay } from './store'
 import { avanceRows, n1, pending, type AvanceRow } from './avance'
 import { cellText, loadZip, xDay, xDur, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 
@@ -8,7 +8,7 @@ const fmtN = (x: number) => Math.round(x).toLocaleString('en-US')
 import { whoText } from './store'
 import { buildPdf, loadPdf } from './pdf'
 import { homeScreenApple, sharePick, shareProblem, type Kind } from './send'
-import { filterFile, filterTitle, reportOf, type ReportFilter } from './report'
+import { filterFile, filterTitle, reportOf, spanShifts, type ReportFilter } from './report'
 import { RunEditor, StopEditor } from './editors'
 import { fetchMe, finishSignOut, loginEmail, rememberedMe, rememberedUser, rememberMe, rememberUser, signedOut, signOutHere, supabase, type Me } from './supabase'
 import { leaveAsk, loadDay, startSync, syncStore, syncNow, unreachable } from './sync'
@@ -600,7 +600,7 @@ function StartDayDialog({ s, now, day, onClose, onDone }: { s: State; now: numbe
   const [word, setWord] = useState('')
   // an hour left as it came means "this very moment" (or the start it already had); a typed one is that hour, on the nearest day
   const at = time === opened ? (was ? was.at : now) : nearDay(was ? was.at : now, time)
-  const date = was ? day.date : dayOf(at)
+  const date = was ? day.date : plainDay(s, at) // after midnight the second shift is still on its own day
   const lefts = leftOpen(s, date, at)
   const had = dayRecords(s, date, at)
   const some = had.runs.length + had.stops.length > 0
@@ -617,7 +617,7 @@ function StartDayDialog({ s, now, day, onClose, onDone }: { s: State; now: numbe
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
         <h3>{was ? 'Día de trabajo' : 'Empezar el día'}</h3>
-        <p>Desde esa hora, "hoy" es el <b>{longDate(date)}</b>{supabase ? ' en todas las tablets' : ''}, hasta las 6 de la mañana siguiente. Un turno que pasa de la medianoche conserva su fecha y su lote.</p>
+        <p>Desde esa hora, "hoy" es el <b>{longDate(date)}</b>{supabase ? ' en todas las tablets' : ''}, hasta las {nightText(s, date)} de la madrugada siguiente, cuando el turno 2 le entrega al turno 1. Un turno que pasa de la medianoche conserva su fecha y su lote.</p>
         <form className="qform" onSubmit={(e) => { e.preventDefault(); go() }}>
           <label>Hora en que empieza <input type="time" value={time} onChange={(e) => setTime(e.target.value)} /></label>
           {lefts.length > 0 && (
@@ -677,7 +677,11 @@ function WipeDayDialog({ s, date, onClose, onDone }: { s: State; date: string; o
   )
 }
 
-/** the room today with all its lines together: the total, each code added up across lines, and the manager's goal (per hour, per shift) */
+/**
+ * the room today with all its lines together: the total (and what each shift made of it), each code added up across
+ * lines, and the manager's goal: so much in the whole day, and so much per hour (the pace is the shift's in course,
+ * and it is red as soon as it falls under the goal)
+ */
 function TodayCard({ s, dept, now, mgr, date }: { s: State; dept: Dept; now: number; mgr: boolean; date: string }) {
   const cfg = CFG[dept]
   const t = deptToday(s, dept, date, now)
@@ -686,11 +690,12 @@ function TodayCard({ s, dept, now, mgr, date }: { s: State; dept: Dept; now: num
   const hasGoal = !!(goal && (goal.perHour || goal.perShift))
   if (!t.runs.length && !hasGoal && !mgr) return null
   const pct = goal?.perShift ? Math.min(100, Math.floor((t.qty / goal.perShift) * 100)) : 0
-  const pace = goal?.perHour && t.rate != null ? t.rate / goal.perHour : null
-  const paceCls = pace == null ? '' : pace >= 1 ? 'ok' : pace >= 0.9 ? 'amber' : 'red'
-  const paceText = pace == null ? '' : pace >= 1 ? 'al ritmo de la meta' : pace >= 0.9 ? 'un poco por debajo' : 'por debajo de la meta'
+  const pace = goal?.perHour && t.shiftRate != null ? t.shiftRate / goal.perHour : null
+  const paceCls = pace == null ? '' : pace >= 1 ? 'ok' : 'red'
+  const paceText = pace == null ? '' : pace >= 1 ? 'al ritmo de la meta' : 'por debajo de la meta'
   const left = goal?.perShift ? goal.perShift - t.qty : 0
-  const eta = left > 0 && t.rate && !t.allEnded ? now + (left / t.rate) * 3_600_000 : null
+  const speed = t.shiftRate ?? t.rate
+  const eta = left > 0 && speed && !t.allEnded ? now + (left / speed) * 3_600_000 : null
   const many = t.byCode.length > 1 || (t.byCode[0]?.lines.length ?? 0) > 1
   const unitWord = (n: number) => (n === 1 ? cfg.unit : cfg.plural).toLowerCase()
   return (
@@ -700,18 +705,18 @@ function TodayCard({ s, dept, now, mgr, date }: { s: State; dept: Dept; now: num
         {mgr && <button type="button" className="lnk" onClick={() => setEditing(true)}>{hasGoal ? '✎ Cambiar meta' : '+ Poner meta'}</button>}
       </div>
       <div className="tc-main">
-        <div className="tc-total"><b>{fmtN(t.qty)}</b> <span>{t.unitLabel}</span>{cfg.qty !== 'none' && <small>{t.units} {unitWord(t.units)}</small>}</div>
+        <div className="tc-total"><b>{fmtN(t.qty)}</b> <span>{t.unitLabel}</span>{cfg.qty !== 'none' && <small>{t.units} {unitWord(t.units)}</small>}{t.made[0] > 0 && t.made[1] > 0 && <small className="tc-shifts">Turno 1: <b>{fmtN(t.made[0])}</b> · Turno 2: <b>{fmtN(t.made[1])}</b></small>}</div>
         {goal?.perShift ? (
           <div className="tc-goal">
-            <div className="tc-goalrow"><span>Meta del turno <b>{fmtN(goal.perShift)}</b> {t.unitLabel}</span><b className={pct >= 100 ? 'ok' : ''}>{pct}%</b></div>
+            <div className="tc-goalrow"><span>Meta del día <b>{fmtN(goal.perShift)}</b> {t.unitLabel}</span><b className={pct >= 100 ? 'ok' : ''}>{pct}%</b></div>
             <div className="bar"><i className={pct >= 100 ? 'ok' : ''} style={{ width: pct + '%' }} /></div>
-            <div className="tc-sub">{left > 0 ? <>Faltan <b>{fmtN(left)}</b>{eta && <> · a este ritmo se llega a las <b>{fmtTime(eta)}</b></>}</> : <b className="ok">✓ Meta del turno cumplida</b>}</div>
+            <div className="tc-sub">{left > 0 ? <>Faltan <b>{fmtN(left)}</b>{eta && <> · a este ritmo se llega a las <b>{fmtTime(eta)}</b></>}</> : <b className="ok">✓ Meta del día cumplida</b>}</div>
           </div>
-        ) : <div className="tc-goal tc-none">{mgr ? 'Sin meta del turno todavía.' : ''}</div>}
+        ) : <div className="tc-goal tc-none">{mgr ? 'Sin meta del día todavía.' : ''}</div>}
         <div className="tc-rate">
-          <label>Ritmo</label>
-          <b className={paceCls}>{t.rate != null ? fmtN(t.rate) : '—'}</b> <span>{t.unitLabel}/h</span>
-          {goal?.perHour ? <small>meta <b>{fmtN(goal.perHour)}</b>/h{pace != null && <> · <span className={paceCls}>{paceText}</span></>}</small> : <small>{t.rate == null ? 'desde el primer inicio de hoy' : 'sin meta por hora'}</small>}
+          <label>Ritmo del turno {t.shift}</label>
+          <b className={paceCls}>{t.shiftRate != null ? fmtN(t.shiftRate) : '—'}</b> <span>{t.unitLabel}/h</span>
+          {goal?.perHour ? <small>meta <b>{fmtN(goal.perHour)}</b>/h{pace != null && <> · <span className={paceCls}>{paceText}</span></>}</small> : <small>{t.shiftRate == null ? 'desde el primer inicio del turno' : 'sin meta por hora'}</small>}
         </div>
       </div>
       {many && <div className="tc-codes">{t.byCode.map((c) => <span key={c.code} className="tc-code"><b>{c.code}</b> {fmtN(c.qty)} {t.unitLabel}{cfg.qty !== 'none' && <> · {c.units} {unitWord(c.units)}</>} · {c.lines.join(', ')}</span>)}</div>}
@@ -720,19 +725,19 @@ function TodayCard({ s, dept, now, mgr, date }: { s: State; dept: Dept; now: num
   )
 }
 
-/** the manager types the goal for a room: so many pouches (cajas, mezclas) per hour and/or in the shift */
+/** the manager types the goal for a room: so many pouches (cajas, mezclas) per hour and/or in the whole day (both shifts) */
 function TargetDialog({ dept, unit, goal, onClose }: { dept: Dept; unit: string; goal: Target | undefined; onClose: () => void }) {
   const [hour, setHour] = useState(goal?.perHour ? String(goal.perHour) : '')
-  const [shift, setShift] = useState(goal?.perShift ? String(goal.perShift) : '')
+  const [whole, setWhole] = useState(goal?.perShift ? String(goal.perShift) : '')
   const num = (t: string) => { const x = Number(t); return x > 0 ? x : null }
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
         <h3>Meta de {dept}</h3>
-        <p>La ven todas las tablets de {dept} y queda en el historial. Deja en blanco la que no aplique. Para dejar el departamento sin meta, "Quitar meta".</p>
-        <form onSubmit={(e) => { e.preventDefault(); setTarget(dept, num(hour), num(shift)); onClose() }} className="qform">
+        <p>La ven todas las tablets de {dept} y queda en el historial. Deja en blanco la que no aplique. El ritmo sale en rojo cuando baja de la meta por hora. Para dejar el departamento sin meta, "Quitar meta".</p>
+        <form onSubmit={(e) => { e.preventDefault(); setTarget(dept, num(hour), num(whole)); onClose() }} className="qform">
           <label>Por hora <input autoFocus={!goal?.perHour && !goal?.perShift} inputMode="numeric" placeholder={'ej. 400 ' + unit} value={hour} onChange={(e) => setHour(e.target.value.replace(/\D/g, ''))} /></label>
-          <label>Por turno <input inputMode="numeric" placeholder={'ej. 3200 ' + unit} value={shift} onChange={(e) => setShift(e.target.value.replace(/\D/g, ''))} /></label>
+          <label>En el día completo <small>(los dos turnos)</small> <input inputMode="numeric" placeholder={'ej. 6400 ' + unit} value={whole} onChange={(e) => setWhole(e.target.value.replace(/\D/g, ''))} /></label>
           <div className="dbtns spread">
             <div className="btns">{(goal?.perHour || goal?.perShift) ? <button type="button" className="lnk" onClick={() => { setTarget(dept, null, null); onClose() }}>Quitar meta</button> : null}</div>
             <div className="btns">
@@ -767,7 +772,7 @@ function DeptPanel({ s, dept, now, mgr, day }: { s: State; dept: Dept; now: numb
           <button type="button" className="btn" onClick={() => setAdding(true)}>+ Agregar {CFG[dept].lineWord.toLowerCase()}</button>
         </div>
       </div>
-      {ds && <div className="deptstop">⏸ Todo {dept} parado · <b>{ds.reason}</b>{ds.note && ' · ' + ds.note} · desde {fmtTime(ds.startedAt)} · {ds.by} <button type="button" className="lnk" onClick={() => setEditStop(true)}>Corregir</button></div>}
+      {ds && <div className="deptstop">⏸ Todo {dept} parado · <b>{ds.reason}</b>{ds.note && ' · ' + ds.note} · desde {fmtTime(ds.startedAt)} · {ds.by} {mgr && <button type="button" className="lnk" onClick={() => setEditStop(true)}>Corregir</button>}</div>}
       {editStop && ds && <StopEditor stop={ds} mgr={mgr} onClose={() => setEditStop(false)} />}
       <TodayCard s={s} dept={dept} now={now} mgr={mgr} date={day.date} />
       <div className="lines">{lines.map((l) => <LineCard key={l.id} s={s} line={l} now={now} mgr={mgr} day={day} />)}</div>
@@ -780,7 +785,7 @@ function DeptPanel({ s, dept, now, mgr, day }: { s: State; dept: Dept; now: numb
             const st = runStats(s, r, now)
             return (
               <div key={r.id} className="donerow">
-                <b className="code">{r.code}</b> · lote {r.lot} · {lineNameOf(s, r.lineId, r.line)} · {fmtTime(r.startedAt)} – {fmtTime(r.endedAt ?? now)} · <b>{madeText(r, st.qty)}</b> · trabajando <b>{fmtDur(st.working)}</b> · parado <b className={st.down ? 'red' : ''}>{fmtDur(st.down)}</b>{r.waste > 0 && <> · waste <b className="red">{r.waste} lb</b></>} · {whoText(r)} <button type="button" className="lnk" onClick={() => setEditRun(r.id)}>Corregir</button>
+                <b className="code">{r.code}</b> · lote {r.lot} · {lineNameOf(s, r.lineId, r.line)} · {fmtTime(r.startedAt)} – {fmtTime(r.endedAt ?? now)} · <b>{madeText(r, st.qty)}</b> · trabajando <b>{fmtDur(st.working)}</b> · parado <b className={st.down ? 'red' : ''}>{fmtDur(st.down)}</b>{r.waste > 0 && <> · waste <b className="red">{r.waste} lb</b></>} · {whoText(r)} {mgr && <button type="button" className="lnk" onClick={() => setEditRun(r.id)}>Corregir</button>}
               </div>
             )
           })}
@@ -797,6 +802,9 @@ const SAVED_MS = 2000
 /** a short tick on devices that can vibrate (Android phones, some tablets): the tap is felt as well as seen */
 const buzz = () => { try { (navigator as Navigator & { vibrate?: (ms: number) => boolean }).vibrate?.(35) } catch { /* not on this device */ } }
 
+// What is already recorded is corrected by a manager only ("Corregir" on a code, a unit, a stop): the report has to say
+// what really happened, and one person answers for the changes. The people on the line keep what belongs to the work
+// itself: filling a cart closed short, going on with a code ended too early, ending or dropping a set up.
 function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: number; mgr: boolean; day: WorkDay }) {
   const cfg = CFG[line.dept]
   const run = openRun(s, line.id)
@@ -817,6 +825,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   // the unit being counted is the last one of the code: once it is saved, the code ends
   const [filling, setFilling] = useState<Short | null>(null)
   const [choosing, setChoosing] = useState(false)
+  const [goalOpen, setGoalOpen] = useState(false)
   const [reopening, setReopening] = useState<string | null>(null) // the code (its run) the question is about
   const [fixingId, setFixingId] = useState<string | null>(null)
   const [endAfter, setEndAfter] = useState<null | boolean>(null) // not null = waiting for that unit; the value says whether a set up follows
@@ -877,6 +886,20 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         : <QtyDialog key={'fill:' + filling.run.id} title={'Completar ' + unitWord + ' ' + (filling.index + 1) + ' de ' + filling.run.code + ' · tiene ' + filling.unit.qty + ' ' + cfg.qtyUnit + '. ¿Cuántos tiene ahora en total?'} unit={cfg.qtyUnit} refLabel="" initial={filling.usual} perCase={perCaseOf(filling.run.code)} onClose={() => setFilling(null)} onPick={(q) => { fillUnit(filling.run.id, filling.unit.at, q); setFilling(null) }} />)}
     </>
   )
+  // The line's own goal, set by the manager (the room's goal is of all its lines together): what the line has made
+  // today against it, and its pace in the shift in course, red as soon as it falls under the goal per hour.
+  const goal = lineTargetOf(s, line.id), hasGoal = !!(goal && (goal.perHour || goal.perDay))
+  const mine = hasGoal ? deptToday(s, line.dept, day.date, now, line.id) : null
+  const goalPct = mine && goal?.perDay ? Math.min(100, Math.floor((mine.qty / goal.perDay) * 100)) : 0
+  const goalUnit = cfg.qty === 'none' ? cfg.plural.toLowerCase() : cfg.qtyUnit
+  const goalStrip = (hasGoal || mgr) && (
+    <div className="linegoal">
+      {mine && goal?.perDay ? <span>Meta de hoy: <b>{fmtN(mine.qty)}</b> de <b>{fmtN(goal.perDay)}</b> {goalUnit} · <b className={goalPct >= 100 ? 'ok' : ''}>{goalPct}%</b></span> : null}
+      {mine && goal?.perHour ? <span>Ritmo: <b className={mine.shiftRate == null ? '' : mine.shiftRate >= goal.perHour ? 'ok' : 'red'}>{mine.shiftRate != null ? fmtN(mine.shiftRate) : '—'}</b> {goalUnit}/h · meta <b>{fmtN(goal.perHour)}</b>/h</span> : null}
+      {mgr && <button type="button" className="lnk" onClick={() => setGoalOpen(true)}>{hasGoal ? '✎ Meta de ' + line.name : '+ Meta de ' + line.name}</button>}
+      {goalOpen && <LineTargetDialog line={line} unit={goalUnit} goal={goal} onClose={() => setGoalOpen(false)} />}
+    </div>
+  )
   if (!run) {
     // the lot follows the date unless someone typed another one; the quantity per unit (boxes per pallet, pouches
     // per cart) comes from the products table or the last run of the code. RTE types it the office's way: crates
@@ -896,13 +919,14 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
     return (
       <div className="line idle">
         <div className="lhead"><h3>{line.name} {nameIt}</h3><button type="button" className="lnk" onClick={() => setRemoving(true)}>Quitar {cfg.lineWord.toLowerCase()}</button></div>
+        {goalStrip}
         {idle && (
           <div className="setupbar">
-            <span>⏱ {idle.reason} · desde {fmtTime(idle.startedAt)} · <b>{fmtDur(now - idle.startedAt)}</b></span>
+            <span>⏱ {idle.reason} · desde {fmtTime(idle.startedAt)} · <b>{fmtDur(stopTime(s, idle, now))}</b></span>
             <small>Cuenta como paro hasta que empiece el siguiente código. Ya sale en el Reporte.</small>
             <span className="btns">
               <button type="button" className="lnk" onClick={() => endStop(idle.id)}>■ Terminar {idle.reason}</button>
-              <button type="button" className="lnk" onClick={() => setFixingStop(true)}>{mgr ? 'Corregir o dividir' : 'Corregir'}</button>
+              {mgr && <button type="button" className="lnk" onClick={() => setFixingStop(true)}>Corregir o dividir</button>}
               <button type="button" className="lnk" onClick={() => dropSetup(idle.id)}>No viene otro código: quitarlo</button>
             </span>
           </div>
@@ -914,7 +938,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
             <span className="btns">
               <button type="button" className="lnk" onClick={() => setReopening(prev.id)}>↩ No había terminado: seguir con {prev.code}</button>
               {fillLink}
-              <button type="button" className="lnk" onClick={() => setFixingId(prev.id)}>Corregir</button>
+              {mgr && <button type="button" className="lnk" onClick={() => setFixingId(prev.id)}>Corregir</button>}
             </span>
           </div>
         )}
@@ -949,7 +973,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   }
   const st = runStats(s, run, now)
   const last = run.units.length ? run.units[run.units.length - 1].at : run.startedAt
-  const current = activeBetween(last, now, stopsOf(s, run.dept, run.lineId), now)
+  const current = workedSince(s, run, last, now)
   /** records a unit from this screen. A second tap in the same instant (a finger that bounces) is not another unit */
   const record = (qty: number | null, ref = '', lots?: LotPart[]) => {
     if (performance.now() - tapped.current < 800) return
@@ -970,9 +994,11 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       {naming}
       <div className="lhead">
         <h3>{line.name} {nameIt}</h3>
-        <span className="meta"><b className="code">{run.code}</b> · lote {run.lot} · {run.date} · desde {fmtTime(run.startedAt)}{run.perUnit != null && ' · ' + run.perUnit + ' ' + cfg.qtyUnit + ' por ' + cfg.unit.toLowerCase()} <button type="button" className="lnk" onClick={() => setFixing(true)}>Corregir</button></span>
+        <span className="meta"><b className="code">{run.code}</b> · lote {run.lot} · {run.date} · desde {fmtTime(run.startedAt)}{run.perUnit != null && ' · ' + run.perUnit + ' ' + cfg.qtyUnit + ' por ' + cfg.unit.toLowerCase()} {mgr && <button type="button" className="lnk" onClick={() => setFixing(true)}>Corregir</button>}</span>
       </div>
-      {stop && <div className="stopbar">⏸ Parado · <b>{stop.reason}</b>{stop.note && ' · ' + stop.note} · <b>{fmtDur(now - stop.startedAt)}</b>{stop.lineId === null && ' · todo el departamento'}{stop.lineId === line.id && <button type="button" className="lnk" onClick={() => setFixingStop(true)}>Corregir</button>}</div>}
+      {goalStrip}
+      {stop && <div className="stopbar">⏸ Parado · <b>{stop.reason}</b>{stop.note && ' · ' + stop.note} · <b>{fmtDur(stopTime(s, stop, now))}</b>{stop.lineId === null && ' · todo el departamento'}{mgr && stop.lineId === line.id && <button type="button" className="lnk" onClick={() => setFixingStop(true)}>Corregir</button>}</div>}
+      {awayOn(s, run.lineId, run.date, now - 1000, now).length > 0 && <div className="awaybar">⏱ Fuera del horario de los turnos: este rato no cuenta. Vuelve a contar cuando se registre algo aquí o cuando empiece el turno.</div>}
       {fixing && <RunEditor s={s} run={run} mgr={mgr} onClose={() => setFixing(false)} />}
       {fixingStop && stop && <StopEditor stop={stop} mgr={mgr} onClose={() => setFixingStop(false)} />}
       <div className="stats">
@@ -1173,6 +1199,63 @@ function download(f: File) {
   setTimeout(() => URL.revokeObjectURL(a.href), 60_000)
 }
 
+/** the manager types the goal of one line: so much per hour and/or in the whole day. It shows on that line's card */
+function LineTargetDialog({ line, unit, goal, onClose }: { line: Line; unit: string; goal: LineTarget | undefined; onClose: () => void }) {
+  const [hour, setHour] = useState(goal?.perHour ? String(goal.perHour) : '')
+  const [whole, setWhole] = useState(goal?.perDay ? String(goal.perDay) : '')
+  const num = (t: string) => { const x = Number(t); return x > 0 ? x : null }
+  return (
+    <div className="veil" onClick={onClose}>
+      <div className="dlg" onClick={(e) => e.stopPropagation()}>
+        <h3>Meta de {line.name} · {line.dept}</h3>
+        <p>Sale en la tarjeta de esta línea, en todas las tablets, y queda en el historial. Deja en blanco la que no aplique. El ritmo de la línea sale en rojo cuando baja de su meta por hora. La meta de todo {line.dept} junto se pone arriba, en "Hoy en {line.dept}".</p>
+        <form onSubmit={(e) => { e.preventDefault(); setLineTarget(line, num(hour), num(whole)); onClose() }} className="qform">
+          <label>Por hora <input inputMode="numeric" placeholder={'ej. 150 ' + unit} value={hour} onChange={(e) => setHour(e.target.value.replace(/\D/g, ''))} /></label>
+          <label>En el día completo <small>(los dos turnos)</small> <input inputMode="numeric" placeholder={'ej. 2400 ' + unit} value={whole} onChange={(e) => setWhole(e.target.value.replace(/\D/g, ''))} /></label>
+          <div className="dbtns spread">
+            <div className="btns">{goal?.perHour || goal?.perDay ? <button type="button" className="lnk" onClick={() => { setLineTarget(line, null, null); onClose() }}>Quitar meta</button> : null}</div>
+            <div className="btns">
+              <button type="button" className="btn" onClick={onClose}>Cancelar</button>
+              <button type="submit" className="btn primary">✓ Guardar</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * The manager moves the hours of the shifts (the plant has changed them more than once). They count from a date on, so
+ * the days before it are still split with the hours they had.
+ */
+function ShiftsDialog({ s, date, onClose }: { s: State; date: string; onClose: () => void }) {
+  const cur = shiftsOf(s, date)
+  const [from, setFrom] = useState(date)
+  const [h, setH] = useState<ShiftHours>({ first: cur.first, firstEnd: cur.firstEnd, second: cur.second, secondEnd: cur.secondEnd })
+  const problem = shiftsProblem(h), cuts = problem ? null : shiftCuts(h)
+  const field = (key: keyof ShiftHours, label: string) => <label>{label} <input type="time" value={h[key]} onChange={(e) => setH({ ...h, [key]: e.target.value })} /></label>
+  return (
+    <div className="veil" onClick={onClose}>
+      <div className="dlg" onClick={(e) => e.stopPropagation()}>
+        <h3>Horario de los turnos</h3>
+        <p>Lo ven todos los aparatos y queda en el historial. Los días anteriores a la fecha que pongas siguen con el horario que tenían.</p>
+        <form className="qform" onSubmit={(e) => { e.preventDefault(); if (!problem && from && setShifts(from, h)) onClose() }}>
+          <div className="egrid">{field('first', 'Turno 1 empieza')}{field('firstEnd', 'Turno 1 termina')}{field('second', 'Turno 2 empieza')}{field('secondEnd', 'Turno 2 termina')}</div>
+          <label>Vale desde el día <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
+          {cuts
+            ? <p className="hint">Cada registro cuenta para un turno por su hora: hasta las <b>{minuteText(cuts.toSecond)}</b> es del turno 1 y después del turno 2. Pasada la medianoche sigue siendo del turno 2 hasta las <b>{minuteText(cuts.toFirst)}</b>. El corte es la mitad del rato entre un turno y el otro, para que quien se queda un poco o llega un poco antes cuente con su turno. Fuera de estas horas el tiempo no cuenta: un código que se deja corriendo en el cambio de turno o de noche no suma trabajando.</p>
+            : <span className="err">{problem}</span>}
+          <div className="dbtns">
+            <button type="button" className="btn" onClick={onClose}>Cancelar</button>
+            <button type="submit" className="btn primary" disabled={!!problem || !from}>✓ Guardar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 /** the report, ready to leave the app: share it with what this browser allows, download each file, or open a mail */
 function SendDialog({ files, subject, onClose }: { files: Record<Kind, File>; subject: string; onClose: () => void }) {
   const [said, setSaid] = useState('')
@@ -1220,9 +1303,11 @@ function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: De
   const [preparing, setPreparing] = useState(false)
   const [fCode, setFCode] = useState('')
   const [fLot, setFLot] = useState('')
+  const [fShift, setFShift] = useState<0 | 1 | 2>(0)
+  const [shiftsOpen, setShiftsOpen] = useState(false)
   // long lists show ten lines at a time (the files always carry everything)
   const [more, setMore] = useState<Record<string, number>>({})
-  useEffect(() => { setMore({}) }, [date, fCode, fLot])
+  useEffect(() => { setMore({}) }, [date, fCode, fLot, fShift])
   const PAGE = 10
   const cut = <T,>(key: string, list: T[]) => list.slice(0, more[key] ?? PAGE)
   const moreBar = (key: string, total: number) => {
@@ -1255,17 +1340,16 @@ function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: De
       if (!win) doc.save(name)
     } catch (e) { failed('abrir el PDF', e) }
   }
-  // what the report holds, with the filter by code and by lot when one is chosen (the same for the screen and every file)
-  const filter: ReportFilter = { only, code: fCode, lot: fLot }
+  // what the report holds, with the filter by code, by lot and by shift when one is chosen (the same for the screen and every file)
+  const filter: ReportFilter = { only, code: fCode, lot: fLot, shift: fShift }
   const rep = reportOf(s, date, now, filter)
-  const { runs, stops, rows, unitRows, working, down, byCode } = rep
-  // the time the lines spent between one code and the next (written by itself when the next code starts)
-  const setup = stops.filter((x) => x.reason === SETUP).reduce((t, x) => t + ((x.endedAt ?? now) - x.startedAt), 0)
+  const { runs, stops, rows, unitRows, working, down, byCode, setup } = rep
+  const unitsText = (dept: Dept, n: number) => n + ' ' + (n === 1 ? CFG[dept].unit : CFG[dept].plural).toLowerCase()
   const reasonsText = (x: (typeof rows)[number]) => Object.entries(x.st.reasons).map(([k, v]) => k + ' ' + fmtDur(v)).join(', ')
   const lineName = (x: { lineId: string | null; dept: Dept }) => (x.lineId === null ? 'Todo ' + x.dept : s.lines.find((l) => l.id === x.lineId)?.name ?? s.runs.find((r) => r.lineId === x.lineId)?.line ?? 'línea')
-  const fileName = 'actividad-' + (only ? only.toLowerCase() + '-' : '') + date + filterFile(rep.code, rep.lot)
+  const fileName = 'actividad-' + (only ? only.toLowerCase() + '-' : '') + date + filterFile(rep.code, rep.lot, rep.shift)
   // the history of that day (corrections, products, program, lines): the manager's and the office's
-  const changes = mgr && !rep.filtered ? s.changes.filter((c) => !c.deleted && dayOf(c.at) === date && (!only || c.dept === only)).sort((a, b) => a.at - b.at) : []
+  const changes = mgr && !rep.filtered ? s.changes.filter((c) => !c.deleted && plainDay(s, c.at) === date && (!only || c.dept === only)).sort((a, b) => a.at - b.at) : []
   /** the report's three files, made at once; null while what makes them has not come down yet */
   const filesNow = (): Record<Kind, File> | null => {
     const doc = buildPdf(s, date, now, user.get(), filter), bytes = xlsxNow(sheets())
@@ -1288,25 +1372,28 @@ function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: De
   /** the day's tables, typed (numbers, times, spans) so Excel can sort and add them; the CSV takes the same as text */
   const blocks = () => {
     const T = (ms: number) => xTime(ms, fmtTime(ms)), D = (ms: number) => xDur(ms, fmtDur(ms))
-    const resumen: Cell[][] = [['Departamento', 'Línea', 'Código', 'Lote', 'Fecha', 'Inicio', 'Fin', 'Unidad', 'Hechas', 'Cantidad', 'Unidad de cantidad', 'Tags / bins', 'Waste (lb)', 'Tiempo trabajando', 'Promedio por unidad', 'Tiempo parado', 'Razones de paro', 'Registró'],
-      ...rows.map((x): Cell[] => [x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.lots, xDay(x.r.date), T(x.r.startedAt), x.r.endedAt ? T(x.r.endedAt) : 'en curso', CFG[x.r.dept].unit, x.units, CFG[x.r.dept].qty !== 'none' ? x.qty : '', CFG[x.r.dept].qty !== 'none' ? CFG[x.r.dept].qtyUnit : '', x.view.units.map((u) => u.ref).filter(Boolean).join(', '), x.r.waste || '', D(x.st.working), x.r.units.length ? D(x.st.avg) : '', D(x.st.down), reasonsText(x), whoText(x.r)])]
+    const resumen: Cell[][] = [['Departamento', 'Línea', 'Código', 'Lote', 'Fecha', 'Inicio', 'Fin', 'Unidad', 'Hechas', 'Cantidad', 'Unidad de cantidad', 'Tags / bins', 'Waste (lb)', 'Tiempo trabajando', 'Promedio por unidad', 'Tiempo parado', 'Razones de paro', 'Registró', 'Turno'],
+      ...rows.map((x): Cell[] => [x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.lots, xDay(x.r.date), T(x.r.startedAt), x.r.endedAt ? T(x.r.endedAt) : 'en curso', CFG[x.r.dept].unit, x.units, CFG[x.r.dept].qty !== 'none' ? x.qty : '', CFG[x.r.dept].qty !== 'none' ? CFG[x.r.dept].qtyUnit : '', x.view.units.map((u) => u.ref).filter(Boolean).join(', '), x.waste || '', D(x.st.working), x.timed ? D(x.st.avg) : '', D(x.st.down), reasonsText(x), whoText(x.r), rep.shift ? String(rep.shift) : x.shifts])]
     const boxes = (c: (typeof byCode)[number]) => (CFG[c.dept].qtyUnit === 'pouches' ? inCases(s, c.code, c.qty) : null)
-    const porCodigo: Cell[][] = [['Departamento', 'Código', 'Unidad', 'Hechas', 'Cantidad', 'Unidad de cantidad', 'Waste (lb)', 'Líneas', 'Cajas completas', 'Pouches sueltos'],
-      ...byCode.map((c): Cell[] => [c.dept, c.code, CFG[c.dept].unit, c.units, CFG[c.dept].qty !== 'none' ? c.qty : '', CFG[c.dept].qty !== 'none' ? CFG[c.dept].qtyUnit : '', c.waste || '', c.lines.join(', '), boxes(c)?.cases ?? '', boxes(c)?.loose ?? ''])]
-    const unidades: Cell[][] = [['Departamento', 'Línea', 'Código', 'Lote', '#', 'Hora', 'Unidad', 'Cantidad', 'Unidad de cantidad', 'Tag / bin', 'Desde la anterior', 'Registró'],
-      ...unitRows.map((x): Cell[] => [x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.lot, x.i + 1, T(x.u.at), CFG[x.r.dept].unit, x.qty ?? '', x.qty != null ? CFG[x.r.dept].qtyUnit : '', x.u.ref, D(x.gap), x.u.by])]
-    const paros: Cell[][] = [['Departamento', 'Línea', 'Razón', 'Detalle', 'Inicio', 'Fin', 'Duración', 'Registró'],
-      ...stops.map((x): Cell[] => [x.dept, lineName(x), x.reason, x.note, T(x.startedAt), x.endedAt ? T(x.endedAt) : 'en curso', D((x.endedAt ?? now) - x.startedAt), x.by])]
+    const porCodigo: Cell[][] = [['Departamento', 'Código', 'Unidad', 'Hechas', 'Cantidad', 'Unidad de cantidad', 'Waste (lb)', 'Líneas', 'Cajas completas', 'Pouches sueltos', ...(rep.shift ? [] : ['Turno 1', 'Turno 2'])],
+      ...byCode.map((c): Cell[] => [c.dept, c.code, CFG[c.dept].unit, c.units, CFG[c.dept].qty !== 'none' ? c.qty : '', CFG[c.dept].qty !== 'none' ? CFG[c.dept].qtyUnit : '', c.waste || '', c.lines.join(', '), boxes(c)?.cases ?? '', boxes(c)?.loose ?? '', ...(c.byShift ?? [])])]
+    const unidades: Cell[][] = [['Departamento', 'Línea', 'Código', 'Lote', '#', 'Hora', 'Unidad', 'Cantidad', 'Unidad de cantidad', 'Tag / bin', 'Desde la anterior', 'Registró', 'Turno'],
+      ...unitRows.map((x): Cell[] => [x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.lot, x.i + 1, T(x.u.at), CFG[x.r.dept].unit, x.qty ?? '', x.qty != null ? CFG[x.r.dept].qtyUnit : '', x.u.ref, D(x.gap), x.u.by, x.shift])]
+    const paros: Cell[][] = [['Departamento', 'Línea', 'Razón', 'Detalle', 'Inicio', 'Fin', 'Duración', 'Registró', 'Turno'],
+      ...stops.map((x): Cell[] => [x.dept, lineName(x), x.reason, x.note, T(x.startedAt), x.endedAt ? T(x.endedAt) : 'en curso', D(x.ms), x.by, spanShifts(rep.plan, x.startedAt, x.endedAt ?? now)])]
+    // the whole day first and each shift under it (not when the report is of one shift only)
+    const porTurno: Cell[][] = [['Departamento', 'Turno', 'Horario', 'Códigos', 'Hechas', 'Unidad', 'Cantidad', 'Unidad de cantidad', 'Waste (lb)', 'Tiempo trabajando', 'Tiempo parado', 'Set up'],
+      ...rep.byShift.flatMap((d) => [d.day, d.first, d.second].map((x): Cell[] => [d.dept, x.shift ? 'Turno ' + x.shift : 'Total del día', x.shift ? shiftHours(rep.plan, x.shift) : '', x.codes, x.units, CFG[d.dept].unit, CFG[d.dept].qty !== 'none' ? x.qty : '', CFG[d.dept].qty !== 'none' ? CFG[d.dept].qtyUnit : '', x.waste || '', D(x.working), D(x.down), x.setup ? D(x.setup) : '']))]
     const cambios: Cell[][] = [['Hora', 'Quién', 'Departamento', 'Qué', 'Antes', 'Después'], ...changes.map((c): Cell[] => [T(c.at), c.by, c.dept ?? '', c.what, c.before, c.after])]
     const av = mgr && !only && !rep.filtered ? avanceRows(s, date) : []
     const avance: Cell[][] = [['Código', 'Producto', 'Mezclas progr.', 'Mezclas hechas', 'Mezclas pend.', 'Spiral', 'Pouches progr.', 'Pouches esper.', 'Pouches hechos', 'Pouches pend.', 'Pouches faltan', 'Cajas progr.', 'Cajas esper.', 'Cajas hechas', 'Cajas pend.', 'Cajas faltan', 'MFO cajas', 'Pallets progr.', 'Pallets esper.', 'Pallets hechos', 'Waste lb'],
       ...av.map((r): Cell[] => [r.code, r.product?.name ?? '', r.scheduled, r.mixesDone, r.mixesPending, r.spiralDone, r.pouchesPlan, r.pouchesExp, r.pouchesDone, pending(r.pouchesExp, r.pouchesDone), pending(r.pouchesPlan, r.pouchesDone), r.casesPlan, r.casesExp, r.casesDone, pending(r.casesExp, r.casesDone), pending(r.casesPlan, r.casesDone), r.mfoCases, r.palletsPlan, r.palletsExp, r.palletsDone, r.wasteLb])]
-    return { resumen, porCodigo, unidades, paros, cambios, avance }
+    return { resumen, porTurno, porCodigo, unidades, paros, cambios, avance }
   }
   /** the Excel file's sheets: one per table (Cambios and Avance only for the manager and the office) */
   const sheets = (): Sheet[] => {
     const b = blocks()
-    return [{ name: 'Resumen', rows: b.resumen }, { name: 'Por código', rows: b.porCodigo }, { name: 'Unidades', rows: b.unidades }, { name: 'Paros', rows: b.paros }, ...(mgr ? [{ name: 'Cambios', rows: b.cambios }] : []), ...(b.avance.length > 1 ? [{ name: 'Avance', rows: b.avance }] : [])]
+    return [{ name: 'Resumen', rows: b.resumen }, ...(b.porTurno.length > 1 ? [{ name: 'Por turno', rows: b.porTurno }] : []), { name: 'Por código', rows: b.porCodigo }, { name: 'Unidades', rows: b.unidades }, { name: 'Paros', rows: b.paros }, ...(mgr ? [{ name: 'Cambios', rows: b.cambios }] : []), ...(b.avance.length > 1 ? [{ name: 'Avance', rows: b.avance }] : [])]
   }
   const excel = async () => {
     try {
@@ -1320,7 +1407,7 @@ function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: De
     const q = (c: Cell) => '"' + cellText(c).replace(/"/g, '""') + '"'
     const b = blocks()
     const tag = (title: string, t: Cell[][]) => t.map((r, i): Cell[] => (i === 0 ? ['', title, ...r] : ['', '', ...r]))
-    const all: Cell[][] = [...b.resumen, [], ...tag('POR CÓDIGO', b.porCodigo), [], ...tag('UNIDADES', b.unidades), [], ...tag('PAROS', b.paros), ...(mgr ? [[], ...tag('CAMBIOS', b.cambios)] : []), ...(b.avance.length > 1 ? [[], ...tag('AVANCE', b.avance)] : [])]
+    const all: Cell[][] = [...b.resumen, ...(b.porTurno.length > 1 ? [[], ...tag('POR TURNO', b.porTurno)] : []), [], ...tag('POR CÓDIGO', b.porCodigo), [], ...tag('UNIDADES', b.unidades), [], ...tag('PAROS', b.paros), ...(mgr ? [[], ...tag('CAMBIOS', b.cambios)] : []), ...(b.avance.length > 1 ? [[], ...tag('AVANCE', b.avance)] : [])]
     return '\ufeff' + all.map((r) => r.map(q).join(',')).join('\r\n')
   }
   return (
@@ -1330,30 +1417,50 @@ function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: De
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         {rep.codes.length > 0 && <select className="rfilter" value={rep.code} onChange={(e) => setFCode(e.target.value)} aria-label="Filtrar por código"><option value="">Todos los códigos</option>{rep.codes.map((c) => <option key={c} value={c}>Código {c}</option>)}</select>}
         {rep.lots.length > 0 && <select className="rfilter" value={rep.lot} onChange={(e) => setFLot(e.target.value)} aria-label="Filtrar por lote"><option value="">Todos los lotes</option>{rep.lots.map((l) => <option key={l} value={l}>Lote {l}</option>)}</select>}
+        <select className="rfilter" value={rep.shift} onChange={(e) => setFShift(Number(e.target.value) as 0 | 1 | 2)} aria-label="Filtrar por turno"><option value={0}>Los dos turnos</option><option value={1}>Turno 1</option><option value={2}>Turno 2</option></select>
         <button type="button" className="btn" onClick={() => void excel()} disabled={!rows.length}>⬇ Excel</button>
         <button type="button" className="lnk" onClick={csv} disabled={!rows.length}>CSV</button>
         <button type="button" className="btn" onClick={() => void pdf()} disabled={!rows.length}>📄 Ver PDF / imprimir</button>
         <button type="button" className="btn primary" onClick={() => void send()} disabled={!rows.length || preparing}>{preparing ? 'Preparando…' : '✉ Enviar reporte'}</button>
       </div>
-      {sending && <SendDialog files={sending} subject={'Actividad · Reporte ' + date + (only ? ' · ' + only : '') + filterTitle(rep.code, rep.lot)} onClose={() => setSending(null)} />}
+      {sending && <SendDialog files={sending} subject={'Actividad · Reporte ' + date + (only ? ' · ' + only : '') + filterTitle(rep.code, rep.lot, rep.shift)} onClose={() => setSending(null)} />}
       <DayNote day={day} />
-      {rep.filtered && <p className="filternote">Reporte filtrado{filterTitle(rep.code, rep.lot)}. El Excel, el CSV, el PDF y "Enviar reporte" salen con este filtro.{rep.lot && ' Los tiempos y el waste son los de las corridas completas.'} <button type="button" className="lnk" onClick={() => { setFCode(''); setFLot('') }}>Quitar filtros</button></p>}
+      <p className="shiftnote">Turno 1: <b>{shiftHours(rep.plan, 1)}</b> · Turno 2: <b>{shiftHours(rep.plan, 2)}</b>{mgr && <> <button type="button" className="lnk" onClick={() => setShiftsOpen(true)}>Cambiar horario</button></>}</p>
+      {shiftsOpen && <ShiftsDialog s={s} date={date} onClose={() => setShiftsOpen(false)} />}
+      {rep.filtered && <p className="filternote">Reporte filtrado{filterTitle(rep.code, rep.lot, rep.shift)}. El Excel, el CSV, el PDF y "Enviar reporte" salen con este filtro.{rep.lot && !rep.shift && ' Los tiempos y el waste son los de las corridas completas.'}{!!rep.shift && ' Un código que pasó de un turno al otro sale aquí con lo que hizo en este turno; su waste se reparte según lo hecho en cada uno.'} <button type="button" className="lnk" onClick={() => { setFCode(''); setFLot(''); setFShift(0) }}>Quitar filtros</button></p>}
       <div className="totals">
         <div className="stat"><label>Códigos</label><b>{rows.length}</b></div>
         <div className="stat"><label>Trabajando</label><b>{fmtDur(working)}</b></div>
         <div className="stat"><label>Parado</label><b className={down ? 'red' : ''}>{fmtDur(down)}</b></div>
         {setup > 0 && <div className="stat"><label>Set up</label><b>{fmtDur(setup)}</b></div>}
       </div>
-      {rows.length === 0 ? <p className="hint">{day.state === 'here' ? 'Nada registrado en esta fecha.' : ''}</p> : (
+      {rep.byShift.length > 0 && (
+        <>
+          <h3>Total del día y cada turno</h3>
+          <div className="twrap">
+            <table className="byshift">
+              <thead><tr><th>Depto</th><th></th><th>Códigos</th><th>Hechas</th><th>Cantidad</th><th>Waste</th><th>Trabajando</th><th>Parado</th><th>Set up</th></tr></thead>
+              <tbody>{rep.byShift.flatMap((d) => [d.day, d.first, d.second].map((x) => (
+                <tr key={d.dept + x.shift} className={x.shift ? '' : 'daytotal'}>
+                  <td>{x.shift ? '' : d.dept}</td><td>{x.shift ? <>Turno {x.shift} <small>{shiftHours(rep.plan, x.shift)}</small></> : 'Total del día'}</td><td>{x.codes}</td><td>{unitsText(d.dept, x.units)}</td>
+                  <td>{CFG[d.dept].qty !== 'none' ? fmtN(x.qty) + ' ' + CFG[d.dept].qtyUnit : '—'}</td><td className={x.waste ? 'red' : ''}>{x.waste ? x.waste + ' lb' : '—'}</td><td>{fmtDur(x.working)}</td><td className={x.down ? 'red' : ''}>{fmtDur(x.down)}</td><td>{x.setup ? fmtDur(x.setup) : '—'}</td>
+                </tr>
+              )))}</tbody>
+            </table>
+          </div>
+          <p className="hint">Se reparte por la hora de cada registro. Un código que pasó de un turno al otro cuenta en los dos, cada uno con lo suyo; su waste se reparte según lo hecho en cada turno. El rato entre un turno y el otro no cuenta, ni como trabajando ni como parado, salvo hasta el último registro del turno que sale y desde el primero del que entra.</p>
+        </>
+      )}
+      {rows.length === 0 ? <p className="hint">{day.state === 'here' ? (rep.shift ? 'Nada registrado en este turno.' : 'Nada registrado en esta fecha.') : ''}</p> : (
         <>
         <div className="twrap">
           <table>
-            <thead><tr><th>Depto</th><th>Línea</th><th>Código</th><th>Lote</th><th>Inicio</th><th>Fin</th><th>Hecho</th><th>Waste</th><th>Trabajando</th><th>Prom./unidad</th><th>Parado</th><th>Razones</th><th>Registró</th><th></th></tr></thead>
+            <thead><tr><th>Depto</th><th>Línea</th><th>Código</th><th>Lote</th>{!rep.shift && <th>Turno</th>}<th>Inicio</th><th>Fin</th><th>Hecho</th><th>Waste</th><th>Trabajando</th><th>Prom./unidad</th><th>Parado</th><th>Razones</th><th>Registró</th><th></th></tr></thead>
             <tbody>{cut('runs', rows).map((x) => (
               <tr key={x.r.id} className={x.r.endedAt ? '' : 'live'}>
-                <td>{x.r.dept}</td><td>{lineNameOf(s, x.r.lineId, x.r.line)}</td><td><b>{x.r.code}</b></td><td>{x.lots}</td><td>{fmtTime(x.r.startedAt)}</td><td>{x.r.endedAt ? fmtTime(x.r.endedAt) : <i>en curso</i>}</td>
-                <td>{madeText(x.view, x.qty, true)}</td><td className={x.r.waste ? 'red' : ''}>{x.r.waste ? x.r.waste + ' lb' : '—'}</td><td>{fmtDur(x.st.working)}</td><td>{x.r.units.length ? fmtDur(x.st.avg) : '—'}</td><td className={x.st.down ? 'red' : ''}>{fmtDur(x.st.down)}</td><td>{reasonsText(x) || '—'}</td><td>{whoText(x.r)}</td>
-                <td><button type="button" className="lnk" onClick={() => setEditRun(x.r.id)}>Corregir</button></td>
+                <td>{x.r.dept}</td><td>{lineNameOf(s, x.r.lineId, x.r.line)}</td><td><b>{x.r.code}</b></td><td>{x.lots}</td>{!rep.shift && <td>{x.shifts}</td>}<td>{fmtTime(x.r.startedAt)}</td><td>{x.r.endedAt ? fmtTime(x.r.endedAt) : <i>en curso</i>}</td>
+                <td>{madeText(x.view, x.qty, true)}</td><td className={x.waste ? 'red' : ''}>{x.waste ? x.waste + ' lb' : '—'}</td><td>{fmtDur(x.st.working)}</td><td>{x.timed ? fmtDur(x.st.avg) : '—'}</td><td className={x.st.down ? 'red' : ''}>{fmtDur(x.st.down)}</td><td>{reasonsText(x) || '—'}</td><td>{whoText(x.r)}</td>
+                <td>{mgr && <button type="button" className="lnk" onClick={() => setEditRun(x.r.id)}>Corregir</button>}</td>
               </tr>
             ))}</tbody>
           </table>
@@ -1366,9 +1473,9 @@ function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: De
           <h3>Por código · todas las líneas juntas</h3>
           <div className="twrap">
             <table>
-              <thead><tr><th>Depto</th><th>Código</th><th>Hechas</th><th>Cantidad</th><th>En cajas</th><th>Waste</th><th>Líneas</th></tr></thead>
+              <thead><tr><th>Depto</th><th>Código</th><th>Hechas</th><th>Cantidad</th>{!rep.shift && <><th>Turno 1</th><th>Turno 2</th></>}<th>En cajas</th><th>Waste</th><th>Líneas</th></tr></thead>
               <tbody>{cut('codes', byCode).map((c) => (
-                <tr key={c.dept + c.code}><td>{c.dept}</td><td><b>{c.code}</b></td><td>{c.units} {(c.units === 1 ? CFG[c.dept].unit : CFG[c.dept].plural).toLowerCase()}</td><td>{CFG[c.dept].qty !== 'none' ? <b>{fmtN(c.qty)} {CFG[c.dept].qtyUnit}</b> : '—'}</td><td>{(CFG[c.dept].qtyUnit === 'pouches' && casesText(inCases(s, c.code, c.qty))) || '—'}</td><td className={c.waste ? 'red' : ''}>{c.waste ? c.waste + ' lb' : '—'}</td><td>{c.lines.join(', ')}</td></tr>
+                <tr key={c.dept + c.code}><td>{c.dept}</td><td><b>{c.code}</b></td><td>{c.units} {(c.units === 1 ? CFG[c.dept].unit : CFG[c.dept].plural).toLowerCase()}</td><td>{CFG[c.dept].qty !== 'none' ? <b>{fmtN(c.qty)} {CFG[c.dept].qtyUnit}</b> : '—'}</td>{c.byShift && <><td>{c.byShift[0] ? fmtN(c.byShift[0]) : '—'}</td><td>{c.byShift[1] ? fmtN(c.byShift[1]) : '—'}</td></>}<td>{(CFG[c.dept].qtyUnit === 'pouches' && casesText(inCases(s, c.code, c.qty))) || '—'}</td><td className={c.waste ? 'red' : ''}>{c.waste ? c.waste + ' lb' : '—'}</td><td>{c.lines.join(', ')}</td></tr>
               ))}</tbody>
             </table>
           </div>
@@ -1380,10 +1487,10 @@ function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: De
           <h3>Detalle por unidad · {unitRows.length}</h3>
           <div className="twrap">
             <table>
-              <thead><tr><th>Hora</th><th>Depto</th><th>Línea</th><th>Código</th><th>Lote</th><th>#</th><th>Unidad</th><th>Cantidad</th><th>Tag / bin</th><th>Desde la anterior</th><th>Registró</th></tr></thead>
+              <thead><tr><th>Hora</th>{!rep.shift && <th>Turno</th>}<th>Depto</th><th>Línea</th><th>Código</th><th>Lote</th><th>#</th><th>Unidad</th><th>Cantidad</th><th>Tag / bin</th><th>Desde la anterior</th><th>Registró</th></tr></thead>
               <tbody>{cut('units', unitRows).map((x) => (
                 <tr key={x.r.id + ':' + x.i + ':' + x.lot}>
-                  <td>{fmtTime(x.u.at)}</td><td>{x.r.dept}</td><td>{lineNameOf(s, x.r.lineId, x.r.line)}</td><td><b>{x.r.code}</b></td><td>{x.lot}</td><td>{x.i + 1}</td><td>{CFG[x.r.dept].unit}</td>
+                  <td>{fmtTime(x.u.at)}</td>{!rep.shift && <td>{x.shift}</td>}<td>{x.r.dept}</td><td>{lineNameOf(s, x.r.lineId, x.r.line)}</td><td><b>{x.r.code}</b></td><td>{x.lot}</td><td>{x.i + 1}</td><td>{CFG[x.r.dept].unit}</td>
                   <td>{x.qty != null ? x.qty + ' ' + CFG[x.r.dept].qtyUnit : '—'}{x.qty != null && CFG[x.r.dept].qtyUnit === 'pouches' && x.r.perUnit != null && x.qty < x.r.perUnit && !!inCases(s, x.r.code, x.qty) && <small> · {casesText(inCases(s, x.r.code, x.qty))}</small>}</td><td>{x.u.ref || '—'}</td><td>{fmtDur(x.gap)}</td><td>{x.u.by || '—'}</td>
                 </tr>
               ))}</tbody>
@@ -1397,11 +1504,11 @@ function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: De
           <h3>Paros</h3>
           <div className="twrap">
             <table>
-              <thead><tr><th>Depto</th><th>Línea</th><th>Razón</th><th>Detalle</th><th>Inicio</th><th>Fin</th><th>Duración</th><th>Registró</th><th></th></tr></thead>
+              <thead><tr><th>Depto</th><th>Línea</th><th>Razón</th><th>Detalle</th>{!rep.shift && <th>Turno</th>}<th>Inicio</th><th>Fin</th><th>Duración</th><th>Registró</th><th></th></tr></thead>
               <tbody>{cut('stops', stops).map((x) => (
                 <tr key={x.id} className={x.endedAt ? '' : 'live'}>
-                  <td>{x.dept}</td><td>{lineName(x)}</td><td><b>{x.reason}</b></td><td>{x.note || '—'}</td><td>{fmtTime(x.startedAt)}</td><td>{x.endedAt ? fmtTime(x.endedAt) : <i>en curso</i>}</td><td>{fmtDur((x.endedAt ?? now) - x.startedAt)}</td><td>{x.by}</td>
-                  <td><button type="button" className="lnk" onClick={() => setEditStop(x.id)}>Corregir</button></td>
+                  <td>{x.dept}</td><td>{lineName(x)}</td><td><b>{x.reason}</b></td><td>{x.note || '—'}</td>{!rep.shift && <td>{spanShifts(rep.plan, x.startedAt, x.endedAt ?? now)}</td>}<td>{fmtTime(x.startedAt)}</td><td>{x.endedAt ? fmtTime(x.endedAt) : <i>en curso</i>}</td><td>{fmtDur(x.ms)}</td><td>{x.by}</td>
+                  <td>{mgr && <button type="button" className="lnk" onClick={() => setEditStop(x.id)}>Corregir</button>}</td>
                 </tr>
               ))}</tbody>
             </table>

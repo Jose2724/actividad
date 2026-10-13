@@ -1,5 +1,5 @@
-import { CFG, fmtDur, fmtTime, lineNameOf, madeText, whoText, type State } from './store'
-import { filterTitle, reportOf, type ReportFilter } from './report'
+import { CFG, fmtDur, fmtTime, lineNameOf, madeText, shiftHours, whoText, type State } from './store'
+import { filterTitle, reportOf, spanShifts, type ReportFilter } from './report'
 import { avanceRows, n1, pending } from './avance'
 
 type Libs = { jsPDF: typeof import('jspdf').jsPDF; autoTable: typeof import('jspdf-autotable').default }
@@ -19,14 +19,29 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
   const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' })
   const teal: [number, number, number] = [15, 118, 110]
   doc.setFont('helvetica', 'bold'); doc.setFontSize(18); doc.setTextColor(22, 32, 42)
-  doc.text('Actividad · Reporte del día' + (only ? ' · ' + only : '') + filterTitle(rep.code, rep.lot), 40, 42)
+  doc.text('Actividad · Reporte del día' + (only ? ' · ' + only : '') + filterTitle(rep.code, rep.lot, rep.shift), 40, 42)
   doc.setFont('helvetica', 'normal'); doc.setFontSize(11); doc.setTextColor(91, 107, 122)
   doc.text(fmtDate(date) + '   ·   ' + rows.length + ' códigos   ·   trabajando ' + fmtDur(working) + '   ·   parado ' + fmtDur(down), 40, 62)
+  doc.text('Turno 1: ' + shiftHours(rep.plan, 1) + '   ·   Turno 2: ' + shiftHours(rep.plan, 2), 40, 78)
+  const after = () => (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY
+  let top = 94
+  // the whole day first and each shift under it (not when the report is of one shift only)
+  if (rep.byShift.length) {
+    const made = (dept: keyof typeof CFG, x: { units: number; qty: number }) => x.units + ' ' + (x.units === 1 ? CFG[dept].unit : CFG[dept].plural).toLowerCase() + (CFG[dept].qty !== 'none' ? ' · ' + Math.round(x.qty).toLocaleString('en-US') + ' ' + CFG[dept].qtyUnit : '')
+    autoTable(doc, {
+      startY: top, theme: 'grid', styles: { font: 'helvetica', fontSize: 9, cellPadding: 5, textColor: [22, 32, 42] }, headStyles: { fillColor: [22, 32, 42], textColor: 255, fontStyle: 'bold' },
+      head: [['Depto', '', 'Horario', 'Códigos', 'Hecho', 'Waste lb', 'Trabajando', 'Parado', 'Set up']],
+      body: rep.byShift.flatMap((d) => [d.day, d.first, d.second].map((x) => [x.shift ? '' : d.dept, x.shift ? 'Turno ' + x.shift : 'Total del día', x.shift ? shiftHours(rep.plan, x.shift) : '', String(x.codes), made(d.dept, x), x.waste ? String(x.waste) : '—', fmtDur(x.working), fmtDur(x.down), x.setup ? fmtDur(x.setup) : '—'])),
+      didParseCell: (c) => { if (c.section === 'body' && c.row.index % 3 === 0) { c.cell.styles.fontStyle = 'bold'; c.cell.styles.fillColor = [243, 246, 249] } },
+    })
+    top = after() + 18
+  }
+  const sh = !rep.shift // a column says the shift of each line when the report is the whole day's
   autoTable(doc, {
-    startY: 78, theme: 'grid', styles: { font: 'helvetica', fontSize: 9, cellPadding: 5, textColor: [22, 32, 42] }, headStyles: { fillColor: teal, textColor: 255, fontStyle: 'bold' },
-    head: [['Depto', 'Línea', 'Código', 'Lote', 'Inicio', 'Fin', 'Hecho', 'Waste lb', 'Trabajando', 'Prom. / unidad', 'Parado', 'Razones de paro', 'Registró']],
-    body: rows.map((x) => [x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.lots, fmtTime(x.r.startedAt), x.r.endedAt ? fmtTime(x.r.endedAt) : 'en curso', madeText(x.view, x.qty, true), x.r.waste ? String(x.r.waste) : '—', fmtDur(x.st.working), x.r.units.length ? fmtDur(x.st.avg) : '—', fmtDur(x.st.down), Object.entries(x.st.reasons).map(([k, v]) => k + ' ' + fmtDur(v)).join(', ') || '—', whoText(x.r)]),
-    foot: [['Total', '', '', '', '', '', '', String(Math.round(rows.reduce((t, x) => t + (x.r.waste || 0), 0) * 100) / 100), fmtDur(working), '', fmtDur(down), '', '']], footStyles: { fillColor: [243, 246, 249], textColor: [22, 32, 42], fontStyle: 'bold' },
+    startY: top, theme: 'grid', styles: { font: 'helvetica', fontSize: 9, cellPadding: 5, textColor: [22, 32, 42] }, headStyles: { fillColor: teal, textColor: 255, fontStyle: 'bold' },
+    head: [['Depto', 'Línea', 'Código', 'Lote', ...(sh ? ['Turno'] : []), 'Inicio', 'Fin', 'Hecho', 'Waste lb', 'Trabajando', 'Prom. / unidad', 'Parado', 'Razones de paro', 'Registró']],
+    body: rows.map((x) => [x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.lots, ...(sh ? [x.shifts] : []), fmtTime(x.r.startedAt), x.r.endedAt ? fmtTime(x.r.endedAt) : 'en curso', madeText(x.view, x.qty, true), x.waste ? String(x.waste) : '—', fmtDur(x.st.working), x.timed ? fmtDur(x.st.avg) : '—', fmtDur(x.st.down), Object.entries(x.st.reasons).map(([k, v]) => k + ' ' + fmtDur(v)).join(', ') || '—', whoText(x.r)]),
+    foot: [['Total', '', '', '', ...(sh ? [''] : []), '', '', '', String(Math.round(rows.reduce((t, x) => t + (x.waste || 0), 0) * 100) / 100), fmtDur(working), '', fmtDur(down), '', '']], footStyles: { fillColor: [243, 246, 249], textColor: [22, 32, 42], fontStyle: 'bold' },
   })
   // one line per cart, mezcla, bin or pallet with its time, as the office's sheets are filled (a pallet with two lots: two lines)
   if (unitRows.length) {
@@ -35,8 +50,8 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
     doc.text('Detalle por unidad', 40, y)
     autoTable(doc, {
       startY: y + 10, theme: 'grid', styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 4, textColor: [22, 32, 42] }, headStyles: { fillColor: [91, 107, 122], textColor: 255, fontStyle: 'bold' },
-      head: [['Hora', 'Depto', 'Línea', 'Código', 'Lote', '#', 'Unidad', 'Cantidad', 'Tag / bin', 'Desde la anterior', 'Registró']],
-      body: unitRows.map((x) => [fmtTime(x.u.at), x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.lot, String(x.i + 1), CFG[x.r.dept].unit, x.qty != null ? x.qty + ' ' + CFG[x.r.dept].qtyUnit : '—', x.u.ref || '—', fmtDur(x.gap), x.u.by || '—']),
+      head: [['Hora', ...(sh ? ['Turno'] : []), 'Depto', 'Línea', 'Código', 'Lote', '#', 'Unidad', 'Cantidad', 'Tag / bin', 'Desde la anterior', 'Registró']],
+      body: unitRows.map((x) => [fmtTime(x.u.at), ...(sh ? [String(x.shift)] : []), x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.lot, String(x.i + 1), CFG[x.r.dept].unit, x.qty != null ? x.qty + ' ' + CFG[x.r.dept].qtyUnit : '—', x.u.ref || '—', fmtDur(x.gap), x.u.by || '—']),
     })
   }
   if (stops.length) {
@@ -45,8 +60,8 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
     doc.text('Paros', 40, y)
     autoTable(doc, {
       startY: y + 10, theme: 'grid', styles: { font: 'helvetica', fontSize: 9, cellPadding: 5, textColor: [22, 32, 42] }, headStyles: { fillColor: [179, 38, 30], textColor: 255, fontStyle: 'bold' },
-      head: [['Depto', 'Línea', 'Razón', 'Detalle', 'Inicio', 'Fin', 'Duración', 'Registró']],
-      body: stops.map((x) => [x.dept, lineName(x), x.reason, x.note || '—', fmtTime(x.startedAt), x.endedAt ? fmtTime(x.endedAt) : 'en curso', fmtDur((x.endedAt ?? now) - x.startedAt), x.by]),
+      head: [['Depto', 'Línea', 'Razón', 'Detalle', ...(sh ? ['Turno'] : []), 'Inicio', 'Fin', 'Duración', 'Registró']],
+      body: stops.map((x) => [x.dept, lineName(x), x.reason, x.note || '—', ...(sh ? [spanShifts(rep.plan, x.startedAt, x.endedAt ?? now)] : []), fmtTime(x.startedAt), x.endedAt ? fmtTime(x.endedAt) : 'en curso', fmtDur(x.ms), x.by]),
     })
   }
   // the day's progress, as the office's AVANCE sheet (the manager's report only)

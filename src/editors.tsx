@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { applyDraft, CFG, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, nearDay, openRun, splitStop, updateRun, updateStop, type Run, type State, type Stop } from './store'
+import { applyDraft, byLineName, CFG, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, openRun, splitStop, updateRun, updateStop, type Run, type State, type Stop } from './store'
 import { clockNow } from './clock'
 import { ConfirmDialog, LotsDialog } from './App'
 
@@ -7,9 +7,10 @@ import { ConfirmDialog, LotsDialog } from './App'
 const hm = (ms: number) => { const d = new Date(ms); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') }
 
 /**
- * Fixing a run after the fact: the code, lot or date typed wrong, the pouches per cart, the waste, and every unit
- * registered (its quantity, its tag or bin number, or one tapped by mistake). A code finished too early can be
- * reopened; the manager can also drop the whole run.
+ * Fixing a run after the fact (a manager's job): the code, lot or date typed wrong, the pouches per cart, the waste, and
+ * every unit registered (its quantity, its tag or bin number, or one tapped by mistake). A run recorded on the wrong
+ * line's card is passed to the right one; one tapped on a line that was not working is dropped. A code finished too
+ * early can be reopened.
  */
 export function RunEditor({ s, run, mgr, onClose }: { s: State; run: Run; mgr: boolean; onClose: () => void }) {
   const cfg = CFG[run.dept]
@@ -26,7 +27,15 @@ export function RunEditor({ s, run, mgr, onClose }: { s: State; run: Run; mgr: b
   const lineBusy = !!run.endedAt && !!openRun(s, run.lineId)
   // units tapped on the line while this form is open: they are kept as they are
   const later = run.units.filter((u) => !opened.units.some((o) => o.at === u.at)).length
-  const save = () => { applyDraft(run.id, opened, { code, lot, date, per, waste, units }); onClose() }
+  // the lines of the room, to pass the run to the one that really made it
+  const lines = s.lines.filter((l) => l.dept === run.dept).sort(byLineName)
+  const [lineId, setLineId] = useState(run.lineId)
+  const [problem, setProblem] = useState('')
+  const save = () => {
+    if (lineId !== run.lineId && !moveRun(run.id, lineId)) { setProblem('No se pudo pasar a esa línea: a esa hora tenía otro código, o ahora mismo está parada o en Set up.'); return }
+    applyDraft(run.id, opened, { code, lot, date, per, waste, units })
+    onClose()
+  }
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg wide" onClick={(e) => e.stopPropagation()}>
@@ -35,6 +44,14 @@ export function RunEditor({ s, run, mgr, onClose }: { s: State; run: Run; mgr: b
           <label>Código <input value={code} onChange={(e) => setCode(e.target.value)} autoComplete="off" /></label>
           <label>Lote <input value={lot} onChange={(e) => setLot(e.target.value)} inputMode="numeric" autoComplete="off" /></label>
           <label>Fecha <input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label>
+          {mgr && lines.length > 1 && (
+            <label>{cfg.lineWord} <small>(si se registró en otra)</small>
+              <select value={lineId} onChange={(e) => { setLineId(e.target.value); setProblem('') }}>
+                {!lines.some((l) => l.id === run.lineId) && <option value={run.lineId}>{run.line}</option>}
+                {lines.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+              </select>
+            </label>
+          )}
           {cfg.perUnitLabel && <label>{cfg.perUnitLabel} <input value={per} onChange={(e) => setPer(e.target.value.replace(/\D/g, ''))} inputMode="numeric" autoComplete="off" /></label>}
           {cfg.waste && <label>Waste (lb) <input value={waste} onChange={(e) => setWaste(e.target.value.replace(/[^\d.,]/g, ''))} inputMode="decimal" autoComplete="off" /></label>}
         </div>
@@ -56,6 +73,8 @@ export function RunEditor({ s, run, mgr, onClose }: { s: State; run: Run; mgr: b
           </div>
         )}
         <p className="hint">Quita con ✕ una unidad tocada de más. Los cambios quedan al tocar Guardar.{later > 0 && ' Mientras corregías se ' + (later === 1 ? 'registró 1 ' + cfg.unit.toLowerCase() + ' más: se conserva.' : 'registraron ' + later + ' ' + cfg.plural.toLowerCase() + ' más: se conservan.')}</p>
+        {mgr && <p className="hint">Si la línea no estaba trabajando y se tocó por error, "Borrar corrida" la saca del reporte. Todo cambio queda en el historial con tu nombre.</p>}
+        {problem && <span className="err">{problem}</span>}
         <div className="dbtns spread">
           <div className="btns">
             {run.endedAt && <button type="button" className="btn" disabled={lineBusy} title={lineBusy ? 'La línea ya corre otro código' : ''} onClick={() => { updateRun(run.id, { endedAt: null }); onClose() }}>Reabrir código</button>}

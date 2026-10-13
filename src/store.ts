@@ -65,7 +65,26 @@ export type Schedule = Record<string, Record<string, number>>
 export type Change = { id: string; at: number; by: string; dept: Dept | null; what: string; before: string; after: string; refTable: string; refKey: string; updatedAt: number; deleted?: boolean }
 /** the goal the manager set for a room: per hour and/or per shift, in the room's own quantity (pouches, cajas, mezclas) */
 export type Target = { dept: Dept; perHour: number | null; perShift: number | null; updatedAt: number }
-export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Product[]; schedule: Schedule; changes: Change[]; targets: Target[] }
+/** the hours of the two shifts ("HH:MM"; the second may end after midnight) */
+export type ShiftHours = { first: string; firstEnd: string; second: string; secondEnd: string }
+/** those hours from a date on */
+export type ShiftPlan = ShiftHours & { from: string; updatedAt: number }
+/** the goal of one line: so much per hour and/or in the whole day, in its room's quantity */
+export type LineTarget = { lineId: string; perHour: number | null; perDay: number | null; updatedAt: number }
+export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Product[]; schedule: Schedule; changes: Change[]; targets: Target[]; shifts: ShiftPlan[]; lineTargets: LineTarget[] }
+/** the hours the plant works while nobody has set others (see "the shifts" below; these few lines sit here because load() needs them) */
+export const SHIFTS_DEFAULT: ShiftHours = { first: '06:00', firstEnd: '15:00', second: '15:30', secondEnd: '01:00' }
+const hmOk = (t: unknown): t is string => typeof t === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(t)
+const mins = (hm: string) => Number(hm.slice(0, 2)) * 60 + Number(hm.slice(3, 5))
+const DAY_MIN = 1440
+/** minutes from one time of the clock forward to another */
+const ahead = (from: number, to: number) => (((to - from) % DAY_MIN) + DAY_MIN) % DAY_MIN
+/** '' when the hours make sense: going round the clock, the first shift starts and ends, then the second starts and ends, before the first starts again */
+export function shiftsProblem(h: ShiftHours): string {
+  if (![h.first, h.firstEnd, h.second, h.secondEnd].every(hmOk)) return 'Falta una hora.'
+  const a = mins(h.first), end1 = ahead(a, mins(h.firstEnd)), start2 = ahead(a, mins(h.second)), end2 = ahead(a, mins(h.secondEnd)) || DAY_MIN
+  return end1 > 0 && end1 <= start2 && start2 < end2 ? '' : 'Las horas tienen que ir en orden: el turno 1 empieza y termina, después el turno 2 empieza y termina, antes de que vuelva a empezar el turno 1.'
+}
 
 /** a cart has two columns of 12 crates (the office counts columns: "12x10" = 12 crates × 10 pouches) */
 export const CRATES_PER_CART = 24
@@ -111,10 +130,10 @@ function tidySchedule(sch: Schedule): Schedule {
 
 /** with a server the lines (and products) are shared and come from it; without one, each device starts with a line per room */
 const SERVER = !!import.meta.env.VITE_SUPABASE_URL
-function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: CFG[d].lineWord + ' 1', updatedAt: 0 })), runs: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [] } }
+function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: CFG[d].lineWord + ' 1', updatedAt: 0 })), runs: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], lineTargets: [] } }
 function load(): State {
   try {
-    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[] }
+    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; lineTargets?: Partial<LineTarget>[] }
     const s = JSON.parse(localStorage.getItem(KEY) || 'null') as Raw | null
     // rows saved by earlier versions: carts as plain timestamps, units without a tag or a name, products with one
     // pouches-per-cart number, nothing with an update time
@@ -129,6 +148,8 @@ function load(): State {
         products, schedule: tidySchedule(s.schedule ?? {}),
         changes: (s.changes ?? []).filter((c) => (c.at ?? 0) > clockNow() - KEEP_CHANGES_MS).map((c) => ({ id: c.id ?? uid(), at: c.at ?? 0, by: c.by ?? '', dept: (c.dept ?? null) as Dept | null, what: c.what ?? '', before: c.before ?? '', after: c.after ?? '', refTable: c.refTable ?? '', refKey: c.refKey ?? '', updatedAt: c.updatedAt ?? 0 })),
         targets: (s.targets ?? []).filter((t) => DEPTS.includes(t.dept as Dept)).map((t) => ({ dept: t.dept as Dept, perHour: t.perHour ?? null, perShift: t.perShift ?? null, updatedAt: t.updatedAt ?? 0 })),
+        shifts: (s.shifts ?? []).filter((x): x is ShiftPlan => /^\d{4}-\d{2}-\d{2}$/.test(x.from ?? '') && !shiftsProblem(x as ShiftHours)).map((x) => ({ from: x.from, first: x.first, firstEnd: x.firstEnd, second: x.second, secondEnd: x.secondEnd, updatedAt: x.updatedAt ?? 0 })),
+        lineTargets: (s.lineTargets ?? []).filter((t) => !!t.lineId).map((t) => ({ lineId: String(t.lineId), perHour: t.perHour ?? null, perDay: t.perDay ?? null, updatedAt: t.updatedAt ?? 0 })),
       }
     }
   } catch { /* empty */ }
@@ -431,6 +452,25 @@ export function reopenRun(id: string): boolean {
   updateRun(id, { endedAt: null })
   return true
 }
+/**
+ * A run recorded on the wrong line's card goes to the line that made it, with the stops that began in its time (and
+ * the set up that began when it ended). Not onto a line that had another code in that time, nor, while it is still
+ * running, onto a line that is stopped: two things cannot be on one line at once.
+ */
+export function moveRun(id: string, lineId: string): boolean {
+  const r = run(id), to = state.lines.find((l) => l.id === lineId)
+  if (!r || !to || to.dept !== r.dept || lineId === r.lineId) return false
+  const end = r.endedAt ?? Infinity
+  if (state.runs.some((x) => x.id !== r.id && x.lineId === lineId && x.startedAt < end && (x.endedAt ?? Infinity) > r.startedAt)) return false
+  if (!r.endedAt && state.stops.some((x) => x.lineId === lineId && !x.endedAt)) return false
+  const was = lineNameOf(state, r.lineId, r.line)
+  batch(() => {
+    for (const x of state.stops.filter((y) => y.lineId === r.lineId && y.startedAt >= r.startedAt && y.startedAt <= end)) putStop({ ...x, lineId })
+    putRun({ ...r, lineId, line: to.name })
+  })
+  logChange(r.dept, 'Corrida ' + r.code + ' del ' + r.date + ' (' + r.dept + ') · Línea', was, to.name, 'act_runs', r.id)
+  return true
+}
 /** corrections: a wrong code, lot, quantity, tag or stop is fixed in place */
 /** a correction from the editor: saved, and every field that differs goes to the history */
 export function updateRun(id: string, patch: Partial<Pick<Run, 'code' | 'lot' | 'date' | 'perUnit' | 'waste' | 'endedAt' | 'units'>>) {
@@ -530,21 +570,173 @@ export function nearDay(base: number, hm: string) {
   const at = (shift: number) => { const d = new Date(base); d.setDate(d.getDate() + shift); d.setHours(h, m, 0, 0); return d.getTime() }
   return [at(-1), at(0), at(1)].reduce((best, x) => (Math.abs(x - base) < Math.abs(best - base) ? x : best), at(0))
 }
+// ---- the shifts ----
+/**
+ * The plant works two shifts, and their hours have been moved more than once: the manager changes them in the app, and
+ * each version is kept with the date it starts to count, so an earlier day is still split with the hours it had.
+ * They travel in act_targets, the table of what the manager sets for everybody (only managers write it, and a device
+ * keeps all of it): key "shifts:<date>", the first shift in per_hour and the second in per_shift, each as HHMM of its
+ * start × 10000 + HHMM of its end (06:00 to 15:00 is 6001500).
+ */
+const SHIFTS_KEY = 'shifts:'
+const hhmm = (hm: string) => Number(hm.slice(0, 2)) * 100 + Number(hm.slice(3, 5))
+const hmOf = (n: number) => String(Math.floor(n / 100)).padStart(2, '0') + ':' + String(n % 100).padStart(2, '0')
+const packShift = (start: string, end: string) => hhmm(start) * 10000 + hhmm(end)
+const unpackShift = (n: unknown): [string, string] | null => {
+  const x = Number(n)
+  if (n == null || n === '' || !Number.isInteger(x) || x < 0) return null
+  const a = hmOf(Math.floor(x / 10000)), b = hmOf(x % 10000)
+  return hmOk(a) && hmOk(b) ? [a, b] : null
+}
+const rowOfShifts = (x: ShiftPlan) => ({ dept: SHIFTS_KEY + x.from, per_hour: packShift(x.first, x.firstEnd), per_shift: packShift(x.second, x.secondEnd), updated_at: iso(x.updatedAt), updated_by: user.get() })
+/** the hours in force on a day: the last version that starts on or before it (the usual ones while nobody has set any) */
+export function shiftsOf(s: State, date: string): ShiftHours & { from: string } {
+  return s.shifts.filter((x) => x.from <= date).sort((a, b) => (a.from < b.from ? 1 : -1))[0] ?? { ...SHIFTS_DEFAULT, from: '' }
+}
+/** "6:00 AM" for "06:00" */
+export const clockText = (hm: string) => fmtTime(new Date(2000, 0, 1, Number(hm.slice(0, 2)), Number(hm.slice(3, 5))).getTime())
+/** "3:15 PM" for minute 915 of the day */
+export const minuteText = (m: number) => fmtTime(new Date(2000, 0, 1, Math.floor(m / 60), Math.floor(m % 60)).getTime())
+/** "6:00 AM a 3:00 PM": the hours of one shift */
+export const shiftHours = (h: ShiftHours, shift: 1 | 2) => (shift === 1 ? clockText(h.first) + ' a ' + clockText(h.firstEnd) : clockText(h.second) + ' a ' + clockText(h.secondEnd))
+export const shiftsText = (h: ShiftHours) => 'Turno 1 de ' + shiftHours(h, 1) + ' · Turno 2 de ' + shiftHours(h, 2)
+/** the manager sets the hours of the shifts from a date on (the same date again replaces what was set for it) */
+export function setShifts(from: string, h: ShiftHours): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || shiftsProblem(h)) return false
+  const was = shiftsOf(state, from), old = state.shifts.find((x) => x.from === from)
+  const x: ShiftPlan = { from, first: h.first, firstEnd: h.firstEnd, second: h.second, secondEnd: h.secondEnd, updatedAt: stamp(old) }
+  set({ ...state, shifts: [...state.shifts.filter((y) => y.from !== from), x] })
+  push('act_targets', SHIFTS_KEY + from, rowOfShifts(x))
+  logChange(null, 'Horario de turnos desde el ' + from, shiftsText(was), shiftsText(x), 'act_targets', SHIFTS_KEY + from)
+  return true
+}
+/**
+ * The two moments of the clock (in minutes) where one shift hands over to the other: halfway between the end of one
+ * and the start of the next. So the last cart of people who stay a little late, and the first one of people who come
+ * in a little early, are counted with their own shift.
+ */
+export function shiftCuts(h: ShiftHours) {
+  const mid = (from: string, to: string) => (mins(from) + ahead(mins(from), mins(to)) / 2) % DAY_MIN
+  return { toSecond: mid(h.firstEnd, h.second), toFirst: mid(h.secondEnd, h.first) }
+}
+const clockMin = (at: number) => { const d = new Date(at); return d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60 + d.getMilliseconds() / 60_000 }
+/** the shift a moment belongs to, by the clock */
+export function shiftAt(h: ShiftHours, at: number): 1 | 2 {
+  const { toFirst, toSecond } = shiftCuts(h), m = clockMin(at)
+  return (toFirst <= toSecond ? m >= toFirst && m < toSecond : m >= toFirst || m < toSecond) ? 1 : 2
+}
+/** the hand-overs of the calendar days around a moment, in order */
+function cutsNear(h: ShiftHours, at: number) {
+  const { toFirst, toSecond } = shiftCuts(h), d = new Date(at)
+  d.setHours(0, 0, 0, 0)
+  return [-1, 0, 1].flatMap((day) => [toFirst, toSecond].map((c) => d.getTime() + day * 86_400_000 + Math.round(c * 60_000))).sort((a, b) => a - b)
+}
+/** the first hand-over after a moment, and the last one at or before it */
+const nextCut = (h: ShiftHours, at: number) => cutsNear(h, at).find((t) => t > at) ?? at + 86_400_000
+export const lastCut = (h: ShiftHours, at: number) => cutsNear(h, at).filter((t) => t <= at).pop() ?? at - 86_400_000
+/** the time between two moments, cut where the shifts hand over: each piece with its shift */
+export function shiftPieces(h: ShiftHours, a: number, b: number) {
+  const out: { from: number; to: number; shift: 1 | 2 }[] = []
+  for (let cur = a, n = 0; cur < b && n < 2000; n++) { const to = Math.min(b, nextCut(h, cur)); out.push({ from: cur, to, shift: shiftAt(h, cur) }); cur = to }
+  return out
+}
+type Span = { from: number; to: number }
+/** what is left of a stretch of time once some stretches are taken out of it */
+function without(a: number, b: number, out: Span[]): Span[] {
+  let left: Span[] = b > a ? [{ from: a, to: b }] : []
+  for (const o of out) left = left.flatMap((p) => (o.to <= p.from || o.from >= p.to ? [p] : [...(o.from > p.from ? [{ from: p.from, to: o.from }] : []), ...(o.to < p.to ? [{ from: o.to, to: p.to }] : [])]))
+  return left
+}
+/**
+ * The stretches around [a, b) in which no shift is on, by the hours set: between the first shift and the second, and
+ * between the second and the next first. Each with its hand-over (see shiftCuts).
+ */
+function gapsNear(h: ShiftHours, a: number, b: number) {
+  const f = mins(h.first), len1 = ahead(f, mins(h.firstEnd)), gap1 = ahead(mins(h.firstEnd), mins(h.second)), len2 = ahead(mins(h.second), mins(h.secondEnd)), gap2 = ahead(mins(h.secondEnd), f)
+  const d = new Date(a)
+  d.setHours(0, 0, 0, 0)
+  const out: (Span & { cut: number })[] = []
+  for (let day = d.getTime() - 86_400_000; day <= b; day += 86_400_000) {
+    const g1 = day + (f + len1) * 60_000, g2 = g1 + (gap1 + len2) * 60_000
+    if (gap1 > 0) out.push({ from: g1, to: g1 + gap1 * 60_000, cut: g1 + (gap1 / 2) * 60_000 })
+    if (gap2 > 0) out.push({ from: g2, to: g2 + gap2 * 60_000, cut: g2 + (gap2 / 2) * 60_000 })
+  }
+  return out.filter((g) => g.to > a && g.from < b)
+}
+const marksCache = new WeakMap<State, Map<string, number[]>>()
+/** every moment something was recorded on a line: a code started or ended, a unit, a stop started or ended */
+function marksOf(s: State, lineId: string) {
+  let byLine = marksCache.get(s)
+  if (!byLine) marksCache.set(s, (byLine = new Map()))
+  let m = byLine.get(lineId)
+  if (!m) byLine.set(lineId, (m = [...s.runs.filter((r) => r.lineId === lineId).flatMap((r) => [r.startedAt, ...(r.endedAt ? [r.endedAt] : []), ...r.units.map((u) => u.at)]), ...s.stops.filter((x) => x.lineId === lineId).flatMap((x) => [x.startedAt, ...(x.endedAt ? [x.endedAt] : [])])]))
+  return m
+}
+/**
+ * The stretches of [a, b) when nobody was on a line: outside the hours of both shifts (the time in which one shift
+ * leaves and the other comes in, and the night). A code left running through them was not being worked, and a stop
+ * left open was not costing anything. People who stay a little after their hour, or come in a little before it, leave
+ * records (a unit, a stop, a code started or ended): the time counts up to the last record of the shift that leaves
+ * and from the first record of the shift that comes in. `own` = the records to go by when it is not one line's (a
+ * stop of the whole room).
+ */
+export function awayOn(s: State, lineId: string | null, date: string, a: number, b: number, own: number[] = []): Span[] {
+  if (!(b > a)) return []
+  const marks = lineId ? marksOf(s, lineId) : own
+  return gapsNear(shiftsOf(s, date), a, b).map((g) => {
+    let out = g.from, inn = g.to
+    for (const m of marks) { if (m >= g.from && m < g.cut) out = Math.max(out, m); else if (m >= g.cut && m < g.to) inn = Math.min(inn, m) }
+    return { from: Math.max(out, a), to: Math.min(inn, b) }
+  }).filter((x) => x.to > x.from)
+}
+/** the time a run has counted since a moment (its last unit, or its start): working, with somebody there */
+export function workedSince(s: State, r: Run, from: number, now: number) {
+  const stops = stopsOf(s, r.dept, r.lineId)
+  return without(from, now, awayOn(s, r.lineId, r.date, from, now)).reduce((t, x) => t + activeBetween(x.from, x.to, stops, now), 0)
+}
+/** the stretches a stop counts: its time with somebody there */
+export function stopSpans(s: State, x: Stop, now: number): Span[] {
+  const end = x.endedAt ?? now
+  return without(x.startedAt, end, awayOn(s, x.lineId, plainDay(s, x.startedAt), x.startedAt, end, [x.startedAt, ...(x.endedAt ? [x.endedAt] : [])]))
+}
+/** how long a stop counts */
+export const stopTime = (s: State, x: Stop, now: number) => stopSpans(s, x, now).reduce((t, p) => t + (p.to - p.from), 0)
+/** a run's time within one shift: what it worked and what it was stopped in it, with the causes */
+export function runInShift(s: State, r: Run, now: number, h: ShiftHours, shift: 1 | 2) {
+  const stops = stopsOf(s, r.dept, r.lineId), end = r.endedAt ?? now, away = awayOn(s, r.lineId, r.date, r.startedAt, end)
+  const mine = shiftPieces(h, r.startedAt, end).filter((x) => x.shift === shift).flatMap((x) => without(x.from, x.to, away))
+  const reasons: Record<string, number> = {}
+  let working = 0, down = 0
+  for (const w of mine) {
+    working += activeBetween(w.from, w.to, stops, now)
+    for (const x of stoppedPieces(w.from, w.to, stops, now)) { down += x.to - x.from; reasons[x.reason] = (reasons[x.reason] ?? 0) + (x.to - x.from) }
+  }
+  return { working, down, reasons, total: mine.reduce((t, w) => t + (w.to - w.from), 0), touched: mine.length > 0 }
+}
 // ---- the day of work ----
 const DAY_REF = 'act_days'
 /** a line of history written as it is (logChange merges retyped values; these are events of their own) */
 const putChange = (c: Change) => { set({ ...state, changes: upsertIn(state.changes, c) }); push('act_changes', c.id, rowOfChange(c)) }
+/** how long after midnight a day of work still lasts: until the second shift hands over to the first (3:30 with the usual hours) */
+const nightMs = (s: State, date: string) => { const c = shiftCuts(shiftsOf(s, date)).toFirst; return c <= 720 ? Math.round(c * 60_000) : 0 }
 /**
- * a day that was started stays the day of work until 6 in the morning of the next one: a shift that runs past
- * midnight keeps its date and its lot, and the morning shift is never handed yesterday's date
+ * a day of work lasts until the second shift hands over to the first: a shift that runs past midnight keeps its date
+ * and its lot, and the morning shift is never handed yesterday's date, even when it starts a little before its hour
  */
-const dayEnds = (date: string) => { const d = new Date(date + 'T06:00:00'); d.setDate(d.getDate() + 1); return d.getTime() }
+const dayEnds = (s: State, date: string) => { const d = new Date(date + 'T00:00:00'); d.setDate(d.getDate() + 1); return d.getTime() + nightMs(s, dayOf(d.getTime())) }
 export type WorkDay = { date: string; started: { at: number; by: string } | null }
-/** the day in course: the one somebody started ("Empezar el día") while it lasts; otherwise the calendar's */
+/**
+ * the day in course: the one somebody started ("Empezar el día") while it lasts; otherwise the calendar's, where the
+ * hours after midnight still belong to the second shift of the day before
+ */
 export function workDay(s: State, now = clockNow()): WorkDay {
-  const m = s.changes.filter((c) => c.refTable === DAY_REF && !c.deleted && c.at <= now && now < dayEnds(c.refKey)).sort((a, b) => b.at - a.at)[0]
-  return m ? { date: m.refKey, started: { at: m.at, by: m.by } } : { date: dayOf(now), started: null }
+  const m = s.changes.filter((c) => c.refTable === DAY_REF && !c.deleted && c.at <= now && now < dayEnds(s, c.refKey)).sort((a, b) => b.at - a.at)[0]
+  return m ? { date: m.refKey, started: { at: m.at, by: m.by } } : { date: plainDay(s, now), started: null }
 }
+/** the day of work a moment falls in while nobody has started one: the calendar's, with the night still on the day before */
+export const plainDay = (s: State, at: number) => dayOf(at - nightMs(s, dayOf(at)))
+/** "3:30 AM": the hour of the night at which a day of work gives way to the next */
+export const nightText = (s: State, date: string) => minuteText(nightMs(s, date) / 60_000)
 /** the last thing recorded on a run: its last unit, its start, or the moment its line was stopped and left */
 const lastRecord = (s: State, r: Run) => Math.max(r.units.length ? r.units[r.units.length - 1].at : r.startedAt, ...s.stops.filter((x) => !x.endedAt && x.dept === r.dept && x.lineId === r.lineId).map((x) => x.startedAt))
 const LEFT_AFTER_MS = 6 * 3_600_000
@@ -717,7 +909,23 @@ export function setTarget(dept: Dept, perHour: number | null, perShift: number |
   set({ ...state, targets: [...state.targets.filter((x) => x.dept !== dept), t] })
   push('act_targets', dept, rowOfTarget(t))
   logChange(dept, 'Meta ' + dept + ' · por hora', v(old?.perHour), v(perHour), 'act_targets', dept)
-  logChange(dept, 'Meta ' + dept + ' · por turno', v(old?.perShift), v(perShift), 'act_targets', dept)
+  logChange(dept, 'Meta ' + dept + ' · del día', v(old?.perShift), v(perShift), 'act_targets', dept)
+}
+/**
+ * Each line can have its own goal beside the room's (which is of all the lines together): it shows on the line's
+ * card. It travels in act_targets like the room's, under the key "line:<id>" (per_shift holds the day's).
+ */
+const LINE_KEY = 'line:'
+const rowOfLineTarget = (t: LineTarget) => ({ dept: LINE_KEY + t.lineId, per_hour: t.perHour, per_shift: t.perDay, updated_at: iso(t.updatedAt), updated_by: user.get() })
+export const lineTargetOf = (s: State, lineId: string) => s.lineTargets.find((t) => t.lineId === lineId)
+/** the manager's goal for one line (blank = none) */
+export function setLineTarget(line: Line, perHour: number | null, perDay: number | null) {
+  const old = lineTargetOf(state, line.id)
+  const t: LineTarget = { lineId: line.id, perHour, perDay, updatedAt: stamp(old) }
+  set({ ...state, lineTargets: [...state.lineTargets.filter((x) => x.lineId !== line.id), t] })
+  push('act_targets', LINE_KEY + line.id, rowOfLineTarget(t))
+  logChange(line.dept, 'Meta ' + line.name + ' (' + line.dept + ') · por hora', v(old?.perHour), v(perHour), 'act_targets', LINE_KEY + line.id)
+  logChange(line.dept, 'Meta ' + line.name + ' (' + line.dept + ') · del día', v(old?.perDay), v(perDay), 'act_targets', LINE_KEY + line.id)
 }
 /**
  * what one unit counts for: its own quantity; without one (old records, a blank left in a correction), the run's
@@ -734,9 +942,10 @@ export function unitQty(s: State, r: Run, u: Unit): number {
 export const runQty = (s: State, r: Run) => r.units.reduce((t, u) => t + unitQty(s, r, u), 0)
 
 /** what a room made on a day with all its lines together: in total, per code, and the pace (made ÷ hours since the first start of the day) */
-export function deptToday(s: State, dept: Dept, date: string, now: number) {
+/** what a room has made on a day, with all its lines together; or, given a line, what that line alone has made */
+export function deptToday(s: State, dept: Dept, date: string, now: number, lineId?: string) {
   const cfg = CFG[dept]
-  const runs = s.runs.filter((r) => r.dept === dept && r.date === date)
+  const runs = s.runs.filter((r) => r.dept === dept && r.date === date && (!lineId || r.lineId === lineId))
   const measure = (r: Run) => (cfg.qty === 'none' ? r.units.length : runQty(s, r))
   const codes = new Map<string, { code: string; units: number; qty: number; waste: number; lines: string[] }>()
   for (const r of runs) {
@@ -750,7 +959,19 @@ export function deptToday(s: State, dept: Dept, date: string, now: number) {
   const first = runs.length ? Math.min(...runs.map((r) => r.startedAt)) : 0
   const allEnded = runs.length > 0 && runs.every((r) => r.endedAt)
   const hours = first ? Math.max(0, (allEnded ? Math.max(...runs.map((r) => r.endedAt ?? 0)) : now) - first) / 3_600_000 : 0
-  return { runs, units, qty, unitLabel: cfg.qty === 'none' ? cfg.plural.toLowerCase() : cfg.qtyUnit, byCode: [...codes.values()].sort((a, b) => b.qty - a.qty), hours, rate: hours >= 1 / 6 ? qty / hours : null, allEnded }
+  // The shift in course has its own pace, so a good morning does not hide a slow afternoon. Its clock starts with its
+  // first code; a line that came running from the other shift counts from the hour this one starts.
+  const plan = shiftsOf(s, date), shift = shiftAt(plan, now), since = lastCut(plan, now), cuts = shiftCuts(plan)
+  const opens = Math.min(now, since + ahead(shift === 1 ? cuts.toFirst : cuts.toSecond, mins(shift === 1 ? plan.first : plan.second)) * 60_000)
+  const one = (r: Run, u: Unit) => (cfg.qty === 'none' ? 1 : unitQty(s, r, u))
+  const made = (k: 1 | 2) => runs.reduce((t, r) => t + r.units.filter((u) => shiftAt(plan, u.at) === k).reduce((a, u) => a + one(r, u), 0), 0)
+  const mine = runs.filter((r) => !r.endedAt || r.endedAt > since)
+  const shiftFirst = mine.length ? Math.min(...mine.map((r) => (r.startedAt >= since ? r.startedAt : opens))) : 0
+  const until = nextCut(plan, now)
+  const shiftQty = runs.reduce((t, r) => t + r.units.filter((u) => u.at >= since && u.at < until).reduce((a, u) => a + one(r, u), 0), 0)
+  const shiftHrs = shiftFirst ? Math.max(0, (mine.every((r) => r.endedAt) ? Math.max(...mine.map((r) => r.endedAt ?? 0)) : now) - shiftFirst) / 3_600_000 : 0
+  return { runs, units, qty, unitLabel: cfg.qty === 'none' ? cfg.plural.toLowerCase() : cfg.qtyUnit, byCode: [...codes.values()].sort((a, b) => b.qty - a.qty), hours, rate: hours >= 1 / 6 ? qty / hours : null, allEnded,
+    shift, shiftQty, shiftRate: shiftHrs >= 1 / 6 ? shiftQty / shiftHrs : null, made: [made(1), made(2)] as [number, number] }
 }
 
 // ---- what arrives from the server (another tablet, the office) ----
@@ -868,6 +1089,18 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
     if (!newer(cur)) return
     const c: Change = { id: String(row.id), at: fromIso(row.at) ?? 0, by: String(row.by_name ?? ''), dept: (row.dept ?? null) as Dept | null, what: String(row.what ?? ''), before: String(row.before ?? ''), after: String(row.after ?? ''), refTable: String(row.ref_table ?? ''), refKey: String(row.ref_key ?? ''), updatedAt: at, deleted: !!row.deleted }
     set({ ...state, changes: upsertIn(state.changes, c) })
+  } else if (table === 'act_targets' && String(row.dept ?? '').startsWith(SHIFTS_KEY)) {
+    // the hours of the shifts from a date on (a version without its hours was taken back)
+    const from = String(row.dept).slice(SHIFTS_KEY.length), a = unpackShift(row.per_hour), b = unpackShift(row.per_shift)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !newer(state.shifts.find((x) => x.from === from))) return
+    const x: ShiftPlan | null = a && b ? { from, first: a[0], firstEnd: a[1], second: b[0], secondEnd: b[1], updatedAt: at } : null
+    set({ ...state, shifts: [...state.shifts.filter((y) => y.from !== from), ...(x && !shiftsProblem(x) ? [x] : [])] })
+  } else if (table === 'act_targets' && String(row.dept ?? '').startsWith(LINE_KEY)) {
+    // the goal of one line
+    const lineId = String(row.dept).slice(LINE_KEY.length)
+    if (!lineId || !newer(state.lineTargets.find((t) => t.lineId === lineId))) return
+    const num = (x: unknown) => (x == null || !(Number(x) > 0) ? null : Number(x))
+    set({ ...state, lineTargets: [...state.lineTargets.filter((t) => t.lineId !== lineId), { lineId, perHour: num(row.per_hour), perDay: num(row.per_shift), updatedAt: at }] })
   } else if (table === 'act_targets') {
     const dept = row.dept as Dept
     if (!DEPTS.includes(dept) || !newer(state.targets.find((t) => t.dept === dept))) return
@@ -885,6 +1118,8 @@ export function uploadAll() {
   for (const [date, codes] of Object.entries(state.schedule)) for (const [code, mixes] of Object.entries(codes)) { push('act_schedule', date + '|' + normCode(code), rowOfSchedule(date, code, mixes)); n++ }
   for (const c of state.changes) { push('act_changes', c.id, rowOfChange(c)); n++ }
   for (const t of state.targets) { push('act_targets', t.dept, rowOfTarget(t)); n++ }
+  for (const x of state.shifts) { push('act_targets', SHIFTS_KEY + x.from, rowOfShifts(x)); n++ }
+  for (const t of state.lineTargets) { push('act_targets', LINE_KEY + t.lineId, rowOfLineTarget(t)); n++ }
   return n
 }
 /** "71.4", "71,4", "1.234,5" or "1,234.5" → a number (0 for a blank or something that is not one) */
@@ -976,12 +1211,16 @@ const stoppedBetween = (a: number, b: number, stops: Stop[], now: number) => sto
 /** time between two moments without what was spent stopped */
 export const activeBetween = (a: number, b: number, stops: Stop[], now: number) => Math.max(0, b - a - stoppedBetween(a, b, stops, now))
 
+/** a run's numbers: only the time somebody was on its line counts, as working or as stopped (see awayOn) */
 export function runStats(s: State, r: Run, now: number) {
   const stops = stopsOf(s, r.dept, r.lineId), end = r.endedAt ?? now
-  const working = activeBetween(r.startedAt, end, stops, now)
-  const pieces = stoppedPieces(r.startedAt, end, stops, now)
+  const away = awayOn(s, r.lineId, r.date, r.startedAt, end)
+  const there = (a: number, b: number) => (away.length ? without(a, b, away) : b > a ? [{ from: a, to: b }] : [])
+  const worked = (a: number, b: number) => there(a, b).reduce((t, x) => t + activeBetween(x.from, x.to, stops, now), 0)
+  const working = worked(r.startedAt, end)
+  const pieces = there(r.startedAt, end).flatMap((x) => stoppedPieces(x.from, x.to, stops, now))
   const down = pieces.reduce((t, p) => t + (p.to - p.from), 0)
-  const unitTimes = r.units.map((u, i) => activeBetween(i ? r.units[i - 1].at : r.startedAt, u.at, stops, now))
+  const unitTimes = r.units.map((u, i) => worked(i ? r.units[i - 1].at : r.startedAt, u.at))
   const avg = unitTimes.length ? unitTimes.reduce((a, b) => a + b, 0) / unitTimes.length : 0
   const qty = runQty(s, r)
   const reasons: Record<string, number> = {}

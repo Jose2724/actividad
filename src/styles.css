@@ -311,3 +311,17 @@ tr.live td{background:#f1fbf5}
 /* the stop box: three causes and "Otra", each big enough for a thumb in a glove */
 .chips.big{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .chips.big .chip{min-height:64px;border-radius:14px;font-size:17px;line-height:1.2;white-space:normal;padding:8px 10px}
+/* the shifts: their hours over the report, the day's total with each shift under it, what each shift made today */
+.shiftnote{margin:0;color:var(--muted);font-size:14px}
+.shiftnote b{color:var(--ink)}
+table.byshift tr.daytotal td{font-weight:700;background:var(--bg)}
+table.byshift small{color:var(--muted);font-weight:500;white-space:nowrap}
+.tc-total small.tc-shifts{display:block}
+/* the line's own goal on its card */
+.linegoal{display:flex;flex-wrap:wrap;gap:2px 16px;align-items:baseline;font-size:14px;color:var(--muted)}
+.linegoal b{color:var(--ink);font-variant-numeric:tabular-nums}
+.linegoal b.ok{color:var(--ok)}
+.linegoal b.red{color:var(--warn)}
+.linegoal .lnk{padding:6px 0}
+/* between two shifts, on a line whose code was left running: its time is not counting */
+.awaybar{background:var(--bg);border-radius:10px;padding:8px 12px;font-size:14px;font-weight:600;color:var(--muted)}
