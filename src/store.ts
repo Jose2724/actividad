@@ -379,22 +379,32 @@ export const SETUP = 'Set up'
 export const SETUP_MAX_MS = 6 * 3_600_000
 const AFTER = 'Después de '
 /**
- * What a line between two codes is stopped for: the set up written when its last code ended (or the cause a manager
- * gave to part of that time), while it is still open and recent enough to be one. undefined = it is not between codes.
+ * A line with no code on it is waiting for the next one. What was left open there when its last code ended (its set
+ * up, or the cause a manager gave to part of that time) is a stop only once that next code starts: the tablet cannot
+ * tell whether anybody is still at the line, and people go home without saying so. While it waits it is on the line's
+ * card with its clock, and in no report and no total. If no code comes, it never counted.
+ */
+export const waitsForCode = (s: State, x: Stop) => !x.endedAt && x.lineId !== null && !s.runs.some((r) => r.lineId === x.lineId && !r.endedAt)
+/** what waits on a line is of its day of work: the first code of the next morning does not close last night's set up, it drops it */
+const fromOtherDay = (s: State, x: Stop, at: number) => plainDay(s, x.startedAt) !== plainDay(s, at)
+/**
+ * What a line between two codes is waiting with: the set up written when its last code ended (or the cause a manager
+ * gave to part of that time), while it is still open, of the day of work in course and recent enough to be one.
+ * undefined = it is not between codes.
  */
 export const idleStop = (s: State, lineId: string, now: number) =>
-  s.runs.some((r) => r.lineId === lineId && !r.endedAt) ? undefined : s.stops.find((x) => x.lineId === lineId && !x.endedAt && now - x.startedAt <= SETUP_MAX_MS)
+  s.runs.some((r) => r.lineId === lineId && !r.endedAt) ? undefined : s.stops.find((x) => x.lineId === lineId && !x.endedAt && now - x.startedAt <= SETUP_MAX_MS && !fromOtherDay(s, x, now))
 /**
  * A code starts on a line. Whatever the line was stopped for since its last code (its set up, or the causes that time
- * was divided into) ends at this moment. A set up of seconds is not one, and neither is a stop left open for hours on
- * a line nobody was using: those are dropped.
+ * was divided into) ends at this moment, and from this moment it counts. A set up of seconds is not one, and neither
+ * is what was left open for hours on a line nobody was using, or since the day before: those are dropped.
  */
 export function startRun(line: Line, code: string, lot: string, date: string, perUnit: number | null) {
   const at = clockNow()
   batch(() => {
     for (const x of state.stops.filter((y) => y.lineId === line.id && !y.endedAt)) {
       const age = at - x.startedAt
-      if (age > SETUP_MAX_MS || (x.reason === SETUP && age < 60_000)) putStop({ ...x, deleted: true })
+      if (age > SETUP_MAX_MS || fromOtherDay(state, x, at) || (x.reason === SETUP && age < 60_000)) putStop({ ...x, deleted: true })
       else putStop({ ...x, endedAt: Math.max(at, x.startedAt), note: x.reason === SETUP && x.note.startsWith(AFTER) ? 'De ' + x.note.slice(AFTER.length) + ' a ' + code : x.note })
     }
     putRun({ id: uid(), dept: line.dept, lineId: line.id, line: line.name, code, lot, date, startedAt: at, endedAt: null, units: [], perUnit, waste: 0, by: user.get(), updatedAt: 0 })
@@ -462,12 +472,13 @@ export function endShift(dept: Dept) {
 export function dropSetup(id: string) { const x = state.stops.find((y) => y.id === id); if (x && !x.endedAt) putStop({ ...x, deleted: true }) }
 /**
  * A line that is running a code is not in set up. A set up still open from before that code started (the tablet that
- * started the code had not heard of it, or runs an older version of the app) ends where the code began.
+ * started the code had not heard of it, or runs an older version of the app) ends where the code began; one left
+ * from the day before, or open for hours, is dropped as startRun would have.
  */
 function healSetup(lineId: string) {
   const r = state.runs.find((x) => x.lineId === lineId && !x.endedAt)
   if (!r) return
-  for (const x of state.stops.filter((y) => y.lineId === lineId && !y.endedAt && y.reason === SETUP && y.startedAt <= r.startedAt)) putStop({ ...x, endedAt: r.startedAt })
+  for (const x of state.stops.filter((y) => y.lineId === lineId && !y.endedAt && y.reason === SETUP && y.startedAt <= r.startedAt)) putStop(r.startedAt - x.startedAt > SETUP_MAX_MS || fromOtherDay(state, x, r.startedAt) ? { ...x, deleted: true } : { ...x, endedAt: r.startedAt })
 }
 /** pounds thrown away, added to what the run already has */
 export function addWaste(runId: string, lb: number) { const r = run(runId); if (r) putRun({ ...r, waste: Math.round((r.waste + lb) * 100) / 100 }) }

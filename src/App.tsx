@@ -1071,7 +1071,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         {goalStrip}
         {idle && (
           <div className="setupbar">
-            <small>Desde las {fmtTime(idle.startedAt)}. Cuenta como paro hasta que empiece otro código.</small>
+            <small>Esperando el código siguiente desde las {fmtTime(idle.startedAt)}. Si no viene otro, no cuenta.</small>
             <span className="btns two">
               <button type="button" className="btn sm" onClick={() => endStop(idle.id)}>■ Terminar {idle.reason}</button>
               <button type="button" className="btn sm" onClick={() => dropSetup(idle.id)}>No viene otro código: quitarlo</button>

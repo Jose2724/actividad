@@ -1070,12 +1070,14 @@ sup.use((m) => {
   eq('al terminar el código empieza un paro de Set up, abierto', open().map((x) => [x.reason, x.lineId === l1.id, x.dept, x.startedAt, x.note, x.by]), [['Set up', true, 'RTE', T0 + 60 * M, 'Después de A100', 'Nino']])
   clock = T0 + 70 * M
   eq('la línea, sin código, está parada por Set up; la otra línea no', [m.idleStop(st(), l1.id, clock)?.reason, m.idleStop(st(), l2.id, clock)], ['Set up', undefined])
-  eq('ya sale en el reporte, en curso', m.reportOf(st(), DAY, clock).stops.map((x) => [x.reason, x.endedAt]), [['Set up', null]])
+  eq('mientras espera el código siguiente está en la tarjeta y no en el reporte: con la línea vacía no corre nada', [m.reportOf(st(), DAY, clock).stops.length, m.reportOf(st(), DAY, clock).setup, m.reportOf(st(), DAY, clock + 30 * M).setup], [0, 0, 0])
   // the manager divides it while it is still counting: the last minutes were a break
   const id = open()[0].id
   const rest = m.splitStop(id, T0 + 64 * M, 'Break')
   eq('se puede dividir en curso: el Set up se cierra y la otra causa sigue contando', [st().stops.find((x) => x.id === id).endedAt, st().stops.find((x) => x.id === rest).reason, m.idleStop(st(), l1.id, clock)?.reason], [T0 + 64 * M, 'Break', 'Break'])
+  eq('lo que el manager cerró al dividir ya cuenta (lo dijo una persona); el resto sigue esperando', m.reportOf(st(), DAY, clock).stops.map((x) => [x.reason, (x.endedAt - x.startedAt) / M]), [['Set up', 4]])
   clock = T0 + 75 * M; m.startRun(l1, '0200', '6283', DAY, 240)
+  eq('al empezar el código siguiente entra al reporte todo lo que esperaba', [m.reportOf(st(), DAY, clock).stops.map((x) => [x.reason, x.ms / M]).sort(), m.reportOf(st(), DAY, clock).setup / M], [[['Break', 11], ['Set up', 4]], 4])
   eq('al empezar el siguiente código se cierra lo que estaba contando', [open().length, st().stops.map((x) => [x.reason, (x.endedAt - x.startedAt) / M]).sort()], [0, [['Break', 11], ['Set up', 4]]])
   eq('ese tiempo no cuenta como parado de ninguno de los dos códigos', st().runs.map((r) => m.runStats(st(), r, clock).down), [0, 0])
   // without dividing: the detail says from which code to which
@@ -1635,7 +1637,7 @@ gap.use((m) => {
   clock = oct(10, 14, 0); m.startRun(lineOf(5), 'E500', '6283', DAY, 144)
   clock = oct(10, 14, 50); m.endRun(runOf('E500').id, true)
   const setup = lastStop().id
-  eq('un Set up sigue contando mientras pasa el cambio', min(m.stopTime(st(), st().stops.find((x) => x.id === setup), oct(10, 15, 25))), 35)
+  eq('el reloj del Set up en la tarjeta sigue mientras pasa el cambio', min(m.stopTime(st(), st().stops.find((x) => x.id === setup), oct(10, 15, 25))), 35)
   clock = oct(10, 15, 40); m.startRun(st().lines.find((l) => l.name === 'Línea 5'), 'F600', '6283', DAY, 144)
   clock = oct(10, 16, 0)
   eq('50 minutos en el reloj; pasado el cambio sin registros, 20 de Set up', [st().stops.filter((x) => x.id === setup).map((x) => [x.note, min(x.endedAt - x.startedAt)]), min(m.stopTime(st(), st().stops.find((x) => x.id === setup), clock)), min(m.reportOf(st(), DAY, clock).setup)], [[['De E500 a F600', 50]], 20, 20])
@@ -1670,8 +1672,63 @@ gap.use((m) => {
     clock = oct(11, 0, 20); m.startStop('RTE', line.id, 'Break', '')
     clock = oct(11, 0, 35); m.endStop(st().stops[0].id); m.unitDone(st().runs[0].id, 240)
     clock = oct(11, 0, 50); m.endRun(st().runs[0].id, true)
-    clock = oct(11, 0, 55)
+    clock = oct(11, 0, 55); m.startRun(line, 'B200', '6283', m.workDay(st()).date, 240)
     eq('pasada la medianoche, lo del turno 2 sigue en el reporte de su día: carros, paros y set up', [m.workDay(st()).date, m.reportOf(st(), DAY, clock).stops.map((x) => x.reason), m.reportOf(st(), DAY, clock, { shift: 2 }).rows.map((x) => [x.units, Math.round(x.st.down / M)]), Math.round(m.reportOf(st(), DAY, clock).setup / M), m.reportOf(st(), '2026-10-11', clock).stops.length], [DAY, ['Break', 'Set up'], [[1, 15]], 5, 0])
+  })
+}
+section('Set up: espera al código siguiente; con las líneas vacías no corre nada')
+{
+  const wai = await device('wai', { user: 'Santiago', usual: true })
+  wai.use((m) => {
+    const st = () => m.store.get(), min = (x) => Math.round(x / M), runOf = (code) => st().runs.find((r) => r.code === code)
+    const lineOf = (n) => { m.addLine('RTE', 'Línea ' + n); return st().lines.find((l) => l.name === 'Línea ' + n) }
+    const rep = (date = DAY) => m.reportOf(st(), date, clock)
+    const setups = (lineId) => st().stops.filter((x) => x.lineId === lineId && x.reason === 'Set up')
+    // 1. the last code of the night ends saying another one is coming, and everybody goes home without a word
+    clock = oct(10, 22, 0); const l1 = lineOf(1); m.startRun(l1, 'A100', '6283', DAY, 240)
+    clock = oct(10, 23, 0); m.unitDone(runOf('A100').id, 240)
+    clock = oct(11, 0, 40); m.endRun(runOf('A100').id, true)
+    const look = (line, h, mi) => { clock = oct(11, h, mi); const r = rep(); return [min(r.setup), r.stops.length, min(r.byShift[0].second.setup), m.idleStop(st(), line.id, clock)?.reason ?? null] }
+    eq('a las 12:50, 1:30 y 3:00 AM el Set up espera en la tarjeta y no suma nada al reporte', [look(l1, 0, 50), look(l1, 1, 30), look(l1, 3, 0)], [[0, 0, 0, 'Set up'], [0, 0, 0, 'Set up'], [0, 0, 0, 'Set up']])
+    eq('el reloj de la tarjeta sí corre mientras espera', min(m.stopTime(st(), setups(l1.id)[0], oct(11, 0, 55))), 15)
+    eq('terminado el día de trabajo (3:30 AM) la tarjeta ya no lo muestra: la línea amanece libre', look(l1, 3, 31), [0, 0, 0, null])
+    clock = oct(11, 6, 5); m.startRun(l1, 'B200', '6284', '2026-10-11', 240)
+    eq('el primer código de la mañana no lo cierra con cinco horas: lo quita', [setups(l1.id).length, min(rep().setup), min(rep('2026-10-11').setup), st().stops.filter((x) => !x.endedAt).length], [0, 0, 0, 0])
+    // 2. the same with some overtime: the last code ends at 1:10 AM, past the hour of the shift
+    clock = oct(10, 22, 0); const l2 = lineOf(2); m.startRun(l2, 'C300', '6283', DAY, 240)
+    clock = oct(11, 1, 10); m.endRun(runOf('C300').id, true)
+    const night = [look(l2, 2, 0), look(l2, 3, 0)]
+    clock = oct(11, 6, 10); m.startRun(l2, 'D400', '6284', '2026-10-11', 240)
+    clock = oct(11, 7, 0)
+    eq('con overtime (terminó a la 1:10 AM) tampoco corre de madrugada, y a las 6:10 se quita en vez de cerrarse con cinco horas', [night, setups(l2.id).length, min(rep().setup), rep().stops.length, rep('2026-10-11').stops.length], [[[0, 0, 0, 'Set up'], [0, 0, 0, 'Set up']], 0, 0, 0, 0])
+    // 3. a tablet with the older version of the app closes last night's set up with the morning's first code
+    const l3 = lineOf(3)
+    m.applyRemote('act_runs', runRow({ id: 'r-n', lineId: l3.id, line: 'Línea 3', code: 'E500', startedAt: oct(10, 22, 0), endedAt: oct(11, 1, 10), units: [unit(oct(10, 23, 0), 240)] }))
+    m.applyRemote('act_stops', stopRow({ id: 's-old', lineId: l3.id, reason: 'Set up', note: 'De E500 a F600', startedAt: oct(11, 1, 10), endedAt: oct(11, 6, 10) }))
+    m.applyRemote('act_runs', runRow({ id: 'r-m', lineId: l3.id, line: 'Línea 3', code: 'F600', date: '2026-10-11', startedAt: oct(11, 6, 10), endedAt: null }))
+    eq('cerrado así por una tablet con la versión vieja: no entra al reporte de ningún día', [st().stops.some((x) => x.id === 's-old'), rep().stops.some((x) => x.id === 's-old'), min(rep().setup), rep('2026-10-11').stops.length], [true, false, 0, 0])
+    // 4. the set up is open here and the morning's code was started on another tablet
+    const l4 = lineOf(4)
+    m.applyRemote('act_stops', stopRow({ id: 's-open', lineId: l4.id, reason: 'Set up', note: 'Después de G700', startedAt: oct(11, 0, 45), endedAt: null }))
+    m.applyRemote('act_runs', runRow({ id: 'r-4', lineId: l4.id, line: 'Línea 4', code: 'H800', date: '2026-10-11', startedAt: oct(11, 6, 2), endedAt: null }))
+    eq('si el código de la mañana lo empezó otra tablet, aquí también se quita en vez de cerrarse', [st().stops.some((x) => x.id === 's-open'), rep().stops.length, rep('2026-10-11').stops.length], [false, 0, 0])
+    // 5. within the day: it waits, and the next code brings it in whole
+    clock = oct(10, 17, 0); const l5 = lineOf(5); m.startRun(l5, 'J900', '6283', DAY, 240)
+    clock = oct(10, 18, 0); m.endRun(runOf('J900').id, true)
+    clock = oct(10, 18, 30)
+    const waits = [min(rep().setup), rep().stops.filter((x) => x.lineId === l5.id).length, m.idleStop(st(), l5.id, clock)?.reason]
+    clock = oct(10, 18, 40); m.startRun(l5, 'K100', '6283', DAY, 240)
+    eq('el mismo día: mientras espera no suma; al empezar el código siguiente entra completo', [waits, rep().stops.filter((x) => x.lineId === l5.id).map((x) => [x.reason, x.note, min(x.ms)]), min(rep().setup)], [[0, 0, 'Set up'], [['Set up', 'De J900 a K100', 40]], 40])
+    // 6. ended by hand ("Terminar Set up"): somebody said it was over, so it counts
+    clock = oct(10, 19, 0); m.endRun(runOf('K100').id, true)
+    clock = oct(10, 19, 25); m.endStop(st().stops.find((x) => x.lineId === l5.id && !x.endedAt).id)
+    clock = oct(10, 20, 0)
+    eq('terminado a mano ("Terminar Set up"): alguien dijo que acabó, así que cuenta', [min(rep().setup), m.idleStop(st(), l5.id, clock)], [65, undefined])
+    // 7. a stop while a code runs is somebody's word that the line is stopped: it counts as it happens, as always
+    clock = oct(10, 20, 0); const l6 = lineOf(6); m.startRun(l6, 'L200', '6283', DAY, 240)
+    clock = oct(10, 20, 10); m.startStop('RTE', l6.id, 'Break', '')
+    clock = oct(10, 20, 25)
+    eq('un paro con el código corriendo sí cuenta mientras pasa, como siempre', [rep().stops.filter((x) => x.lineId === l6.id).map((x) => [x.reason, x.endedAt, min(x.ms)]), min(m.runStats(st(), runOf('L200'), clock).down)], [[['Break', null, 15]], 15])
   })
 }
 {

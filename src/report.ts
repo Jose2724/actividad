@@ -1,4 +1,4 @@
-import { CFG, DEPTS, lineNameOf, normCode, orderLabel, orderOfId, plainDay, runInShift, runStats, SETUP, SETUP_MAX_MS, shiftAt, shiftPieces, shiftsOf, stopSpans, unitQty, type Dept, type Run, type ShiftHours, type State, type Unit } from './store'
+import { CFG, DEPTS, lineNameOf, normCode, orderLabel, orderOfId, plainDay, runInShift, runStats, SETUP, shiftAt, shiftPieces, shiftsOf, stopSpans, unitQty, waitsForCode, type Dept, type Run, type ShiftHours, type State, type Unit } from './store'
 
 /**
  * The day's report, as the tables on screen and in every file made from them (Excel, CSV, PDF): one place decides
@@ -63,10 +63,14 @@ export function reportOf(s: State, date: string, now: number, f: ReportFilter = 
   const rows = rowsOf(shift), runs = rows.map((x) => x.r)
   // one line per unit; a pallet with two lots gives two lines, each with its lot and its cases
   const unitRows = rows.flatMap((x) => x.parts.flatMap(({ u, i, all, kept: mine }) => mine.map((p) => ({ r: x.r, i, u, lot: p.lot, qty: p.qty, gap: x.st.unitTimes[i] ?? 0, mixed: all.length > 1, shift: shiftAt(plan, u.at), order: ((o) => (o ? orderLabel(o) : ''))(orderOfId(s, u.po)) })))).sort((a, b) => a.u.at - b.u.at)
-  // (a set up nobody closed, on a line that never started another code, stops being one after some hours)
-  const stale = (x: (typeof s.stops)[number]) => !x.endedAt && x.lineId !== null && now - x.startedAt > SETUP_MAX_MS && !s.runs.some((r) => r.lineId === x.lineId && !r.endedAt)
+  // A line between two codes: what is left counting there is a stop only once the next code starts (see waitsForCode),
+  // so while it waits it is on the line's card and not here: nobody working, nothing counting. And one that the first
+  // code of another day of work closed (a tablet with an older version of the app) was not a set up either: the people
+  // had gone home in between.
+  const between = (x: (typeof s.stops)[number]) => x.lineId !== null && !s.runs.some((r) => r.lineId === x.lineId && r.startedAt <= x.startedAt && (r.endedAt ?? Infinity) > x.startedAt)
+  const notOne = (x: (typeof s.stops)[number]) => waitsForCode(s, x) || (!!x.endedAt && plainDay(s, x.endedAt) !== plainDay(s, x.startedAt) && between(x))
   // a stop belongs to the day of work it started in: one after midnight is still the second shift's, of the day before
-  const dayStops = s.stops.filter((x) => plainDay(s, x.startedAt) === date && (!f.only || x.dept === f.only) && !stale(x)).sort((a, b) => a.startedAt - b.startedAt)
+  const dayStops = s.stops.filter((x) => plainDay(s, x.startedAt) === date && (!f.only || x.dept === f.only) && !notOne(x)).sort((a, b) => a.startedAt - b.startedAt)
   // with a code or a lot chosen, the stops that happened while those runs were on their lines
   const ofRuns = code || lot ? dayStops.filter((x) => kept.some((r) => x.dept === r.dept && (x.lineId === r.lineId || x.lineId === null) && x.startedAt < (r.endedAt ?? now) && (x.endedAt ?? now) > r.startedAt)) : dayStops
   /** how long a stop counts (only the time somebody was there: see awayOn), in one shift or in the whole day */
