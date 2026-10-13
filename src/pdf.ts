@@ -24,7 +24,7 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
   doc.setFont('helvetica', 'bold'); doc.setFontSize(18); doc.setTextColor(22, 32, 42)
   doc.text('Actividad · Reporte del día' + (only ? ' · ' + only : '') + filterTitle(rep.code, rep.lot, rep.shift), 40, 42)
   doc.setFont('helvetica', 'normal'); doc.setFontSize(11); doc.setTextColor(91, 107, 122)
-  doc.text(fmtDate(date) + '   ·   ' + rows.length + ' códigos   ·   trabajando ' + fmtDur(working) + '   ·   parado ' + fmtDur(down) + (rep.setup ? '   ·   set up ' + fmtDur(rep.setup) : ''), 40, 62)
+  doc.text(fmtDate(date) + '   ·   ' + rep.distinct + (rep.distinct === 1 ? ' código' : ' códigos') + ' en ' + rows.length + (rows.length === 1 ? ' corrida' : ' corridas') + '   ·   trabajando ' + fmtDur(working) + '   ·   parado ' + fmtDur(down) + (rep.setup ? '   ·   set up ' + fmtDur(rep.setup) : '') + '   (' + (rep.lines === 1 ? 'una línea' : 'suma de ' + rep.lines + ' líneas') + ')', 40, 62)
   doc.text('Turno 1: ' + shiftHours(rep.plan, 1) + '   ·   Turno 2: ' + shiftHours(rep.plan, 2), 40, 78)
   const after = () => (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY
   let top = 94
@@ -41,8 +41,8 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
     const made = (dept: keyof typeof CFG, x: { units: number; qty: number }) => x.units + ' ' + (x.units === 1 ? CFG[dept].unit : CFG[dept].plural).toLowerCase() + (CFG[dept].qty !== 'none' ? ' · ' + Math.round(x.qty).toLocaleString('en-US') + ' ' + CFG[dept].qtyUnit : '')
     autoTable(doc, {
       startY: top, theme: 'grid', styles: { font: 'helvetica', fontSize: 9, cellPadding: 5, textColor: [22, 32, 42] }, headStyles: { fillColor: [22, 32, 42], textColor: 255, fontStyle: 'bold' },
-      head: [['Depto', '', 'Horario', 'Códigos', 'Hecho', 'Waste lb', 'Trabajando', 'Parado', 'Set up']],
-      body: rep.byShift.flatMap((d) => [d.day, d.first, d.second].map((x) => [x.shift ? '' : d.dept, x.shift ? 'Turno ' + x.shift : 'Total del día', x.shift ? shiftHours(rep.plan, x.shift) : '', String(x.codes), made(d.dept, x), x.waste ? String(x.waste) : '—', fmtDur(x.working), fmtDur(x.down), x.setup ? fmtDur(x.setup) : '—'])),
+      head: [['Depto', '', 'Horario', 'Empezó', 'Terminó', 'Duración', 'Líneas', 'Códigos', 'Corridas', 'Hecho', 'Waste lb', 'Trabajando', 'Parado', 'Set up']],
+      body: rep.byShift.flatMap((d) => [d.day, d.first, d.second].map((x) => [x.shift ? '' : d.dept, x.shift ? 'Turno ' + x.shift : 'Total del día', x.shift ? shiftHours(rep.plan, x.shift) : '', x.from ? fmtTime(x.from) : '—', !x.to ? '—' : x.open ? 'en curso' : fmtTime(x.to), x.span ? fmtDur(x.span) : '—', String(x.lines), String(x.distinct), String(x.codes), made(d.dept, x), x.waste ? String(x.waste) : '—', fmtDur(x.working), fmtDur(x.down), x.setup ? fmtDur(x.setup) : '—'])),
       didParseCell: (c) => { if (c.section === 'body' && c.row.index % 3 === 0) { c.cell.styles.fontStyle = 'bold'; c.cell.styles.fillColor = [243, 246, 249] } },
     })
     top = after() + 18

@@ -59,7 +59,9 @@ export function reportOf(s: State, date: string, now: number, f: ReportFilter = 
     const first = k && r.waste ? round2(r.waste * share1()) : 0
     const waste = !k ? r.waste : k === 1 ? first : round2(r.waste - first)
     // the lots this line of the report is about: the one chosen, or every lot the run has touched
-    return { r, st, view, units: view.units.length, timed: k ? mine.length : r.units.length, qty, waste, parts, lots: lot || [...runLots(s, r)].filter(Boolean).join(', '), shifts: spanShifts(plan, r.startedAt, r.endedAt ?? now), here: !sh || sh.touched || mine.length > 0 }
+    // the first and the last moment of the run that count in what is in view (all of it, or its part in one shift)
+    const from = sh ? sh.from : r.startedAt, to = sh ? sh.to : r.endedAt ?? now
+    return { r, st, view, from, to, units: view.units.length, timed: k ? mine.length : r.units.length, qty, waste, parts, lots: lot || [...runLots(s, r)].filter(Boolean).join(', '), shifts: spanShifts(plan, r.startedAt, r.endedAt ?? now), here: !sh || sh.touched || mine.length > 0 }
   }
   const rowsOf = (k: 0 | 1 | 2) => kept.map((r) => rowOf(r, k)).filter((x) => x.here)
   const rows = rowsOf(shift), runs = rows.map((x) => x.r)
@@ -110,15 +112,22 @@ export function reportOf(s: State, date: string, now: number, f: ReportFilter = 
   // the whole day first and each shift under it, room by room (each room counts in its own unit)
   const sum = (list: ReturnType<typeof rowsOf>, k: 0 | 1 | 2, dept: Dept) => {
     const mine = list.filter((x) => x.r.dept === dept)
-    return { shift: k, codes: mine.length, units: mine.reduce((t, x) => t + x.units, 0), qty: mine.reduce((t, x) => t + x.qty, 0), waste: round2(mine.reduce((t, x) => t + x.waste, 0)), working: mine.reduce((t, x) => t + x.st.working, 0), down: mine.reduce((t, x) => t + x.st.down, 0), setup: setupOf(k, dept) }
+    // The clock time of the room: from its first code's start to its last code's end (in this shift, when it is one).
+    // "working" and "down" are another thing: the sum of every line's time, so three lines for five hours are fifteen.
+    const timed = mine.filter((x) => x.to > x.from)
+    const from = timed.length ? Math.min(...timed.map((x) => x.from)) : 0, to = timed.length ? Math.max(...timed.map((x) => x.to)) : 0
+    return { shift: k, from, to, span: to - from, open: timed.some((x) => !x.r.endedAt && x.to >= now), distinct: new Set(mine.map((x) => normCode(x.r.code))).size, lines: new Set(mine.map((x) => x.r.lineId)).size, codes: mine.length, units: mine.reduce((t, x) => t + x.units, 0), qty: mine.reduce((t, x) => t + x.qty, 0), waste: round2(mine.reduce((t, x) => t + x.waste, 0)), working: mine.reduce((t, x) => t + x.st.working, 0), down: mine.reduce((t, x) => t + x.st.down, 0), setup: setupOf(k, dept) }
   }
   const here = DEPTS.filter((d) => rows.some((x) => x.r.dept === d))
-  const byShift = each ? here.map((d) => ({ dept: d, day: sum(rows, 0, d), first: sum(each[0], 1, d), second: sum(each[1], 2, d) })) : []
+  // (the day lasted what its two shifts lasted: the hours between one shift and the next are nobody's)
+  const byShift = each ? here.map((d) => { const first = sum(each[0], 1, d), second = sum(each[1], 2, d); return { dept: d, day: { ...sum(rows, 0, d), span: first.span + second.span }, first, second } }) : []
   // what each room has made of what is in view (the day, or the shift chosen; the code and the lot chosen): the big numbers
-  const byDept = here.map((d) => ({ dept: d, ...sum(rows, shift, d) }))
+  const byDept = here.map((d) => ({ dept: d, ...(byShift.find((x) => x.dept === d)?.day ?? sum(rows, shift, d)) }))
   // what the lines were stopped for while they had a code, cause by cause: together they are the "Parado" total
   const reasons = [...rows.reduce((m, x) => { for (const [k, v] of Object.entries(x.st.reasons)) m.set(k, (m.get(k) ?? 0) + v); return m }, new Map<string, number>())].map(([reason, ms]) => ({ reason, ms })).filter((x) => x.ms > 0).sort((a, b) => b.ms - a.ms)
-  return { runs, rows, unitRows, stops, byCode, byShift, byDept, reasons, working: rows.reduce((t, x) => t + x.st.working, 0), down: rows.reduce((t, x) => t + x.st.down, 0), setup: setupOf(shift), codes, lots, code, lot, shift, plan, filtered }
+  // a code is a product; a run is a code on a line from its start to its end (the same code on two lines is two runs)
+  const distinct = new Set(rows.map((x) => normCode(x.r.code))).size, lines = new Set(rows.map((x) => x.r.lineId)).size
+  return { runs, rows, unitRows, stops, byCode, byShift, byDept, reasons, distinct, lines, working: rows.reduce((t, x) => t + x.st.working, 0), down: rows.reduce((t, x) => t + x.st.down, 0), setup: setupOf(shift), codes, lots, code, lot, shift, plan, filtered }
 }
 /** the words a filtered report carries in its title and in the name of its files */
 export const filterTitle = (code: string, lot: string, shift: 0 | 1 | 2 = 0) => (shift ? ' · Turno ' + shift : '') + (code ? ' · código ' + code : '') + (lot ? ' · lote ' + lot : '')

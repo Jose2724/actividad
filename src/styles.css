@@ -510,4 +510,15 @@ tr.lrow .drill{font-weight:600}
   table.shiftgrid tr.q td{font-size:17px}
 }
 @media print{.rfilters,.racts{display:none}}
+/* the clock of the shift on the room's card, and what each number of the report is */
+.tc-clock{display:flex;align-items:baseline;gap:6px 10px;flex-wrap:wrap;background:var(--soft);border-radius:10px;padding:8px 12px}
+.tc-clock span{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--accent)}
+.tc-clock b{font-size:26px;line-height:1;font-variant-numeric:tabular-nums;color:var(--ink)}
+.tc-clock small{color:var(--muted);font-size:13px}
+.tc-clock.over{background:var(--bg)}
+.tc-clock.over span{color:var(--muted)}
+.report .totals{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.report .totals .stat small{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+table.shiftgrid tr.sep td{background:var(--bg);color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding-top:5px;padding-bottom:5px;text-align:left}
+.how b{color:var(--ink)}
 

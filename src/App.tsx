@@ -819,6 +819,14 @@ function TodayCard({ s, dept, now, mgr, date }: { s: State; dept: Dept; now: num
         <h3>Hoy en {dept} · todas las líneas juntas</h3>
         {mgr && <button type="button" className="lnk" onClick={() => setEditing(true)}>{hasGoal ? '✎ Cambiar meta' : '+ Poner meta'}</button>}
       </div>
+      {/* the clock of the shift: from its first code until the last one ends, and from zero again with the next shift */}
+      {t.shiftSince > 0 && (
+        <div className={'tc-clock' + (t.shiftUntil ? ' over' : '')}>
+          <span>⏱ Turno {t.shift}</span>
+          <b>{fmtDur(t.shiftMs)}</b>
+          <small>{t.shiftUntil ? 'de ' + fmtTime(t.shiftSince) + ' a ' + fmtTime(t.shiftUntil) + ' · terminó' : 'desde las ' + fmtTime(t.shiftSince)}</small>
+        </div>
+      )}
       <div className="tc-main">
         <div className="tc-total"><b>{fmtN(t.qty)}</b> <span>{t.unitLabel}</span>{cfg.qty !== 'none' && <small>{t.units} {unitWord(t.units)}</small>}{t.made[0] > 0 && t.made[1] > 0 && <small className="tc-shifts">Turno 1: <b>{fmtN(t.made[0])}</b> · Turno 2: <b>{fmtN(t.made[1])}</b></small>}</div>
         {goal?.perShift ? (
@@ -1586,8 +1594,8 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
     const paros: Cell[][] = [['Departamento', 'Línea', 'Razón', 'Detalle', 'Inicio', 'Fin', 'Duración', 'Registró', 'Turno'],
       ...stops.map((x): Cell[] => [x.dept, lineName(x), x.reason, x.note, T(x.startedAt), x.endedAt ? T(x.endedAt) : 'en curso', D(x.ms), x.by, spanShifts(rep.plan, x.startedAt, x.endedAt ?? now)])]
     // the whole day first and each shift under it (not when the report is of one shift only)
-    const porTurno: Cell[][] = [['Departamento', 'Turno', 'Horario', 'Códigos', 'Hechas', 'Unidad', 'Cantidad', 'Unidad de cantidad', 'Waste (lb)', 'Tiempo trabajando', 'Tiempo parado', 'Set up'],
-      ...rep.byShift.flatMap((d) => [d.day, d.first, d.second].map((x): Cell[] => [d.dept, x.shift ? 'Turno ' + x.shift : 'Total del día', x.shift ? shiftHours(rep.plan, x.shift) : '', x.codes, x.units, CFG[d.dept].unit, CFG[d.dept].qty !== 'none' ? x.qty : '', CFG[d.dept].qty !== 'none' ? CFG[d.dept].qtyUnit : '', x.waste || '', D(x.working), D(x.down), x.setup ? D(x.setup) : '']))]
+    const porTurno: Cell[][] = [['Departamento', 'Turno', 'Horario', 'Empezó', 'Terminó', 'Duración', 'Líneas', 'Códigos', 'Corridas', 'Hechas', 'Unidad', 'Cantidad', 'Unidad de cantidad', 'Waste (lb)', 'Tiempo trabajando', 'Tiempo parado', 'Set up'],
+      ...rep.byShift.flatMap((d) => [d.day, d.first, d.second].map((x): Cell[] => [d.dept, x.shift ? 'Turno ' + x.shift : 'Total del día', x.shift ? shiftHours(rep.plan, x.shift) : '', x.from ? T(x.from) : '', !x.to ? '' : x.open ? 'en curso' : T(x.to), x.span ? D(x.span) : '', x.lines, x.distinct, x.codes, x.units, CFG[d.dept].unit, CFG[d.dept].qty !== 'none' ? x.qty : '', CFG[d.dept].qty !== 'none' ? CFG[d.dept].qtyUnit : '', x.waste || '', D(x.working), D(x.down), x.setup ? D(x.setup) : '']))]
     const cambios: Cell[][] = [['Hora', 'Quién', 'Departamento', 'Qué', 'Antes', 'Después'], ...changes.map((c): Cell[] => [T(c.at), c.by, c.dept ?? '', c.what, c.before, c.after])]
     const av = mgr && !dept && !rep.filtered ? avanceRows(s, date) : []
     const avance: Cell[][] = [['Código', 'Producto', 'Mezclas progr.', 'Mezclas hechas', 'Mezclas pend.', 'Spiral', 'Pouches progr.', 'Pouches esper.', 'Pouches hechos', 'Pouches pend.', 'Pouches faltan', 'Cajas progr.', 'Cajas esper.', 'Cajas hechas', 'Cajas pend.', 'Cajas faltan', 'MFO cajas', 'Pallets progr.', 'Pallets esper.', 'Pallets hechos', 'Waste lb'],
@@ -1625,6 +1633,8 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
   /** a shift's hours in two pieces that never break inside: "6:00 AM" and "a 3:00 PM" */
   const hrs = (k: 1 | 2) => { const [from, ...to] = shiftHours(rep.plan, k).split(' a '); return <><span>{from}</span> <span>a {to.join(' a ')}</span></> }
   const dash = (v: number) => (v ? fmtN(v) : '—')
+  /** what a time that adds up the lines is the sum of: "suma de 3 líneas" */
+  const linesText = (n: number) => (n === 1 ? 'una línea' : 'suma de ' + n + ' líneas')
   /** the title of a list that opens and closes */
   const secHead = (key: string, title: string, count: number) => (
     <div className="sechead">
@@ -1712,10 +1722,11 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
             })}
           </div>
           <div className="totals">
-            <div className="stat"><label>Códigos</label><b>{rows.length}</b></div>
-            <div className="stat"><label>Trabajando</label><b>{fmtDur(working)}</b></div>
-            <div className="stat"><label>Parado</label><b className={down ? 'red' : ''}>{fmtDur(down)}</b></div>
-            <div className="stat"><label>Set up</label><b>{setup ? fmtDur(setup) : '—'}</b></div>
+            {rep.byDept.length === 1 && <div className="stat"><label>{rep.shift ? 'Duración del turno ' + rep.shift : 'Duración del día'}</label><b>{fmtDur(rep.byDept[0].span)}</b><small>{fmtTime(rep.byDept[0].from)} a {rep.byDept[0].open ? 'ahora' : fmtTime(rep.byDept[0].to)}</small></div>}
+            <div className="stat"><label>Códigos</label><b>{rep.distinct}</b><small>{rows.length} {rows.length === 1 ? 'corrida' : 'corridas'}</small></div>
+            <div className="stat"><label>Trabajando</label><b>{fmtDur(working)}</b><small>{linesText(rep.lines)}</small></div>
+            <div className="stat"><label>Parado</label><b className={down ? 'red' : ''}>{fmtDur(down)}</b><small>{linesText(rep.lines)}</small></div>
+            <div className="stat"><label>Set up</label><b>{setup ? fmtDur(setup) : '—'}</b><small>entre un código y otro</small></div>
           </div>
           {/* the whole day and each shift side by side, room by room (with one shift chosen, that shift alone) */}
           {(rep.byShift.length > 0 || rep.byDept.length > 1) && (
@@ -1736,11 +1747,18 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
                           <tbody>
                             {q && <tr className="q"><td>{cap(cfg.qtyUnit)}</td>{cols.map((x) => cell(x, fmtN(x.qty)))}</tr>}
                             <tr className={q ? '' : 'q'}><td>{cfg.plural}</td>{cols.map((x) => cell(x, fmtN(x.units)))}</tr>
-                            <tr><td>Códigos</td>{cols.map((x) => cell(x, x.codes))}</tr>
+                            {cols.some((x) => x.waste > 0) && <tr><td>Waste</td>{cols.map((x) => cell(x, x.waste ? x.waste + ' lb' : '—', x.waste > 0))}</tr>}
+                            <tr><td>Códigos</td>{cols.map((x) => cell(x, x.distinct))}</tr>
+                            <tr><td>Corridas</td>{cols.map((x) => cell(x, x.codes))}</tr>
+                            <tr><td>Líneas</td>{cols.map((x) => cell(x, x.lines))}</tr>
+                            <tr className="sep"><td colSpan={cols.length + 1}>Reloj del turno</td></tr>
+                            <tr><td>Empezó</td>{cols.map((x) => cell(x, x.from ? fmtTime(x.from) : '—'))}</tr>
+                            <tr><td>Terminó</td>{cols.map((x) => cell(x, !x.to ? '—' : x.open ? 'en curso' : fmtTime(x.to)))}</tr>
+                            <tr><td>Duración</td>{cols.map((x) => cell(x, x.span ? fmtDur(x.span) : '—'))}</tr>
+                            <tr className="sep"><td colSpan={cols.length + 1}>Suma de las líneas</td></tr>
                             <tr><td>Trabajando</td>{cols.map((x) => cell(x, fmtDur(x.working)))}</tr>
                             <tr><td>Parado</td>{cols.map((x) => cell(x, fmtDur(x.down), x.down > 0))}</tr>
                             <tr><td>Set up</td>{cols.map((x) => cell(x, x.setup ? fmtDur(x.setup) : '—'))}</tr>
-                            {cols.some((x) => x.waste > 0) && <tr><td>Waste</td>{cols.map((x) => cell(x, x.waste ? x.waste + ' lb' : '—', x.waste > 0))}</tr>}
                           </tbody>
                         </table>
                       </div>
@@ -1754,6 +1772,10 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
                   <p>Cada registro cuenta en el turno de su hora. Un código que pasó de un turno al otro cuenta en los dos, cada uno con lo suyo; su waste se reparte según lo hecho en cada turno. El tiempo nunca se detiene solo. Cuando ya pasó el rato entre un turno y el otro, si en una línea nadie registró nada en todo ese rato, ese rato no cuenta.</p>
                 </details>
               )}
+              <details className="how">
+                <summary>¿Qué es cada número?</summary>
+                <p><b>Duración</b> es el reloj: desde que empezó el primer código hasta que terminó el último. <b>Trabajando</b> y <b>Parado</b> son la suma de todas las líneas: tres líneas trabajando cinco horas cada una son quince horas. <b>Códigos</b> son los productos distintos. Una <b>corrida</b> es un código en una línea, desde que empieza hasta que termina: el mismo código en dos líneas son dos corridas. <b>Set up</b> es el tiempo entre un código y el siguiente en la misma línea.</p>
+              </details>
             </>
           )}
           {/* each code with its lots, the total of the code and the total of the room */}

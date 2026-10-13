@@ -832,7 +832,8 @@ export function runInShift(s: State, r: Run, now: number, h: ShiftHours, shift: 
     working += activeBetween(w.from, w.to, stops, now)
     for (const x of stoppedPieces(w.from, w.to, stops, now)) { down += x.to - x.from; reasons[x.reason] = (reasons[x.reason] ?? 0) + (x.to - x.from) }
   }
-  return { working, down, reasons, total: mine.reduce((t, w) => t + (w.to - w.from), 0), touched: mine.length > 0 }
+  // from / to = the first and the last moment of the run that count in this shift (0 when none does)
+  return { working, down, reasons, total: mine.reduce((t, w) => t + (w.to - w.from), 0), touched: mine.length > 0, from: mine.length ? mine[0].from : 0, to: mine.length ? mine[mine.length - 1].to : 0 }
 }
 // ---- the day of work ----
 const DAY_REF = 'act_days'
@@ -1090,9 +1091,14 @@ export function deptToday(s: State, dept: Dept, date: string, now: number, lineI
   const shiftFirst = mine.length ? Math.min(...mine.map((r) => (r.startedAt >= since ? r.startedAt : opens))) : 0
   const until = nextCut(plan, now)
   const shiftQty = runs.reduce((t, r) => t + r.units.filter((u) => u.at >= since && u.at < until).reduce((a, u) => a + one(r, u), 0), 0)
-  const shiftHrs = shiftFirst ? Math.max(0, (mine.every((r) => r.endedAt) ? Math.max(...mine.map((r) => r.endedAt ?? 0)) : now) - shiftFirst) / 3_600_000 : 0
+  // The clock of the shift: it starts with the shift's first code (or, for a line that came running, at the hour the
+  // shift starts), it runs while anything is running, it stops where the last code ended (the people said so: they
+  // ended their codes or the shift), and the next shift starts again from zero when it starts working.
+  const shiftUntil = mine.length > 0 && mine.every((r) => r.endedAt) ? Math.max(...mine.map((r) => r.endedAt ?? 0)) : 0
+  const shiftMs = shiftFirst ? Math.max(0, (shiftUntil || now) - shiftFirst) : 0
+  const shiftHrs = shiftMs / 3_600_000
   return { runs, units, qty, unitLabel: cfg.qty === 'none' ? cfg.plural.toLowerCase() : cfg.qtyUnit, byCode: [...codes.values()].sort((a, b) => b.qty - a.qty), hours, rate: hours >= 1 / 6 ? qty / hours : null, allEnded,
-    shift, shiftQty, shiftRate: shiftHrs >= 1 / 6 ? shiftQty / shiftHrs : null, made: [made(1), made(2)] as [number, number] }
+    shift, shiftQty, shiftRate: shiftHrs >= 1 / 6 ? shiftQty / shiftHrs : null, made: [made(1), made(2)] as [number, number], shiftSince: shiftFirst, shiftUntil, shiftMs }
 }
 
 // ---- what arrives from the server (another tablet, the office) ----

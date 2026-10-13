@@ -1795,6 +1795,25 @@ section('Reporte: lo hecho por departamento, por código y lote, y por causa de 
     eq('las cajas, con coma en los miles como los demás números', [m.casesText({ cases: 1188, loose: 0 }), m.casesText({ cases: 1, loose: 3 }), m.casesText({ cases: 12, loose: 1 })], ['1,188 cajas', '1 caja y 3 sueltos', '12 cajas y 1 suelto'])
     eq('lo hecho por una corrida, también con coma en los miles', [m.madeText(st().runs.find((r) => r.lineId === l1.id), 3360), m.madeText(st().runs.find((r) => r.lineId === l1.id), 720)], ['3 carros · 3,360 pouches', '3 carros · 720 pouches'])
     eq('una mezcla (sin cantidad) cuenta como unidad de su lote y de su turno', m.reportOf(st(), DAY, clock).byCode.filter((c) => c.dept === 'Spiral').map(codeLots), [['Spiral', 'C300', 1, 0, [['6283', 1, 0, [0, 1]]]]])
+    // the clock of each shift, and codes told apart from runs
+    const hm = (ms) => (ms ? new Date(ms).getHours() + ':' + String(new Date(ms).getMinutes()).padStart(2, '0') : '')
+    const clockOf = (x) => [hm(x.from), hm(x.to), min(x.span), x.open, x.lines, x.distinct, x.codes]
+    const rte = m.reportOf(st(), DAY, oct(10, 19, 0), { only: 'RTE' }), pkg = m.reportOf(st(), DAY, oct(10, 19, 0), { only: 'Packing' })
+    eq('RTE, turno 1: de la 1:00 a las 3:00 PM (la media hora del cambio, sin registros, no cuenta), una línea, un código, una corrida', clockOf(rte.byShift[0].first), ['13:00', '15:00', 120, false, 1, 1, 1])
+    eq('RTE, turno 2: de las 3:30 a las 6:40 PM, dos líneas, dos códigos distintos en tres corridas', clockOf(rte.byShift[0].second), ['15:30', '18:40', 190, false, 2, 2, 3])
+    eq('RTE, el día: empezó a la 1:00, terminó a las 6:40, y duró lo que duraron sus dos turnos (no las horas entre uno y otro)', [clockOf(rte.byShift[0].day), clockOf(rte.byDept[0])], [['13:00', '18:40', 310, false, 2, 2, 3], ['13:00', '18:40', 310, false, 2, 2, 3]])
+    eq('trabajando es otra cosa: la suma de las líneas, que puede pasar de la duración', [min(rte.working) + min(rte.down), min(rte.byShift[0].second.working + rte.byShift[0].second.down) > min(rte.byShift[0].second.span)], [330, true])
+    eq('Packing: una hora en el turno 1 y cincuenta minutos en el turno 2', [clockOf(pkg.byShift[0].first), clockOf(pkg.byShift[0].second), min(pkg.byDept[0].span)], [['14:00', '15:00', 60, false, 1, 1, 1], ['15:30', '16:20', 50, false, 1, 1, 1], 110])
+    eq('con un turno escogido, la duración es la de ese turno', clockOf(m.reportOf(st(), DAY, oct(10, 19, 0), { only: 'RTE', shift: 2 }).byDept[0]), ['15:30', '18:40', 190, false, 2, 2, 3])
+    eq('en todo el reporte: dos códigos distintos (A100 es el mismo en RTE y en Packing), cuatro corridas, tres líneas', [day.distinct, day.rows.length, day.lines], [2, 4, 3])
+    eq('un código que sigue corriendo: su turno está en curso y su duración sigue', clockOf(m.reportOf(st(), DAY, oct(10, 19, 40), { only: 'Spiral' }).byDept[0]), ['19:00', '19:40', 40, true, 1, 1, 1])
+    // the clock of the shift in course, on the room's card
+    const tick = (dept, date, at) => { const t = m.deptToday(st(), dept, date, at); return [t.shift, hm(t.shiftSince), hm(t.shiftUntil), min(t.shiftMs)] }
+    eq('el reloj del turno 2 en RTE: empezó a las 3:30 (una línea venía corriendo) y se paró a las 6:40, cuando terminó el último código', [tick('RTE', DAY, oct(10, 19, 0)), tick('RTE', DAY, oct(10, 22, 0))], [[2, '15:30', '18:40', 190], [2, '15:30', '18:40', 190]])
+    eq('en Spiral, que empezó a las 7:00 PM y sigue: cuenta mientras algo corre', [tick('Spiral', DAY, oct(10, 19, 40)), tick('Spiral', DAY, oct(10, 21, 0))], [[2, '19:00', '', 40], [2, '19:00', '', 120]])
+    eq('un departamento que no ha empezado en este turno no tiene reloj', tick('Kitchen', DAY, oct(10, 19, 40)), [2, '', '', 0])
+    clock = oct(11, 6, 10); m.startRun(l1, 'D900', '6284', '2026-10-11', 240)
+    eq('al otro día el reloj vuelve a empezar de cero con el primer código del turno 1', [tick('RTE', '2026-10-11', oct(11, 6, 10)), tick('RTE', '2026-10-11', oct(11, 6, 40))], [[1, '6:10', '', 0], [1, '6:10', '', 30]])
   })
 }
 {
