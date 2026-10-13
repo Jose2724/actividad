@@ -1,6 +1,6 @@
 import { createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
-import { addLine, addWaste, awayDay, byLineName, byShip, casesText, cancelDay, CFG, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineNamed, lineNameOf, lineTargetOf, lotFor, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, numOf, openIn, openOrdersFor, openRun, openStop, orderCodes, orderLabel, orderMade, parseProductsCsv, plainDay, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reopenRun, reset, resetRecords, role, runQty, runStats, saveOrder, saveProduct, setLineTarget, setSchedule, setShifts, setTarget, startDay, startRun, startSetup, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, savedText, shiftAt, shiftCuts, shiftHours, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type LineTarget, type Product, type LotPart, type Order, type ShiftHours, type Short, type State, type Target, type WorkDay } from './store'
+import { addLine, addWaste, awayDay, byLineName, byShip, casesText, cancelDay, CFG, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineTargetOf, lotFor, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, numOf, openIn, openOrdersFor, openRun, openStop, orderCodes, orderLabel, orderMade, parseProductsCsv, plainDay, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reopenRun, reset, resetRecords, role, runQty, runStats, saveOrder, saveProduct, setLineTarget, setSchedule, setShifts, setTarget, startDay, startRun, startSetup, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, savedText, shiftAt, shiftCuts, shiftHours, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type LineTarget, type Product, type LotPart, type Order, type ShiftHours, type Short, type State, type Target, type WorkDay } from './store'
 import { avanceRows, n1, pending, type AvanceRow } from './avance'
 import { cellText, loadZip, xDay, xDur, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 
@@ -18,7 +18,7 @@ import { clockNow, clockOffText, otherZone, startClock } from './clock'
 import { appUrl, qrPath } from './qr'
 import { uploadAll } from './store'
 import { Employees } from './Employees'
-import { tr } from './i18n'
+import { lang, locale, saveLang, tr } from './i18n'
 import { trx } from './trx'
 
 /** a clock that ticks every second, so every timer on screen moves */
@@ -77,6 +77,16 @@ function QrDialog({ onClose }: { onClose: () => void }) {
   )
 }
 /** a link that opens the QR code (on the entry screens, and for the manager beside their name) */
+/** the app in the other language: the choice is of this device, it is kept, and the app loads again in it */
+function LangSwitch() {
+  const pick = (l: 'es' | 'en') => { if (l !== lang) { saveLang(l); location.reload() } }
+  return (
+    <span className="langsw" role="group" aria-label="Idioma / Language">
+      <button type="button" className={lang === 'es' ? 'on' : ''} aria-pressed={lang === 'es'} title="Español" onClick={() => pick('es')}>ES</button>
+      <button type="button" className={lang === 'en' ? 'on' : ''} aria-pressed={lang === 'en'} title="English" onClick={() => pick('en')}>EN</button>
+    </span>
+  )
+}
 function QrLink({ label }: { label: string }) {
   const [open, setOpen] = useState(false)
   return <><button type="button" className="lnk" onClick={() => setOpen(true)}>{label}</button>{open && <QrDialog onClose={() => setOpen(false)} />}</>
@@ -97,7 +107,7 @@ function LineNameDialog({ s, dept, line, onClose }: { s: State; dept: Dept; line
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
-        <h3>{line ? tr('Nombre de {0}', line.name) : tr('Agregar {0} en {1}', word, dept)}</h3>
+        <h3>{line ? tr('Nombre de {0}', lineLabel(line.name)) : tr('Agregar {0} en {1}', word, dept)}</h3>
         <p>{line ? tr('El nombre nuevo sale en todo lo registrado en ella: la pantalla, el reporte y los archivos. Los tiempos no cambian.') : tr('¿Cuál es? Ponle el nombre que tiene en la planta.')}</p>
         <form className="qform" onSubmit={(e) => { e.preventDefault(); save() }}>
           <div className="chips">
@@ -188,7 +198,7 @@ function ServerApp() {
   const out = async () => { leaving.current = true; rememberMe(null); user.set(''); confirmed.current = 0; setErr(''); setMe(null); await signOutHere() }
   /** the PIN was accepted: the server is asked who that is */
   const entered = async () => { leaving.current = false; await verify() }
-  if (me === 'loading') return <div className="gate"><h1>Actividad</h1><p>{tr('Entrando…')}</p></div>
+  if (me === 'loading') return <div className="gate"><LangSwitch /><h1>Actividad</h1><p>{tr('Entrando…')}</p></div>
   if (me === null) return <LoginGate error={err} onDone={entered} />
   if (me === 'none') return <NoRole onOut={out} onRetry={verify} />
   const home = isDept(me.dept) ? me.dept : DEPTS[0]
@@ -251,7 +261,7 @@ function LoginGate({ error, onDone }: { error: string; onDone: () => Promise<voi
   }
   const mail = u.includes('@')
   return (
-    <div className="gate">
+    <div className="gate"><LangSwitch />
       <h1>Actividad</h1>
       <p>{tr('Entra con tu usuario y PIN (los mismos de Freezer RTE).')}</p>
       <form onSubmit={(e) => { e.preventDefault(); if (!busy) void go() }}>
@@ -269,7 +279,7 @@ function LoginGate({ error, onDone }: { error: string; onDone: () => Promise<voi
 
 function NoRole({ onOut, onRetry, text }: { onOut: () => void; onRetry: () => void; text?: string }) {
   return (
-    <div className="gate">
+    <div className="gate"><LangSwitch />
       <h1>Actividad</h1>
       <p>{text ?? tr('Tu usuario existe, pero todavía no tiene acceso a Actividad. Pide al manager que te lo active.')}</p>
       <div className="btns"><button type="button" className="btn" onClick={onRetry}>{tr('Reintentar')}</button><button type="button" className="lnk" onClick={onOut}>{tr('Cerrar sesión')}</button></div>
@@ -316,7 +326,7 @@ function Gate({ dept, mgr, onDept, onManager, onName, onBack }: { dept: Dept | n
   const [bad, setBad] = useState(false)
   if (!dept && !mgr) {
     return (
-      <div className="gate">
+      <div className="gate"><LangSwitch />
         <h1>Actividad<span className="demotag">DEMO</span></h1>
         <p>{tr('¿De qué departamento eres?')}</p>
         <div className="pick">{DEPTS.map((d) => <button key={d} type="button" className="btn" onClick={() => onDept(d)}>{d}</button>)}</div>
@@ -333,7 +343,7 @@ function Gate({ dept, mgr, onDept, onManager, onName, onBack }: { dept: Dept | n
     )
   }
   return (
-    <div className="gate">
+    <div className="gate"><LangSwitch />
       <h1>Actividad<span className="demotag">DEMO</span></h1>
       <p>{trx('{0} · Ahora escribe tu nombre. Todo lo que registres lleva tu nombre.', <b>{mgr ? tr('Manager') : dept}</b>)}</p>
       <form onSubmit={(e) => { e.preventDefault(); if (v.trim()) onName(v.trim()) }}>
@@ -368,14 +378,14 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
         : off && <div className="zonebar">{trx('⚠ El reloj de este aparato está {0}. La app usa la hora correcta, la del servidor. Para arreglarlo, activa la hora automática en los ajustes del aparato.', off)}</div>}
       {full && <div className="fullbar">{trx('⚠ La memoria de este aparato está llena y lo nuevo no se está guardando aquí. {0}', supabase ? tr('Lo que ya subió al servidor está a salvo. Avisa al manager y no cierres la app hasta que diga "Sincronizado".') : tr('Manda el reporte del día y avisa al manager antes de cerrar la app: hay que hacer espacio con "Reiniciar registros".'))}</div>}
       <header className="top">
-        <div className="brand"><h1>Actividad{!supabase && <span className="demotag">DEMO</span>}</h1><small>{new Date(now).toLocaleDateString('es', { weekday: 'long', day: 'numeric', month: 'long' })}</small></div>
+        <div className="brand"><h1>Actividad{!supabase && <span className="demotag">DEMO</span>}</h1><small>{new Date(now).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })}</small></div>
         <nav className="tabs">
           <button type="button" className={tab === 'act' ? 'on' : ''} onClick={() => setTab('act')}>Actividad</button>
           {can('products') && <button type="button" className={tab === 'av' ? 'on' : ''} onClick={() => setTab('av')}>{tr('Avance')}</button>}
           <button type="button" className={tab === 'rep' ? 'on' : ''} onClick={() => setTab('rep')}>{tr('Reporte')}</button>
           {can('people') && supabase && <button type="button" className={tab === 'emp' ? 'on' : ''} onClick={() => setTab('emp')}>{tr('Empleados')}</button>}
         </nav>
-        <div className="me"><SyncDot /> {name} · {mgr ? tr('Manager') : home} {mgr && <QrLink label="QR" />}<button type="button" className="lnk" onClick={() => setLeaving(true)}>{supabase ? tr('Salir') : tr('Cambiar')}</button></div>
+        <div className="me"><SyncDot /> {name} · {mgr ? tr('Manager') : home} {mgr && <QrLink label="QR" />}<LangSwitch /><button type="button" className="lnk" onClick={() => setLeaving(true)}>{supabase ? tr('Salir') : tr('Cambiar')}</button></div>
       </header>
       {leaving && <LeaveDialog onYes={() => { setLeaving(false); onLogout() }} onNo={() => setLeaving(false)} />}
       {tab === 'act' ? (
@@ -570,7 +580,7 @@ function Products({ s }: { s: State }) {
   )
 }
 
-const longDate = (date: string) => new Date(date + 'T12:00:00').toLocaleDateString('es', { weekday: 'long', day: 'numeric', month: 'long' })
+const longDate = (date: string) => new Date(date + 'T12:00:00').toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })
 const hhmm = (ms: number) => { const d = new Date(ms); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') }
 /** the word to type before records are wiped: always a deliberate act, never a stray tap */
 const WIPE_WORD = 'BORRAR'
@@ -689,9 +699,9 @@ function WipeDayDialog({ s, date, onClose, onDone }: { s: State; date: string; o
 /** "lun, 12 oct": a date said short */
 /** the date some days before or after another */
 const addDays = (date: string, n: number) => { const d = new Date(date + 'T12:00:00'); d.setDate(d.getDate() + n); return dayOf(d.getTime()) }
-const shortDay = (date: string) => new Date(date + 'T12:00:00').toLocaleDateString('es', { weekday: 'short', day: 'numeric', month: 'short' })
+const shortDay = (date: string) => new Date(date + 'T12:00:00').toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' })
 /** "15 oct" */
-const shipText = (date: string) => new Date(date + 'T12:00:00').toLocaleDateString('es', { day: 'numeric', month: 'short' })
+const shipText = (date: string) => new Date(date + 'T12:00:00').toLocaleDateString(locale, { day: 'numeric', month: 'short' })
 /** " · faltan 52 de 72 cajas", " · completo", or nothing when the order does not say how many cases it is for */
 const leftText = (s: State, o: Order) => { if (o.cases == null) return ''; const left = o.cases - orderMade(s, o.id); return left > 0 ? ' ' + tr('· faltan {0} de {1} cajas', fmtN(left), fmtN(o.cases)) : ' ' + tr('· completo') }
 
@@ -909,7 +919,7 @@ function DeptPanel({ s, dept, now, day }: { s: State; dept: Dept; now: number; m
             <ul className="leavelist">
               {left.runs.map((r) => <li key={r.id}>{trx('{0} · código {1} · {2} · {3}', <b>{lineNameOf(s, r.lineId, r.line)}</b>, <b>{r.code}</b>, madeText(r, runQty(s, r)), <i>{tr('se termina')}</i>)}</li>)}
               {left.setups.map((x) => <li key={x.id}>{trx('{0} · Set up desde {1} · {2}', <b>{lineNameOf(s, x.lineId)}</b>, fmtTime(x.startedAt), <i>{tr('se quita: no vino otro código')}</i>)}</li>)}
-              {left.stops.map((x) => <li key={x.id}>{trx('{0} · parado por {1} desde {2} · {3}', <b>{x.lineId === null ? tr('Todo {0}', dept) : lineNameOf(s, x.lineId)}</b>, x.reason, fmtTime(x.startedAt), <i>{tr('se cierra')}</i>)}</li>)}
+              {left.stops.map((x) => <li key={x.id}>{trx('{0} · parado por {1} desde {2} · {3}', <b>{x.lineId === null ? tr('Todo {0}', dept) : lineNameOf(s, x.lineId)}</b>, tr(x.reason), fmtTime(x.startedAt), <i>{tr('se cierra')}</i>)}</li>)}
             </ul>
             <p className="hint">{trx('Si falta registrar {0}{1} de alguna línea, regístral{2} antes. Si el otro turno va a seguir con estos mismos códigos, no hace falta terminar: déjalos corriendo.', CFG[dept].saved.endsWith('a') ? tr('la última') + ' ' : tr('el último') + ' ', CFG[dept].unit.toLowerCase(), CFG[dept].saved.endsWith('a') ? 'a' : 'o')}</p>
             <div className="dbtns">
@@ -919,7 +929,7 @@ function DeptPanel({ s, dept, now, day }: { s: State; dept: Dept; now: number; m
           </div>
         </div>
       )}
-      {ds && <div className="deptstop">{trx('⏸ Todo {0} parado · {1}{2} · desde {3} · {4}', dept, <b>{ds.reason}</b>, ds.note && ' · ' + ds.note, fmtTime(ds.startedAt), ds.by)} {can('fix') && <button type="button" className="lnk" onClick={() => setEditStop(true)}>{tr('Corregir')}</button>}</div>}
+      {ds && <div className="deptstop">{trx('⏸ Todo {0} parado · {1}{2} · desde {3} · {4}', dept, <b>{tr(ds.reason)}</b>, ds.note && ' · ' + noteLabel(ds.note), fmtTime(ds.startedAt), ds.by)} {can('fix') && <button type="button" className="lnk" onClick={() => setEditStop(true)}>{tr('Corregir')}</button>}</div>}
       {editStop && ds && <StopEditor stop={ds} mgr={can('fix')} onClose={() => setEditStop(false)} />}
       <TodayCard s={s} dept={dept} now={now} mgr={can('goals')} date={day.date} />
       {CFG[dept].orders && <OrdersCard s={s} mgr={can('orders')} />}
@@ -983,7 +993,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   const [removing, setRemoving] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [editQty, setEditQty] = useState(false)
-  const nameIt = <button type="button" className="lnk pen" title={tr('Cambiar el nombre')} aria-label={tr('Cambiar el nombre de {0}', line.name)} onClick={() => setRenaming(true)}>✎</button>
+  const nameIt = <button type="button" className="lnk pen" title={tr('Cambiar el nombre')} aria-label={tr('Cambiar el nombre de {0}', lineLabel(line.name))} onClick={() => setRenaming(true)}>✎</button>
   const naming = renaming && <LineNameDialog s={s} dept={line.dept} line={line} onClose={() => setRenaming(false)} />
   const [wasting, setWasting] = useState(false)
   // A unit was just recorded on this run, here or on another tablet: for a moment the button says which one, the
@@ -1061,7 +1071,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
     // per cart) comes from the products table or the last run of the code. RTE types it the office's way: crates
     // per cart × pouches per crate ("12x10")
     const needPer = !!cfg.perUnitLabel
-    const isCart = cfg.unit === 'Carro'
+    const isCart = line.dept === 'RTE'
     const prod = productOf(s, code)
     const suggested = needPer ? lastPerUnit(s, line.dept, code) : null
     const cratesN = crates.trim() ? Number(crates) : prod?.cratesPerCart || CRATES_PER_CART
@@ -1077,8 +1087,8 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
     return (
       <div className="line idle">
         <div className="lhead">
-          <h3>{line.name} {nameIt}</h3>
-          <span className={'pill ' + (idle ? 'setup' : 'free')}>{idle ? '⏱ ' + idle.reason + ' · ' + fmtDur(stopTime(s, idle, now)) : tr('Libre')}</span>
+          <h3>{lineLabel(line.name)} {nameIt}</h3>
+          <span className={'pill ' + (idle ? 'setup' : 'free')}>{idle ? '⏱ ' + tr(idle.reason) + ' · ' + fmtDur(stopTime(s, idle, now)) : tr('Libre')}</span>
           <span className="lacts">{goalBtn}</span>
         </div>
         {goalStrip}
@@ -1086,7 +1096,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
           <div className="setupbar">
             <small>{trx('Esperando el código siguiente desde las {0}. Si no viene otro, no cuenta.', fmtTime(idle.startedAt))}</small>
             <span className="btns two">
-              <button type="button" className="btn sm" onClick={() => endStop(idle.id)}>{trx('■ Terminar {0}', idle.reason)}</button>
+              <button type="button" className="btn sm" onClick={() => endStop(idle.id)}>{trx('■ Terminar {0}', tr(idle.reason))}</button>
               <button type="button" className="btn sm" onClick={() => dropSetup(idle.id)}>{tr('No viene otro código: quitarlo')}</button>
             </span>
             <button type="button" className="lnk sm" onClick={() => setFixingStop(true)}>{mgr ? tr('Corregir o dividir') : tr('Corregir')}</button>
@@ -1108,7 +1118,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         {fillUi}
         {fixingStop && idle && <StopEditor stop={idle} mgr={mgr} onClose={() => setFixingStop(false)} />}
         {naming}
-        {removing && <ConfirmDialog title={tr('¿Quitar {0} de {1}', line.name, line.dept) + '?'} text={tr('Se puede volver a agregar cuando haga falta.')} yes={tr('Quitar')} danger onYes={() => removeLine(line.id)} onNo={() => setRemoving(false)} />}
+        {removing && <ConfirmDialog title={tr('¿Quitar {0} de {1}', lineLabel(line.name), line.dept) + '?'} text={tr('Se puede volver a agregar cuando haga falta.')} yes={tr('Quitar')} danger onYes={() => removeLine(line.id)} onNo={() => setRemoving(false)} />}
         <form className="start" onSubmit={(e) => { e.preventDefault(); if (ok) { startRun(line, code.trim().toUpperCase(), lot.trim(), date, needPer ? perUnit : null); setDateText(null); setLotText(null); setEditDate(false) } }}>
           <label>{tr('Código')}{' '}<input value={code} onChange={(e) => setCode(e.target.value)} placeholder={tr('ej. 0100')} autoComplete="off" /></label>
           <label>{tr('Lote')}{' '}<input value={lot} onChange={(e) => setLotText(e.target.value)} inputMode="numeric" placeholder={tr('ej. 6280')} autoComplete="off" /></label>
@@ -1164,7 +1174,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
     <div className={'line ' + (stop ? 'stopped' : 'running') + (just ? ' justdone' : '')}>
       {naming}
       <div className="lhead">
-        <h3>{line.name} {nameIt}</h3>
+        <h3>{lineLabel(line.name)} {nameIt}</h3>
         <span className={'pill ' + (stop ? 'stop' : 'run')}>{stop ? tr('⏸ Parado') : tr('● Corriendo')}</span>
         <span className="lacts">{goalBtn}<button type="button" className="lnk sm" onClick={() => setFixing(true)}>{tr('Corregir')}</button></span>
       </div>
@@ -1177,7 +1187,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
           {openOrders.length > 3 && <span>{trx('y {0} más', openOrders.length - 3)}</span>}
         </div>
       )}
-      {stop && <div className="stopbar">⏸ <b>{stop.reason}</b>{stop.note && ' · ' + stop.note} · <b>{fmtDur(stopTime(s, stop, now))}</b>{stop.lineId === null && ' ' + tr('· todo el departamento')}{stop.lineId === line.id && <button type="button" className="lnk sm" onClick={() => setFixingStop(true)}>{tr('Corregir')}</button>}</div>}
+      {stop && <div className="stopbar">⏸ <b>{tr(stop.reason)}</b>{stop.note && ' · ' + noteLabel(stop.note)} · <b>{fmtDur(stopTime(s, stop, now))}</b>{stop.lineId === null && ' ' + tr('· todo el departamento')}{stop.lineId === line.id && <button type="button" className="lnk sm" onClick={() => setFixingStop(true)}>{tr('Corregir')}</button>}</div>}
       {fixing && <RunEditor s={s} run={run} mgr={mgr} onClose={() => setFixing(false)} />}
       {fixingStop && stop && <StopEditor stop={stop} mgr={mgr} onClose={() => setFixingStop(false)} />}
       {/* what is made, big: how many units and how much they carry (with its cases, where pouches are counted); then the
@@ -1200,11 +1210,11 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         <button type="button" className="btn" disabled={!!stop} onClick={() => setEnding(true)}>{tr('■ Terminar')}<span className="opt"> {' '}{tr('código')}</span></button>
       </div>
       {fillLink && <div className="fillmore">{fillLink}</div>}
-      {ending && <EndDialog cfg={cfg} code={run.code} line={line.name} now={now} lastAt={run.units.length ? run.units[run.units.length - 1].at : null}
+      {ending && <EndDialog cfg={cfg} code={run.code} line={lineLabel(line.name)} now={now} lastAt={run.units.length ? run.units[run.units.length - 1].at : null}
         summary={tr('Lleva {0} · trabajando {1}{2}', madeText(run, st.qty), fmtDur(st.working), (st.down ? ' ' + tr('· parado {0}', fmtDur(st.down)) : '')) + '.'}
         onClose={() => setEnding(false)} onDone={(next) => { endRun(run.id, next); setEnding(false) }}
         onMissing={(next) => { setEnding(false); if (cfg.qty === 'ask') { setEndAfter(next); setCounting(true) } else { record(cfg.qty === 'auto' ? run.perUnit : null); endRun(run.id, next) } }} />}
-      {asking && <StopDialog title={tr('Parar {0} · {1}', line.name, run.code)} reasons={cfg.quick} onClose={() => setAsking(false)} onPick={(reason, note) => { startStop(line.dept, line.id, reason, note); setAsking(false) }} />}
+      {asking && <StopDialog title={tr('Parar {0} · {1}', lineLabel(line.name), run.code)} reasons={cfg.quick} onClose={() => setAsking(false)} onPick={(reason, note) => { startStop(line.dept, line.id, reason, note); setAsking(false) }} />}
       {fillUi}
       {counting && (cfg.lots
         ? <LotsDialog title={cfg.qtyQ} unit={cfg.qtyUnit} refLabel={cfg.refLabel} lot={run.lot} qty={run.perUnit} orders={orderOptions} order={nextOrder} onClose={() => { setCounting(false); setEndAfter(null) }} onPick={(q, ref, lots, po) => { record(q, ref, lots, po); setCounting(false); if (endAfter !== null) { setEndAfter(null); endRun(run.id, endAfter) } }} />
@@ -1259,7 +1269,7 @@ function StopDialog({ title, reasons, onClose, onPick }: { title: string; reason
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
         <h3>{title}</h3>
         <p>{tr('¿Por qué se para? La app cuenta el tiempo parado con esta razón.')}</p>
-        <div className="chips big">{[...reasons, 'Otra'].map((r) => <button key={r} type="button" className={'chip' + (reason === r ? ' on' : '')} onClick={() => setReason(r)}>{r}</button>)}</div>
+        <div className="chips big">{[...reasons, 'Otra'].map((r) => <button key={r} type="button" className={'chip' + (reason === r ? ' on' : '')} onClick={() => setReason(r)}>{tr(r)}</button>)}</div>
         <input placeholder={other ? tr('Escribe la razón') : tr('Detalle (opcional)')} value={note} onChange={(e) => setNote(e.target.value)} />
         <div className="dbtns">
           <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
@@ -1333,7 +1343,7 @@ export function LotsDialog({ title, unit, refLabel, lot, qty, start, startRef, o
               {rows.length > 1 && <button type="button" className="lnk" title={tr('Quitar este lote')} onClick={() => setRows(rows.filter((_, k) => k !== i))}>✕</button>}
             </div>
           ))}
-          <button type="button" className="lnk addlot" onClick={() => { setAdded(true); setRows([...rows, { lot: '', qty: '' }]) }}>{trx('+ Otro lote en este {0}', unit === 'cajas' ? 'pallet' : tr('mismo'))}</button>
+          <button type="button" className="lnk addlot" onClick={() => { setAdded(true); setRows([...rows, { lot: '', qty: '' }]) }}>{trx('+ Otro lote en este {0}', unit === tr('cajas') ? 'pallet' : tr('mismo'))}</button>
           {rows.length > 1 && <p className="lottotal">{trx('Total: {0} en {1} lotes', <b>{total} {unit}</b>, rows.length)}</p>}
           {repeated && <span className="err">{trx('Ese lote ya está en la lista: suma sus {0} en una sola línea.', unit)}</span>}
           {refLabel && <label>{refLabel} <small>{tr('(opcional)')}</small> <input inputMode="numeric" placeholder={tr('ej. 1749')} value={ref} onChange={(e) => setRef(e.target.value)} autoComplete="off" /></label>}
@@ -1558,8 +1568,8 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
   const { runs, stops, rows, unitRows, working, down, byCode, setup } = rep
   const withOrders = unitRows.some((x) => x.order) // a column says the order of each pallet when any has one
   const unitsText = (dept: Dept, n: number) => n + ' ' + (n === 1 ? CFG[dept].unit : CFG[dept].plural).toLowerCase()
-  const reasonsText = (x: (typeof rows)[number]) => Object.entries(x.st.reasons).map(([k, v]) => k + ' ' + fmtDur(v)).join(', ')
-  const lineName = (x: { lineId: string | null; dept: Dept }) => (x.lineId === null ? tr('Todo {0}', x.dept) : s.lines.find((l) => l.id === x.lineId)?.name ?? s.runs.find((r) => r.lineId === x.lineId)?.line ?? tr('línea'))
+  const reasonsText = (x: (typeof rows)[number]) => Object.entries(x.st.reasons).map(([k, v]) => tr(k) + ' ' + fmtDur(v)).join(', ')
+  const lineName = (x: { lineId: string | null; dept: Dept }) => (x.lineId === null ? tr('Todo {0}', x.dept) : lineLabel(s.lines.find((l) => l.id === x.lineId)?.name ?? s.runs.find((r) => r.lineId === x.lineId)?.line ?? tr('línea')))
   const fileName = 'actividad-' + (dept ? dept.toLowerCase() + '-' : '') + date + filterFile(rep.code, rep.lot, rep.shift)
   // the history of that day (corrections, products, program, lines): the manager's and the office's
   const changes = mgr && !rep.filtered ? s.changes.filter((c) => !c.deleted && plainDay(s, c.at) === date && (!dept || c.dept === dept)).sort((a, b) => a.at - b.at) : []
@@ -1595,7 +1605,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
     const unidades: Cell[][] = [[tr('Departamento'), tr('Línea'), tr('Código'), tr('Lote'), '#', tr('Hora'), tr('Unidad'), tr('Cantidad'), tr('Unidad de cantidad'), tr('Tag / bin'), tr('Desde la anterior'), tr('Registró'), tr('Turno'), tr('Pedido')],
       ...unitRows.map((x): Cell[] => [x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.lot, x.i + 1, T(x.u.at), CFG[x.r.dept].unit, x.qty ?? '', x.qty != null ? CFG[x.r.dept].qtyUnit : '', x.u.ref, D(x.gap), x.u.by, x.shift, x.order])]
     const paros: Cell[][] = [[tr('Departamento'), tr('Línea'), tr('Razón'), tr('Detalle'), tr('Inicio'), tr('Fin'), tr('Duración'), tr('Registró'), tr('Turno')],
-      ...stops.map((x): Cell[] => [x.dept, lineName(x), x.reason, x.note, T(x.startedAt), x.endedAt ? T(x.endedAt) : tr('en curso'), D(x.ms), x.by, spanShifts(rep.plan, x.startedAt, x.endedAt ?? now)])]
+      ...stops.map((x): Cell[] => [x.dept, lineName(x), tr(x.reason), noteLabel(x.note), T(x.startedAt), x.endedAt ? T(x.endedAt) : tr('en curso'), D(x.ms), x.by, spanShifts(rep.plan, x.startedAt, x.endedAt ?? now)])]
     // the whole day first and each shift under it (not when the report is of one shift only)
     const porTurno: Cell[][] = [[tr('Departamento'), tr('Turno'), tr('Horario'), tr('Empezó'), tr('Terminó'), tr('Duración'), tr('Líneas'), tr('Códigos'), tr('Corridas'), tr('Hechas'), tr('Unidad'), tr('Cantidad'), tr('Unidad de cantidad'), tr('Waste (lb)'), tr('Tiempo trabajando'), tr('Tiempo parado'), 'Set up'],
       ...rep.byShift.flatMap((d) => [d.day, d.first, d.second].map((x): Cell[] => [d.dept, x.shift ? tr('Turno {0}', x.shift) : tr('Total del día'), x.shift ? shiftHours(rep.plan, x.shift) : '', x.from ? T(x.from) : '', !x.to ? '' : x.open ? tr('en curso') : T(x.to), x.span ? D(x.span) : '', x.lines, x.distinct, x.codes, x.units, CFG[d.dept].unit, CFG[d.dept].qty !== 'none' ? x.qty : '', CFG[d.dept].qty !== 'none' ? CFG[d.dept].qtyUnit : '', x.waste || '', D(x.working), D(x.down), x.setup ? D(x.setup) : '']))]
@@ -1832,7 +1842,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
               <div className="reasons">
                 {rep.reasons.map((x) => (
                   <div key={x.reason} className="reason">
-                    <b>{x.reason}</b><span>{fmtDur(x.ms)}</span><span className="pct">{down > 0 ? Math.round((x.ms / down) * 100) + '%' : ''}</span>
+                    <b>{tr(x.reason)}</b><span>{fmtDur(x.ms)}</span><span className="pct">{down > 0 ? Math.round((x.ms / down) * 100) + '%' : ''}</span>
                     <div className="rbar"><i style={{ width: Math.max(2, Math.round((x.ms / rep.reasons[0].ms) * 100)) + '%' }} /></div>
                   </div>
                 ))}
@@ -1890,7 +1900,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
               <thead><tr><th>{tr('Depto')}</th><th>{tr('Línea')}</th><th>{tr('Razón')}</th><th>{tr('Detalle')}</th>{!rep.shift && <th>{tr('Turno')}</th>}<th>{tr('Inicio')}</th><th>{tr('Fin')}</th><th>{tr('Duración')}</th><th>{tr('Registró')}</th><th></th></tr></thead>
               <tbody>{cut('stops', stops).map((x) => (
                 <tr key={x.id} className={x.endedAt ? '' : 'live'}>
-                  <td>{x.dept}</td><td>{lineName(x)}</td><td><b>{x.reason}</b></td><td>{x.note || '—'}</td>{!rep.shift && <td>{spanShifts(rep.plan, x.startedAt, x.endedAt ?? now)}</td>}<td>{fmtTime(x.startedAt)}</td><td>{x.endedAt ? fmtTime(x.endedAt) : <i>{tr('en curso')}</i>}</td><td>{fmtDur(x.ms)}</td><td>{x.by}</td>
+                  <td>{x.dept}</td><td>{lineName(x)}</td><td><b>{tr(x.reason)}</b></td><td>{noteLabel(x.note) || '—'}</td>{!rep.shift && <td>{spanShifts(rep.plan, x.startedAt, x.endedAt ?? now)}</td>}<td>{fmtTime(x.startedAt)}</td><td>{x.endedAt ? fmtTime(x.endedAt) : <i>{tr('en curso')}</i>}</td><td>{fmtDur(x.ms)}</td><td>{x.by}</td>
                   <td>{can('fix') && canShift(who, spanShifts(rep.plan, x.startedAt, x.endedAt ?? now)) && <button type="button" className="lnk" onClick={() => setEditStop(x.id)}>{tr('Corregir')}</button>}</td>
                 </tr>
               ))}</tbody>

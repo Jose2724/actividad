@@ -132,4 +132,4 @@ export function reportOf(s: State, date: string, now: number, f: ReportFilter = 
 }
 /** the words a filtered report carries in its title and in the name of its files */
 export const filterTitle = (code: string, lot: string, shift: 0 | 1 | 2 = 0) => (shift ? ' ' + tr('· Turno {0}', shift) : '') + (code ? ' ' + tr('· código {0}', code) : '') + (lot ? ' ' + tr('· lote {0}', lot) : '')
-export const filterFile = (code: string, lot: string, shift: 0 | 1 | 2 = 0) => { const clean = (t: string) => t.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, ''); return (shift ? '-turno' + shift : '') + (code ? '-cod-' + clean(code) : '') + (lot ? tr('-lote-') + clean(lot) : '') }
+export const filterFile = (code: string, lot: string, shift: 0 | 1 | 2 = 0) => { const clean = (t: string) => t.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, ''); return (shift ? '-turno' + shift : '') + (code ? '-cod-' + clean(code) : '') + (lot ? '-lote-' + clean(lot) : '') }

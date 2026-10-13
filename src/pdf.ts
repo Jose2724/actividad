@@ -1,4 +1,4 @@
-import { casesText, CFG, fmtDur, fmtTime, inCases, lineNameOf, madeText, shiftHours, whoText, type State } from './store'
+import { casesText, CFG, fmtDur, fmtTime, inCases, lineLabel, lineNameOf, madeText, noteLabel, shiftHours, whoText, type State } from './store'
 import { filterTitle, reportOf, spanShifts, type ReportFilter } from './report'
 import { avanceRows, n1, pending } from './avance'
 import { tr } from './i18n'
@@ -18,7 +18,7 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
   const num = (x: number) => Math.round(x).toLocaleString('en-US')
   const unitsOf = (dept: keyof typeof CFG, n: number) => n + ' ' + (n === 1 ? CFG[dept].unit : CFG[dept].plural).toLowerCase()
   const qtyOf = (dept: keyof typeof CFG, q: number) => (CFG[dept].qty !== 'none' ? num(q) + ' ' + CFG[dept].qtyUnit : '—')
-  const lineName = (x: { lineId: string | null; dept: string }) => (x.lineId === null ? tr('Todo {0}', x.dept) : s.lines.find((l) => l.id === x.lineId)?.name ?? s.runs.find((r) => r.lineId === x.lineId)?.line ?? tr('línea'))
+  const lineName = (x: { lineId: string | null; dept: string }) => (x.lineId === null ? tr('Todo {0}', x.dept) : lineLabel(s.lines.find((l) => l.id === x.lineId)?.name ?? s.runs.find((r) => r.lineId === x.lineId)?.line ?? tr('línea')))
 
   const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' })
   const teal: [number, number, number] = [15, 118, 110]
@@ -81,7 +81,7 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
   autoTable(doc, {
     startY: top, theme: 'grid', styles: { font: 'helvetica', fontSize: 9, cellPadding: 5, textColor: [22, 32, 42] }, headStyles: { fillColor: teal, textColor: 255, fontStyle: 'bold' },
     head: [[tr('Depto'), tr('Línea'), tr('Código'), tr('Lote'), ...(sh ? [tr('Turno')] : []), tr('Inicio'), tr('Fin'), tr('Hecho'), tr('Waste lb'), tr('Trabajando'), tr('Prom. / unidad'), tr('Parado'), tr('Razones de paro'), tr('Registró')]],
-    body: rows.map((x) => [x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.lots, ...(sh ? [x.shifts] : []), fmtTime(x.r.startedAt), x.r.endedAt ? fmtTime(x.r.endedAt) : tr('en curso'), madeText(x.view, x.qty, true), x.waste ? String(x.waste) : '—', fmtDur(x.st.working), x.timed ? fmtDur(x.st.avg) : '—', fmtDur(x.st.down), Object.entries(x.st.reasons).map(([k, v]) => k + ' ' + fmtDur(v)).join(', ') || '—', whoText(x.r)]),
+    body: rows.map((x) => [x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.lots, ...(sh ? [x.shifts] : []), fmtTime(x.r.startedAt), x.r.endedAt ? fmtTime(x.r.endedAt) : tr('en curso'), madeText(x.view, x.qty, true), x.waste ? String(x.waste) : '—', fmtDur(x.st.working), x.timed ? fmtDur(x.st.avg) : '—', fmtDur(x.st.down), Object.entries(x.st.reasons).map(([k, v]) => tr(k) + ' ' + fmtDur(v)).join(', ') || '—', whoText(x.r)]),
     foot: [[tr('Total'), '', '', '', ...(sh ? [''] : []), '', '', '', String(Math.round(rows.reduce((t, x) => t + (x.waste || 0), 0) * 100) / 100), fmtDur(working), '', fmtDur(down), '', '']], footStyles: { fillColor: [243, 246, 249], textColor: [22, 32, 42], fontStyle: 'bold' },
   })
   // one line per cart, mezcla, bin or pallet with its time, as the office's sheets are filled (a pallet with two lots: two lines)
@@ -102,7 +102,7 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
     autoTable(doc, {
       startY: y + 10, theme: 'grid', styles: { font: 'helvetica', fontSize: 9, cellPadding: 5, textColor: [22, 32, 42] }, headStyles: { fillColor: [179, 38, 30], textColor: 255, fontStyle: 'bold' },
       head: [[tr('Depto'), tr('Línea'), tr('Razón'), tr('Detalle'), ...(sh ? [tr('Turno')] : []), tr('Inicio'), tr('Fin'), tr('Duración'), tr('Registró')]],
-      body: stops.map((x) => [x.dept, lineName(x), x.reason, x.note || '—', ...(sh ? [spanShifts(rep.plan, x.startedAt, x.endedAt ?? now)] : []), fmtTime(x.startedAt), x.endedAt ? fmtTime(x.endedAt) : tr('en curso'), fmtDur(x.ms), x.by]),
+      body: stops.map((x) => [x.dept, lineName(x), tr(x.reason), noteLabel(x.note) || '—', ...(sh ? [spanShifts(rep.plan, x.startedAt, x.endedAt ?? now)] : []), fmtTime(x.startedAt), x.endedAt ? fmtTime(x.endedAt) : tr('en curso'), fmtDur(x.ms), x.by]),
     })
   }
   // the day's progress, as the office's AVANCE sheet (the manager's report only)

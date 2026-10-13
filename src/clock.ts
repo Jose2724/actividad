@@ -135,7 +135,7 @@ export const PLANT_ZONE = (import.meta.env.VITE_PLANT_ZONE as string | undefined
 const formats = new Map<string, Intl.DateTimeFormat>()
 const formatOf = (zone: string) => {
   let f = formats.get(zone)
-  if (!f) { f = new Intl.DateTimeFormat(tr('en-US'), { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }); formats.set(zone, f) }
+  if (!f) { f = new Intl.DateTimeFormat('en-US', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }); formats.set(zone, f) }
   return f
 }
 /** how many minutes a zone is ahead of universal time at a moment (−240 for the plant in summer, −300 in winter) */

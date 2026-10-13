@@ -4,7 +4,11 @@ import App from './App'
 import { keepStorage } from './supabase'
 import { loadPdf } from './pdf'
 import { loadZip } from './xlsx'
+import { lang } from './i18n'
 import './styles.css'
+
+// the language the screens are in, for the browser (how it reads the page aloud, how it breaks the words)
+document.documentElement.lang = lang
 
 createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>)
 

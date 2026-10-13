@@ -137,7 +137,7 @@ export function StopEditor({ stop, mgr, onClose }: { stop: Stop; mgr: boolean; o
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
         <h3>{trx('Corregir paro · {0}', stop.dept)}</h3>
-        <div className="chips">{[...reasons, 'Otra'].map((r) => <button key={r} type="button" className={'chip' + (reason === r ? ' on' : '')} onClick={() => setReason(r)}>{r}</button>)}</div>
+        <div className="chips">{[...reasons, 'Otra'].map((r) => <button key={r} type="button" className={'chip' + (reason === r ? ' on' : '')} onClick={() => setReason(r)}>{tr(r)}</button>)}</div>
         {reason === 'Otra' && <input placeholder={tr('Escribe la razón')} value={other} onChange={(e) => setOther(e.target.value)} />}
         <input placeholder={tr('Detalle (opcional)')} value={note} onChange={(e) => setNote(e.target.value)} />
         <div className="egrid">
@@ -185,14 +185,14 @@ function StopSplitter({ stop, onBack, onClose }: { stop: Stop; onBack: () => voi
         <h3>{trx('Dividir paro · {0}', stop.dept)}</h3>
         {total < 2 ? <p>{tr('Este paro dura menos de dos minutos: no hay tiempo que dividir.')}</p> : (
           <>
-            <p><b>{stop.reason}</b> · {fmtTime(stop.startedAt)} – {stop.endedAt ? fmtTime(stop.endedAt) : tr('en curso')} · {fmtDur(end - stop.startedAt)}</p>
-            <label className="splitmins">{trx('¿Cuántos minutos fueron por {0}?', <b>{stop.reason}</b>)}{' '}<input className="num" inputMode="numeric" value={mins} onChange={(e) => setMins(e.target.value.replace(/\D/g, ''))} /> <small>{trx('de {0}', total)}</small></label>
+            <p><b>{tr(stop.reason)}</b> · {fmtTime(stop.startedAt)} – {stop.endedAt ? fmtTime(stop.endedAt) : tr('en curso')} · {fmtDur(end - stop.startedAt)}</p>
+            <label className="splitmins">{trx('¿Cuántos minutos fueron por {0}?', <b>{tr(stop.reason)}</b>)}{' '}<input className="num" inputMode="numeric" value={mins} onChange={(e) => setMins(e.target.value.replace(/\D/g, ''))} /> <small>{trx('de {0}', total)}</small></label>
             <p>{tr('El resto fue por:')}</p>
-            <div className="chips">{[...reasons, 'Otra'].map((r) => <button key={r} type="button" className={'chip' + (reason === r ? ' on' : '')} onClick={() => setReason(r)}>{r}</button>)}</div>
+            <div className="chips">{[...reasons, 'Otra'].map((r) => <button key={r} type="button" className={'chip' + (reason === r ? ' on' : '')} onClick={() => setReason(r)}>{tr(r)}</button>)}</div>
             {reason === 'Otra' && <input placeholder={tr('Escribe la razón')} value={other} onChange={(e) => setOther(e.target.value)} />}
             <input placeholder={tr('Detalle (opcional)')} value={note} onChange={(e) => setNote(e.target.value)} />
             {fits
-              ? <p className="splitsum">{trx('Queda así: {0} {1} – {2} ({3} min) · {4} {5} – {6} ({7})', <b>{stop.reason}</b>, fmtTime(stop.startedAt), fmtTime(cut), first, <b>{second || '…'}</b>, fmtTime(cut), stop.endedAt ? fmtTime(stop.endedAt) : tr('en curso'), stop.endedAt ? total - first + ' min' : tr('sigue'))}</p>
+              ? <p className="splitsum">{trx('Queda así: {0} {1} – {2} ({3} min) · {4} {5} – {6} ({7})', <b>{tr(stop.reason)}</b>, fmtTime(stop.startedAt), fmtTime(cut), first, <b>{second || '…'}</b>, fmtTime(cut), stop.endedAt ? fmtTime(stop.endedAt) : tr('en curso'), stop.endedAt ? total - first + ' min' : tr('sigue'))}</p>
               : <p className="err">{trx('Escribe un número entre 1 y {0}.', total - 1)}</p>}
           </>
         )}
