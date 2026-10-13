@@ -78,7 +78,7 @@ export function RunEditor({ s, run, mgr, onClose }: { s: State; run: Run; mgr: b
         <div className="dbtns spread">
           <div className="btns">
             {run.endedAt && <button type="button" className="btn" disabled={lineBusy} title={lineBusy ? 'La línea ya corre otro código' : ''} onClick={() => { updateRun(run.id, { endedAt: null }); onClose() }}>Reabrir código</button>}
-            {mgr && <button type="button" className="lnk" onClick={() => setDropping(true)}>Borrar corrida</button>}
+            {mgr && <button type="button" className="btn danger" onClick={() => setDropping(true)}>🗑 Borrar corrida</button>}
           </div>
           <div className="btns">
             <button type="button" className="btn" onClick={onClose}>Cancelar</button>
@@ -136,7 +136,7 @@ export function StopEditor({ stop, mgr, onClose }: { stop: Stop; mgr: boolean; o
         <div className="dbtns spread">
           <div className="btns">
             {mgr && <button type="button" className="lnk" onClick={() => setDividing(true)}>✂ Dividir en dos causas</button>}
-            {mgr && <button type="button" className="lnk" onClick={() => setDropping(true)}>Borrar paro</button>}
+            {mgr && <button type="button" className="btn danger" onClick={() => setDropping(true)}>🗑 Borrar paro</button>}
           </div>
           <div className="btns">
             <button type="button" className="btn" onClick={onClose}>Cancelar</button>
