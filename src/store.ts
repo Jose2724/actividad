@@ -776,6 +776,14 @@ export function shiftPieces(h: ShiftHours, a: number, b: number) {
   for (let cur = a, n = 0; cur < b && n < 2000; n++) { const to = Math.min(b, nextCut(h, cur)); out.push({ from: cur, to, shift: shiftAt(h, cur) }); cur = to }
   return out
 }
+/**
+ * The shift in course on a day of work: which one it is and the two hand-overs it lies between. What the screens of
+ * the floor count "in this shift" is what was recorded since the first of them: every shift starts from zero.
+ */
+export function turnOf(s: State, date: string, now: number) {
+  const plan = shiftsOf(s, date)
+  return { shift: shiftAt(plan, now), since: lastCut(plan, now), until: nextCut(plan, now) }
+}
 type Span = { from: number; to: number }
 /** what is left of a stretch of time once some stretches are taken out of it */
 function without(a: number, b: number, out: Span[]): Span[] {
@@ -926,7 +934,8 @@ export function restorePurged(purgeId: string, rows: { runs: Row[]; stops: Row[]
   // and already there when it happened: what was deleted on its own before, or recorded afterwards, is not of that purge
   const taken = (x: { deleted?: boolean; updatedAt: number }, began: number) => !!x.deleted && x.updatedAt >= mark.at - PURGE_WINDOW_MS && began <= mark.at
   const runs = rows.runs.map(runOfRow).filter((r) => taken(r, r.startedAt) && r.date === mark.refKey && !state.runs.some((x) => x.id === r.id))
-  const stops = rows.stops.map(stopOfRow).filter((x) => taken(x, x.startedAt) && !state.stops.some((y) => y.id === x.id))
+  // (the listing of a day's stops reaches into the days around it; the purge only took the ones that began on that date)
+  const stops = rows.stops.map(stopOfRow).filter((x) => taken(x, x.startedAt) && dayOf(x.startedAt) === mark.refKey && !state.stops.some((y) => y.id === x.id))
   const lines = rows.changes.map(changeOfRow).filter((c) => taken(c, c.at) && (c.refTable === 'act_runs' || c.refTable === 'act_stops'))
   batch(() => {
     for (const r of runs) putRun({ ...r, deleted: false, endedAt: r.endedAt ?? Math.max(mark.at, r.startedAt, ...r.units.map((u) => u.at + 1)) })
@@ -1140,7 +1149,20 @@ export function deptToday(s: State, dept: Dept, date: string, now: number, lineI
   const mine = runs.filter((r) => !r.endedAt || r.endedAt > since)
   const shiftFirst = mine.length ? Math.min(...mine.map((r) => (r.startedAt >= since ? r.startedAt : opens))) : 0
   const until = nextCut(plan, now)
-  const shiftQty = runs.reduce((t, r) => t + r.units.filter((u) => u.at >= since && u.at < until).reduce((a, u) => a + one(r, u), 0), 0)
+  const inTurn = (u: Unit) => u.at >= since && u.at < until
+  const shiftQty = runs.reduce((t, r) => t + r.units.filter(inTurn).reduce((a, u) => a + one(r, u), 0), 0)
+  const shiftUnits = runs.reduce((t, r) => t + r.units.filter(inTurn).length, 0)
+  // what the shift in course has made of each code: one it has running is there from zero, before its first unit
+  const turn = new Map<string, { code: string; units: number; qty: number; lines: string[] }>()
+  for (const r of runs) {
+    const made = r.units.filter(inTurn)
+    if (!made.length && !mine.includes(r)) continue
+    const e = turn.get(normCode(r.code)) ?? { code: r.code, units: 0, qty: 0, lines: [] }
+    e.units += made.length; e.qty += made.reduce((a, u) => a + one(r, u), 0)
+    const ln = lineNameOf(s, r.lineId, r.line)
+    if (!e.lines.includes(ln)) e.lines.push(ln)
+    turn.set(normCode(r.code), e)
+  }
   // The clock of the shift: it starts with the shift's first code (or, for a line that came running, at the hour the
   // shift starts), it runs while anything is running, it stops where the last code ended (the people said so: they
   // ended their codes or the shift), and the next shift starts again from zero when it starts working.
@@ -1148,7 +1170,7 @@ export function deptToday(s: State, dept: Dept, date: string, now: number, lineI
   const shiftMs = shiftFirst ? Math.max(0, (shiftUntil || now) - shiftFirst) : 0
   const shiftHrs = shiftMs / 3_600_000
   return { runs, units, qty, unitLabel: cfg.qty === 'none' ? cfg.plural.toLowerCase() : cfg.qtyUnit, byCode: [...codes.values()].sort((a, b) => b.qty - a.qty), hours, rate: hours >= 1 / 6 ? qty / hours : null, allEnded,
-    shift, shiftQty, shiftRate: shiftHrs >= 1 / 6 ? shiftQty / shiftHrs : null, made: [made(1), made(2)] as [number, number], shiftSince: shiftFirst, shiftUntil, shiftMs }
+    shift, shiftQty, shiftUnits, shiftCodes: [...turn.values()].sort((a, b) => b.qty - a.qty), shiftRate: shiftHrs >= 1 / 6 ? shiftQty / shiftHrs : null, made: [made(1), made(2)] as [number, number], shiftSince: shiftFirst, shiftUntil, shiftMs }
 }
 
 // ---- what arrives from the server (another tablet, the office) ----
@@ -1414,11 +1436,35 @@ export function runStats(s: State, r: Run, now: number) {
   for (const p of pieces) reasons[p.reason] = (reasons[p.reason] ?? 0) + (p.to - p.from)
   return { working, down, unitTimes, avg, qty, reasons, total: end - r.startedAt }
 }
-/** "2 carros · 240 pouches": what a run produced, in the department's own words (with the tag / bin numbers if asked) */
+/**
+ * A run as the shift in course sees it. A code that came running from the shift before (`carried`) is not this
+ * shift's from its start: what this shift has made of it, and the time it has worked and been stopped on it, count
+ * from the hand-over (`since`), from zero; what it brought is in `before`. A code this shift started is all its own.
+ * Nothing is cut in what is kept: the run is one, and the report still tells what each shift did of it.
+ */
+export function runSince(s: State, r: Run, since: number, now: number) {
+  const whole = runStats(s, r, now)
+  if (r.startedAt >= since) return { carried: false, units: r.units.length, qty: whole.qty, working: whole.working, down: whole.down, avg: whole.avg, before: { units: 0, qty: 0 } }
+  const stops = stopsOf(s, r.dept, r.lineId), end = r.endedAt ?? now, from = Math.min(since, end)
+  const away = awayOn(s, r.lineId, r.date, from, end, now)
+  const worked = (a: number, b: number) => without(a, b, away).reduce((t, x) => t + activeBetween(x.from, x.to, stops, now), 0)
+  const down = without(from, end, away).flatMap((x) => stoppedPieces(x.from, x.to, stops, now)).reduce((t, p) => t + (p.to - p.from), 0)
+  const mine = r.units.map((u, i) => ({ u, i })).filter((x) => x.u.at >= since)
+  const qty = mine.reduce((t, x) => t + unitQty(s, r, x.u), 0)
+  // its first unit of this shift is timed from the hand-over, not from the last unit of the shift before
+  const times = mine.map((x) => worked(Math.max(x.i ? r.units[x.i - 1].at : r.startedAt, since), x.u.at))
+  const avg = times.length ? times.reduce((a, b) => a + b, 0) / times.length : 0
+  return { carried: true, units: mine.length, qty, working: worked(from, end), down, avg, before: { units: r.units.length - mine.length, qty: whole.qty - qty } }
+}
+/** "2 carros · 240 pouches": so many units and what they carry, in the department's own words */
+export function unitsText(dept: Dept, units: number, qty: number) {
+  const c = CFG[dept]
+  return units + ' ' + (units === 1 ? c.unit : c.plural).toLowerCase() + (c.qty !== 'none' ? ' · ' + qty.toLocaleString('en-US') + ' ' + c.qtyUnit : '')
+}
+/** what a run produced, said the same way (with the tag / bin numbers if asked) */
 export function madeText(r: Run, qty: number, withRefs = false) {
-  const c = CFG[r.dept]
   const refs = withRefs ? r.units.map((u) => u.ref).filter(Boolean) : []
-  return r.units.length + ' ' + (r.units.length === 1 ? c.unit : c.plural).toLowerCase() + (c.qty !== 'none' ? ' · ' + qty.toLocaleString('en-US') + ' ' + c.qtyUnit : '') + (refs.length ? ' (' + (c.refWord ?? '') + ' ' + refs.join(', ') + ')' : '')
+  return unitsText(r.dept, r.units.length, qty) + (refs.length ? ' (' + (CFG[r.dept].refWord ?? '') + ' ' + refs.join(', ') + ')' : '')
 }
 
 export function fmtDur(ms: number) {

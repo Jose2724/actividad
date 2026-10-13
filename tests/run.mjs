@@ -1688,6 +1688,10 @@ section('Lo que se borró por error se recupera: en el servidor nada se borra de
   // a test run the manager made and deleted by itself, long before: that one must stay deleted
   clock = oct(20, 5, 30); mgr.use((m) => m.startRun(rte, 'PRUEBA', '6293', D20, 240)); settle()
   clock = oct(20, 5, 40); mgr.use((m) => { m.endRun(m.store.get().runs.find((r) => r.code === 'PRUEBA').id); m.deleteRun(m.store.get().runs.find((r) => r.code === 'PRUEBA').id) }); settle()
+  // a stop of the evening before, which the manager deletes on his own after the purge: it is not of that purge either
+  clock = oct(19, 22, 0); mgr.use((m) => m.startStop('RTE', null, 'Limpieza', 'de la noche anterior')); settle()
+  const evening = mgr.use((m) => m.store.get().stops.find((x) => x.note === 'de la noche anterior').id)
+  clock = oct(19, 22, 20); mgr.use((m) => m.endStop(evening)); settle()
   // the morning of the first shift, on the tablet
   clock = oct(20, 6, 0); tab.use((m) => m.startRun(rte, 'P100', '6293', D20, 240)); settle()
   clock = oct(20, 6, 20); tab.use((m) => m.unitDone(idOf('P100'), 240))
@@ -1706,6 +1710,7 @@ section('Lo que se borró por error se recupera: en el servidor nada se borra de
   const kept = [...server].filter(([k, row]) => k.startsWith('act_runs|') && String(row.date) === D20).map(([, row]) => [row.code, row.deleted, row.units.length]).sort()
   eq('pero el servidor los conserva enteros, solo marcados', kept, [['P100', true, 2], ['P200', true, 1], ['PRUEBA', true, 0]])
   eq('el reporte de ese día dice a los dos que se quitaron, cuándo y quién', [tab, mgr].map((d) => d.use((m) => m.purgesOf(m.store.get(), D20).map((c) => [c.by, c.before, new Date(c.at).getHours() + ':' + new Date(c.at).getMinutes()]))), [[['Santiago', '2 corridas · 1 paro', '8:30']], [['Santiago', '2 corridas · 1 paro', '8:30']]])
+  clock = oct(20, 8, 35); mgr.use((m) => m.deleteStop(evening)); settle()
   // the line looks free, so the operator starts the code again and goes on
   clock = oct(20, 8, 40); tab.use((m) => m.startRun(rte, 'P200', '6293', D20, 240))
   clock = oct(20, 9, 0); tab.use((m) => m.unitDone(m.store.get().runs.find((r) => r.date === D20 && !r.endedAt).id, 240)); settle()
@@ -1717,11 +1722,67 @@ section('Lo que se borró por error se recupera: en el servidor nada se borra de
   const whole = [['P100', [240, 240], '7:30'], ['P200', [240], '8:30'], ['P200', [240], 'corriendo']]
   eq('recuperado: vuelve la mañana entera; lo que seguía corriendo queda terminado a la hora en que se quitó', [back, ofDay(mgr), ofDay(tab), stopsOfDay(tab)], [{ runs: 2, stops: 1 }, whole, whole, [['Break', 10]]])
   eq('la corrida de prueba que el manager había borrado por su cuenta sigue borrada', [...server].filter(([k, row]) => k.startsWith('act_runs|') && row.code === 'PRUEBA').map(([, row]) => row.deleted), [true])
+  eq('un paro de la noche anterior que el manager borró por su cuenta después no vuelve: no era de ese borrado', [[...server].filter(([k]) => k === 'act_stops|' + evening).map(([, row]) => row.deleted), [tab, mgr].map((d) => d.use((m) => m.store.get().stops.some((x) => x.id === evening)))], [[true], [false, false]])
   eq('una sola corrida de ese día abierta en la línea, y nada pendiente de enviar', [[tab, mgr].map((d) => d.use((m) => m.store.get().runs.filter((r) => r.date === D20 && r.lineId === rte.id && !r.endedAt).length)), all.map((d) => d.use((m) => m.outbox.size()))], [[1, 1], [0, 0]])
   eq('el reporte vuelve a sumar todo el turno', mgr.use((m) => { const r = m.reportOf(m.store.get(), D20, clock, { only: 'RTE' }); return [r.rows.length, r.byDept[0].units, r.byDept[0].qty] }), [3, 4, 960])
   eq('ya no hay nada por recuperar, y queda escrito quién lo recuperó', [tab.use((m) => m.purgesOf(m.store.get(), D20).length), mgr.use((m) => m.purgesOf(m.store.get(), D20).length), tab.use((m) => m.store.get().changes.filter((c) => c.what.startsWith('Se recuperaron')).map((c) => [c.by, c.after]))], [0, 0, [['Santiago', '2 corridas · 1 paro']]])
   eq('recuperar otra vez no trae nada de más', [mgr.use((m) => m.restorePurged(purge, { runs: held('act_runs'), stops: held('act_stops'), changes: held('act_changes') })), ofDay(mgr).length], [{ runs: 0, stops: 0 }, 3])
   settle()
+}
+section('Cambio de turno: el turno que entra empieza de cero, sin cortar nada de lo guardado')
+{
+  // what the second shift's manager saw on 2026-10-13: the room's card adding the whole day, and the lines the first
+  // shift left running with the first shift's carts and hours on them
+  const hand = await device('hand', { user: 'Santiago', usual: true })
+  hand.use((m) => {
+    const st = () => m.store.get(), min = (x) => Math.round(x / M), hm = (ms) => new Date(ms).getHours() + ':' + String(new Date(ms).getMinutes()).padStart(2, '0')
+    const lineOf = (dept, name) => { m.addLine(dept, name); return st().lines.find((l) => l.dept === dept && l.name === name) }
+    const open = (line) => st().runs.find((r) => r.lineId === line.id && !r.endedAt), runOf = (code) => st().runs.find((r) => r.code === code)
+    const seen = (code, since, at) => { const x = m.runSince(st(), runOf(code), since, at); return [x.carried, x.units, x.qty, min(x.working), min(x.down), min(x.avg), [x.before.units, x.before.qty]] }
+    // the first shift: three lines of RTE and a braiser
+    clock = oct(10, 11, 0); const l3 = lineOf('RTE', 'Línea 3'); m.startRun(l3, 'D400', '6283', DAY, 240)
+    clock = oct(10, 11, 30); m.unitDone(open(l3).id, 240)
+    clock = oct(10, 11, 44); const b1 = lineOf('Kitchen', 'Braiser 1'); m.startRun(b1, 'K10', '6283', DAY, null)
+    clock = oct(10, 12, 0); const l2 = lineOf('RTE', 'Línea 2'); m.startRun(l2, 'B200', '6283', DAY, 144)
+    clock = oct(10, 12, 30); m.unitDone(open(l3).id, 240); m.unitDone(open(b1).id, null)
+    clock = oct(10, 12, 40); m.unitDone(open(l2).id, 144)
+    clock = oct(10, 13, 0); const l1 = lineOf('RTE', 'Línea 1'); m.startRun(l1, 'A100', '6283', DAY, 240)
+    clock = oct(10, 13, 30); m.unitDone(open(l1).id, 240)
+    clock = oct(10, 13, 40); m.unitDone(open(b1).id, null)
+    clock = oct(10, 14, 0); m.endRun(open(l2).id, false)
+    clock = oct(10, 14, 30); m.unitDone(open(l1).id, 240)
+    const first = m.turnOf(st(), DAY, oct(10, 14, 45)), early = m.deptToday(st(), 'RTE', DAY, oct(10, 14, 45))
+    eq('en el turno 1 nada viene de otro turno: cada código se ve entero, y la tarjeta es la del turno 1', [first.shift, hm(first.since), seen('A100', first.since, oct(10, 14, 45)).slice(0, 3), [early.shift, early.shiftQty, early.shiftUnits, early.qty]], [1, '3:30', [false, 2, 480], [1, 1104, 5, 1104]])
+    // the second shift: goes on with A100 on line 1, ends D400 with its last cart, and starts C300 on line 2
+    clock = oct(10, 15, 40); m.startRun(l2, 'C300', '6283', DAY, 240)
+    clock = oct(10, 15, 45); m.unitDone(open(l3).id, 100)
+    clock = oct(10, 15, 50); m.endRun(open(l3).id, false)
+    clock = oct(10, 16, 0); m.unitDone(open(l1).id, 240)
+    clock = oct(10, 16, 10); m.startStop('RTE', l1.id, 'Break', '')
+    clock = oct(10, 16, 20); m.endStop(st().stops.find((x) => !x.endedAt).id); m.unitDone(open(l2).id, 240)
+    clock = oct(10, 16, 40); m.unitDone(open(l1).id, 200)
+    clock = oct(10, 17, 0)
+    const turn = m.turnOf(st(), DAY, clock), t = m.deptToday(st(), 'RTE', DAY, clock)
+    eq('a las 5:00 PM el turno en curso es el 2, desde el cambio de las 3:15 PM', [turn.shift, hm(turn.since)], [2, '15:15'])
+    eq('la tarjeta de RTE: lo del turno 2 desde cero (4 carros, 780 pouches); el día completo y lo del turno 1 siguen ahí', [t.shift, t.shiftQty, t.shiftUnits, t.qty, t.units, t.made], [2, 780, 4, 1884, 9, [1104, 780]])
+    eq('sus códigos son los de este turno: el que sigue, el que empezó y el que terminó; el que acabó en el turno 1 no', t.shiftCodes.map((c) => [c.code, c.units, c.qty, c.lines]), [['A100', 2, 440, ['Línea 1']], ['C300', 1, 240, ['Línea 2']], ['D400', 1, 100, ['Línea 3']]])
+    eq('el reloj y el ritmo son los del turno 2: desde su hora (venían líneas corriendo), 780 en hora y media', [hm(t.shiftSince), min(t.shiftMs), Math.round(t.shiftRate)], ['15:30', 90, 520])
+    eq('el código que venía del turno 1: este turno lleva 2 carros y 440 pouches, 80 minutos trabajando y 10 parado; traía 2 carros y 480', seen('A100', turn.since, clock), [true, 2, 440, 80, 10, 30, [2, 480]])
+    eq('el código que empezó este turno se ve entero, como siempre', seen('C300', turn.since, clock), [false, 1, 240, 80, 0, 40, [0, 0]])
+    eq('el que venía y este turno terminó: de sus 3 carros, 1 es de este turno', seen('D400', turn.since, clock), [true, 1, 100, 20, 0, 15, [2, 480]])
+    eq('lo terminado se reparte igual: de este turno, D400; del turno 1, B200', [st().runs.filter((r) => r.dept === 'RTE' && r.endedAt > turn.since).map((r) => r.code), st().runs.filter((r) => r.dept === 'RTE' && r.endedAt && r.endedAt <= turn.since).map((r) => r.code)], [['D400'], ['B200']])
+    // Kitchen: the braiser of 11:44 AM is still running and the second shift has not made a mix yet
+    const k = m.deptToday(st(), 'Kitchen', DAY, clock)
+    eq('Kitchen: el braiser de las 11:44 AM viene del turno 1 con 2 mezclas; el turno 2 va en cero, con hora y media', seen('K10', turn.since, clock), [true, 0, 0, 90, 0, 0, [2, 0]])
+    eq('su tarjeta: 0 mezclas en el turno 2, 2 en el día, y el código está en la lista del turno aunque no lleve nada', [k.shiftQty, k.shiftUnits, k.qty, k.made, k.shiftCodes.map((c) => [c.code, c.units, c.lines]), hm(k.shiftSince), min(k.shiftMs)], [0, 0, 2, [2, 0], [['K10', 0, ['Braiser 1']]], '15:30', 90])
+    eq('lo hecho, dicho con las palabras de cada departamento', [m.unitsText('RTE', 2, 480), m.unitsText('RTE', 1, 1200), m.unitsText('Kitchen', 2, 0), m.unitsText('Kitchen', 1, 0), m.madeText(runOf('A100'), 920)], ['2 carros · 480 pouches', '1 carro · 1,200 pouches', '2 mezclas', '1 mezcla', '4 carros · 920 pouches'])
+    // nothing of what is kept was cut: the run is one, and the report still says what each shift did of it
+    const rep = m.reportOf(st(), DAY, clock, { only: 'RTE' })
+    eq('lo guardado no se cortó: A100 sigue siendo una corrida con sus 4 carros, y el reporte dice lo de cada turno', [st().runs.filter((r) => r.code === 'A100').map((r) => [r.units.length, r.endedAt]), rep.byCode.filter((c) => c.code === 'A100').map((c) => [c.qty, c.byShift]), m.reportOf(st(), DAY, clock, { only: 'RTE', shift: 2 }).byDept[0].qty], [[[4, null]], [[920, [480, 440]]], 780])
+    // the next morning, the first shift of another day starts from zero too
+    const next = m.turnOf(st(), '2026-10-11', oct(11, 6, 10))
+    eq('al otro día el turno 1 también empieza de cero: lo que quedó corriendo viene de antes', [next.shift, hm(next.since), seen('A100', next.since, oct(11, 6, 10)).slice(0, 3), m.deptToday(st(), 'RTE', '2026-10-11', oct(11, 6, 10)).shiftQty], [1, '3:30', [true, 0, 0], 0])
+  })
 }
 section('Set up: espera al código siguiente; con las líneas vacías no corre nada')
 {

@@ -1,6 +1,6 @@
 import { createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
-import { addLine, addWaste, awayDay, byLineName, byShip, casesText, cancelDay, CFG, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineTargetOf, lotFor, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, numOf, openIn, openOrdersFor, openRun, openStop, orderCodes, orderLabel, orderMade, parseProductsCsv, plainDay, productOf, productsCsv, purgeDay, purgesOf, removeLine, removeProduct, renameLine, reopenRun, reset, restorePurged, resetRecords, role, runQty, runStats, saveOrder, saveProduct, setLineTarget, setSchedule, setShifts, setTarget, startDay, startRun, startSetup, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, savedText, shiftAt, shiftCuts, shiftHours, shiftSpan, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type LineTarget, type Product, type LotPart, type Order, type ShiftHours, type Short, type State, type Target, type WorkDay } from './store'
+import { addLine, addWaste, awayDay, byLineName, byShip, casesText, cancelDay, CFG, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineTargetOf, lotFor, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, numOf, openIn, openOrdersFor, openRun, openStop, orderCodes, orderLabel, orderMade, parseProductsCsv, plainDay, productOf, productsCsv, purgeDay, purgesOf, removeLine, removeProduct, renameLine, reopenRun, reset, restorePurged, resetRecords, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineTarget, setSchedule, setShifts, setTarget, startDay, startRun, startSetup, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftHours, shiftSpan, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type LineTarget, type Product, type LotPart, type Run, type Order, type ShiftHours, type Short, type State, type Target, type WorkDay } from './store'
 import { avanceRows, n1, pending, type AvanceRow } from './avance'
 import { cellText, loadZip, xDay, xDur, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 
@@ -828,12 +828,17 @@ function TodayCard({ s, dept, now, mgr, date }: { s: State; dept: Dept; now: num
   const left = goal?.perShift ? goal.perShift - t.qty : 0
   const speed = t.shiftRate ?? t.rate
   const eta = left > 0 && speed && !t.allEnded ? now + (left / speed) * 3_600_000 : null
-  const many = t.byCode.length > 1 || (t.byCode[0]?.lines.length ?? 0) > 1
+  // The card is the shift in course's: when a shift takes over it starts from zero. The whole day (the goal is the
+  // day's) and what the other shift made stay under it, smaller.
+  const many = t.shiftCodes.length > 1 || (t.shiftCodes[0]?.lines.length ?? 0) > 1
+  const other = t.shift === 1 ? 2 : 1, otherMade = t.made[other - 1]
   const unitWord = (n: number) => (n === 1 ? cfg.unit : cfg.plural).toLowerCase()
+  // a room that counts its units themselves says one of them in the singular ("1 mezcla")
+  const label = (n: number) => (cfg.qty === 'none' ? unitWord(n) : t.unitLabel)
   return (
     <div className="todaycard">
       <div className="tc-head">
-        <h3>{trx('Hoy en {0} · todas las líneas juntas', dept)}</h3>
+        <h3>{trx('Turno {0} en {1} · todas las líneas juntas', t.shift, dept)}</h3>
         {mgr && <button type="button" className="lnk" onClick={() => setEditing(true)}>{hasGoal ? tr('✎ Cambiar meta') : tr('+ Poner meta')}</button>}
       </div>
       {/* the clock of the shift: from its first code until the last one ends, and from zero again with the next shift */}
@@ -845,10 +850,11 @@ function TodayCard({ s, dept, now, mgr, date }: { s: State; dept: Dept; now: num
         </div>
       )}
       <div className="tc-main">
-        <div className="tc-total"><b>{fmtN(t.qty)}</b> <span>{t.unitLabel}</span>{cfg.qty !== 'none' && <small>{t.units} {unitWord(t.units)}</small>}{t.made[0] > 0 && t.made[1] > 0 && <small className="tc-shifts">{trx('Turno 1: {0} · Turno 2: {1}', <b>{fmtN(t.made[0])}</b>, <b>{fmtN(t.made[1])}</b>)}</small>}</div>
+        <div className="tc-total"><b>{fmtN(t.shiftQty)}</b> <span>{label(t.shiftQty)}</span>{cfg.qty !== 'none' && <small>{t.shiftUnits} {unitWord(t.shiftUnits)}</small>}</div>
+        {otherMade > 0 && <div className="tc-day">{trx('Día completo: {0} {1} · Turno {2}: {3}', <b>{fmtN(t.qty)}</b>, label(t.qty), other, <b>{fmtN(otherMade)}</b>)}</div>}
         {goal?.perShift ? (
           <div className="tc-goal">
-            <div className="tc-goalrow"><span>{trx('Meta del día {0}', <b>{fmtN(goal.perShift)}</b>)} {t.unitLabel}</span><b className={pct >= 100 ? 'ok' : ''}>{pct}%</b></div>
+            <div className="tc-goalrow"><span>{trx('Meta del día {0} / {1}', <b>{fmtN(t.qty)}</b>, <b>{fmtN(goal.perShift)}</b>)} {t.unitLabel}</span><b className={pct >= 100 ? 'ok' : ''}>{pct}%</b></div>
             <div className="bar"><i className={pct >= 100 ? 'ok' : ''} style={{ width: pct + '%' }} /></div>
             <div className="tc-sub">{left > 0 ? <>{trx('Faltan {0}', <b>{fmtN(left)}</b>)}{eta && <> {' '}{trx('· a este ritmo se llega a las {0}', <b>{fmtTime(eta)}</b>)}</>}</> : <b className="ok">{tr('✓ Meta del día cumplida')}</b>}</div>
           </div>
@@ -859,7 +865,7 @@ function TodayCard({ s, dept, now, mgr, date }: { s: State; dept: Dept; now: num
           {goal?.perHour ? <small>{trx('meta {0}/h', <b>{fmtN(goal.perHour)}</b>)}{pace != null && <> · <span className={paceCls}>{paceText}</span></>}</small> : <small>{t.shiftRate == null ? tr('desde el primer inicio del turno') : tr('sin meta por hora')}</small>}
         </div>
       </div>
-      {many && <div className="tc-codes">{t.byCode.map((c) => <span key={c.code} className="tc-code"><b>{c.code}</b> {fmtN(c.qty)} {t.unitLabel}{cfg.qty !== 'none' && <> · {c.units} {unitWord(c.units)}</>} · {c.lines.join(', ')}</span>)}</div>}
+      {many && <div className="tc-codes">{t.shiftCodes.map((c) => <span key={c.code} className="tc-code"><b>{c.code}</b> {fmtN(c.qty)} {t.unitLabel}{cfg.qty !== 'none' && <> · {c.units} {unitWord(c.units)}</>} · {c.lines.join(', ')}</span>)}</div>}
       {editing && <TargetDialog dept={dept} unit={t.unitLabel} goal={goal} onClose={() => setEditing(false)} />}
     </div>
   )
@@ -904,6 +910,18 @@ function DeptPanel({ s, dept, now, day }: { s: State; dept: Dept; now: number; m
   const editing = editRun ? s.runs.find((r) => r.id === editRun) : undefined
   const anyRunning = lines.some((l) => openRun(s, l.id))
   const doneToday = s.runs.filter((r) => r.dept === dept && r.endedAt && r.date === day.date).sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0))
+  // what ended in the shift in course is its list; what the shift before ended is one line, opened by whoever wants it
+  const turn = turnOf(s, day.date, now)
+  const doneNow = doneToday.filter((r) => (r.endedAt ?? 0) > turn.since), doneBefore = doneToday.filter((r) => (r.endedAt ?? 0) <= turn.since)
+  const [showBefore, setShowBefore] = useState(false)
+  const doneRow = (r: Run) => {
+    const st = runStats(s, r, now), mine = runSince(s, r, turn.since, now)
+    return (
+      <div key={r.id} className="donerow">
+        {trx('{0} · lote {1} · {2} · {3} – {4} · {5} · trabajando {6} · parado {7}{8} · {9}', <b className="code">{r.code}</b>, r.lot, lineNameOf(s, r.lineId, r.line), fmtTime(r.startedAt), fmtTime(r.endedAt ?? now), <b>{madeText(r, st.qty)}</b>, <b>{fmtDur(st.working)}</b>, <b className={st.down ? 'red' : ''}>{fmtDur(st.down)}</b>, r.waste > 0 && <> {' '}{trx('· waste {0}', <b className="red">{r.waste} lb</b>)}</>, whoText(r))}{mine.carried && (r.endedAt ?? 0) > turn.since && <> {' '}{trx('· de eso, en este turno: {0}', <b>{unitsText(r.dept, mine.units, mine.qty)}</b>)}</>} {can('fix') && canShift(who, spanShifts(shiftsOf(s, r.date), r.startedAt, r.endedAt ?? now)) && <button type="button" className="lnk" onClick={() => setEditRun(r.id)}>{tr('Corregir')}</button>}
+      </div>
+    )
+  }
   return (
     <section className="panel">
       <div className="phead">
@@ -941,17 +959,21 @@ function DeptPanel({ s, dept, now, day }: { s: State; dept: Dept; now: number; m
       <div className="lines">{lines.map((l) => <LineCard key={l.id} s={s} line={l} now={now} mgr={can('fix')} day={day} />)}</div>
       {lines.length === 0 && <p className="hint">{trx('Este departamento no tiene líneas. Toca "Agregar {0}".', CFG[dept].lineWord.toLowerCase())}</p>}
       {adding && <LineNameDialog s={s} dept={dept} onClose={() => setAdding(false)} />}
-      {doneToday.length > 0 && (
+      {doneNow.length > 0 && (
         <div className="done">
-          <h3>{trx('Terminados hoy en {0}', dept)}</h3>
-          {doneToday.map((r) => {
-            const st = runStats(s, r, now)
-            return (
-              <div key={r.id} className="donerow">
-                {trx('{0} · lote {1} · {2} · {3} – {4} · {5} · trabajando {6} · parado {7}{8} · {9}', <b className="code">{r.code}</b>, r.lot, lineNameOf(s, r.lineId, r.line), fmtTime(r.startedAt), fmtTime(r.endedAt ?? now), <b>{madeText(r, st.qty)}</b>, <b>{fmtDur(st.working)}</b>, <b className={st.down ? 'red' : ''}>{fmtDur(st.down)}</b>, r.waste > 0 && <> {' '}{trx('· waste {0}', <b className="red">{r.waste} lb</b>)}</>, whoText(r))} {can('fix') && canShift(who, spanShifts(shiftsOf(s, r.date), r.startedAt, r.endedAt ?? now)) && <button type="button" className="lnk" onClick={() => setEditRun(r.id)}>{tr('Corregir')}</button>}
-              </div>
-            )
-          })}
+          <h3>{trx('Terminados en el turno {0} en {1}', turn.shift, dept)}</h3>
+          {doneNow.map(doneRow)}
+        </div>
+      )}
+      {doneBefore.length > 0 && (
+        <div className="done">
+          <button type="button" className="donefold" aria-expanded={showBefore} onClick={() => setShowBefore(!showBefore)}>
+            <span>{showBefore ? '▾' : '▸'} {turn.shift === 2
+              ? (doneBefore.length === 1 ? tr('Turno 1: 1 código terminado') : tr('Turno 1: {0} códigos terminados', doneBefore.length))
+              : (doneBefore.length === 1 ? tr('Antes de este turno: 1 código terminado') : tr('Antes de este turno: {0} códigos terminados', doneBefore.length))}</span>
+            <small>{showBefore ? tr('Ocultar') : tr('Ver')}</small>
+          </button>
+          {showBefore && doneBefore.map(doneRow)}
         </div>
       )}
       {editing && <RunEditor s={s} run={editing} mgr={can('fix')} onClose={() => setEditRun(null)} />}
@@ -974,6 +996,10 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   const canGoal = useCan()('goals')
   const run = openRun(s, line.id)
   const stop = run ? openStop(s, line.dept, line.id) : undefined
+  const turn = turnOf(s, day.date, now) // the shift in course: its numbers start from zero at the hand-over
+  // the units the shift before made of the code that is running: this shift numbers its own from one
+  const brought = run && run.startedAt < turn.since ? run.units.filter((u) => u.at < turn.since).length : 0
+  const noOf = (x: Short) => (run && x.run.id === run.id && x.index >= brought ? x.index + 1 - brought : x.index + 1)
   const [fixing, setFixing] = useState(false)
   const [fixingStop, setFixingStop] = useState(false)
   const [code, setCode] = useState('')
@@ -1049,8 +1075,8 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         </div>
       )}
       {filling && (cfg.lots
-        ? <LotsDialog key={'fill:' + filling.run.id} title={tr('Completar {0} {1} de {2} · ¿qué lleva ahora en total?', unitWord, (filling.index + 1), filling.run.code)} unit={cfg.qtyUnit} refLabel={cfg.refLabel} lot={filling.run.lot} qty={filling.usual} start={filling.unit.lots ?? [{ lot: filling.run.lot, qty: filling.usual }]} startRef={filling.unit.ref} onClose={() => setFilling(null)} onPick={(total, ref, lots) => { fillUnit(filling.run.id, filling.unit.at, total, lots, ref); setFilling(null) }} />
-        : <QtyDialog key={'fill:' + filling.run.id} title={tr('Completar {0} {1} de {2} · tiene {3} {4}. ¿Cuántos tiene ahora en total?', unitWord, (filling.index + 1), filling.run.code, filling.unit.qty, cfg.qtyUnit)} unit={cfg.qtyUnit} refLabel="" initial={filling.usual} perCase={perCaseOf(filling.run.code)} onClose={() => setFilling(null)} onPick={(q) => { fillUnit(filling.run.id, filling.unit.at, q); setFilling(null) }} />)}
+        ? <LotsDialog key={'fill:' + filling.run.id} title={tr('Completar {0} {1} de {2} · ¿qué lleva ahora en total?', unitWord, noOf(filling), filling.run.code)} unit={cfg.qtyUnit} refLabel={cfg.refLabel} lot={filling.run.lot} qty={filling.usual} start={filling.unit.lots ?? [{ lot: filling.run.lot, qty: filling.usual }]} startRef={filling.unit.ref} onClose={() => setFilling(null)} onPick={(total, ref, lots) => { fillUnit(filling.run.id, filling.unit.at, total, lots, ref); setFilling(null) }} />
+        : <QtyDialog key={'fill:' + filling.run.id} title={tr('Completar {0} {1} de {2} · tiene {3} {4}. ¿Cuántos tiene ahora en total?', unitWord, noOf(filling), filling.run.code, filling.unit.qty, cfg.qtyUnit)} unit={cfg.qtyUnit} refLabel="" initial={filling.usual} perCase={perCaseOf(filling.run.code)} onClose={() => setFilling(null)} onPick={(q) => { fillUnit(filling.run.id, filling.unit.at, q); setFilling(null) }} />)}
     </>
   )
   // The line's own goal, set by the manager (the room's goal is of all its lines together): what the line has made
@@ -1109,7 +1135,9 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         )}
         {prev && (
           <div className="lastcode">
-            <span>{trx('Último: {0} · lote {1} · terminó {2} · {3}', <b className="code">{prev.code}</b>, prev.lot, fmtTime(prev.endedAt ?? 0), madeText(prev, runQty(s, prev)))}</span>
+            <span>{(prev.endedAt ?? 0) > turn.since
+              ? trx('Último: {0} · lote {1} · terminó {2} · {3}', <b className="code">{prev.code}</b>, prev.lot, fmtTime(prev.endedAt ?? 0), madeText(prev, runQty(s, prev)))
+              : trx('Último, del turno anterior: {0} · lote {1} · terminó {2} · {3}', <b className="code">{prev.code}</b>, prev.lot, fmtTime(prev.endedAt ?? 0), madeText(prev, runQty(s, prev)))}</span>
             <span className="btns">
               <button type="button" className="lnk sm" onClick={() => setReopening(prev.id)}>{trx('↩ No había terminado: seguir con {0}', prev.code)}</button>
               {fillLink}
@@ -1153,7 +1181,11 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
     )
   }
   const st = runStats(s, run, now)
-  const last = run.units.length ? run.units[run.units.length - 1].at : run.startedAt
+  // A code that came running from the shift before: what this shift sees of it starts from zero at the hand-over (its
+  // units, its quantity, its time), and one line says what it brought. A code this shift started is shown whole.
+  const mineNow = runSince(s, run, turn.since, now)
+  const cameFrom = shiftAt(shiftsOf(s, run.date), run.startedAt)
+  const last = Math.max(run.units.length ? run.units[run.units.length - 1].at : run.startedAt, mineNow.carried ? turn.since : 0)
   const current = workedSince(s, run, last, now)
   /** records a unit from this screen. A second tap in the same instant (a finger that bounces) is not another unit */
   const record = (qty: number | null, ref = '', lots?: LotPart[], po?: string) => {
@@ -1174,7 +1206,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   const lit = just ? ' bumped' : ''
   // pouches are also told as full cases and loose pouches, where the products table says how many go in a case
   const perCase = perCaseOf(run.code)
-  const cases = perCase && st.qty > 0 ? inCases(s, run.code, st.qty) : null
+  const cases = perCase && mineNow.qty > 0 ? inCases(s, run.code, mineNow.qty) : null
   return (
     <div className={'line ' + (stop ? 'stopped' : 'running') + (just ? ' justdone' : '')}>
       {naming}
@@ -1184,6 +1216,14 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         <span className="lacts">{goalBtn}<button type="button" className="lnk sm" onClick={() => setFixing(true)}>{tr('Corregir')}</button></span>
       </div>
       <div className="coderow"><b className="code">{run.code}</b><span>{trx('lote {0}{1} · desde {2}', run.lot, run.date !== day.date && ' · ' + shortDay(run.date), fmtTime(run.startedAt))}{run.perUnit != null && ' · ' + tr('{0} {1} por {2}', run.perUnit, cfg.qtyUnit, unitWord)}</span></div>
+      {mineNow.carried && (
+        <div className="carried">
+          {run.date === day.date && cameFrom !== turn.shift
+            ? trx('↪ Viene del turno {0}: empezó a las {1} y traía {2}.', cameFrom, <b>{fmtTime(run.startedAt)}</b>, <b>{unitsText(line.dept, mineNow.before.units, mineNow.before.qty)}</b>)
+            : trx('↪ Viene de antes: empezó el {0} a las {1} y traía {2}.', <b>{shortDay(run.date)}</b>, <b>{fmtTime(run.startedAt)}</b>, <b>{unitsText(line.dept, mineNow.before.units, mineNow.before.qty)}</b>)}
+          {' '}{trx('Abajo cuenta este turno, desde cero. Total del código: {0}.', <b>{madeText(run, st.qty)}</b>)}
+        </div>
+      )}
       {goalStrip}
       {openOrders.length > 0 && (
         <div className="orderstrip">
@@ -1198,13 +1238,13 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       {/* what is made, big: how many units and how much they carry (with its cases, where pouches are counted); then the
           unit in hand with its average, and the time worked with the time stopped */}
       <div className={'tiles' + (cfg.qty !== 'none' ? ' four' : '')}>
-        <div key={'n' + (just?.at ?? 0)} className={'tile main' + lit}><label>{cfg.plural}</label><b>{run.units.length}</b></div>
-        {cfg.qty !== 'none' && <div key={'q' + (just?.at ?? 0)} className={'tile main' + lit}><label>{cfg.qtyUnit}</label><b>{fmtN(st.qty)}</b>{cases && <small>{casesText(cases)}</small>}</div>}
-        <div className="tile"><label>{(cfg.saved.endsWith('a') ? tr('Esta') + ' ' : tr('Este') + ' ') + unitWord}</label><b>{fmtDur(current)}</b><small>{trx('prom. {0}', run.units.length ? fmtDur(st.avg) : '—')}</small></div>
-        <div className="tile"><label>{tr('Trabajando')}</label><b>{fmtDur(st.working)}</b><small className={st.down ? 'red' : ''}>{trx('parado {0}', fmtDur(st.down))}</small></div>
+        <div key={'n' + (just?.at ?? 0)} className={'tile main' + lit}><label>{cfg.plural}</label><b>{mineNow.units}</b></div>
+        {cfg.qty !== 'none' && <div key={'q' + (just?.at ?? 0)} className={'tile main' + lit}><label>{cfg.qtyUnit}</label><b>{fmtN(mineNow.qty)}</b>{cases && <small>{casesText(cases)}</small>}</div>}
+        <div className="tile"><label>{(cfg.saved.endsWith('a') ? tr('Esta') + ' ' : tr('Este') + ' ') + unitWord}</label><b>{fmtDur(current)}</b><small>{trx('prom. {0}', mineNow.units ? fmtDur(mineNow.avg) : '—')}</small></div>
+        <div className="tile"><label>{tr('Trabajando')}</label><b>{fmtDur(mineNow.working)}</b><small className={mineNow.down ? 'red' : ''}>{trx('parado {0}', fmtDur(mineNow.down))}</small></div>
       </div>
-      <button type="button" className={'btn primary huge' + (just ? ' saved' : '')} disabled={!!just} onClick={done}>✓ {just ? savedText(line.dept, just.n) : cfg.done}</button>
-      {own && <button type="button" className="btn slim" onClick={() => setFilling(own)}>{trx('➕ Completar {0} · tiene {1} de {2}', unitWord + (own.run.id === run.id ? ' ' + (own.index + 1) : ' ' + tr('de antes')), own.unit.qty, own.usual)}</button>}
+      <button type="button" className={'btn primary huge' + (just ? ' saved' : '')} disabled={!!just} onClick={done}>✓ {just ? savedText(line.dept, just.n - brought) : cfg.done}</button>
+      {own && <button type="button" className="btn slim" onClick={() => setFilling(own)}>{trx('➕ Completar {0} · tiene {1} de {2}', unitWord + (own.run.id === run.id && own.index >= brought ? ' ' + noOf(own) : ' ' + tr('de antes')), own.unit.qty, own.usual)}</button>}
       <div className="acts2">
         {stop
           ? (stop.lineId === line.id
