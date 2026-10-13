@@ -7,6 +7,8 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 
 const DOMAIN = 'freezer.example.com'
 const DEPTS = ['Kitchen', 'RTE', 'Spiral', 'MFO', 'Packing']
+// what a person may do beyond working their line (the same list as src/powers.ts)
+const POWERS = ['fix', 'del', 'goals', 'shifts', 'orders', 'day', 'depts', 'products', 'people', 'othershift']
 const cors = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -21,9 +23,14 @@ Deno.serve(async (req) => {
     const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '')
     const { data: { user } } = await admin.auth.getUser(token)
     if (!user) return json({ error: 'not_signed_in' }, 401)
-    const { data: me } = await admin.from('employees').select('id, role, active, act_role').eq('user_id', user.id).maybeSingle()
-    if (!me || !me.active || !(me.role === 'admin' || me.act_role === 'mgr')) return json({ error: 'not_manager' }, 403)
-    const freezerAdmin = me.role === 'admin'
+    type Caller = { id: string; role: string; active: boolean; act_role: string | null; act_powers?: string[] | null }
+    let me = (await admin.from('employees').select('id, role, active, act_role, act_powers').eq('user_id', user.id).maybeSingle()).data as Caller | null
+    // before the powers migration is applied that column is not there: the roles decide, as they did
+    if (!me) me = (await admin.from('employees').select('id, role, active, act_role').eq('user_id', user.id).maybeSingle()).data as Caller | null
+    const freezerAdmin = me?.role === 'admin'
+    // who manages people: the owner, whoever was given that power, or (with no powers saved) a manager or the office
+    const people = freezerAdmin || (Array.isArray(me?.act_powers) ? me!.act_powers!.includes('people') : me?.act_role === 'mgr' || me?.act_role === 'office')
+    if (!me || !me.active || !people) return json({ error: 'not_manager' }, 403)
 
     const body = await req.json()
     const actRoleOf = (r: unknown) => (['op', 'mgr', 'office'].includes(String(r)) ? String(r) : 'op')
@@ -70,6 +77,19 @@ Deno.serve(async (req) => {
       if (t.id === me.id && actRole !== 'mgr' && !freezerAdmin) return json({ error: 'not_self' }, 400)
       await admin.from('employees').update({ act_role: actRole, act_dept: actDept }).eq('id', t.id)
       return json({ ok: true })
+    }
+
+    if (body.action === 'set_powers') {
+      const t = await target()
+      if (!t) return json({ error: 'not_found' }, 404)
+      if (await ownerLocked(t)) return json({ error: 'owner_protected' }, 403)
+      // a manager's powers (and one's own) are the owner's to change
+      if (!freezerAdmin && (t.id === me.id || t.role === 'admin' || t.act_role === 'mgr')) return json({ error: 'owner_only' }, 403)
+      const asked = Array.isArray(body.powers) ? body.powers.map(String) : null
+      const powers = asked ? POWERS.filter((p) => asked.includes(p)) : null // null = the powers of the role
+      const shift = Number(body.shift) === 1 ? 1 : Number(body.shift) === 2 ? 2 : null // null = both shifts
+      const { error } = await admin.from('employees').update({ act_powers: powers, act_shift: shift }).eq('id', t.id)
+      return error ? json({ error: /act_powers|act_shift|column/i.test(error.message) ? 'no_columns' : error.message }, 400) : json({ ok: true })
     }
 
     if (body.action === 'set_pin') {

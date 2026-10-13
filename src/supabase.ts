@@ -1,4 +1,5 @@
 import { createClient, isAuthRetryableFetchError, type SupabaseClient } from '@supabase/supabase-js'
+import { cleanPowers, cleanShift, type Power } from './powers'
 
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
@@ -94,7 +95,9 @@ export const USER_DOMAIN = 'freezer.example.com'
 export const loginEmail = (user: string) => (user.includes('@') ? user.trim().toLowerCase() : user.trim().toLowerCase() + '@' + USER_DOMAIN)
 
 /** admin = an administrator of Freezer RTE (the owner): the only one who may wipe a whole day of tests */
-export type Me = { id: string; name: string; username: string; role: 'op' | 'mgr' | 'office'; dept: string; admin?: boolean }
+export type Me = { id: string; name: string; username: string; role: 'op' | 'mgr' | 'office'; dept: string; admin?: boolean; powers?: Power[] | null; shift?: 0 | 1 | 2 }
+/** the database does not have a column the app asks for (a change that has not been applied there yet) */
+export const missingColumn = (e: { code?: string; message?: string } | null | undefined) => !!e && (e.code === '42703' || e.code === 'PGRST204' || /does not exist|could not find the .* column|act_powers|act_shift/i.test(e.message ?? ''))
 
 /** a session that is on the device but could not be renewed for lack of signal (not the same as nobody signed in) */
 export const noSignal = (e: unknown) => !!e && isAuthRetryableFetchError(e)
@@ -108,10 +111,14 @@ export async function fetchMe(): Promise<Me | null | 'none'> {
   if (!supabase) return null
   const { data: { session }, error: authError } = await supabase.auth.getSession()
   if (!session) { if (noSignal(authError)) throw authError; return null }
-  const { data, error } = await supabase.from('employees').select('id, name, username, role, act_role, act_dept, active').eq('user_id', session.user.id).maybeSingle()
+  type Row = { id: string; name: string; username: string | null; role: string; act_role: Me['role'] | null; act_dept: string | null; active: boolean; act_powers?: unknown; act_shift?: unknown }
+  const ask = async (cols: string) => { const r = await supabase!.from('employees').select(cols).eq('user_id', session.user.id).maybeSingle(); return { data: r.data as unknown as Row | null, error: r.error } }
+  let { data, error } = await ask('id, name, username, role, act_role, act_dept, active, act_powers, act_shift')
+  // the powers and the shift came with a change in the database: until it is applied there, the roles decide as before
+  if (error && missingColumn(error)) ({ data, error } = await ask('id, name, username, role, act_role, act_dept, active'))
   if (error) throw error
   if (!data || !data.active || !data.act_role) return 'none'
-  return { id: data.id, name: data.name, username: data.username ?? '', role: data.act_role, dept: data.act_dept ?? '', admin: data.role === 'admin' }
+  return { id: data.id, name: data.name, username: data.username ?? '', role: data.act_role, dept: data.act_dept ?? '', admin: data.role === 'admin', powers: cleanPowers(data.act_powers), shift: cleanShift(data.act_shift) }
 }
 
 // ---- the last person the server confirmed on this device: with it the app opens at once, with or without signal ----

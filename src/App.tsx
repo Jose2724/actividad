@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, Ref } from 'react'
 import { addLine, addWaste, awayDay, byLineName, byShip, casesText, cancelDay, CFG, closeOrder, codeProblem, CRATES_PER_CART, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineNamed, lineNameOf, lineTargetOf, lotFor, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, numOf, openIn, openOrdersFor, openRun, openStop, orderCodes, orderLabel, orderMade, parseProductsCsv, plainDay, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reopenRun, reset, resetRecords, role, runQty, runStats, saveOrder, saveProduct, setLineTarget, setSchedule, setShifts, setTarget, startDay, startRun, startSetup, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, savedText, shiftAt, shiftCuts, shiftHours, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type LineTarget, type Product, type LotPart, type Order, type ShiftHours, type Short, type State, type Target, type WorkDay } from './store'
 import { avanceRows, n1, pending, type AvanceRow } from './avance'
@@ -9,6 +9,7 @@ import { whoText } from './store'
 import { buildPdf, loadPdf } from './pdf'
 import { homeScreenApple, sharePick, shareProblem, type Kind } from './send'
 import { filterFile, filterTitle, reportOf, spanShifts, type ReportFilter } from './report'
+import { canDo, canShift, type Power, type Who } from './powers'
 import { RunEditor, StopEditor } from './editors'
 import { fetchMe, finishSignOut, loginEmail, rememberedMe, rememberedUser, rememberMe, rememberUser, signedOut, signOutHere, supabase, type Me } from './supabase'
 import { leaveAsk, loadDay, startSync, syncStore, syncNow, unreachable } from './sync'
@@ -190,7 +191,7 @@ function ServerApp() {
   if (me === 'none') return <NoRole onOut={out} onRetry={verify} />
   const home = isDept(me.dept) ? me.dept : DEPTS[0]
   if (me.role === 'op' && !isDept(me.dept)) return <NoRole onOut={out} onRetry={verify} text={'Tu usuario está en Actividad pero sin departamento. Pide al manager que te asigne uno.'} />
-  return <Main name={me.name} home={home} mgr={me.role !== 'op'} admin={!!me.admin} wholeDay={!!me.admin || me.role === 'office'} meId={me.id} onLogout={() => void out()} />
+  return <WhoCtx.Provider value={{ role: me.role, admin: !!me.admin, powers: me.powers ?? null, shift: me.shift ?? 0 }}><Main name={me.name} home={home} mgr={me.role !== 'op'} admin={!!me.admin} wholeDay={!!me.admin || me.role === 'office'} meId={me.id} onLogout={() => void out()} /></WhoCtx.Provider>
 }
 
 /**
@@ -302,7 +303,7 @@ function DemoApp() {
   if (!(mgr || isDept(dept)) || !name) {
     return <Gate dept={isDept(dept) ? dept : null} mgr={mgr} onDept={(d) => { myDept.set(d); role.set('op'); setDept(d); setWho('op') }} onManager={() => { role.set('mgr'); myDept.set(''); setWho('mgr'); setDept('') }} onName={(n) => { user.set(n); setName(n) }} onBack={out} />
   }
-  return <Main name={name} home={isDept(dept) ? dept : DEPTS[0]} mgr={mgr} admin={mgr} onLogout={out} />
+  return <WhoCtx.Provider value={{ role: mgr ? 'mgr' : 'op', admin: mgr }}><Main name={name} home={isDept(dept) ? dept : DEPTS[0]} mgr={mgr} admin={mgr} onLogout={out} /></WhoCtx.Provider>
 }
 
 /** entering: a supervisor or operator picks their department (and sees only that); the manager enters with a code and sees every room */
@@ -343,9 +344,15 @@ function Gate({ dept, mgr, onDept, onManager, onName, onBack }: { dept: Dept | n
   )
 }
 
+/** who is using the app, for every screen that asks what they may do (see powers.ts) */
+const WhoCtx = createContext<Who>({ role: 'op' })
+export const useWho = () => useContext(WhoCtx)
+export const useCan = () => { const w = useContext(WhoCtx); return (p: Power) => canDo(w, p) }
+
 function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: string; home: Dept; mgr: boolean; admin: boolean; wholeDay?: boolean; meId?: string; onLogout: () => void }) {
   const s = useSyncExternalStore(store.subscribe, store.get)
   const now = useNow()
+  const can = useCan()
   const day = workDay(s, now)
   const [dept, setDept] = useState<Dept>(home)
   const [tab, setTab] = useState<'act' | 'av' | 'rep' | 'emp'>('act')
@@ -362,19 +369,19 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
         <div className="brand"><h1>Actividad{!supabase && <span className="demotag">DEMO</span>}</h1><small>{new Date(now).toLocaleDateString('es', { weekday: 'long', day: 'numeric', month: 'long' })}</small></div>
         <nav className="tabs">
           <button type="button" className={tab === 'act' ? 'on' : ''} onClick={() => setTab('act')}>Actividad</button>
-          {mgr && <button type="button" className={tab === 'av' ? 'on' : ''} onClick={() => setTab('av')}>Avance</button>}
+          {can('products') && <button type="button" className={tab === 'av' ? 'on' : ''} onClick={() => setTab('av')}>Avance</button>}
           <button type="button" className={tab === 'rep' ? 'on' : ''} onClick={() => setTab('rep')}>Reporte</button>
-          {mgr && supabase && <button type="button" className={tab === 'emp' ? 'on' : ''} onClick={() => setTab('emp')}>Empleados</button>}
+          {can('people') && supabase && <button type="button" className={tab === 'emp' ? 'on' : ''} onClick={() => setTab('emp')}>Empleados</button>}
         </nav>
         <div className="me"><SyncDot /> {name} · {mgr ? 'Manager' : home} {mgr && <QrLink label="QR" />}<button type="button" className="lnk" onClick={() => setLeaving(true)}>{supabase ? 'Salir' : 'Cambiar'}</button></div>
       </header>
       {leaving && <LeaveDialog onYes={() => { setLeaving(false); onLogout() }} onNo={() => setLeaving(false)} />}
       {tab === 'act' ? (
         <>
-        <DayBar s={s} now={now} day={day} mgr={mgr} />
+        <DayBar s={s} now={now} day={day} mgr={can('day')} />
         <div className="main">
           {/* the manager moves between rooms; a supervisor or operator only has their own */}
-          {mgr && (
+          {can('depts') && (
             <aside className="side">
               {DEPTS.map((d) => {
                 const lines = s.lines.filter((l) => l.dept === d)
@@ -390,10 +397,10 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
               })}
             </aside>
           )}
-          <DeptPanel key={dept} s={s} dept={mgr ? dept : home} now={now} mgr={mgr} day={day} />
+          <DeptPanel key={dept} s={s} dept={can('depts') ? dept : home} now={now} mgr={mgr} day={day} />
         </div>
         </>
-      ) : tab === 'av' && mgr ? <Avance s={s} /> : tab === 'emp' && mgr && supabase ? <Employees meId={meId ?? ''} admin={admin} /> : <Report s={s} now={now} only={mgr ? undefined : home} mgr={mgr} admin={admin} wholeDay={!!wholeDay} />}
+      ) : tab === 'av' && can('products') ? <Avance s={s} /> : tab === 'emp' && can('people') && supabase ? <Employees meId={meId ?? ''} admin={admin} /> : <Report s={s} now={now} only={can('depts') ? undefined : home} mgr={can('depts')} admin={admin} wholeDay={!!wholeDay} />}
     </div>
   )
 }
@@ -857,9 +864,10 @@ function TargetDialog({ dept, unit, goal, onClose }: { dept: Dept; unit: string;
   )
 }
 
-function DeptPanel({ s, dept, now, mgr, day }: { s: State; dept: Dept; now: number; mgr: boolean; day: WorkDay }) {
+function DeptPanel({ s, dept, now, day }: { s: State; dept: Dept; now: number; mgr: boolean; day: WorkDay }) {
   const lines = s.lines.filter((l) => l.dept === dept).sort(byLineName)
   const ds = deptStop(s, dept)
+  const can = useCan(), who = useWho()
   const [stopAll, setStopAll] = useState(false)
   const [adding, setAdding] = useState(false)
   const [leaving, setLeaving] = useState(false)
@@ -899,11 +907,11 @@ function DeptPanel({ s, dept, now, mgr, day }: { s: State; dept: Dept; now: numb
           </div>
         </div>
       )}
-      {ds && <div className="deptstop">⏸ Todo {dept} parado · <b>{ds.reason}</b>{ds.note && ' · ' + ds.note} · desde {fmtTime(ds.startedAt)} · {ds.by} {mgr && <button type="button" className="lnk" onClick={() => setEditStop(true)}>Corregir</button>}</div>}
-      {editStop && ds && <StopEditor stop={ds} mgr={mgr} onClose={() => setEditStop(false)} />}
-      <TodayCard s={s} dept={dept} now={now} mgr={mgr} date={day.date} />
-      {CFG[dept].orders && <OrdersCard s={s} mgr={mgr} />}
-      <div className="lines">{lines.map((l) => <LineCard key={l.id} s={s} line={l} now={now} mgr={mgr} day={day} />)}</div>
+      {ds && <div className="deptstop">⏸ Todo {dept} parado · <b>{ds.reason}</b>{ds.note && ' · ' + ds.note} · desde {fmtTime(ds.startedAt)} · {ds.by} {can('fix') && <button type="button" className="lnk" onClick={() => setEditStop(true)}>Corregir</button>}</div>}
+      {editStop && ds && <StopEditor stop={ds} mgr={can('fix')} onClose={() => setEditStop(false)} />}
+      <TodayCard s={s} dept={dept} now={now} mgr={can('goals')} date={day.date} />
+      {CFG[dept].orders && <OrdersCard s={s} mgr={can('orders')} />}
+      <div className="lines">{lines.map((l) => <LineCard key={l.id} s={s} line={l} now={now} mgr={can('fix')} day={day} />)}</div>
       {lines.length === 0 && <p className="hint">Este departamento no tiene líneas. Toca "Agregar {CFG[dept].lineWord.toLowerCase()}".</p>}
       {adding && <LineNameDialog s={s} dept={dept} onClose={() => setAdding(false)} />}
       {doneToday.length > 0 && (
@@ -913,13 +921,13 @@ function DeptPanel({ s, dept, now, mgr, day }: { s: State; dept: Dept; now: numb
             const st = runStats(s, r, now)
             return (
               <div key={r.id} className="donerow">
-                <b className="code">{r.code}</b> · lote {r.lot} · {lineNameOf(s, r.lineId, r.line)} · {fmtTime(r.startedAt)} – {fmtTime(r.endedAt ?? now)} · <b>{madeText(r, st.qty)}</b> · trabajando <b>{fmtDur(st.working)}</b> · parado <b className={st.down ? 'red' : ''}>{fmtDur(st.down)}</b>{r.waste > 0 && <> · waste <b className="red">{r.waste} lb</b></>} · {whoText(r)} {mgr && <button type="button" className="lnk" onClick={() => setEditRun(r.id)}>Corregir</button>}
+                <b className="code">{r.code}</b> · lote {r.lot} · {lineNameOf(s, r.lineId, r.line)} · {fmtTime(r.startedAt)} – {fmtTime(r.endedAt ?? now)} · <b>{madeText(r, st.qty)}</b> · trabajando <b>{fmtDur(st.working)}</b> · parado <b className={st.down ? 'red' : ''}>{fmtDur(st.down)}</b>{r.waste > 0 && <> · waste <b className="red">{r.waste} lb</b></>} · {whoText(r)} {can('fix') && canShift(who, spanShifts(shiftsOf(s, r.date), r.startedAt, r.endedAt ?? now)) && <button type="button" className="lnk" onClick={() => setEditRun(r.id)}>Corregir</button>}
               </div>
             )
           })}
         </div>
       )}
-      {editing && <RunEditor s={s} run={editing} mgr={mgr} onClose={() => setEditRun(null)} />}
+      {editing && <RunEditor s={s} run={editing} mgr={can('fix')} onClose={() => setEditRun(null)} />}
       {stopAll && <StopDialog title={'Parar todo ' + dept} reasons={CFG[dept].quick} onClose={() => setStopAll(false)} onPick={(reason, note) => { startStop(dept, null, reason, note); setStopAll(false) }} />}
     </section>
   )
@@ -935,6 +943,7 @@ const buzz = () => { try { (navigator as Navigator & { vibrate?: (ms: number) =>
 // itself: filling a cart closed short, going on with a code ended too early, ending or dropping a set up.
 function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: number; mgr: boolean; day: WorkDay }) {
   const cfg = CFG[line.dept]
+  const who = useWho(), canGoal = useCan()('goals')
   const run = openRun(s, line.id)
   const stop = run ? openStop(s, line.dept, line.id) : undefined
   const [fixing, setFixing] = useState(false)
@@ -1021,7 +1030,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   const mine = hasGoal ? deptToday(s, line.dept, day.date, now, line.id) : null
   const goalPct = mine && goal?.perDay ? Math.min(100, Math.floor((mine.qty / goal.perDay) * 100)) : 0
   const goalUnit = cfg.qty === 'none' ? cfg.plural.toLowerCase() : cfg.qtyUnit
-  const goalBtn = mgr && <button type="button" className="lnk sm" onClick={() => setGoalOpen(true)}>{hasGoal ? '✎ Meta' : '+ Meta'}</button>
+  const goalBtn = canGoal && <button type="button" className="lnk sm" onClick={() => setGoalOpen(true)}>{hasGoal ? '✎ Meta' : '+ Meta'}</button>
   const goalStrip = (
     <>
       {mine && hasGoal && (
@@ -1143,7 +1152,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       <div className="lhead">
         <h3>{line.name} {nameIt}</h3>
         <span className={'pill ' + (stop ? 'stop' : 'run')}>{stop ? '⏸ Parado' : '● Corriendo'}</span>
-        <span className="lacts">{goalBtn}{mgr && <button type="button" className="lnk sm" onClick={() => setFixing(true)}>Corregir</button>}</span>
+        <span className="lacts">{goalBtn}{mgr && canShift(who, spanShifts(shiftsOf(s, run.date), run.startedAt, now)) && <button type="button" className="lnk sm" onClick={() => setFixing(true)}>Corregir</button>}</span>
       </div>
       <div className="coderow"><b className="code">{run.code}</b><span>lote {run.lot}{run.date !== day.date && ' · ' + shortDay(run.date)} · desde {fmtTime(run.startedAt)}{run.perUnit != null && ' · ' + run.perUnit + ' ' + cfg.qtyUnit + ' por ' + unitWord}</span></div>
       {goalStrip}
@@ -1464,6 +1473,7 @@ function SendDialog({ files, subject, onClose }: { files: Record<Kind, File>; su
 let shiftChosen: 0 | 1 | 2 | null = null
 
 function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number; only?: Dept; mgr: boolean; admin: boolean; wholeDay: boolean }) {
+  const can = useCan(), who = useWho()
   const [date, setDate] = useState(() => workDay(s).date)
   const [wiping, setWiping] = useState(false)
   const [resetting, setResetting] = useState(false)
@@ -1478,11 +1488,12 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
   const [preparing, setPreparing] = useState(false)
   const [fCode, setFCode] = useState('')
   const [fLot, setFLot] = useState('')
-  // The people of a shift open the report on their own shift: the one in course, on the day in course. The other shift
+  // The people of a shift open the report on their own shift: the one saved for them, or else the one in course on the
+  // day in course. The other shift
   // and the whole day are one choice away, and what they choose stays while the app is open. The office and the owner
   // open it on the whole day, and so does anybody looking at another date.
   const [shiftPick, setShiftPick] = useState<0 | 1 | 2 | null>(shiftChosen)
-  const ownShift: 0 | 1 | 2 = !wholeDay && date === workDay(s, now).date ? shiftAt(shiftsOf(s, date), now) : 0
+  const ownShift: 0 | 1 | 2 = who.shift ? who.shift : !wholeDay && date === workDay(s, now).date ? shiftAt(shiftsOf(s, date), now) : 0
   const fShift = shiftPick ?? ownShift
   const setFShift = (k: 0 | 1 | 2) => { shiftChosen = k; setShiftPick(k) }
   const [shiftsOpen, setShiftsOpen] = useState(false)
@@ -1607,7 +1618,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
       </div>
       {sending && <SendDialog files={sending} subject={'Actividad · Reporte ' + date + (only ? ' · ' + only : '') + filterTitle(rep.code, rep.lot, rep.shift)} onClose={() => setSending(null)} />}
       <DayNote day={day} />
-      <p className="shiftnote">Turno 1: <b>{shiftHours(rep.plan, 1)}</b> · Turno 2: <b>{shiftHours(rep.plan, 2)}</b>{mgr && <> <button type="button" className="lnk" onClick={() => setShiftsOpen(true)}>Cambiar horario</button></>}</p>
+      <p className="shiftnote">Turno 1: <b>{shiftHours(rep.plan, 1)}</b> · Turno 2: <b>{shiftHours(rep.plan, 2)}</b>{can('shifts') && <> <button type="button" className="lnk" onClick={() => setShiftsOpen(true)}>Cambiar horario</button></>}</p>
       {shiftsOpen && <ShiftsDialog s={s} date={date} onClose={() => setShiftsOpen(false)} />}
       {!!rep.shift && shiftPick === null && !rep.code && !rep.lot && <p className="filternote">Estás viendo tu turno, el <b>Turno {rep.shift}</b>. Para ver el otro turno o el día completo, cámbialo arriba donde dice "Turno {rep.shift}". Los archivos salen con lo que estés viendo. <button type="button" className="lnk" onClick={() => setFShift(0)}>Ver los dos turnos</button></p>}
       {rep.filtered && !(shiftPick === null && !rep.code && !rep.lot) && <p className="filternote">Reporte filtrado{filterTitle(rep.code, rep.lot, rep.shift)}. El Excel, el CSV, el PDF y "Enviar reporte" salen con este filtro.{rep.lot && !rep.shift && ' Los tiempos y el waste son los de las corridas completas.'}{!!rep.shift && ' Un código que pasó de un turno al otro sale aquí con lo que hizo en este turno; su waste se reparte según lo hecho en cada uno.'} <button type="button" className="lnk" onClick={() => { setFCode(''); setFLot(''); setFShift(0) }}>Quitar filtros</button></p>}
@@ -1643,7 +1654,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
               <tr key={x.r.id} className={x.r.endedAt ? '' : 'live'}>
                 <td>{x.r.dept}</td><td>{lineNameOf(s, x.r.lineId, x.r.line)}</td><td><b>{x.r.code}</b></td><td>{x.lots}</td>{!rep.shift && <td>{x.shifts}</td>}<td>{fmtTime(x.r.startedAt)}</td><td>{x.r.endedAt ? fmtTime(x.r.endedAt) : <i>en curso</i>}</td>
                 <td>{madeText(x.view, x.qty, true)}</td><td className={x.waste ? 'red' : ''}>{x.waste ? x.waste + ' lb' : '—'}</td><td>{fmtDur(x.st.working)}</td><td>{x.timed ? fmtDur(x.st.avg) : '—'}</td><td className={x.st.down ? 'red' : ''}>{fmtDur(x.st.down)}</td><td>{reasonsText(x) || '—'}</td><td>{whoText(x.r)}</td>
-                <td>{mgr && <button type="button" className="lnk" onClick={() => setEditRun(x.r.id)}>Corregir</button>}</td>
+                <td>{can('fix') && canShift(who, x.shifts) && <button type="button" className="lnk" onClick={() => setEditRun(x.r.id)}>Corregir</button>}</td>
               </tr>
             ))}</tbody>
           </table>
@@ -1691,7 +1702,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
               <tbody>{cut('stops', stops).map((x) => (
                 <tr key={x.id} className={x.endedAt ? '' : 'live'}>
                   <td>{x.dept}</td><td>{lineName(x)}</td><td><b>{x.reason}</b></td><td>{x.note || '—'}</td>{!rep.shift && <td>{spanShifts(rep.plan, x.startedAt, x.endedAt ?? now)}</td>}<td>{fmtTime(x.startedAt)}</td><td>{x.endedAt ? fmtTime(x.endedAt) : <i>en curso</i>}</td><td>{fmtDur(x.ms)}</td><td>{x.by}</td>
-                  <td>{mgr && <button type="button" className="lnk" onClick={() => setEditStop(x.id)}>Corregir</button>}</td>
+                  <td>{can('fix') && canShift(who, spanShifts(rep.plan, x.startedAt, x.endedAt ?? now)) && <button type="button" className="lnk" onClick={() => setEditStop(x.id)}>Corregir</button>}</td>
                 </tr>
               ))}</tbody>
             </table>
@@ -1715,8 +1726,8 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
         </>
       )}
       <p className="hint foot">{supabase ? 'Todo se guarda en el servidor y se ve en vivo desde la oficina, el teléfono o la PC.' : 'Demo guardado en este dispositivo. La versión completa manda todo en vivo al manager (oficina, teléfono o PC) y exporta a Excel, PDF y Google Sheets como la Hoja de Freezer RTE.'}</p>
-      {runToEdit && <RunEditor s={s} run={runToEdit} mgr={mgr} onClose={() => setEditRun(null)} />}
-      {stopToEdit && <StopEditor stop={stopToEdit} mgr={mgr} onClose={() => setEditStop(null)} />}
+      {runToEdit && <RunEditor s={s} run={runToEdit} mgr={can('fix')} onClose={() => setEditRun(null)} />}
+      {stopToEdit && <StopEditor stop={stopToEdit} mgr={can('fix')} onClose={() => setEditStop(null)} />}
       {mgr && (
         <div className="btns">
           {!supabase && <button type="button" className="lnk" onClick={() => setClearing(true)}>Reiniciar registros (conserva productos y líneas)</button>}

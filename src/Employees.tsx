@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
-import { rowRights, supabase } from './supabase'
+import { missingColumn, rowRights, supabase } from './supabase'
+import { cleanPowers, defaultPowers, POWERS, type Power } from './powers'
 import { DEPTS } from './store'
 import { ConfirmDialog } from './App'
 
-type Emp = { id: string; user_id?: string | null; name: string; username: string | null; role: string; active: boolean; act_role: 'op' | 'mgr' | 'office' | null; act_dept: string | null; deleted?: boolean }
+type Emp = { id: string; user_id?: string | null; name: string; username: string | null; role: string; active: boolean; act_role: 'op' | 'mgr' | 'office' | null; act_dept: string | null; deleted?: boolean; act_powers?: string[] | null; act_shift?: number | null }
 const ERRORS: Record<string, string> = {
   not_signed_in: 'No hay sesión.', not_manager: 'Solo un manager puede hacer esto.', bad_name: 'Falta el nombre.', bad_username: 'Usuario: 3 a 30 letras, números, punto o guion, sin espacios.',
-  bad_pin: 'PIN: de 6 a 12 números.', bad_dept: 'Un operador necesita departamento.', username_taken: 'Ese usuario ya existe.', not_found: 'No se encontró.', owner_protected: 'Esa cuenta no se puede tocar.', not_self: 'No puedes quitarte el acceso a ti mismo.',
+  bad_pin: 'PIN: de 6 a 12 números.', bad_dept: 'Un operador necesita departamento.', username_taken: 'Ese usuario ya existe.', not_found: 'No se encontró.', owner_protected: 'Esa cuenta no se puede tocar.', not_self: 'No puedes quitarte el acceso a ti mismo.', owner_only: 'Los poderes de un manager solo los cambia el dueño.', no_columns: 'Falta aplicar el cambio de poderes en la base de datos.', unknown_action: 'Falta actualizar la función de usuarios en el servidor.',
 }
 
 const ROLE: Record<string, string> = { op: 'Operador', mgr: 'Manager', office: 'Oficina' }
@@ -24,10 +25,21 @@ export function Employees({ meId, admin }: { meId: string; admin: boolean }) {
   const [pinFor, setPinFor] = useState<Emp | null>(null)
   const [newPin, setNewPin] = useState('')
   const [toggle, setToggle] = useState<Emp | null>(null)
+  // powers and shift per person: there once the database has their columns (null = not known yet)
+  const [hasPowers, setHasPowers] = useState<boolean | null>(null)
+  const [powersFor, setPowersFor] = useState<Emp | null>(null)
+  const [picked, setPicked] = useState<Power[]>([])
+  const [shift, setShift] = useState(0)
   const load = async () => {
-    const { data, error } = await supabase!.from('employees').select('id, user_id, name, username, role, active, act_role, act_dept, deleted').order('name')
+    const cols = 'id, user_id, name, username, role, active, act_role, act_dept, deleted'
+    const ask = async (c: string) => { const r = await supabase!.from('employees').select(c).order('name'); return { data: r.data as unknown as Emp[] | null, error: r.error } }
+    let { data, error } = await ask(cols + ', act_powers, act_shift')
+    const fresh = !error
+    // the powers columns come with a change in the database: without it the list is the one of always
+    if (error && missingColumn(error)) ({ data, error } = await ask(cols))
     if (error) { setMsg(error.message); return }
-    setList((data as Emp[]).filter((e) => !e.deleted))
+    setHasPowers(fresh)
+    setList((data ?? []).filter((e) => !e.deleted))
   }
   useEffect(() => { void load() }, [])
   const call = async (body: Record<string, unknown>) => {
@@ -57,7 +69,7 @@ export function Employees({ meId, admin }: { meId: string; admin: boolean }) {
       {list === null ? <p className="hint">Cargando…</p> : (
         <div className="twrap">
           <table>
-            <thead><tr><th>Nombre</th><th>Usuario</th><th>Rol en Actividad</th><th>Departamento</th><th>Activo</th><th></th></tr></thead>
+            <thead><tr><th>Nombre</th><th>Usuario</th><th>Rol en Actividad</th><th>Departamento</th>{hasPowers && <><th>Turno</th><th>Poderes</th></>}<th>Activo</th><th></th></tr></thead>
             <tbody>{list.map((e) => {
               const can = rowRights(e, meId, admin)
               return (
@@ -70,8 +82,10 @@ export function Employees({ meId, admin }: { meId: string; admin: boolean }) {
                   <td>{e.act_role !== 'op' ? '—' : can.role
                     ? <select value={e.act_dept ?? ''} disabled={busy} onChange={(ev) => void call({ action: 'set_act', id: e.id, act_role: 'op', act_dept: ev.target.value })}>{DEPTS.map((d) => <option key={d} value={d}>{d}</option>)}</select>
                     : (e.act_dept ?? '—')}</td>
+                  {hasPowers && <><td>{e.act_role ? (e.act_shift === 1 || e.act_shift === 2 ? 'Turno ' + e.act_shift : 'Los dos') : '—'}</td><td>{!e.act_role ? '—' : e.role === 'admin' ? 'Todos' : e.act_powers == null ? 'Los de su rol' : (cleanPowers(e.act_powers) ?? []).length + ' de ' + POWERS.length}</td></>}
                   <td>{e.active ? 'Sí' : 'No'}</td>
                   <td className="btns">
+                    {hasPowers && !!e.act_role && !can.locked && !can.mine && e.role !== 'admin' && (admin || e.act_role !== 'mgr') && <button type="button" className="lnk" disabled={busy} onClick={() => { setPicked(cleanPowers(e.act_powers) ?? defaultPowers(e.act_role)); setShift(e.act_shift === 1 || e.act_shift === 2 ? e.act_shift : 0); setPowersFor(e) }}>Poderes</button>}
                     {can.pin && <button type="button" className="lnk" disabled={busy} onClick={() => { setNewPin(''); setPinFor(e) }}>PIN</button>}
                     {can.active && <button type="button" className="lnk" disabled={busy} onClick={() => setToggle(e)}>{e.active ? 'Desactivar' : 'Activar'}</button>}
                   </td>
@@ -89,6 +103,25 @@ export function Employees({ meId, admin }: { meId: string; admin: boolean }) {
               <label>PIN (6–12 números) <input autoFocus inputMode="numeric" value={newPin} onChange={(ev) => setNewPin(ev.target.value.replace(/\D/g, ''))} autoComplete="off" /></label>
               <div className="dbtns"><button type="button" className="btn" onClick={() => setPinFor(null)}>Cancelar</button><button type="submit" className="btn primary" disabled={busy || newPin.length < 6}>Guardar</button></div>
             </form>
+          </div>
+        </div>
+      )}
+      {hasPowers === false && <p className="hint">Los poderes y el turno de cada persona aparecen aquí cuando se aplique el cambio en la base de datos. Mientras tanto cada quien tiene los de su rol.</p>}
+      {powersFor && (
+        <div className="veil" onClick={() => setPowersFor(null)}>
+          <div className="dlg" onClick={(ev) => ev.stopPropagation()}>
+            <h3>Poderes de {powersFor.name}</h3>
+            <p>{ROLE[powersFor.act_role ?? ''] ?? 'Sin rol'}{powersFor.act_role === 'op' && powersFor.act_dept ? ' de ' + powersFor.act_dept : ''}. Marca lo que puede hacer además de trabajar su línea. Lo que no esté marcado no le sale en la pantalla.</p>
+            <div className="powers">{POWERS.map((x) => <label key={x.key}><input type="checkbox" checked={picked.includes(x.key)} onChange={(ev) => setPicked(ev.target.checked ? [...picked, x.key] : picked.filter((k) => k !== x.key))} /> {x.label}</label>)}</div>
+            <label>Turno <select value={shift} onChange={(ev) => setShift(Number(ev.target.value))}><option value={0}>Los dos turnos</option><option value={1}>Turno 1</option><option value={2}>Turno 2</option></select></label>
+            <p className="hint">Con un turno, el Reporte le abre en ese turno y solo corrige lo de su turno, salvo que tenga "Corregir lo del otro turno". Tiene que cerrar y abrir la app para que tome los cambios.</p>
+            <div className="dbtns spread">
+              <div className="btns"><button type="button" className="lnk" disabled={busy} onClick={() => { const t = powersFor; void call({ action: 'set_powers', id: t.id, powers: null, shift: shift || null }).then((ok) => { if (ok) setPowersFor(null) }) }}>Volver a los de su rol</button></div>
+              <div className="btns">
+                <button type="button" className="btn" onClick={() => setPowersFor(null)}>Cancelar</button>
+                <button type="button" className="btn primary" disabled={busy} onClick={() => { const t = powersFor; void call({ action: 'set_powers', id: t.id, powers: picked, shift: shift || null }).then((ok) => { if (ok) setPowersFor(null) }) }}>Guardar</button>
+              </div>
+            </div>
           </div>
         </div>
       )}

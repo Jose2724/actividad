@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { applyDraft, byLineName, byShip, CFG, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, setUnitOrder, splitStop, updateRun, updateStop, type Run, type State, type Stop } from './store'
 import { clockNow } from './clock'
-import { ConfirmDialog, LotsDialog } from './App'
+import { ConfirmDialog, LotsDialog, useCan } from './App'
 
 /** "HH:MM" of a moment */
 const hm = (ms: number) => { const d = new Date(ms); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') }
@@ -13,6 +13,7 @@ const hm = (ms: number) => { const d = new Date(ms); return String(d.getHours())
  * early can be reopened.
  */
 export function RunEditor({ s, run, mgr, onClose }: { s: State; run: Run; mgr: boolean; onClose: () => void }) {
+  const can = useCan()
   const cfg = CFG[run.dept]
   // how the form opened: saving applies only what was changed since, on top of what the run is by then
   const [opened] = useState(() => draftOf(run))
@@ -80,12 +81,12 @@ export function RunEditor({ s, run, mgr, onClose }: { s: State; run: Run; mgr: b
           </div>
         )}
         <p className="hint">Quita con ✕ una unidad tocada de más. Los cambios quedan al tocar Guardar.{later > 0 && ' Mientras corregías se ' + (later === 1 ? 'registró 1 ' + cfg.unit.toLowerCase() + ' más: se conserva.' : 'registraron ' + later + ' ' + cfg.plural.toLowerCase() + ' más: se conservan.')}</p>
-        {mgr && <p className="hint">Si la línea no estaba trabajando y se tocó por error, "Borrar corrida" la saca del reporte. Todo cambio queda en el historial con tu nombre.</p>}
+        {can('del') && <p className="hint">Si la línea no estaba trabajando y se tocó por error, "Borrar corrida" la saca del reporte. Todo cambio queda en el historial con tu nombre.</p>}
         {problem && <span className="err">{problem}</span>}
         <div className="dbtns spread">
           <div className="btns">
             {run.endedAt && <button type="button" className="btn" disabled={lineBusy} title={lineBusy ? 'La línea ya corre otro código' : ''} onClick={() => { updateRun(run.id, { endedAt: null }); onClose() }}>Reabrir código</button>}
-            {mgr && <button type="button" className="btn danger" onClick={() => setDropping(true)}>🗑 Borrar corrida</button>}
+            {can('del') && <button type="button" className="btn danger" onClick={() => setDropping(true)}>🗑 Borrar corrida</button>}
           </div>
           <div className="btns">
             <button type="button" className="btn" onClick={onClose}>Cancelar</button>
@@ -102,6 +103,7 @@ export function RunEditor({ s, run, mgr, onClose }: { s: State; run: Run; mgr: b
 
 /** Fixing a stop: its reason, its note, when it started and ended; or dropping one that was never real. */
 export function StopEditor({ stop, mgr, onClose }: { stop: Stop; mgr: boolean; onClose: () => void }) {
+  const can = useCan()
   const reasons = CFG[stop.dept].reasons
   const known = reasons.includes(stop.reason)
   // how the form opened: saving applies only what was changed since (a stop ended on the line meanwhile stays ended)
@@ -143,7 +145,7 @@ export function StopEditor({ stop, mgr, onClose }: { stop: Stop; mgr: boolean; o
         <div className="dbtns spread">
           <div className="btns">
             {mgr && <button type="button" className="lnk" onClick={() => setDividing(true)}>✂ Dividir en dos causas</button>}
-            {mgr && <button type="button" className="btn danger" onClick={() => setDropping(true)}>🗑 Borrar paro</button>}
+            {can('del') && <button type="button" className="btn danger" onClick={() => setDropping(true)}>🗑 Borrar paro</button>}
           </div>
           <div className="btns">
             <button type="button" className="btn" onClick={onClose}>Cancelar</button>

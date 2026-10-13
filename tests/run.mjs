@@ -1554,6 +1554,18 @@ mov.use((m) => {
   m.endStop(st().stops.find((x) => x.reason === 'Set up').id)
   eq('terminado ese Set up, sí', [m.moveRun(runOf('C300').id, L('Línea 2').id), runOf('C300').line, m.openRun(st(), L('Línea 2').id)?.code, m.openRun(st(), L('Línea 1').id)], [true, 'Línea 2', 'C300', undefined])
 })
+section('Poderes y turno de cada persona')
+calc.use((m) => {
+  const keys = m.POWERS.map((p) => p.key)
+  eq('la lista de poderes', keys, ['fix', 'del', 'goals', 'shifts', 'orders', 'day', 'depts', 'products', 'people', 'othershift'])
+  eq('lo que trae cada rol: la oficina todos, el manager todos menos corregir lo del otro turno, el operador ninguno', [m.defaultPowers('office').length, m.defaultPowers('mgr').length, m.defaultPowers('mgr').includes('othershift'), m.defaultPowers('op'), m.defaultPowers(null)], [10, 9, false, [], []])
+  eq('el dueño puede todo, tenga lo que tenga guardado', keys.every((p) => m.canDo({ role: 'op', admin: true, powers: [] }, p)), true)
+  eq('sin poderes guardados, cada quien tiene los de su rol', [m.canDo({ role: 'mgr' }, 'fix'), m.canDo({ role: 'mgr', powers: null }, 'people'), m.canDo({ role: 'op' }, 'fix'), m.canDo({ role: 'office' }, 'othershift')], [true, true, false, true])
+  eq('con poderes guardados, exactamente esos: a un operador se le da uno, a un manager se le quita otro', [m.canDo({ role: 'op', powers: ['fix'] }, 'fix'), m.canDo({ role: 'op', powers: ['fix'] }, 'del'), m.canDo({ role: 'mgr', powers: ['fix', 'goals'] }, 'del'), m.canDo({ role: 'mgr', powers: [] }, 'fix')], [true, false, false, false])
+  eq('lo que llega de la base de datos se limpia: solo poderes de verdad, una vez cada uno', [m.cleanPowers(['fix', 'volar', 'fix', 'del']), m.cleanPowers(null), m.cleanPowers('fix'), m.cleanPowers([]), [m.cleanShift(1), m.cleanShift('2'), m.cleanShift(null), m.cleanShift(7)]], [['fix', 'del'], null, null, [], [1, 2, 0, 0]])
+  eq('quien tiene turno corrige lo de su turno; lo del otro, solo con el poder', [m.canShift({ role: 'mgr', shift: 1 }, '1'), m.canShift({ role: 'mgr', shift: 1 }, '1 y 2'), m.canShift({ role: 'mgr', shift: 1 }, '2'), m.canShift({ role: 'mgr', shift: 1, powers: ['fix', 'othershift'] }, '2'), m.canShift({ role: 'mgr' }, '2'), m.canShift({ role: 'mgr', shift: 2, admin: true }, '1')], [true, true, false, true, true, true])
+  eq('si a la base de datos todavía le falta la columna, se reconoce para seguir como antes', [m.missingColumn({ code: '42703', message: 'column employees.act_powers does not exist' }), m.missingColumn({ message: "Could not find the 'act_shift' column of 'employees' in the schema cache", code: 'PGRST204' }), m.missingColumn({ message: 'JWT expired' }), m.missingColumn(null)], [true, true, false, false])
+})
 section('Terminar el turno en un departamento')
 const lea = await device('lea', { user: 'Santiago' })
 lea.use((m) => {
