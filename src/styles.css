@@ -419,7 +419,8 @@ tr.live td{background:#f1fbf5}
 .rtitle span{color:var(--muted);font-size:15px}
 .rtitle span::first-letter{text-transform:uppercase}
 .racts{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.rfilters{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px;display:grid;gap:12px}
+.rfilters{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px;display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+.rfilters>*,.rf-row>*{min-width:0}
 .rf-row{display:flex;flex-wrap:wrap;gap:12px}
 .rf{display:grid;gap:4px;min-width:0;align-content:start}
 .rf.grow{flex:1 1 220px;max-width:600px}
@@ -431,7 +432,7 @@ tr.live td{background:#f1fbf5}
 .rf select:disabled{opacity:.5}
 .daynav{display:flex;gap:6px;align-items:center}
 .daynav .btn{min-width:48px;padding:0 12px}
-.daynav input[type=date]{width:auto;min-width:0;flex:1 1 130px}
+.daynav input[type=date]{width:0;min-width:0;flex:1 1 110px;padding:0 8px}
 .seg{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:4px;background:var(--bg);border-radius:12px;padding:4px}
 .seg button{border:0;background:none;border-radius:9px;padding:5px 4px;min-height:48px;font-weight:700;font-size:15px;color:var(--muted);display:grid;justify-items:center;align-content:center;line-height:1.15;text-align:center}
 .seg button.on{background:var(--accent);color:var(--accent-ink);box-shadow:0 1px 3px rgba(0,0,0,.18)}
@@ -518,7 +519,8 @@ tr.lrow .drill{font-weight:600}
 .tc-clock.over{background:var(--bg)}
 .tc-clock.over span{color:var(--muted)}
 .report .totals{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
-.report .totals .stat small{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.report .totals .stat{grid-template-columns:minmax(0,1fr)}
+.report .totals .stat small{font-size:12px;color:var(--muted);line-height:1.25;white-space:normal}
 table.shiftgrid tr.sep td{background:var(--bg);color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding-top:5px;padding-bottom:5px;text-align:left}
 .how b{color:var(--ink)}
 /* the language of the screens: two letters, the one in use raised */

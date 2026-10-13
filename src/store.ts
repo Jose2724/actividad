@@ -144,7 +144,7 @@ function tidySchedule(sch: Schedule): Schedule {
 
 /** with a server the lines (and products) are shared and come from it; without one, each device starts with a line per room */
 const SERVER = !!import.meta.env.VITE_SUPABASE_URL
-function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: CFG[d].lineWord + ' 1', updatedAt: 0 })), runs: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], lineTargets: [], orders: [] } }
+function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], lineTargets: [], orders: [] } }
 function load(): State {
   try {
     type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[] }
@@ -336,7 +336,10 @@ export function noteLabel(note: string) { const a = /^Después de (.+)$/.exec(no
 /** "Línea 2" before "Línea 10" */
 export const byLineName = (a: Line, b: Line) => a.name.localeCompare(b.name, 'es', { numeric: true, sensitivity: 'base' })
 export const LINE_NAME_MAX = 24
-export const tidyLineName = (t: string) => t.replace(/\s+/g, ' ').trim().slice(0, LINE_NAME_MAX).trim()
+/** the word a room's lines are named with when the app names them: the name that is KEPT, the same in any language */
+const lineWordKept = (d: Dept) => (d === 'Kitchen' ? 'Braiser' : 'Línea')
+/** a name as it is kept: tidy, and with the app's own word for a line (somebody typing "Line 4" on an English screen means "Línea 4") */
+export const tidyLineName = (t: string) => (lang === 'en' ? t.trim().replace(/^Line(?=\s|$)/i, 'Línea') : t).replace(/\s+/g, ' ').trim().slice(0, LINE_NAME_MAX).trim()
 /** two names are the same line name whatever the capitals, accents or spaces: "linea  2" = "Línea 2" */
 const sameName = (a: string, b: string) => { const f = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toLowerCase(); return f(a) === f(b) }
 /** the line of that room that already has this name, other than `selfId` */
@@ -344,7 +347,7 @@ export const lineNamed = (s: State, dept: Dept, name: string, selfId?: string) =
 /** the standard names nobody has yet in a room ("Línea 1", "Línea 3"…), lowest first */
 export function freeLineNames(s: State, dept: Dept, count = 4): string[] {
   const out: string[] = []
-  for (let n = 1; out.length < count && n <= 99; n++) { const name = CFG[dept].lineWord + ' ' + n; if (!lineNamed(s, dept, name)) out.push(name) }
+  for (let n = 1; out.length < count && n <= 99; n++) { const name = lineWordKept(dept) + ' ' + n; if (!lineNamed(s, dept, name)) out.push(name) }
   return out
 }
 /** adds a line; without a name it takes the lowest standard one that is free. false = blank after tidying, or the name is taken */
@@ -728,8 +731,10 @@ export const clockText = (hm: string) => fmtTime(new Date(2000, 0, 1, Number(hm.
 /** "3:15 PM" for minute 915 of the day */
 export const minuteText = (m: number) => fmtTime(new Date(2000, 0, 1, Math.floor(m / 60), Math.floor(m % 60)).getTime())
 /** "6:00 AM a 3:00 PM": the hours of one shift */
-export const shiftHours = (h: ShiftHours, shift: 1 | 2) => (shift === 1 ? clockText(h.first) + ' a ' + clockText(h.firstEnd) : clockText(h.second) + ' a ' + clockText(h.secondEnd))
-export const shiftsText = (h: ShiftHours) => 'Turno 1 de ' + shiftHours(h, 1) + ' · Turno 2 de ' + shiftHours(h, 2)
+/** when a shift starts and when it ends, as two texts: "6:00 AM", "3:00 PM" */
+export const shiftSpan = (h: ShiftHours, shift: 1 | 2): [string, string] => (shift === 1 ? [clockText(h.first), clockText(h.firstEnd)] : [clockText(h.second), clockText(h.secondEnd)])
+export const shiftHours = (h: ShiftHours, shift: 1 | 2) => tr('{0} a {1}', ...shiftSpan(h, shift))
+export const shiftsText = (h: ShiftHours) => 'Turno 1 de ' + shiftSpan(h, 1).join(' a ') + ' · Turno 2 de ' + shiftSpan(h, 2).join(' a ')
 /** the manager sets the hours of the shifts from a date on (the same date again replaces what was set for it) */
 export function setShifts(from: string, h: ShiftHours): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || shiftsProblem(h)) return false

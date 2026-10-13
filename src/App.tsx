@@ -1,6 +1,6 @@
 import { createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
-import { addLine, addWaste, awayDay, byLineName, byShip, casesText, cancelDay, CFG, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineTargetOf, lotFor, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, numOf, openIn, openOrdersFor, openRun, openStop, orderCodes, orderLabel, orderMade, parseProductsCsv, plainDay, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reopenRun, reset, resetRecords, role, runQty, runStats, saveOrder, saveProduct, setLineTarget, setSchedule, setShifts, setTarget, startDay, startRun, startSetup, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, savedText, shiftAt, shiftCuts, shiftHours, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type LineTarget, type Product, type LotPart, type Order, type ShiftHours, type Short, type State, type Target, type WorkDay } from './store'
+import { addLine, addWaste, awayDay, byLineName, byShip, casesText, cancelDay, CFG, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineTargetOf, lotFor, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, numOf, openIn, openOrdersFor, openRun, openStop, orderCodes, orderLabel, orderMade, parseProductsCsv, plainDay, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reopenRun, reset, resetRecords, role, runQty, runStats, saveOrder, saveProduct, setLineTarget, setSchedule, setShifts, setTarget, startDay, startRun, startSetup, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, savedText, shiftAt, shiftCuts, shiftHours, shiftSpan, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type LineTarget, type Product, type LotPart, type Order, type ShiftHours, type Short, type State, type Target, type WorkDay } from './store'
 import { avanceRows, n1, pending, type AvanceRow } from './avance'
 import { cellText, loadZip, xDay, xDur, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 
@@ -98,7 +98,7 @@ function QrLink({ label }: { label: string }) {
  */
 function LineNameDialog({ s, dept, line, onClose }: { s: State; dept: Dept; line?: Line; onClose: () => void }) {
   const cfg = CFG[dept], word = cfg.lineWord.toLowerCase()
-  const [name, setName] = useState(line ? line.name : freeLineNames(s, dept, 1)[0] ?? '')
+  const [name, setName] = useState(lineLabel(line ? line.name : freeLineNames(s, dept, 1)[0] ?? ''))
   const tidy = tidyLineName(name)
   const taken = tidy ? lineNamed(s, dept, tidy, line?.id) : undefined
   const same = !!line && tidy === line.name
@@ -111,17 +111,17 @@ function LineNameDialog({ s, dept, line, onClose }: { s: State; dept: Dept; line
         <p>{line ? tr('El nombre nuevo sale en todo lo registrado en ella: la pantalla, el reporte y los archivos. Los tiempos no cambian.') : tr('¿Cuál es? Ponle el nombre que tiene en la planta.')}</p>
         <form className="qform" onSubmit={(e) => { e.preventDefault(); save() }}>
           <div className="chips">
-            {freeLineNames(s, dept, 4).map((n) => <button key={n} type="button" className={'chip' + (tidy === n ? ' on' : '')} onClick={() => setName(n)}>{n}</button>)}
-            {others.map((o) => <button key={o.id} type="button" className={'chip swap' + (taken?.id === o.id ? ' on' : '')} title={tr('Intercambiar con {0}', o.name)} onClick={() => setName(o.name)}>⇄ {o.name}</button>)}
+            {freeLineNames(s, dept, 4).map((n) => <button key={n} type="button" className={'chip' + (tidy === n ? ' on' : '')} onClick={() => setName(lineLabel(n))}>{lineLabel(n)}</button>)}
+            {others.map((o) => <button key={o.id} type="button" className={'chip swap' + (taken?.id === o.id ? ' on' : '')} title={tr('Intercambiar con {0}', lineLabel(o.name))} onClick={() => setName(lineLabel(o.name))}>⇄ {lineLabel(o.name)}</button>)}
           </div>
           <label>{tr('Nombre')}{' '}<input value={name} maxLength={LINE_NAME_MAX} onChange={(e) => setName(e.target.value)} autoComplete="off" placeholder={tr('ej. {0}', cfg.lineWord) + ' 2'} /></label>
           {taken && line && (
             <div className="swapbox">
-              <span>{trx('Ya hay una {0} en {1}. Se pueden intercambiar: esta pasa a llamarse {2} y la otra {3}.', <b>{taken.name}</b>, dept, <b>{taken.name}</b>, <b>{line.name}</b>)}</span>
+              <span>{trx('Ya hay una {0} en {1}. Se pueden intercambiar: esta pasa a llamarse {2} y la otra {3}.', <b>{lineLabel(taken.name)}</b>, dept, <b>{lineLabel(taken.name)}</b>, <b>{lineLabel(line.name)}</b>)}</span>
               <button type="button" className="btn primary" onClick={() => { if (swapLineNames(line.id, taken.id)) onClose() }}>{tr('⇄ Intercambiar nombres')}</button>
             </div>
           )}
-          {taken && !line && <span className="err">{trx('Ya hay una {0} en {1}. Elige otro nombre.', taken.name, dept)}</span>}
+          {taken && !line && <span className="err">{trx('Ya hay una {0} en {1}. Elige otro nombre.', lineLabel(taken.name), dept)}</span>}
           <div className="dbtns">
             <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
             <button type="submit" className="btn primary" disabled={!tidy || !!taken || same}>{line ? tr('✓ Guardar') : tr('+ Agregar')}</button>
@@ -380,7 +380,7 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
       <header className="top">
         <div className="brand"><h1>Actividad{!supabase && <span className="demotag">DEMO</span>}</h1><small>{new Date(now).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })}</small></div>
         <nav className="tabs">
-          <button type="button" className={tab === 'act' ? 'on' : ''} onClick={() => setTab('act')}>Actividad</button>
+          <button type="button" className={tab === 'act' ? 'on' : ''} onClick={() => setTab('act')}>{tr('Actividad')}</button>
           {can('products') && <button type="button" className={tab === 'av' ? 'on' : ''} onClick={() => setTab('av')}>{tr('Avance')}</button>}
           <button type="button" className={tab === 'rep' ? 'on' : ''} onClick={() => setTab('rep')}>{tr('Reporte')}</button>
           {can('people') && supabase && <button type="button" className={tab === 'emp' ? 'on' : ''} onClick={() => setTab('emp')}>{tr('Empleados')}</button>}
@@ -586,7 +586,7 @@ const hhmm = (ms: number) => { const d = new Date(ms); return String(d.getHours(
 const WIPE_WORD = 'BORRAR'
 const wipeOk = (typed: string) => typed.trim().toUpperCase() === WIPE_WORD
 /** "1 corrida y 0 paros", "12 corridas y 1 paro" */
-const howMany = (runs: number, stops: number) => runs + (runs === 1 ? ' ' + tr('corrida') : ' ' + tr('corridas')) + ' y ' + stops + (stops === 1 ? ' ' + tr('paro') : ' ' + tr('paros'))
+const howMany = (runs: number, stops: number) => tr('{0} y {1}', runs + ' ' + (runs === 1 ? tr('corrida') : tr('corridas')), stops + ' ' + (stops === 1 ? tr('paro') : tr('paros')))
 
 /** which day of work it is, for everyone; the manager starts it here */
 function DayBar({ s, now, day, mgr }: { s: State; now: number; day: WorkDay; mgr: boolean }) {
@@ -629,7 +629,7 @@ function StartDayDialog({ s, now, day, onClose, onDone }: { s: State; now: numbe
     if (!ok) return
     const r = startDay(time === opened && !was ? clockNow() : at, { date, finishLeft: lefts.length > 0 && left === 'finish', purge: wipe })
     onClose()
-    const did = [r.ended ? (r.ended === 1 ? tr('Se terminó 1 línea que había quedado corriendo.') : tr('Se terminaron {0} líneas que habían quedado corriendo.', r.ended)) : '', r.runs + r.stops ? tr('De las pruebas se {0}{1}', (r.runs + r.stops === 1 ? tr('borró') + ' ' : tr('borraron') + ' '), howMany(r.runs, r.stops)) + '.' : ''].filter(Boolean)
+    const did = [r.ended ? (r.ended === 1 ? tr('Se terminó 1 línea que había quedado corriendo.') : tr('Se terminaron {0} líneas que habían quedado corriendo.', r.ended)) : '', r.runs + r.stops ? (r.runs + r.stops === 1 ? tr('De las pruebas se borró {0}', howMany(r.runs, r.stops)) : tr('De las pruebas se borraron {0}', howMany(r.runs, r.stops))) + '.' : ''].filter(Boolean)
     onDone({ title: was ? tr('Día actualizado') : tr('Día empezado'), text: did.join(' ') || tr('Los totales, la meta y la fecha de hoy ya siguen este día') + (supabase ? ' ' + tr('en todas las tablets.') : ' ' + tr('en este aparato.')) })
   }
   return (
@@ -684,7 +684,7 @@ function WipeDayDialog({ s, date, onClose, onDone }: { s: State; date: string; o
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
         <h3>{trx('¿Borrar todo lo registrado el {0}?', longDate(date))}</h3>
         <p>{had.runs.length + had.stops.length === 1 ? tr('Es') + ' ' : tr('Son') + ' '}{howMany(had.runs.length, had.stops.length)}{trx('. Se quitan de todas las pantallas y reportes{0}. Sirve para limpiar un día de pruebas; desde la app no se puede recuperar.', supabase ? tr(', en todos los aparatos') : '')}</p>
-        <form className="qform" onSubmit={(e) => { e.preventDefault(); if (!wipeOk(word)) return; const r = purgeDay(date); onClose(); onDone({ title: tr('Día borrado'), text: tr('Del {0} se {1}{2}', longDate(date), (r.runs + r.stops === 1 ? tr('borró') + ' ' : tr('borraron') + ' '), howMany(r.runs, r.stops)) + '.' }) }}>
+        <form className="qform" onSubmit={(e) => { e.preventDefault(); if (!wipeOk(word)) return; const r = purgeDay(date); onClose(); onDone({ title: tr('Día borrado'), text: (r.runs + r.stops === 1 ? tr('Del {0} se borró {1}', longDate(date), howMany(r.runs, r.stops)) : tr('Del {0} se borraron {1}', longDate(date), howMany(r.runs, r.stops))) + '.' }) }}>
           <label>{trx('Escribe {0} para confirmar', WIPE_WORD)}{' '}<input value={word} onChange={(e) => setWord(e.target.value)} autoComplete="off" autoCapitalize="characters" placeholder={WIPE_WORD} /></label>
           <div className="dbtns">
             <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
@@ -1024,7 +1024,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   const fillLink = ended.length > 0 && (
     <button type="button" className="lnk" onClick={() => (ended.length === 1 ? setFilling(ended[0]) : setChoosing(true))}>
       
-      {trx('➕ Completar {0}', ended.length === 1 ? shortText(ended[0]) : tr('{0} de un código ya terminado', (cfg.saved.endsWith('a') ? 'una ' : 'un ') + unitWord))}
+      {trx('➕ Completar {0}', ended.length === 1 ? shortText(ended[0]) : (cfg.saved.endsWith('a') ? tr('una {0} de un código ya terminado', unitWord) : tr('un {0} de un código ya terminado', unitWord)))}
     </button>
   )
   const fixingRun = fixingId ? s.runs.find((r) => r.id === fixingId) : undefined
@@ -1250,7 +1250,7 @@ function EndDialog({ cfg, code, line, summary, lastAt, onMissing, onDone, onClos
         <p className="endask">{trx('¿Ya registraste {0}?', last)}</p>
         <div className="endyes">
           <button type="button" className="btn primary" disabled={next === null} onClick={() => next !== null && onDone(next)}>{tr('✓ Sí, terminar')}</button>
-          <button type="button" className="btn" disabled={next === null} onClick={() => next !== null && onMissing(next)}>{tr('＋ Falta: registrar')}{fem ? 'la' : 'lo'}</button>
+          <button type="button" className="btn" disabled={next === null} onClick={() => next !== null && onMissing(next)}>{fem ? tr('＋ Falta: registrarla') : tr('＋ Falta: registrarlo')}</button>
         </div>
         <div className="dbtns"><button type="button" className="lnk" onClick={onClose}>{tr('Cancelar')}</button></div>
       </div>
@@ -1410,7 +1410,7 @@ function LineTargetDialog({ line, unit, goal, onClose }: { line: Line; unit: str
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
-        <h3>{trx('Meta de {0} · {1}', line.name, line.dept)}</h3>
+        <h3>{trx('Meta de {0} · {1}', lineLabel(line.name), line.dept)}</h3>
         <p>{trx('Sale en la tarjeta de esta línea, en todas las tablets, y queda en el historial. Deja en blanco la que no aplique. El ritmo de la línea sale en rojo cuando baja de su meta por hora. La meta de todo {0} junto se pone arriba, en "Hoy en {1}".', line.dept, line.dept)}</p>
         <form onSubmit={(e) => { e.preventDefault(); setLineTarget(line, num(hour), num(whole)); onClose() }} className="qform">
           <label>{tr('Por hora')}{' '}<input inputMode="numeric" placeholder={tr('ej. 150 {0}', unit)} value={hour} onChange={(e) => setHour(e.target.value.replace(/\D/g, ''))} /></label>
@@ -1644,7 +1644,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
   const clear = () => { setFCode(''); setFLot(''); setFShift(0); setFDept('') }
   const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
   /** a shift's hours in two pieces that never break inside: "6:00 AM" and "a 3:00 PM" */
-  const hrs = (k: 1 | 2) => { const [from, ...to] = shiftHours(rep.plan, k).split(' a '); return <><span>{from}</span> <span>a {to.join(' a ')}</span></> }
+  const hrs = (k: 1 | 2) => { const [from, to] = shiftSpan(rep.plan, k); return <><span>{from}</span> <span>{tr('a {0}', to)}</span></> }
   const dash = (v: number) => (v ? fmtN(v) : '—')
   /** what a time that adds up the lines is the sum of: "suma de 3 líneas" */
   const linesText = (n: number) => (n === 1 ? tr('una línea') : tr('suma de {0} líneas', n))

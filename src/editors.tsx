@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { applyDraft, byLineName, byShip, CFG, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, setUnitOrder, splitStop, updateRun, updateStop, type Run, type State, type Stop } from './store'
+import { applyDraft, byLineName, byShip, CFG, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, setUnitOrder, splitStop, updateRun, updateStop, type Run, type State, type Stop, lineLabel } from './store'
 import { clockNow } from './clock'
 import { ConfirmDialog, LotsDialog, useCan } from './App'
 import { tr } from './i18n'
@@ -53,8 +53,8 @@ export function RunEditor({ s, run, mgr, onClose }: { s: State; run: Run; mgr: b
           {mgr && lines.length > 1 && (
             <label>{cfg.lineWord} <small>{tr('(si se registró en otra)')}</small>
               <select value={lineId} onChange={(e) => { setLineId(e.target.value); setProblem('') }}>
-                {!lines.some((l) => l.id === run.lineId) && <option value={run.lineId}>{run.line}</option>}
-                {lines.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+                {!lines.some((l) => l.id === run.lineId) && <option value={run.lineId}>{lineLabel(run.line)}</option>}
+                {lines.map((l) => <option key={l.id} value={l.id}>{lineLabel(l.name)}</option>)}
               </select>
             </label>
           )}
