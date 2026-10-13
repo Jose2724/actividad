@@ -317,6 +317,8 @@ tr.live td{background:#f1fbf5}
 table.byshift tr.daytotal td{font-weight:700;background:var(--bg)}
 table.byshift small{color:var(--muted);font-weight:500;white-space:nowrap}
 .tc-total small.tc-shifts{display:block}
+/* what each shift made, in the small line under today's total: small numbers, not the size of the total */
+.tc-total small b{font-size:inherit;line-height:inherit;color:var(--ink)}
 /* the line's own goal on its card */
 .linegoal{display:flex;flex-wrap:wrap;gap:2px 16px;align-items:baseline;font-size:14px;color:var(--muted)}
 .linegoal b{color:var(--ink);font-variant-numeric:tabular-nums}
@@ -356,11 +358,13 @@ table.byshift small{color:var(--muted);font-weight:500;white-space:nowrap}
 .tile small{font-size:12px;font-weight:600;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tile small.red{color:var(--warn)}
 .tile.main{background:var(--soft)}
-.tile.main b{color:var(--accent);font-size:26px;line-height:1}
+.tile.main b{color:var(--accent);font-size:28px;line-height:1.05}
 .tile.bumped{background:#d9f2e2}
 .tile.bumped b{color:var(--ok);transform-origin:left center;animation:bump .6s ease-out}
-.subline{margin:-4px 2px 0;font-size:13px;color:var(--muted)}
-.subline b{color:var(--ink)}
+/* with a quantity there are four tiles: two by two on a narrow card, the count and the quantity on top and both big */
+.tiles.four{grid-template-columns:repeat(2,minmax(0,1fr))}
+.tile.main small{white-space:normal;line-height:1.2}
+.tile b{overflow:hidden;text-overflow:ellipsis}
 .btn.huge{min-height:58px;width:100%;flex:none}
 .btn.slim{min-height:42px;width:100%;font-size:14.5px;white-space:normal;line-height:1.15;padding:6px 10px}
 .btn.sm{min-height:40px;padding:0 12px;font-size:14px}
@@ -398,8 +402,9 @@ table.byshift small{color:var(--muted);font-weight:500;white-space:nowrap}
   .tc-code{flex:none}
   .tile{padding:8px}
   .tile b{font-size:20px}
-  .tile.main b{font-size:24px}
+  .tile.main b{font-size:28px}
 }
 /* a narrow card (a phone, or three cards side by side): the short word on the button */
 .line{container-type:inline-size;container-name:line}
 @container line (max-width:430px){.acts2 .opt{display:none}}
+@container line (min-width:500px){.tiles.four{grid-template-columns:repeat(4,minmax(0,1fr))}}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, Ref } from 'react'
-import { addLine, addWaste, awayDay, byLineName, byShip, casesText, cancelDay, CFG, closeOrder, codeProblem, CRATES_PER_CART, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineNamed, lineNameOf, lineTargetOf, lotFor, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, numOf, openIn, openOrdersFor, openRun, openStop, orderCodes, orderLabel, orderMade, parseProductsCsv, plainDay, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reopenRun, reset, resetRecords, role, runQty, runStats, saveOrder, saveProduct, setLineTarget, setSchedule, setShifts, setTarget, startDay, startRun, startSetup, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, savedText, shiftCuts, shiftHours, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type LineTarget, type Product, type LotPart, type Order, type ShiftHours, type Short, type State, type Target, type WorkDay } from './store'
+import { addLine, addWaste, awayDay, byLineName, byShip, casesText, cancelDay, CFG, closeOrder, codeProblem, CRATES_PER_CART, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineNamed, lineNameOf, lineTargetOf, lotFor, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, numOf, openIn, openOrdersFor, openRun, openStop, orderCodes, orderLabel, orderMade, parseProductsCsv, plainDay, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reopenRun, reset, resetRecords, role, runQty, runStats, saveOrder, saveProduct, setLineTarget, setSchedule, setShifts, setTarget, startDay, startRun, startSetup, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, savedText, shiftAt, shiftCuts, shiftHours, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type LineTarget, type Product, type LotPart, type Order, type ShiftHours, type Short, type State, type Target, type WorkDay } from './store'
 import { avanceRows, n1, pending, type AvanceRow } from './avance'
 import { cellText, loadZip, xDay, xDur, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 
@@ -190,7 +190,7 @@ function ServerApp() {
   if (me === 'none') return <NoRole onOut={out} onRetry={verify} />
   const home = isDept(me.dept) ? me.dept : DEPTS[0]
   if (me.role === 'op' && !isDept(me.dept)) return <NoRole onOut={out} onRetry={verify} text={'Tu usuario está en Actividad pero sin departamento. Pide al manager que te asigne uno.'} />
-  return <Main name={me.name} home={home} mgr={me.role !== 'op'} admin={!!me.admin} meId={me.id} onLogout={() => void out()} />
+  return <Main name={me.name} home={home} mgr={me.role !== 'op'} admin={!!me.admin} wholeDay={!!me.admin || me.role === 'office'} meId={me.id} onLogout={() => void out()} />
 }
 
 /**
@@ -343,7 +343,7 @@ function Gate({ dept, mgr, onDept, onManager, onName, onBack }: { dept: Dept | n
   )
 }
 
-function Main({ name, home, mgr, admin, meId, onLogout }: { name: string; home: Dept; mgr: boolean; admin: boolean; meId?: string; onLogout: () => void }) {
+function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: string; home: Dept; mgr: boolean; admin: boolean; wholeDay?: boolean; meId?: string; onLogout: () => void }) {
   const s = useSyncExternalStore(store.subscribe, store.get)
   const now = useNow()
   const day = workDay(s, now)
@@ -393,7 +393,7 @@ function Main({ name, home, mgr, admin, meId, onLogout }: { name: string; home: 
           <DeptPanel key={dept} s={s} dept={mgr ? dept : home} now={now} mgr={mgr} day={day} />
         </div>
         </>
-      ) : tab === 'av' && mgr ? <Avance s={s} /> : tab === 'emp' && mgr && supabase ? <Employees meId={meId ?? ''} admin={admin} /> : <Report s={s} now={now} only={mgr ? undefined : home} mgr={mgr} admin={admin} />}
+      ) : tab === 'av' && mgr ? <Avance s={s} /> : tab === 'emp' && mgr && supabase ? <Employees meId={meId ?? ''} admin={admin} /> : <Report s={s} now={now} only={mgr ? undefined : home} mgr={mgr} admin={admin} wholeDay={!!wholeDay} />}
     </div>
   )
 }
@@ -1157,13 +1157,14 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       {stop && <div className="stopbar">⏸ <b>{stop.reason}</b>{stop.note && ' · ' + stop.note} · <b>{fmtDur(stopTime(s, stop, now))}</b>{stop.lineId === null && ' · todo el departamento'}{mgr && stop.lineId === line.id && <button type="button" className="lnk sm" onClick={() => setFixingStop(true)}>Corregir</button>}</div>}
       {fixing && <RunEditor s={s} run={run} mgr={mgr} onClose={() => setFixing(false)} />}
       {fixingStop && stop && <StopEditor stop={stop} mgr={mgr} onClose={() => setFixingStop(false)} />}
-      {/* three numbers, each with the one that goes with it: what is made, the unit in hand, the time */}
-      <div className="tiles">
-        <div key={'n' + (just?.at ?? 0)} className={'tile main' + lit}><label>{cfg.plural}</label><b>{run.units.length}</b><small>{cfg.qty !== 'none' ? fmtN(st.qty) + ' ' + cfg.qtyUnit : '\u00a0'}</small></div>
+      {/* what is made, big: how many units and how much they carry (with its cases, where pouches are counted); then the
+          unit in hand with its average, and the time worked with the time stopped */}
+      <div className={'tiles' + (cfg.qty !== 'none' ? ' four' : '')}>
+        <div key={'n' + (just?.at ?? 0)} className={'tile main' + lit}><label>{cfg.plural}</label><b>{run.units.length}</b></div>
+        {cfg.qty !== 'none' && <div key={'q' + (just?.at ?? 0)} className={'tile main' + lit}><label>{cfg.qtyUnit}</label><b>{fmtN(st.qty)}</b>{cases && <small>{casesText(cases)}</small>}</div>}
         <div className="tile"><label>{(cfg.saved.endsWith('a') ? 'Esta ' : 'Este ') + unitWord}</label><b>{fmtDur(current)}</b><small>prom. {run.units.length ? fmtDur(st.avg) : '—'}</small></div>
         <div className="tile"><label>Trabajando</label><b>{fmtDur(st.working)}</b><small className={st.down ? 'red' : ''}>parado {fmtDur(st.down)}</small></div>
       </div>
-      {cases && <div className="subline">{fmtN(st.qty)} {cfg.qtyUnit} = <b>{casesText(cases)}</b></div>}
       <button type="button" className={'btn primary huge' + (just ? ' saved' : '')} disabled={!!just} onClick={done}>✓ {just ? savedText(line.dept, just.n) : cfg.done}</button>
       {own && <button type="button" className="btn slim" onClick={() => setFilling(own)}>➕ Completar {unitWord + (own.run.id === run.id ? ' ' + (own.index + 1) : ' de antes')} · tiene {own.unit.qty} de {own.usual}</button>}
       <div className="acts2">
@@ -1459,7 +1460,10 @@ function SendDialog({ files, subject, onClose }: { files: Record<Kind, File>; su
   )
 }
 
-function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: Dept; mgr: boolean; admin: boolean }) {
+/** the shift somebody chose to look at in the report, kept while the app stays open (null = none chosen: the report decides) */
+let shiftChosen: 0 | 1 | 2 | null = null
+
+function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number; only?: Dept; mgr: boolean; admin: boolean; wholeDay: boolean }) {
   const [date, setDate] = useState(() => workDay(s).date)
   const [wiping, setWiping] = useState(false)
   const [resetting, setResetting] = useState(false)
@@ -1474,7 +1478,13 @@ function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: De
   const [preparing, setPreparing] = useState(false)
   const [fCode, setFCode] = useState('')
   const [fLot, setFLot] = useState('')
-  const [fShift, setFShift] = useState<0 | 1 | 2>(0)
+  // The people of a shift open the report on their own shift: the one in course, on the day in course. The other shift
+  // and the whole day are one choice away, and what they choose stays while the app is open. The office and the owner
+  // open it on the whole day, and so does anybody looking at another date.
+  const [shiftPick, setShiftPick] = useState<0 | 1 | 2 | null>(shiftChosen)
+  const ownShift: 0 | 1 | 2 = !wholeDay && date === workDay(s, now).date ? shiftAt(shiftsOf(s, date), now) : 0
+  const fShift = shiftPick ?? ownShift
+  const setFShift = (k: 0 | 1 | 2) => { shiftChosen = k; setShiftPick(k) }
   const [shiftsOpen, setShiftsOpen] = useState(false)
   // long lists show ten lines at a time (the files always carry everything)
   const [more, setMore] = useState<Record<string, number>>({})
@@ -1599,7 +1609,8 @@ function Report({ s, now, only, mgr, admin }: { s: State; now: number; only?: De
       <DayNote day={day} />
       <p className="shiftnote">Turno 1: <b>{shiftHours(rep.plan, 1)}</b> · Turno 2: <b>{shiftHours(rep.plan, 2)}</b>{mgr && <> <button type="button" className="lnk" onClick={() => setShiftsOpen(true)}>Cambiar horario</button></>}</p>
       {shiftsOpen && <ShiftsDialog s={s} date={date} onClose={() => setShiftsOpen(false)} />}
-      {rep.filtered && <p className="filternote">Reporte filtrado{filterTitle(rep.code, rep.lot, rep.shift)}. El Excel, el CSV, el PDF y "Enviar reporte" salen con este filtro.{rep.lot && !rep.shift && ' Los tiempos y el waste son los de las corridas completas.'}{!!rep.shift && ' Un código que pasó de un turno al otro sale aquí con lo que hizo en este turno; su waste se reparte según lo hecho en cada uno.'} <button type="button" className="lnk" onClick={() => { setFCode(''); setFLot(''); setFShift(0) }}>Quitar filtros</button></p>}
+      {!!rep.shift && shiftPick === null && !rep.code && !rep.lot && <p className="filternote">Estás viendo tu turno, el <b>Turno {rep.shift}</b>. Para ver el otro turno o el día completo, cámbialo arriba donde dice "Turno {rep.shift}". Los archivos salen con lo que estés viendo. <button type="button" className="lnk" onClick={() => setFShift(0)}>Ver los dos turnos</button></p>}
+      {rep.filtered && !(shiftPick === null && !rep.code && !rep.lot) && <p className="filternote">Reporte filtrado{filterTitle(rep.code, rep.lot, rep.shift)}. El Excel, el CSV, el PDF y "Enviar reporte" salen con este filtro.{rep.lot && !rep.shift && ' Los tiempos y el waste son los de las corridas completas.'}{!!rep.shift && ' Un código que pasó de un turno al otro sale aquí con lo que hizo en este turno; su waste se reparte según lo hecho en cada uno.'} <button type="button" className="lnk" onClick={() => { setFCode(''); setFLot(''); setFShift(0) }}>Quitar filtros</button></p>}
       <div className="totals">
         <div className="stat"><label>Códigos</label><b>{rows.length}</b></div>
         <div className="stat"><label>Trabajando</label><b>{fmtDur(working)}</b></div>
