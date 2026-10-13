@@ -82,6 +82,7 @@ function LangSwitch() {
   const pick = (l: 'es' | 'en') => { if (l !== lang) { saveLang(l); location.reload() } }
   return (
     <span className="langsw" role="group" aria-label="Idioma / Language">
+      <span className="globe" aria-hidden="true">🌐</span>
       <button type="button" className={lang === 'es' ? 'on' : ''} aria-pressed={lang === 'es'} title="Español" onClick={() => pick('es')}>ES</button>
       <button type="button" className={lang === 'en' ? 'on' : ''} aria-pressed={lang === 'en'} title="English" onClick={() => pick('en')}>EN</button>
     </span>
@@ -385,7 +386,7 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
           <button type="button" className={tab === 'rep' ? 'on' : ''} onClick={() => setTab('rep')}>{tr('Reporte')}</button>
           {can('people') && supabase && <button type="button" className={tab === 'emp' ? 'on' : ''} onClick={() => setTab('emp')}>{tr('Empleados')}</button>}
         </nav>
-        <div className="me"><SyncDot /> {name} · {mgr ? tr('Manager') : home} {mgr && <QrLink label="QR" />}<LangSwitch /><button type="button" className="lnk" onClick={() => setLeaving(true)}>{supabase ? tr('Salir') : tr('Cambiar')}</button></div>
+        <div className="me"><SyncDot /> <span className="who">{name}</span><span className="where">{mgr ? tr('Manager') : home}</span> {mgr && <QrLink label="QR" />}<LangSwitch /><button type="button" className="lnk" onClick={() => setLeaving(true)}>{supabase ? tr('Salir') : tr('Cambiar')}</button></div>
       </header>
       {leaving && <LeaveDialog onYes={() => { setLeaving(false); onLogout() }} onNo={() => setLeaving(false)} />}
       {tab === 'act' ? (
