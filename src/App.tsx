@@ -1,6 +1,6 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import type { InputHTMLAttributes, Ref } from 'react'
-import { addLine, addWaste, awayDay, byLineName, byShip, casesText, cancelDay, CFG, closeOrder, codeProblem, CRATES_PER_CART, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineNamed, lineNameOf, lineTargetOf, lotFor, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, numOf, openIn, openOrdersFor, openRun, openStop, orderCodes, orderLabel, orderMade, parseProductsCsv, plainDay, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reopenRun, reset, resetRecords, role, runQty, runStats, saveOrder, saveProduct, setLineTarget, setSchedule, setShifts, setTarget, startDay, startRun, startSetup, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, savedText, shiftAt, shiftCuts, shiftHours, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type LineTarget, type Product, type LotPart, type Order, type ShiftHours, type Short, type State, type Target, type WorkDay } from './store'
+import { createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
+import { addLine, addWaste, awayDay, byLineName, byShip, casesText, cancelDay, CFG, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineNamed, lineNameOf, lineTargetOf, lotFor, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, numOf, openIn, openOrdersFor, openRun, openStop, orderCodes, orderLabel, orderMade, parseProductsCsv, plainDay, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reopenRun, reset, resetRecords, role, runQty, runStats, saveOrder, saveProduct, setLineTarget, setSchedule, setShifts, setTarget, startDay, startRun, startSetup, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, savedText, shiftAt, shiftCuts, shiftHours, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type LineTarget, type Product, type LotPart, type Order, type ShiftHours, type Short, type State, type Target, type WorkDay } from './store'
 import { avanceRows, n1, pending, type AvanceRow } from './avance'
 import { cellText, loadZip, xDay, xDur, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 
@@ -685,6 +685,8 @@ function WipeDayDialog({ s, date, onClose, onDone }: { s: State; date: string; o
 }
 
 /** "lun, 12 oct": a date said short */
+/** the date some days before or after another */
+const addDays = (date: string, n: number) => { const d = new Date(date + 'T12:00:00'); d.setDate(d.getDate() + n); return dayOf(d.getTime()) }
 const shortDay = (date: string) => new Date(date + 'T12:00:00').toLocaleDateString('es', { weekday: 'short', day: 'numeric', month: 'short' })
 /** "15 oct" */
 const shipText = (date: string) => new Date(date + 'T12:00:00').toLocaleDateString('es', { day: 'numeric', month: 'short' })
@@ -1470,6 +1472,8 @@ function SendDialog({ files, subject, onClose }: { files: Record<Kind, File>; su
 
 /** the shift somebody chose to look at in the report, kept while the app stays open (null = none chosen: the report decides) */
 let shiftChosen: 0 | 1 | 2 | null = null
+/** the room a manager chose to look at in the report, kept the same way ('' = all of them) */
+let deptChosen: Dept | '' = ''
 
 function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number; only?: Dept; mgr: boolean; admin: boolean; wholeDay: boolean }) {
   const can = useCan(), who = useWho()
@@ -1487,6 +1491,11 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
   const [preparing, setPreparing] = useState(false)
   const [fCode, setFCode] = useState('')
   const [fLot, setFLot] = useState('')
+  // the room a manager looks at (the people of one room see only theirs)
+  const [fDept, setDeptPick] = useState<Dept | ''>(only ? '' : deptChosen)
+  const setFDept = (d: Dept | '') => { deptChosen = d; setDeptPick(d) }
+  // the long lists at the bottom open with a tap
+  const [shut, setShut] = useState<Record<string, boolean>>({ units: true, changes: true })
   // The people of a shift open the report on their own shift: the one saved for them, or else the one in course on the
   // day in course. The other shift
   // and the whole day are one choice away, and what they choose stays while the app is open. The office and the owner
@@ -1498,7 +1507,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
   const [shiftsOpen, setShiftsOpen] = useState(false)
   // long lists show ten lines at a time (the files always carry everything)
   const [more, setMore] = useState<Record<string, number>>({})
-  useEffect(() => { setMore({}) }, [date, fCode, fLot, fShift])
+  useEffect(() => { setMore({}) }, [date, fCode, fLot, fShift, fDept])
   const PAGE = 10
   const cut = <T,>(key: string, list: T[]) => list.slice(0, more[key] ?? PAGE)
   const moreBar = (key: string, total: number) => {
@@ -1532,16 +1541,17 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
     } catch (e) { failed('abrir el PDF', e) }
   }
   // what the report holds, with the filter by code, by lot and by shift when one is chosen (the same for the screen and every file)
-  const filter: ReportFilter = { only, code: fCode, lot: fLot, shift: fShift }
+  const dept: Dept | undefined = only ?? (fDept || undefined)
+  const filter: ReportFilter = { only: dept, code: fCode, lot: fLot, shift: fShift }
   const rep = reportOf(s, date, now, filter)
   const { runs, stops, rows, unitRows, working, down, byCode, setup } = rep
   const withOrders = unitRows.some((x) => x.order) // a column says the order of each pallet when any has one
   const unitsText = (dept: Dept, n: number) => n + ' ' + (n === 1 ? CFG[dept].unit : CFG[dept].plural).toLowerCase()
   const reasonsText = (x: (typeof rows)[number]) => Object.entries(x.st.reasons).map(([k, v]) => k + ' ' + fmtDur(v)).join(', ')
   const lineName = (x: { lineId: string | null; dept: Dept }) => (x.lineId === null ? 'Todo ' + x.dept : s.lines.find((l) => l.id === x.lineId)?.name ?? s.runs.find((r) => r.lineId === x.lineId)?.line ?? 'línea')
-  const fileName = 'actividad-' + (only ? only.toLowerCase() + '-' : '') + date + filterFile(rep.code, rep.lot, rep.shift)
+  const fileName = 'actividad-' + (dept ? dept.toLowerCase() + '-' : '') + date + filterFile(rep.code, rep.lot, rep.shift)
   // the history of that day (corrections, products, program, lines): the manager's and the office's
-  const changes = mgr && !rep.filtered ? s.changes.filter((c) => !c.deleted && plainDay(s, c.at) === date && (!only || c.dept === only)).sort((a, b) => a.at - b.at) : []
+  const changes = mgr && !rep.filtered ? s.changes.filter((c) => !c.deleted && plainDay(s, c.at) === date && (!dept || c.dept === dept)).sort((a, b) => a.at - b.at) : []
   /** the report's three files, made at once; null while what makes them has not come down yet */
   const filesNow = (): Record<Kind, File> | null => {
     const doc = buildPdf(s, date, now, user.get(), filter), bytes = xlsxNow(sheets())
@@ -1569,6 +1579,8 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
     const boxes = (c: (typeof byCode)[number]) => (CFG[c.dept].qtyUnit === 'pouches' ? inCases(s, c.code, c.qty) : null)
     const porCodigo: Cell[][] = [['Departamento', 'Código', 'Unidad', 'Hechas', 'Cantidad', 'Unidad de cantidad', 'Waste (lb)', 'Líneas', 'Cajas completas', 'Pouches sueltos', ...(rep.shift ? [] : ['Turno 1', 'Turno 2'])],
       ...byCode.map((c): Cell[] => [c.dept, c.code, CFG[c.dept].unit, c.units, CFG[c.dept].qty !== 'none' ? c.qty : '', CFG[c.dept].qty !== 'none' ? CFG[c.dept].qtyUnit : '', c.waste || '', c.lines.join(', '), boxes(c)?.cases ?? '', boxes(c)?.loose ?? '', ...(c.byShift ?? [])])]
+    const porLote: Cell[][] = [['Departamento', 'Código', 'Lote', 'Unidad', 'Hechas', 'Cantidad', 'Unidad de cantidad', ...(rep.shift ? [] : ['Turno 1', 'Turno 2'])],
+      ...byCode.flatMap((c) => c.lots.map((l): Cell[] => [c.dept, c.code, l.lot, CFG[c.dept].unit, l.units, CFG[c.dept].qty !== 'none' ? l.qty : '', CFG[c.dept].qty !== 'none' ? CFG[c.dept].qtyUnit : '', ...(l.byShift ?? [])]))]
     const unidades: Cell[][] = [['Departamento', 'Línea', 'Código', 'Lote', '#', 'Hora', 'Unidad', 'Cantidad', 'Unidad de cantidad', 'Tag / bin', 'Desde la anterior', 'Registró', 'Turno', 'Pedido'],
       ...unitRows.map((x): Cell[] => [x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.lot, x.i + 1, T(x.u.at), CFG[x.r.dept].unit, x.qty ?? '', x.qty != null ? CFG[x.r.dept].qtyUnit : '', x.u.ref, D(x.gap), x.u.by, x.shift, x.order])]
     const paros: Cell[][] = [['Departamento', 'Línea', 'Razón', 'Detalle', 'Inicio', 'Fin', 'Duración', 'Registró', 'Turno'],
@@ -1577,15 +1589,15 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
     const porTurno: Cell[][] = [['Departamento', 'Turno', 'Horario', 'Códigos', 'Hechas', 'Unidad', 'Cantidad', 'Unidad de cantidad', 'Waste (lb)', 'Tiempo trabajando', 'Tiempo parado', 'Set up'],
       ...rep.byShift.flatMap((d) => [d.day, d.first, d.second].map((x): Cell[] => [d.dept, x.shift ? 'Turno ' + x.shift : 'Total del día', x.shift ? shiftHours(rep.plan, x.shift) : '', x.codes, x.units, CFG[d.dept].unit, CFG[d.dept].qty !== 'none' ? x.qty : '', CFG[d.dept].qty !== 'none' ? CFG[d.dept].qtyUnit : '', x.waste || '', D(x.working), D(x.down), x.setup ? D(x.setup) : '']))]
     const cambios: Cell[][] = [['Hora', 'Quién', 'Departamento', 'Qué', 'Antes', 'Después'], ...changes.map((c): Cell[] => [T(c.at), c.by, c.dept ?? '', c.what, c.before, c.after])]
-    const av = mgr && !only && !rep.filtered ? avanceRows(s, date) : []
+    const av = mgr && !dept && !rep.filtered ? avanceRows(s, date) : []
     const avance: Cell[][] = [['Código', 'Producto', 'Mezclas progr.', 'Mezclas hechas', 'Mezclas pend.', 'Spiral', 'Pouches progr.', 'Pouches esper.', 'Pouches hechos', 'Pouches pend.', 'Pouches faltan', 'Cajas progr.', 'Cajas esper.', 'Cajas hechas', 'Cajas pend.', 'Cajas faltan', 'MFO cajas', 'Pallets progr.', 'Pallets esper.', 'Pallets hechos', 'Waste lb'],
       ...av.map((r): Cell[] => [r.code, r.product?.name ?? '', r.scheduled, r.mixesDone, r.mixesPending, r.spiralDone, r.pouchesPlan, r.pouchesExp, r.pouchesDone, pending(r.pouchesExp, r.pouchesDone), pending(r.pouchesPlan, r.pouchesDone), r.casesPlan, r.casesExp, r.casesDone, pending(r.casesExp, r.casesDone), pending(r.casesPlan, r.casesDone), r.mfoCases, r.palletsPlan, r.palletsExp, r.palletsDone, r.wasteLb])]
-    return { resumen, porTurno, porCodigo, unidades, paros, cambios, avance }
+    return { resumen, porTurno, porCodigo, porLote, unidades, paros, cambios, avance }
   }
   /** the Excel file's sheets: one per table (Cambios and Avance only for the manager and the office) */
   const sheets = (): Sheet[] => {
     const b = blocks()
-    return [{ name: 'Resumen', rows: b.resumen }, ...(b.porTurno.length > 1 ? [{ name: 'Por turno', rows: b.porTurno }] : []), { name: 'Por código', rows: b.porCodigo }, { name: 'Unidades', rows: b.unidades }, { name: 'Paros', rows: b.paros }, ...(mgr ? [{ name: 'Cambios', rows: b.cambios }] : []), ...(b.avance.length > 1 ? [{ name: 'Avance', rows: b.avance }] : [])]
+    return [{ name: 'Resumen', rows: b.resumen }, ...(b.porTurno.length > 1 ? [{ name: 'Por turno', rows: b.porTurno }] : []), { name: 'Por código', rows: b.porCodigo }, { name: 'Por lote', rows: b.porLote }, { name: 'Unidades', rows: b.unidades }, { name: 'Paros', rows: b.paros }, ...(mgr ? [{ name: 'Cambios', rows: b.cambios }] : []), ...(b.avance.length > 1 ? [{ name: 'Avance', rows: b.avance }] : [])]
   }
   const excel = async () => {
     try {
@@ -1599,53 +1611,212 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
     const q = (c: Cell) => '"' + cellText(c).replace(/"/g, '""') + '"'
     const b = blocks()
     const tag = (title: string, t: Cell[][]) => t.map((r, i): Cell[] => (i === 0 ? ['', title, ...r] : ['', '', ...r]))
-    const all: Cell[][] = [...b.resumen, ...(b.porTurno.length > 1 ? [[], ...tag('POR TURNO', b.porTurno)] : []), [], ...tag('POR CÓDIGO', b.porCodigo), [], ...tag('UNIDADES', b.unidades), [], ...tag('PAROS', b.paros), ...(mgr ? [[], ...tag('CAMBIOS', b.cambios)] : []), ...(b.avance.length > 1 ? [[], ...tag('AVANCE', b.avance)] : [])]
+    const all: Cell[][] = [...b.resumen, ...(b.porTurno.length > 1 ? [[], ...tag('POR TURNO', b.porTurno)] : []), [], ...tag('POR CÓDIGO', b.porCodigo), [], ...tag('POR LOTE', b.porLote), [], ...tag('UNIDADES', b.unidades), [], ...tag('PAROS', b.paros), ...(mgr ? [[], ...tag('CAMBIOS', b.cambios)] : []), ...(b.avance.length > 1 ? [[], ...tag('AVANCE', b.avance)] : [])]
     return '\ufeff' + all.map((r) => r.map(q).join(',')).join('\r\n')
   }
+  // ---- what the screen needs besides the report itself ----
+  const today = workDay(s, now).date
+  // the rooms a manager can choose among: the ones with something recorded that day
+  const depts = only ? [] : DEPTS.filter((d) => d === fDept || s.runs.some((r) => r.date === date && r.dept === d))
+  // what is chosen, said in words (the filters add up: any of them with any other)
+  const active = [!only && dept ? dept : '', rep.shift ? 'Turno ' + rep.shift + (shiftPick === null ? (who.shift ? ' (tu turno)' : ' (en curso)') : '') : '', rep.code ? 'Código ' + rep.code : '', rep.lot ? 'Lote ' + rep.lot : ''].filter(Boolean)
+  const clear = () => { setFCode(''); setFLot(''); setFShift(0); setFDept('') }
+  const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
+  /** a shift's hours in two pieces that never break inside: "6:00 AM" and "a 3:00 PM" */
+  const hrs = (k: 1 | 2) => { const [from, ...to] = shiftHours(rep.plan, k).split(' a '); return <><span>{from}</span> <span>a {to.join(' a ')}</span></> }
+  const dash = (v: number) => (v ? fmtN(v) : '—')
+  /** the title of a list that opens and closes */
+  const secHead = (key: string, title: string, count: number) => (
+    <div className="sechead">
+      <h3>{title} · {count}</h3>
+      <button type="button" className="lnk sm" aria-expanded={!shut[key]} onClick={() => setShut({ ...shut, [key]: !shut[key] })}>{shut[key] ? 'Mostrar ▾' : 'Ocultar ▴'}</button>
+    </div>
+  )
+  const colsN = 7 + (rep.shift ? 0 : 2)
   return (
     <section className="report">
       <div className="rhead">
-        <h2>Reporte del día{only ? ' · ' + only : ''}</h2>
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-        {rep.codes.length > 0 && <select className="rfilter" value={rep.code} onChange={(e) => setFCode(e.target.value)} aria-label="Filtrar por código"><option value="">Todos los códigos</option>{rep.codes.map((c) => <option key={c} value={c}>Código {c}</option>)}</select>}
-        {rep.lots.length > 0 && <select className="rfilter" value={rep.lot} onChange={(e) => setFLot(e.target.value)} aria-label="Filtrar por lote"><option value="">Todos los lotes</option>{rep.lots.map((l) => <option key={l} value={l}>Lote {l}</option>)}</select>}
-        <select className="rfilter" value={rep.shift} onChange={(e) => setFShift(Number(e.target.value) as 0 | 1 | 2)} aria-label="Filtrar por turno"><option value={0}>Los dos turnos</option><option value={1}>Turno 1</option><option value={2}>Turno 2</option></select>
-        <button type="button" className="btn" onClick={() => void excel()} disabled={!rows.length}>⬇ Excel</button>
-        <button type="button" className="lnk" onClick={csv} disabled={!rows.length}>CSV</button>
-        <button type="button" className="btn" onClick={() => void pdf()} disabled={!rows.length}>📄 Ver PDF / imprimir</button>
-        <button type="button" className="btn primary" onClick={() => void send()} disabled={!rows.length || preparing}>{preparing ? 'Preparando…' : '✉ Enviar reporte'}</button>
+        <div className="rtitle"><h2>Reporte del día{only ? ' · ' + only : ''}</h2><span>{longDate(date)}</span></div>
+        <div className="racts">
+          <button type="button" className="btn primary" onClick={() => void send()} disabled={!rows.length || preparing}>{preparing ? 'Preparando…' : <>✉ Enviar<span className="opt"> reporte</span></>}</button>
+          <button type="button" className="btn" onClick={() => void pdf()} disabled={!rows.length}>📄 PDF<span className="opt"> / imprimir</span></button>
+          <button type="button" className="btn" onClick={() => void excel()} disabled={!rows.length}>⬇ Excel</button>
+          <button type="button" className="lnk" onClick={csv} disabled={!rows.length}>CSV</button>
+        </div>
       </div>
-      {sending && <SendDialog files={sending} subject={'Actividad · Reporte ' + date + (only ? ' · ' + only : '') + filterTitle(rep.code, rep.lot, rep.shift)} onClose={() => setSending(null)} />}
+      {sending && <SendDialog files={sending} subject={'Actividad · Reporte ' + date + (dept ? ' · ' + dept : '') + filterTitle(rep.code, rep.lot, rep.shift)} onClose={() => setSending(null)} />}
+      {/* what to look at: the day, the shift, the room, the code and the lot. They add up, any of them with any other */}
+      <div className="rfilters">
+        <div className="rf-row">
+          <div className="rf">
+            <span className="lab">Fecha</span>
+            <div className="daynav">
+              <button type="button" className="btn" aria-label="Día anterior" onClick={() => setDate(addDays(date, -1))}>‹</button>
+              <input type="date" aria-label="Fecha del reporte" value={date} onChange={(e) => { if (e.target.value) setDate(e.target.value) }} />
+              <button type="button" className="btn" aria-label="Día siguiente" disabled={date >= today} onClick={() => setDate(addDays(date, 1))}>›</button>
+              {date !== today && <button type="button" className="btn" onClick={() => setDate(today)}>Hoy</button>}
+            </div>
+          </div>
+          <div className="rf grow">
+            <span className="lab">Turno{can('shifts') && <button type="button" className="lnk sm" onClick={() => setShiftsOpen(true)}>Cambiar horario</button>}</span>
+            <div className="seg" role="group" aria-label="Turno">
+              {([0, 1, 2] as const).map((k) => (
+                <button key={k} type="button" className={rep.shift === k ? 'on' : ''} aria-pressed={rep.shift === k} onClick={() => setFShift(k)}>{k ? 'Turno ' + k : 'Día completo'}<small className="hrs">{k ? hrs(k) : 'los dos turnos'}</small></button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="rf-row">
+          {depts.length > 1 && (
+            <div className="rf wide">
+              <span className="lab">Departamento</span>
+              <div className="chips">
+                <button type="button" className={'chip' + (!dept ? ' on' : '')} aria-pressed={!dept} onClick={() => setFDept('')}>Todos</button>
+                {depts.map((d) => <button key={d} type="button" className={'chip' + (dept === d ? ' on' : '')} aria-pressed={dept === d} onClick={() => setFDept(d)}>{d}</button>)}
+              </div>
+            </div>
+          )}
+          <div className="rf-two">
+            <label className="rf"><span className="lab">Código</span>
+              <select value={rep.code} disabled={!rep.codes.length} onChange={(e) => setFCode(e.target.value)}><option value="">Todos</option>{rep.codes.map((c) => <option key={c} value={c}>{c}</option>)}</select>
+            </label>
+            <label className="rf"><span className="lab">Lote</span>
+              <select value={rep.lot} disabled={!rep.lots.length} onChange={(e) => setFLot(e.target.value)}><option value="">Todos</option>{rep.lots.map((l) => <option key={l} value={l}>{l}</option>)}</select>
+            </label>
+          </div>
+        </div>
+        {active.length > 0 && (
+          <div className="rf-now">
+            <span>Viendo</span>{active.map((t) => <b key={t} className="tag">{t}</b>)}
+            <button type="button" className="btn sm" onClick={clear}>✕ Quitar filtros</button>
+          </div>
+        )}
+        {active.length > 0 && <p className="rf-foot">Los archivos salen con lo que estás viendo.{rep.lot && !rep.shift && ' Con un lote, los tiempos y el waste son los de las corridas completas.'}</p>}
+      </div>
       <DayNote day={day} />
-      <p className="shiftnote">Turno 1: <b>{shiftHours(rep.plan, 1)}</b> · Turno 2: <b>{shiftHours(rep.plan, 2)}</b>{can('shifts') && <> <button type="button" className="lnk" onClick={() => setShiftsOpen(true)}>Cambiar horario</button></>}</p>
       {shiftsOpen && <ShiftsDialog s={s} date={date} onClose={() => setShiftsOpen(false)} />}
-      {!!rep.shift && shiftPick === null && !rep.code && !rep.lot && <p className="filternote">Estás viendo tu turno, el <b>Turno {rep.shift}</b>. Para ver el otro turno o el día completo, cámbialo arriba donde dice "Turno {rep.shift}". Los archivos salen con lo que estés viendo. <button type="button" className="lnk" onClick={() => setFShift(0)}>Ver los dos turnos</button></p>}
-      {rep.filtered && !(shiftPick === null && !rep.code && !rep.lot) && <p className="filternote">Reporte filtrado{filterTitle(rep.code, rep.lot, rep.shift)}. El Excel, el CSV, el PDF y "Enviar reporte" salen con este filtro.{rep.lot && !rep.shift && ' Los tiempos y el waste son los de las corridas completas.'}{!!rep.shift && ' Un código que pasó de un turno al otro sale aquí con lo que hizo en este turno; su waste se reparte según lo hecho en cada uno.'} <button type="button" className="lnk" onClick={() => { setFCode(''); setFLot(''); setFShift(0) }}>Quitar filtros</button></p>}
-      <div className="totals">
-        <div className="stat"><label>Códigos</label><b>{rows.length}</b></div>
-        <div className="stat"><label>Trabajando</label><b>{fmtDur(working)}</b></div>
-        <div className="stat"><label>Parado</label><b className={down ? 'red' : ''}>{fmtDur(down)}</b></div>
-        {setup > 0 && <div className="stat"><label>Set up</label><b>{fmtDur(setup)}</b></div>}
-      </div>
-      {rep.byShift.length > 0 && (
+      {rows.length === 0 ? <p className="hint">{day.state === 'here' ? (rep.code || rep.lot || (!only && dept) ? 'Nada registrado con estos filtros.' : rep.shift ? 'Nada registrado en este turno.' : 'Nada registrado en esta fecha.') : ''}</p> : (
         <>
-          <h3>Total del día y cada turno</h3>
+          {/* what was made, big: each room counts in its own unit */}
+          <div className="heads">
+            {rep.byDept.map((d) => {
+              const cfg = CFG[d.dept], q = cfg.qty !== 'none'
+              const boxes = q && rep.code && cfg.qtyUnit === 'pouches' ? casesText(inCases(s, rep.code, d.qty)) : ''
+              return (
+                <div key={d.dept} className="made">
+                  <label>{d.dept}{rep.code ? ' · código ' + rep.code : ''}{rep.lot ? ' · lote ' + rep.lot : ''}</label>
+                  <b>{fmtN(q ? d.qty : d.units)} <span>{q ? cfg.qtyUnit : (d.units === 1 ? cfg.unit : cfg.plural).toLowerCase()}</span></b>
+                  <small>{[q ? unitsText(d.dept, d.units) : '', boxes, d.waste ? 'waste ' + d.waste + ' lb' : ''].filter(Boolean).join(' · ') || '\u00a0'}</small>
+                </div>
+              )
+            })}
+          </div>
+          <div className="totals">
+            <div className="stat"><label>Códigos</label><b>{rows.length}</b></div>
+            <div className="stat"><label>Trabajando</label><b>{fmtDur(working)}</b></div>
+            <div className="stat"><label>Parado</label><b className={down ? 'red' : ''}>{fmtDur(down)}</b></div>
+            <div className="stat"><label>Set up</label><b>{setup ? fmtDur(setup) : '—'}</b></div>
+          </div>
+          {/* the whole day and each shift side by side, room by room (with one shift chosen, that shift alone) */}
+          {(rep.byShift.length > 0 || rep.byDept.length > 1) && (
+            <>
+              <h3>{rep.shift ? 'Por departamento · Turno ' + rep.shift : 'Total del día y cada turno'}</h3>
+              <div className="deptgrid">
+                {rep.byDept.map((d) => {
+                  const b = rep.byShift.find((x) => x.dept === d.dept), cols = b ? [b.day, b.first, b.second] : [d]
+                  const cfg = CFG[d.dept], q = cfg.qty !== 'none'
+                  const mark = (x: (typeof cols)[number]) => (b && !x.shift ? 'day' : '')
+                  const cell = (x: (typeof cols)[number], v: ReactNode, red = false) => <td key={x.shift} className={mark(x) + (red ? ' red' : '')}>{v}</td>
+                  return (
+                    <div key={d.dept} className="deptcard">
+                      <h4>{d.dept}</h4>
+                      <div className="scroll">
+                        <table className="shiftgrid">
+                          <thead><tr><th></th>{cols.map((x) => <th key={x.shift} className={mark(x)}>{x.shift ? <>Turno {x.shift}<small className="hrs">{hrs(x.shift)}</small></> : 'Total del día'}</th>)}</tr></thead>
+                          <tbody>
+                            {q && <tr className="q"><td>{cap(cfg.qtyUnit)}</td>{cols.map((x) => cell(x, fmtN(x.qty)))}</tr>}
+                            <tr className={q ? '' : 'q'}><td>{cfg.plural}</td>{cols.map((x) => cell(x, fmtN(x.units)))}</tr>
+                            <tr><td>Códigos</td>{cols.map((x) => cell(x, x.codes))}</tr>
+                            <tr><td>Trabajando</td>{cols.map((x) => cell(x, fmtDur(x.working)))}</tr>
+                            <tr><td>Parado</td>{cols.map((x) => cell(x, fmtDur(x.down), x.down > 0))}</tr>
+                            <tr><td>Set up</td>{cols.map((x) => cell(x, x.setup ? fmtDur(x.setup) : '—'))}</tr>
+                            {cols.some((x) => x.waste > 0) && <tr><td>Waste</td>{cols.map((x) => cell(x, x.waste ? x.waste + ' lb' : '—', x.waste > 0))}</tr>}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+              {!rep.shift && (
+                <details className="how">
+                  <summary>¿Cómo se reparte entre los turnos?</summary>
+                  <p>Cada registro cuenta en el turno de su hora. Un código que pasó de un turno al otro cuenta en los dos, cada uno con lo suyo; su waste se reparte según lo hecho en cada turno. El tiempo nunca se detiene solo. Cuando ya pasó el rato entre un turno y el otro, si en una línea nadie registró nada en todo ese rato, ese rato no cuenta.</p>
+                </details>
+              )}
+            </>
+          )}
+          {/* each code with its lots, the total of the code and the total of the room */}
+          <div className="sechead"><h3>Por código y lote</h3>{!(rep.code && rep.lot) && <small>Toca un código o un lote para ver solo eso.</small>}</div>
           <div className="twrap">
-            <table className="byshift">
-              <thead><tr><th>Depto</th><th></th><th>Códigos</th><th>Hechas</th><th>Cantidad</th><th>Waste</th><th>Trabajando</th><th>Parado</th><th>Set up</th></tr></thead>
-              <tbody>{rep.byShift.flatMap((d) => [d.day, d.first, d.second].map((x) => (
-                <tr key={d.dept + x.shift} className={x.shift ? '' : 'daytotal'}>
-                  <td>{x.shift ? '' : d.dept}</td><td>{x.shift ? <>Turno {x.shift} <small>{shiftHours(rep.plan, x.shift)}</small></> : 'Total del día'}</td><td>{x.codes}</td><td>{unitsText(d.dept, x.units)}</td>
-                  <td>{CFG[d.dept].qty !== 'none' ? fmtN(x.qty) + ' ' + CFG[d.dept].qtyUnit : '—'}</td><td className={x.waste ? 'red' : ''}>{x.waste ? x.waste + ' lb' : '—'}</td><td>{fmtDur(x.working)}</td><td className={x.down ? 'red' : ''}>{fmtDur(x.down)}</td><td>{x.setup ? fmtDur(x.setup) : '—'}</td>
-                </tr>
-              )))}</tbody>
+            <table className="bycode">
+              <thead><tr><th>Código</th><th>Lote</th><th className="num">Hechas</th><th className="num">Cantidad</th>{!rep.shift && <><th className="num">Turno 1</th><th className="num">Turno 2</th></>}<th>En cajas</th><th className="num">Waste</th><th>Líneas</th></tr></thead>
+              <tbody>
+                {rep.byDept.map((d) => {
+                  const cfg = CFG[d.dept], q = cfg.qty !== 'none', b = rep.byShift.find((x) => x.dept === d.dept)
+                  const boxes = (code: string, qty: number) => (cfg.qtyUnit === 'pouches' && casesText(inCases(s, code, qty))) || '—'
+                  const lotBtn = (l: string) => (!l ? '—' : rep.lot ? l : <button type="button" className="drill" onClick={() => setFLot(l)}>{l}</button>)
+                  const qtyText = (v: number) => (q ? fmtN(v) + ' ' + cfg.qtyUnit : '—')
+                  return (
+                    <Fragment key={d.dept}>
+                      {rep.byDept.length > 1 && <tr className="drow"><td colSpan={colsN}>{d.dept}</td></tr>}
+                      {byCode.filter((c) => c.dept === d.dept).map((c) => (
+                        <Fragment key={c.code}>
+                          <tr className="crow">
+                            <td>{rep.code ? <b className="code">{c.code}</b> : <button type="button" className="drill code" onClick={() => setFCode(c.code)}>{c.code}</button>}</td>
+                            <td>{c.lots.length === 1 ? lotBtn(c.lots[0].lot) : c.lots.length + ' lotes'}</td>
+                            <td className="num">{unitsText(c.dept, c.units)}</td>
+                            <td className="num">{qtyText(c.qty)}</td>
+                            {c.byShift && <><td className="num">{dash(c.byShift[0])}</td><td className="num">{dash(c.byShift[1])}</td></>}
+                            <td>{boxes(c.code, c.qty)}</td><td className={'num' + (c.waste ? ' red' : '')}>{c.waste ? c.waste + ' lb' : '—'}</td><td>{c.lines.join(', ')}</td>
+                          </tr>
+                          {c.lots.length > 1 && c.lots.map((l) => (
+                            <tr key={l.lot} className="lrow">
+                              <td></td><td>{lotBtn(l.lot)}</td><td className="num">{unitsText(c.dept, l.units)}</td><td className="num">{qtyText(l.qty)}</td>
+                              {l.byShift && <><td className="num">{dash(l.byShift[0])}</td><td className="num">{dash(l.byShift[1])}</td></>}
+                              <td>{boxes(c.code, l.qty)}</td><td></td><td></td>
+                            </tr>
+                          ))}
+                        </Fragment>
+                      ))}
+                      <tr className="trow">
+                        <td colSpan={2}>Total {d.dept}</td><td className="num">{unitsText(d.dept, d.units)}</td><td className="num">{qtyText(d.qty)}</td>
+                        {b && <><td className="num">{dash(q ? b.first.qty : b.first.units)}</td><td className="num">{dash(q ? b.second.qty : b.second.units)}</td></>}
+                        <td></td><td className={'num' + (d.waste ? ' red' : '')}>{d.waste ? d.waste + ' lb' : '—'}</td><td></td>
+                      </tr>
+                    </Fragment>
+                  )
+                })}
+              </tbody>
             </table>
           </div>
-          <p className="hint">Se reparte por la hora de cada registro. Un código que pasó de un turno al otro cuenta en los dos, cada uno con lo suyo; su waste se reparte según lo hecho en cada turno. El tiempo nunca se detiene solo. Cuando ya pasó el rato entre un turno y el otro, si en una línea nadie registró nada en todo ese rato, ese rato no cuenta.</p>
-        </>
-      )}
-      {rows.length === 0 ? <p className="hint">{day.state === 'here' ? (rep.shift ? 'Nada registrado en este turno.' : 'Nada registrado en esta fecha.') : ''}</p> : (
-        <>
+          {/* what the "Parado" total is made of */}
+          {rep.reasons.length > 0 && (
+            <>
+              <h3>Parado por causa</h3>
+              <div className="reasons">
+                {rep.reasons.map((x) => (
+                  <div key={x.reason} className="reason">
+                    <b>{x.reason}</b><span>{fmtDur(x.ms)}</span><span className="pct">{down > 0 ? Math.round((x.ms / down) * 100) + '%' : ''}</span>
+                    <div className="rbar"><i style={{ width: Math.max(2, Math.round((x.ms / rep.reasons[0].ms) * 100)) + '%' }} /></div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+          {secHead('runs', 'Corridas', rows.length)}
+          {!shut.runs && (
+            <>
         <div className="twrap">
           <table>
             <thead><tr><th>Depto</th><th>Línea</th><th>Código</th><th>Lote</th>{!rep.shift && <th>Turno</th>}<th>Inicio</th><th>Fin</th><th>Hecho</th><th>Waste</th><th>Trabajando</th><th>Prom./unidad</th><th>Parado</th><th>Razones</th><th>Registró</th><th></th></tr></thead>
@@ -1659,25 +1830,15 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
           </table>
         </div>
         {moreBar('runs', rows.length)}
-        </>
-      )}
-      {byCode.length > 0 && (
-        <>
-          <h3>Por código · todas las líneas juntas</h3>
-          <div className="twrap">
-            <table>
-              <thead><tr><th>Depto</th><th>Código</th><th>Hechas</th><th>Cantidad</th>{!rep.shift && <><th>Turno 1</th><th>Turno 2</th></>}<th>En cajas</th><th>Waste</th><th>Líneas</th></tr></thead>
-              <tbody>{cut('codes', byCode).map((c) => (
-                <tr key={c.dept + c.code}><td>{c.dept}</td><td><b>{c.code}</b></td><td>{c.units} {(c.units === 1 ? CFG[c.dept].unit : CFG[c.dept].plural).toLowerCase()}</td><td>{CFG[c.dept].qty !== 'none' ? <b>{fmtN(c.qty)} {CFG[c.dept].qtyUnit}</b> : '—'}</td>{c.byShift && <><td>{c.byShift[0] ? fmtN(c.byShift[0]) : '—'}</td><td>{c.byShift[1] ? fmtN(c.byShift[1]) : '—'}</td></>}<td>{(CFG[c.dept].qtyUnit === 'pouches' && casesText(inCases(s, c.code, c.qty))) || '—'}</td><td className={c.waste ? 'red' : ''}>{c.waste ? c.waste + ' lb' : '—'}</td><td>{c.lines.join(', ')}</td></tr>
-              ))}</tbody>
-            </table>
-          </div>
-          {moreBar('codes', byCode.length)}
+            </>
+          )}
         </>
       )}
       {unitRows.length > 0 && (
         <>
-          <h3>Detalle por unidad · {unitRows.length}</h3>
+          {secHead('units', 'Detalle por unidad', unitRows.length)}
+          {!shut.units && (
+            <>
           <div className="twrap">
             <table>
               <thead><tr><th>Hora</th>{!rep.shift && <th>Turno</th>}<th>Depto</th><th>Línea</th><th>Código</th><th>Lote</th><th>#</th><th>Unidad</th><th>Cantidad</th><th>Tag / bin</th>{withOrders && <th>Pedido</th>}<th>Desde la anterior</th><th>Registró</th></tr></thead>
@@ -1690,11 +1851,15 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
             </table>
           </div>
           {moreBar('units', unitRows.length)}
+            </>
+          )}
         </>
       )}
       {stops.length > 0 && (
         <>
-          <h3>Paros</h3>
+          {secHead('stops', 'Paros', stops.length)}
+          {!shut.stops && (
+            <>
           <div className="twrap">
             <table>
               <thead><tr><th>Depto</th><th>Línea</th><th>Razón</th><th>Detalle</th>{!rep.shift && <th>Turno</th>}<th>Inicio</th><th>Fin</th><th>Duración</th><th>Registró</th><th></th></tr></thead>
@@ -1707,11 +1872,15 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
             </table>
           </div>
           {moreBar('stops', stops.length)}
+            </>
+          )}
         </>
       )}
       {changes.length > 0 && (
         <>
-          <h3>Cambios y correcciones · {changes.length}</h3>
+          {secHead('changes', 'Cambios y correcciones', changes.length)}
+          {!shut.changes && (
+            <>
           <div className="twrap">
             <table className="changes">
               <thead><tr><th>Hora</th><th>Quién</th><th>Depto</th><th>Qué</th><th>Antes</th><th>Después</th></tr></thead>
@@ -1722,6 +1891,8 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
           </div>
           {moreBar('changes', changes.length)}
           <p className="hint">Cada corrección, cambio en la tabla de productos, en el programa del día o en las líneas queda aquí con quién lo hizo y a qué hora. Lo normal del día (carros, mezclas, paros) no sale aquí: ya lleva el nombre de quien lo registró.</p>
+            </>
+          )}
         </>
       )}
       <p className="hint foot">{supabase ? 'Todo se guarda en el servidor y se ve en vivo desde la oficina, el teléfono o la PC.' : 'Demo guardado en este dispositivo. La versión completa manda todo en vivo al manager (oficina, teléfono o PC) y exporta a Excel, PDF y Google Sheets como la Hoja de Freezer RTE.'}</p>

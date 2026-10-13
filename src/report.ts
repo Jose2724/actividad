@@ -15,6 +15,8 @@ export function unitParts(s: State, r: Run, u: Unit): { lot: string; qty: number
 /** every lot a run has touched */
 const runLots = (s: State, r: Run) => new Set(r.units.length ? r.units.flatMap((u) => unitParts(s, r, u).map((p) => p.lot)) : [r.lot])
 const round2 = (x: number) => Math.round(x * 100) / 100
+/** one lot of a code in the report: how many units carry it, how much, and what each shift made of it (the whole day's report) */
+export type LotLine = { lot: string; units: number; qty: number; byShift: [number, number] | null }
 /** "1", "2" or "1 y 2": the shifts a stretch of time touched */
 export function spanShifts(h: ShiftHours, a: number, b: number) {
   const k = new Set(b > a ? shiftPieces(h, a, b).map((p) => p.shift) : [shiftAt(h, a)])
@@ -86,19 +88,37 @@ export function reportOf(s: State, date: string, now: number, f: ReportFilter = 
   const madeBy = (list: ReturnType<typeof rowsOf>, key: string) => list.filter((x) => codeKey(x.r) === key).reduce((t, x) => t + (CFG[x.r.dept].qty === 'none' ? x.units : x.qty), 0)
   const byCode = [...rows.reduce((m, x) => {
     const k = codeKey(x.r)
-    const e = m.get(k) ?? { dept: x.r.dept, code: x.r.code, units: 0, qty: 0, waste: 0, lines: [] as string[], byShift: (each ? [madeBy(each[0], k), madeBy(each[1], k)] : null) as [number, number] | null }
+    const e = m.get(k) ?? { dept: x.r.dept, code: x.r.code, units: 0, qty: 0, waste: 0, lines: [] as string[], byShift: (each ? [madeBy(each[0], k), madeBy(each[1], k)] : null) as [number, number] | null, lots: [] as LotLine[] }
     e.units += x.units; e.qty += x.qty; e.waste = round2(e.waste + x.waste)
     const line = lineNameOf(s, x.r.lineId, x.r.line)
     if (!e.lines.includes(line)) e.lines.push(line)
+    // each lot of the code with what it carries: its units, its quantity and what each shift made of it. (A pallet
+    // with cases of two lots is one pallet of the code, and is counted as a unit of both its lots.)
+    const none = CFG[x.r.dept].qty === 'none'
+    const lotLine = (name: string) => { let l = e.lots.find((y) => y.lot === name); if (!l) e.lots.push((l = { lot: name, units: 0, qty: 0, byShift: shift ? null : [0, 0] })); return l }
+    if (!x.parts.length && (!lot || x.r.lot === lot)) lotLine(x.r.lot)
+    for (const p of x.parts) for (const piece of p.kept) {
+      const l = lotLine(piece.lot), n = none ? 1 : piece.qty ?? 0
+      l.units++
+      if (!none) l.qty += n
+      if (l.byShift) l.byShift[shiftAt(plan, p.u.at) - 1] += n
+    }
     return m.set(k, e)
-  }, new Map<string, { dept: Dept; code: string; units: number; qty: number; waste: number; lines: string[]; byShift: [number, number] | null }>()).values()]
+  }, new Map<string, { dept: Dept; code: string; units: number; qty: number; waste: number; lines: string[]; byShift: [number, number] | null; lots: LotLine[] }>()).values()].map((c) => ({ ...c, lots: c.lots.sort((a, b) => a.lot.localeCompare(b.lot)) }))
+    // room by room in the order of the plant, and within a room code by code: the same on the screen and in every file
+    .sort((a, b) => DEPTS.indexOf(a.dept) - DEPTS.indexOf(b.dept) || a.code.localeCompare(b.code, undefined, { numeric: true }))
   // the whole day first and each shift under it, room by room (each room counts in its own unit)
   const sum = (list: ReturnType<typeof rowsOf>, k: 0 | 1 | 2, dept: Dept) => {
     const mine = list.filter((x) => x.r.dept === dept)
     return { shift: k, codes: mine.length, units: mine.reduce((t, x) => t + x.units, 0), qty: mine.reduce((t, x) => t + x.qty, 0), waste: round2(mine.reduce((t, x) => t + x.waste, 0)), working: mine.reduce((t, x) => t + x.st.working, 0), down: mine.reduce((t, x) => t + x.st.down, 0), setup: setupOf(k, dept) }
   }
-  const byShift = each ? DEPTS.filter((d) => rows.some((x) => x.r.dept === d)).map((d) => ({ dept: d, day: sum(rows, 0, d), first: sum(each[0], 1, d), second: sum(each[1], 2, d) })) : []
-  return { runs, rows, unitRows, stops, byCode, byShift, working: rows.reduce((t, x) => t + x.st.working, 0), down: rows.reduce((t, x) => t + x.st.down, 0), setup: setupOf(shift), codes, lots, code, lot, shift, plan, filtered }
+  const here = DEPTS.filter((d) => rows.some((x) => x.r.dept === d))
+  const byShift = each ? here.map((d) => ({ dept: d, day: sum(rows, 0, d), first: sum(each[0], 1, d), second: sum(each[1], 2, d) })) : []
+  // what each room has made of what is in view (the day, or the shift chosen; the code and the lot chosen): the big numbers
+  const byDept = here.map((d) => ({ dept: d, ...sum(rows, shift, d) }))
+  // what the lines were stopped for while they had a code, cause by cause: together they are the "Parado" total
+  const reasons = [...rows.reduce((m, x) => { for (const [k, v] of Object.entries(x.st.reasons)) m.set(k, (m.get(k) ?? 0) + v); return m }, new Map<string, number>())].map(([reason, ms]) => ({ reason, ms })).filter((x) => x.ms > 0).sort((a, b) => b.ms - a.ms)
+  return { runs, rows, unitRows, stops, byCode, byShift, byDept, reasons, working: rows.reduce((t, x) => t + x.st.working, 0), down: rows.reduce((t, x) => t + x.st.down, 0), setup: setupOf(shift), codes, lots, code, lot, shift, plan, filtered }
 }
 /** the words a filtered report carries in its title and in the name of its files */
 export const filterTitle = (code: string, lot: string, shift: 0 | 1 | 2 = 0) => (shift ? ' · Turno ' + shift : '') + (code ? ' · código ' + code : '') + (lot ? ' · lote ' + lot : '')

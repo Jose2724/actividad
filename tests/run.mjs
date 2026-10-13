@@ -1731,6 +1731,72 @@ section('Set up: espera al código siguiente; con las líneas vacías no corre n
     eq('un paro con el código corriendo sí cuenta mientras pasa, como siempre', [rep().stops.filter((x) => x.lineId === l6.id).map((x) => [x.reason, x.endedAt, min(x.ms)]), min(m.runStats(st(), runOf('L200'), clock).down)], [[['Break', null, 15]], 15])
   })
 }
+section('Reporte: lo hecho por departamento, por código y lote, y por causa de paro')
+{
+  const tot = await device('tot', { user: 'Santiago', usual: true })
+  tot.use((m) => {
+    const st = () => m.store.get(), min = (x) => Math.round(x / M)
+    const lineOf = (dept, n) => { m.addLine(dept, 'Línea ' + n); return st().lines.find((l) => l.dept === dept && l.name === 'Línea ' + n) }
+    const open = (line) => st().runs.find((r) => r.lineId === line.id && !r.endedAt)
+    // RTE, line 1: A100 of lot 6283 through the change of shift (two carts in the first, one in the second), a break and some waste
+    clock = oct(10, 13, 0); const l1 = lineOf('RTE', 1); m.startRun(l1, 'A100', '6283', DAY, 240)
+    clock = oct(10, 13, 30); m.unitDone(open(l1).id, 240)
+    clock = oct(10, 13, 40); m.startStop('RTE', l1.id, 'Break', '')
+    clock = oct(10, 13, 50); m.endStop(st().stops.find((x) => !x.endedAt).id)
+    clock = oct(10, 14, 20); m.unitDone(open(l1).id, 240)
+    clock = oct(10, 16, 0); m.unitDone(open(l1).id, 240); m.addWaste(open(l1).id, 2)
+    clock = oct(10, 16, 30); m.endRun(open(l1).id, false)
+    // RTE, line 2: the same code with another lot (a short cart), then B200 after a set up, with a mechanical stop
+    clock = oct(10, 16, 0); const l2 = lineOf('RTE', 2); m.startRun(l2, 'A100', '6284', DAY, 240)
+    clock = oct(10, 16, 40); m.unitDone(open(l2).id, 200)
+    clock = oct(10, 17, 0); m.endRun(open(l2).id, true)
+    clock = oct(10, 17, 10); m.startRun(l2, 'B200', '6283', DAY, 144)
+    clock = oct(10, 17, 40); m.unitDone(open(l2).id, 144)
+    clock = oct(10, 17, 45); m.startStop('RTE', l2.id, 'Problema mecánico', '')
+    clock = oct(10, 18, 5); m.endStop(st().stops.find((x) => !x.endedAt).id)
+    clock = oct(10, 18, 30); m.unitDone(open(l2).id, 144)
+    clock = oct(10, 18, 40); m.endRun(open(l2).id, false)
+    // Packing: two pallets of A100, the second one with cases of two lots
+    clock = oct(10, 14, 0); const pk = lineOf('Packing', 1); m.startRun(pk, 'A100', '6283', DAY, 50)
+    clock = oct(10, 14, 30); m.unitDone(open(pk).id, 50, 'T1')
+    clock = oct(10, 16, 10); m.unitDone(open(pk).id, null, 'T2', [{ lot: '6283', qty: 30 }, { lot: '6284', qty: 20 }])
+    clock = oct(10, 16, 20); m.endRun(open(pk).id, false)
+    clock = oct(10, 19, 0)
+    const dept = (x) => [x.dept, x.codes, x.units, x.qty]
+    const codeLots = (c) => [c.dept, c.code, c.units, c.qty, c.lots.map((l) => [l.lot, l.units, l.qty, l.byShift])]
+    const day = m.reportOf(st(), DAY, clock)
+    eq('lo hecho por departamento, cada uno en su unidad (los números grandes de arriba)', [day.byDept.map(dept), day.byDept.map((x) => [x.waste, min(x.down), min(x.setup)])], [[['RTE', 3, 6, 1208], ['Packing', 1, 2, 100]], [[2, 30, 10], [0, 0, 0]]])
+    eq('cada código con sus lotes, y de cada lote lo que hizo cada turno', day.byCode.map(codeLots), [
+      ['RTE', 'A100', 4, 920, [['6283', 3, 720, [480, 240]], ['6284', 1, 200, [0, 200]]]],
+      ['RTE', 'B200', 2, 288, [['6283', 2, 288, [0, 288]]]],
+      ['Packing', 'A100', 2, 100, [['6283', 2, 80, [50, 30]], ['6284', 1, 20, [0, 20]]]]])
+    eq('los lotes de un código suman el código, y los códigos suman el departamento', [day.byCode.map((c) => c.lots.reduce((t, l) => t + l.qty, 0) === c.qty), day.byDept.map((d) => day.byCode.filter((c) => c.dept === d.dept).reduce((t, c) => t + c.qty, 0) === d.qty), day.byDept.map((d) => { const b = day.byShift.find((x) => x.dept === d.dept); return b.first.qty + b.second.qty === d.qty && b.day.qty === d.qty })], [[true, true, true], [true, true], [true, true]])
+    eq('el parado, causa por causa, de mayor a menor: juntas son el total de Parado', [day.reasons.map((x) => [x.reason, min(x.ms)]), day.reasons.reduce((t, x) => t + x.ms, 0) === day.down], [[['Problema mecánico', 20], ['Break', 10]], true])
+    const two = m.reportOf(st(), DAY, clock, { shift: 2 })
+    eq('con el turno 2: lo de ese turno solo, en los números grandes, en los lotes y en las causas', [two.byDept.map(dept), two.byCode.map(codeLots), two.reasons.map((x) => [x.reason, min(x.ms)]), two.byShift.length], [[['RTE', 3, 4, 728], ['Packing', 1, 1, 50]], [
+      ['RTE', 'A100', 2, 440, [['6283', 1, 240, null], ['6284', 1, 200, null]]],
+      ['RTE', 'B200', 2, 288, [['6283', 2, 288, null]]],
+      ['Packing', 'A100', 1, 50, [['6283', 1, 30, null], ['6284', 1, 20, null]]]], [['Problema mecánico', 20]], 0])
+    const lot = m.reportOf(st(), DAY, clock, { lot: '6284' })
+    eq('con el lote 6284: lo que lleva ese lote, también del pallet que lo comparte con otro', [lot.byDept.map(dept), lot.byCode.map(codeLots)], [[['RTE', 1, 1, 200], ['Packing', 1, 1, 20]], [['RTE', 'A100', 1, 200, [['6284', 1, 200, [0, 200]]]], ['Packing', 'A100', 1, 20, [['6284', 1, 20, [0, 20]]]]]])
+    const both = m.reportOf(st(), DAY, clock, { code: 'A100', shift: 1 })
+    eq('los filtros se combinan: el código A100 en el turno 1', [both.byDept.map(dept), both.byCode.map((c) => [c.dept, c.code, c.qty])], [[['RTE', 1, 2, 480], ['Packing', 1, 1, 50]], [['RTE', 'A100', 480], ['Packing', 'A100', 50]]])
+    const all3 = m.reportOf(st(), DAY, clock, { only: 'RTE', code: 'A100', lot: '6283', shift: 2 })
+    eq('y los cuatro juntos: RTE, código A100, lote 6283, turno 2', [all3.byDept.map(dept), all3.byCode.map(codeLots), all3.codes, all3.lots], [[['RTE', 1, 1, 240]], [['RTE', 'A100', 1, 240, [['6283', 1, 240, null]]]], ['A100', 'B200'], ['6283', '6284']])
+    eq('un departamento solo', [m.reportOf(st(), DAY, clock, { only: 'Packing' }).byDept.map(dept), m.reportOf(st(), DAY, clock, { only: 'Packing' }).codes], [[['Packing', 1, 2, 100]], ['A100']])
+    // a code that has just started: it is in the report with its lot and nothing made yet
+    clock = oct(10, 19, 0); const sp = lineOf('Spiral', 1); m.startRun(sp, 'C300', '6283', DAY, null)
+    clock = oct(10, 19, 20)
+    const late = m.reportOf(st(), DAY, clock)
+    eq('un código recién empezado sale con su lote y cero hechas; sin cantidad, el departamento cuenta sus unidades', [late.byDept.map(dept), late.byCode.filter((c) => c.dept === 'Spiral').map(codeLots)], [[['RTE', 3, 6, 1208], ['Spiral', 1, 0, 0], ['Packing', 1, 2, 100]], [['Spiral', 'C300', 0, 0, [['6283', 0, 0, [0, 0]]]]]])
+    clock = oct(10, 19, 30); m.unitDone(open(sp).id, null)
+    clock = oct(10, 19, 40)
+    eq('en el orden de la planta (RTE antes que Spiral y Packing) y, dentro de cada departamento, por código', late.byCode.map((c) => c.dept + ' ' + c.code), ['RTE A100', 'RTE B200', 'Spiral C300', 'Packing A100'])
+    eq('las cajas, con coma en los miles como los demás números', [m.casesText({ cases: 1188, loose: 0 }), m.casesText({ cases: 1, loose: 3 }), m.casesText({ cases: 12, loose: 1 })], ['1,188 cajas', '1 caja y 3 sueltos', '12 cajas y 1 suelto'])
+    eq('lo hecho por una corrida, también con coma en los miles', [m.madeText(st().runs.find((r) => r.lineId === l1.id), 3360), m.madeText(st().runs.find((r) => r.lineId === l1.id), 720)], ['3 carros · 3,360 pouches', '3 carros · 720 pouches'])
+    eq('una mezcla (sin cantidad) cuenta como unidad de su lote y de su turno', m.reportOf(st(), DAY, clock).byCode.filter((c) => c.dept === 'Spiral').map(codeLots), [['Spiral', 'C300', 1, 0, [['6283', 1, 0, [0, 1]]]]])
+  })
+}
 {
   // the hours set by the manager reach the other devices
   mgr.use((m) => m.setShifts('2027-01-01', { first: '07:00', firstEnd: '15:00', second: '15:30', secondEnd: '23:30' })); settle()

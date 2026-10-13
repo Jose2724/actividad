@@ -943,7 +943,7 @@ export function inCases(s: State, code: string, pouches: number | null | undefin
   return { cases, loose: Math.round((pouches - cases * per) * 100) / 100, perCase: per }
 }
 /** "10 cajas y 10 sueltos" */
-export const casesText = (c: { cases: number; loose: number } | null) => (c ? c.cases + (c.cases === 1 ? ' caja' : ' cajas') + (c.loose ? ' y ' + c.loose + (c.loose === 1 ? ' suelto' : ' sueltos') : '') : '')
+export const casesText = (c: { cases: number; loose: number } | null) => (c ? c.cases.toLocaleString('en-US') + (c.cases === 1 ? ' caja' : ' cajas') + (c.loose ? ' y ' + c.loose + (c.loose === 1 ? ' suelto' : ' sueltos') : '') : '')
 /** a unit closed with less than the usual quantity of its run */
 export type Short = { run: Run; index: number; unit: Unit; usual: number }
 /** the last unit of a run, when it holds less than the usual */
@@ -1361,7 +1361,7 @@ export function runStats(s: State, r: Run, now: number) {
 export function madeText(r: Run, qty: number, withRefs = false) {
   const c = CFG[r.dept]
   const refs = withRefs ? r.units.map((u) => u.ref).filter(Boolean) : []
-  return r.units.length + ' ' + (r.units.length === 1 ? c.unit : c.plural).toLowerCase() + (c.qty !== 'none' ? ' · ' + qty + ' ' + c.qtyUnit : '') + (refs.length ? ' (' + c.refLabel.replace('N° de ', '') + ' ' + refs.join(', ') + ')' : '')
+  return r.units.length + ' ' + (r.units.length === 1 ? c.unit : c.plural).toLowerCase() + (c.qty !== 'none' ? ' · ' + qty.toLocaleString('en-US') + ' ' + c.qtyUnit : '') + (refs.length ? ' (' + c.refLabel.replace('N° de ', '') + ' ' + refs.join(', ') + ')' : '')
 }
 
 export function fmtDur(ms: number) {

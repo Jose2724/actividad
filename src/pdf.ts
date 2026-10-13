@@ -1,4 +1,4 @@
-import { CFG, fmtDur, fmtTime, lineNameOf, madeText, shiftHours, whoText, type State } from './store'
+import { casesText, CFG, fmtDur, fmtTime, inCases, lineNameOf, madeText, shiftHours, whoText, type State } from './store'
 import { filterTitle, reportOf, spanShifts, type ReportFilter } from './report'
 import { avanceRows, n1, pending } from './avance'
 
@@ -14,6 +14,9 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
   if (!libs) return null
   const { jsPDF, autoTable } = libs
   const rep = reportOf(s, date, now, f), { rows, unitRows, stops, working, down } = rep, only = f.only
+  const num = (x: number) => Math.round(x).toLocaleString('en-US')
+  const unitsOf = (dept: keyof typeof CFG, n: number) => n + ' ' + (n === 1 ? CFG[dept].unit : CFG[dept].plural).toLowerCase()
+  const qtyOf = (dept: keyof typeof CFG, q: number) => (CFG[dept].qty !== 'none' ? num(q) + ' ' + CFG[dept].qtyUnit : '—')
   const lineName = (x: { lineId: string | null; dept: string }) => (x.lineId === null ? 'Todo ' + x.dept : s.lines.find((l) => l.id === x.lineId)?.name ?? s.runs.find((r) => r.lineId === x.lineId)?.line ?? 'línea')
 
   const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' })
@@ -21,10 +24,18 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
   doc.setFont('helvetica', 'bold'); doc.setFontSize(18); doc.setTextColor(22, 32, 42)
   doc.text('Actividad · Reporte del día' + (only ? ' · ' + only : '') + filterTitle(rep.code, rep.lot, rep.shift), 40, 42)
   doc.setFont('helvetica', 'normal'); doc.setFontSize(11); doc.setTextColor(91, 107, 122)
-  doc.text(fmtDate(date) + '   ·   ' + rows.length + ' códigos   ·   trabajando ' + fmtDur(working) + '   ·   parado ' + fmtDur(down), 40, 62)
+  doc.text(fmtDate(date) + '   ·   ' + rows.length + ' códigos   ·   trabajando ' + fmtDur(working) + '   ·   parado ' + fmtDur(down) + (rep.setup ? '   ·   set up ' + fmtDur(rep.setup) : ''), 40, 62)
   doc.text('Turno 1: ' + shiftHours(rep.plan, 1) + '   ·   Turno 2: ' + shiftHours(rep.plan, 2), 40, 78)
   const after = () => (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY
   let top = 94
+  // what was made, room by room, said first and in bold: it is what the report is read for
+  if (rep.byDept.length) {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(15, 118, 110)
+    const made = rep.byDept.map((d) => d.dept + ': ' + (CFG[d.dept].qty !== 'none' ? qtyOf(d.dept, d.qty) + ' (' + unitsOf(d.dept, d.units) + ')' : unitsOf(d.dept, d.units)))
+    const lines = doc.splitTextToSize('Hecho   ' + made.join('   ·   '), doc.internal.pageSize.getWidth() - 80) as string[]
+    doc.text(lines, 40, top + 4)
+    top += 4 + lines.length * 15 + 6
+  }
   // the whole day first and each shift under it (not when the report is of one shift only)
   if (rep.byShift.length) {
     const made = (dept: keyof typeof CFG, x: { units: number; qty: number }) => x.units + ' ' + (x.units === 1 ? CFG[dept].unit : CFG[dept].plural).toLowerCase() + (CFG[dept].qty !== 'none' ? ' · ' + Math.round(x.qty).toLocaleString('en-US') + ' ' + CFG[dept].qtyUnit : '')
@@ -37,6 +48,35 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
     top = after() + 18
   }
   const sh = !rep.shift // a column says the shift of each line when the report is the whole day's
+  // each code with its lots under it, and the total of each room: what was made of what
+  if (rep.byCode.length) {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(22, 32, 42)
+    doc.text('Por código y lote', 40, top + 6)
+    const body: string[][] = [], kind: ('code' | 'lot' | 'total')[] = []
+    const dashed = (x: number) => (x ? num(x) : '—')
+    for (const d of rep.byDept) {
+      const b = rep.byShift.find((x) => x.dept === d.dept), q = CFG[d.dept].qty !== 'none'
+      const boxes = (code: string, qty: number) => (CFG[d.dept].qtyUnit === 'pouches' && casesText(inCases(s, code, qty))) || '—'
+      for (const c of rep.byCode.filter((x) => x.dept === d.dept)) {
+        body.push([c.dept, c.code, c.lots.length === 1 ? c.lots[0].lot || '—' : c.lots.length + ' lotes', unitsOf(c.dept, c.units), qtyOf(c.dept, c.qty), ...(c.byShift ? [dashed(c.byShift[0]), dashed(c.byShift[1])] : []), boxes(c.code, c.qty), c.waste ? String(c.waste) : '—', c.lines.join(', ')]); kind.push('code')
+        if (c.lots.length > 1) for (const l of c.lots) { body.push(['', '', l.lot || '—', unitsOf(c.dept, l.units), qtyOf(c.dept, l.qty), ...(l.byShift ? [dashed(l.byShift[0]), dashed(l.byShift[1])] : []), boxes(c.code, l.qty), '', '']); kind.push('lot') }
+      }
+      body.push(['Total ' + d.dept, '', '', unitsOf(d.dept, d.units), qtyOf(d.dept, d.qty), ...(b ? [dashed(q ? b.first.qty : b.first.units), dashed(q ? b.second.qty : b.second.units)] : []), '', d.waste ? String(d.waste) : '—', '']); kind.push('total')
+    }
+    autoTable(doc, {
+      startY: top + 14, theme: 'grid', styles: { font: 'helvetica', fontSize: 9, cellPadding: 5, textColor: [22, 32, 42] }, headStyles: { fillColor: teal, textColor: 255, fontStyle: 'bold' },
+      head: [['Depto', 'Código', 'Lote', 'Hechas', 'Cantidad', ...(sh ? ['Turno 1', 'Turno 2'] : []), 'En cajas', 'Waste lb', 'Líneas']],
+      body,
+      didParseCell: (c) => {
+        if (c.section !== 'body') return
+        const k = kind[c.row.index]
+        if (k === 'total') { c.cell.styles.fontStyle = 'bold'; c.cell.styles.fillColor = [230, 243, 241] }
+        else if (k === 'lot') { c.cell.styles.textColor = [91, 107, 122]; c.cell.styles.fontSize = 8.5 }
+        else if (c.column.index === 1 || c.column.index === 4) c.cell.styles.fontStyle = 'bold'
+      },
+    })
+    top = after() + 18
+  }
   autoTable(doc, {
     startY: top, theme: 'grid', styles: { font: 'helvetica', fontSize: 9, cellPadding: 5, textColor: [22, 32, 42] }, headStyles: { fillColor: teal, textColor: 255, fontStyle: 'bold' },
     head: [['Depto', 'Línea', 'Código', 'Lote', ...(sh ? ['Turno'] : []), 'Inicio', 'Fin', 'Hecho', 'Waste lb', 'Trabajando', 'Prom. / unidad', 'Parado', 'Razones de paro', 'Registró']],
