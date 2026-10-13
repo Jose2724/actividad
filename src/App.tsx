@@ -938,12 +938,13 @@ const SAVED_MS = 2000
 /** a short tick on devices that can vibrate (Android phones, some tablets): the tap is felt as well as seen */
 const buzz = () => { try { (navigator as Navigator & { vibrate?: (ms: number) => boolean }).vibrate?.(35) } catch { /* not on this device */ } }
 
-// What is already recorded is corrected by a manager only ("Corregir" on a code, a unit, a stop): the report has to say
-// what really happened, and one person answers for the changes. The people on the line keep what belongs to the work
-// itself: filling a cart closed short, going on with a code ended too early, ending or dropping a set up.
+// The people on a line correct what is on their own line's card (the code running, its stop, the code that ended last):
+// that is where a wrong lot or a cart tapped twice is noticed, and every change carries their name. The day's record
+// (the report, the list of codes ended today) is corrected by whoever holds the power for it, a manager by default;
+// so is dividing a stop, passing a run to another line or deleting one.
 function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: number; mgr: boolean; day: WorkDay }) {
   const cfg = CFG[line.dept]
-  const who = useWho(), canGoal = useCan()('goals')
+  const canGoal = useCan()('goals')
   const run = openRun(s, line.id)
   const stop = run ? openStop(s, line.dept, line.id) : undefined
   const [fixing, setFixing] = useState(false)
@@ -1075,7 +1076,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
               <button type="button" className="btn sm" onClick={() => endStop(idle.id)}>■ Terminar {idle.reason}</button>
               <button type="button" className="btn sm" onClick={() => dropSetup(idle.id)}>No viene otro código: quitarlo</button>
             </span>
-            {mgr && <button type="button" className="lnk sm" onClick={() => setFixingStop(true)}>Corregir o dividir</button>}
+            <button type="button" className="lnk sm" onClick={() => setFixingStop(true)}>{mgr ? 'Corregir o dividir' : 'Corregir'}</button>
           </div>
         )}
         {prev && (
@@ -1084,7 +1085,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
             <span className="btns">
               <button type="button" className="lnk sm" onClick={() => setReopening(prev.id)}>↩ No había terminado: seguir con {prev.code}</button>
               {fillLink}
-              {mgr && <button type="button" className="lnk sm" onClick={() => setFixingId(prev.id)}>Corregir</button>}
+              <button type="button" className="lnk sm" onClick={() => setFixingId(prev.id)}>Corregir</button>
             </span>
           </div>
         )}
@@ -1152,7 +1153,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       <div className="lhead">
         <h3>{line.name} {nameIt}</h3>
         <span className={'pill ' + (stop ? 'stop' : 'run')}>{stop ? '⏸ Parado' : '● Corriendo'}</span>
-        <span className="lacts">{goalBtn}{mgr && canShift(who, spanShifts(shiftsOf(s, run.date), run.startedAt, now)) && <button type="button" className="lnk sm" onClick={() => setFixing(true)}>Corregir</button>}</span>
+        <span className="lacts">{goalBtn}<button type="button" className="lnk sm" onClick={() => setFixing(true)}>Corregir</button></span>
       </div>
       <div className="coderow"><b className="code">{run.code}</b><span>lote {run.lot}{run.date !== day.date && ' · ' + shortDay(run.date)} · desde {fmtTime(run.startedAt)}{run.perUnit != null && ' · ' + run.perUnit + ' ' + cfg.qtyUnit + ' por ' + unitWord}</span></div>
       {goalStrip}
@@ -1163,7 +1164,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
           {openOrders.length > 3 && <span>y {openOrders.length - 3} más</span>}
         </div>
       )}
-      {stop && <div className="stopbar">⏸ <b>{stop.reason}</b>{stop.note && ' · ' + stop.note} · <b>{fmtDur(stopTime(s, stop, now))}</b>{stop.lineId === null && ' · todo el departamento'}{mgr && stop.lineId === line.id && <button type="button" className="lnk sm" onClick={() => setFixingStop(true)}>Corregir</button>}</div>}
+      {stop && <div className="stopbar">⏸ <b>{stop.reason}</b>{stop.note && ' · ' + stop.note} · <b>{fmtDur(stopTime(s, stop, now))}</b>{stop.lineId === null && ' · todo el departamento'}{stop.lineId === line.id && <button type="button" className="lnk sm" onClick={() => setFixingStop(true)}>Corregir</button>}</div>}
       {fixing && <RunEditor s={s} run={run} mgr={mgr} onClose={() => setFixing(false)} />}
       {fixingStop && stop && <StopEditor stop={stop} mgr={mgr} onClose={() => setFixingStop(false)} />}
       {/* what is made, big: how many units and how much they carry (with its cases, where pouches are counted); then the
