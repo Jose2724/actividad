@@ -42,7 +42,7 @@ const en = await import(pathToFileURL(resolve(here, '../node_modules/.cache/act-
 let off = 0
 const eq = (what, got, want) => { if (JSON.stringify(got) !== JSON.stringify(want)) { off++; console.log('  ✗ ' + what + ': salió ' + JSON.stringify(got) + ', esperado ' + JSON.stringify(want)) } }
 eq('el idioma se lee al cargar', [m.lang, en.lang], ['es', 'en'])
-eq('las palabras de cada departamento', [en.CFG.RTE.unit, en.CFG.RTE.plural, en.CFG.RTE.done, en.CFG.Kitchen.unit, en.CFG.Packing.qtyUnit, en.CFG.Packing.refLabel, en.CFG.RTE.lineWord], ['Cart', 'Carts', 'Cart done', 'Batch', 'cases', 'Tag no.', 'Line'])
+eq('las palabras de cada departamento', [en.CFG.RTE.unit, en.CFG.RTE.plural, en.CFG.RTE.done, en.CFG.Kitchen.unit, en.CFG.Packing.qtyUnit, en.CFG.Packing.refLabel, en.CFG.RTE.lineWord], ['Cart', 'Carts', 'Cart done', 'Mix', 'cases', 'Tag no.', 'Line'])
 eq('las causas de paro se guardan como siempre y solo se muestran traducidas', [en.CFG.RTE.quick, en.CFG.RTE.quick.map((r) => en.tr(r)), en.SETUP], [m.CFG.RTE.quick, ['Mechanical issue', 'Out of plastic', 'Break'], 'Set up'])
 eq('una causa escrita en inglés es la misma causa, en cualquiera de los dos idiomas', [en.tidyReason('RTE', 'mechanical issue'), m.tidyReason('RTE', 'Out of Plastic'), en.tidyReason('RTE', 'sin plastico'), en.tidyReason('RTE', 'something else')], ['Problema mecánico', 'Sin plástico', 'Sin plástico', 'something else'])
 eq('cajas y sueltos', [en.casesText({ cases: 3, loose: 1 }), en.casesText({ cases: 1, loose: 0 }), en.casesText({ cases: 1188, loose: 4 }), m.casesText({ cases: 3, loose: 1 })], ['3 cases and 1 loose', '1 case', '1,188 cases and 4 loose', '3 cajas y 1 suelto'])
