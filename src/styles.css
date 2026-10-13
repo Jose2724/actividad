@@ -545,4 +545,11 @@ table.shiftgrid tr.sep td{background:var(--bg);color:var(--muted);font-size:11px
 .donefold small{font-size:13px;font-weight:700;color:var(--accent)}
 /* the shift a goal is for, chosen in its dialog: the one a person may not set is there, greyed */
 .shiftpick .chip:disabled{opacity:.45;cursor:not-allowed}
+/* the line's own goal, drawn like the room's: what the shift has made of it, its bar, what is left, and its pace */
+.linegoal{display:grid;align-items:stretch;gap:4px;font-size:13.5px;color:var(--muted)}
+.lg-row{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.lg-row>b:last-child{font-size:16px}
+.linegoal .bar{height:10px;margin:3px 0}
+.lg-sub{font-size:12.5px}
+.linegoal .ok{color:var(--ok)}
 

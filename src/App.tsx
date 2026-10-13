@@ -829,6 +829,8 @@ function TodayCard({ s, dept, now, mgr, date }: { s: State; dept: Dept; now: num
   const left = goal.total ? goal.total - t.shiftQty : 0
   // (the pace is the shift's own, and nothing is foretold once every code of the shift has ended)
   const eta = left > 0 && t.shiftRate && !t.shiftUntil ? now + (left / t.shiftRate) * 3_600_000 : null
+  // a goal of the shift that this pace only reaches after the shift has handed over is not reached: said so, not as an hour of tomorrow
+  const late = eta != null && eta >= turnOf(s, date, now).until
   // The card is the shift in course's, all of it: when a shift takes over it starts from zero, with its own goal.
   // The whole day and what the other shift made are in the report, not here.
   const many = t.shiftCodes.length > 1 || (t.shiftCodes[0]?.lines.length ?? 0) > 1
@@ -855,7 +857,7 @@ function TodayCard({ s, dept, now, mgr, date }: { s: State; dept: Dept; now: num
           <div className="tc-goal">
             <div className="tc-goalrow"><span>{trx('Meta del turno {0} / {1}', <b>{fmtN(t.shiftQty)}</b>, <b>{fmtN(goal.total)}</b>)} {t.unitLabel}</span><b className={pct >= 100 ? 'ok' : ''}>{pct}%</b></div>
             <div className="bar"><i className={pct >= 100 ? 'ok' : ''} style={{ width: pct + '%' }} /></div>
-            <div className="tc-sub">{left > 0 ? <>{trx('Faltan {0}', <b>{fmtN(left)}</b>)}{eta && <> {' '}{trx('· a este ritmo se llega a las {0}', <b>{fmtTime(eta)}</b>)}</>}</> : <b className="ok">{tr('✓ Meta del turno cumplida')}</b>}</div>
+            <div className="tc-sub">{left > 0 ? <>{trx('Faltan {0}', <b>{fmtN(left)}</b>)}{eta && <> {' '}{late ? <span className="red">{tr('· a este ritmo no se llega en este turno')}</span> : trx('· a este ritmo se llega a las {0}', <b>{fmtTime(eta)}</b>)}</>}</> : <b className="ok">{tr('✓ Meta del turno cumplida')}</b>}</div>
           </div>
         ) : <div className="tc-goal tc-none">{mgr ? tr('Sin meta del turno todavía.') : ''}</div>}
         <div className="tc-rate">
@@ -1106,14 +1108,26 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   const goal = lineShiftGoalOf(s, line.id, turn.shift), hasGoal = !!(goal.perHour || goal.total)
   const mine = hasGoal ? deptToday(s, line.dept, day.date, now, line.id) : null
   const goalPct = mine && goal.total ? Math.min(100, Math.floor((mine.shiftQty / goal.total) * 100)) : 0
+  // drawn like the room's goal: what is left of it, when the line gets there at its own pace, and how that pace stands
+  const goalLeft = mine && goal.total ? goal.total - mine.shiftQty : 0
+  const goalEta = mine && goalLeft > 0 && mine.shiftRate && !mine.shiftUntil ? now + (goalLeft / mine.shiftRate) * 3_600_000 : null
+  const goalLate = goalEta != null && goalEta >= turn.until
+  const linePace = mine && goal.perHour && mine.shiftRate != null ? mine.shiftRate / goal.perHour : null
+  const linePaceCls = linePace == null ? '' : linePace >= 1 ? 'ok' : 'red'
   const goalUnit = cfg.qty === 'none' ? cfg.plural.toLowerCase() : cfg.qtyUnit
   const goalBtn = canGoal && <button type="button" className="lnk sm" onClick={() => setGoalOpen(true)}>{hasGoal ? tr('✎ Meta') : tr('+ Meta')}</button>
   const goalStrip = (
     <>
       {mine && hasGoal && (
         <div className="linegoal">
-          {goal.total ? <span>{trx('Meta del turno {0} / {1} {2} · {3}', <b>{fmtN(mine.shiftQty)}</b>, fmtN(goal.total), goalUnit, <b className={goalPct >= 100 ? 'ok' : ''}>{goalPct}%</b>)}</span> : null}
-          {goal.perHour ? <span>{trx('Ritmo {0} {1}/h · meta {2}', <b className={mine.shiftRate == null ? '' : mine.shiftRate >= goal.perHour ? 'ok' : 'red'}>{mine.shiftRate != null ? fmtN(mine.shiftRate) : '—'}</b>, goalUnit, fmtN(goal.perHour))}</span> : null}
+          {goal.total ? (
+            <div className="lg-goal">
+              <div className="lg-row"><span>{trx('Meta del turno {0} / {1}', <b>{fmtN(mine.shiftQty)}</b>, <b>{fmtN(goal.total)}</b>)} {goalUnit}</span><b className={goalPct >= 100 ? 'ok' : ''}>{goalPct}%</b></div>
+              <div className="bar"><i className={goalPct >= 100 ? 'ok' : ''} style={{ width: goalPct + '%' }} /></div>
+              <div className="lg-sub">{goalLeft > 0 ? <>{trx('Faltan {0}', <b>{fmtN(goalLeft)}</b>)}{goalEta && <> {' '}{goalLate ? <span className="red">{tr('· a este ritmo no se llega en este turno')}</span> : trx('· a este ritmo se llega a las {0}', <b>{fmtTime(goalEta)}</b>)}</>}</> : <b className="ok">{tr('✓ Meta del turno cumplida')}</b>}</div>
+            </div>
+          ) : null}
+          {goal.perHour ? <div className="lg-pace">{trx('Ritmo {0} {1}/h · meta {2}', <b className={linePaceCls}>{mine.shiftRate != null ? fmtN(mine.shiftRate) : '—'}</b>, goalUnit, <b>{fmtN(goal.perHour)}</b>)}{linePace != null && <> · <span className={linePaceCls}>{linePace >= 1 ? tr('al ritmo de la meta') : tr('por debajo de la meta')}</span></>}</div> : null}
         </div>
       )}
       {goalOpen && <LineTargetDialog s={s} line={line} unit={goalUnit} inCourse={turn.shift} onClose={() => setGoalOpen(false)} />}

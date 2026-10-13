@@ -223,6 +223,7 @@ export const EN: Record<string, string> = {
   'desde las {0}': 'since {0}',
   'Faltan {0}': '{0} to go',
   '· a este ritmo se llega a las {0}': '· at this pace it is reached at {0}',
+  '· a este ritmo no se llega en este turno': '· at this pace it is not reached in this shift',
   'Ritmo del turno {0}': 'Pace of shift {0}',
   'meta {0}/h': 'goal {0}/h',
   'desde el primer inicio del turno': 'since the shift\'s first start',
@@ -759,7 +760,6 @@ export const EN: Record<string, string> = {
   'Cada turno tiene su meta: la pone su manager y solo cuenta lo que hace ese turno. La ven todas las tablets de {0} y queda en el historial. Deja en blanco la que no aplique. El ritmo sale en rojo cuando baja de la meta por hora.': 'Each shift has its own goal: its manager sets it and only what that shift makes counts. Every tablet in {0} sees it and it is kept in the history. Leave blank the one that does not apply. The pace turns red when it drops below the hourly goal.',
   'La meta que había, {0} {1}, era del día completo, de los dos turnos juntos: ya no se usa. Pon aquí la de este turno.': 'The goal that was here, {0} {1}, was for the whole day, both shifts together: it is no longer used. Set this shift\'s goal here.',
   'En todo el turno': 'For the whole shift',
-  'Meta del turno {0} / {1} {2} · {3}': 'Shift goal {0} / {1} {2} · {3}',
   'Meta de {0} · {1} · Turno {2}': 'Goal for {0} · {1} · Shift {2}',
   'Es la meta de esta línea en un turno: solo cuenta lo que la línea hace en ese turno. Sale en su tarjeta, en todas las tablets, y queda en el historial. Deja en blanco la que no aplique. El ritmo de la línea sale en rojo cuando baja de su meta por hora. La meta de todo {0} junto se pone arriba, en la tarjeta del turno.': 'This is the line\'s goal for one shift: only what the line makes in that shift counts. It shows on its card, on every tablet, and is kept in the history. Leave blank the one that does not apply. The line\'s pace turns red when it drops below its hourly goal. The goal for all of {0} together is set above, on the shift\'s card.',
 }
