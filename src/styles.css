@@ -533,4 +533,8 @@ table.shiftgrid tr.sep td{background:var(--bg);color:var(--muted);font-size:11px
 .me .where{background:var(--soft);color:var(--accent);border:1px solid #bfe0db;border-radius:999px;padding:3px 10px;font-weight:800}
 .gate{position:relative}
 .gate>.langsw{position:absolute;top:-9vh;right:20px}
+/* records of the day somebody took away: said loud, with the way back next to it */
+.purged{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;background:#fff7e6;border:1.5px solid #f2c97a;border-radius:12px;padding:10px 14px;color:var(--amber);font-weight:600}
+.purged b{color:var(--ink)}
+.purged small{color:var(--amber)}
 

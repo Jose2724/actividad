@@ -900,7 +900,40 @@ export function purgeDay(date: string, before = Infinity): { runs: number; stops
     for (const x of stops) putStop({ ...x, deleted: true })
     for (const c of lines) putChange({ ...c, deleted: true, updatedAt: stamp(c) })
     const now = clockNow()
-    putChange({ id: uid(), at: now, by: user.get(), dept: null, what: 'Se borraron los registros del ' + date + (before < Infinity ? ' anteriores a las ' + fmtTime(before) : ''), before: runs.length + (runs.length === 1 ? ' corrida' : ' corridas') + ' · ' + stops.length + (stops.length === 1 ? ' paro' : ' paros'), after: '', refTable: DAY_REF + ':purge', refKey: date, updatedAt: now })
+    putChange({ id: uid(), at: now, by: user.get(), dept: null, what: 'Se borraron los registros del ' + date + (before < Infinity ? ' anteriores a las ' + fmtTime(before) : ''), before: runs.length + (runs.length === 1 ? ' corrida' : ' corridas') + ' · ' + stops.length + (stops.length === 1 ? ' paro' : ' paros'), after: '', refTable: PURGE_REF, refKey: date, updatedAt: now })
+  })
+  return { runs: runs.length, stops: stops.length }
+}
+// ---- what was taken away by mistake comes back ----
+export const PURGE_REF = DAY_REF + ':purge'
+const RESTORE_REF = DAY_REF + ':restore'
+/** how long before the moment a purge is written its rows may have been marked (they are all marked in the same instant, just before) */
+const PURGE_WINDOW_MS = 120_000
+/** the times the records of a day were taken away and have not been brought back: when, by whom and how many (said in the report) */
+export const purgesOf = (s: State, date: string) => s.changes.filter((c) => c.refTable === PURGE_REF && c.refKey === date && !c.deleted && !s.changes.some((r) => r.refTable === RESTORE_REF && r.refKey === c.id && !r.deleted)).sort((a, b) => a.at - b.at)
+/**
+ * The records a purge took away come back. Nothing is ever erased on the server: a record that is "deleted" is only
+ * marked, whole, with its units, its lots and its hours. This takes the mark off, and every device shows it again.
+ * `rows` = what the server holds of that day (see fetchPurged in sync.ts). Only what was marked at the moment of THAT
+ * purge comes back, not a run a manager deleted on its own for its own reason. A code or a stop that was still
+ * running then comes back ended at that moment: nothing was recorded on it afterwards (it was off every screen), and
+ * its line may have started another code since. null = this device does not know that purge.
+ */
+export function restorePurged(purgeId: string, rows: { runs: Row[]; stops: Row[]; changes: Row[] }): { runs: number; stops: number } | null {
+  const mark = state.changes.find((c) => c.id === purgeId && c.refTable === PURGE_REF)
+  if (!mark) return null
+  // marked at that moment or later (a tablet that was touching a row just then may have left its mark a little after),
+  // and already there when it happened: what was deleted on its own before, or recorded afterwards, is not of that purge
+  const taken = (x: { deleted?: boolean; updatedAt: number }, began: number) => !!x.deleted && x.updatedAt >= mark.at - PURGE_WINDOW_MS && began <= mark.at
+  const runs = rows.runs.map(runOfRow).filter((r) => taken(r, r.startedAt) && r.date === mark.refKey && !state.runs.some((x) => x.id === r.id))
+  const stops = rows.stops.map(stopOfRow).filter((x) => taken(x, x.startedAt) && !state.stops.some((y) => y.id === x.id))
+  const lines = rows.changes.map(changeOfRow).filter((c) => taken(c, c.at) && (c.refTable === 'act_runs' || c.refTable === 'act_stops'))
+  batch(() => {
+    for (const r of runs) putRun({ ...r, deleted: false, endedAt: r.endedAt ?? Math.max(mark.at, r.startedAt, ...r.units.map((u) => u.at + 1)) })
+    for (const x of stops) putStop({ ...x, deleted: false, endedAt: x.endedAt ?? Math.max(mark.at, x.startedAt) })
+    for (const c of lines) putChange({ ...c, deleted: false, updatedAt: stamp(c) })
+    const now = clockNow()
+    putChange({ id: uid(), at: now, by: user.get(), dept: null, what: 'Se recuperaron los registros del ' + mark.refKey + ' borrados a las ' + fmtTime(mark.at), before: '', after: runs.length + (runs.length === 1 ? ' corrida' : ' corridas') + ' · ' + stops.length + (stops.length === 1 ? ' paro' : ' paros'), refTable: RESTORE_REF, refKey: mark.id, updatedAt: now })
   })
   return { runs: runs.length, stops: stops.length }
 }
@@ -1126,6 +1159,7 @@ const runOfRow = (row: Row): Run => ({
   units: (Array.isArray(row.units) ? (row.units as Partial<Unit>[]) : []).map(unitOf),
   perUnit: row.per_unit == null ? null : Number(row.per_unit), waste: Number(row.waste ?? 0), by: String(row.by_name ?? ''), updatedAt: fromIso(row.updated_at) ?? 0, deleted: !!row.deleted,
 })
+function changeOfRow(row: Row): Change { return { id: String(row.id), at: fromIso(row.at) ?? 0, by: String(row.by_name ?? ''), dept: (row.dept ?? null) as Dept | null, what: String(row.what ?? ''), before: String(row.before ?? ''), after: String(row.after ?? ''), refTable: String(row.ref_table ?? ''), refKey: String(row.ref_key ?? ''), updatedAt: fromIso(row.updated_at) ?? 0, deleted: !!row.deleted } }
 const stopOfRow = (row: Row): Stop => ({ id: String(row.id), dept: row.dept as Dept, lineId: row.line_id == null ? null : String(row.line_id), reason: String(row.reason ?? ''), note: String(row.note ?? ''), startedAt: fromIso(row.started_at) ?? 0, endedAt: fromIso(row.ended_at), by: String(row.by_name ?? ''), updatedAt: fromIso(row.updated_at) ?? 0, deleted: !!row.deleted })
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
@@ -1239,7 +1273,7 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
   } else if (table === 'act_changes') {
     const cur = state.changes.find((c) => c.id === row.id)
     if (!newer(cur)) return
-    const c: Change = { id: String(row.id), at: fromIso(row.at) ?? 0, by: String(row.by_name ?? ''), dept: (row.dept ?? null) as Dept | null, what: String(row.what ?? ''), before: String(row.before ?? ''), after: String(row.after ?? ''), refTable: String(row.ref_table ?? ''), refKey: String(row.ref_key ?? ''), updatedAt: at, deleted: !!row.deleted }
+    const c = changeOfRow(row)
     set({ ...state, changes: upsertIn(state.changes, c) })
   } else if (table === 'act_targets' && String(row.dept ?? '').startsWith(SHIFTS_KEY)) {
     // the hours of the shifts from a date on (a version without its hours was taken back)

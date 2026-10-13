@@ -1676,6 +1676,53 @@ gap.use((m) => {
     eq('pasada la medianoche, lo del turno 2 sigue en el reporte de su día: carros, paros y set up', [m.workDay(st()).date, m.reportOf(st(), DAY, clock).stops.map((x) => x.reason), m.reportOf(st(), DAY, clock, { shift: 2 }).rows.map((x) => [x.units, Math.round(x.st.down / M)]), Math.round(m.reportOf(st(), DAY, clock).setup / M), m.reportOf(st(), '2026-10-11', clock).stops.length], [DAY, ['Break', 'Set up'], [[1, 15]], 5, 0])
   })
 }
+section('Lo que se borró por error se recupera: en el servidor nada se borra de verdad')
+{
+  // what happened on 2026-10-13: the first shift had been working since six, and somebody starting the day at half
+  // past eight answered "eran pruebas: borrarlas". Every screen lost the morning. The server still had all of it.
+  const D20 = '2026-10-20'
+  const rte = tab.use((m) => m.store.get().lines.find((l) => l.dept === 'RTE'))
+  const ofDay = (d) => d.use((m) => m.store.get().runs.filter((r) => r.date === D20).sort((a, b) => a.startedAt - b.startedAt).map((r) => [r.code, r.units.map((u) => u.qty), r.endedAt ? new Date(r.endedAt).getHours() + ':' + String(new Date(r.endedAt).getMinutes()).padStart(2, '0') : 'corriendo']))
+  const stopsOfDay = (d) => d.use((m) => m.store.get().stops.filter((x) => m.dayOf(x.startedAt) === D20).map((x) => [x.reason, Math.round((x.endedAt - x.startedAt) / M)]))
+  const idOf = (code) => tab.use((m) => m.store.get().runs.find((r) => r.date === D20 && r.code === code && !r.deleted)?.id)
+  // a test run the manager made and deleted by itself, long before: that one must stay deleted
+  clock = oct(20, 5, 30); mgr.use((m) => m.startRun(rte, 'PRUEBA', '6293', D20, 240)); settle()
+  clock = oct(20, 5, 40); mgr.use((m) => { m.endRun(m.store.get().runs.find((r) => r.code === 'PRUEBA').id); m.deleteRun(m.store.get().runs.find((r) => r.code === 'PRUEBA').id) }); settle()
+  // the morning of the first shift, on the tablet
+  clock = oct(20, 6, 0); tab.use((m) => m.startRun(rte, 'P100', '6293', D20, 240)); settle()
+  clock = oct(20, 6, 20); tab.use((m) => m.unitDone(idOf('P100'), 240))
+  clock = oct(20, 6, 40); tab.use((m) => m.unitDone(idOf('P100'), 240))
+  clock = oct(20, 6, 45); tab.use((m) => m.startStop('RTE', rte.id, 'Break', ''))
+  clock = oct(20, 6, 55); tab.use((m) => m.endStop(m.store.get().stops.find((x) => !x.endedAt && x.lineId === rte.id).id))
+  clock = oct(20, 7, 30); tab.use((m) => m.endRun(idOf('P100'), false))
+  clock = oct(20, 7, 35); tab.use((m) => m.startRun(rte, 'P200', '6293', D20, 240))
+  clock = oct(20, 8, 0); tab.use((m) => m.unitDone(idOf('P200'), 240)); settle()
+  const morning = [['P100', [240, 240], '7:30'], ['P200', [240], 'corriendo']]
+  eq('la mañana del primer turno, en los dos aparatos', [ofDay(tab), ofDay(mgr), stopsOfDay(mgr)], [morning, morning, [['Break', 10]]])
+  // 8:30: somebody starts the day and takes "the tests" away
+  clock = oct(20, 8, 30)
+  const took = mgr.use((m) => m.startDay(clock, { date: D20, purge: true })); settle()
+  eq('al empezar el día se quitaron de todas las pantallas', [[took.runs, took.stops], ofDay(tab), ofDay(mgr), stopsOfDay(tab)], [[2, 1], [], [], []])
+  const kept = [...server].filter(([k, row]) => k.startsWith('act_runs|') && String(row.date) === D20).map(([, row]) => [row.code, row.deleted, row.units.length]).sort()
+  eq('pero el servidor los conserva enteros, solo marcados', kept, [['P100', true, 2], ['P200', true, 1], ['PRUEBA', true, 0]])
+  eq('el reporte de ese día dice a los dos que se quitaron, cuándo y quién', [tab, mgr].map((d) => d.use((m) => m.purgesOf(m.store.get(), D20).map((c) => [c.by, c.before, new Date(c.at).getHours() + ':' + new Date(c.at).getMinutes()]))), [[['Santiago', '2 corridas · 1 paro', '8:30']], [['Santiago', '2 corridas · 1 paro', '8:30']]])
+  // the line looks free, so the operator starts the code again and goes on
+  clock = oct(20, 8, 40); tab.use((m) => m.startRun(rte, 'P200', '6293', D20, 240))
+  clock = oct(20, 9, 0); tab.use((m) => m.unitDone(m.store.get().runs.find((r) => r.date === D20 && !r.endedAt).id, 240)); settle()
+  // 9:10: the manager brings the morning back, with what the server holds of that day
+  clock = oct(20, 9, 10)
+  const held = (table) => [...server].filter(([k]) => k.startsWith(table + '|')).map(([, row]) => row)
+  const purge = mgr.use((m) => m.purgesOf(m.store.get(), D20)[0].id)
+  const back = mgr.use((m) => m.restorePurged(purge, { runs: held('act_runs'), stops: held('act_stops'), changes: held('act_changes') })); settle()
+  const whole = [['P100', [240, 240], '7:30'], ['P200', [240], '8:30'], ['P200', [240], 'corriendo']]
+  eq('recuperado: vuelve la mañana entera; lo que seguía corriendo queda terminado a la hora en que se quitó', [back, ofDay(mgr), ofDay(tab), stopsOfDay(tab)], [{ runs: 2, stops: 1 }, whole, whole, [['Break', 10]]])
+  eq('la corrida de prueba que el manager había borrado por su cuenta sigue borrada', [...server].filter(([k, row]) => k.startsWith('act_runs|') && row.code === 'PRUEBA').map(([, row]) => row.deleted), [true])
+  eq('una sola corrida de ese día abierta en la línea, y nada pendiente de enviar', [[tab, mgr].map((d) => d.use((m) => m.store.get().runs.filter((r) => r.date === D20 && r.lineId === rte.id && !r.endedAt).length)), all.map((d) => d.use((m) => m.outbox.size()))], [[1, 1], [0, 0]])
+  eq('el reporte vuelve a sumar todo el turno', mgr.use((m) => { const r = m.reportOf(m.store.get(), D20, clock, { only: 'RTE' }); return [r.rows.length, r.byDept[0].units, r.byDept[0].qty] }), [3, 4, 960])
+  eq('ya no hay nada por recuperar, y queda escrito quién lo recuperó', [tab.use((m) => m.purgesOf(m.store.get(), D20).length), mgr.use((m) => m.purgesOf(m.store.get(), D20).length), tab.use((m) => m.store.get().changes.filter((c) => c.what.startsWith('Se recuperaron')).map((c) => [c.by, c.after]))], [0, 0, [['Santiago', '2 corridas · 1 paro']]])
+  eq('recuperar otra vez no trae nada de más', [mgr.use((m) => m.restorePurged(purge, { runs: held('act_runs'), stops: held('act_stops'), changes: held('act_changes') })), ofDay(mgr).length], [{ runs: 0, stops: 0 }, 3])
+  settle()
+}
 section('Set up: espera al código siguiente; con las líneas vacías no corre nada')
 {
   const wai = await device('wai', { user: 'Santiago', usual: true })

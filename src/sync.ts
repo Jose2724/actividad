@@ -99,6 +99,26 @@ export const dayPull = (date: string): [Table, (q: Q) => Q][] => [
   ['act_schedule', (q) => q.eq('date', date)],
 ]
 
+/**
+ * What the server holds of a day that is marked as taken away: its runs, the stops around it and their history.
+ * Nothing is ever erased there, so what somebody "deleted" by mistake can be brought back (see restorePurged).
+ * null = it could not be asked now (no signal, or no session).
+ */
+export async function fetchPurged(date: string): Promise<{ runs: Row[]; stops: Row[]; changes: Row[] } | null> {
+  if (!supabase) return null
+  const out = { runs: [] as Row[], stops: [] as Row[], changes: [] as Row[] }
+  const into: Partial<Record<Table, Row[]>> = { act_runs: out.runs, act_stops: out.stops, act_changes: out.changes }
+  try {
+    for (const [t, narrow] of dayPull(date)) {
+      const list = into[t]
+      if (!list) continue
+      const error = await pages(listing(t, (q) => narrow(q).eq('deleted', true)), (rows) => { for (const row of rows) if (row.deleted && !list.some((x) => x.id === row.id)) list.push(row) })
+      if (error) return null
+    }
+    return out
+  } catch { return null }
+}
+
 let pull: Promise<boolean> | null = null
 /** everything changed on the server since the last pull; one pull at a time, whoever asks meanwhile waits for it */
 export function pullAll(): Promise<boolean> {

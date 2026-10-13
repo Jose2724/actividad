@@ -1,6 +1,6 @@
 import { createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
-import { addLine, addWaste, awayDay, byLineName, byShip, casesText, cancelDay, CFG, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineTargetOf, lotFor, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, numOf, openIn, openOrdersFor, openRun, openStop, orderCodes, orderLabel, orderMade, parseProductsCsv, plainDay, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reopenRun, reset, resetRecords, role, runQty, runStats, saveOrder, saveProduct, setLineTarget, setSchedule, setShifts, setTarget, startDay, startRun, startSetup, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, savedText, shiftAt, shiftCuts, shiftHours, shiftSpan, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type LineTarget, type Product, type LotPart, type Order, type ShiftHours, type Short, type State, type Target, type WorkDay } from './store'
+import { addLine, addWaste, awayDay, byLineName, byShip, casesText, cancelDay, CFG, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineTargetOf, lotFor, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, numOf, openIn, openOrdersFor, openRun, openStop, orderCodes, orderLabel, orderMade, parseProductsCsv, plainDay, productOf, productsCsv, purgeDay, purgesOf, removeLine, removeProduct, renameLine, reopenRun, reset, restorePurged, resetRecords, role, runQty, runStats, saveOrder, saveProduct, setLineTarget, setSchedule, setShifts, setTarget, startDay, startRun, startSetup, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, savedText, shiftAt, shiftCuts, shiftHours, shiftSpan, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type LineTarget, type Product, type LotPart, type Order, type ShiftHours, type Short, type State, type Target, type WorkDay } from './store'
 import { avanceRows, n1, pending, type AvanceRow } from './avance'
 import { cellText, loadZip, xDay, xDur, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 
@@ -12,7 +12,7 @@ import { filterFile, filterTitle, reportOf, spanShifts, type ReportFilter } from
 import { canDo, canShift, type Power, type Who } from './powers'
 import { RunEditor, StopEditor } from './editors'
 import { fetchMe, finishSignOut, loginEmail, rememberedMe, rememberedUser, rememberMe, rememberUser, signedOut, signOutHere, supabase, type Me } from './supabase'
-import { leaveAsk, loadDay, startSync, syncStore, syncNow, unreachable } from './sync'
+import { leaveAsk, loadDay, startSync, syncStore, syncNow, unreachable, fetchPurged } from './sync'
 import { storageFull } from './storage'
 import { clockNow, clockOffText, otherZone, startClock } from './clock'
 import { appUrl, qrPath } from './qr'
@@ -618,13 +618,15 @@ function StartDayDialog({ s, now, day, onClose, onDone }: { s: State; now: numbe
   const [left, setLeft] = useState<'finish' | 'keep'>('finish')
   const [mine, setMine] = useState<'keep' | 'wipe'>('keep')
   const [word, setWord] = useState('')
+  // taking away what is already recorded is the owner's alone: on 2026-10-13 a morning of work went that way by mistake
+  const mayWipe = !!useWho().admin
   // an hour left as it came means "this very moment" (or the start it already had); a typed one is that hour, on the nearest day
   const at = time === opened ? (was ? was.at : now) : nearDay(was ? was.at : now, time)
   const date = was ? day.date : plainDay(s, at) // after midnight the second shift is still on its own day
   const lefts = leftOpen(s, date, at)
   const had = dayRecords(s, date, at)
   const some = had.runs.length + had.stops.length > 0
-  const wipe = some && mine === 'wipe'
+  const wipe = some && mayWipe && mine === 'wipe'
   const ok = !!time && (!wipe || wipeOk(word))
   const go = () => {
     if (!ok) return
@@ -653,12 +655,14 @@ function StartDayDialog({ s, now, day, onClose, onDone }: { s: State; now: numbe
           {some && (
             <div className={'tidybox' + (wipe ? ' hot' : '')}>
               <b>{trx('Ya hay registrado ese día antes de esa hora: {0} {1}{2} y {3}', had.runs.length, had.runs.length === 1 ? tr('corrida') : tr('corridas'), had.runs.some((r) => !r.endedAt) ? ' (' + tr('{0} en curso)', had.runs.filter((r) => !r.endedAt).length) : '', had.stops.length)} {had.stops.length === 1 ? tr('paro') : tr('paros')}</b>
-              <div className="chips">
-                <button type="button" className={'chip' + (mine === 'keep' ? ' on' : '')} onClick={() => setMine('keep')}>{tr('Son de hoy: se quedan')}</button>
-                <button type="button" className={'chip' + (mine === 'wipe' ? ' on' : '')} onClick={() => setMine('wipe')}>{tr('Eran pruebas: borrarlas')}</button>
-              </div>
+              {mayWipe ? (
+                <div className="chips">
+                  <button type="button" className={'chip' + (mine === 'keep' ? ' on' : '')} onClick={() => setMine('keep')}>{tr('Son de hoy: se quedan')}</button>
+                  <button type="button" className={'chip' + (mine === 'wipe' ? ' on' : '')} onClick={() => setMine('wipe')}>{tr('Eran pruebas: borrarlas')}</button>
+                </div>
+              ) : <span>{tr('Se quedan como están: empezar el día no borra nada.')}</span>}
               {wipe && <>
-                <span>{trx('Se quitan de todas las pantallas y del reporte{0}. Desde la app no se pueden recuperar.', supabase ? tr(', en todos los aparatos') : '')}</span>
+                <span>{supabase ? tr('Se quitan de todas las pantallas y del reporte, en todos los aparatos. Si fue un error, se recuperan desde el Reporte de ese día.') : tr('Se quitan de todas las pantallas y del reporte. En el demo no se pueden recuperar.')}</span>
                 <label>{trx('Escribe {0} para confirmar', WIPE_WORD)}{' '}<input value={word} onChange={(e) => setWord(e.target.value)} autoComplete="off" autoCapitalize="characters" placeholder={WIPE_WORD} /></label>
               </>}
             </div>
@@ -684,7 +688,7 @@ function WipeDayDialog({ s, date, onClose, onDone }: { s: State; date: string; o
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
         <h3>{trx('¿Borrar todo lo registrado el {0}?', longDate(date))}</h3>
-        <p>{had.runs.length + had.stops.length === 1 ? tr('Es') + ' ' : tr('Son') + ' '}{howMany(had.runs.length, had.stops.length)}{trx('. Se quitan de todas las pantallas y reportes{0}. Sirve para limpiar un día de pruebas; desde la app no se puede recuperar.', supabase ? tr(', en todos los aparatos') : '')}</p>
+        <p>{had.runs.length + had.stops.length === 1 ? tr('Es') + ' ' : tr('Son') + ' '}{howMany(had.runs.length, had.stops.length)}{supabase ? tr('. Se quitan de todas las pantallas y reportes, en todos los aparatos. Sirve para limpiar un día de pruebas. Si fue un error, se recuperan desde este mismo reporte.') : tr('. Se quitan de todas las pantallas y reportes. Sirve para limpiar un día de pruebas; en el demo no se puede recuperar.')}</p>
         <form className="qform" onSubmit={(e) => { e.preventDefault(); if (!wipeOk(word)) return; const r = purgeDay(date); onClose(); onDone({ title: tr('Día borrado'), text: (r.runs + r.stops === 1 ? tr('Del {0} se borró {1}', longDate(date), howMany(r.runs, r.stops)) : tr('Del {0} se borraron {1}', longDate(date), howMany(r.runs, r.stops))) + '.' }) }}>
           <label>{trx('Escribe {0} para confirmar', WIPE_WORD)}{' '}<input value={word} onChange={(e) => setWord(e.target.value)} autoComplete="off" autoCapitalize="characters" placeholder={WIPE_WORD} /></label>
           <div className="dbtns">
@@ -1527,6 +1531,22 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
   const fShift = shiftPick ?? ownShift
   const setFShift = (k: 0 | 1 | 2) => { shiftChosen = k; setShiftPick(k) }
   const [shiftsOpen, setShiftsOpen] = useState(false)
+  // Records of this day that somebody took away ("eran pruebas"). The server never erases: they are there, marked, and
+  // come back whole with one tap.
+  const purges = supabase ? purgesOf(s, date) : []
+  const [recovering, setRecovering] = useState(false)
+  const recover = async (id: string) => {
+    setRecovering(true)
+    try {
+      const held = await fetchPurged(date)
+      const r = held && restorePurged(id, held)
+      setNotice(r
+        ? { title: tr('Registros recuperados'), text: tr('Volvieron {0}. Lo que seguía corriendo cuando se quitaron quedó terminado a esa hora: nada se registró en ello después. Revisa el reporte.', howMany(r.runs, r.stops)) }
+        : { title: tr('No se pudo recuperar ahora'), text: tr('Hace falta señal para traerlos del servidor. Inténtalo otra vez cuando arriba diga "Sincronizado".') })
+    } finally { setRecovering(false) }
+  }
+  /** "12 corridas · 5 paros", as the history wrote it, in the words of the screen */
+  const tookText = (t: string) => { const m = /^(\d+) corridas? · (\d+) paros?$/.exec(t); return m ? howMany(Number(m[1]), Number(m[2])) : t }
   // long lists show ten lines at a time (the files always carry everything)
   const [more, setMore] = useState<Record<string, number>>({})
   useEffect(() => { setMore({}) }, [date, fCode, fLot, fShift, fDept])
@@ -1718,6 +1738,14 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
         {active.length > 0 && <p className="rf-foot">{tr('Los archivos salen con lo que estás viendo.')}{rep.lot && !rep.shift && ' ' + tr('Con un lote, los tiempos y el waste son los de las corridas completas.')}</p>}
       </div>
       <DayNote day={day} />
+      {purges.map((c) => (
+        <div key={c.id} className="purged">
+          <span>{trx('⚠ A las {0}, {1} quitó de este día {2}. No se perdieron: siguen guardados en el servidor.', <b>{fmtTime(c.at)}</b>, <b>{c.by}</b>, <b>{tookText(c.before)}</b>)}</span>
+          {admin || can('del')
+            ? <button type="button" className="btn primary" disabled={recovering} onClick={() => void recover(c.id)}>{recovering ? tr('Recuperando…') : tr('↩ Recuperarlos')}</button>
+            : <small>{tr('Un manager puede recuperarlos desde aquí.')}</small>}
+        </div>
+      ))}
       {shiftsOpen && <ShiftsDialog s={s} date={date} onClose={() => setShiftsOpen(false)} />}
       {rows.length === 0 ? <p className="hint">{day.state === 'here' ? (rep.code || rep.lot || (!only && dept) ? tr('Nada registrado con estos filtros.') : rep.shift ? tr('Nada registrado en este turno.') : tr('Nada registrado en esta fecha.')) : ''}</p> : (
         <>
