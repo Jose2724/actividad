@@ -677,6 +677,8 @@ function WipeDayDialog({ s, date, onClose, onDone }: { s: State; date: string; o
   )
 }
 
+/** "lun, 12 oct": a date said short */
+const shortDay = (date: string) => new Date(date + 'T12:00:00').toLocaleDateString('es', { weekday: 'short', day: 'numeric', month: 'short' })
 /** "15 oct" */
 const shipText = (date: string) => new Date(date + 'T12:00:00').toLocaleDateString('es', { day: 'numeric', month: 'short' })
 /** " · faltan 52 de 72 cajas", " · completo", or nothing when the order does not say how many cases it is for */
@@ -952,6 +954,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   const [filling, setFilling] = useState<Short | null>(null)
   const [choosing, setChoosing] = useState(false)
   const [goalOpen, setGoalOpen] = useState(false)
+  const [editDate, setEditDate] = useState(false)
   const [reopening, setReopening] = useState<string | null>(null) // the code (its run) the question is about
   const [fixingId, setFixingId] = useState<string | null>(null)
   const [endAfter, setEndAfter] = useState<null | boolean>(null) // not null = waiting for that unit; the value says whether a set up follows
@@ -1018,13 +1021,17 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   const mine = hasGoal ? deptToday(s, line.dept, day.date, now, line.id) : null
   const goalPct = mine && goal?.perDay ? Math.min(100, Math.floor((mine.qty / goal.perDay) * 100)) : 0
   const goalUnit = cfg.qty === 'none' ? cfg.plural.toLowerCase() : cfg.qtyUnit
-  const goalStrip = (hasGoal || mgr) && (
-    <div className="linegoal">
-      {mine && goal?.perDay ? <span>Meta de hoy: <b>{fmtN(mine.qty)}</b> de <b>{fmtN(goal.perDay)}</b> {goalUnit} · <b className={goalPct >= 100 ? 'ok' : ''}>{goalPct}%</b></span> : null}
-      {mine && goal?.perHour ? <span>Ritmo: <b className={mine.shiftRate == null ? '' : mine.shiftRate >= goal.perHour ? 'ok' : 'red'}>{mine.shiftRate != null ? fmtN(mine.shiftRate) : '—'}</b> {goalUnit}/h · meta <b>{fmtN(goal.perHour)}</b>/h</span> : null}
-      {mgr && <button type="button" className="lnk" onClick={() => setGoalOpen(true)}>{hasGoal ? '✎ Meta de ' + line.name : '+ Meta de ' + line.name}</button>}
+  const goalBtn = mgr && <button type="button" className="lnk sm" onClick={() => setGoalOpen(true)}>{hasGoal ? '✎ Meta' : '+ Meta'}</button>
+  const goalStrip = (
+    <>
+      {mine && hasGoal && (
+        <div className="linegoal">
+          {goal?.perDay ? <span>Meta de hoy <b>{fmtN(mine.qty)}</b> / {fmtN(goal.perDay)} {goalUnit} · <b className={goalPct >= 100 ? 'ok' : ''}>{goalPct}%</b></span> : null}
+          {goal?.perHour ? <span>Ritmo <b className={mine.shiftRate == null ? '' : mine.shiftRate >= goal.perHour ? 'ok' : 'red'}>{mine.shiftRate != null ? fmtN(mine.shiftRate) : '—'}</b> {goalUnit}/h · meta {fmtN(goal.perHour)}</span> : null}
+        </div>
+      )}
       {goalOpen && <LineTargetDialog line={line} unit={goalUnit} goal={goal} onClose={() => setGoalOpen(false)} />}
-    </div>
+    </>
   )
   if (!run) {
     // the lot follows the date unless someone typed another one; the quantity per unit (boxes per pallet, pouches
@@ -1042,29 +1049,33 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
     const idle = idleStop(s, line.id, now)
     // the code that ended last here today: marked as finished too early, it goes on; short on its last unit, it is filled
     const prev = lastEnded(s, line.id, day.date)
+    // the date is the day of work: said in one line, with its box only when somebody wants another one
+    const showDate = editDate || dateText !== null
     return (
       <div className="line idle">
-        <div className="lhead"><h3>{line.name} {nameIt}</h3><button type="button" className="lnk" onClick={() => setRemoving(true)}>Quitar {cfg.lineWord.toLowerCase()}</button></div>
+        <div className="lhead">
+          <h3>{line.name} {nameIt}</h3>
+          <span className={'pill ' + (idle ? 'setup' : 'free')}>{idle ? '⏱ ' + idle.reason + ' · ' + fmtDur(stopTime(s, idle, now)) : 'Libre'}</span>
+          <span className="lacts">{goalBtn}</span>
+        </div>
         {goalStrip}
         {idle && (
           <div className="setupbar">
-            <span>⏱ {idle.reason} · desde {fmtTime(idle.startedAt)} · <b>{fmtDur(stopTime(s, idle, now))}</b></span>
-            <small>Cuenta como paro hasta que empiece el siguiente código. Ya sale en el Reporte.</small>
-            <span className="btns">
-              <button type="button" className="lnk" onClick={() => endStop(idle.id)}>■ Terminar {idle.reason}</button>
-              {mgr && <button type="button" className="lnk" onClick={() => setFixingStop(true)}>Corregir o dividir</button>}
-              <button type="button" className="lnk" onClick={() => dropSetup(idle.id)}>No viene otro código: quitarlo</button>
+            <small>Desde las {fmtTime(idle.startedAt)}. Cuenta como paro hasta que empiece otro código.</small>
+            <span className="btns two">
+              <button type="button" className="btn sm" onClick={() => endStop(idle.id)}>■ Terminar {idle.reason}</button>
+              <button type="button" className="btn sm" onClick={() => dropSetup(idle.id)}>No viene otro código: quitarlo</button>
             </span>
+            {mgr && <button type="button" className="lnk sm" onClick={() => setFixingStop(true)}>Corregir o dividir</button>}
           </div>
         )}
-        {!idle && <div className="setupstart"><button type="button" className="lnk" onClick={() => startSetup(line)}>⏱ Empezar Set up en {line.name}</button></div>}
         {prev && (
           <div className="lastcode">
-            <span>Último código: <b className="code">{prev.code}</b> · lote {prev.lot} · terminó {fmtTime(prev.endedAt ?? 0)} · {madeText(prev, runQty(s, prev))}</span>
+            <span>Último: <b className="code">{prev.code}</b> · lote {prev.lot} · terminó {fmtTime(prev.endedAt ?? 0)} · {madeText(prev, runQty(s, prev))}</span>
             <span className="btns">
-              <button type="button" className="lnk" onClick={() => setReopening(prev.id)}>↩ No había terminado: seguir con {prev.code}</button>
+              <button type="button" className="lnk sm" onClick={() => setReopening(prev.id)}>↩ No había terminado: seguir con {prev.code}</button>
               {fillLink}
-              {mgr && <button type="button" className="lnk" onClick={() => setFixingId(prev.id)}>Corregir</button>}
+              {mgr && <button type="button" className="lnk sm" onClick={() => setFixingId(prev.id)}>Corregir</button>}
             </span>
           </div>
         )}
@@ -1075,25 +1086,31 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         {fixingStop && idle && <StopEditor stop={idle} mgr={mgr} onClose={() => setFixingStop(false)} />}
         {naming}
         {removing && <ConfirmDialog title={'¿Quitar ' + line.name + ' de ' + line.dept + '?'} text="Se puede volver a agregar cuando haga falta." yes="Quitar" danger onYes={() => removeLine(line.id)} onNo={() => setRemoving(false)} />}
-        <form className="start" onSubmit={(e) => { e.preventDefault(); if (ok) { startRun(line, code.trim().toUpperCase(), lot.trim(), date, needPer ? perUnit : null); setDateText(null); setLotText(null) } }}>
+        <form className="start" onSubmit={(e) => { e.preventDefault(); if (ok) { startRun(line, code.trim().toUpperCase(), lot.trim(), date, needPer ? perUnit : null); setDateText(null); setLotText(null); setEditDate(false) } }}>
           <label>Código <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="ej. 0100" autoComplete="off" /></label>
           <label>Lote <input value={lot} onChange={(e) => setLotText(e.target.value)} inputMode="numeric" placeholder="ej. 6280" autoComplete="off" /></label>
-          <label>Fecha <input type="date" value={date} onChange={(e) => { if (!lot.trim() || lot.trim() === lotFor(date)) setLotText(null); setDateText(e.target.value || null) }} /></label>
+          {showDate
+            ? <label className="wide">Fecha <input type="date" value={date} onChange={(e) => { if (!lot.trim() || lot.trim() === lotFor(date)) setLotText(null); setDateText(e.target.value || null) }} /></label>
+            : <div className="dateline">Fecha <b>{shortDay(date)}</b> <button type="button" className="lnk sm" onClick={() => setEditDate(true)}>Cambiar</button></div>}
           {/* a known product brings its numbers: shown as a line, the boxes only when they want to change them */}
           {needPer && !isCart && (suggested != null && !editQty
             ? <div className="known"><b>{suggested}</b> {cfg.qtyUnit} por {cfg.unit.toLowerCase()} <button type="button" className="lnk" onClick={() => setEditQty(true)}>Cambiar</button></div>
-            : <label>{cfg.perUnitLabel} <input value={per} onChange={(e) => setPer(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder={suggested != null ? String(suggested) : 'ej. 36'} autoComplete="off" /></label>)}
+            : <label className="wide">{cfg.perUnitLabel} <input value={per} onChange={(e) => setPer(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder={suggested != null ? String(suggested) : 'ej. 36'} autoComplete="off" /></label>)}
           {isCart && (perCrateN && !editQty
             ? <div className="known"><b>{cratesN}</b> guacales × <b>{perCrateN}</b> pouches = <b>{perUnit}</b> pouches por carro <button type="button" className="lnk" onClick={() => setEditQty(true)}>Cambiar</button></div>
             : (
               <div className="cartrow">
-                <label>Guacales por carro <small>(12 por columna)</small> <input value={crates} onChange={(e) => setCrates(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder={String(cratesN)} autoComplete="off" /></label>
+                <label>Guacales por carro <input value={crates} onChange={(e) => setCrates(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder={String(cratesN)} autoComplete="off" /></label>
                 <label>Pouches por guacal <input value={per} onChange={(e) => setPer(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder={perCrateN ? String(perCrateN) : 'ej. 10'} autoComplete="off" /></label>
-                <span className="eq">= <b>{perUnit ?? '—'}</b> pouches por carro</span>
+                <span className="eq">= <b>{perUnit ?? '—'}</b> pouches por carro <small>(12 guacales por columna)</small></span>
               </div>
             ))}
           <button className="btn primary" type="submit" disabled={!ok}>▶ Empezar</button>
         </form>
+        <div className="tools">
+          {!idle ? <button type="button" className="lnk sm" onClick={() => startSetup(line)}>⏱ Empezar Set up</button> : <span />}
+          <button type="button" className="lnk sm muted" onClick={() => setRemoving(true)}>Quitar {cfg.lineWord.toLowerCase()}</button>
+        </div>
       </div>
     )
   }
@@ -1125,8 +1142,10 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       {naming}
       <div className="lhead">
         <h3>{line.name} {nameIt}</h3>
-        <span className="meta"><b className="code">{run.code}</b> · lote {run.lot} · {run.date} · desde {fmtTime(run.startedAt)}{run.perUnit != null && ' · ' + run.perUnit + ' ' + cfg.qtyUnit + ' por ' + cfg.unit.toLowerCase()} {mgr && <button type="button" className="lnk" onClick={() => setFixing(true)}>Corregir</button>}</span>
+        <span className={'pill ' + (stop ? 'stop' : 'run')}>{stop ? '⏸ Parado' : '● Corriendo'}</span>
+        <span className="lacts">{goalBtn}{mgr && <button type="button" className="lnk sm" onClick={() => setFixing(true)}>Corregir</button>}</span>
       </div>
+      <div className="coderow"><b className="code">{run.code}</b><span>lote {run.lot}{run.date !== day.date && ' · ' + shortDay(run.date)} · desde {fmtTime(run.startedAt)}{run.perUnit != null && ' · ' + run.perUnit + ' ' + cfg.qtyUnit + ' por ' + unitWord}</span></div>
       {goalStrip}
       {openOrders.length > 0 && (
         <div className="orderstrip">
@@ -1135,28 +1154,26 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
           {openOrders.length > 3 && <span>y {openOrders.length - 3} más</span>}
         </div>
       )}
-      {stop && <div className="stopbar">⏸ Parado · <b>{stop.reason}</b>{stop.note && ' · ' + stop.note} · <b>{fmtDur(stopTime(s, stop, now))}</b>{stop.lineId === null && ' · todo el departamento'}{mgr && stop.lineId === line.id && <button type="button" className="lnk" onClick={() => setFixingStop(true)}>Corregir</button>}</div>}
+      {stop && <div className="stopbar">⏸ <b>{stop.reason}</b>{stop.note && ' · ' + stop.note} · <b>{fmtDur(stopTime(s, stop, now))}</b>{stop.lineId === null && ' · todo el departamento'}{mgr && stop.lineId === line.id && <button type="button" className="lnk sm" onClick={() => setFixingStop(true)}>Corregir</button>}</div>}
       {fixing && <RunEditor s={s} run={run} mgr={mgr} onClose={() => setFixing(false)} />}
       {fixingStop && stop && <StopEditor stop={stop} mgr={mgr} onClose={() => setFixingStop(false)} />}
-      <div className="stats">
-        <div className="stat big"><label>Trabajando</label><b>{fmtDur(st.working)}</b></div>
-        <div key={'n' + (just?.at ?? 0)} className={'stat' + lit}><label>{cfg.plural}</label><b>{run.units.length}</b></div>
-        {cfg.qty !== 'none' && <div key={'q' + (just?.at ?? 0)} className={'stat' + lit}><label>{cfg.qtyUnit}</label><b>{st.qty}</b>{cases && <small>{casesText(cases)}</small>}</div>}
-        <div className="stat"><label>{cfg.unit} actual</label><b>{fmtDur(current)}</b></div>
-        <div className="stat"><label>Promedio / {cfg.unit.toLowerCase()}</label><b>{run.units.length ? fmtDur(st.avg) : '—'}</b></div>
-        <div className="stat"><label>Parado</label><b className={st.down ? 'red' : ''}>{fmtDur(st.down)}</b></div>
-        {cfg.waste && <div className="stat"><label>Waste</label><b className={run.waste ? 'red' : ''}>{run.waste} lb</b></div>}
+      {/* three numbers, each with the one that goes with it: what is made, the unit in hand, the time */}
+      <div className="tiles">
+        <div key={'n' + (just?.at ?? 0)} className={'tile main' + lit}><label>{cfg.plural}</label><b>{run.units.length}</b><small>{cfg.qty !== 'none' ? fmtN(st.qty) + ' ' + cfg.qtyUnit : '\u00a0'}</small></div>
+        <div className="tile"><label>{(cfg.saved.endsWith('a') ? 'Esta ' : 'Este ') + unitWord}</label><b>{fmtDur(current)}</b><small>prom. {run.units.length ? fmtDur(st.avg) : '—'}</small></div>
+        <div className="tile"><label>Trabajando</label><b>{fmtDur(st.working)}</b><small className={st.down ? 'red' : ''}>parado {fmtDur(st.down)}</small></div>
       </div>
-      <div className="btns">
-        <button type="button" className={'btn primary huge' + (just ? ' saved' : '')} disabled={!!just} onClick={done}>✓ {just ? savedText(line.dept, just.n) : cfg.done}</button>
-        {own && <button type="button" className="btn" onClick={() => setFilling(own)}>➕ Completar {unitWord + (own.run.id === run.id ? ' ' + (own.index + 1) : ' de antes')} ({own.unit.qty} de {own.usual})</button>}
-        {cfg.waste && <button type="button" className="btn" onClick={() => setWasting(true)}>Waste (lb)</button>}
+      {cases && <div className="subline">{fmtN(st.qty)} {cfg.qtyUnit} = <b>{casesText(cases)}</b></div>}
+      <button type="button" className={'btn primary huge' + (just ? ' saved' : '')} disabled={!!just} onClick={done}>✓ {just ? savedText(line.dept, just.n) : cfg.done}</button>
+      {own && <button type="button" className="btn slim" onClick={() => setFilling(own)}>➕ Completar {unitWord + (own.run.id === run.id ? ' ' + (own.index + 1) : ' de antes')} · tiene {own.unit.qty} de {own.usual}</button>}
+      <div className="acts2">
         {stop
           ? (stop.lineId === line.id
             ? <button type="button" className="btn danger" onClick={() => endStop(stop.id)}>▶ Reanudar</button>
             : <button type="button" className="btn" disabled>Parado por el departamento</button>)
           : <button type="button" className="btn" onClick={() => setAsking(true)}>⏸ Parar</button>}
-        <button type="button" className="btn" disabled={!!stop} onClick={() => setEnding(true)}>■ Terminar código</button>
+        {cfg.waste && <button type="button" className="btn" onClick={() => setWasting(true)}>Waste{run.waste ? <b className="red"> {run.waste} lb</b> : ' (lb)'}</button>}
+        <button type="button" className="btn" disabled={!!stop} onClick={() => setEnding(true)}>■ Terminar<span className="opt"> código</span></button>
       </div>
       {fillLink && <div className="fillmore">{fillLink}</div>}
       {ending && <EndDialog cfg={cfg} code={run.code} line={line.name} now={now} lastAt={run.units.length ? run.units[run.units.length - 1].at : null}
