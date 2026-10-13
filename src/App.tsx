@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, Ref } from 'react'
-import { addLine, addWaste, awayDay, awayOn, byLineName, byShip, casesText, cancelDay, CFG, closeOrder, codeProblem, CRATES_PER_CART, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endRun, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineNamed, lineNameOf, lineTargetOf, lotFor, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, numOf, openOrdersFor, openRun, openStop, orderLabel, orderMade, parseProductsCsv, plainDay, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reopenRun, reset, resetRecords, role, runQty, runStats, saveOrder, saveProduct, setLineTarget, setSchedule, setShifts, setTarget, startDay, startRun, startSetup, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, savedText, shiftCuts, shiftHours, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type LineTarget, type Product, type LotPart, type Order, type ShiftHours, type Short, type State, type Target, type WorkDay } from './store'
+import { addLine, addWaste, awayDay, awayOn, byLineName, byShip, casesText, cancelDay, CFG, closeOrder, codeProblem, CRATES_PER_CART, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endRun, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineNamed, lineNameOf, lineTargetOf, lotFor, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, numOf, openOrdersFor, openRun, openStop, orderCodes, orderLabel, orderMade, parseProductsCsv, plainDay, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reopenRun, reset, resetRecords, role, runQty, runStats, saveOrder, saveProduct, setLineTarget, setSchedule, setShifts, setTarget, startDay, startRun, startSetup, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, savedText, shiftCuts, shiftHours, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type LineTarget, type Product, type LotPart, type Order, type ShiftHours, type Short, type State, type Target, type WorkDay } from './store'
 import { avanceRows, n1, pending, type AvanceRow } from './avance'
 import { cellText, loadZip, xDay, xDur, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 
@@ -694,14 +694,14 @@ function OrdersCard({ s, mgr }: { s: State; mgr: boolean }) {
   const table = (list: Order[]) => (
     <div className="twrap">
       <table>
-        <thead><tr><th>Cliente</th><th>PO</th><th>Código</th><th>Pedidas</th><th>Hechas</th><th>Faltan</th><th>Envío</th><th>Destino</th>{mgr && <th></th>}</tr></thead>
+        <thead><tr><th>PO</th><th>Código</th><th>Pedidas</th><th>Hechas</th><th>Faltan</th><th>Cliente</th><th>Envío</th><th>Destino</th>{mgr && <th></th>}</tr></thead>
         <tbody>{list.map((o) => {
           const made = orderMade(s, o.id), left = o.cases != null ? o.cases - made : null
           return (
             <tr key={o.id}>
-              <td>{o.customer || '—'}</td><td>{o.po || <i>sin PO</i>}</td><td><b>{o.code}</b></td><td>{o.cases != null ? fmtN(o.cases) : '—'}</td><td>{fmtN(made)}</td>
+              <td>{o.po ? <b>{o.po}</b> : <i>sin PO</i>}</td><td><b>{o.code}</b></td><td>{o.cases != null ? fmtN(o.cases) : '—'}</td><td>{fmtN(made)}</td>
               <td className={left != null && left <= 0 ? 'ok' : ''}>{left == null ? '—' : left > 0 ? fmtN(left) : '✓ completo' + (left < 0 ? ' (+' + fmtN(-left) + ')' : '')}</td>
-              <td>{o.shipBy ? shipText(o.shipBy) : '—'}</td><td>{o.dest || '—'}</td>
+              <td>{o.customer || '—'}</td><td>{o.shipBy ? shipText(o.shipBy) : '—'}</td><td>{o.dest || '—'}</td>
               {mgr && <td><button type="button" className="lnk" onClick={() => setEditing(o.id)}>Editar</button></td>}
             </tr>
           )
@@ -724,7 +724,10 @@ function OrdersCard({ s, mgr }: { s: State; mgr: boolean }) {
   )
 }
 
-/** an order is written or changed: only the product code is a must; the PO number can come later, or never */
+/**
+ * An order is written or changed. What matters is the PO number and the product it is for; a new one can name several
+ * products at once (one order each, with the same PO). Everything else is optional, the PO too: it can come later.
+ */
 function OrderDialog({ s, order, onClose }: { s: State; order: Order | undefined; onClose: () => void }) {
   const [customer, setCustomer] = useState(order?.customer ?? '')
   const [po, setPo] = useState(order?.po ?? '')
@@ -734,21 +737,31 @@ function OrderDialog({ s, order, onClose }: { s: State; order: Order | undefined
   const [dest, setDest] = useState(order?.dest ?? '')
   const [dropping, setDropping] = useState(false)
   const customers = [...new Set(s.orders.map((o) => o.customer).filter(Boolean))].sort()
-  const prod = code.trim() ? productOf(s, code) : undefined
+  const codes = orderCodes(code), many = codes.length > 1
+  const prod = codes.length === 1 ? productOf(s, codes[0]) : undefined
   const pallets = prod?.casesPerPallet && Number(cases) > 0 ? Number(cases) / prod.casesPerPallet : null
-  const ok = !!code.trim()
-  const save = () => { if (!ok) return; saveOrder(order?.id ?? null, { customer, po, code, cases: Number(cases) > 0 ? Number(cases) : null, shipBy, dest }); onClose() }
+  // an order already written is of one product; a new one can be of several
+  const ok = codes.length > 0 && !(order && many)
+  const save = () => {
+    if (!ok) return
+    const rest = { customer, po, shipBy, dest }
+    if (order) saveOrder(order.id, { ...rest, code: codes[0], cases: Number(cases) > 0 ? Number(cases) : null })
+    else for (const c of codes) saveOrder(null, { ...rest, code: c, cases: !many && Number(cases) > 0 ? Number(cases) : null })
+    onClose()
+  }
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
         <h3>{order ? 'Pedido · ' + orderLabel(order) : 'Pedido nuevo'}</h3>
-        <p>Packing lo ve al registrar cada pallet de ese código. Solo el código del producto es obligatorio: el número de PO se puede dejar en blanco y ponerlo después.</p>
+        <p>Pon el PO y el producto. Packing lo ve al registrar cada pallet de ese código. Lo demás es opcional, y el PO también se puede dejar en blanco y ponerlo después. El mismo PO se puede repetir las veces que haga falta.</p>
         <form className="qform" onSubmit={(e) => { e.preventDefault(); save() }}>
-          <label>Cliente <input list="order-customers" value={customer} onChange={(e) => setCustomer(e.target.value)} placeholder="ej. Cliente A" autoComplete="off" /></label>
+          <label>N° de PO <input value={po} onChange={(e) => setPo(e.target.value)} placeholder="ej. 4500012345" autoComplete="off" /></label>
+          <label>Código del producto {!order && <small>(si el PO es de varios, sepáralos con coma)</small>} <input value={code} onChange={(e) => setCode(e.target.value)} placeholder={order ? 'ej. 0100' : 'ej. 0100, 0200'} autoComplete="off" />{prod && <small> {prod.name}</small>}</label>
+          {many && !order && <p className="hint">Se crean {codes.length} pedidos con este PO, uno por producto: {codes.join(', ')}. Las cajas de cada uno se ponen después, con "Editar".</p>}
+          {many && order && <span className="err">Este pedido es de un solo producto. Para otro producto, agrega otro pedido con el mismo PO.</span>}
+          <label>Cajas pedidas <small>(opcional)</small> <input inputMode="numeric" value={many ? '' : cases} disabled={many} onChange={(e) => setCases(e.target.value.replace(/\D/g, ''))} placeholder="ej. 288" />{pallets != null && <small> = {Math.round(pallets * 100) / 100} {pallets === 1 ? 'pallet' : 'pallets'} de {prod?.casesPerPallet}</small>}</label>
+          <label>Cliente <small>(opcional)</small> <input list="order-customers" value={customer} onChange={(e) => setCustomer(e.target.value)} placeholder="ej. Cliente A" autoComplete="off" /></label>
           <datalist id="order-customers">{customers.map((c) => <option key={c} value={c} />)}</datalist>
-          <label>N° de PO <small>(opcional)</small> <input value={po} onChange={(e) => setPo(e.target.value)} placeholder="ej. 4500012345" autoComplete="off" /></label>
-          <label>Código del producto <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="ej. 0100" autoComplete="off" />{prod && <small> {prod.name}</small>}</label>
-          <label>Cajas pedidas <small>(opcional)</small> <input inputMode="numeric" value={cases} onChange={(e) => setCases(e.target.value.replace(/\D/g, ''))} placeholder="ej. 288" />{pallets != null && <small> = {Math.round(pallets * 100) / 100} {pallets === 1 ? 'pallet' : 'pallets'} de {prod?.casesPerPallet}</small>}</label>
           <label>Fecha de envío <small>(opcional)</small> <input type="date" value={shipBy} onChange={(e) => setShipBy(e.target.value)} /></label>
           <label>Destino <small>(opcional)</small> <input value={dest} onChange={(e) => setDest(e.target.value)} placeholder="ej. Almacén Norte" autoComplete="off" /></label>
           <div className="dbtns spread">

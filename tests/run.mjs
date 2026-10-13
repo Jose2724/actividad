@@ -1415,6 +1415,14 @@ ord.use((m) => {
   const sent = m.outbox.items().filter((i) => i.table === 'act_changes' && i.key.startsWith('po:'))
   eq('suben al servidor por la tabla del historial, sin departamento (solo managers y oficina), con fecha lejana para que los aparatos no los suelten', sent.map((i) => [i.key === 'po:' + i.row.ref_key, i.row.dept, i.row.ref_table, i.row.what, i.row.at.slice(0, 4), i.row.deleted, JSON.parse(i.row.after).code]), [[true, null, 'act_orders', 'Pedido', '2099', false, 'A100'], [true, null, 'act_orders', 'Pedido', '2099', false, 'A100']])
   eq('en el historial queda que se crearon, y los pedidos no se mezclan con sus líneas', [st().changes.map((c) => [c.what, c.by, c.after]), st().changes.some((c) => c.refTable === 'act_orders')], [[['Pedido nuevo', 'Oficina', 'Cliente A · PO 4500011 · código A100 · 72 cajas · envío 2026-10-15 · Almacén Norte'], ['Pedido nuevo', 'Oficina', 'Cliente B · sin PO · código A100 · 36 cajas · envío 2026-10-13']], false])
+  eq('un PO para varios productos: los códigos de una caja, cada uno una vez', [m.orderCodes('0100, 0200 0300;a100,0100'), m.orderCodes('  b200 '), m.orderCodes(' , ')], [['0100', '0200', '0300', 'A100'], ['B200'], []])
+  {
+    // the same PO on several products, and on the same product twice: the office's to say
+    const before = st().changes.length
+    const ids = ['C300', 'D400', 'C300'].map((c) => m.saveOrder(null, { customer: '', po: '9001', code: c, cases: null, shipBy: '', dest: '' }))
+    eq('el mismo PO se puede poner en varios productos, y repetir en el mismo', [new Set(ids).size, m.openOrdersFor(st(), 'C300').map((o) => [m.orderLabel(o), o.cases]), m.openOrdersFor(st(), 'D400').map((o) => m.orderLabel(o)), st().changes.length - before], [3, [['PO 9001', null], ['PO 9001', null]], ['PO 9001'], 3])
+    ids.forEach((id) => m.deleteOrder(id))
+  }
   // Packing gives each pallet to an order, or to none
   clock = T0 + 5 * M
   m.addLine('Packing', 'Línea 1')

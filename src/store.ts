@@ -619,7 +619,12 @@ export function nextOrderFor(s: State, r: Run): string {
 }
 /** the cases already packed for an order: every unit that was given to it, on the days this device holds */
 export const orderMade = (s: State, id: string) => s.runs.reduce((t, r) => t + r.units.filter((u) => u.po === id).reduce((a, u) => a + unitQty(s, r, u), 0), 0)
-/** writes an order, or changes one (its PO number can come later). '' when it has no product code */
+/** the product codes typed in one box, for a PO that covers several: "0100, 0200 0300" gives three (each one once) */
+export const orderCodes = (text: string) => [...new Set(text.split(/[\s,;]+/).map((c) => c.trim().toUpperCase()).filter(Boolean))]
+/**
+ * writes an order, or changes one (its PO number can come later). '' when it has no product code. The same PO number
+ * can be on as many orders as the office wants (one per product, or the same product again): it is theirs to say.
+ */
 export function saveOrder(id: string | null, x: { customer: string; po: string; code: string; cases: number | null; shipBy: string; dest: string }): string {
   const old = id ? state.orders.find((o) => o.id === id) : undefined
   const o = orderOf(old?.id ?? uid(), { ...x, closed: old?.closed ?? false, createdAt: old?.createdAt ?? clockNow() }, old?.by ?? user.get(), stamp(old))
