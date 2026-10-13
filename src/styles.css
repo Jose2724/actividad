@@ -543,7 +543,6 @@ table.shiftgrid tr.sep td{background:var(--bg);color:var(--muted);font-size:11px
 /* the codes the shift before ended: one line that opens */
 .donefold{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;background:var(--surface);border:1px dashed var(--line);border-radius:12px;padding:12px;font:inherit;font-size:14px;font-weight:700;color:var(--muted);text-align:left;cursor:pointer}
 .donefold small{font-size:13px;font-weight:700;color:var(--accent)}
-/* the whole day and what the other shift made, under the shift's own number: a line across the card */
-.tc-day{grid-column:1/-1;order:2;color:var(--muted);font-size:13px}
-.tc-day b{color:var(--ink);font-variant-numeric:tabular-nums}
+/* the shift a goal is for, chosen in its dialog: the one a person may not set is there, greyed */
+.shiftpick .chip:disabled{opacity:.45;cursor:not-allowed}
 

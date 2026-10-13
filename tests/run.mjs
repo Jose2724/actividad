@@ -1495,12 +1495,13 @@ lg.use((m) => {
   clock = T0
   m.addLine('RTE', 'Línea 1'); m.addLine('RTE', 'Línea 2')
   const [l1, l2] = st().lines.slice().sort((a, b) => a.name.localeCompare(b.name))
-  eq('una línea sin meta no tiene ninguna', m.lineTargetOf(st(), l1.id), undefined)
-  m.setLineTarget(l1, 300, 2400)
-  eq('el manager le pone meta a una línea: por hora y del día', [m.lineTargetOf(st(), l1.id).perHour, m.lineTargetOf(st(), l1.id).perDay, m.lineTargetOf(st(), l2.id)], [300, 2400, undefined])
-  eq('queda en el historial, con el nombre de la línea', st().changes.filter((c) => /^Meta Línea 1 \(RTE\)/.test(c.what)).map((c) => [c.what.split(' · ')[1], c.by, c.before, c.after]), [['por hora', 'Santiago', '', '300'], ['del día', 'Santiago', '', '2400']])
-  eq('sube al servidor con las metas (act_targets), con la llave de la línea', m.outbox.items().filter((i) => i.table === 'act_targets').map((i) => [i.key === 'line:' + l1.id, i.row.dept === 'line:' + l1.id, i.row.per_hour, i.row.per_shift]), [[true, true, 300, 2400]])
-  eq('la meta del departamento es otra cosa: no se toca', [st().targets.length, m.targetOf(st(), 'RTE')], [0, undefined])
+  const of = (l, k) => { const g = m.lineShiftGoalOf(st(), l.id, k); return [g.perHour, g.total, g.own] }
+  eq('una línea sin meta no tiene ninguna, en ningún turno', [of(l1, 1), of(l1, 2)], [[null, null, false], [null, null, false]])
+  m.setLineShiftGoal(l1, 2, 300, 2400)
+  eq('el manager del turno 2 le pone meta a una línea, por hora y del turno: es de ese turno y de esa línea', [of(l1, 2), of(l1, 1), of(l2, 2)], [[300, 2400, true], [null, null, false], [null, null, false]])
+  eq('queda en el historial, con el nombre de la línea y el turno', st().changes.filter((c) => /^Meta Línea 1 \(RTE\)/.test(c.what)).map((c) => [c.what.split(' · ').slice(1).join(' · '), c.by, c.before, c.after]), [['Turno 2 · por hora', 'Santiago', '', '300'], ['Turno 2 · del turno', 'Santiago', '', '2400']])
+  eq('sube al servidor con las metas (act_targets), con la llave de la línea y su turno', m.outbox.items().filter((i) => i.table === 'act_targets').map((i) => [i.key === 'line:' + l1.id + '@2', i.row.dept === 'line:' + l1.id + '@2', i.row.per_hour, i.row.per_shift]), [[true, true, 300, 2400]])
+  eq('la meta del departamento es otra cosa: no se toca', [st().targets.length, m.shiftGoalOf(st(), 'RTE', 2)], [0, { perHour: null, total: null, own: false }])
   // what each line has made, apart from the room's total
   m.startRun(l1, 'A100', '6283', DAY, 240); m.startRun(l2, 'B200', '6283', DAY, 144)
   const run = (code) => st().runs.find((r) => r.code === code)
@@ -1511,16 +1512,22 @@ lg.use((m) => {
   near('el ritmo de la línea es el suyo', one.shiftRate, 480 / 0.75) // the shift in course took over at 3:15 PM
   near('y no el del departamento', all.shiftRate, 624 / 0.75)
   // from another device, and taken away
-  m.applyRemote('act_targets', { dept: 'line:' + l2.id, per_hour: 120, per_shift: null, updated_at: iso(T0 + 5 * M) })
-  eq('una meta puesta en otro aparato llega', [m.lineTargetOf(st(), l2.id).perHour, m.lineTargetOf(st(), l2.id).perDay, st().targets.length], [120, null, 0])
-  m.applyRemote('act_targets', { dept: 'line:' + l2.id, per_hour: 999, per_shift: 999, updated_at: iso(T0 + 2 * M) })
-  eq('una más vieja no pisa a la más nueva', m.lineTargetOf(st(), l2.id).perHour, 120)
-  m.setLineTarget(l1, null, null)
-  eq('quitarla la deja en blanco, y también queda en el historial', [m.lineTargetOf(st(), l1.id).perHour, m.lineTargetOf(st(), l1.id).perDay, st().changes.filter((c) => /^Meta Línea 1/.test(c.what)).length], [null, null, 4])
+  m.applyRemote('act_targets', { dept: 'line:' + l2.id + '@2', per_hour: 120, per_shift: null, updated_at: iso(T0 + 5 * M) })
+  eq('una meta puesta en otro aparato llega (y no se confunde con una meta de línea de las de antes)', [of(l2, 2), st().targets.length, st().lineTargets.length], [[120, null, true], 0, 0])
+  m.applyRemote('act_targets', { dept: 'line:' + l2.id + '@2', per_hour: 999, per_shift: 999, updated_at: iso(T0 + 2 * M) })
+  eq('una más vieja no pisa a la más nueva', of(l2, 2)[0], 120)
+  // the goal a line had before, one for both shifts (a tablet with an older version of the app still writes it)
+  m.applyRemote('act_targets', { dept: 'line:' + l1.id, per_hour: 250, per_shift: 5000, updated_at: iso(T0) })
+  eq('la meta de antes, una para los dos turnos: su ritmo sigue valiendo para el turno que no ha puesto la suya; su total era del día y no es de ningún turno', [of(l1, 1), of(l1, 2)], [[250, null, false], [300, 2400, true]])
+  m.setLineShiftGoal(l1, 2, null, null)
+  eq('quitarla la deja en blanco para ese turno (ya no hereda el ritmo de antes), sin tocar el otro, y queda en el historial', [of(l1, 2), of(l1, 1), st().changes.filter((c) => /^Meta Línea 1/.test(c.what)).length], [[null, null, true], [250, null, false], 4])
 })
 {
-  const kept = await device('lg-kept', { seed: { lines: [{ id: 'L1', dept: 'RTE', name: 'Línea 1', updatedAt: 1 }], runs: [], stops: [], products: [], lineTargets: [{ lineId: 'L1', perHour: 250, perDay: 2000, updatedAt: 3 }, { perHour: 1 }] } })
-  eq('al abrir la app otra vez, la meta de la línea sigue ahí', kept.use((m) => [m.lineTargetOf(m.store.get(), 'L1').perHour, m.lineTargetOf(m.store.get(), 'L1').perDay, m.store.get().lineTargets.length, m.store.get().lines.length]), [250, 2000, 1, 1])
+  const kept = await device('lg-kept', { seed: { lines: [{ id: 'L1', dept: 'RTE', name: 'Línea 1', updatedAt: 1 }], runs: [], stops: [], products: [], lineTargets: [{ lineId: 'L1', perHour: 250, perDay: 2000, updatedAt: 3 }, { perHour: 1 }, { lineId: 'L1@2', perHour: 9, updatedAt: 4 }], turnGoals: [{ key: 'line:L1@1', perHour: 200, total: 1500, updatedAt: 5 }, { key: 'RTE@2', perHour: 1500, total: 9000, updatedAt: 6 }, { key: 'nada', perHour: 1 }, { perHour: 2 }] } })
+  eq('al abrir la app otra vez, las metas siguen ahí: la de la línea en su turno, la del departamento en el suyo, y lo que no es una meta no entra', kept.use((m) => { const st = m.store.get(), g = (x) => [x.perHour, x.total, x.own]; return [g(m.lineShiftGoalOf(st, 'L1', 1)), g(m.lineShiftGoalOf(st, 'L1', 2)), g(m.shiftGoalOf(st, 'RTE', 2)), g(m.shiftGoalOf(st, 'RTE', 1)), st.turnGoals.length, st.lineTargets.length, st.lines.length] }), [[200, 1500, true], [250, null, false], [1500, 9000, true], [null, null, false], 2, 1, 1])
+  // a device that kept things from before this version opens without trouble (it had no goals of a shift)
+  const old = await device('lg-old', { seed: { lines: [{ id: 'L1', dept: 'RTE', name: 'Línea 1', updatedAt: 1 }], runs: [], stops: [], products: [], targets: [{ dept: 'RTE', perHour: 500, perShift: 9000, updatedAt: 2 }] } })
+  eq('un aparato con lo guardado por la versión anterior abre bien: su ritmo por hora sigue, su meta del día ya no es de ningún turno', old.use((m) => [m.shiftGoalOf(m.store.get(), 'RTE', 1), m.shiftGoalOf(m.store.get(), 'RTE', 2), m.store.get().turnGoals]), [{ perHour: 500, total: null, own: false }, { perHour: 500, total: null, own: false }, []])
 }
 section('Una corrida registrada en la línea equivocada')
 const mov = await device('mov', { user: 'Santiago' })
@@ -1776,6 +1783,17 @@ section('Cambio de turno: el turno que entra empieza de cero, sin cortar nada de
     eq('Kitchen: el braiser de las 11:44 AM viene del turno 1 con 2 mezclas; el turno 2 va en cero, con hora y media', seen('K10', turn.since, clock), [true, 0, 0, 90, 0, 0, [2, 0]])
     eq('su tarjeta: 0 mezclas en el turno 2, 2 en el día, y el código está en la lista del turno aunque no lleve nada', [k.shiftQty, k.shiftUnits, k.qty, k.made, k.shiftCodes.map((c) => [c.code, c.units, c.lines]), hm(k.shiftSince), min(k.shiftMs)], [0, 0, 2, [2, 0], [['K10', 0, ['Braiser 1']]], '15:30', 90])
     eq('lo hecho, dicho con las palabras de cada departamento', [m.unitsText('RTE', 2, 480), m.unitsText('RTE', 1, 1200), m.unitsText('Kitchen', 2, 0), m.unitsText('Kitchen', 1, 0), m.madeText(runOf('A100'), 920)], ['2 carros · 480 pouches', '1 carro · 1,200 pouches', '2 mezclas', '1 mezcla', '4 carros · 920 pouches'])
+    // the goal is each shift's: the manager of the second shift sets his, and only what his shift makes counts
+    m.applyRemote('act_targets', { dept: 'RTE', per_hour: 500, per_shift: 9000, updated_at: iso(oct(10, 6, 0)) }) // the goal of before: one for the whole day
+    eq('la meta de antes era del día completo, de los dos turnos: a cada turno solo le deja el ritmo por hora', [m.shiftGoalOf(st(), 'RTE', 1), m.shiftGoalOf(st(), 'RTE', 2)], [{ perHour: 500, total: null, own: false }, { perHour: 500, total: null, own: false }])
+    m.setShiftGoal('RTE', 2, 600, 1560)
+    const goal = m.shiftGoalOf(st(), 'RTE', t.shift)
+    eq('el manager del turno 2 pone la meta de su turno: es suya y la del turno 1 no se toca', [goal, m.shiftGoalOf(st(), 'RTE', 1)], [{ perHour: 600, total: 1560, own: true }, { perHour: 500, total: null, own: false }])
+    eq('contra su meta cuenta solo lo de su turno: 780 de 1,560 es el 50%, aunque el día ya lleve 1,884', [t.shiftQty / goal.total, t.qty], [0.5, 1884])
+    eq('queda en el historial con su turno (de qué a qué), y sube con la llave del departamento y el turno', [st().changes.filter((c) => /^Meta RTE · Turno 2/.test(c.what)).map((c) => [c.what, c.by, c.before, c.after]), m.outbox.items().filter((i) => i.table === 'act_targets').map((i) => [i.key, i.row.dept, i.row.per_hour, i.row.per_shift])], [[['Meta RTE · Turno 2 · por hora', 'Santiago', '500', '600'], ['Meta RTE · Turno 2 · del turno', 'Santiago', '', '1560']], [['RTE@2', 'RTE@2', 600, 1560]]])
+    m.setShiftGoal('RTE', 1, null, 2000)
+    eq('el turno 1 pone la suya sin ritmo por hora: ya no hereda el de antes, y la del turno 2 sigue igual', [m.shiftGoalOf(st(), 'RTE', 1), m.shiftGoalOf(st(), 'RTE', 2), m.shiftGoalOf(st(), 'Kitchen', 2)], [{ perHour: null, total: 2000, own: true }, { perHour: 600, total: 1560, own: true }, { perHour: null, total: null, own: false }])
+    eq('lo que hizo el turno 1 se mide contra la meta del turno 1, y nada del turno 2 se le suma', [t.made[0], t.made[0] / m.shiftGoalOf(st(), 'RTE', 1).total], [1104, 0.552])
     // nothing of what is kept was cut: the run is one, and the report still says what each shift did of it
     const rep = m.reportOf(st(), DAY, clock, { only: 'RTE' })
     eq('lo guardado no se cortó: A100 sigue siendo una corrida con sus 4 carros, y el reporte dice lo de cada turno', [st().runs.filter((r) => r.code === 'A100').map((r) => [r.units.length, r.endedAt]), rep.byCode.filter((c) => c.code === 'A100').map((c) => [c.qty, c.byShift]), m.reportOf(st(), DAY, clock, { only: 'RTE', shift: 2 }).byDept[0].qty], [[[4, null]], [[920, [480, 440]]], 780])

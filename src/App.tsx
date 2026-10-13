@@ -1,6 +1,6 @@
 import { createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
-import { addLine, addWaste, awayDay, byLineName, byShip, casesText, cancelDay, CFG, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineTargetOf, lotFor, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, numOf, openIn, openOrdersFor, openRun, openStop, orderCodes, orderLabel, orderMade, parseProductsCsv, plainDay, productOf, productsCsv, purgeDay, purgesOf, removeLine, removeProduct, renameLine, reopenRun, reset, restorePurged, resetRecords, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineTarget, setSchedule, setShifts, setTarget, startDay, startRun, startSetup, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftHours, shiftSpan, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type LineTarget, type Product, type LotPart, type Run, type Order, type ShiftHours, type Short, type State, type Target, type WorkDay } from './store'
+import { addLine, addWaste, awayDay, byLineName, byShip, casesText, cancelDay, CFG, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, numOf, openIn, openOrdersFor, openRun, openStop, orderCodes, orderLabel, orderMade, parseProductsCsv, plainDay, productOf, productsCsv, purgeDay, purgesOf, removeLine, removeProduct, renameLine, reopenRun, reset, restorePurged, resetRecords, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftHours, shiftSpan, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type ShiftHours, type Short, type State, type WorkDay } from './store'
 import { avanceRows, n1, pending, type AvanceRow } from './avance'
 import { cellText, loadZip, xDay, xDur, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 
@@ -400,10 +400,10 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
                 const lines = s.lines.filter((l) => l.dept === d)
                 const running = lines.filter((l) => openRun(s, l.id) && !openStop(s, d, l.id)).length
                 const stopped = lines.filter((l) => openRun(s, l.id) && openStop(s, d, l.id)).length
-                const goal = targetOf(s, d)?.perShift, td = goal ? deptToday(s, d, day.date, now) : null
+                const goal = shiftGoalOf(s, d, turnOf(s, day.date, now).shift).total, td = goal ? deptToday(s, d, day.date, now) : null
                 return (
                   <button key={d} type="button" className={'dept' + (dept === d ? ' on' : '')} onClick={() => setDept(d)}>
-                    <span className="dname">{d}{td && goal && <small className="goalmini">{fmtN(td.qty)} / {fmtN(goal)} {td.unitLabel}</small>}</span>
+                    <span className="dname">{d}{td && goal && <small className="goalmini">{fmtN(td.shiftQty)} / {fmtN(goal)} {td.unitLabel}</small>}</span>
                     <span className="dots">{running > 0 && <i className="dot g">{running}</i>}{stopped > 0 && <i className="dot r">{stopped}</i>}</span>
                   </button>
                 )
@@ -817,21 +817,21 @@ function OrderDialog({ s, order, onClose }: { s: State; order: Order | undefined
 function TodayCard({ s, dept, now, mgr, date }: { s: State; dept: Dept; now: number; mgr: boolean; date: string }) {
   const cfg = CFG[dept]
   const t = deptToday(s, dept, date, now)
-  const goal = targetOf(s, dept)
+  // The goal is the shift's: its manager sets it for his people, and only what this shift makes counts against it
+  const goal = shiftGoalOf(s, dept, t.shift)
   const [editing, setEditing] = useState(false)
-  const hasGoal = !!(goal && (goal.perHour || goal.perShift))
+  const hasGoal = !!(goal.perHour || goal.total)
   if (!t.runs.length && !hasGoal && !mgr) return null
-  const pct = goal?.perShift ? Math.min(100, Math.floor((t.qty / goal.perShift) * 100)) : 0
-  const pace = goal?.perHour && t.shiftRate != null ? t.shiftRate / goal.perHour : null
+  const pct = goal.total ? Math.min(100, Math.floor((t.shiftQty / goal.total) * 100)) : 0
+  const pace = goal.perHour && t.shiftRate != null ? t.shiftRate / goal.perHour : null
   const paceCls = pace == null ? '' : pace >= 1 ? 'ok' : 'red'
   const paceText = pace == null ? '' : pace >= 1 ? tr('al ritmo de la meta') : tr('por debajo de la meta')
-  const left = goal?.perShift ? goal.perShift - t.qty : 0
-  const speed = t.shiftRate ?? t.rate
-  const eta = left > 0 && speed && !t.allEnded ? now + (left / speed) * 3_600_000 : null
-  // The card is the shift in course's: when a shift takes over it starts from zero. The whole day (the goal is the
-  // day's) and what the other shift made stay under it, smaller.
+  const left = goal.total ? goal.total - t.shiftQty : 0
+  // (the pace is the shift's own, and nothing is foretold once every code of the shift has ended)
+  const eta = left > 0 && t.shiftRate && !t.shiftUntil ? now + (left / t.shiftRate) * 3_600_000 : null
+  // The card is the shift in course's, all of it: when a shift takes over it starts from zero, with its own goal.
+  // The whole day and what the other shift made are in the report, not here.
   const many = t.shiftCodes.length > 1 || (t.shiftCodes[0]?.lines.length ?? 0) > 1
-  const other = t.shift === 1 ? 2 : 1, otherMade = t.made[other - 1]
   const unitWord = (n: number) => (n === 1 ? cfg.unit : cfg.plural).toLowerCase()
   // a room that counts its units themselves says one of them in the singular ("1 mezcla")
   const label = (n: number) => (cfg.qty === 'none' ? unitWord(n) : t.unitLabel)
@@ -851,41 +851,63 @@ function TodayCard({ s, dept, now, mgr, date }: { s: State; dept: Dept; now: num
       )}
       <div className="tc-main">
         <div className="tc-total"><b>{fmtN(t.shiftQty)}</b> <span>{label(t.shiftQty)}</span>{cfg.qty !== 'none' && <small>{t.shiftUnits} {unitWord(t.shiftUnits)}</small>}</div>
-        {otherMade > 0 && <div className="tc-day">{trx('Día completo: {0} {1} · Turno {2}: {3}', <b>{fmtN(t.qty)}</b>, label(t.qty), other, <b>{fmtN(otherMade)}</b>)}</div>}
-        {goal?.perShift ? (
+        {goal.total ? (
           <div className="tc-goal">
-            <div className="tc-goalrow"><span>{trx('Meta del día {0} / {1}', <b>{fmtN(t.qty)}</b>, <b>{fmtN(goal.perShift)}</b>)} {t.unitLabel}</span><b className={pct >= 100 ? 'ok' : ''}>{pct}%</b></div>
+            <div className="tc-goalrow"><span>{trx('Meta del turno {0} / {1}', <b>{fmtN(t.shiftQty)}</b>, <b>{fmtN(goal.total)}</b>)} {t.unitLabel}</span><b className={pct >= 100 ? 'ok' : ''}>{pct}%</b></div>
             <div className="bar"><i className={pct >= 100 ? 'ok' : ''} style={{ width: pct + '%' }} /></div>
-            <div className="tc-sub">{left > 0 ? <>{trx('Faltan {0}', <b>{fmtN(left)}</b>)}{eta && <> {' '}{trx('· a este ritmo se llega a las {0}', <b>{fmtTime(eta)}</b>)}</>}</> : <b className="ok">{tr('✓ Meta del día cumplida')}</b>}</div>
+            <div className="tc-sub">{left > 0 ? <>{trx('Faltan {0}', <b>{fmtN(left)}</b>)}{eta && <> {' '}{trx('· a este ritmo se llega a las {0}', <b>{fmtTime(eta)}</b>)}</>}</> : <b className="ok">{tr('✓ Meta del turno cumplida')}</b>}</div>
           </div>
-        ) : <div className="tc-goal tc-none">{mgr ? tr('Sin meta del día todavía.') : ''}</div>}
+        ) : <div className="tc-goal tc-none">{mgr ? tr('Sin meta del turno todavía.') : ''}</div>}
         <div className="tc-rate">
           <label>{trx('Ritmo del turno {0}', t.shift)}</label>
           <b className={paceCls}>{t.shiftRate != null ? fmtN(t.shiftRate) : '—'}</b> <span>{t.unitLabel}/h</span>
-          {goal?.perHour ? <small>{trx('meta {0}/h', <b>{fmtN(goal.perHour)}</b>)}{pace != null && <> · <span className={paceCls}>{paceText}</span></>}</small> : <small>{t.shiftRate == null ? tr('desde el primer inicio del turno') : tr('sin meta por hora')}</small>}
+          {goal.perHour ? <small>{trx('meta {0}/h', <b>{fmtN(goal.perHour)}</b>)}{pace != null && <> · <span className={paceCls}>{paceText}</span></>}</small> : <small>{t.shiftRate == null ? tr('desde el primer inicio del turno') : tr('sin meta por hora')}</small>}
         </div>
       </div>
       {many && <div className="tc-codes">{t.shiftCodes.map((c) => <span key={c.code} className="tc-code"><b>{c.code}</b> {fmtN(c.qty)} {t.unitLabel}{cfg.qty !== 'none' && <> · {c.units} {unitWord(c.units)}</>} · {c.lines.join(', ')}</span>)}</div>}
-      {editing && <TargetDialog dept={dept} unit={t.unitLabel} goal={goal} onClose={() => setEditing(false)} />}
+      {editing && <TargetDialog s={s} dept={dept} unit={t.unitLabel} inCourse={t.shift} onClose={() => setEditing(false)} />}
     </div>
   )
 }
 
-/** the manager types the goal for a room: so many pouches (cajas, mezclas) per hour and/or in the whole day (both shifts) */
-function TargetDialog({ dept, unit, goal, onClose }: { dept: Dept; unit: string; goal: Target | undefined; onClose: () => void }) {
-  const [hour, setHour] = useState(goal?.perHour ? String(goal.perHour) : '')
-  const [whole, setWhole] = useState(goal?.perShift ? String(goal.perShift) : '')
-  const num = (t: string) => { const x = Number(t); return x > 0 ? x : null }
+/** the shift a goal is for: each shift has its own, and a person of one shift does not touch the other's */
+function ShiftPick({ value, onPick }: { value: 1 | 2; onPick: (k: 1 | 2) => void }) {
+  const who = useWho()
+  return (
+    <div className="chips shiftpick">
+      {([1, 2] as const).map((k) => <button key={k} type="button" className={'chip' + (value === k ? ' on' : '')} aria-pressed={value === k} disabled={!canShift(who, String(k))} onClick={() => onPick(k)}>{tr('Turno {0}', k)}</button>)}
+    </div>
+  )
+}
+/** the shift whose goal a person opens: their own; with none of their own (the owner, the office), the one in course */
+const goalShift = (who: Who, inCourse: 1 | 2): 1 | 2 => (who.shift === 1 || who.shift === 2 ? who.shift : inCourse)
+const goalNum = (t: string) => { const x = Number(t); return x > 0 ? x : null }
+
+/**
+ * A manager types the goal of a room for one shift: so many pouches (cajas, mezclas) per hour and/or in the whole
+ * shift. Each shift has its own, and only what that shift makes counts against it.
+ */
+function TargetDialog({ s, dept, unit, inCourse, onClose }: { s: State; dept: Dept; unit: string; inCourse: 1 | 2; onClose: () => void }) {
+  const who = useWho()
+  const [shift, setShift] = useState<1 | 2>(() => goalShift(who, inCourse))
+  const goal = shiftGoalOf(s, dept, shift)
+  const [hour, setHour] = useState(goal.perHour ? String(goal.perHour) : '')
+  const [whole, setWhole] = useState(goal.total ? String(goal.total) : '')
+  const pick = (k: 1 | 2) => { const g = shiftGoalOf(s, dept, k); setShift(k); setHour(g.perHour ? String(g.perHour) : ''); setWhole(g.total ? String(g.total) : '') }
+  // what was set before, when a room had one goal for the whole day: said once, so nobody wonders where it went
+  const before = targetOf(s, dept)?.perShift
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
-        <h3>{trx('Meta de {0}', dept)}</h3>
-        <p>{trx('La ven todas las tablets de {0} y queda en el historial. Deja en blanco la que no aplique. El ritmo sale en rojo cuando baja de la meta por hora. Para dejar el departamento sin meta, "Quitar meta".', dept)}</p>
-        <form onSubmit={(e) => { e.preventDefault(); setTarget(dept, num(hour), num(whole)); onClose() }} className="qform">
-          <label>{tr('Por hora')}{' '}<input autoFocus={!goal?.perHour && !goal?.perShift} inputMode="numeric" placeholder={tr('ej. 400 {0}', unit)} value={hour} onChange={(e) => setHour(e.target.value.replace(/\D/g, ''))} /></label>
-          <label>{trx('En el día completo {0}', <small>{tr('(los dos turnos)')}</small>)} <input inputMode="numeric" placeholder={tr('ej. 6400 {0}', unit)} value={whole} onChange={(e) => setWhole(e.target.value.replace(/\D/g, ''))} /></label>
+        <h3>{trx('Meta de {0} · Turno {1}', dept, shift)}</h3>
+        <ShiftPick value={shift} onPick={pick} />
+        <p>{trx('Cada turno tiene su meta: la pone su manager y solo cuenta lo que hace ese turno. La ven todas las tablets de {0} y queda en el historial. Deja en blanco la que no aplique. El ritmo sale en rojo cuando baja de la meta por hora.', dept)}</p>
+        {!goal.own && before ? <p className="hint">{trx('La meta que había, {0} {1}, era del día completo, de los dos turnos juntos: ya no se usa. Pon aquí la de este turno.', <b>{fmtN(before)}</b>, unit)}</p> : null}
+        <form onSubmit={(e) => { e.preventDefault(); setShiftGoal(dept, shift, goalNum(hour), goalNum(whole)); onClose() }} className="qform">
+          <label>{tr('Por hora')}{' '}<input autoFocus={!goal.perHour && !goal.total} inputMode="numeric" placeholder={tr('ej. 400 {0}', unit)} value={hour} onChange={(e) => setHour(e.target.value.replace(/\D/g, ''))} /></label>
+          <label>{tr('En todo el turno')}{' '}<input inputMode="numeric" placeholder={tr('ej. 6400 {0}', unit)} value={whole} onChange={(e) => setWhole(e.target.value.replace(/\D/g, ''))} /></label>
           <div className="dbtns spread">
-            <div className="btns">{(goal?.perHour || goal?.perShift) ? <button type="button" className="lnk" onClick={() => { setTarget(dept, null, null); onClose() }}>{tr('Quitar meta')}</button> : null}</div>
+            <div className="btns">{(goal.perHour || goal.total) ? <button type="button" className="lnk" onClick={() => { setShiftGoal(dept, shift, null, null); onClose() }}>{tr('Quitar meta')}</button> : null}</div>
             <div className="btns">
               <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
               <button type="submit" className="btn primary">{tr('✓ Guardar')}</button>
@@ -1079,22 +1101,22 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         : <QtyDialog key={'fill:' + filling.run.id} title={tr('Completar {0} {1} de {2} · tiene {3} {4}. ¿Cuántos tiene ahora en total?', unitWord, noOf(filling), filling.run.code, filling.unit.qty, cfg.qtyUnit)} unit={cfg.qtyUnit} refLabel="" initial={filling.usual} perCase={perCaseOf(filling.run.code)} onClose={() => setFilling(null)} onPick={(q) => { fillUnit(filling.run.id, filling.unit.at, q); setFilling(null) }} />)}
     </>
   )
-  // The line's own goal, set by the manager (the room's goal is of all its lines together): what the line has made
-  // today against it, and its pace in the shift in course, red as soon as it falls under the goal per hour.
-  const goal = lineTargetOf(s, line.id), hasGoal = !!(goal && (goal.perHour || goal.perDay))
+  // The line's own goal, set by the manager of each shift (the room's goal is of all its lines together): what the
+  // line has made in the shift in course against it, and its pace, red as soon as it falls under the goal per hour.
+  const goal = lineShiftGoalOf(s, line.id, turn.shift), hasGoal = !!(goal.perHour || goal.total)
   const mine = hasGoal ? deptToday(s, line.dept, day.date, now, line.id) : null
-  const goalPct = mine && goal?.perDay ? Math.min(100, Math.floor((mine.qty / goal.perDay) * 100)) : 0
+  const goalPct = mine && goal.total ? Math.min(100, Math.floor((mine.shiftQty / goal.total) * 100)) : 0
   const goalUnit = cfg.qty === 'none' ? cfg.plural.toLowerCase() : cfg.qtyUnit
   const goalBtn = canGoal && <button type="button" className="lnk sm" onClick={() => setGoalOpen(true)}>{hasGoal ? tr('✎ Meta') : tr('+ Meta')}</button>
   const goalStrip = (
     <>
       {mine && hasGoal && (
         <div className="linegoal">
-          {goal?.perDay ? <span>{trx('Meta de hoy {0} / {1} {2} · {3}', <b>{fmtN(mine.qty)}</b>, fmtN(goal.perDay), goalUnit, <b className={goalPct >= 100 ? 'ok' : ''}>{goalPct}%</b>)}</span> : null}
-          {goal?.perHour ? <span>{trx('Ritmo {0} {1}/h · meta {2}', <b className={mine.shiftRate == null ? '' : mine.shiftRate >= goal.perHour ? 'ok' : 'red'}>{mine.shiftRate != null ? fmtN(mine.shiftRate) : '—'}</b>, goalUnit, fmtN(goal.perHour))}</span> : null}
+          {goal.total ? <span>{trx('Meta del turno {0} / {1} {2} · {3}', <b>{fmtN(mine.shiftQty)}</b>, fmtN(goal.total), goalUnit, <b className={goalPct >= 100 ? 'ok' : ''}>{goalPct}%</b>)}</span> : null}
+          {goal.perHour ? <span>{trx('Ritmo {0} {1}/h · meta {2}', <b className={mine.shiftRate == null ? '' : mine.shiftRate >= goal.perHour ? 'ok' : 'red'}>{mine.shiftRate != null ? fmtN(mine.shiftRate) : '—'}</b>, goalUnit, fmtN(goal.perHour))}</span> : null}
         </div>
       )}
-      {goalOpen && <LineTargetDialog line={line} unit={goalUnit} goal={goal} onClose={() => setGoalOpen(false)} />}
+      {goalOpen && <LineTargetDialog s={s} line={line} unit={goalUnit} inCourse={turn.shift} onClose={() => setGoalOpen(false)} />}
     </>
   )
   if (!run) {
@@ -1447,21 +1469,27 @@ function download(f: File) {
   setTimeout(() => URL.revokeObjectURL(a.href), 60_000)
 }
 
-/** the manager types the goal of one line: so much per hour and/or in the whole day. It shows on that line's card */
-function LineTargetDialog({ line, unit, goal, onClose }: { line: Line; unit: string; goal: LineTarget | undefined; onClose: () => void }) {
-  const [hour, setHour] = useState(goal?.perHour ? String(goal.perHour) : '')
-  const [whole, setWhole] = useState(goal?.perDay ? String(goal.perDay) : '')
-  const num = (t: string) => { const x = Number(t); return x > 0 ? x : null }
+/** a manager types the goal of one line for one shift: so much per hour and/or in the whole shift. It shows on that line's card */
+function LineTargetDialog({ s, line, unit, inCourse, onClose }: { s: State; line: Line; unit: string; inCourse: 1 | 2; onClose: () => void }) {
+  const who = useWho()
+  const [shift, setShift] = useState<1 | 2>(() => goalShift(who, inCourse))
+  const goal = lineShiftGoalOf(s, line.id, shift)
+  const [hour, setHour] = useState(goal.perHour ? String(goal.perHour) : '')
+  const [whole, setWhole] = useState(goal.total ? String(goal.total) : '')
+  const pick = (k: 1 | 2) => { const g = lineShiftGoalOf(s, line.id, k); setShift(k); setHour(g.perHour ? String(g.perHour) : ''); setWhole(g.total ? String(g.total) : '') }
+  const before = lineTargetOf(s, line.id)?.perDay
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
-        <h3>{trx('Meta de {0} · {1}', lineLabel(line.name), line.dept)}</h3>
-        <p>{trx('Sale en la tarjeta de esta línea, en todas las tablets, y queda en el historial. Deja en blanco la que no aplique. El ritmo de la línea sale en rojo cuando baja de su meta por hora. La meta de todo {0} junto se pone arriba, en "Hoy en {1}".', line.dept, line.dept)}</p>
-        <form onSubmit={(e) => { e.preventDefault(); setLineTarget(line, num(hour), num(whole)); onClose() }} className="qform">
+        <h3>{trx('Meta de {0} · {1} · Turno {2}', lineLabel(line.name), line.dept, shift)}</h3>
+        <ShiftPick value={shift} onPick={pick} />
+        <p>{trx('Es la meta de esta línea en un turno: solo cuenta lo que la línea hace en ese turno. Sale en su tarjeta, en todas las tablets, y queda en el historial. Deja en blanco la que no aplique. El ritmo de la línea sale en rojo cuando baja de su meta por hora. La meta de todo {0} junto se pone arriba, en la tarjeta del turno.', line.dept)}</p>
+        {!goal.own && before ? <p className="hint">{trx('La meta que había, {0} {1}, era del día completo, de los dos turnos juntos: ya no se usa. Pon aquí la de este turno.', <b>{fmtN(before)}</b>, unit)}</p> : null}
+        <form onSubmit={(e) => { e.preventDefault(); setLineShiftGoal(line, shift, goalNum(hour), goalNum(whole)); onClose() }} className="qform">
           <label>{tr('Por hora')}{' '}<input inputMode="numeric" placeholder={tr('ej. 150 {0}', unit)} value={hour} onChange={(e) => setHour(e.target.value.replace(/\D/g, ''))} /></label>
-          <label>{trx('En el día completo {0}', <small>{tr('(los dos turnos)')}</small>)} <input inputMode="numeric" placeholder={tr('ej. 2400 {0}', unit)} value={whole} onChange={(e) => setWhole(e.target.value.replace(/\D/g, ''))} /></label>
+          <label>{tr('En todo el turno')}{' '}<input inputMode="numeric" placeholder={tr('ej. 2400 {0}', unit)} value={whole} onChange={(e) => setWhole(e.target.value.replace(/\D/g, ''))} /></label>
           <div className="dbtns spread">
-            <div className="btns">{goal?.perHour || goal?.perDay ? <button type="button" className="lnk" onClick={() => { setLineTarget(line, null, null); onClose() }}>{tr('Quitar meta')}</button> : null}</div>
+            <div className="btns">{goal.perHour || goal.total ? <button type="button" className="lnk" onClick={() => { setLineShiftGoal(line, shift, null, null); onClose() }}>{tr('Quitar meta')}</button> : null}</div>
             <div className="btns">
               <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
               <button type="submit" className="btn primary">{tr('✓ Guardar')}</button>
@@ -1473,10 +1501,6 @@ function LineTargetDialog({ line, unit, goal, onClose }: { line: Line; unit: str
   )
 }
 
-/**
- * The manager moves the hours of the shifts (the plant has changed them more than once). They count from a date on, so
- * the days before it are still split with the hours they had.
- */
 function ShiftsDialog({ s, date, onClose }: { s: State; date: string; onClose: () => void }) {
   const cur = shiftsOf(s, date)
   const [from, setFrom] = useState(date)

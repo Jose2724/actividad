@@ -73,7 +73,13 @@ export type ShiftHours = { first: string; firstEnd: string; second: string; seco
 export type ShiftPlan = ShiftHours & { from: string; updatedAt: number }
 /** the goal of one line: so much per hour and/or in the whole day, in its room's quantity */
 export type LineTarget = { lineId: string; perHour: number | null; perDay: number | null; updatedAt: number }
-export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Product[]; schedule: Schedule; changes: Change[]; targets: Target[]; shifts: ShiftPlan[]; lineTargets: LineTarget[]; orders: Order[] }
+/**
+ * The goal of one shift, of a room ("RTE@2") or of one line ("line:<id>@2"): each shift has its own, set by its
+ * manager, and what counts against it is only what that shift makes. (Target and LineTarget above are the goals as
+ * they were kept before, one for both shifts: only their pace per hour is still used, see shiftGoalOf.)
+ */
+export type TurnGoal = { key: string; perHour: number | null; total: number | null; updatedAt: number }
+export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Product[]; schedule: Schedule; changes: Change[]; targets: Target[]; shifts: ShiftPlan[]; lineTargets: LineTarget[]; orders: Order[]; turnGoals: TurnGoal[] }
 /**
  * An order to fill in Packing: so many cases of one product for a customer, to ship by a date. Most carry the
  * customer's purchase order number (PO); some never do and some get it later. See "the orders Packing fills".
@@ -144,10 +150,10 @@ function tidySchedule(sch: Schedule): Schedule {
 
 /** with a server the lines (and products) are shared and come from it; without one, each device starts with a line per room */
 const SERVER = !!import.meta.env.VITE_SUPABASE_URL
-function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], lineTargets: [], orders: [] } }
+function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], lineTargets: [], orders: [], turnGoals: [] } }
 function load(): State {
   try {
-    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[] }
+    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[] }
     const s = JSON.parse(localStorage.getItem(KEY) || 'null') as Raw | null
     // rows saved by earlier versions: carts as plain timestamps, units without a tag or a name, products with one
     // pouches-per-cart number, nothing with an update time
@@ -163,8 +169,9 @@ function load(): State {
         changes: (s.changes ?? []).filter((c) => (c.at ?? 0) > clockNow() - KEEP_CHANGES_MS).map((c) => ({ id: c.id ?? uid(), at: c.at ?? 0, by: c.by ?? '', dept: (c.dept ?? null) as Dept | null, what: c.what ?? '', before: c.before ?? '', after: c.after ?? '', refTable: c.refTable ?? '', refKey: c.refKey ?? '', updatedAt: c.updatedAt ?? 0 })),
         targets: (s.targets ?? []).filter((t) => DEPTS.includes(t.dept as Dept)).map((t) => ({ dept: t.dept as Dept, perHour: t.perHour ?? null, perShift: t.perShift ?? null, updatedAt: t.updatedAt ?? 0 })),
         shifts: (s.shifts ?? []).filter((x): x is ShiftPlan => !!x && /^\d{4}-\d{2}-\d{2}$/.test(x.from ?? '') && !shiftsProblem(x as ShiftHours)).map((x) => ({ from: x.from, first: x.first, firstEnd: x.firstEnd, second: x.second, secondEnd: x.secondEnd, updatedAt: x.updatedAt ?? 0 })),
-        lineTargets: (s.lineTargets ?? []).filter((t) => !!t && !!t.lineId).map((t) => ({ lineId: String(t.lineId), perHour: t.perHour ?? null, perDay: t.perDay ?? null, updatedAt: t.updatedAt ?? 0 })),
+        lineTargets: (s.lineTargets ?? []).filter((t) => !!t && !!t.lineId && !isTurnKey(String(t.lineId))).map((t) => ({ lineId: String(t.lineId), perHour: t.perHour ?? null, perDay: t.perDay ?? null, updatedAt: t.updatedAt ?? 0 })),
         orders: (s.orders ?? []).map((o) => (o ? orderOf(String(o.id ?? ''), o, String(o.by ?? ''), o.updatedAt ?? 0) : null)).filter((o): o is Order => !!o),
+        turnGoals: (s.turnGoals ?? []).filter((g) => !!g && isTurnKey(String(g.key ?? ''))).map((g) => ({ key: String(g.key), perHour: g.perHour ?? null, total: g.total ?? null, updatedAt: g.updatedAt ?? 0 })),
       }
     }
   } catch { /* empty */ }
@@ -1083,30 +1090,57 @@ export function setSchedule(date: string, code: string, n: number) {
   logChange(null, 'Programa ' + date + ' · ' + key + ' mezclas', v(before), v(n), 'act_schedule', date + '|' + key)
 }
 export const targetOf = (s: State, dept: Dept) => s.targets.find((t) => t.dept === dept)
-/** the manager's goal for a room (blank = none); it reaches every tablet of the room and the history */
-export function setTarget(dept: Dept, perHour: number | null, perShift: number | null) {
-  const old = targetOf(state, dept)
-  const t: Target = { dept, perHour, perShift, updatedAt: clockNow() }
-  set({ ...state, targets: [...state.targets.filter((x) => x.dept !== dept), t] })
-  push('act_targets', dept, rowOfTarget(t))
-  logChange(dept, 'Meta ' + dept + ' · por hora', v(old?.perHour), v(perHour), 'act_targets', dept)
-  logChange(dept, 'Meta ' + dept + ' · del día', v(old?.perShift), v(perShift), 'act_targets', dept)
-}
 /**
  * Each line can have its own goal beside the room's (which is of all the lines together): it shows on the line's
- * card. It travels in act_targets like the room's, under the key "line:<id>" (per_shift holds the day's).
+ * card. It travels in act_targets like the room's, under the key "line:<id>".
  */
 const LINE_KEY = 'line:'
 const rowOfLineTarget = (t: LineTarget) => ({ dept: LINE_KEY + t.lineId, per_hour: t.perHour, per_shift: t.perDay, updated_at: iso(t.updatedAt), updated_by: user.get() })
 export const lineTargetOf = (s: State, lineId: string) => s.lineTargets.find((t) => t.lineId === lineId)
-/** the manager's goal for one line (blank = none) */
-export function setLineTarget(line: Line, perHour: number | null, perDay: number | null) {
-  const old = lineTargetOf(state, line.id)
-  const t: LineTarget = { lineId: line.id, perHour, perDay, updatedAt: stamp(old) }
-  set({ ...state, lineTargets: [...state.lineTargets.filter((x) => x.lineId !== line.id), t] })
-  push('act_targets', LINE_KEY + line.id, rowOfLineTarget(t))
-  logChange(line.dept, 'Meta ' + line.name + ' (' + line.dept + ') · por hora', v(old?.perHour), v(perHour), 'act_targets', LINE_KEY + line.id)
-  logChange(line.dept, 'Meta ' + line.name + ' (' + line.dept + ') · del día', v(old?.perDay), v(perDay), 'act_targets', LINE_KEY + line.id)
+// ---- the goals of each shift ----
+/**
+ * A goal belongs to a shift: its manager sets it for his people, and what counts against it is what that shift makes,
+ * never what the other one made. It travels in act_targets under the room's (or the line's) key followed by "@1" or
+ * "@2", with the shift's total in per_shift. A device with an older version of the app does not know these keys and
+ * leaves them alone.
+ */
+// (a function, not a constant: load() uses it while this file is still being read, on every device that has something saved)
+function isTurnKey(key: string) { return /@[12]$/.test(key) }
+const rowOfTurnGoal = (g: TurnGoal) => ({ dept: g.key, per_hour: g.perHour, per_shift: g.total, updated_at: iso(g.updatedAt), updated_by: user.get() })
+/** what a shift goes by: its goal per hour and for the whole shift; own = somebody set it for this very shift */
+export type ShiftGoal = { perHour: number | null; total: number | null; own: boolean }
+/**
+ * While nobody has set a shift's own goal, the pace per hour that was set before (when a room had one goal for both
+ * shifts) still stands: a pace is the same whoever is working. The total of before does not: it was the whole day's,
+ * of both shifts together, and is no shift's goal.
+ */
+const turnGoal = (s: State, key: string, before: number | null | undefined): ShiftGoal => {
+  const own = s.turnGoals.find((g) => g.key === key)
+  return own ? { perHour: own.perHour, total: own.total, own: true } : { perHour: before ?? null, total: null, own: false }
+}
+/** the goal of a room in one shift */
+export const shiftGoalOf = (s: State, dept: Dept, shift: 1 | 2) => turnGoal(s, dept + '@' + shift, targetOf(s, dept)?.perHour)
+/** the goal of one line in one shift */
+export const lineShiftGoalOf = (s: State, lineId: string, shift: 1 | 2) => turnGoal(s, LINE_KEY + lineId + '@' + shift, lineTargetOf(s, lineId)?.perHour)
+function putTurnGoal(key: string, perHour: number | null, total: number | null) {
+  const old = state.turnGoals.find((g) => g.key === key)
+  const g: TurnGoal = { key, perHour, total, updatedAt: stamp(old) }
+  set({ ...state, turnGoals: [...state.turnGoals.filter((x) => x.key !== key), g] })
+  push('act_targets', key, rowOfTurnGoal(g))
+}
+/** a manager's goal for a room in one shift (blank = none); it reaches every tablet of the room and the history */
+export function setShiftGoal(dept: Dept, shift: 1 | 2, perHour: number | null, total: number | null) {
+  const old = shiftGoalOf(state, dept, shift), key = dept + '@' + shift
+  putTurnGoal(key, perHour, total)
+  logChange(dept, 'Meta ' + dept + ' · Turno ' + shift + ' · por hora', v(old.perHour), v(perHour), 'act_targets', key)
+  logChange(dept, 'Meta ' + dept + ' · Turno ' + shift + ' · del turno', v(old.total), v(total), 'act_targets', key)
+}
+/** a manager's goal for one line in one shift (blank = none) */
+export function setLineShiftGoal(line: Line, shift: 1 | 2, perHour: number | null, total: number | null) {
+  const old = lineShiftGoalOf(state, line.id, shift), key = LINE_KEY + line.id + '@' + shift
+  putTurnGoal(key, perHour, total)
+  logChange(line.dept, 'Meta ' + line.name + ' (' + line.dept + ') · Turno ' + shift + ' · por hora', v(old.perHour), v(perHour), 'act_targets', key)
+  logChange(line.dept, 'Meta ' + line.name + ' (' + line.dept + ') · Turno ' + shift + ' · del turno', v(old.total), v(total), 'act_targets', key)
 }
 /**
  * what one unit counts for: its own quantity; without one (old records, a blank left in a correction), the run's
@@ -1303,6 +1337,12 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !newer(state.shifts.find((x) => x.from === from))) return
     const x: ShiftPlan | null = a && b ? { from, first: a[0], firstEnd: a[1], second: b[0], secondEnd: b[1], updatedAt: at } : null
     set({ ...state, shifts: [...state.shifts.filter((y) => y.from !== from), ...(x && !shiftsProblem(x) ? [x] : [])] })
+  } else if (table === 'act_targets' && isTurnKey(String(row.dept ?? ''))) {
+    // the goal of one shift, of a room or of a line
+    const key = String(row.dept)
+    if (!newer(state.turnGoals.find((g) => g.key === key))) return
+    const num = (x: unknown) => (x == null || !(Number(x) > 0) ? null : Number(x))
+    set({ ...state, turnGoals: [...state.turnGoals.filter((g) => g.key !== key), { key, perHour: num(row.per_hour), total: num(row.per_shift), updatedAt: at }] })
   } else if (table === 'act_targets' && String(row.dept ?? '').startsWith(LINE_KEY)) {
     // the goal of one line
     const lineId = String(row.dept).slice(LINE_KEY.length)
@@ -1328,6 +1368,7 @@ export function uploadAll() {
   for (const t of state.targets) { push('act_targets', t.dept, rowOfTarget(t)); n++ }
   for (const x of state.shifts) { push('act_targets', SHIFTS_KEY + x.from, rowOfShifts(x)); n++ }
   for (const t of state.lineTargets) { push('act_targets', LINE_KEY + t.lineId, rowOfLineTarget(t)); n++ }
+  for (const g of state.turnGoals) { push('act_targets', g.key, rowOfTurnGoal(g)); n++ }
   for (const o of state.orders) { push('act_changes', ORDER_ID + o.id, rowOfOrder(o)); n++ }
   return n
 }
