@@ -589,3 +589,5 @@ table.shiftgrid tr.sep td{background:var(--bg);color:var(--muted);font-size:11px
   .plan th,.plan td{padding:6px 5px}
   .plan table{font-size:14px}
 }
+/* Avance: the room that makes a code's mezclas, said beside their number when it is not Kitchen */
+.avance td small.room{color:var(--muted);font-size:11px;font-weight:600}

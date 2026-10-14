@@ -166,6 +166,7 @@ calc.use((m) => {
   eq('una fila por código (0100 y 100 juntos)', rows.map((r) => r.code), ['100', 'B200', 'C300'])
   const a = rows[0]
   eq('programadas, hechas, pendientes', [a.scheduled, a.mixesDone, a.mixesPending, a.spiralDone], [10, 4, 6, 3])
+  eq('lo registraron los dos cuartos: cuentan las mezclas del que más lleva (Kitchen), no la suma de los dos', [a.mixRoom, a.mixesDone], ['Kitchen', 4])
   eq('cajas programadas = 10 mezclas × 18.5', a.casesPlan, 185)
   eq('pouches programados = 185 cajas × 8', a.pouchesPlan, 1480)
   eq('pallets programados = 185 ÷ 36', a.palletsPlan, 5.14)
@@ -183,6 +184,12 @@ calc.use((m) => {
   const c = rows[2]
   eq('se hicieron 5 de 3 programadas: pendiente −2, como en la hoja de la oficina', [c.scheduled, c.mixesDone, c.mixesPending], [3, 5, -2])
   eq('71.4 × 2 × 5 da 714 exacto, sin restos', [c.casesExp, c.pouchesExp], [357, 714])
+  // a code whose mezclas are made in Spiral, as the office's sheet reads them from the Spiral sheet
+  m.setSchedule('2026-10-05', 'C300', 6)
+  m.applyRemote('act_runs', runRow({ id: 'sp5', dept: 'Spiral', lineId: 'S1', code: 'C300', date: '2026-10-05', startedAt: T0, units: [unit(T0 + 10 * M), unit(T0 + 20 * M), unit(T0 + 30 * M), unit(T0 + 40 * M)] }))
+  const sp = m.avanceRows(m.store.get(), '2026-10-05')[0]
+  eq('un código que solo registra Spiral: sus mezclas hechas son las de Spiral, y con ellas baja lo pendiente', [sp.code, sp.mixRoom, sp.scheduled, sp.mixesDone, sp.mixesPending, sp.spiralDone], ['C300', 'Spiral', 6, 4, 2, 4])
+  eq('y lo esperado sale de esas mezclas: 4 × 71.4 cajas, × 2 pouches', [sp.casesExp, sp.pouchesExp], [285.6, 571.2])
   m.setSchedule('2026-10-04', 'Z9', 0)
   eq('un código en 0 y sin nada hecho no es una fila; mientras se escribe su número, sí', [m.avanceRows(m.store.get(), '2026-10-04').length, m.avanceRows(m.store.get(), '2026-10-04', new Set(['Z9'])).map((r) => [r.code, r.scheduled])], [0, [['Z9', 0]]])
   eq('pallets: 357 ÷ 105', c.palletsExp, 3.4)

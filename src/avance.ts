@@ -6,12 +6,18 @@ import { normCode, productOf, unitQty, type Product, type State } from './store'
  *   pouches expected = cases expected × pouches per case        (no rounding, as in their formula)
  *   pallets expected = cases expected ÷ cases per pallet
  *   pending          = expected − what the room reported        (negative = more than expected, their red cells)
- * "plan" takes the mezclas scheduled for the day; "exp" the mezclas Kitchen has made so far.
+ * "plan" takes the mezclas scheduled for the day; "exp" the mezclas made so far, in the room that makes that code.
  */
 export type AvanceRow = {
   code: string; product: Product | undefined; scheduled: number
-  /** mixesPending = scheduled − made (negative = more mezclas than the program, as in the office's sheet); 0 for a code that was not programmed */
-  mixesDone: number; mixesPending: number; spiralDone: number
+  /**
+   * mixesDone = the mezclas (batches) made of the code, in the room that makes it: Kitchen, on its braisers, or Spiral.
+   * The office's AVANCE sheet reads each product's batches from one room's sheet or the other. Here it is the room
+   * that has registered the code; if both have, the one with more (the same batches are never counted twice).
+   * mixRoom says which room that is; spiralDone is what Spiral registered, whoever makes the code.
+   * mixesPending = scheduled − made (negative = more mezclas than the program, as in the office's sheet); 0 for a code that was not programmed
+   */
+  mixesDone: number; mixesPending: number; mixRoom: 'Kitchen' | 'Spiral'; spiralDone: number
   /** null = it cannot be worked out: the code is not in the products table, or its yield / pouches per case / cases per pallet is blank there */
   pouchesPlan: number | null; pouchesExp: number | null; pouchesDone: number
   casesPlan: number | null; casesExp: number | null; casesDone: number; mfoCases: number
@@ -38,14 +44,15 @@ export function avanceRows(s: State, date: string, keep?: Set<string>): AvanceRo
     const units = (dept: string) => of(dept).reduce((t, r) => t + r.units.length, 0)
     const qty = (dept: string) => of(dept).reduce((t, r) => t + r.units.reduce((u, x) => u + unitQty(s, r, x), 0), 0)
     const scheduled = sched[key] ?? 0
-    const mixesDone = units('Kitchen')
+    const kitchenDone = units('Kitchen'), spiralDone = units('Spiral')
+    const mixRoom = spiralDone > kitchenDone ? 'Spiral' as const : 'Kitchen' as const, mixesDone = Math.max(kitchenDone, spiralDone)
     // a blank in the master table means "not known", never "zero expected"
     const cases = (mixes: number) => (product && product.casesPerMix ? mixes * product.casesPerMix : null)
     const pouches = (c: number | null) => (product && product.pouchesPerCase && c != null ? c * product.pouchesPerCase : null)
     const pallets = (c: number | null) => (product && product.casesPerPallet && c != null ? c / product.casesPerPallet : null)
     const casesExp = cases(mixesDone), casesPlan = scheduled ? cases(scheduled) : null
     return {
-      key, code, product, scheduled, mixesDone, mixesPending: scheduled ? scheduled - mixesDone : 0, spiralDone: units('Spiral'),
+      key, code, product, scheduled, mixesDone, mixesPending: scheduled ? scheduled - mixesDone : 0, mixRoom, spiralDone,
       pouchesPlan: r2(pouches(casesPlan)), pouchesExp: r2(pouches(casesExp)), pouchesDone: qty('RTE'),
       casesPlan: r2(casesPlan), casesExp: r2(casesExp), casesDone: qty('Packing'), mfoCases: qty('MFO'),
       palletsPlan: r2(pallets(casesPlan)), palletsExp: r2(pallets(casesExp)), palletsDone: units('Packing'),

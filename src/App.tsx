@@ -443,20 +443,20 @@ function Avance({ s }: { s: State }) {
         <button type="button" className="btn" onClick={() => setEditing(!editing)}>{editing ? tr('Cerrar productos') : tr('⚙ Productos')}</button>
       </div>
       <DayNote day={day} />
-      <p className="hint">{trx('{0} = lo que da el programa del día (mezclas programadas × tabla de productos). {1} = lo que ya puede salir de las mezclas que Kitchen lleva hechas. {2} = esperado − hecho (rojo = se hizo de más). {3} = programado − hecho: lo que queda del día.', <b>{tr('Progr.')}</b>, <b>{tr('Esper.')}</b>, <b>{tr('Pend.')}</b>, <b>{tr('Faltan')}</b>)}</p>
+      <p className="hint">{trx('{0} = lo que da el programa del día (mezclas programadas × tabla de productos). {1} = lo que ya puede salir de las mezclas hechas: las de Kitchen o las de Spiral, según dónde se haga cada código. {2} = esperado − hecho (rojo = se hizo de más). {3} = programado − hecho: lo que queda del día.', <b>{tr('Progr.')}</b>, <b>{tr('Esper.')}</b>, <b>{tr('Pend.')}</b>, <b>{tr('Faltan')}</b>)}</p>
       {editing && <Products s={s} />}
       {rows.length === 0 ? <p className="hint">{tr('Nada programado ni registrado en esta fecha. Escribe un código y toca "Programar".')}</p> : (
         <div className="twrap">
           <table>
             <thead>
-              <tr><th rowSpan={2}>{tr('Código')}</th><th rowSpan={2}>{tr('Producto')}</th><th colSpan={3} className="grp g1">{tr('Mezclas (Kitchen)')}</th><th rowSpan={2} className="gs">Spiral</th><th colSpan={5} className="grp g2">{tr('Pouches (RTE)')}</th><th colSpan={5} className="grp g3">{tr('Cajas (Packing)')}</th><th rowSpan={2} className="gs">{tr('MFO cajas')}</th><th colSpan={3} className="grp g4">{tr('Pallets')}</th><th rowSpan={2} className="gs">{tr('Waste lb')}</th></tr>
+              <tr><th rowSpan={2}>{tr('Código')}</th><th rowSpan={2}>{tr('Producto')}</th><th colSpan={3} className="grp g1">{tr('Mezclas (Kitchen o Spiral)')}</th><th rowSpan={2} className="gs">Spiral</th><th colSpan={5} className="grp g2">{tr('Pouches (RTE)')}</th><th colSpan={5} className="grp g3">{tr('Cajas (Packing)')}</th><th rowSpan={2} className="gs">{tr('MFO cajas')}</th><th colSpan={3} className="grp g4">{tr('Pallets')}</th><th rowSpan={2} className="gs">{tr('Waste lb')}</th></tr>
               <tr><th className="g1 gs">{tr('Progr.')}</th><th className="g1">{tr('Hechas')}</th><th className="g1">{tr('Pend.')}</th><th className="g2 gs">{tr('Progr.')}</th><th className="g2">{tr('Esper.')}</th><th className="g2">{tr('Hechos')}</th><th className="g2">{tr('Pend.')}</th><th className="g2">{tr('Faltan')}</th><th className="g3 gs">{tr('Progr.')}</th><th className="g3">{tr('Esper.')}</th><th className="g3">{tr('Hechas')}</th><th className="g3">{tr('Pend.')}</th><th className="g3">{tr('Faltan')}</th><th className="g4 gs">{tr('Progr.')}</th><th className="g4">{tr('Esper.')}</th><th className="g4">{tr('Hechos')}</th></tr>
             </thead>
             <tbody>{rows.map((r) => (
               <tr key={r.code}>
                 <td><b>{r.code}</b></td><td>{r.product?.name ?? <i className="red">{tr('no está en Productos')}</i>}</td>
                 <td><input className="num" inputMode="numeric" value={r.scheduled || ''} placeholder="0" onChange={(e) => setSchedule(date, r.code, Number(e.target.value.replace(/\D/g, '')) || 0)} /></td>
-                <td>{r.mixesDone}</td><td className={cls(r.mixesPending)}>{r.mixesPending}</td>
+                <td>{r.mixesDone}{r.mixRoom === 'Spiral' && r.mixesDone > 0 && <small className="room"> Spiral</small>}</td><td className={cls(r.mixesPending)}>{r.mixesPending}</td>
                 <td>{r.spiralDone}</td>
                 <td>{n1(r.pouchesPlan)}</td><td>{n1(r.pouchesExp)}</td><td>{r.pouchesDone}</td><td className={cls(pending(r.pouchesExp, r.pouchesDone))}>{n1(pending(r.pouchesExp, r.pouchesDone))}</td><td className={cls(pending(r.pouchesPlan, r.pouchesDone))}>{n1(pending(r.pouchesPlan, r.pouchesDone))}</td>
                 <td>{n1(r.casesPlan)}</td><td>{n1(r.casesExp)}</td><td>{r.casesDone}</td><td className={cls(pending(r.casesExp, r.casesDone))}>{n1(pending(r.casesExp, r.casesDone))}</td><td className={cls(pending(r.casesPlan, r.casesDone))}>{n1(pending(r.casesPlan, r.casesDone))}</td>
