@@ -79,7 +79,14 @@ export type LineTarget = { lineId: string; perHour: number | null; perDay: numbe
  * they were kept before, one for both shifts: only their pace per hour is still used, see shiftGoalOf.)
  */
 export type TurnGoal = { key: string; perHour: number | null; total: number | null; updatedAt: number }
-export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Product[]; schedule: Schedule; changes: Change[]; targets: Target[]; shifts: ShiftPlan[]; lineTargets: LineTarget[]; orders: Order[]; turnGoals: TurnGoal[] }
+/**
+ * The program of a room for a day: a code it has to make and how much of it, in the room's own quantity (mezclas,
+ * pouches, cajas). The office types it, as it types the SCHEDULE of its AVANCE sheet and the #BATCH of each room's
+ * sheet; every tablet of the room sees it, and what the room registers of that code is taken off it by itself.
+ * A code set to 0 is off the program.
+ */
+export type Plan = { date: string; dept: Dept; code: string; qty: number; updatedAt: number }
+export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Product[]; schedule: Schedule; changes: Change[]; targets: Target[]; shifts: ShiftPlan[]; lineTargets: LineTarget[]; orders: Order[]; turnGoals: TurnGoal[]; plans: Plan[] }
 /**
  * An order to fill in Packing: so many cases of one product for a customer, to ship by a date. Most carry the
  * customer's purchase order number (PO); some never do and some get it later. See "the orders Packing fills".
@@ -148,12 +155,13 @@ function tidySchedule(sch: Schedule): Schedule {
   return out
 }
 
+function isDay(text: string) { return /^\d{4}-\d{2}-\d{2}$/.test(text) }
 /** with a server the lines (and products) are shared and come from it; without one, each device starts with a line per room */
 const SERVER = !!import.meta.env.VITE_SUPABASE_URL
-function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], lineTargets: [], orders: [], turnGoals: [] } }
+function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], lineTargets: [], orders: [], turnGoals: [], plans: [] } }
 function load(): State {
   try {
-    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[] }
+    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[] }
     const s = JSON.parse(localStorage.getItem(KEY) || 'null') as Raw | null
     // rows saved by earlier versions: carts as plain timestamps, units without a tag or a name, products with one
     // pouches-per-cart number, nothing with an update time
@@ -171,6 +179,7 @@ function load(): State {
         shifts: (s.shifts ?? []).filter((x): x is ShiftPlan => !!x && /^\d{4}-\d{2}-\d{2}$/.test(x.from ?? '') && !shiftsProblem(x as ShiftHours)).map((x) => ({ from: x.from, first: x.first, firstEnd: x.firstEnd, second: x.second, secondEnd: x.secondEnd, updatedAt: x.updatedAt ?? 0 })),
         lineTargets: (s.lineTargets ?? []).filter((t) => !!t && !!t.lineId && !isTurnKey(String(t.lineId))).map((t) => ({ lineId: String(t.lineId), perHour: t.perHour ?? null, perDay: t.perDay ?? null, updatedAt: t.updatedAt ?? 0 })),
         orders: (s.orders ?? []).map((o) => (o ? orderOf(String(o.id ?? ''), o, String(o.by ?? ''), o.updatedAt ?? 0) : null)).filter((o): o is Order => !!o),
+        plans: (s.plans ?? []).filter((p) => !!p && isDay(String(p.date ?? '')) && DEPTS.includes(p.dept as Dept) && !!normCode(String(p.code ?? ''))).map((p) => ({ date: String(p.date), dept: p.dept as Dept, code: String(p.code).trim().toUpperCase(), qty: Number(p.qty) > 0 ? Number(p.qty) : 0, updatedAt: p.updatedAt ?? 0 })),
         turnGoals: (s.turnGoals ?? []).filter((g) => !!g && isTurnKey(String(g.key ?? ''))).map((g) => ({ key: String(g.key), perHour: g.perHour ?? null, total: g.total ?? null, updatedAt: g.updatedAt ?? 0 })),
       }
     }
@@ -208,8 +217,9 @@ function pruned(s: State): State {
   const stops = s.stops.filter((x) => !x.endedAt || x.startedAt >= fromMs || opened.has(dayOf(x.startedAt)) || waiting.has('act_stops|' + x.id) || beside(x))
   const changes = s.changes.filter((c) => c.at >= fromMs || opened.has(dayOf(c.at)) || waiting.has('act_changes|' + c.id))
   const days = Object.keys(s.schedule).filter((d) => d >= from || opened.has(d))
-  if (runs.length === s.runs.length && stops.length === s.stops.length && changes.length === s.changes.length && days.length === Object.keys(s.schedule).length) return s
-  return { ...s, runs, stops, changes, schedule: Object.fromEntries(days.map((d) => [d, s.schedule[d]])) }
+  const plans = s.plans.filter((p) => p.date >= from || opened.has(p.date) || waiting.has('act_plan|' + planKey(p.date, p.dept, p.code)))
+  if (runs.length === s.runs.length && stops.length === s.stops.length && changes.length === s.changes.length && days.length === Object.keys(s.schedule).length && plans.length === s.plans.length) return s
+  return { ...s, runs, stops, changes, schedule: Object.fromEntries(days.map((d) => [d, s.schedule[d]])), plans }
 }
 /** lets go of the days the device no longer keeps (see pruned) */
 export function prune() { const next = pruned(state); if (next !== state) set(next) }
@@ -992,7 +1002,7 @@ export function whoText(r: Run) { return [...new Set([r.by, ...r.units.map((u) =
 const resync = () => { if (SERVER) { try { localStorage.removeItem('act_since2'); localStorage.removeItem('act_outbox') } catch { /* private */ } window.dispatchEvent(new Event('act-resync')) } }
 export function reset() { set(fresh()); resync() }
 /** a clean slate for the records only: runs, stops and the schedule go; the lines and the products table stay */
-export function resetRecords() { set({ ...state, runs: [], stops: [], schedule: {}, changes: [] }); resync() }
+export function resetRecords() { set({ ...state, runs: [], stops: [], schedule: {}, changes: [], plans: [] }); resync() }
 
 export const productOf = (s: State, code: string) => s.products.find((p) => normCode(p.code) === normCode(code))
 /**
@@ -1088,6 +1098,43 @@ export function setSchedule(date: string, code: string, n: number) {
   set({ ...state, schedule: { ...state.schedule, [date]: day } })
   push('act_schedule', date + '|' + key, rowOfSchedule(date, key, n))
   logChange(null, 'Programa ' + date + ' · ' + key + ' mezclas', v(before), v(n), 'act_schedule', date + '|' + key)
+}
+// ---- the program of each room ----
+/** (a function: pruned() uses it while this file is still being read) */
+function planKey(date: string, dept: Dept, code: string) { return date + '|' + dept + '|' + normCode(code) }
+const rowOfPlan = (p: Plan) => ({ date: p.date, dept: p.dept, code: normCode(p.code), qty: p.qty, updated_at: iso(p.updatedAt), updated_by: user.get() })
+/** what a room has on its program for a day */
+export const planOf = (s: State, date: string, dept: Dept) => s.plans.filter((p) => p.date === date && p.dept === dept && p.qty > 0)
+/** the office sets how much of a code a room has to make on a day (nothing = the code is taken off its program) */
+export function setPlan(date: string, dept: Dept, code: string, qty: number) {
+  const key = normCode(code)
+  if (!key || !isDay(date) || !DEPTS.includes(dept)) return
+  const n = Number.isFinite(qty) && qty > 0 ? Math.round(qty * 100) / 100 : 0
+  const old = state.plans.find((p) => p.date === date && p.dept === dept && normCode(p.code) === key)
+  if ((old?.qty ?? 0) === n) return
+  const p: Plan = { date, dept, code: code.trim().toUpperCase(), qty: n, updatedAt: stamp(old) }
+  set({ ...state, plans: [...state.plans.filter((x) => x !== old), p] })
+  push('act_plan', planKey(date, dept, key), rowOfPlan(p))
+  logChange(dept, 'Programa ' + date + ' · ' + dept + ' · ' + key, v(old?.qty), v(n), 'act_plan', planKey(date, dept, key))
+}
+/**
+ * One code of a room's day against its program: what was set, what the room has registered of it (in all, and by
+ * each shift, as the office's sheet has its "1 TURNO" and "2 TURNO"), and what is left: programmed minus made, taken
+ * off by itself with every unit registered (negative = more than the program, the red cells of that sheet).
+ * planned 0 = a code the room made that was not on its program.
+ */
+export type PlanRow = { code: string; name: string; planned: number; done: number; byShift: [number, number]; left: number; running: boolean; lines: string[] }
+export function planRows(s: State, date: string, dept: Dept): PlanRow[] {
+  const cfg = CFG[dept], hours = shiftsOf(s, date)
+  const runs = s.runs.filter((r) => r.dept === dept && r.date === date), plan = planOf(s, date, dept)
+  const one = (r: Run, u: Unit) => (cfg.qty === 'none' ? 1 : unitQty(s, r, u))
+  const keys = [...new Set([...plan.map((p) => normCode(p.code)), ...runs.map((r) => normCode(r.code))])]
+  return keys.map((key): PlanRow => {
+    const mine = runs.filter((r) => normCode(r.code) === key), set = plan.find((p) => normCode(p.code) === key), product = productOf(s, key)
+    const made = (k: 0 | 1 | 2) => mine.reduce((t, r) => t + r.units.filter((u) => !k || shiftAt(hours, u.at) === k).reduce((a, u) => a + one(r, u), 0), 0)
+    const done = made(0), planned = set?.qty ?? 0, open = mine.filter((r) => !r.endedAt)
+    return { code: product?.code ?? set?.code ?? mine[0]?.code ?? key, name: product?.name ?? '', planned, done, byShift: [made(1), made(2)], left: planned ? Math.round((planned - done) * 100) / 100 : 0, running: open.length > 0, lines: [...new Set(open.map((r) => lineNameOf(s, r.lineId, r.line)))] }
+  }).sort((a, b) => Number(b.planned > 0) - Number(a.planned > 0) || a.code.localeCompare(b.code, undefined, { numeric: true }))
 }
 export const targetOf = (s: State, dept: Dept) => s.targets.find((t) => t.dept === dept)
 /**
@@ -1301,6 +1348,13 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
   } else if (table === 'act_stops') {
     const next = reconcile('act_stops', state.stops.find((x) => x.id === row.id), row, STOP)
     if (next) { set({ ...state, stops: upsertIn(state.stops, next) }); if (next.lineId) healSetup(next.lineId) }
+  } else if (table === 'act_plan') {
+    // a code of a room's program for a day
+    const date = String(row.date ?? '').slice(0, 10), dept = row.dept as Dept, key = normCode(String(row.code ?? ''))
+    if (!isDay(date) || !DEPTS.includes(dept) || !key || queued('act_plan', planKey(date, dept, key))) return // what was typed here is newer and on its way
+    const cur = state.plans.find((p) => p.date === date && p.dept === dept && normCode(p.code) === key)
+    if (!newer(cur)) return
+    set({ ...state, plans: [...state.plans.filter((p) => p !== cur), { date, dept, code: cur?.code ?? key, qty: Number(row.qty) > 0 ? Number(row.qty) : 0, updatedAt: at }] })
   } else if (table === 'act_products') {
     const code = String(row.code ?? ''), key = normCode(code)
     const i = state.products.findIndex((p) => normCode(p.code) === key)
@@ -1369,6 +1423,7 @@ export function uploadAll() {
   for (const x of state.shifts) { push('act_targets', SHIFTS_KEY + x.from, rowOfShifts(x)); n++ }
   for (const t of state.lineTargets) { push('act_targets', LINE_KEY + t.lineId, rowOfLineTarget(t)); n++ }
   for (const g of state.turnGoals) { push('act_targets', g.key, rowOfTurnGoal(g)); n++ }
+  for (const p of state.plans) { push('act_plan', planKey(p.date, p.dept, p.code), rowOfPlan(p)); n++ }
   for (const o of state.orders) { push('act_changes', ORDER_ID + o.id, rowOfOrder(o)); n++ }
   return n
 }

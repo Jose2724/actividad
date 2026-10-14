@@ -31,7 +31,7 @@ export function leaveAsk(st: Pick<SyncStatus, 'state' | 'pending'>, online = tru
   return { title: tr('¿Salir de Actividad?'), text: tr('Para volver a entrar hay que poner el usuario y el PIN. Lo que está corriendo sigue contando.'), yes: tr('Salir'), danger: false }
 }
 
-const TABLES: Table[] = ['act_lines', 'act_runs', 'act_stops', 'act_products', 'act_schedule', 'act_changes', 'act_targets']
+const TABLES: Table[] = ['act_lines', 'act_runs', 'act_stops', 'act_products', 'act_schedule', 'act_changes', 'act_targets', 'act_plan']
 const SINCE = 'act_since2' // the cursor is the server's synced_at (see migrations/003), not the tablets' clocks
 const since = () => { try { return localStorage.getItem(SINCE) || '' } catch { return '' } }
 const setSince = (v: string) => { try { localStorage.setItem(SINCE, v) } catch { /* full */ } }
@@ -72,7 +72,7 @@ export async function pages(get: (from: number, to: number) => PromiseLike<Page>
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Q = any // a query to the server while it is being put together
 /** the columns that tell two rows with the same synced_at apart, so the listing always comes in the same order */
-const ORDER: Record<Table, string[]> = { act_lines: ['id'], act_runs: ['id'], act_stops: ['id'], act_changes: ['id'], act_products: ['code'], act_schedule: ['date', 'code'], act_targets: ['dept'] }
+const ORDER: Record<Table, string[]> = { act_lines: ['id'], act_runs: ['id'], act_stops: ['id'], act_changes: ['id'], act_products: ['code'], act_schedule: ['date', 'code'], act_targets: ['dept'], act_plan: ['date', 'dept', 'code'] }
 const listing = (t: Table, narrow: (q: Q) => Q) => (from: number, to: number) => {
   let q: Q = narrow(supabase!.from(t).select('*')).order('synced_at', { ascending: true })
   for (const k of ORDER[t]) q = q.order(k, { ascending: true })
@@ -90,6 +90,7 @@ export const firstPull = (day0: string): Partial<Record<Table, (q: Q) => Q>> => 
   act_stops: (q) => q.or(`started_at.gte."${iso(midnight(day0) - DAY)}",ended_at.is.null`),
   act_changes: (q) => q.gte('at', iso(midnight(day0) - DAY)),
   act_schedule: (q) => q.gte('date', day0),
+  act_plan: (q) => q.gte('date', day0),
 })
 /** what makes up one day: its runs, the stops around it (a run may cross midnight), its history and its program */
 export const dayPull = (date: string): [Table, (q: Q) => Q][] => [
@@ -97,6 +98,7 @@ export const dayPull = (date: string): [Table, (q: Q) => Q][] => [
   ['act_stops', (q) => q.gte('started_at', iso(midnight(date) - DAY)).lt('started_at', iso(midnight(date) + 2 * DAY))],
   ['act_changes', (q) => q.gte('at', iso(midnight(date))).lt('at', iso(midnight(date) + DAY))],
   ['act_schedule', (q) => q.eq('date', date)],
+  ['act_plan', (q) => q.eq('date', date)],
 ]
 
 /**
@@ -204,6 +206,10 @@ export function startSync() {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'act_schedule' }, (p) => applyRemote('act_schedule', p.new as Record<string, unknown>))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'act_changes' }, (p) => applyRemote('act_changes', p.new as Record<string, unknown>))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'act_targets' }, (p) => applyRemote('act_targets', p.new as Record<string, unknown>))
+    .subscribe()
+  // the rooms' programs on a channel of their own: while their table's SQL has not been run, only this one fails to listen
+  supabase.channel('act-live-plan')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'act_plan' }, (p) => applyRemote('act_plan', p.new as Record<string, unknown>))
     .subscribe()
   window.addEventListener('online', () => { void syncNow() })
   window.addEventListener('act-resync', () => { void syncNow() })

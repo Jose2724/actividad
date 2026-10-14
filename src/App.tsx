@@ -1,6 +1,6 @@
 import { createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
-import { addLine, addWaste, awayDay, byLineName, byShip, casesText, cancelDay, CFG, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, numOf, openIn, openOrdersFor, openRun, openStop, orderCodes, orderLabel, orderMade, parseProductsCsv, plainDay, productOf, productsCsv, purgeDay, purgesOf, removeLine, removeProduct, renameLine, reopenRun, reset, restorePurged, resetRecords, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftHours, shiftSpan, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type ShiftHours, type Short, type State, type WorkDay } from './store'
+import { addLine, addWaste, awayDay, byLineName, byShip, casesText, cancelDay, CFG, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, numOf, openIn, openOrdersFor, openRun, openStop, orderCodes, orderLabel, orderMade, parseProductsCsv, plainDay, planOf, planRows, productOf, productsCsv, purgeDay, purgesOf, removeLine, removeProduct, renameLine, reopenRun, reset, restorePurged, resetRecords, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftHours, shiftSpan, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type ShiftHours, type Short, type State, type WorkDay } from './store'
 import { avanceRows, n1, pending, type AvanceRow } from './avance'
 import { cellText, loadZip, xDay, xDur, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 
@@ -923,6 +923,95 @@ function TargetDialog({ s, dept, unit, inCourse, onClose }: { s: State; dept: De
   )
 }
 
+/**
+ * The room's program for the day: the codes the office set for it and how much of each, with what the room has
+ * registered taken off by itself. It is the office's AVANCE sheet seen from one room: SCHEDULE, 1 TURNO, 2 TURNO,
+ * PENDING. The program is the day's (both shifts work it down); each shift's part is told apart.
+ */
+function PlanCard({ s, dept, date, mgr }: { s: State; dept: Dept; date: string; mgr: boolean }) {
+  const [editing, setEditing] = useState(false)
+  const rows = planRows(s, date, dept)
+  const planned = rows.filter((r) => r.planned > 0), extra = rows.filter((r) => !r.planned && r.done > 0)
+  if (!planned.length && !mgr) return null
+  const cfg = CFG[dept], unit = cfg.qty === 'none' ? cfg.plural.toLowerCase() : cfg.qtyUnit
+  return (
+    <div className="plan">
+      <div className="tc-head">
+        <h3>{trx('Programa del día en {0} · en {1}', dept, unit)}</h3>
+        {mgr && <button type="button" className="lnk" onClick={() => setEditing(true)}>{planned.length ? tr('✎ Cambiar programa') : tr('+ Poner programa')}</button>}
+      </div>
+      {planned.length ? (
+        <div className="twrap">
+          <table>
+            <thead><tr><th>{tr('Código')}</th><th className="num">{tr('Programado')}</th><th className="num turn">{tr('Turno 1')}</th><th className="num turn">{tr('Turno 2')}</th><th className="num">{tr('Hecho')}</th><th className="num">{tr('Pendiente')}</th><th className="planbar"></th></tr></thead>
+            <tbody>{planned.map((r) => {
+              const pct = Math.max(0, Math.min(100, Math.floor((r.done / r.planned) * 100)))
+              return (
+                <tr key={r.code}>
+                  <td><b className="code">{r.code}</b>{r.name && <small className="pname">{r.name}</small>}{r.running && <span className="pill run">● {r.lines.map(lineLabel).join(', ')}</span>}</td>
+                  <td className="num">{fmtN(r.planned)}</td><td className="num turn">{fmtN(r.byShift[0])}</td><td className="num turn">{fmtN(r.byShift[1])}</td><td className="num"><b>{fmtN(r.done)}</b></td>
+                  <td className={'num ' + (r.left <= 0 ? 'ok' : 'left')}>{r.left > 0 ? fmtN(r.left) : tr('✓ completo') + (r.left < 0 ? ' (+' + fmtN(-r.left) + ')' : '')}</td>
+                  <td className="planbar"><div className="bar"><i className={pct >= 100 ? 'ok' : ''} style={{ width: pct + '%' }} /></div><small>{pct}%</small></td>
+                </tr>
+              )
+            })}</tbody>
+          </table>
+        </div>
+      ) : <p className="hint">{trx('{0} no tiene programa para hoy. Pon aquí los códigos que le tocan y cuánto de cada uno: lo que registren se descuenta solo.', dept)}</p>}
+      {planned.length > 0 && <p className="hint">{tr('Cada vez que se registra uno de estos códigos, baja solo lo pendiente.')}{extra.length > 0 && ' ' + tr('Fuera del programa: {0}.', extra.map((r) => r.code + ' (' + fmtN(r.done) + ')').join(', '))}</p>}
+      {editing && <PlanDialog s={s} dept={dept} today={date} unit={unit} onClose={() => setEditing(false)} />}
+    </div>
+  )
+}
+
+/**
+ * The office types a room's program for a day: each code and how much of it, in the room's own quantity. A code left
+ * without a quantity is taken off. Nothing is saved until "Guardar".
+ */
+function PlanDialog({ s, dept, today, unit, onClose }: { s: State; dept: Dept; today: string; unit: string; onClose: () => void }) {
+  type Line = { code: string; qty: string }
+  const draftOf = (date: string): Line[] => [...planOf(s, date, dept).sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true })).map((p) => ({ code: productOf(s, p.code)?.code ?? p.code, qty: String(p.qty) })), { code: '', qty: '' }]
+  const [date, setDate] = useState(today)
+  const [lines, setLines] = useState<Line[]>(() => draftOf(today))
+  const pickDate = (d: string) => { if (d) { setDate(d); setLines(draftOf(d)) } }
+  const change = (i: number, patch: Partial<Line>) => setLines((cur) => { const next = cur.map((l, k) => (k === i ? { ...l, ...patch } : l)); return next[next.length - 1].code.trim() ? [...next, { code: '', qty: '' }] : next })
+  const twice = lines.map((l) => normCode(l.code)).filter((k, i, all) => k && all.indexOf(k) !== i)
+  const save = () => {
+    const typed = new Map(lines.filter((l) => normCode(l.code)).map((l) => [normCode(l.code), l]))
+    // a code that was on the program and is not typed any more is taken off; the rest are set to what was typed
+    for (const p of planOf(s, date, dept)) if (!typed.has(normCode(p.code))) setPlan(date, dept, p.code, 0)
+    for (const l of typed.values()) setPlan(date, dept, l.code, numOf(l.qty))
+    onClose()
+  }
+  const listId = 'plan-codes-' + dept
+  return (
+    <div className="veil" onClick={onClose}>
+      <div className="dlg" onClick={(e) => e.stopPropagation()}>
+        <h3>{trx('Programa de {0}', dept)}</h3>
+        <p>{trx('Los códigos que {0} tiene que hacer ese día y cuánto de cada uno, en {1}. Lo ven todas sus tablets, y cada vez que registran uno de esos códigos se descuenta solo. Para quitar un código, deja su cantidad en blanco.', dept, unit)}</p>
+        <form className="qform" onSubmit={(e) => { e.preventDefault(); if (!twice.length) save() }}>
+          <label>{tr('Día')}{' '}<input type="date" value={date} onChange={(e) => pickDate(e.target.value)} /></label>
+          <div className="planrows">
+            <div className="planrow head"><span>{tr('Código')}</span><span>{trx('Cantidad ({0})', unit)}</span></div>
+            {lines.map((l, i) => (
+              <div key={i} className="planrow">
+                <input list={listId} value={l.code} placeholder={tr('ej. 0100')} autoComplete="off" aria-label={tr('Código')} onChange={(e) => change(i, { code: e.target.value })} />
+                <input value={l.qty} inputMode="decimal" placeholder="0" autoComplete="off" aria-label={tr('Cantidad ({0})', unit)} onChange={(e) => change(i, { qty: e.target.value.replace(/[^\d.,]/g, '') })} />
+              </div>
+            ))}
+            <datalist id={listId}>{s.products.map((p) => <option key={p.code} value={p.code}>{p.name}</option>)}</datalist>
+          </div>
+          {twice.length > 0 && <p className="hint red">{trx('El código {0} está dos veces: déjalo en un solo renglón.', twice[0])}</p>}
+          <div className="dbtns">
+            <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
+            <button type="submit" className="btn primary" disabled={twice.length > 0}>{tr('✓ Guardar')}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 function DeptPanel({ s, dept, now, day }: { s: State; dept: Dept; now: number; mgr: boolean; day: WorkDay }) {
   const lines = s.lines.filter((l) => l.dept === dept).sort(byLineName)
   const ds = deptStop(s, dept)
@@ -981,6 +1070,7 @@ function DeptPanel({ s, dept, now, day }: { s: State; dept: Dept; now: number; m
       {ds && <div className="deptstop">{trx('⏸ Todo {0} parado · {1}{2} · desde {3} · {4}', dept, <b>{tr(ds.reason)}</b>, ds.note && ' · ' + noteLabel(ds.note), fmtTime(ds.startedAt), ds.by)} {can('fix') && <button type="button" className="lnk" onClick={() => setEditStop(true)}>{tr('Corregir')}</button>}</div>}
       {editStop && ds && <StopEditor stop={ds} mgr={can('fix')} onClose={() => setEditStop(false)} />}
       <TodayCard s={s} dept={dept} now={now} mgr={can('goals')} date={day.date} />
+      <PlanCard s={s} dept={dept} date={day.date} mgr={can('products')} />
       {CFG[dept].orders && <OrdersCard s={s} mgr={can('orders')} />}
       <div className="lines">{lines.map((l) => <LineCard key={l.id} s={s} line={l} now={now} mgr={can('fix')} day={day} />)}</div>
       {lines.length === 0 && <p className="hint">{trx('Este departamento no tiene líneas. Toca "Agregar {0}".', CFG[dept].lineWord.toLowerCase())}</p>}
@@ -1152,6 +1242,8 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
     const prev = lastEnded(s, line.id, day.date)
     // the date is the day of work: said in one line, with its box only when somebody wants another one
     const showDate = editDate || dateText !== null
+    // the codes of the room's program that are still pending: one tap writes the code, so nobody types it wrong
+    const todo = planRows(s, day.date, line.dept).filter((r) => r.planned > 0 && r.left > 0)
     return (
       <div className="line idle">
         <div className="lhead">
@@ -1190,6 +1282,12 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         {naming}
         {removing && <ConfirmDialog title={tr('¿Quitar {0} de {1}', lineLabel(line.name), line.dept) + '?'} text={tr('Se puede volver a agregar cuando haga falta.')} yes={tr('Quitar')} danger onYes={() => removeLine(line.id)} onNo={() => setRemoving(false)} />}
         <form className="start" onSubmit={(e) => { e.preventDefault(); if (ok) { startRun(line, code.trim().toUpperCase(), lot.trim(), date, needPer ? perUnit : null); setDateText(null); setLotText(null); setEditDate(false) } }}>
+          {todo.length > 0 && (
+            <div className="todo wide">
+              <small>{tr('Del programa de hoy:')}</small>
+              {todo.map((r) => <button key={r.code} type="button" className={'chip sm' + (normCode(code) === normCode(r.code) ? ' on' : '')} onClick={() => setCode(r.code)}><b>{r.code}</b> {trx('faltan {0}', fmtN(r.left))}</button>)}
+            </div>
+          )}
           <label>{tr('Código')}{' '}<input value={code} onChange={(e) => setCode(e.target.value)} placeholder={tr('ej. 0100')} autoComplete="off" /></label>
           <label>{tr('Lote')}{' '}<input value={lot} onChange={(e) => setLotText(e.target.value)} inputMode="numeric" placeholder={tr('ej. 6280')} autoComplete="off" /></label>
           {showDate

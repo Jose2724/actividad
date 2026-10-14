@@ -556,3 +556,36 @@ table.shiftgrid tr.sep td{background:var(--bg);color:var(--muted);font-size:11px
    takes the width its date needs (left at "0 and grow", as on a phone, it had nothing to grow into and showed empty) */
 @media (min-width:721px){.daynav input[type=date]{width:auto;min-width:165px;flex:0 0 auto}}
 
+
+/* the room's program for the day: its codes, what was set, what each shift made, and what is left */
+.plan{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px 16px;display:grid;gap:8px;min-width:0}
+.plan table{width:100%;border-collapse:collapse;font-size:15px}
+.plan th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;text-align:left;padding:4px 8px;white-space:nowrap}
+.plan td{padding:8px;border-top:1px solid var(--line);vertical-align:middle}
+.plan th.num,.plan td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.plan td.left{font-weight:800;color:var(--ink)}
+.plan td.ok{color:var(--ok);font-weight:700}
+.plan b.code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:16px}
+.plan .pname{display:block;color:var(--muted);font-size:12px;font-weight:500}
+.plan .pill{margin-left:8px}
+.plan .planbar{width:22%;min-width:90px}
+.plan td.planbar{white-space:nowrap}
+.plan td.planbar .bar{display:inline-block;width:calc(100% - 44px);height:10px;margin:0 6px 0 0;vertical-align:middle}
+.plan td.planbar small{color:var(--muted);font-variant-numeric:tabular-nums}
+.planrows{display:grid;gap:6px}
+.planrow{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:8px}
+.planrow.head{font-size:12px;color:var(--muted);font-weight:700}
+.hint.red{color:var(--warn)}
+/* on a free line: the pending codes of the program, to start one with a tap */
+.todo{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.start .todo{grid-column:1/-1}
+.todo small{color:var(--muted);font-size:12.5px;font-weight:700}
+.chip.sm{min-height:36px;padding:0 10px;font-size:13.5px;font-weight:500}
+.chip.sm b{font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:800}
+/* on a phone the program keeps what matters (the code, what was set, what is made, what is left): each shift's part and the bar are for wider screens */
+@media (max-width:600px){
+  .plan{padding:12px}
+  .plan .turn,.plan .planbar{display:none}
+  .plan th,.plan td{padding:6px 5px}
+  .plan table{font-size:14px}
+}

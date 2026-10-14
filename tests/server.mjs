@@ -5,7 +5,7 @@ import { pathToFileURL, fileURLToPath } from 'node:url'
 import { resolve, dirname } from 'node:path'
 
 // ---- the stand-in server: tables in memory, asked through fetch like the real one ----
-const db = { act_lines: [], act_runs: [], act_stops: [], act_products: [], act_schedule: [], act_changes: [], act_targets: [] }
+const db = { act_lines: [], act_runs: [], act_stops: [], act_products: [], act_schedule: [], act_changes: [], act_targets: [], act_plan: [] }
 let asked = [] // every question the app asked: [table, offset]
 const MAX_ROWS = 1000
 const unquote = (v) => v.replace(/^"|"$/g, '')
@@ -96,7 +96,7 @@ eq('preguntó por páginas', asked.filter(([t]) => t === 'act_products').map(([,
 console.log('· Después solo baja lo que cambió')
 asked = []
 eq('se pudo bajar', await m.pullAll(), true)
-eq('nada nuevo: una pregunta corta por tabla', [asked.length, m.store.get().runs.length], [7, s.runs.length])
+eq('nada nuevo: una pregunta corta por tabla', [asked.length, m.store.get().runs.length], [8, s.runs.length])
 tick = Date.now() + 5000 // later than anything the tablet has seen
 db.act_runs.push(runRow('recien-hecha', now - 60_000, { synced_at: synced() }))
 const old = db.act_runs.find((r) => r.id === 'r50-3'); old.waste = 4; old.updated_at = iso(Date.now()); old.synced_at = synced()

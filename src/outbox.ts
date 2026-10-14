@@ -7,7 +7,7 @@ import { tr } from './i18n'
  * per row (a later change to the same row replaces the earlier one), so a weak WiFi never duplicates anything.
  * Nothing leaves the queue unless the server took it or will never take it from this person (a row of another room).
  */
-export type Table = 'act_lines' | 'act_runs' | 'act_stops' | 'act_products' | 'act_schedule' | 'act_changes' | 'act_targets'
+export type Table = 'act_lines' | 'act_runs' | 'act_stops' | 'act_products' | 'act_schedule' | 'act_changes' | 'act_targets' | 'act_plan'
 export type Row = Record<string, unknown>
 /**
  * a queued change: the row as it should be on the server and, for rows another device may also be changing, what the
@@ -106,7 +106,7 @@ async function pass(): Promise<FlushResult> {
     while (true) {
       const it = read().find((i) => !waiting.has(i.table) && !skipped.has(i.table + '|' + i.key))
       if (!it) break
-      const { error: e } = await supabase.from(it.table).upsert(it.row, { onConflict: it.table === 'act_schedule' ? 'date,code' : it.table === 'act_products' ? 'code' : it.table === 'act_targets' ? 'dept' : 'id' })
+      const { error: e } = await supabase.from(it.table).upsert(it.row, { onConflict: it.table === 'act_schedule' ? 'date,code' : it.table === 'act_plan' ? 'date,dept,code' : it.table === 'act_products' ? 'code' : it.table === 'act_targets' ? 'dept' : 'id' })
       if (e) {
         error = (e.code ? e.code + ' ' : '') + e.message + (e.details ? ' · ' + e.details : '') + ' [' + it.table + ']'
         console.warn('actividad sync', it.table, e)

@@ -596,12 +596,14 @@ calc.use((m) => {
   eq('primera vez: corridas de los días que guarda, o todavía abiertas', ask('act_runs', first.act_runs), '?select=*&or=(date.gte.2026-09-27,ended_at.is.null)')
   eq('primera vez: paros desde un día antes, o todavía abiertos', ask('act_stops', first.act_stops), '?select=*&or=(started_at.gte."' + day('2026-09-27', -1) + '",ended_at.is.null)')
   eq('primera vez: historial y programa de esos días', [ask('act_changes', first.act_changes), ask('act_schedule', first.act_schedule)], ['?select=*&at=gte.' + day('2026-09-27', -1), '?select=*&date=gte.2026-09-27'])
+  eq('primera vez: el programa de cada cuarto, de esos días', ask('act_plan', first.act_plan), '?select=*&date=gte.2026-09-27')
   eq('primera vez: líneas, productos y metas, completos', [first.act_lines, first.act_products, first.act_targets].map((f) => f === undefined), [true, true, true])
   eq('un día viejo: sus corridas, los paros de alrededor, su historial y su programa', Object.fromEntries(m.dayPull('2026-09-01').map(([t, narrow]) => [t, ask(t, narrow)])), {
     act_runs: '?select=*&date=eq.2026-09-01',
     act_stops: '?select=*&started_at=gte.' + day('2026-09-01', -1) + '&started_at=lt.' + day('2026-09-01', 2),
     act_changes: '?select=*&at=gte.' + day('2026-09-01') + '&at=lt.' + day('2026-09-01', 1),
     act_schedule: '?select=*&date=eq.2026-09-01',
+    act_plan: '?select=*&date=eq.2026-09-01',
   })
 })
 
@@ -1801,6 +1803,61 @@ section('Cambio de turno: el turno que entra empieza de cero, sin cortar nada de
     const next = m.turnOf(st(), '2026-10-11', oct(11, 6, 10))
     eq('al otro día el turno 1 también empieza de cero: lo que quedó corriendo viene de antes', [next.shift, hm(next.since), seen('A100', next.since, oct(11, 6, 10)).slice(0, 3), m.deptToday(st(), 'RTE', '2026-10-11', oct(11, 6, 10)).shiftQty], [1, '3:30', [true, 0, 0], 0])
   })
+}
+section('El programa de cada cuarto: lo que se registra se descuenta solo')
+{
+  // what the office keeps in its AVANCE sheet and in each room's sheet (SCHEDULE / #BATCH, 1 TURNO, 2 TURNO, PENDING),
+  // typed once in the app: which codes each room has to make that day and how much of each
+  const pl = await device('plan', { user: 'Oficina', usual: true })
+  pl.use((m) => {
+    const st = () => m.store.get()
+    const lineOf = (dept, name) => { m.addLine(dept, name); return st().lines.find((l) => l.dept === dept && l.name === name) }
+    const open = (line) => st().runs.find((r) => r.lineId === line.id && !r.endedAt)
+    const rows = (dept) => m.planRows(st(), DAY, dept).map((r) => [r.code, r.planned, r.done, r.byShift, r.left, r.running, r.lines])
+    clock = oct(10, 5, 50)
+    eq('sin programa no hay nada que mostrar', [m.planOf(st(), DAY, 'RTE'), rows('RTE')], [[], []])
+    m.setPlan(DAY, 'RTE', '0100', 1000); m.setPlan(DAY, 'RTE', 'b200 ', 480); m.setPlan(DAY, 'Kitchen', '0100', 6); m.setPlan('2026-10-11', 'RTE', 'C300', 500)
+    eq('la oficina pone el programa de cada cuarto en su unidad (pouches en RTE, mezclas en Kitchen); el de otro día no es de hoy', [rows('RTE'), rows('Kitchen'), rows('Packing')], [[['0100', 1000, 0, [0, 0], 1000, false, []], ['B200', 480, 0, [0, 0], 480, false, []]], [['0100', 6, 0, [0, 0], 6, false, []]], []])
+    eq('queda en el historial quién puso qué, y sube con la llave del día, el cuarto y el código', [st().changes.filter((c) => c.refTable === 'act_plan').map((c) => [c.what, c.by, c.dept, c.before, c.after]).slice(0, 2), m.outbox.items().filter((i) => i.table === 'act_plan').map((i) => [i.key, i.row.date, i.row.dept, i.row.code, i.row.qty])],
+      [[['Programa 2026-10-10 · RTE · 100', 'Oficina', 'RTE', '', '1000'], ['Programa 2026-10-10 · RTE · B200', 'Oficina', 'RTE', '', '480']], [['2026-10-10|RTE|100', '2026-10-10', 'RTE', '100', 1000], ['2026-10-10|RTE|B200', '2026-10-10', 'RTE', 'B200', 480], ['2026-10-10|Kitchen|100', '2026-10-10', 'Kitchen', '100', 6], ['2026-10-11|RTE|C300', '2026-10-11', 'RTE', 'C300', 500]]])
+    // the first shift registers: every cart of a programmed code is taken off by itself
+    clock = oct(10, 13, 0); const l1 = lineOf('RTE', 'Línea 1'); m.startRun(l1, '100', '6283', DAY, 240) // typed "100": the same code as the program's "0100"
+    clock = oct(10, 13, 30); m.unitDone(open(l1).id, 240)
+    clock = oct(10, 14, 30); m.unitDone(open(l1).id, 240)
+    eq('lo que registra el turno 1 se descuenta solo, y dice en qué línea está corriendo (100 y 0100 son el mismo código)', rows('RTE'), [['0100', 1000, 480, [480, 0], 520, true, ['Línea 1']], ['B200', 480, 0, [0, 0], 480, false, []]])
+    // the second shift goes on with the same program
+    clock = oct(10, 16, 0); m.unitDone(open(l1).id, 240)
+    clock = oct(10, 16, 30); m.unitDone(open(l1).id, 360); m.endRun(open(l1).id, false)
+    clock = oct(10, 16, 40); m.startRun(l1, 'Z900', '6283', DAY, 240)
+    clock = oct(10, 17, 0); m.unitDone(open(l1).id, 240)
+    eq('el turno 2 sigue bajando el mismo programa, cada turno con lo suyo: completo con 80 de más; lo que no estaba programado va aparte', rows('RTE'), [['0100', 1000, 1080, [480, 600], -80, false, []], ['B200', 480, 0, [0, 0], 480, false, []], ['Z900', 0, 240, [0, 240], 0, true, ['Línea 1']]])
+    // Kitchen counts mezclas
+    clock = oct(10, 17, 10); const b1 = lineOf('Kitchen', 'Braiser 1'); m.startRun(b1, '0100', '6283', DAY, null)
+    clock = oct(10, 17, 40); m.unitDone(open(b1).id, null)
+    clock = oct(10, 18, 10); m.unitDone(open(b1).id, null)
+    eq('en Kitchen el programa es en mezclas: cada "Mezcla lista" descuenta una, y lo de RTE no se mezcla con lo suyo', rows('Kitchen'), [['0100', 6, 2, [0, 2], 4, true, ['Braiser 1']]])
+    // changing and taking off
+    m.setPlan(DAY, 'RTE', 'B200', 0); m.setPlan(DAY, 'RTE', '100', 1200); m.setPlan(DAY, 'RTE', '100', 1200)
+    eq('quitar un código lo saca del programa; cambiar la cantidad cambia lo pendiente (el mismo código escrito de otra forma no hace otro renglón, y repetir lo mismo no escribe nada)', [rows('RTE').map((r) => r.slice(0, 5)), m.planOf(st(), DAY, 'RTE').length, st().changes.filter((c) => c.refTable === 'act_plan' && c.dept === 'RTE' && c.what.endsWith('· 100')).map((c) => [c.before, c.after])], [[['100', 1200, 1080, [480, 600], 120], ['Z900', 0, 240, [0, 240], 0]], 1, [['', '1000'], ['1000', '1200']]])
+    eq('una cantidad que no es un número, o un cuarto que no existe, no entra', [m.setPlan(DAY, 'RTE', 'Q1', NaN), m.setPlan(DAY, 'Nada', 'Q1', 5), m.setPlan('mañana', 'RTE', 'Q1', 5), m.setPlan(DAY, 'RTE', ' ', 5), m.planOf(st(), DAY, 'RTE').length], [undefined, undefined, undefined, undefined, 1])
+    // a day this device no longer keeps lets go of its program too
+    m.applyRemote('act_plan', { date: '2026-08-01', dept: 'RTE', code: 'OLD1', qty: 5, updated_at: iso(oct(1, 0, 0)) })
+    const before = st().plans.some((p) => p.date === '2026-08-01'); m.prune()
+    eq('el programa de un día que el aparato ya no guarda se suelta con ese día', [before, st().plans.some((p) => p.date === '2026-08-01'), st().plans.some((p) => p.date === DAY)], [true, false, true])
+  })
+  // from the office's PC to the room's tablet, and back
+  const DP = '2026-10-21'
+  clock = oct(21, 5, 0); mgr.use((m) => { m.addLine('RTE', 'Línea 19'); m.setPlan(DP, 'RTE', 'P100', 960) }); settle()
+  eq('el programa que pone la oficina llega a la tablet del cuarto', [tab, mgr].map((d) => d.use((m) => m.planOf(m.store.get(), DP, 'RTE').map((p) => [p.code, p.qty]))), [[['P100', 960]], [['P100', 960]]])
+  const l9 = tab.use((m) => m.store.get().lines.find((l) => l.dept === 'RTE' && l.name === 'Línea 19'))
+  const running = (d) => d.use((m) => m.store.get().runs.find((r) => r.lineId === l9.id && !r.endedAt))
+  clock = oct(21, 6, 0); tab.use((m) => m.startRun(l9, 'P100', '6294', DP, 240)); settle()
+  clock = oct(21, 6, 30); tab.use((m) => m.unitDone(running(tab).id, 240)); settle()
+  eq('y lo que registra la tablet baja lo pendiente en la pantalla de la oficina', mgr.use((m) => m.planRows(m.store.get(), DP, 'RTE').map((r) => [r.code, r.planned, r.done, r.left, r.lines])), [['P100', 960, 240, 720, ['Línea 19']]])
+  mgr.use((m) => { m.applyRemote('act_plan', { date: DP, dept: 'RTE', code: 'P100', qty: 5, updated_at: iso(oct(21, 4, 0)) }); m.applyRemote('act_plan', { date: DP, dept: 'Nada', code: 'P100', qty: 5, updated_at: iso(oct(21, 9, 0)) }); m.applyRemote('act_plan', { date: 'x', dept: 'RTE', code: 'P100', qty: 5, updated_at: iso(oct(21, 9, 0)) }) })
+  eq('una fila más vieja no pisa a la más nueva, y una que no es de un cuarto o de un día no entra', mgr.use((m) => [m.planOf(m.store.get(), DP, 'RTE').map((p) => p.qty), m.store.get().plans.filter((p) => p.date === DP).length]), [[960], 1])
+  clock = oct(21, 7, 0); tab.use((m) => m.endRun(running(tab).id, false)); settle()
+  eq('nada queda pendiente de enviar', all.map((d) => d.use((m) => m.outbox.size())), [0, 0])
 }
 section('Set up: espera al código siguiente; con las líneas vacías no corre nada')
 {
