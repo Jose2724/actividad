@@ -456,7 +456,7 @@ function Avance({ s }: { s: State }) {
               <tr key={r.code}>
                 <td><b>{r.code}</b></td><td>{r.product?.name ?? <i className="red">{tr('no está en Productos')}</i>}</td>
                 <td><input className="num" inputMode="numeric" value={r.scheduled || ''} placeholder="0" onChange={(e) => setSchedule(date, r.code, Number(e.target.value.replace(/\D/g, '')) || 0)} /></td>
-                <td>{r.mixesDone}{r.mixRoom === 'Spiral' && r.mixesDone > 0 && <small className="room"> Spiral</small>}</td><td className={cls(r.mixesPending)}>{r.mixesPending}</td>
+                <td>{r.mixesDone}{r.mixesDone > 0 && <small className="room"> {r.mixRoom}</small>}</td><td className={cls(r.mixesPending)}>{r.mixesPending}</td>
                 <td>{r.spiralDone}</td>
                 <td>{n1(r.pouchesPlan)}</td><td>{n1(r.pouchesExp)}</td><td>{r.pouchesDone}</td><td className={cls(pending(r.pouchesExp, r.pouchesDone))}>{n1(pending(r.pouchesExp, r.pouchesDone))}</td><td className={cls(pending(r.pouchesPlan, r.pouchesDone))}>{n1(pending(r.pouchesPlan, r.pouchesDone))}</td>
                 <td>{n1(r.casesPlan)}</td><td>{n1(r.casesExp)}</td><td>{r.casesDone}</td><td className={cls(pending(r.casesExp, r.casesDone))}>{n1(pending(r.casesExp, r.casesDone))}</td><td className={cls(pending(r.casesPlan, r.casesDone))}>{n1(pending(r.casesPlan, r.casesDone))}</td>
