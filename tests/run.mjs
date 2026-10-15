@@ -1866,6 +1866,101 @@ section('El programa de cada cuarto: lo que se registra se descuenta solo')
   clock = oct(21, 7, 0); tab.use((m) => m.endRun(running(tab).id, false)); settle()
   eq('nada queda pendiente de enviar', all.map((d) => d.use((m) => m.outbox.size())), [0, 0])
 }
+section('Packing: un pallet con varios lotes, cada lote con su tag; y las líneas que hacen bins')
+{
+  // what Jose saw in Packing on 2026-10-15: a pallet is one code; when a lot runs out on it, its cases get their own
+  // tag and the pallet goes on with the next lot. Every pallet of an order carries its PO (1/12, 2/12...). A line can
+  // also fill bins (platos, copas, pouches), which are not cases.
+  const pk = await device('pack', { user: 'Luis', usual: true })
+  pk.use((m) => {
+    const st = () => m.store.get(), run = (code) => st().runs.find((r) => r.code === code && !r.endedAt) ?? st().runs.find((r) => r.code === code)
+    const lineOf = (name) => { m.addLine('Packing', name); return st().lines.find((l) => l.dept === 'Packing' && l.name === name) }
+    const open = (code) => { const o = run(code).extra?.open; return o ? [o.parts.map((x) => [x.lot, x.qty, x.tag]), o.po ?? ''] : null }
+    clock = oct(10, 6, 0)
+    const order = m.saveOrder(null, { customer: 'Cliente Uno', po: '1001', code: 'A100', cases: 360, shipBy: '', dest: '' })
+    const l1 = lineOf('Línea 1'), l2 = lineOf('Línea 2')
+    m.startRun(l1, 'A100', '6285', DAY, 36)
+    eq('un pallet nuevo no tiene nada todavía, y el lote que va es el de la corrida', [open('A100'), m.lotNowOf(run('A100')), m.binOf(run('A100'))], [null, '6285', ''])
+    // 6:40: lot 6285 runs out with 20 cases on the pallet; its tag is at hand; the next lot is 6286; the pallet is for PO 1001
+    clock = oct(10, 6, 40)
+    eq('se acaba un lote a mitad del pallet: sus cajas y su tag quedan en el pallet, que sigue abierto con el lote siguiente', [m.palletLotEnds(run('A100').id, 20, ' 1828 ', '6286', order), open('A100'), m.lotNowOf(run('A100')), run('A100').units.length], [true, [[['6285', 20, '1828']], order], '6286', 0])
+    eq('sin cajas o sin el lote que sigue no se guarda nada', [m.palletLotEnds(run('A100').id, 0, '', '6287'), m.palletLotEnds(run('A100').id, 5, '', ' '), open('A100')[0].length], [false, false, 1])
+    // 7:00: the pallet is full: 16 cases of 6286, whose tag they will write later
+    clock = oct(10, 7, 0)
+    eq('pallet listo: queda un pallet con sus dos lotes, cada uno con sus cajas y su tag, el total y su PO; el pallet que sigue va para el mismo PO', [m.palletDone(run('A100').id, [{ lot: '6285', qty: 20, tag: '1828' }, { lot: '6286', qty: 16, tag: '' }], order), run('A100').units.map((u) => [u.qty, u.lots, u.ref, u.po === order]), open('A100'), m.lotNowOf(run('A100')), m.palletPo(st(), run('A100'))], [true, [[36, [{ lot: '6285', qty: 20, tag: '1828' }, { lot: '6286', qty: 16 }], '1828', true]], [[], order], '6286', order])
+    // the tag of a lot written afterwards, on the pallet being built
+    clock = oct(10, 7, 20); m.palletLotEnds(run('A100').id, 10, '', '6287')
+    eq('el tag de un lote se puede poner después, mientras el pallet sigue abierto', [m.palletPartFix(run('A100').id, 0, { tag: '1830' }), m.palletPartFix(run('A100').id, 0, { qty: 12 }), open('A100')[0]], [true, true, [['6286', 12, '1830']]])
+    m.palletOrder(run('A100').id, order)
+    clock = oct(10, 7, 40); m.palletDone(run('A100').id, [...run('A100').extra.open.parts, { lot: '6287', qty: 24, tag: '1831' }], run('A100').extra.open.po)
+    const seq = m.orderPallets(st(), order, 36)
+    eq('el PO cuenta sus pallets: van 2 de los 10 que pide (360 cajas ÷ 36), en el orden en que se terminaron', [seq.done.length, seq.need, m.orderMade(st(), order)], [2, 10, 72])
+    // the report: each pallet with its tags, lots and cases, its total and its place in the order
+    const rep = m.reportOf(st(), DAY, clock, { only: 'Packing' })
+    eq('en el reporte cada pallet dice sus tags, sus lotes con sus cajas, el total y si es el 1/10 o el 2/10 de su PO', rep.pallets.map((x) => [x.n, x.parts.map((p) => [p.tag, p.lot, p.qty]), x.total, x.order, x.of]), [[1, [['1828', '6285', 20], ['', '6286', 16]], 36, 'Cliente Uno · PO 1001', [1, 10]], [2, [['1830', '6286', 12], ['1831', '6287', 24]], 36, 'Cliente Uno · PO 1001', [2, 10]]])
+    eq('y en la lista de unidades, cada lote en su renglón con su tag', rep.unitRows.map((x) => [x.lot, x.qty, x.tag]), [['6285', 20, '1828'], ['6286', 16, ''], ['6286', 12, '1830'], ['6287', 24, '1831']])
+    // a code that ends with lots on the pallet being built does not lose them
+    clock = oct(10, 8, 0); m.palletLotEnds(run('A100').id, 8, '1832', '6288')
+    const rb = m.reportOf(st(), DAY, clock, { only: 'Packing' })
+    eq('el pallet que se arma también sale en el reporte, marcado en armado; y el lote que va se puede escoger en el filtro', [rb.pallets.map((x) => [x.n, x.open, x.parts.map((p) => [p.lot, p.qty, p.tag]), x.total]), rb.lots.includes('6288')], [[[1, false, [['6285', 20, '1828'], ['6286', 16, '']], 36], [2, false, [['6286', 12, '1830'], ['6287', 24, '1831']], 36], [3, true, [['6287', 8, '1832']], 8]], true])
+    eq('con un lote escogido salen los pallets que lo llevan, enteros', m.reportOf(st(), DAY, clock, { only: 'Packing', lot: '6286' }).pallets.map((x) => [x.n, x.parts.map((p) => p.lot)]), [[1, ['6285', '6286']], [2, ['6286', '6287']]])
+    clock = oct(10, 8, 10); m.endRun(run('A100').id, false)
+    eq('si el código se termina con lotes en el pallet que se armaba, quedan como un pallet con sus tags y su PO', [run('A100').endedAt > 0, run('A100').units.length, run('A100').units[2].lots, run('A100').units[2].qty, run('A100').units[2].po === order, run('A100').extra], [true, 3, [{ lot: '6287', qty: 8, tag: '1832' }], 8, true, { lotNow: '6288' }])
+    // an order of one pallet: once it is complete, the next pallet has no PO said (and none is proposed: nothing lacks)
+    const small = m.saveOrder(null, { customer: 'Cliente Dos', po: '2002', code: 'A101', cases: 36, shipBy: '', dest: '' })
+    clock = oct(10, 8, 12); m.startRun(l1, 'A101', '6290', DAY, 36)
+    eq('un código con un PO abierto: el primer pallet ya dice para cuál va (lo propone la app)', [m.palletPo(st(), run('A101')), run('A101').extra], [small, undefined])
+    m.palletOrder(run('A101').id, '')
+    eq('si dicen que este pallet no lleva PO, no se propone otro', m.palletPo(st(), run('A101')), '')
+    m.palletOrder(run('A101').id, small)
+    clock = oct(10, 8, 14); m.palletDone(run('A101').id, [{ lot: '6290', qty: 36, tag: '1900' }], small)
+    eq('con el PO completo, el pallet que sigue ya no va para ese PO', [run('A101').extra, m.palletPo(st(), run('A101')), m.orderMade(st(), small)], [undefined, '', 36])
+    clock = oct(10, 8, 16); m.endRun(run('A101').id, false); m.deleteRun(run('A101').id)
+    eq('terminado el código, el lote que iba a seguir ya no sale en el filtro', m.reportOf(st(), DAY, clock, { only: 'Packing' }).lots.includes('6288'), false)
+    // the tag of 6286 on the first pallet, written once the pallet was finished: it goes on that lot, and to the history
+    clock = oct(10, 8, 20)
+    m.fillUnit(run('A100').id, run('A100').units[0].at, 36, [{ lot: '6285', qty: 20, tag: '1828' }, { lot: '6286', qty: 16, tag: '1829' }], '1828, 1829')
+    eq('el tag que faltaba se pone después en el pallet ya terminado, y queda en el historial', [run('A100').units[0].lots, run('A100').units[0].ref, st().changes.filter((c) => c.what.endsWith('Pallet 1 · lotes')).map((c) => [c.before, c.after])], [[{ lot: '6285', qty: 20, tag: '1828' }, { lot: '6286', qty: 16, tag: '1829' }], '1828, 1829', [['6285: 20 (tag 1828) + 6286: 16', '6285: 20 (tag 1828) + 6286: 16 (tag 1829)']]])
+    // a line filling bins of platos
+    clock = oct(10, 8, 30); m.startRun(l2, 'B200', '6285', DAY, null, 'platos')
+    const b = run('B200')
+    eq('una línea que hace bins: sus palabras son las de un bin, y lo que lleva en platos', [m.binOf(b), m.cfgOf(b).unit, m.cfgOf(b).plural, m.cfgOf(b).qtyUnit, m.cfgOf(b).lots, m.cfgOf(b).orders, m.cfgOf(b).refLabel], ['platos', 'Bin', 'Bins', 'platos', false, false, 'N° de bin'])
+    clock = oct(10, 9, 0); m.unitDone(b.id, 50, '7')
+    clock = oct(10, 9, 30); m.unitDone(b.id, 48, '8')
+    eq('lo hecho de una corrida de bins se dice en bins y platos', [m.madeText(run('B200'), m.runQty(st(), run('B200'))), m.savedText('Packing', 2, m.cfgOf(run('B200')))], ['2 bins · 98 platos', 'Bin 2 guardado'])
+    m.updateRun(run('B200').id, { units: run('B200').units.map((u, i) => (i === 1 ? { ...u, qty: 49 } : u)) })
+    eq('y una corrección de un bin queda en el historial con palabras de bin', st().changes.filter((c) => c.refKey === run('B200').id).map((c) => [c.what.split(' · ').slice(-2).join(' · '), c.before, c.after]), [['Bin 2 · cantidad', '48', '49']])
+    m.updateRun(run('B200').id, { units: run('B200').units.map((u, i) => (i === 1 ? { ...u, qty: 48 } : u)) })
+    // the lot changes on a bin line: the bins from then on carry it
+    clock = oct(10, 9, 40); m.setLotNow(run('B200').id, '6286'); m.unitDone(run('B200').id, 30, '9', [{ lot: '6286', qty: 30 }])
+    eq('cuando cambia el lote en una línea de bins, los bins que siguen llevan el lote nuevo', [m.lotNowOf(run('B200')), m.reportOf(st(), DAY, clock, { only: 'Packing', code: 'B200' }).unitRows.map((x) => [x.lot, x.qty, x.tag])], ['6286', [['6285', 50, '7'], ['6285', 48, '8'], ['6286', 30, '9']]])
+    m.updateRun(run('B200').id, { units: run('B200').units.slice(0, 2) })
+    const t = m.deptToday(st(), 'Packing', DAY, clock)
+    eq('la tarjeta de Packing no mezcla los bins con las cajas: van aparte, en platos', [t.qty, t.units, t.bins, t.byCode.map((c) => c.code)], [80, 3, [{ word: 'platos', units: 2, qty: 98 }], ['A100']])
+    const r2 = m.reportOf(st(), DAY, clock, { only: 'Packing' })
+    eq('en el reporte tampoco: Packing hizo 3 pallets y 80 cajas, y aparte 2 bins con 98 platos', [r2.byDept.map((d) => [d.dept, d.units, d.qty, d.bins]), r2.byCode.map((c) => [c.code, c.bin, c.units, c.qty])], [[['Packing', 3, 80, [{ word: 'platos', units: 2, qty: 98 }]]], [['A100', '', 3, 80], ['B200', 'platos', 2, 98]]])
+    eq('Avance no cuenta los bins como cajas ni como pallets: un código que solo se hizo en bins no tiene renglón ahí', m.avanceRows(st(), DAY).filter((r) => r.code === 'B200').map((r) => [r.casesDone, r.palletsDone]), [])
+    m.setPlan(DAY, 'Packing', 'B200', 100)
+    eq('ni el programa de Packing, que es en cajas', m.planRows(st(), DAY, 'Packing').filter((r) => r.code === 'B200').map((r) => [r.planned, r.done, r.left]), [[100, 0, 100]])
+    // what is kept and what travels
+    const row = m.outbox.items().filter((i) => i.table === 'act_runs').map((i) => i.row).find((x) => x.code === 'B200')
+    eq('la corrida de bins sube con lo que lleva (extra), y una de otro cuarto no lleva ese campo', [row.extra, 'extra' in m.outbox.items().find((i) => i.table === 'act_lines').row], [{ bin: 'platos', lotNow: '6286' }, false])
+    const back = m.cleanExtra({ bin: '  copas ', lotNow: 6290, open: { parts: [{ lot: '6285', qty: '20', tag: 1828 }, { lot: '', qty: 5 }, { lot: '6286', qty: -1 }], po: 'x1' }, junk: 1 })
+    eq('lo que llega en extra se limpia: solo lo que tiene sentido', back, { bin: 'copas', open: { parts: [{ lot: '6285', qty: 20, tag: '1828', at: 0, by: '' }], po: 'x1' } })
+    eq('y lo vacío no es nada', [m.cleanExtra(null), m.cleanExtra({}), m.cleanExtra({ open: { parts: [] } }), m.cleanExtra('x')], [undefined, undefined, undefined, undefined])
+  })
+  // the pallet being built is seen on every tablet of the room
+  clock = oct(22, 6, 0)
+  const pl = mgr.use((m) => { m.addLine('Packing', 'Línea 7'); return m.store.get().lines.find((l) => l.dept === 'Packing' && l.name === 'Línea 7') }); settle()
+  tab.use((m) => m.startRun(pl, 'C300', '6295', '2026-10-22', 40)); settle()
+  const c3 = () => tab.use((m) => m.store.get().runs.find((r) => r.lineId === pl.id && !r.endedAt))
+  clock = oct(22, 6, 30); tab.use((m) => m.palletLotEnds(c3().id, 22, '2001', '6296')); settle()
+  eq('el pallet que se arma en una tablet se ve en la otra, con su lote y su tag', mgr.use((m) => { const r = m.store.get().runs.find((x) => x.lineId === pl.id && !x.endedAt); return [r.extra.open.parts.map((x) => [x.lot, x.qty, x.tag]), r.extra.lotNow] }), [[['6295', 22, '2001']], '6296'])
+  clock = oct(22, 6, 50); mgr.use((m) => m.palletPartFix(m.store.get().runs.find((x) => x.lineId === pl.id && !x.endedAt).id, 0, { tag: '2002' })); settle()
+  eq('y un tag corregido desde la oficina llega a la tablet', tab.use((m) => c3().extra.open.parts[0].tag), '2002')
+  clock = oct(22, 7, 0); tab.use((m) => m.endRun(c3().id, false)); settle()
+  eq('nada queda pendiente de enviar', all.map((d) => d.use((m) => m.outbox.size())), [0, 0])
+}
 section('Set up: espera al código siguiente; con las líneas vacías no corre nada')
 {
   const wai = await device('wai', { user: 'Santiago', usual: true })

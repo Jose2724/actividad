@@ -1,4 +1,4 @@
-import { casesText, CFG, fmtDur, fmtTime, inCases, lineLabel, lineNameOf, madeText, noteLabel, shiftHours, whoText, type State } from './store'
+import { binWord, casesText, CFG, cfgOf, fmtDur, fmtTime, inCases, lineLabel, lineNameOf, madeText, noteLabel, shiftHours, whoText, type DeptCfg, type State } from './store'
 import { filterTitle, reportOf, spanShifts, type ReportFilter } from './report'
 import { avanceRows, n1, pending } from './avance'
 import { tr } from './i18n'
@@ -16,8 +16,11 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
   const { jsPDF, autoTable } = libs
   const rep = reportOf(s, date, now, f), { rows, unitRows, stops, working, down } = rep, only = f.only
   const num = (x: number) => Math.round(x).toLocaleString('en-US')
-  const unitsOf = (dept: keyof typeof CFG, n: number) => n + ' ' + (n === 1 ? CFG[dept].unit : CFG[dept].plural).toLowerCase()
-  const qtyOf = (dept: keyof typeof CFG, q: number) => (CFG[dept].qty !== 'none' ? num(q) + ' ' + CFG[dept].qtyUnit : '—')
+  const unitsOf = (dept: keyof typeof CFG, n: number, c: DeptCfg = CFG[dept]) => n + ' ' + (n === 1 ? c.unit : c.plural).toLowerCase()
+  const qtyOf = (dept: keyof typeof CFG, q: number, c: DeptCfg = CFG[dept]) => (c.qty !== 'none' ? num(q) + ' ' + c.qtyUnit : '—')
+  // what a Packing line filled in bins is said apart, in its own words: "2 bins con 98 platos"
+  const binsOf = (bins: { word: string; units: number; qty: number }[]) => bins.map((b) => tr('{0} con {1} {2}', b.units === 1 ? tr('1 bin') : tr('{0} bins', b.units), num(b.qty), binWord(b.word))).join(', ')
+  const binCfg = (dept: keyof typeof CFG, bin: string) => (bin ? cfgOf({ dept, extra: { bin } }) : CFG[dept])
   const lineName = (x: { lineId: string | null; dept: string }) => (x.lineId === null ? tr('Todo {0}', x.dept) : lineLabel(s.lines.find((l) => l.id === x.lineId)?.name ?? s.runs.find((r) => r.lineId === x.lineId)?.line ?? tr('línea')))
 
   const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' })
@@ -32,14 +35,14 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
   // what was made, room by room, said first and in bold: it is what the report is read for
   if (rep.byDept.length) {
     doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(15, 118, 110)
-    const made = rep.byDept.map((d) => d.dept + ': ' + (CFG[d.dept].qty !== 'none' ? qtyOf(d.dept, d.qty) + ' (' + unitsOf(d.dept, d.units) + ')' : unitsOf(d.dept, d.units)))
+    const made = rep.byDept.map((d) => d.dept + ': ' + (CFG[d.dept].qty !== 'none' ? qtyOf(d.dept, d.qty) + ' (' + unitsOf(d.dept, d.units) + ')' : unitsOf(d.dept, d.units)) + (d.bins.length ? ' + ' + tr('en bins: {0}', binsOf(d.bins)) : ''))
     const lines = doc.splitTextToSize(tr('Hecho   {0}', made.join('   ·   ')), doc.internal.pageSize.getWidth() - 80) as string[]
     doc.text(lines, 40, top + 4)
     top += 4 + lines.length * 15 + 6
   }
   // the whole day first and each shift under it (not when the report is of one shift only)
   if (rep.byShift.length) {
-    const made = (dept: keyof typeof CFG, x: { units: number; qty: number }) => x.units + ' ' + (x.units === 1 ? CFG[dept].unit : CFG[dept].plural).toLowerCase() + (CFG[dept].qty !== 'none' ? ' · ' + Math.round(x.qty).toLocaleString('en-US') + ' ' + CFG[dept].qtyUnit : '')
+    const made = (dept: keyof typeof CFG, x: { units: number; qty: number; bins: { word: string; units: number; qty: number }[] }) => x.units + ' ' + (x.units === 1 ? CFG[dept].unit : CFG[dept].plural).toLowerCase() + (CFG[dept].qty !== 'none' ? ' · ' + Math.round(x.qty).toLocaleString('en-US') + ' ' + CFG[dept].qtyUnit : '') + (x.bins.length ? ' + ' + binsOf(x.bins) : '')
     autoTable(doc, {
       startY: top, theme: 'grid', styles: { font: 'helvetica', fontSize: 9, cellPadding: 5, textColor: [22, 32, 42] }, headStyles: { fillColor: [22, 32, 42], textColor: 255, fontStyle: 'bold' },
       head: [[tr('Depto'), '', tr('Horario'), tr('Empezó'), tr('Terminó'), tr('Duración'), tr('Líneas'), tr('Códigos'), tr('Corridas'), tr('Hecho'), tr('Waste lb'), tr('Trabajando'), tr('Parado'), 'Set up']],
@@ -59,10 +62,12 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
       const b = rep.byShift.find((x) => x.dept === d.dept), q = CFG[d.dept].qty !== 'none'
       const boxes = (code: string, qty: number) => (CFG[d.dept].qtyUnit === 'pouches' && casesText(inCases(s, code, qty))) || '—'
       for (const c of rep.byCode.filter((x) => x.dept === d.dept)) {
-        body.push([c.dept, c.code, c.lots.length === 1 ? c.lots[0].lot || '—' : tr('{0} lotes', c.lots.length), unitsOf(c.dept, c.units), qtyOf(c.dept, c.qty), ...(c.byShift ? [dashed(c.byShift[0]), dashed(c.byShift[1])] : []), boxes(c.code, c.qty), c.waste ? String(c.waste) : '—', c.lines.join(', ')]); kind.push('code')
-        if (c.lots.length > 1) for (const l of c.lots) { body.push(['', '', l.lot || '—', unitsOf(c.dept, l.units), qtyOf(c.dept, l.qty), ...(l.byShift ? [dashed(l.byShift[0]), dashed(l.byShift[1])] : []), boxes(c.code, l.qty), '', '']); kind.push('lot') }
+        const cc = binCfg(c.dept, c.bin), box = (code: string, qty: number) => (c.bin ? '—' : boxes(code, qty))
+        body.push([c.dept, c.code + (c.bin ? ' ' + tr('(en bins de {0})', binWord(c.bin)) : ''), c.lots.length === 1 ? c.lots[0].lot || '—' : tr('{0} lotes', c.lots.length), unitsOf(c.dept, c.units, cc), qtyOf(c.dept, c.qty, cc), ...(c.byShift ? [dashed(c.byShift[0]), dashed(c.byShift[1])] : []), box(c.code, c.qty), c.waste ? String(c.waste) : '—', c.lines.join(', ')]); kind.push('code')
+        if (c.lots.length > 1) for (const l of c.lots) { body.push(['', '', l.lot || '—', unitsOf(c.dept, l.units, cc), qtyOf(c.dept, l.qty, cc), ...(l.byShift ? [dashed(l.byShift[0]), dashed(l.byShift[1])] : []), box(c.code, l.qty), '', '']); kind.push('lot') }
       }
       body.push([tr('Total {0}', d.dept), '', '', unitsOf(d.dept, d.units), qtyOf(d.dept, d.qty), ...(b ? [dashed(q ? b.first.qty : b.first.units), dashed(q ? b.second.qty : b.second.units)] : []), '', d.waste ? String(d.waste) : '—', '']); kind.push('total')
+      for (const y of d.bins) { const cc = binCfg(d.dept, y.word); body.push([tr('Además, en bins de {0}', binWord(y.word)), '', '', unitsOf(d.dept, y.units, cc), qtyOf(d.dept, y.qty, cc), ...(b ? [b.first, b.second].map((x) => dashed(x.bins.find((z) => z.word === y.word)?.qty ?? 0)) : []), '', '', '']); kind.push('total') }
     }
     autoTable(doc, {
       startY: top + 14, theme: 'grid', styles: { font: 'helvetica', fontSize: 9, cellPadding: 5, textColor: [22, 32, 42] }, headStyles: { fillColor: teal, textColor: 255, fontStyle: 'bold' },
@@ -84,6 +89,23 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
     body: rows.map((x) => [x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.lots, ...(sh ? [x.shifts] : []), fmtTime(x.r.startedAt), x.r.endedAt ? fmtTime(x.r.endedAt) : tr('en curso'), madeText(x.view, x.qty, true), x.waste ? String(x.waste) : '—', fmtDur(x.st.working), x.timed ? fmtDur(x.st.avg) : '—', fmtDur(x.st.down), Object.entries(x.st.reasons).map(([k, v]) => tr(k) + ' ' + fmtDur(v)).join(', ') || '—', whoText(x.r)]),
     foot: [[tr('Total'), '', '', '', ...(sh ? [''] : []), '', '', '', String(Math.round(rows.reduce((t, x) => t + (x.waste || 0), 0) * 100) / 100), fmtDur(working), '', fmtDur(down), '', '']], footStyles: { fillColor: [243, 246, 249], textColor: [22, 32, 42], fontStyle: 'bold' },
   })
+  // Packing's pallets one by one: the lots each one holds with their cases and their tag, its total and its PO (2/12)
+  if (rep.pallets.length) {
+    const y = after() + 28
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(22, 32, 42)
+    doc.text(tr('Pallets'), 40, y)
+    const span = (p: (typeof rep.pallets)[number], content: string) => ({ content, rowSpan: p.parts.length })
+    const ofText = (of: [number, number | null]) => (of[1] ? of[0] + '/' + of[1] : String(of[0]))
+    autoTable(doc, {
+      startY: y + 10, theme: 'grid', styles: { font: 'helvetica', fontSize: 9, cellPadding: 4, textColor: [22, 32, 42], valign: 'middle' }, headStyles: { fillColor: teal, textColor: 255, fontStyle: 'bold' },
+      head: [[tr('Pallet'), tr('Código'), tr('Lote'), tr('Cajas'), tr('Tag'), tr('Total'), 'PO', tr('Línea'), tr('Hora'), ...(sh ? [tr('Turno')] : [])]],
+      body: rep.pallets.flatMap((p) => p.parts.map((x, i) => [
+        ...(i === 0 ? [span(p, String(p.n) + (p.open ? ' ' + tr('en armado') : '')), span(p, p.r.code)] : []),
+        x.lot, x.qty != null ? num(x.qty) : '—', x.tag || tr('sin tag'),
+        ...(i === 0 ? [span(p, num(p.total)), span(p, p.order ? p.order + (p.of ? '  ·  ' + ofText(p.of) : '') : '—'), span(p, lineNameOf(s, p.r.lineId, p.r.line)), span(p, p.open ? '—' : fmtTime(p.at)), ...(sh ? [span(p, String(p.shift))] : [])] : []),
+      ])),
+    })
+  }
   // one line per cart, mezcla, bin or pallet with its time, as the office's sheets are filled (a pallet with two lots: two lines)
   if (unitRows.length) {
     const y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 28
@@ -92,7 +114,7 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
     autoTable(doc, {
       startY: y + 10, theme: 'grid', styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 4, textColor: [22, 32, 42] }, headStyles: { fillColor: [91, 107, 122], textColor: 255, fontStyle: 'bold' },
       head: [[tr('Hora'), ...(sh ? [tr('Turno')] : []), tr('Depto'), tr('Línea'), tr('Código'), tr('Lote'), '#', tr('Unidad'), tr('Cantidad'), tr('Tag / bin'), tr('Desde la anterior'), tr('Registró')]],
-      body: unitRows.map((x) => [fmtTime(x.u.at), ...(sh ? [String(x.shift)] : []), x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.lot, String(x.i + 1), CFG[x.r.dept].unit, x.qty != null ? x.qty + ' ' + CFG[x.r.dept].qtyUnit : '—', x.u.ref || '—', fmtDur(x.gap), x.u.by || '—']),
+      body: unitRows.map((x) => [fmtTime(x.u.at), ...(sh ? [String(x.shift)] : []), x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.lot, String(x.i + 1), cfgOf(x.r).unit, x.qty != null ? x.qty + ' ' + cfgOf(x.r).qtyUnit : '—', x.tag || '—', fmtDur(x.gap), x.u.by || '—']),
     })
   }
   if (stops.length) {

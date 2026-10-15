@@ -591,3 +591,47 @@ table.shiftgrid tr.sep td{background:var(--bg);color:var(--muted);font-size:11px
 }
 /* Avance: the room that makes a code's mezclas, said beside their number (Kitchen or Spiral) */
 .avance td small.room{color:var(--muted);font-size:11px;font-weight:600}
+/* Packing: what a line is going to make (pallets or bins), the pallet being built with its lots and tags, and the bins */
+.start .makes{grid-column:1/-1;display:grid;gap:6px}
+.start .makes .lab{font-size:13px;font-weight:600;color:var(--muted)}
+.makes .seg button{min-height:58px;font-size:16px}
+.binwords{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:14px;font-weight:600;color:var(--muted)}
+.binwords input{flex:1 1 140px;width:auto;min-height:40px;font-size:15px}
+.pallet{display:grid;gap:8px;border:2px solid var(--accent);border-radius:14px;padding:12px;background:var(--surface)}
+.pal-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.pal-head b{font-size:18px}
+.pal-head span{color:var(--muted);font-weight:700;font-variant-numeric:tabular-nums}
+.pallet .bar{margin:0}
+.pal-po{display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--bg);border-radius:10px;padding:6px 10px;font-size:14px}
+.pal-po .lnk{white-space:nowrap}
+.pal-po .pof{color:var(--accent);white-space:nowrap}
+.pal-part{display:flex;justify-content:space-between;align-items:center;gap:8px;border-bottom:1px dashed var(--line);padding:2px 0 6px;font-size:15px}
+.pal-part .lnk{white-space:nowrap}
+.lnk.notag{color:var(--amber)}
+.pal-now{background:var(--soft);border-radius:10px;padding:8px 10px;font-size:15px}
+.pal-now b{font-size:18px;color:var(--accent)}
+.pallet .btn.huge{width:100%}
+.coderow .binkind{color:var(--accent);font-weight:700}
+.binlot{justify-self:start}
+.tc-total small.tc-bins{font-size:13.5px;font-weight:600;margin-top:2px}
+/* the pallet's window: one row per lot, with its cases and its tag */
+.palrows{display:grid;gap:6px}
+.palrow{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr) minmax(0,1.1fr);gap:8px;align-items:center}
+.palrow.head span{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.palrow b{font-size:17px;padding-left:4px}
+.palrow input{min-height:46px}
+.lotrow label:nth-child(3){flex:1.2}
+/* the report: bins apart from the pallets, and each pallet with its lots and tags */
+.made.bins{background:var(--soft);color:var(--ink)}
+.made.bins b{color:var(--accent)}
+.made.bins small,.made.bins label{color:var(--muted);opacity:1}
+table.bycode .binkind{display:block;font-size:12px;font-weight:600;color:var(--muted)}
+table.bycode tr.trow.bins td{background:var(--bg);font-weight:700}
+table.pallets tbody+tbody{border-top:2px solid var(--line)}
+table.pallets tbody.live td{background:#f1fbf5}
+table.pallets td[rowspan]{vertical-align:top}
+table.pallets .building{display:block;font-size:12px;color:var(--ok);font-weight:700}
+table.pallets .notag{color:var(--amber);font-weight:600}
+table.pallets td.hit{background:#fff4d6;font-weight:700}
+table.pallets .pof{margin-left:6px;background:var(--soft);color:var(--accent);border-radius:99px;padding:1px 8px;font-size:13px;white-space:nowrap}
+table.pallets th.num,table.pallets td.num{text-align:right;font-variant-numeric:tabular-nums}

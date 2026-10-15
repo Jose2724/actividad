@@ -1,4 +1,4 @@
-import { normCode, productOf, unitQty, type Product, type State } from './store'
+import { binOf, normCode, productOf, unitQty, type Product, type State } from './store'
 
 /**
  * The day's progress per product, with the same arithmetic as the office's AVANCE sheet and its daily summary:
@@ -40,7 +40,8 @@ export function avanceRows(s: State, date: string, keep?: Set<string>): AvanceRo
   return keys.map((key): AvanceRow & { key: string } => {
     const product = productOf(s, key)
     const code = product?.code ?? runs.find((r) => normCode(r.code) === key)?.code ?? key
-    const of = (dept: string) => runs.filter((r) => r.dept === dept && normCode(r.code) === key)
+    // a Packing line that fills bins makes no cases and no pallets: its bins hold platos, copas or pouches
+    const of = (dept: string) => runs.filter((r) => r.dept === dept && normCode(r.code) === key && !binOf(r))
     const units = (dept: string) => of(dept).reduce((t, r) => t + r.units.length, 0)
     const qty = (dept: string) => of(dept).reduce((t, r) => t + r.units.reduce((u, x) => u + unitQty(s, r, x), 0), 0)
     const scheduled = sched[key] ?? 0

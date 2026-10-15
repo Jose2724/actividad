@@ -29,29 +29,75 @@ export const CFG: Record<Dept, DeptCfg> = {
   MFO: { lineWord: tr('Línea'), unit: tr('Bin'), plural: tr('Bins'), done: tr('Bin listo'), saved: tr('guardado'), qty: 'ask', qtyQ: tr('¿Cuántas cajas lleva este bin?'), qtyUnit: tr('cajas'), perUnitLabel: '', refLabel: tr('N° de bin'), refWord: 'bin', quick: ['Problema mecánico', 'Falta de producto del freezer', 'Break'], reasons: ['Problema mecánico', 'Falta de producto del freezer', 'Break', 'Armado de máquina', 'Pegado de labels / stickers', 'Esperando gas', 'Preparación (picar pollo…)', 'Falta de material', 'Limpieza', 'Falta de personal', 'Set up'] },
   Packing: { lineWord: tr('Línea'), unit: tr('Pallet'), plural: tr('Pallets'), done: tr('Pallet listo'), saved: tr('guardado'), lots: true, orders: true, qty: 'ask', qtyQ: tr('¿Cuántas cajas lleva este pallet?'), qtyUnit: tr('cajas'), perUnitLabel: tr('Cajas por pallet'), refLabel: tr('N° de tag'), refWord: 'tag', quick: ['Problema mecánico', 'Falta de producto que empacar', 'Break'], reasons: ['Problema mecánico', 'Falta de producto que empacar', 'Break', 'Esperando autorización de QC', 'Label equivocado (despegar labels)', 'Plástico / film', 'Falta de cajas / material de empaque', 'Personal pasó a otra línea', 'Etiquetadora / impresora', 'Montacargas / espacio', 'Limpieza', 'Falta de personal', 'Set up'] },
 }
+/** the words of a run: its room's, or those of a bin when a Packing line fills bins */
+export function cfgOf(r: Pick<Run, 'dept' | 'extra'>): DeptCfg {
+  const word = binOf(r)
+  if (!word) return CFG[r.dept]
+  const shown = binWord(word)
+  return { ...CFG[r.dept], unit: tr('Bin'), plural: tr('Bins'), done: tr('Bin listo'), saved: tr('guardado'), lots: false, orders: false, qty: 'ask', qtyQ: tr('¿Cuántos {0} lleva este bin?', shown), qtyUnit: shown, perUnitLabel: tr('{0} por bin', shown), refLabel: tr('N° de bin'), refWord: 'bin' }
+}
 /** what a line's "listo" button says for a moment once the unit is recorded: "Mezcla 5 guardada", "Carro 12 guardado" */
-export const savedText = (dept: Dept, n: number) => CFG[dept].unit + ' ' + n + ' ' + CFG[dept].saved
+export const savedText = (dept: Dept, n: number, c: DeptCfg = CFG[dept]) => c.unit + ' ' + n + ' ' + c.saved
 
 export type Line = { id: string; dept: Dept; name: string; updatedAt: number; deleted?: boolean }
 /** one finished unit of work (a cart, a mezcla, a pallet…), how much it carried, its tag / bin number and who tapped it */
 export type Unit = { at: number; qty: number | null; ref: string; by: string; lots?: LotPart[]; po?: string } // po = the order it goes to (Order.id)
 /** the part of a unit that belongs to one lot: a pallet can carry cases of two lots of the same product */
-export type LotPart = { lot: string; qty: number }
+export type LotPart = { lot: string; qty: number; tag?: string }
 /** the lots written on a unit, as they are kept: only real ones (a lot, and a quantity above zero); none = the run's lot */
 export const cleanLots = (x: unknown): LotPart[] | undefined => {
   if (!Array.isArray(x)) return undefined
-  const out = x.map((l) => ({ lot: String((l as Partial<LotPart> | null)?.lot ?? '').trim(), qty: Number((l as Partial<LotPart> | null)?.qty) })).filter((l) => l.lot && Number.isFinite(l.qty) && l.qty > 0)
+  const out = x.map((l) => { const p = (l ?? {}) as Partial<LotPart>, tag = String(p.tag ?? '').trim().slice(0, 30); return { lot: String(p.lot ?? '').trim(), qty: Number(p.qty), ...(tag ? { tag } : {}) } }).filter((l) => l.lot && Number.isFinite(l.qty) && l.qty > 0)
   return out.length ? out : undefined
 }
 /** a unit as it is kept, whatever shape it arrives in (an older version of the app, the server) */
 const unitOf = (u: Partial<Unit>): Unit => { const lots = cleanLots(u.lots); return { at: u.at ?? 0, qty: u.qty ?? null, ref: u.ref ?? '', by: u.by ?? '', ...(lots ? { lots } : {}), ...(typeof u.po === 'string' && u.po ? { po: u.po } : {}) } }
 /** "6283: 20 + 6284: 16" */
-export const lotsText = (lots: LotPart[] | undefined) => (lots?.length ? lots.map((l) => l.lot + ': ' + l.qty).join(' + ') : '')
+export const lotsText = (lots: LotPart[] | undefined) => (lots?.length ? lots.map((l) => l.lot + ': ' + l.qty + (l.tag ? ' (tag ' + l.tag + ')' : '')).join(' + ') : '')
 /**
  * one product code run on one line: the clock starts at startedAt; perUnit = quantity per unit (boxes per pallet,
  * pouches per cart); waste = pounds thrown away while running it (the WASTE column of the office's RTE sheet)
  */
-export type Run = { id: string; dept: Dept; lineId: string; line: string; code: string; lot: string; date: string; startedAt: number; endedAt: number | null; units: Unit[]; perUnit: number | null; waste: number; by: string; updatedAt: number; deleted?: boolean }
+export type Run = { id: string; dept: Dept; lineId: string; line: string; code: string; lot: string; date: string; startedAt: number; endedAt: number | null; units: Unit[]; perUnit: number | null; waste: number; by: string; updatedAt: number; deleted?: boolean; extra?: RunExtra }
+/**
+ * What a Packing run carries besides the pallets it finished.
+ *  - bin: the line fills bins instead of pallets, and this is the word for what a bin holds (platos, copas, pouches or
+ *    the one they type). Its bins are counted apart: what they hold is not cases.
+ *  - lotNow: the lot being packed now, once a lot ran out on a pallet and the next one came (absent = the run's lot).
+ *  - open: the pallet being built: the lots it already holds, each with its cases and its tag (written when that lot
+ *    ran out, or later), and the order it goes to (po: '' = they said none; absent = not said, and the app proposes
+ *    one, see palletPo). Every pallet of an order carries the same PO: the next pallet keeps it while the order
+ *    still lacks cases.
+ * It travels in act_runs.extra (supabase/migrations/008_run_extra.sql).
+ */
+export type PalletPart = { lot: string; qty: number; tag: string; at: number; by: string }
+export type RunExtra = { bin?: string; lotNow?: string; open?: { parts: PalletPart[]; po?: string } }
+/** the words a bin can hold, offered as chips; any other can be typed (kept as typed, these in Spanish like all data) */
+export const BIN_WORDS = ['platos', 'copas', 'pouches']
+const cleanPart = (x: unknown): PalletPart | null => {
+  const p = (x ?? {}) as Partial<PalletPart>, lot = String(p.lot ?? '').trim(), qty = Number(p.qty)
+  return lot && Number.isFinite(qty) && qty > 0 ? { lot, qty, tag: String(p.tag ?? '').trim().slice(0, 30), at: Number(p.at) || 0, by: String(p.by ?? '') } : null
+}
+/** what arrives in a run's extra, kept only as far as it makes sense (undefined = nothing) */
+export function cleanExtra(x: unknown): RunExtra | undefined {
+  if (!x || typeof x !== 'object') return undefined
+  const e = x as Record<string, unknown>, out: RunExtra = {}
+  if (typeof e.bin === 'string' && e.bin.trim()) out.bin = e.bin.trim().slice(0, 30)
+  if (typeof e.lotNow === 'string' && e.lotNow.trim()) out.lotNow = e.lotNow.trim().slice(0, 30)
+  const o = e.open as { parts?: unknown; po?: unknown } | undefined
+  if (o && typeof o === 'object') {
+    const parts = Array.isArray(o.parts) ? o.parts.map(cleanPart).filter((p): p is PalletPart => !!p) : []
+    if (parts.length || typeof o.po === 'string') out.open = { parts, ...(typeof o.po === 'string' ? { po: o.po } : {}) }
+  }
+  return Object.keys(out).length ? out : undefined
+}
+/** the word for what a run's bins hold ('' = the run makes pallets, or it is not Packing) */
+export const binOf = (r: Pick<Run, 'dept' | 'extra'>) => (r.dept === 'Packing' && r.extra?.bin) || ''
+/** the lot a run is packing now */
+export const lotNowOf = (r: Pick<Run, 'lot' | 'extra'>) => r.extra?.lotNow || r.lot
+/** a bin's word as the screen says it: the offered ones in the screen's language, a typed one as typed */
+const BIN_SHOWN: Record<string, () => string> = { platos: () => tr('platos'), copas: () => tr('copas'), pouches: () => tr('pouches') }
+export const binWord = (word: string) => BIN_SHOWN[word]?.() ?? word
 /** a stop with its reason; lineId null = the whole department */
 export type Stop = { id: string; dept: Dept; lineId: string | null; reason: string; note: string; startedAt: number; endedAt: number | null; by: string; updatedAt: number; deleted?: boolean }
 /**
@@ -172,7 +218,7 @@ function load(): State {
       return {
         lines: s.lines.map((l) => ({ id: l.id ?? uid(), dept: (l.dept ?? 'Kitchen') as Dept, name: l.name ?? 'Línea 1', updatedAt: l.updatedAt ?? 0 })),
         stops: s.stops.map((x) => ({ id: x.id ?? uid(), dept: (x.dept ?? 'Kitchen') as Dept, lineId: x.lineId ?? null, reason: x.reason ?? '', note: x.note ?? '', startedAt: x.startedAt ?? 0, endedAt: x.endedAt ?? null, by: x.by ?? '', updatedAt: x.updatedAt ?? 0 })),
-        runs: s.runs.map((r) => ({ id: r.id ?? uid(), dept: (r.dept ?? 'Kitchen') as Dept, lineId: r.lineId ?? '', line: r.line ?? '', code: r.code ?? '', lot: r.lot ?? '', date: r.date ?? today(), startedAt: r.startedAt ?? 0, endedAt: r.endedAt ?? null, units: units(r), perUnit: r.perUnit ?? null, waste: r.waste ?? 0, by: r.by ?? '', updatedAt: r.updatedAt ?? 0 })),
+        runs: s.runs.map((r) => ({ id: r.id ?? uid(), dept: (r.dept ?? 'Kitchen') as Dept, lineId: r.lineId ?? '', line: r.line ?? '', code: r.code ?? '', lot: r.lot ?? '', date: r.date ?? today(), startedAt: r.startedAt ?? 0, endedAt: r.endedAt ?? null, units: units(r), perUnit: r.perUnit ?? null, waste: r.waste ?? 0, by: r.by ?? '', updatedAt: r.updatedAt ?? 0, ...((e) => (e ? { extra: e } : {}))(cleanExtra(r.extra)) })),
         products, schedule: tidySchedule(s.schedule ?? {}),
         changes: (s.changes ?? []).filter((c) => (c.at ?? 0) > clockNow() - KEEP_CHANGES_MS).map((c) => ({ id: c.id ?? uid(), at: c.at ?? 0, by: c.by ?? '', dept: (c.dept ?? null) as Dept | null, what: c.what ?? '', before: c.before ?? '', after: c.after ?? '', refTable: c.refTable ?? '', refKey: c.refKey ?? '', updatedAt: c.updatedAt ?? 0 })),
         targets: (s.targets ?? []).filter((t) => DEPTS.includes(t.dept as Dept)).map((t) => ({ dept: t.dept as Dept, perHour: t.perHour ?? null, perShift: t.perShift ?? null, updatedAt: t.updatedAt ?? 0 })),
@@ -266,7 +312,7 @@ export const managerPin = { get: () => mgrPin.get() || '1234', set: (v: string) 
 const iso = (ms: number | null | undefined) => (ms == null ? null : new Date(ms).toISOString())
 const fromIso = (s: unknown) => (typeof s === 'string' && s ? Date.parse(s) : null)
 const rowOfLine = (l: Line) => ({ id: l.id, dept: l.dept, name: l.name, deleted: !!l.deleted, updated_at: iso(l.updatedAt), updated_by: user.get() })
-const rowOfRun = (r: Run) => ({ id: r.id, dept: r.dept, line_id: r.lineId, line: r.line, code: r.code, lot: r.lot, date: r.date, started_at: iso(r.startedAt), ended_at: iso(r.endedAt), units: r.units, per_unit: r.perUnit, waste: r.waste, by_name: r.by, deleted: !!r.deleted, updated_at: iso(r.updatedAt), updated_by: user.get() })
+const rowOfRun = (r: Run) => ({ id: r.id, dept: r.dept, line_id: r.lineId, line: r.line, code: r.code, lot: r.lot, date: r.date, started_at: iso(r.startedAt), ended_at: iso(r.endedAt), units: r.units, per_unit: r.perUnit, waste: r.waste, by_name: r.by, deleted: !!r.deleted, updated_at: iso(r.updatedAt), updated_by: user.get(), ...(r.dept === 'Packing' ? { extra: r.extra ?? null } : {}) })
 const rowOfStop = (x: Stop) => ({ id: x.id, dept: x.dept, line_id: x.lineId, reason: x.reason, note: x.note, started_at: iso(x.startedAt), ended_at: iso(x.endedAt), by_name: x.by, deleted: !!x.deleted, updated_at: iso(x.updatedAt), updated_by: user.get() })
 const rowOfProduct = (p: Product) => ({ code: normCode(p.code), name: p.name, pouches_per_case: p.pouchesPerCase, cases_per_mix: p.casesPerMix, crates_per_cart: p.cratesPerCart, pouches_per_crate: p.pouchesPerCrate, cases_per_pallet: p.casesPerPallet, deleted: !!p.deleted, updated_at: iso(p.updatedAt), updated_by: user.get() })
 const rowOfSchedule = (date: string, code: string, mixes: number) => ({ date, code: normCode(code), mixes, updated_at: iso(clockNow()), updated_by: user.get() })
@@ -425,7 +471,7 @@ export const idleStop = (s: State, lineId: string, now: number) =>
  * was divided into) ends at this moment, and from this moment it counts. A set up of seconds is not one, and neither
  * is what was left open for hours on a line nobody was using, or since the day before: those are dropped.
  */
-export function startRun(line: Line, code: string, lot: string, date: string, perUnit: number | null) {
+export function startRun(line: Line, code: string, lot: string, date: string, perUnit: number | null, bin = '') {
   const at = clockNow()
   batch(() => {
     for (const x of state.stops.filter((y) => y.lineId === line.id && !y.endedAt)) {
@@ -433,7 +479,7 @@ export function startRun(line: Line, code: string, lot: string, date: string, pe
       if (age > SETUP_MAX_MS || fromOtherDay(state, x, at) || (x.reason === SETUP && age < 60_000)) putStop({ ...x, deleted: true })
       else putStop({ ...x, endedAt: Math.max(at, x.startedAt), note: x.reason === SETUP && x.note.startsWith(AFTER) ? 'De ' + x.note.slice(AFTER.length) + ' a ' + code : x.note })
     }
-    putRun({ id: uid(), dept: line.dept, lineId: line.id, line: line.name, code, lot, date, startedAt: at, endedAt: null, units: [], perUnit, waste: 0, by: user.get(), updatedAt: 0 })
+    putRun({ id: uid(), dept: line.dept, lineId: line.id, line: line.name, code, lot, date, startedAt: at, endedAt: null, units: [], perUnit, waste: 0, by: user.get(), updatedAt: 0, ...(line.dept === 'Packing' && bin.trim() ? { extra: { bin: bin.trim().slice(0, 30) } } : {}) })
   })
 }
 const run = (id: string) => state.runs.find((r) => r.id === id)
@@ -454,10 +500,82 @@ export function endRun(runId: string, setup = false) {
   const r = run(runId)
   if (!r) return
   const at = Math.max(clockNow(), after(r))
+  // the lots already put on the pallet being built (with their cases and tags) make a pallet of their own: a code that
+  // ends leaves no pallet half-recorded
+  const open = r.extra?.open?.parts.length ? r.extra.open : null
+  const units = open ? [...r.units, palletUnit(open.parts, typeof open.po === 'string' ? open.po : nextOrderFor(state, r), at)] : r.units
+  const extra = r.extra && open ? ((({ open: _o, ...rest }) => (Object.keys(rest).length ? rest : undefined))(r.extra)) : r.extra
   batch(() => {
-    putRun({ ...r, endedAt: at })
+    putRun({ ...r, units, endedAt: at, ...(r.dept === 'Packing' ? { extra } : {}) })
     if (setup && !state.stops.some((x) => x.lineId === r.lineId && !x.endedAt)) putStop({ id: uid(), dept: r.dept, lineId: r.lineId, reason: SETUP, note: AFTER + r.code, startedAt: at, endedAt: null, by: user.get(), updatedAt: 0 })
   })
+}
+// ---- the pallet being built on a Packing line ----
+/** a finished pallet: its lots with their cases and tags, its total, and its order */
+function palletUnit(parts: { lot: string; qty: number; tag: string }[], po: string, at: number): Unit {
+  const lots = parts.map((p) => ({ lot: p.lot.trim(), qty: p.qty, ...(p.tag.trim() ? { tag: p.tag.trim().slice(0, 30) } : {}) })).filter((p) => p.lot && Number.isFinite(p.qty) && p.qty > 0)
+  return { at, qty: lots.reduce((t, p) => t + p.qty, 0), ref: lots.map((p) => p.tag ?? '').filter(Boolean).join(', '), by: user.get(), lots, ...(po ? { po } : {}) }
+}
+const withOpen = (r: Run, open: NonNullable<RunExtra['open']>, more: Partial<RunExtra> = {}): RunExtra => ({ ...r.extra, ...more, open })
+/**
+ * A lot ran out on the pallet being built: its cases, and its tag when they have it at hand (it can be written later),
+ * stay on the pallet, and the next lot goes on. The pallet stays open. false = nothing changed.
+ */
+export function palletLotEnds(runId: string, qty: number, tag: string, next: string, po?: string): boolean {
+  const r = run(runId), nextLot = next.trim()
+  if (!r || r.endedAt || binOf(r) || r.dept !== 'Packing' || !(qty > 0) || !nextLot) return false
+  const open = r.extra?.open ?? { parts: [] }
+  const part: PalletPart = { lot: lotNowOf(r), qty, tag: tag.trim().slice(0, 30), at: Math.max(clockNow(), after(r)), by: user.get() }
+  putRun({ ...r, extra: withOpen(r, { ...open, parts: [...open.parts, part], ...(po !== undefined ? { po } : {}) }, { lotNow: nextLot.slice(0, 30) }) })
+  return true
+}
+/** a lot already on the pallet being built is corrected: its cases or its tag (the tag is often written afterwards) */
+export function palletPartFix(runId: string, index: number, patch: { qty?: number; tag?: string }): boolean {
+  const r = run(runId), open = r?.extra?.open
+  if (!r || !open || !open.parts[index]) return false
+  const parts = open.parts.map((p, k) => (k === index ? { ...p, ...(patch.qty != null && patch.qty > 0 ? { qty: patch.qty } : {}), ...(patch.tag != null ? { tag: patch.tag.trim().slice(0, 30) } : {}) } : p))
+  putRun({ ...r, extra: withOpen(r, { ...open, parts }) })
+  return true
+}
+/** the lot a Packing line packs now changed: a bin line, or a pallet line between two pallets */
+export function setLotNow(runId: string, lot: string): boolean {
+  const r = run(runId), l = lot.trim()
+  if (!r || r.dept !== 'Packing' || !l) return false
+  putRun({ ...r, extra: { ...r.extra, lotNow: l.slice(0, 30) } })
+  return true
+}
+/** the order the pallet being built goes to ('' = none) */
+export function palletOrder(runId: string, po: string): boolean {
+  const r = run(runId)
+  if (!r || binOf(r) || r.dept !== 'Packing') return false
+  const open = r.extra?.open ?? { parts: [] }
+  putRun({ ...r, extra: withOpen(r, { ...open, po }) })
+  return true
+}
+/**
+ * The pallet is finished: the lots it holds (each with its cases and its tag) make one pallet, for its order. The next
+ * pallet starts empty, with the lot being packed now. false = nothing to record.
+ */
+export function palletDone(runId: string, parts: { lot: string; qty: number; tag: string }[], po: string): boolean {
+  const r = run(runId)
+  if (!r || binOf(r) || r.dept !== 'Packing') return false
+  const unit = palletUnit(parts, po, Math.max(clockNow(), after(r)))
+  if (!unit.lots?.length) return false
+  const rest: RunExtra = r.extra ? (({ open: _o, ...x }) => x)(r.extra) : {}
+  // the next pallet goes to the same order while the order still lacks cases: its pallets 1/12, 2/12...
+  const o = po ? state.orders.find((x) => x.id === po && !x.closed) : undefined
+  const extra: RunExtra = o && (o.cases == null || o.cases - orderMade(state, o.id) - (unit.qty ?? 0) > 0) ? { ...rest, open: { parts: [], po } } : rest
+  putRun({ ...r, units: [...r.units, unit], extra: Object.keys(extra).length ? extra : undefined })
+  return true
+}
+/** the order the pallet being built goes to: the one they chose ('' = none), or else the one the app proposes */
+export const palletPo = (s: State, r: Run) => (typeof r.extra?.open?.po === 'string' ? r.extra.open.po : nextOrderFor(s, r))
+/** the pallets an order has, in the order they were finished, and how many it needs (its cases ÷ cases per pallet) */
+export function orderPallets(s: State, orderId: string, perPallet?: number | null) {
+  const o = s.orders.find((x) => x.id === orderId)
+  const done = s.runs.flatMap((r) => r.units.filter((u) => u.po === orderId).map((u) => u.at)).sort((a, b) => a - b)
+  const per = perPallet || (o ? productOf(s, o.code)?.casesPerPallet : 0) || 0
+  return { done, need: o?.cases != null && per > 0 ? Math.ceil(o.cases / per) : null }
 }
 /**
  * The line is put in set up by hand, while it has no code running: the same stop that ending a code opens. (With a
@@ -556,7 +674,7 @@ export function updateRun(id: string, patch: Partial<Pick<Run, 'code' | 'lot' | 
   putRun(n)
   // reopened: the code goes on, so what started counting when it "ended" was not a set up
   if (patch.endedAt === null && r.endedAt) for (const x of state.stops.filter((y) => y.lineId === r.lineId && !y.endedAt && y.startedAt >= (r.endedAt ?? 0))) putStop({ ...x, deleted: true })
-  const cfg = CFG[r.dept], pre = 'Corrida ' + r.code + ' del ' + r.date + ' (' + r.dept + ', ' + lineNameOf(state, r.lineId, r.line) + ') · '
+  const cfg = cfgOf(r), pre = 'Corrida ' + r.code + ' del ' + r.date + ' (' + r.dept + ', ' + lineNameOf(state, r.lineId, r.line) + ') · '
   const log = (what: string, a: string, b: string) => logChange(r.dept, pre + what, a, b, 'act_runs', r.id)
   log('Código', r.code, n.code); log('Lote', r.lot, n.lot); log('Fecha', r.date, n.date)
   log(cfg.perUnitLabel || 'Por unidad', v(r.perUnit), v(n.perUnit)); log('Waste lb', v(r.waste), v(n.waste)); log('Fin', endText(r.endedAt), endText(n.endedAt))
@@ -566,7 +684,7 @@ export function updateRun(id: string, patch: Partial<Pick<Run, 'code' | 'lot' | 
     else { log(cfg.unit + ' ' + (i + 1) + ' · cantidad', v(u.qty), v(w.qty)); if (cfg.refLabel) log(cfg.unit + ' ' + (i + 1) + ' · ' + cfg.refLabel, u.ref, w.ref); if (cfg.lots) log(cfg.unit + ' ' + (i + 1) + ' · lotes', lotsText(u.lots), lotsText(w.lots)) }
   })
 }
-export function deleteRun(id: string) { const r = run(id); if (r) { putRun({ ...r, deleted: true }); logChange(r.dept, 'Se borró la corrida ' + r.code + ' del ' + r.date + ' (' + r.dept + ', ' + lineNameOf(state, r.lineId, r.line) + ')', r.units.length + ' ' + CFG[r.dept].plural.toLowerCase() + (r.waste ? ' · waste ' + r.waste + ' lb' : ''), '', 'act_runs', r.id) } }
+export function deleteRun(id: string) { const r = run(id); if (r) { putRun({ ...r, deleted: true }); logChange(r.dept, 'Se borró la corrida ' + r.code + ' del ' + r.date + ' (' + r.dept + ', ' + lineNameOf(state, r.lineId, r.line) + ')', r.units.length + ' ' + cfgOf(r).plural.toLowerCase() + (r.waste ? ' · waste ' + r.waste + ' lb' : ''), '', 'act_runs', r.id) } }
 /** letters and digits only, without accents or capitals: "Set-up", "setup" and "SET UP" are one cause */
 const plain = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '')
 /**
@@ -616,7 +734,7 @@ const typed = (t: string) => { const n = Number(t.replace(',', '.')); return Num
 export function applyDraft(id: string, opened: RunDraft, draft: RunDraft) {
   const r = run(id)
   if (!r) return
-  const cfg = CFG[r.dept], patch: Parameters<typeof updateRun>[1] = {}
+  const cfg = cfgOf(r), patch: Parameters<typeof updateRun>[1] = {}
   const changed = (a: string, b: string) => a.trim() !== b.trim()
   if (changed(draft.code.toUpperCase(), opened.code.toUpperCase()) && draft.code.trim()) patch.code = draft.code.trim().toUpperCase()
   if (changed(draft.lot, opened.lot)) patch.lot = draft.lot.trim()
@@ -1126,7 +1244,7 @@ export function setPlan(date: string, dept: Dept, code: string, qty: number) {
 export type PlanRow = { code: string; name: string; planned: number; done: number; byShift: [number, number]; left: number; running: boolean; lines: string[] }
 export function planRows(s: State, date: string, dept: Dept): PlanRow[] {
   const cfg = CFG[dept], hours = shiftsOf(s, date)
-  const runs = s.runs.filter((r) => r.dept === dept && r.date === date), plan = planOf(s, date, dept)
+  const runs = s.runs.filter((r) => r.dept === dept && r.date === date && !binOf(r)), plan = planOf(s, date, dept)
   const one = (r: Run, u: Unit) => (cfg.qty === 'none' ? 1 : unitQty(s, r, u))
   const keys = [...new Set([...plan.map((p) => normCode(p.code)), ...runs.map((r) => normCode(r.code))])]
   return keys.map((key): PlanRow => {
@@ -1204,10 +1322,18 @@ export function unitQty(s: State, r: Run, u: Unit): number {
 export const runQty = (s: State, r: Run) => r.units.reduce((t, u) => t + unitQty(s, r, u), 0)
 
 /** what a room made on a day with all its lines together: in total, per code, and the pace (made ÷ hours since the first start of the day) */
+/** the bins of some runs, word by word: how many bins and how much they hold (only the units that pass `keep`) */
+function binTotals(s: State, runs: Run[], keep: (u: Unit) => boolean) {
+  const by = new Map<string, { word: string; units: number; qty: number }>()
+  for (const r of runs) { const word = binOf(r), e = by.get(word) ?? { word, units: 0, qty: 0 }, mine = r.units.filter(keep); e.units += mine.length; e.qty += mine.reduce((t, u) => t + unitQty(s, r, u), 0); by.set(word, e) }
+  return [...by.values()].filter((b) => b.units > 0)
+}
 /** what a room has made on a day, with all its lines together; or, given a line, what that line alone has made */
 export function deptToday(s: State, dept: Dept, date: string, now: number, lineId?: string) {
   const cfg = CFG[dept]
-  const runs = s.runs.filter((r) => r.dept === dept && r.date === date && (!lineId || r.lineId === lineId))
+  const all = s.runs.filter((r) => r.dept === dept && r.date === date && (!lineId || r.lineId === lineId))
+  // bins hold platos, copas or pouches, not cases: they are counted apart (see bins), never in the room's cases
+  const runs = all.filter((r) => !binOf(r)), binRuns = all.filter((r) => !!binOf(r))
   const measure = (r: Run) => (cfg.qty === 'none' ? r.units.length : runQty(s, r))
   const codes = new Map<string, { code: string; units: number; qty: number; waste: number; lines: string[] }>()
   for (const r of runs) {
@@ -1219,7 +1345,7 @@ export function deptToday(s: State, dept: Dept, date: string, now: number, lineI
   }
   const units = runs.reduce((t, r) => t + r.units.length, 0), qty = runs.reduce((t, r) => t + measure(r), 0)
   const first = runs.length ? Math.min(...runs.map((r) => r.startedAt)) : 0
-  const allEnded = runs.length > 0 && runs.every((r) => r.endedAt)
+  const allEnded = all.length > 0 && all.every((r) => r.endedAt)
   const hours = first ? Math.max(0, (allEnded ? Math.max(...runs.map((r) => r.endedAt ?? 0)) : now) - first) / 3_600_000 : 0
   // The shift in course has its own pace, so a good morning does not hide a slow afternoon. Its clock starts with its
   // first code; a line that came running from the other shift counts from the hour this one starts.
@@ -1227,7 +1353,7 @@ export function deptToday(s: State, dept: Dept, date: string, now: number, lineI
   const opens = Math.min(now, since + ahead(shift === 1 ? cuts.toFirst : cuts.toSecond, mins(shift === 1 ? plan.first : plan.second)) * 60_000)
   const one = (r: Run, u: Unit) => (cfg.qty === 'none' ? 1 : unitQty(s, r, u))
   const made = (k: 1 | 2) => runs.reduce((t, r) => t + r.units.filter((u) => shiftAt(plan, u.at) === k).reduce((a, u) => a + one(r, u), 0), 0)
-  const mine = runs.filter((r) => !r.endedAt || r.endedAt > since)
+  const mine = all.filter((r) => !r.endedAt || r.endedAt > since)
   const shiftFirst = mine.length ? Math.min(...mine.map((r) => (r.startedAt >= since ? r.startedAt : opens))) : 0
   const until = nextCut(plan, now)
   const inTurn = (u: Unit) => u.at >= since && u.at < until
@@ -1251,6 +1377,7 @@ export function deptToday(s: State, dept: Dept, date: string, now: number, lineI
   const shiftMs = shiftFirst ? Math.max(0, (shiftUntil || now) - shiftFirst) : 0
   const shiftHrs = shiftMs / 3_600_000
   return { runs, units, qty, unitLabel: cfg.qty === 'none' ? cfg.plural.toLowerCase() : cfg.qtyUnit, byCode: [...codes.values()].sort((a, b) => b.qty - a.qty), hours, rate: hours >= 1 / 6 ? qty / hours : null, allEnded,
+    bins: binTotals(s, binRuns, () => true), shiftBins: binTotals(s, binRuns, (u) => u.at >= since && u.at < until),
     shift, shiftQty, shiftUnits, shiftCodes: [...turn.values()].sort((a, b) => b.qty - a.qty), shiftRate: shiftHrs >= 1 / 6 ? shiftQty / shiftHrs : null, made: [made(1), made(2)] as [number, number], shiftSince: shiftFirst, shiftUntil, shiftMs }
 }
 
@@ -1261,6 +1388,7 @@ const runOfRow = (row: Row): Run => ({
   startedAt: fromIso(row.started_at) ?? 0, endedAt: fromIso(row.ended_at),
   units: (Array.isArray(row.units) ? (row.units as Partial<Unit>[]) : []).map(unitOf),
   perUnit: row.per_unit == null ? null : Number(row.per_unit), waste: Number(row.waste ?? 0), by: String(row.by_name ?? ''), updatedAt: fromIso(row.updated_at) ?? 0, deleted: !!row.deleted,
+  ...((e) => (e ? { extra: e } : {}))(cleanExtra(row.extra)),
 })
 function changeOfRow(row: Row): Change { return { id: String(row.id), at: fromIso(row.at) ?? 0, by: String(row.by_name ?? ''), dept: (row.dept ?? null) as Dept | null, what: String(row.what ?? ''), before: String(row.before ?? ''), after: String(row.after ?? ''), refTable: String(row.ref_table ?? ''), refKey: String(row.ref_key ?? ''), updatedAt: fromIso(row.updated_at) ?? 0, deleted: !!row.deleted } }
 const stopOfRow = (row: Row): Stop => ({ id: String(row.id), dept: row.dept as Dept, lineId: row.line_id == null ? null : String(row.line_id), reason: String(row.reason ?? ''), note: String(row.note ?? ''), startedAt: fromIso(row.started_at) ?? 0, endedAt: fromIso(row.ended_at), by: String(row.by_name ?? ''), updatedAt: fromIso(row.updated_at) ?? 0, deleted: !!row.deleted })
@@ -1281,7 +1409,7 @@ const allUnits = (first: Run, second: Run) => { const have = new Set(first.units
  * rest is theirs. Waste is an amount people add to, so both additions count.
  */
 function mergeRun(base: Run, mine: Run, theirs: Run): Run {
-  const out = merge3(base, mine, theirs, ['dept', 'lineId', 'line', 'code', 'lot', 'date', 'startedAt', 'endedAt', 'perUnit', 'by', 'deleted'])
+  const out = merge3(base, mine, theirs, ['dept', 'lineId', 'line', 'code', 'lot', 'date', 'startedAt', 'endedAt', 'perUnit', 'by', 'deleted', 'extra'])
   const inBase = new Map(base.units.map((u) => [u.at, u])), inMine = new Map(mine.units.map((u) => [u.at, u])), inTheirs = new Set(theirs.units.map((u) => u.at))
   out.units = [
     ...theirs.units.filter((u) => !(inBase.has(u.at) && !inMine.has(u.at))).map((u) => { const m = inMine.get(u.at), b = inBase.get(u.at); return m && b && !same(m, b) ? m : u }),
@@ -1553,14 +1681,14 @@ export function runSince(s: State, r: Run, since: number, now: number) {
   return { carried: true, units: mine.length, qty, working: worked(from, end), down, avg, before: { units: r.units.length - mine.length, qty: whole.qty - qty } }
 }
 /** "2 carros · 240 pouches": so many units and what they carry, in the department's own words */
-export function unitsText(dept: Dept, units: number, qty: number) {
-  const c = CFG[dept]
+export function unitsText(dept: Dept, units: number, qty: number, c: DeptCfg = CFG[dept]) {
   return units + ' ' + (units === 1 ? c.unit : c.plural).toLowerCase() + (c.qty !== 'none' ? ' · ' + qty.toLocaleString('en-US') + ' ' + c.qtyUnit : '')
 }
 /** what a run produced, said the same way (with the tag / bin numbers if asked) */
 export function madeText(r: Run, qty: number, withRefs = false) {
   const refs = withRefs ? r.units.map((u) => u.ref).filter(Boolean) : []
-  return unitsText(r.dept, r.units.length, qty) + (refs.length ? ' (' + (CFG[r.dept].refWord ?? '') + ' ' + refs.join(', ') + ')' : '')
+  const c = cfgOf(r)
+  return unitsText(r.dept, r.units.length, qty, c) + (refs.length ? ' (' + (c.refWord ?? '') + ' ' + refs.join(', ') + ')' : '')
 }
 
 export function fmtDur(ms: number) {

@@ -1,4 +1,4 @@
-import { CFG, DEPTS, lineNameOf, normCode, orderLabel, orderOfId, plainDay, runInShift, runStats, SETUP, shiftAt, shiftPieces, shiftsOf, stopSpans, unitQty, waitsForCode, type Dept, type Run, type ShiftHours, type State, type Unit } from './store'
+import { binOf, CFG, DEPTS, lineNameOf, normCode, orderLabel, orderOfId, orderPallets, palletPo, plainDay, runInShift, runStats, SETUP, shiftAt, shiftPieces, shiftsOf, stopSpans, unitQty, waitsForCode, type Dept, type Run, type ShiftHours, type State, type Unit } from './store'
 import { tr } from './i18n'
 
 /**
@@ -8,13 +8,16 @@ import { tr } from './i18n'
  */
 export type ReportFilter = { only?: Dept; code?: string; lot?: string; shift?: 0 | 1 | 2 }
 
-/** the lots a unit carries: the ones written on it (a pallet with cases of two lots), or the run's lot with all of it */
-export function unitParts(s: State, r: Run, u: Unit): { lot: string; qty: number | null }[] {
-  if (u.lots?.length) return u.lots.map((l) => ({ lot: l.lot, qty: l.qty }))
-  return [{ lot: r.lot, qty: CFG[r.dept].qty === 'none' ? null : unitQty(s, r, u) }]
+/**
+ * the lots a unit carries, each with its tag: the ones written on it (a pallet with cases of two lots, each lot with
+ * its own tag), or the run's lot with all of it. A unit of before, with one tag for all of it, gives that tag.
+ */
+export function unitParts(s: State, r: Run, u: Unit): { lot: string; qty: number | null; tag: string }[] {
+  if (u.lots?.length) { const own = u.lots.some((l) => !!l.tag); return u.lots.map((l) => ({ lot: l.lot, qty: l.qty, tag: l.tag ?? (own ? '' : u.ref) })) }
+  return [{ lot: r.lot, qty: CFG[r.dept].qty === 'none' ? null : unitQty(s, r, u), tag: u.ref }]
 }
-/** every lot a run has touched */
-const runLots = (s: State, r: Run) => new Set(r.units.length ? r.units.flatMap((u) => unitParts(s, r, u).map((p) => p.lot)) : [r.lot])
+/** every lot a run has touched: on its units, and while it runs, on the pallet being built and the lot being packed now */
+const runLots = (s: State, r: Run) => new Set([...(r.units.length ? r.units.flatMap((u) => unitParts(s, r, u).map((p) => p.lot)) : [r.lot]), ...(r.endedAt ? [] : [...(r.extra?.open?.parts.map((p) => p.lot) ?? []), ...(r.extra?.lotNow ? [r.extra.lotNow] : [])])])
 const round2 = (x: number) => Math.round(x * 100) / 100
 /** one lot of a code in the report: how many units carry it, how much, and what each shift made of it (the whole day's report) */
 export type LotLine = { lot: string; units: number; qty: number; byShift: [number, number] | null }
@@ -67,7 +70,7 @@ export function reportOf(s: State, date: string, now: number, f: ReportFilter = 
   const rowsOf = (k: 0 | 1 | 2) => kept.map((r) => rowOf(r, k)).filter((x) => x.here)
   const rows = rowsOf(shift), runs = rows.map((x) => x.r)
   // one line per unit; a pallet with two lots gives two lines, each with its lot and its cases
-  const unitRows = rows.flatMap((x) => x.parts.flatMap(({ u, i, all, kept: mine }) => mine.map((p) => ({ r: x.r, i, u, lot: p.lot, qty: p.qty, gap: x.st.unitTimes[i] ?? 0, mixed: all.length > 1, shift: shiftAt(plan, u.at), order: ((o) => (o ? orderLabel(o) : ''))(orderOfId(s, u.po)) })))).sort((a, b) => a.u.at - b.u.at)
+  const unitRows = rows.flatMap((x) => x.parts.flatMap(({ u, i, all, kept: mine }) => mine.map((p) => ({ r: x.r, i, u, lot: p.lot, qty: p.qty, tag: p.tag, gap: x.st.unitTimes[i] ?? 0, mixed: all.length > 1, shift: shiftAt(plan, u.at), order: ((o) => (o ? orderLabel(o) : ''))(orderOfId(s, u.po)) })))).sort((a, b) => a.u.at - b.u.at)
   // A line between two codes: what is left counting there is a stop only once the next code starts (see waitsForCode),
   // so while it waits it is on the line's card and not here: nobody working, nothing counting. And one that the first
   // code of another day of work closed (a tablet with an older version of the app) was not a set up either: the people
@@ -87,11 +90,11 @@ export function reportOf(s: State, date: string, now: number, f: ReportFilter = 
   const setupOf = (k: 0 | 1 | 2, dept?: Dept) => ofRuns.filter((x) => x.reason === SETUP && (!dept || x.dept === dept)).reduce((t, x) => t + inShift(x, k), 0)
   // the same code on several lines of a room, added up (with what each shift made of it, when the report is the whole day's)
   const each = shift ? null : ([rowsOf(1), rowsOf(2)] as const)
-  const codeKey = (r: Run) => r.dept + '|' + normCode(r.code)
+  const codeKey = (r: Run) => r.dept + '|' + normCode(r.code) + (binOf(r) ? '|bin|' + binOf(r) : '')
   const madeBy = (list: ReturnType<typeof rowsOf>, key: string) => list.filter((x) => codeKey(x.r) === key).reduce((t, x) => t + (CFG[x.r.dept].qty === 'none' ? x.units : x.qty), 0)
   const byCode = [...rows.reduce((m, x) => {
     const k = codeKey(x.r)
-    const e = m.get(k) ?? { dept: x.r.dept, code: x.r.code, units: 0, qty: 0, waste: 0, lines: [] as string[], byShift: (each ? [madeBy(each[0], k), madeBy(each[1], k)] : null) as [number, number] | null, lots: [] as LotLine[] }
+    const e = m.get(k) ?? { dept: x.r.dept, code: x.r.code, bin: binOf(x.r), units: 0, qty: 0, waste: 0, lines: [] as string[], byShift: (each ? [madeBy(each[0], k), madeBy(each[1], k)] : null) as [number, number] | null, lots: [] as LotLine[] }
     e.units += x.units; e.qty += x.qty; e.waste = round2(e.waste + x.waste)
     const line = lineNameOf(s, x.r.lineId, x.r.line)
     if (!e.lines.includes(line)) e.lines.push(line)
@@ -107,17 +110,19 @@ export function reportOf(s: State, date: string, now: number, f: ReportFilter = 
       if (l.byShift) l.byShift[shiftAt(plan, p.u.at) - 1] += n
     }
     return m.set(k, e)
-  }, new Map<string, { dept: Dept; code: string; units: number; qty: number; waste: number; lines: string[]; byShift: [number, number] | null; lots: LotLine[] }>()).values()].map((c) => ({ ...c, lots: c.lots.sort((a, b) => a.lot.localeCompare(b.lot)) }))
+  }, new Map<string, { dept: Dept; code: string; bin: string; units: number; qty: number; waste: number; lines: string[]; byShift: [number, number] | null; lots: LotLine[] }>()).values()].map((c) => ({ ...c, lots: c.lots.sort((a, b) => a.lot.localeCompare(b.lot)) }))
     // room by room in the order of the plant, and within a room code by code: the same on the screen and in every file
     .sort((a, b) => DEPTS.indexOf(a.dept) - DEPTS.indexOf(b.dept) || a.code.localeCompare(b.code, undefined, { numeric: true }))
   // the whole day first and each shift under it, room by room (each room counts in its own unit)
   const sum = (list: ReturnType<typeof rowsOf>, k: 0 | 1 | 2, dept: Dept) => {
     const mine = list.filter((x) => x.r.dept === dept)
+    // what a line made filling bins (platos, copas, pouches) is not cases nor pallets: told apart, word by word
+    const counted = mine.filter((x) => !binOf(x.r)), bins = [...mine.filter((x) => !!binOf(x.r)).reduce((m, x) => { const w = binOf(x.r), e = m.get(w) ?? { word: w, units: 0, qty: 0 }; e.units += x.units; e.qty += x.qty; return m.set(w, e) }, new Map<string, { word: string; units: number; qty: number }>()).values()].filter((b) => b.units > 0)
     // The clock time of the room: from its first code's start to its last code's end (in this shift, when it is one).
     // "working" and "down" are another thing: the sum of every line's time, so three lines for five hours are fifteen.
     const timed = mine.filter((x) => x.to > x.from)
     const from = timed.length ? Math.min(...timed.map((x) => x.from)) : 0, to = timed.length ? Math.max(...timed.map((x) => x.to)) : 0
-    return { shift: k, from, to, span: to - from, open: timed.some((x) => !x.r.endedAt && x.to >= now), distinct: new Set(mine.map((x) => normCode(x.r.code))).size, lines: new Set(mine.map((x) => x.r.lineId)).size, codes: mine.length, units: mine.reduce((t, x) => t + x.units, 0), qty: mine.reduce((t, x) => t + x.qty, 0), waste: round2(mine.reduce((t, x) => t + x.waste, 0)), working: mine.reduce((t, x) => t + x.st.working, 0), down: mine.reduce((t, x) => t + x.st.down, 0), setup: setupOf(k, dept) }
+    return { shift: k, from, to, span: to - from, open: timed.some((x) => !x.r.endedAt && x.to >= now), distinct: new Set(mine.map((x) => normCode(x.r.code))).size, lines: new Set(mine.map((x) => x.r.lineId)).size, codes: mine.length, units: counted.reduce((t, x) => t + x.units, 0), qty: counted.reduce((t, x) => t + x.qty, 0), bins, waste: round2(mine.reduce((t, x) => t + x.waste, 0)), working: mine.reduce((t, x) => t + x.st.working, 0), down: mine.reduce((t, x) => t + x.st.down, 0), setup: setupOf(k, dept) }
   }
   const here = DEPTS.filter((d) => rows.some((x) => x.r.dept === d))
   // (the day lasted what its two shifts lasted: the hours between one shift and the next are nobody's)
@@ -126,9 +131,23 @@ export function reportOf(s: State, date: string, now: number, f: ReportFilter = 
   const byDept = here.map((d) => ({ dept: d, ...(byShift.find((x) => x.dept === d)?.day ?? sum(rows, shift, d)) }))
   // what the lines were stopped for while they had a code, cause by cause: together they are the "Parado" total
   const reasons = [...rows.reduce((m, x) => { for (const [k, v] of Object.entries(x.st.reasons)) m.set(k, (m.get(k) ?? 0) + v); return m }, new Map<string, number>())].map(([reason, ms]) => ({ reason, ms })).filter((x) => x.ms > 0).sort((a, b) => b.ms - a.ms)
+  // Packing's pallets one by one: every lot each one holds with its cases and its tag, its total, and its order with its
+  // place among that order's pallets (3/12). The pallet a line is building is there too, while it is built (open).
+  // With a lot chosen, the pallets that hold it, whole.
+  const palletOf = (r: Run, n: number, at: number, parts: { lot: string; qty: number | null; tag: string }[], po: string | undefined, by: string, open: boolean) => {
+    const o = orderOfId(s, po), seq = o ? orderPallets(s, o.id, r.perUnit) : null
+    const of: [number, number | null] | null = seq ? [open ? seq.done.length + 1 : seq.done.indexOf(at) + 1, seq.need] : null
+    return { r, n, at, parts, total: parts.reduce((t, p) => t + (p.qty ?? 0), 0), order: o ? orderLabel(o) : '', of, shift: shiftAt(plan, at), by, open }
+  }
+  const pallets = rows.filter((x) => x.r.dept === 'Packing' && !binOf(x.r)).flatMap((x) => {
+    const done = x.view.units.map((u) => palletOf(x.r, x.r.units.indexOf(u) + 1, u.at, unitParts(s, x.r, u), u.po, u.by, false))
+    const o = x.r.endedAt ? null : x.r.extra?.open, last = o?.parts.length ? o.parts[o.parts.length - 1] : null
+    const building = o && last && (!lot || o.parts.some((p) => p.lot === lot)) && (!shift || o.parts.some((p) => shiftAt(plan, p.at) === shift)) ? [palletOf(x.r, x.r.units.length + 1, last.at, o.parts, palletPo(s, x.r), last.by, true)] : []
+    return [...done, ...building]
+  }).sort((a, b) => a.at - b.at)
   // a code is a product; a run is a code on a line from its start to its end (the same code on two lines is two runs)
   const distinct = new Set(rows.map((x) => normCode(x.r.code))).size, lines = new Set(rows.map((x) => x.r.lineId)).size
-  return { runs, rows, unitRows, stops, byCode, byShift, byDept, reasons, distinct, lines, working: rows.reduce((t, x) => t + x.st.working, 0), down: rows.reduce((t, x) => t + x.st.down, 0), setup: setupOf(shift), codes, lots, code, lot, shift, plan, filtered }
+  return { runs, rows, unitRows, pallets, stops, byCode, byShift, byDept, reasons, distinct, lines, working: rows.reduce((t, x) => t + x.st.working, 0), down: rows.reduce((t, x) => t + x.st.down, 0), setup: setupOf(shift), codes, lots, code, lot, shift, plan, filtered }
 }
 /** the words a filtered report carries in its title and in the name of its files */
 export const filterTitle = (code: string, lot: string, shift: 0 | 1 | 2 = 0) => (shift ? ' ' + tr('· Turno {0}', shift) : '') + (code ? ' ' + tr('· código {0}', code) : '') + (lot ? ' ' + tr('· lote {0}', lot) : '')

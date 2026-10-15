@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { applyDraft, byLineName, byShip, CFG, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, setUnitOrder, splitStop, updateRun, updateStop, type Run, type State, type Stop, lineLabel } from './store'
+import { applyDraft, byLineName, byShip, CFG, cfgOf, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, setUnitOrder, splitStop, updateRun, updateStop, type Run, type State, type Stop, lineLabel } from './store'
 import { clockNow } from './clock'
 import { ConfirmDialog, LotsDialog, useCan } from './App'
 import { tr } from './i18n'
@@ -16,7 +16,8 @@ const hm = (ms: number) => { const d = new Date(ms); return String(d.getHours())
  */
 export function RunEditor({ s, run, mgr, onClose }: { s: State; run: Run; mgr: boolean; onClose: () => void }) {
   const can = useCan()
-  const cfg = CFG[run.dept]
+  // a Packing line that filled bins is corrected in a bin's words; a pallet carries a tag for each of its lots
+  const cfg = cfgOf(run), tagsInLots = !!cfg.lots
   // how the form opened: saving applies only what was changed since, on top of what the run is by then
   const [opened] = useState(() => draftOf(run))
   const [code, setCode] = useState(opened.code)
@@ -64,13 +65,13 @@ export function RunEditor({ s, run, mgr, onClose }: { s: State; run: Run; mgr: b
         {units.length > 0 && (
           <div className="twrap">
             <table>
-              <thead><tr><th>#</th><th>{tr('Hora')}</th>{cfg.qty !== 'none' && <th>{cfg.qtyUnit}</th>}{cfg.lots && <th>{tr('Lotes')}</th>}{cfg.refLabel && <th>{cfg.refLabel}</th>}{withOrders && <th>{tr('Pedido')}</th>}<th>{tr('Por')}</th><th></th></tr></thead>
+              <thead><tr><th>#</th><th>{tr('Hora')}</th>{cfg.qty !== 'none' && <th>{cfg.qtyUnit}</th>}{cfg.lots && <th>{tr('Lotes y tags')}</th>}{cfg.refLabel && !tagsInLots && <th>{cfg.refLabel}</th>}{withOrders && <th>{tr('Pedido')}</th>}<th>{tr('Por')}</th><th></th></tr></thead>
               <tbody>{units.map((u, i) => (
                 <tr key={u.at + ':' + i}>
                   <td>{i + 1}</td><td>{fmtTime(u.at)}</td>
                   {cfg.qty !== 'none' && <td><input className="num" inputMode="numeric" value={u.qty} disabled={!!u.lots?.length} title={u.lots?.length ? tr('Es la suma de sus lotes') : ''} onChange={(e) => setUnits(units.map((x, k) => (k === i ? { ...x, qty: e.target.value.replace(/\D/g, '') } : x)))} /></td>}
-                  {cfg.lots && <td>{u.lots?.length ? lotsText(u.lots) : <small>{lot || '—'}</small>} <button type="button" className="lnk" title={tr('Cambiar los lotes de esta unidad')} onClick={() => setLotsOf(i)}>✎</button></td>}
-                  {cfg.refLabel && <td><input className="num" value={u.ref} onChange={(e) => setUnits(units.map((x, k) => (k === i ? { ...x, ref: e.target.value } : x)))} autoComplete="off" /></td>}
+                  {cfg.lots && <td>{u.lots?.length ? lotsText(u.lots) : <small>{(lot || '—') + (u.ref ? ' (tag ' + u.ref + ')' : '')}</small>} <button type="button" className="lnk" title={tr('Cambiar los lotes y los tags de esta unidad')} onClick={() => setLotsOf(i)}>✎</button></td>}
+                  {cfg.refLabel && !tagsInLots && <td><input className="num" value={u.ref} onChange={(e) => setUnits(units.map((x, k) => (k === i ? { ...x, ref: e.target.value } : x)))} autoComplete="off" /></td>}
                   {withOrders && (() => {
                     const po = run.units.find((x) => x.at === u.at)?.po, known = po && s.orders.some((o) => o.id === po) ? po : ''
                     return <td><select value={known} onChange={(e) => setUnitOrder(run.id, u.at, e.target.value)}><option value="">{tr('Sin pedido')}</option>{ordersFor(po).map((o) => <option key={o.id} value={o.id}>{orderLabel(o)}</option>)}</select></td>
