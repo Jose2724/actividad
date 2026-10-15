@@ -1118,7 +1118,7 @@ function PalletPanel({ s, run, saved, onDone, onLot, onPart, onOrder }: { s: Sta
   const open = run.extra?.open, parts = open?.parts ?? []
   const onIt = parts.reduce((t, p) => t + p.qty, 0), per = run.perUnit ?? 0
   const order = orderOfId(s, palletPo(s, run)), seq = order ? orderPallets(s, order.id, run.perUnit) : null
-  const offered = openOrdersFor(s, run.code).length > 0
+  const offered = openOrdersFor(s, run.code).length > 0, said = typeof open?.po === 'string'
   return (
     <div className="pallet">
       <div className="pal-head">
@@ -1128,7 +1128,7 @@ function PalletPanel({ s, run, saved, onDone, onLot, onPart, onOrder }: { s: Sta
       {per > 0 && <div className="bar"><i style={{ width: Math.min(100, Math.round((onIt / per) * 100)) + '%' }} /></div>}
       {(order || offered) && (
         <div className="pal-po">
-          <span>{order ? trx('Va para {0}{1}', <b>{orderLabel(order)}</b>, seq?.need ? <> · <b className="pof">{tr('pallet {0} de {1}', seq.done.length + 1, seq.need)}</b></> : '') : tr('Todavía sin PO')}</span>
+          <span>{order ? trx('Va para {0}{1}', <b>{orderLabel(order)}</b>, seq?.need ? <> · <b className="pof">{tr('pallet {0} de {1}', seq.done.length + 1, seq.need)}</b></> : '') : said ? tr('Este pallet va sin PO') : tr('Todavía sin PO')}</span>
           <button type="button" className="lnk sm" onClick={onOrder}>{order ? tr('Cambiar') : tr('Escoger PO')}</button>
         </div>
       )}
@@ -1145,9 +1145,15 @@ function PalletPanel({ s, run, saved, onDone, onLot, onPart, onOrder }: { s: Sta
   )
 }
 
-/** the orders open for a code, to choose from in a window: "Cliente · PO 123 · faltan 40 de 360 cajas" */
-function orderChoices(s: State, code: string) {
-  return openOrdersFor(s, code).map((o) => { const left = o.cases != null ? o.cases - orderMade(s, o.id) : null; return { id: o.id, label: orderLabel(o) + (left == null ? '' : left > 0 ? ' · ' + tr('faltan {0} de {1} cajas', fmtN(left), fmtN(o.cases ?? 0)) : ' · ' + tr('completo')) } })
+/**
+ * The POs open for a pallet's code, each with the place the pallet would have among its pallets: "Cliente Uno · PO
+ * 1001 · pallet 4 de 5". A PO counts only the pallets given to it: one that goes to another PO, or to none, is not added.
+ */
+function poChoices(s: State, run: Run) {
+  return openOrdersFor(s, run.code).map((o) => {
+    const seq = orderPallets(s, o.id, run.perUnit), n = seq.done.length + 1, left = o.cases != null ? o.cases - orderMade(s, o.id) : null
+    return { id: o.id, n, need: seq.need, label: orderLabel(o) + ' · ' + (left != null && left <= 0 ? tr('completo') : seq.need ? tr('pallet {0} de {1}', n, seq.need) : tr('pallet {0}', n)) }
+  })
 }
 
 /**
@@ -1158,15 +1164,17 @@ function PalletDoneDialog({ s, run, onClose, onSaved }: { s: State; run: Run; on
   const open = run.extra?.open, parts = open?.parts ?? []
   const per = run.perUnit ?? 0, onIt = parts.reduce((t, p) => t + p.qty, 0)
   const [rows, setRows] = useState(() => [...parts.map((p) => ({ lot: p.lot, qty: String(p.qty), tag: p.tag })), { lot: lotNowOf(run), qty: per > onIt ? String(per - onIt) : '', tag: '' }])
-  const choices = orderChoices(s, run.code)
-  const [po, setPo] = useState(() => palletPo(s, run))
+  // only an open PO can take the pallet: the one it was going to, unless the office closed it meanwhile
+  const choices = poChoices(s, run)
+  const [po, setPo] = useState(() => { const p = palletPo(s, run); return choices.some((x) => x.id === p) ? p : '' })
+  const pick = choices.find((x) => x.id === po)
   const change = (i: number, patch: Partial<(typeof rows)[number]>) => setRows(rows.map((r, k) => (k === i ? { ...r, ...patch } : r)))
   const nums = rows.map((r) => Number(r.qty || 0))
   const total = nums.reduce((t, n) => t + (Number.isFinite(n) && n > 0 ? n : 0), 0)
   // the last lot may have nothing (the pallet was full when a lot ran out); every other one has its cases
   const ok = total > 0 && rows.every((r, i) => !!r.lot.trim() && Number.isFinite(nums[i]) && (nums[i] > 0 || (i === rows.length - 1 && parts.length > 0)))
   const missing = rows.filter((r, i) => nums[i] > 0 && !r.tag.trim()).length
-  const save = () => { if (ok && palletDone(run.id, rows.map((r, i) => ({ lot: r.lot, qty: nums[i], tag: r.tag })), choices.length ? po : palletPo(s, run))) onSaved() }
+  const save = () => { if (ok && palletDone(run.id, rows.map((r, i) => ({ lot: r.lot, qty: nums[i], tag: r.tag })), po)) onSaved() }
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
@@ -1184,17 +1192,16 @@ function PalletDoneDialog({ s, run, onClose, onSaved }: { s: State; run: Run; on
           </div>
           <p className="lottotal">{trx('Total del pallet: {0} en {1}', <b>{fmtN(total)} {tr('cajas')}</b>, rows.filter((_, i) => nums[i] > 0).length === 1 ? tr('1 lote') : tr('{0} lotes', rows.filter((_, i) => nums[i] > 0).length))}{per > 0 && total !== per && <span className="amber"> {' '}{tr('· el pallet lleva {0}', fmtN(per))}</span>}</p>
           {choices.length > 0 && (
-            <label>{tr('PO de este pallet')}
-              <select value={po} onChange={(e) => setPo(e.target.value)}>
-                <option value="">{tr('Sin pedido')}</option>
-                {choices.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-              </select>
-            </label>
+            <div className="pochoice" role="group" aria-label={tr('¿Para qué PO es este pallet?')}>
+              <span className="lab">{tr('¿Para qué PO es este pallet?')}</span>
+              {choices.map((o) => <button key={o.id} type="button" className={'btn' + (po === o.id ? ' on' : '')} aria-pressed={po === o.id} onClick={() => setPo(o.id)}>{po === o.id ? '✓ ' : ''}{o.label}</button>)}
+              <button type="button" className={'btn' + (!po ? ' on' : '')} aria-pressed={!po} onClick={() => setPo('')}>{!po ? '✓ ' : ''}{tr('Sin PO')}</button>
+            </div>
           )}
           {missing > 0 && <p className="hint">{tr('Si todavía no tienen el tag, déjenlo en blanco: la tarjeta de la línea les recuerda ponerlo.')}</p>}
           <div className="dbtns">
             <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
-            <button type="submit" className="btn primary" disabled={!ok}>{tr('✓ Guardar pallet')}</button>
+            <button type="submit" className="btn primary" disabled={!ok}>{pick?.need ? tr('✓ Guardar pallet {0} de {1}', pick.n, pick.need) : tr('✓ Guardar pallet')}</button>
           </div>
         </form>
       </div>
@@ -1259,16 +1266,17 @@ function PartDialog({ run, index, onClose }: { run: Run; index: number; onClose:
 /** the PO the pallet being built goes to: every pallet of an order carries it */
 function PalletOrderDialog({ s, run, onClose }: { s: State; run: Run; onClose: () => void }) {
   const now = palletPo(s, run)
-  const choices = orderChoices(s, run.code)
+  const choices = poChoices(s, run)
   const pick = (id: string) => { palletOrder(run.id, id); onClose() }
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
         <h3>{tr('¿Para qué PO es este pallet?')}</h3>
         <div className="endchoices">
-          {choices.map((o) => <button key={o.id} type="button" className={'btn' + (o.id === now ? ' primary' : '')} onClick={() => pick(o.id)}>{o.label}</button>)}
-          <button type="button" className={'btn' + (!now ? ' primary' : '')} onClick={() => pick('')}>{tr('Sin pedido')}</button>
+          {choices.map((o) => <button key={o.id} type="button" className={'btn' + (o.id === now ? ' primary' : '')} onClick={() => pick(o.id)}>{o.id === now ? '✓ ' : ''}{o.label}</button>)}
+          <button type="button" className={'btn' + (!now ? ' primary' : '')} onClick={() => pick('')}>{!now ? '✓ ' : ''}{tr('Sin PO')}</button>
         </div>
+        <p className="hint">{tr('Cada PO cuenta solo los pallets que se le dan. Un pallet que va para otro PO, o sin PO, no se le suma.')}</p>
         <div className="dbtns"><button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button></div>
       </div>
     </div>

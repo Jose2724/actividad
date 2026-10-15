@@ -504,7 +504,7 @@ export function endRun(runId: string, setup = false) {
   // ends leaves no pallet half-recorded
   const open = r.extra?.open?.parts.length ? r.extra.open : null
   const units = open ? [...r.units, palletUnit(open.parts, typeof open.po === 'string' ? open.po : nextOrderFor(state, r), at)] : r.units
-  const extra = r.extra && open ? ((({ open: _o, ...rest }) => (Object.keys(rest).length ? rest : undefined))(r.extra)) : r.extra
+  const extra = r.extra?.open ? ((({ open: _o, ...rest }) => (Object.keys(rest).length ? rest : undefined))(r.extra)) : r.extra
   batch(() => {
     putRun({ ...r, units, endedAt: at, ...(r.dept === 'Packing' ? { extra } : {}) })
     if (setup && !state.stops.some((x) => x.lineId === r.lineId && !x.endedAt)) putStop({ id: uid(), dept: r.dept, lineId: r.lineId, reason: SETUP, note: AFTER + r.code, startedAt: at, endedAt: null, by: user.get(), updatedAt: 0 })

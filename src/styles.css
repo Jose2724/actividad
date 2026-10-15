@@ -620,6 +620,11 @@ table.shiftgrid tr.sep td{background:var(--bg);color:var(--muted);font-size:11px
 .palrow.head span{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
 .palrow b{font-size:17px;padding-left:4px}
 .palrow input{min-height:46px}
+/* the PO of a finished pallet, chosen with a tap: one button per open PO, with the number the pallet would have in it */
+.pochoice{display:grid;gap:8px}
+.pochoice .lab{font-size:13px;font-weight:600;color:var(--muted)}
+.pochoice .btn{min-height:50px;white-space:normal;text-align:left;padding:8px 14px;font-size:15px;line-height:1.25}
+.pochoice .btn.on{border-color:var(--accent);background:var(--soft);box-shadow:inset 0 0 0 1px var(--accent)}
 .lotrow label:nth-child(3){flex:1.2}
 /* the report: bins apart from the pallets, and each pallet with its lots and tags */
 .made.bins{background:var(--soft);color:var(--ink)}

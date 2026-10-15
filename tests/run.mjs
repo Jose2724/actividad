@@ -1916,6 +1916,24 @@ section('Packing: un pallet con varios lotes, cada lote con su tag; y las línea
     clock = oct(10, 8, 14); m.palletDone(run('A101').id, [{ lot: '6290', qty: 36, tag: '1900' }], small)
     eq('con el PO completo, el pallet que sigue ya no va para ese PO', [run('A101').extra, m.palletPo(st(), run('A101')), m.orderMade(st(), small)], [undefined, '', 36])
     clock = oct(10, 8, 16); m.endRun(run('A101').id, false); m.deleteRun(run('A101').id)
+    // what Jose asked on 2026-10-15: a PO of 5 pallets counts 1/5, 2/5...; if they go on with another PO, or with no
+    // PO, that pallet is not added to the first one, which goes on where it was when they come back to it
+    const five = m.saveOrder(null, { customer: 'Cliente Tres', po: '3001', code: 'A102', cases: 180, shipBy: '', dest: '' })
+    const three = m.saveOrder(null, { customer: 'Cliente Tres', po: '3002', code: 'A102', cases: 108, shipBy: '', dest: '' })
+    const done = (id) => { const q = m.orderPallets(st(), id, 36); return q.done.length + '/' + q.need }
+    clock = oct(10, 8, 18); m.startRun(l1, 'A102', '6291', DAY, 36)
+    const full = (po, tag) => { clock += 60_000; return m.palletDone(run('A102').id, [{ lot: '6291', qty: 36, tag }], po) }
+    full(five, '2001')
+    eq('el primer pallet del PO de 5 es el 1/5, y el siguiente se propone para el mismo PO', [done(five), done(three), m.palletPo(st(), run('A102'))], ['1/5', '0/3', five])
+    m.palletOrder(run('A102').id, three); full(three, '2002')
+    eq('si ponen el siguiente para otro PO, cuenta en ese otro y no en el primero', [done(five), done(three), m.palletPo(st(), run('A102'))], ['1/5', '1/3', three])
+    m.palletOrder(run('A102').id, ''); full('', '2003')
+    eq('un pallet sin PO no se suma a ninguno, y el que sigue tampoco se va solo para un PO', [done(five), done(three), m.palletPo(st(), run('A102'))], ['1/5', '1/3', ''])
+    m.palletOrder(run('A102').id, five); full(five, '2004')
+    eq('y al volver al primer PO, sigue donde iba: 2/5', [done(five), done(three), run('A102').units.map((u) => u.po === five ? 'five' : u.po === three ? 'three' : 'none')], ['2/5', '1/3', ['five', 'three', 'none', 'five']])
+    clock += 60_000; m.endRun(run('A102').id, false)
+    eq('un código que termina no deja pallet a medias', run('A102').extra, undefined)
+    m.deleteRun(run('A102').id)
     eq('terminado el código, el lote que iba a seguir ya no sale en el filtro', m.reportOf(st(), DAY, clock, { only: 'Packing' }).lots.includes('6288'), false)
     // the tag of 6286 on the first pallet, written once the pallet was finished: it goes on that lot, and to the history
     clock = oct(10, 8, 20)
