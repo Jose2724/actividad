@@ -959,7 +959,7 @@ function PlanCard({ s, dept, date, mgr }: { s: State; dept: Dept; date: string; 
                   <td><b className="code">{r.code}</b>{r.name && <small className="pname">{r.name}</small>}{r.running && <span className="pill run">● {r.lines.map(lineLabel).join(', ')}</span>}</td>
                   <td className="num">{fmtN(r.planned)}</td><td className="num turn">{fmtN(r.byShift[0])}</td><td className="num turn">{fmtN(r.byShift[1])}</td><td className="num"><b>{fmtN(r.done)}</b></td>
                   <td className={'num ' + (r.left <= 0 ? 'ok' : 'left')}>{r.left > 0 ? fmtN(r.left) : tr('✓ completo') + (r.left < 0 ? ' (+' + fmtN(-r.left) + ')' : '')}</td>
-                  <td className="planbar"><div className="bar"><i className={pct >= 100 ? 'ok' : ''} style={{ width: pct + '%' }} /></div><small>{pct}%</small></td>
+                  <td className="planbar"><div className="bar"><i className={pct >= 100 ? 'ok' : 'pend'} style={{ width: pct + '%' }} /></div><small>{pct}%</small></td>
                 </tr>
               )
             })}</tbody>

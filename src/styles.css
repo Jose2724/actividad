@@ -567,7 +567,8 @@ table.shiftgrid tr.sep td{background:var(--bg);color:var(--muted);font-size:11px
 .plan th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;text-align:left;padding:4px 8px;white-space:nowrap}
 .plan td{padding:8px;border-top:1px solid var(--line);vertical-align:middle}
 .plan th.num,.plan td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
-.plan td.left{font-weight:800;color:var(--ink)}
+.plan td.left{font-weight:800;color:var(--warn)}
+.plan td.planbar .bar i.pend{background:var(--warn)}
 .plan td.ok{color:var(--ok);font-weight:700}
 .plan b.code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:16px}
 .plan .pname{display:block;color:var(--muted);font-size:12px;font-weight:500}
