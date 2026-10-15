@@ -508,6 +508,9 @@ export function endRun(runId: string, setup = false) {
   batch(() => {
     putRun({ ...r, units, endedAt: at, ...(r.dept === 'Packing' ? { extra } : {}) })
     if (setup && !state.stops.some((x) => x.lineId === r.lineId && !x.endedAt)) putStop({ id: uid(), dept: r.dept, lineId: r.lineId, reason: SETUP, note: AFTER + r.code, startedAt: at, endedAt: null, by: user.get(), updatedAt: 0 })
+    // a set up begun while the code ran: with another code coming it goes on until that one starts; with nothing more
+    // today it ends with the code, so nothing is left counting
+    if (!setup) for (const x of state.stops.filter((y) => y.lineId === r.lineId && !y.endedAt && y.reason === SETUP)) putStop({ ...x, endedAt: Math.max(at, x.startedAt) })
   })
 }
 // ---- the pallet being built on a Packing line ----
@@ -581,8 +584,9 @@ export function orderPallets(s: State, orderId: string, perPallet?: number | nul
   return { done, need: o?.cases != null && per > 0 ? Math.ceil(o.cases / per) : null }
 }
 /**
- * The line is put in set up by hand, while it has no code running: the same stop that ending a code opens. (With a
- * code running, "Set up" is one of the reasons of "Parar".) It ends with "Terminar", or when the next code starts.
+ * The line is put in set up by hand, while it has no code running: the same stop that ending a code opens. It ends
+ * with "Terminar", or when the next code starts. (With a code running, its "Set up" button opens one with startStop,
+ * and so does "Set up" among the reasons of "Parar": the code goes on, and the set up is counted apart.)
  */
 export function startSetup(line: Line) {
   const at = clockNow()
@@ -700,6 +704,16 @@ export function startStop(dept: Dept, lineId: string | null, reason: string, not
 }
 const stop = (id: string) => state.stops.find((x) => x.id === id)
 export function endStop(id: string) { const x = stop(id); if (x) putStop({ ...x, endedAt: Math.max(clockNow(), x.startedAt) }) }
+/** a line stopped for one cause goes on to its set up: the stop ends and the set up starts at the same moment */
+export function switchToSetup(id: string) {
+  const x = stop(id)
+  if (!x || x.endedAt || x.lineId === null || x.reason === SETUP) return
+  const at = Math.max(clockNow(), x.startedAt)
+  batch(() => {
+    putStop({ ...x, endedAt: at })
+    putStop({ id: uid(), dept: x.dept, lineId: x.lineId, reason: SETUP, note: '', startedAt: at, endedAt: null, by: user.get(), updatedAt: 0 })
+  })
+}
 export function updateStop(id: string, patch: Partial<Pick<Stop, 'reason' | 'note' | 'startedAt' | 'endedAt'>>) {
   const x = stop(id)
   if (!x) return
@@ -986,13 +1000,16 @@ export function runInShift(s: State, r: Run, now: number, h: ShiftHours, shift: 
   const stops = stopsOf(s, r.dept, r.lineId), end = r.endedAt ?? now, away = awayOn(s, r.lineId, r.date, r.startedAt, end, now)
   const mine = shiftPieces(h, r.startedAt, end).filter((x) => x.shift === shift).flatMap((x) => without(x.from, x.to, away))
   const reasons: Record<string, number> = {}
-  let working = 0, down = 0
+  let working = 0, down = 0, setup = 0
   for (const w of mine) {
     working += activeBetween(w.from, w.to, stops, now)
-    for (const x of stoppedPieces(w.from, w.to, stops, now)) { down += x.to - x.from; reasons[x.reason] = (reasons[x.reason] ?? 0) + (x.to - x.from) }
+    for (const x of stoppedPieces(w.from, w.to, stops, now)) {
+      if (x.reason === SETUP) setup += x.to - x.from
+      else { down += x.to - x.from; reasons[x.reason] = (reasons[x.reason] ?? 0) + (x.to - x.from) }
+    }
   }
   // from / to = the first and the last moment of the run that count in this shift (0 when none does)
-  return { working, down, reasons, total: mine.reduce((t, w) => t + (w.to - w.from), 0), touched: mine.length > 0, from: mine.length ? mine[0].from : 0, to: mine.length ? mine[mine.length - 1].to : 0 }
+  return { working, down, setup, reasons, total: mine.reduce((t, w) => t + (w.to - w.from), 0), touched: mine.length > 0, from: mine.length ? mine[0].from : 0, to: mine.length ? mine[mine.length - 1].to : 0 }
 }
 // ---- the day of work ----
 const DAY_REF = 'act_days'
@@ -1658,14 +1675,17 @@ export function runStats(s: State, r: Run, now: number) {
   const there = (a: number, b: number) => (away.length ? without(a, b, away) : b > a ? [{ from: a, to: b }] : [])
   const worked = (a: number, b: number) => there(a, b).reduce((t, x) => t + activeBetween(x.from, x.to, stops, now), 0)
   const working = worked(r.startedAt, end)
+  // a set up while the code runs is not working and not stopped either: it is counted apart (setup), and the time
+  // stopped (down) and its causes are the rest
   const pieces = there(r.startedAt, end).flatMap((x) => stoppedPieces(x.from, x.to, stops, now))
-  const down = pieces.reduce((t, p) => t + (p.to - p.from), 0)
+  const down = pieces.filter((p) => p.reason !== SETUP).reduce((t, p) => t + (p.to - p.from), 0)
+  const setup = pieces.filter((p) => p.reason === SETUP).reduce((t, p) => t + (p.to - p.from), 0)
   const unitTimes = r.units.map((u, i) => worked(i ? r.units[i - 1].at : r.startedAt, u.at))
   const avg = unitTimes.length ? unitTimes.reduce((a, b) => a + b, 0) / unitTimes.length : 0
   const qty = runQty(s, r)
   const reasons: Record<string, number> = {}
-  for (const p of pieces) reasons[p.reason] = (reasons[p.reason] ?? 0) + (p.to - p.from)
-  return { working, down, unitTimes, avg, qty, reasons, total: end - r.startedAt }
+  for (const p of pieces) if (p.reason !== SETUP) reasons[p.reason] = (reasons[p.reason] ?? 0) + (p.to - p.from)
+  return { working, down, setup, unitTimes, avg, qty, reasons, total: end - r.startedAt }
 }
 /**
  * A run as the shift in course sees it. A code that came running from the shift before (`carried`) is not this
@@ -1675,17 +1695,19 @@ export function runStats(s: State, r: Run, now: number) {
  */
 export function runSince(s: State, r: Run, since: number, now: number) {
   const whole = runStats(s, r, now)
-  if (r.startedAt >= since) return { carried: false, units: r.units.length, qty: whole.qty, working: whole.working, down: whole.down, avg: whole.avg, before: { units: 0, qty: 0 } }
+  if (r.startedAt >= since) return { carried: false, units: r.units.length, qty: whole.qty, working: whole.working, down: whole.down, setup: whole.setup, avg: whole.avg, before: { units: 0, qty: 0 } }
   const stops = stopsOf(s, r.dept, r.lineId), end = r.endedAt ?? now, from = Math.min(since, end)
   const away = awayOn(s, r.lineId, r.date, from, end, now)
   const worked = (a: number, b: number) => without(a, b, away).reduce((t, x) => t + activeBetween(x.from, x.to, stops, now), 0)
-  const down = without(from, end, away).flatMap((x) => stoppedPieces(x.from, x.to, stops, now)).reduce((t, p) => t + (p.to - p.from), 0)
+  const pieces = without(from, end, away).flatMap((x) => stoppedPieces(x.from, x.to, stops, now))
+  const down = pieces.filter((p) => p.reason !== SETUP).reduce((t, p) => t + (p.to - p.from), 0)
+  const setup = pieces.filter((p) => p.reason === SETUP).reduce((t, p) => t + (p.to - p.from), 0)
   const mine = r.units.map((u, i) => ({ u, i })).filter((x) => x.u.at >= since)
   const qty = mine.reduce((t, x) => t + unitQty(s, r, x.u), 0)
   // its first unit of this shift is timed from the hand-over, not from the last unit of the shift before
   const times = mine.map((x) => worked(Math.max(x.i ? r.units[x.i - 1].at : r.startedAt, since), x.u.at))
   const avg = times.length ? times.reduce((a, b) => a + b, 0) / times.length : 0
-  return { carried: true, units: mine.length, qty, working: worked(from, end), down, avg, before: { units: r.units.length - mine.length, qty: whole.qty - qty } }
+  return { carried: true, units: mine.length, qty, working: worked(from, end), down, setup, avg, before: { units: r.units.length - mine.length, qty: whole.qty - qty } }
 }
 /** "2 carros · 240 pouches": so many units and what they carry, in the department's own words */
 export function unitsText(dept: Dept, units: number, qty: number, c: DeptCfg = CFG[dept]) {

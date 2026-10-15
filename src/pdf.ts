@@ -85,9 +85,9 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
   }
   autoTable(doc, {
     startY: top, theme: 'grid', styles: { font: 'helvetica', fontSize: 9, cellPadding: 5, textColor: [22, 32, 42] }, headStyles: { fillColor: teal, textColor: 255, fontStyle: 'bold' },
-    head: [[tr('Depto'), tr('Línea'), tr('Código'), tr('Lote'), ...(sh ? [tr('Turno')] : []), tr('Inicio'), tr('Fin'), tr('Hecho'), tr('Waste lb'), tr('Trabajando'), tr('Prom. / unidad'), tr('Parado'), tr('Razones de paro'), tr('Registró')]],
-    body: rows.map((x) => [x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.lots, ...(sh ? [x.shifts] : []), fmtTime(x.r.startedAt), x.r.endedAt ? fmtTime(x.r.endedAt) : tr('en curso'), madeText(x.view, x.qty, true), x.waste ? String(x.waste) : '—', fmtDur(x.st.working), x.timed ? fmtDur(x.st.avg) : '—', fmtDur(x.st.down), Object.entries(x.st.reasons).map(([k, v]) => tr(k) + ' ' + fmtDur(v)).join(', ') || '—', whoText(x.r)]),
-    foot: [[tr('Total'), '', '', '', ...(sh ? [''] : []), '', '', '', String(Math.round(rows.reduce((t, x) => t + (x.waste || 0), 0) * 100) / 100), fmtDur(working), '', fmtDur(down), '', '']], footStyles: { fillColor: [243, 246, 249], textColor: [22, 32, 42], fontStyle: 'bold' },
+    head: [[tr('Depto'), tr('Línea'), tr('Código'), tr('Lote'), ...(sh ? [tr('Turno')] : []), tr('Inicio'), tr('Fin'), tr('Hecho'), tr('Waste lb'), tr('Trabajando'), tr('Prom. / unidad'), tr('Parado'), 'Set up', tr('Razones de paro'), tr('Registró')]],
+    body: rows.map((x) => [x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.lots, ...(sh ? [x.shifts] : []), fmtTime(x.r.startedAt), x.r.endedAt ? fmtTime(x.r.endedAt) : tr('en curso'), madeText(x.view, x.qty, true), x.waste ? String(x.waste) : '—', fmtDur(x.st.working), x.timed ? fmtDur(x.st.avg) : '—', fmtDur(x.st.down), x.st.setup ? fmtDur(x.st.setup) : '—', Object.entries(x.st.reasons).map(([k, v]) => tr(k) + ' ' + fmtDur(v)).join(', ') || '—', whoText(x.r)]),
+    foot: [[tr('Total'), '', '', '', ...(sh ? [''] : []), '', '', '', String(Math.round(rows.reduce((t, x) => t + (x.waste || 0), 0) * 100) / 100), fmtDur(working), '', fmtDur(down), rep.setup ? fmtDur(rep.setup) : '—', '', '']], footStyles: { fillColor: [243, 246, 249], textColor: [22, 32, 42], fontStyle: 'bold' },
   })
   // Packing's pallets one by one: the lots each one holds with their cases and their tag, its total and its PO (2/12)
   if (rep.pallets.length) {

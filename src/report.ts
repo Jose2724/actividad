@@ -50,7 +50,7 @@ export function reportOf(s: State, date: string, now: number, f: ReportFilter = 
     const qty = lot ? parts.reduce((t, x) => t + x.kept.reduce((a, p) => a + (p.qty ?? 0), 0), 0) : k ? mine.reduce((t, x) => t + unitQty(s, r, x.u), 0) : whole.qty
     // one shift: the time the run worked and was stopped in it, and the average of the units it recorded in it
     const sh = k ? runInShift(s, r, now, plan, k) : null
-    const st = sh ? { ...whole, working: sh.working, down: sh.down, reasons: sh.reasons, total: sh.total, qty, avg: mine.length ? mine.reduce((t, x) => t + (whole.unitTimes[x.i] ?? 0), 0) / mine.length : 0 } : whole
+    const st = sh ? { ...whole, working: sh.working, down: sh.down, setup: sh.setup, reasons: sh.reasons, total: sh.total, qty, avg: mine.length ? mine.reduce((t, x) => t + (whole.unitTimes[x.i] ?? 0), 0) / mine.length : 0 } : whole
     // waste has no hour of its own: a run that passes from one shift to the other splits it by what each one made
     // (by the time each one had it, while it has made nothing)
     const made = (list: Unit[]) => list.reduce((t, u) => t + (CFG[r.dept].qty === 'none' ? 1 : unitQty(s, r, u)), 0)

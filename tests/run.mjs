@@ -1282,11 +1282,24 @@ man.use((m) => {
   eq('y pararlo a mano: queda como un paro de 15 minutos', [open().length, st().stops.map((x) => [x.reason, (x.endedAt - x.startedAt) / M])], [0, [['Set up', 15]]])
   clock = T0 + 20 * M; m.startRun(line, 'A100', '6283', DAY, 240)
   m.startSetup(line)
-  eq('con un código corriendo no se pone así (para eso está "Parar" con la razón Set up)', open().length, 0)
+  eq('con un código corriendo no se pone así (para eso está su botón "Set up", y la razón Set up de "Parar")', open().length, 0)
   clock = T0 + 30 * M; m.startStop('RTE', line.id, 'Set up', '')
   clock = T0 + 40 * M; m.endStop(open()[0].id)
-  eq('un Set up puesto con "Parar" mientras corre cuenta como parado de ese código', [m.runStats(st(), st().runs[0], clock).down / M, m.runStats(st(), st().runs[0], clock).reasons], [10, { 'Set up': 10 * M }])
+  // what Jose asked on 2026-10-15: a set up is never shown as a stop. While the code runs it is not working time and
+  // not stopped time either: it is counted apart, as the set up of that code
+  const sx = () => m.runStats(st(), st().runs[0], clock)
+  eq('un Set up puesto mientras corre el código no es parado: cuenta aparte, como Set up de ese código', [sx().down / M, sx().setup / M, sx().reasons, sx().working / M], [0, 10, {}, 10])
+  // a stop that turns out to be a set up goes on as a set up, from that moment
+  clock = T0 + 42 * M; m.startStop('RTE', line.id, 'Problema mecánico', '')
+  clock = T0 + 45 * M; m.switchToSetup(open()[0].id)
+  eq('un paro que resulta ser Set up se pasa a Set up en un toque: el paro termina y el Set up empieza ahí', open().map((x) => [x.reason, (x.startedAt - T0) / M]), [['Set up', 45]])
+  clock = T0 + 48 * M
+  eq('y cada tiempo queda en lo suyo: 3 minutos parado por problema mecánico, 13 de Set up', [sx().down / M, sx().setup / M, sx().reasons], [3, 13, { 'Problema mecánico': 3 * M }])
+  const inShift = m.runInShift(st(), st().runs[0], clock, m.shiftsOf(st(), DAY), 2) // 3:20 PM on: the second shift
+  eq('igual en el turno', [inShift.down / M, inShift.setup / M, inShift.reasons], [3, 13, { 'Problema mecánico': 3 * M }])
+  // the code ends with nothing more today: the set up begun while it ran ends with it, nothing is left counting
   clock = T0 + 50 * M; m.endRun(st().runs[0].id, false)
+  eq('si el código termina sin nada más por hoy, el Set up que corría termina con él', [open().length, st().stops.filter((x) => x.reason === 'Set up').map((x) => (x.endedAt - T0) / M)], [0, [15, 40, 50]])
   m.startSetup(line)
   eq('puesto a mano después de un código, dice después de cuál', open().map((x) => x.note), ['Después de A100'])
 })
