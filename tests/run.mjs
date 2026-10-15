@@ -2040,6 +2040,47 @@ section('Empezar Set up nunca se queda sin hacer nada')
     eq('el que está en la tarjeta sigue: tocarlo otra vez no abre otro', open(l.id).length, 1)
   })
 }
+section('Avance: cada código lo empaca RTE o MFO, nunca los dos; y se puede ver un solo lote')
+{
+  // what Jose was told on 2026-10-15: some codes only MFO makes and others only RTE ("el 30094 lo hace MFO"), and the
+  // office's daily sheets list each code under the RTE ROOM or under the MFO SUMMARY. A code MFO packs cannot show
+  // RTE pouches to make; it shows MFO's cases. And Avance can be looked at for one lot.
+  const av = await device('av', { user: 'Oficina', usual: true })
+  av.use((m) => {
+    const st = () => m.store.get(), row = (code, lot) => m.avanceRows(st(), '2026-10-20', undefined, lot).find((r) => r.code === code)
+    m.mergeProducts([{ code: 'M500', name: 'Pollo asado', pouchesPerCase: 8, casesPerMix: 25, cratesPerCart: 0, pouchesPerCrate: 0, casesPerPallet: 40, room: 'MFO', updatedAt: 0 }, { code: 'R600', name: 'Albóndigas', pouchesPerCase: 8, casesPerMix: 18.5, cratesPerCart: 24, pouchesPerCrate: 10, casesPerPallet: 36, updatedAt: 0 }])
+    m.setSchedule('2026-10-20', 'M500', 4); m.setSchedule('2026-10-20', 'R600', 2)
+    const add = (id, dept, code, lot, units, extra = {}) => m.applyRemote('act_runs', { id, dept, line_id: dept + '1', line: 'Línea 1', code, lot, date: '2026-10-20', started_at: new Date(oct(20, 7, 0)).toISOString(), ended_at: new Date(oct(20, 12, 0)).toISOString(), units, per_unit: null, waste: 0, by_name: 'Luis', deleted: false, updated_at: new Date(oct(20, 12, 0)).toISOString(), ...extra })
+    const u = (h, qty, ref = '', lots) => ({ at: oct(20, h, 0), qty, ref, by: 'Luis', ...(lots ? { lots } : {}) })
+    add('k1', 'Kitchen', 'M500', '6293', [u(8, null), u(9, null)])
+    add('k2', 'Kitchen', 'R600', '6293', [u(8, null), u(9, null)])
+    add('mf', 'MFO', 'M500', '6293', [u(10, 30, '1')])
+    add('rt', 'RTE', 'R600', '6293', [u(10, 240)])
+    add('pk', 'Packing', 'M500', '6292', [u(11, 40, '1900', [{ lot: '6292', qty: 15 }, { lot: '6293', qty: 25 }])], { per_unit: 40 })
+    const a = row('M500'), b = row('R600')
+    eq('un código que la tabla dice que empaca MFO: RTE no tiene nada que hacer con él, y MFO espera las cajas de sus mezclas', [a.packRoom, a.packSaid, a.pouchesPlan, a.pouchesExp, a.mfoPlan, a.mfoExp, a.mfoCases, m.pending(a.mfoExp, a.mfoCases)], ['MFO', true, null, null, 100, 50, 30, 20])
+    eq('y uno de RTE, al revés: MFO no espera nada de él', [b.packRoom, b.pouchesPlan, b.pouchesExp, b.mfoPlan, b.mfoExp], ['RTE', 296, 296, null, null])
+    // with nothing in the table, the room that has registered the code says it
+    m.applyRemote('act_runs', { id: 'mf2', dept: 'MFO', line_id: 'MFO1', line: 'Línea 1', code: 'Q700', lot: '6293', date: '2026-10-20', started_at: new Date(oct(20, 7, 0)).toISOString(), ended_at: null, units: [u(9, 20, '2')], per_unit: null, waste: 0, by_name: 'Luis', deleted: false, updated_at: new Date(oct(20, 9, 0)).toISOString() })
+    eq('un código sin "Lo empaca" en la tabla: lo decide el cuarto que lo ha registrado', [m.packRoomOf(st(), 'Q700'), m.packRoomOf(st(), 'Z999')], [{ room: 'MFO', said: false }, { room: 'RTE', said: false }])
+    // one lot: the mezclas, bins and cases of that lot; a pallet with two lots gives the cases of the one chosen
+    eq('los lotes del día, también los de un pallet con dos', m.avanceLots(st(), '2026-10-20'), ['6292', '6293'])
+    const l3 = row('M500', '6293'), l2 = row('M500', '6292')
+    eq('con un lote: lo hecho de ese lote, sin el programa del día (que no es por lote)', [l3.scheduled, l3.mixesDone, l3.mfoCases, l3.casesDone, l3.palletsDone, l3.mfoPlan, l3.mfoExp], [0, 2, 30, 25, 1, null, 50])
+    eq('y el otro lote del mismo pallet: sus 15 cajas, y ninguna mezcla de ese día', [l2.mixesDone, l2.casesDone, l2.palletsDone, l2.mfoCases], [0, 15, 1, 0])
+    eq('un código que no tocó ese lote no sale', m.avanceRows(st(), '2026-10-20', undefined, '6292').map((r) => r.code), ['M500'])
+    // the office's file can say which room packs each code; one that does not say it leaves what the table had
+    const csv = 'Código,Producto,Lo empaca\nR600,Albóndigas,RTE\nM500,Pollo asado,mfo\nX1,Otro,\n'
+    eq('el CSV de productos lee "Lo empaca"', m.parseProductsCsv(csv).map((p) => [p.code, p.room ?? '']), [['R600', 'RTE'], ['M500', 'MFO'], ['X1', '']])
+    m.mergeProducts([{ code: 'M500', name: '', pouchesPerCase: 0, casesPerMix: 0, cratesPerCart: 0, pouchesPerCrate: 0, casesPerPallet: 0, updatedAt: 0 }])
+    eq('un archivo sin esa columna no le quita a un producto ni su cuarto ni sus números', [m.productOf(st(), 'M500').room, m.productOf(st(), 'M500').casesPerMix], ['MFO', 25])
+    eq('y lo que la app exporta se vuelve a leer con su cuarto', m.parseProductsCsv(m.productsCsv(st().products)).filter((p) => p.code === 'M500').map((p) => p.room), ['MFO'])
+    const sent = m.outbox.items().filter((i) => i.table === 'act_products').map((i) => i.row).find((x) => x.code === 'M500')
+    eq('sube al servidor con su cuarto', sent.room, 'MFO')
+    // waste: every room has it now (it was RTE's only)
+    eq('el waste está en todos los departamentos', m.DEPTS.map((d) => !!m.CFG[d].waste), [true, true, true, true, true])
+  })
+}
 section('Set up: espera al código siguiente; con las líneas vacías no corre nada')
 {
   const wai = await device('wai', { user: 'Santiago', usual: true })

@@ -13,25 +13,31 @@ const ERRORS: Record<string, string> = {
 }
 
 const ROLE: Record<string, string> = { op: tr('Operador'), mgr: tr('Manager'), office: tr('Oficina') }
+/** for the search: no capitals and no accents ("José" is found typing "jose") */
+const plain = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+/** the letters of the round badge: "Juan Pérez" gives "JP" */
+const initials = (name: string) => name.trim().split(/\s+/).slice(0, 2).map((w) => w[0] ?? '').join('').toUpperCase() || '?'
+type RoleFilter = 'all' | 'op' | 'mgr' | 'office' | 'none'
 
 /**
- * The manager's people screen: who may use Actividad, with what role and department; new accounts with their PIN.
- * meId / admin = who is looking (their row in employees, and whether they are a Freezer RTE admin): a row only shows
- * what that person may really do to it (see rowRights).
+ * The manager's people screen: who may use Actividad, with what role and department. Each person is one row; "Editar"
+ * opens everything about them in one window: the name or the username typed wrong, a new PIN, the role and the
+ * department, their powers and shift, and turning the account off. New accounts are made in a window too.
+ * meId / admin = who is looking (their row in employees, and whether they are a Freezer RTE admin): a row only offers
+ * what that person may really do to it (see rowRights; the server checks it again).
  */
 export function Employees({ meId, admin }: { meId: string; admin: boolean }) {
   const [list, setList] = useState<Emp[] | null>(null)
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
-  const [form, setForm] = useState({ name: '', username: '', pin: '', act_role: 'op', act_dept: 'RTE' })
-  const [pinFor, setPinFor] = useState<Emp | null>(null)
-  const [newPin, setNewPin] = useState('')
-  const [toggle, setToggle] = useState<Emp | null>(null)
+  const [q, setQ] = useState('')
+  const [roleF, setRoleF] = useState<RoleFilter>('all')
+  const [deptF, setDeptF] = useState('')
+  const [creating, setCreating] = useState(false)
+  const [editing, setEditing] = useState<Emp | null>(null)
   // powers and shift per person: there once the database has their columns (null = not known yet)
   const [hasPowers, setHasPowers] = useState<boolean | null>(null)
   const [powersFor, setPowersFor] = useState<Emp | null>(null)
-  const [picked, setPicked] = useState<Power[]>([])
-  const [shift, setShift] = useState(0)
   const load = async () => {
     const cols = 'id, user_id, name, username, role, active, act_role, act_dept, deleted'
     const ask = async (c: string) => { const r = await supabase!.from('employees').select(c).order('name'); return { data: r.data as unknown as Emp[] | null, error: r.error } }
@@ -44,91 +50,188 @@ export function Employees({ meId, admin }: { meId: string; admin: boolean }) {
     setList((data ?? []).filter((e) => !e.deleted))
   }
   useEffect(() => { void load() }, [])
-  const call = async (body: Record<string, unknown>) => {
-    setBusy(true); setMsg('')
+  /** one request to the server's people function; '' = done, else what went wrong in words */
+  const call = async (body: Record<string, unknown>): Promise<string> => {
+    setBusy(true)
     const { data, error } = await supabase!.functions.invoke('act-users', { body })
     setBusy(false)
     const err = error ? (await errText(error)) : (data as { error?: string })?.error
-    if (err) { setMsg(ERRORS[err] ?? err); return false }
-    await load(); return true
+    return err ? ERRORS[err] ?? err : ''
   }
+  const all = list ?? []
+  const needle = plain(q.trim())
+  const shown = all
+    .filter((e) => !needle || plain(e.name).includes(needle) || plain(e.username ?? '').includes(needle))
+    .filter((e) => roleF === 'all' || (roleF === 'none' ? !e.act_role : e.act_role === roleF))
+    .filter((e) => !deptF || (e.act_role === 'op' && e.act_dept === deptF))
+    // the people in use first, each group by name
+    .sort((a, b) => Number(b.active) - Number(a.active) || a.name.localeCompare(b.name))
+  const count = (f: RoleFilter) => all.filter((e) => f === 'all' || (f === 'none' ? !e.act_role : e.act_role === f)).length
+  const chips: [RoleFilter, string][] = [['all', tr('Todos')], ['op', tr('Operadores')], ['mgr', tr('Managers')], ['office', tr('Oficina')], ['none', tr('Sin acceso')]]
+  const filtered = !!needle || roleF !== 'all' || !!deptF
   return (
     <section className="report emps">
-      <div className="rhead"><h2>{tr('Empleados')}</h2></div>
-      <p className="hint">{trx('Los mismos usuarios y PIN que Freezer RTE. {0} solo ve su departamento; {1} ve todo y corrige; {2} ve todo y lleva productos y programa. Sin rol = no entra a Actividad.', <b>{tr('Operador')}</b>, <b>{tr('Manager')}</b>, <b>{tr('Oficina')}</b>)}</p>
+      <div className="emphead">
+        <div><h2>{tr('Empleados')}</h2><small>{list ? (filtered ? tr('Se ven {0} de {1}', shown.length, all.length) : all.length === 1 ? tr('1 persona') : tr('{0} personas', all.length)) : tr('Cargando…')}</small></div>
+        <button type="button" className="btn primary" onClick={() => setCreating(true)}>{tr('+ Nuevo usuario')}</button>
+      </div>
+      <div className="emptools">
+        <div className="empsearch">
+          <input type="search" placeholder={tr('Buscar por nombre o usuario')} value={q} onChange={(e) => setQ(e.target.value)} autoComplete="off" autoCapitalize="none" aria-label={tr('Buscar por nombre o usuario')} />
+          {q && <button type="button" className="lnk" aria-label={tr('Borrar la búsqueda')} onClick={() => setQ('')}>✕</button>}
+        </div>
+        <div className="chips">{chips.map(([k, label]) => <button key={k} type="button" className={'chip sm' + (roleF === k ? ' on' : '')} aria-pressed={roleF === k} onClick={() => setRoleF(k)}>{label} <small>{count(k)}</small></button>)}</div>
+        <label className="empdept"><span>{tr('Departamento')}</span><select value={deptF} onChange={(e) => setDeptF(e.target.value)}><option value="">{tr('Todos')}</option>{DEPTS.map((d) => <option key={d} value={d}>{d}</option>)}</select></label>
+      </div>
       {msg && <p className="err">{msg}</p>}
-      <form className="newemp" onSubmit={(e) => { e.preventDefault(); void call({ action: 'create', ...form }).then((ok) => { if (ok) setForm({ name: '', username: '', pin: '', act_role: 'op', act_dept: 'RTE' }) }) }}>
-        <h3>{tr('Nuevo usuario')}</h3>
-        <div className="egrid">
-          <label>{tr('Nombre')}{' '}<input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoComplete="off" /></label>
-          <label>{tr('Usuario')}{' '}<input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value.toLowerCase() })} autoCapitalize="none" autoComplete="off" placeholder={tr('ej. maria.rte')} /></label>
-          <label>{tr('PIN (6–12 números)')}{' '}<input value={form.pin} inputMode="numeric" onChange={(e) => setForm({ ...form, pin: e.target.value.replace(/\D/g, '') })} autoComplete="off" /></label>
-          <label>{tr('Rol')}{' '}<select value={form.act_role} onChange={(e) => setForm({ ...form, act_role: e.target.value })}><option value="op">{tr('Operador')}</option><option value="mgr">{tr('Manager')}</option><option value="office">{tr('Oficina')}</option></select></label>
-          {form.act_role === 'op' && <label>{tr('Departamento')}{' '}<select value={form.act_dept} onChange={(e) => setForm({ ...form, act_dept: e.target.value })}>{DEPTS.map((d) => <option key={d} value={d}>{d}</option>)}</select></label>}
-        </div>
-        <button className="btn primary" type="submit" disabled={busy || !form.name.trim() || !form.username.trim() || form.pin.length < 6}>{tr('Crear usuario')}</button>
-      </form>
-      {list === null ? <p className="hint">{tr('Cargando…')}</p> : (
-        <div className="twrap">
-          <table>
-            <thead><tr><th>{tr('Nombre')}</th><th>{tr('Usuario')}</th><th>{tr('Rol en Actividad')}</th><th>{tr('Departamento')}</th>{hasPowers && <><th>{tr('Turno')}</th><th>{tr('Poderes')}</th></>}<th>{tr('Activo')}</th><th></th></tr></thead>
-            <tbody>{list.map((e) => {
-              const can = rowRights(e, meId, admin)
-              return (
-                <tr key={e.id} className={e.active ? '' : 'off'}>
-                  <td>{e.name}{e.role === 'admin' && <small> {' '}{tr('· admin freezer')}</small>}{can.mine && <small> {' '}{tr('· tú')}</small>}{can.locked && <small> {' '}{tr('· cuenta protegida')}</small>}</td>
-                  <td>{e.username ?? '—'}</td>
-                  <td>{can.role
-                    ? <select value={e.act_role ?? ''} disabled={busy} onChange={(ev) => void call({ action: 'set_act', id: e.id, act_role: ev.target.value || null, act_dept: e.act_dept ?? (ev.target.value === 'op' ? 'RTE' : null) })}><option value="">{tr('Sin acceso')}</option><option value="op">{tr('Operador')}</option><option value="mgr">{tr('Manager')}</option><option value="office">{tr('Oficina')}</option></select>
-                    : (e.act_role ? ROLE[e.act_role] ?? e.act_role : tr('Sin acceso'))}</td>
-                  <td>{e.act_role !== 'op' ? '—' : can.role
-                    ? <select value={e.act_dept ?? ''} disabled={busy} onChange={(ev) => void call({ action: 'set_act', id: e.id, act_role: 'op', act_dept: ev.target.value })}>{DEPTS.map((d) => <option key={d} value={d}>{d}</option>)}</select>
-                    : (e.act_dept ?? '—')}</td>
-                  {hasPowers && <><td>{e.act_role ? (e.act_shift === 1 || e.act_shift === 2 ? tr('Turno {0}', e.act_shift) : tr('Los dos')) : '—'}</td><td>{!e.act_role ? '—' : e.role === 'admin' ? tr('Todos') : e.act_powers == null ? tr('Los de su rol') : tr('{0} de {1}', (cleanPowers(e.act_powers) ?? []).length, POWERS.length)}</td></>}
-                  <td>{e.active ? tr('Sí') : tr('No')}</td>
-                  <td className="btns">
-                    {hasPowers && !!e.act_role && !can.locked && !can.mine && e.role !== 'admin' && (admin || e.act_role !== 'mgr') && <button type="button" className="lnk" disabled={busy} onClick={() => { setPicked(cleanPowers(e.act_powers) ?? defaultPowers(e.act_role)); setShift(e.act_shift === 1 || e.act_shift === 2 ? e.act_shift : 0); setPowersFor(e) }}>{tr('Poderes')}</button>}
-                    {can.pin && <button type="button" className="lnk" disabled={busy} onClick={() => { setNewPin(''); setPinFor(e) }}>PIN</button>}
-                    {can.active && <button type="button" className="lnk" disabled={busy} onClick={() => setToggle(e)}>{e.active ? tr('Desactivar') : tr('Activar')}</button>}
-                  </td>
-                </tr>
-              )
-            })}</tbody>
-          </table>
-        </div>
-      )}
-      {pinFor && (
-        <div className="veil" onClick={() => setPinFor(null)}>
-          <div className="dlg" onClick={(ev) => ev.stopPropagation()}>
-            <h3>{trx('Nuevo PIN para {0}', pinFor.name)}</h3>
-            <form className="qform" onSubmit={(ev) => { ev.preventDefault(); void call({ action: 'set_pin', id: pinFor.id, pin: newPin }).then((ok) => { if (ok) setPinFor(null) }) }}>
-              <label>{tr('PIN (6–12 números)')}{' '}<input autoFocus inputMode="numeric" value={newPin} onChange={(ev) => setNewPin(ev.target.value.replace(/\D/g, ''))} autoComplete="off" /></label>
-              <div className="dbtns"><button type="button" className="btn" onClick={() => setPinFor(null)}>{tr('Cancelar')}</button><button type="submit" className="btn primary" disabled={busy || newPin.length < 6}>{tr('Guardar')}</button></div>
-            </form>
-          </div>
-        </div>
-      )}
-      {hasPowers === false && <p className="hint">{tr('Los poderes y el turno de cada persona aparecen aquí cuando se aplique el cambio en la base de datos. Mientras tanto cada quien tiene los de su rol.')}</p>}
-      {powersFor && (
-        <div className="veil" onClick={() => setPowersFor(null)}>
-          <div className="dlg" onClick={(ev) => ev.stopPropagation()}>
-            <h3>{trx('Poderes de {0}', powersFor.name)}</h3>
-            <p>{ROLE[powersFor.act_role ?? ''] ?? tr('Sin rol')}{powersFor.act_role === 'op' && powersFor.act_dept ? ' ' + tr('de {0}', powersFor.act_dept) : ''}{tr('. Marca lo que puede hacer además de trabajar su línea. Lo que no esté marcado no le sale en la pantalla.')}</p>
-            <div className="powers">{POWERS.map((x) => <label key={x.key}><input type="checkbox" checked={picked.includes(x.key)} onChange={(ev) => setPicked(ev.target.checked ? [...picked, x.key] : picked.filter((k) => k !== x.key))} /> {x.label}</label>)}</div>
-            <label>{tr('Turno')}{' '}<select value={shift} onChange={(ev) => setShift(Number(ev.target.value))}><option value={0}>{tr('Los dos turnos')}</option><option value={1}>{tr('Turno 1')}</option><option value={2}>{tr('Turno 2')}</option></select></label>
-            <p className="hint">{tr('Con un turno, el Reporte le abre en ese turno y solo corrige lo de su turno, salvo que tenga "Corregir lo del otro turno". Tiene que cerrar y abrir la app para que tome los cambios.')}</p>
-            <div className="dbtns spread">
-              <div className="btns"><button type="button" className="lnk" disabled={busy} onClick={() => { const t = powersFor; void call({ action: 'set_powers', id: t.id, powers: null, shift: shift || null }).then((ok) => { if (ok) setPowersFor(null) }) }}>{tr('Volver a los de su rol')}</button></div>
-              <div className="btns">
-                <button type="button" className="btn" onClick={() => setPowersFor(null)}>{tr('Cancelar')}</button>
-                <button type="button" className="btn primary" disabled={busy} onClick={() => { const t = powersFor; void call({ action: 'set_powers', id: t.id, powers: picked, shift: shift || null }).then((ok) => { if (ok) setPowersFor(null) }) }}>{tr('Guardar')}</button>
+      <details className="how">
+        <summary>{tr('¿Qué puede hacer cada rol?')}</summary>
+        <p>{trx('Los mismos usuarios y PIN que Freezer RTE. {0} solo ve su departamento; {1} ve todo y corrige; {2} ve todo y lleva productos y programa. Sin rol = no entra a Actividad.', <b>{tr('Operador')}</b>, <b>{tr('Manager')}</b>, <b>{tr('Oficina')}</b>)}</p>
+      </details>
+      {list !== null && shown.length === 0 && <p className="hint">{all.length ? tr('Nadie con esa búsqueda.') : tr('No hay usuarios todavía.')}</p>}
+      <div className="emplist">
+        {shown.map((e) => {
+          const can = rowRights(e, meId, admin)
+          const editable = !can.locked
+          return (
+            <div key={e.id} className={'emp' + (e.active ? '' : ' off')}>
+              <span className={'avatar ' + (e.act_role ?? 'none')} aria-hidden="true">{initials(e.name)}</span>
+              <div className="who">
+                <b>{e.name}</b>
+                <small><span className="mono">{e.username ?? '—'}</span>{e.role === 'admin' && ' · ' + tr('admin freezer')}{can.mine && ' · ' + tr('tú')}{can.locked && ' · ' + tr('cuenta protegida')}</small>
               </div>
+              <div className="tags">
+                <span className={'badge ' + (e.act_role ?? 'none')}>{e.act_role ? ROLE[e.act_role] ?? e.act_role : tr('Sin acceso')}</span>
+                {e.act_role === 'op' && e.act_dept && <span className="badge dept">{e.act_dept}</span>}
+                {hasPowers && e.act_role && (e.act_shift === 1 || e.act_shift === 2) && <span className="badge plain">{tr('Turno {0}', e.act_shift)}</span>}
+                {hasPowers && e.act_role && e.role !== 'admin' && e.act_powers != null && <span className="badge plain">{tr('{0} de {1} poderes', (cleanPowers(e.act_powers) ?? []).length, POWERS.length)}</span>}
+                {!e.active && <span className="badge offb">{tr('Inactivo')}</span>}
+              </div>
+              {editable ? <button type="button" className="btn sm" disabled={busy} onClick={() => setEditing(e)}>{tr('✎ Editar')}</button> : <span className="nobtn">—</span>}
+            </div>
+          )
+        })}
+      </div>
+      {hasPowers === false && <p className="hint">{tr('Los poderes y el turno de cada persona aparecen aquí cuando se aplique el cambio en la base de datos. Mientras tanto cada quien tiene los de su rol.')}</p>}
+      {creating && <NewUserDialog busy={busy} call={call} onClose={() => setCreating(false)} onDone={() => { setCreating(false); void load() }} />}
+      {editing && <EditUserDialog emp={editing} meId={meId} admin={admin} busy={busy} hasPowers={!!hasPowers} call={call} onPowers={() => { setPowersFor(editing); setEditing(null) }} onClose={() => setEditing(null)} onDone={() => { setEditing(null); void load() }} />}
+      {powersFor && <PowersDialog emp={powersFor} busy={busy} call={call} onClose={() => setPowersFor(null)} onDone={() => { setPowersFor(null); void load() }} />}
+    </section>
+  )
+}
+
+/** a new account: name, username and PIN (the same ones Freezer RTE uses), role and department */
+function NewUserDialog({ busy, call, onClose, onDone }: { busy: boolean; call: (b: Record<string, unknown>) => Promise<string>; onClose: () => void; onDone: () => void }) {
+  const [form, setForm] = useState({ name: '', username: '', pin: '', act_role: 'op', act_dept: 'RTE' })
+  const [err, setErr] = useState('')
+  const ok = !!form.name.trim() && !!form.username.trim() && form.pin.length >= 6
+  return (
+    <div className="veil" onClick={onClose}>
+      <div className="dlg" onClick={(ev) => ev.stopPropagation()}>
+        <h3>{tr('Nuevo usuario')}</h3>
+        <form className="qform" onSubmit={(ev) => { ev.preventDefault(); if (ok) void call({ action: 'create', ...form }).then((e) => (e ? setErr(e) : onDone())) }}>
+          <div className="egrid">
+            <label>{tr('Nombre')}{' '}<input autoFocus value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoComplete="off" /></label>
+            <label>{tr('Usuario')}{' '}<input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value.toLowerCase() })} autoCapitalize="none" autoComplete="off" placeholder={tr('ej. maria.rte')} /></label>
+            <label>{tr('PIN (6–12 números)')}{' '}<input value={form.pin} inputMode="numeric" onChange={(e) => setForm({ ...form, pin: e.target.value.replace(/\D/g, '') })} autoComplete="off" /></label>
+            <label>{tr('Rol')}{' '}<select value={form.act_role} onChange={(e) => setForm({ ...form, act_role: e.target.value })}><option value="op">{tr('Operador')}</option><option value="mgr">{tr('Manager')}</option><option value="office">{tr('Oficina')}</option></select></label>
+            {form.act_role === 'op' && <label>{tr('Departamento')}{' '}<select value={form.act_dept} onChange={(e) => setForm({ ...form, act_dept: e.target.value })}>{DEPTS.map((d) => <option key={d} value={d}>{d}</option>)}</select></label>}
+          </div>
+          {err && <p className="err">{err}</p>}
+          <div className="dbtns">
+            <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
+            <button type="submit" className="btn primary" disabled={busy || !ok}>{tr('Crear usuario')}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Everything about one person in one window. Only what changed is sent, each part to the action the server has for it
+ * (the name and the username; the PIN; the role and the department), and the first refusal is said here, in words.
+ * What the person looking may not do to this account is shown but cannot be changed.
+ */
+function EditUserDialog({ emp, meId, admin, busy, hasPowers, call, onPowers, onClose, onDone }: { emp: Emp; meId: string; admin: boolean; busy: boolean; hasPowers: boolean; call: (b: Record<string, unknown>) => Promise<string>; onPowers: () => void; onClose: () => void; onDone: () => void }) {
+  const can = rowRights(emp, meId, admin)
+  const [name, setName] = useState(emp.name)
+  const [username, setUsername] = useState(emp.username ?? '')
+  const [pin, setPin] = useState('')
+  const [role, setRole] = useState<string>(emp.act_role ?? '')
+  const [dept, setDept] = useState(emp.act_dept ?? 'RTE')
+  const [err, setErr] = useState('')
+  const [toggle, setToggle] = useState(false)
+  const nameChanged = name.trim().replace(/\s+/g, ' ') !== emp.name
+  const userChanged = !!emp.username && username.trim().toLowerCase() !== emp.username
+  const roleChanged = can.role && (role !== (emp.act_role ?? '') || (role === 'op' && dept !== (emp.act_dept ?? '')))
+  const pinTyped = can.pin && pin.length > 0
+  const ok = !!name.trim() && (!emp.username || username.trim().length >= 3) && (!pinTyped || pin.length >= 6) && (nameChanged || userChanged || roleChanged || pinTyped)
+  const powersOk = hasPowers && !!emp.act_role && !can.locked && !can.mine && emp.role !== 'admin' && (admin || emp.act_role !== 'mgr')
+  const save = async () => {
+    setErr('')
+    if (nameChanged || userChanged) { const e = await call({ action: 'edit', id: emp.id, ...(nameChanged ? { name } : {}), ...(userChanged ? { username } : {}) }); if (e) return setErr(e) }
+    if (pinTyped) { const e = await call({ action: 'set_pin', id: emp.id, pin }); if (e) return setErr(e) }
+    if (roleChanged) { const e = await call({ action: 'set_act', id: emp.id, act_role: role || null, act_dept: role === 'op' ? dept : emp.act_dept }); if (e) return setErr(e) }
+    onDone()
+  }
+  return (
+    <div className="veil" onClick={onClose}>
+      <div className="dlg wide" onClick={(ev) => ev.stopPropagation()}>
+        <h3>{trx('Editar a {0}', emp.name)}</h3>
+        <form className="qform" onSubmit={(ev) => { ev.preventDefault(); if (ok) void save() }}>
+          <div className="egrid">
+            <label>{tr('Nombre')}{' '}<input value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" /></label>
+            <label>{tr('Usuario')}{' '}<input value={username} disabled={!emp.username} onChange={(e) => setUsername(e.target.value.toLowerCase())} autoCapitalize="none" autoComplete="off" /></label>
+            {can.pin && <label>{trx('PIN nuevo {0}', <small>{tr('(vacío = no se cambia)')}</small>)} <input value={pin} inputMode="numeric" placeholder="••••••" onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} autoComplete="off" /></label>}
+            <label>{tr('Rol')}{' '}<select value={role} disabled={!can.role} onChange={(e) => setRole(e.target.value)}><option value="">{tr('Sin acceso')}</option><option value="op">{tr('Operador')}</option><option value="mgr">{tr('Manager')}</option><option value="office">{tr('Oficina')}</option></select></label>
+            {role === 'op' && <label>{tr('Departamento')}{' '}<select value={dept} disabled={!can.role} onChange={(e) => setDept(e.target.value)}>{DEPTS.map((d) => <option key={d} value={d}>{d}</option>)}</select></label>}
+          </div>
+          {userChanged && <p className="hint">{trx('Desde ahora entra con el usuario {0}, aquí y en Freezer RTE. Avísale.', <b>{username.trim().toLowerCase()}</b>)}</p>}
+          {pinTyped && <p className="hint">{tr('Con el PIN nuevo entra la próxima vez; donde ya está dentro, sigue dentro.')}</p>}
+          {err && <p className="err">{err}</p>}
+          <div className="dbtns spread">
+            <div className="btns">
+              {powersOk && <button type="button" className="btn sm" disabled={busy} onClick={onPowers}>{tr('Poderes y turno…')}</button>}
+              {can.active && <button type="button" className={'btn sm' + (emp.active ? ' stopbtn' : '')} disabled={busy} onClick={() => setToggle(true)}>{emp.active ? tr('Desactivar') : tr('Activar')}</button>}
+            </div>
+            <div className="btns">
+              <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
+              <button type="submit" className="btn primary" disabled={busy || !ok}>{busy ? tr('Guardando…') : tr('Guardar')}</button>
             </div>
           </div>
+        </form>
+        {toggle && <ConfirmDialog title={(emp.active ? tr('¿Desactivar a') + ' ' : tr('¿Activar a') + ' ') + emp.name + '?'} text={emp.active ? tr('No podrá entrar a Actividad ni a Freezer RTE hasta que se active de nuevo.') : tr('Podrá entrar otra vez con su PIN.')} yes={emp.active ? tr('Desactivar') : tr('Activar')} danger={emp.active}
+          onYes={() => { setToggle(false); void call({ action: 'set_active', id: emp.id, active: !emp.active }).then((e) => (e ? setErr(e) : onDone())) }} onNo={() => setToggle(false)} />}
+      </div>
+    </div>
+  )
+}
+
+/** what a person may do besides working their line, and their shift */
+function PowersDialog({ emp, busy, call, onClose, onDone }: { emp: Emp; busy: boolean; call: (b: Record<string, unknown>) => Promise<string>; onClose: () => void; onDone: () => void }) {
+  const [picked, setPicked] = useState<Power[]>(() => cleanPowers(emp.act_powers) ?? defaultPowers(emp.act_role))
+  const [shift, setShift] = useState(emp.act_shift === 1 || emp.act_shift === 2 ? emp.act_shift : 0)
+  const [err, setErr] = useState('')
+  const send = (powers: Power[] | null) => void call({ action: 'set_powers', id: emp.id, powers, shift: shift || null }).then((e) => (e ? setErr(e) : onDone()))
+  return (
+    <div className="veil" onClick={onClose}>
+      <div className="dlg" onClick={(ev) => ev.stopPropagation()}>
+        <h3>{trx('Poderes de {0}', emp.name)}</h3>
+        <p>{ROLE[emp.act_role ?? ''] ?? tr('Sin rol')}{emp.act_role === 'op' && emp.act_dept ? ' ' + tr('de {0}', emp.act_dept) : ''}{tr('. Marca lo que puede hacer además de trabajar su línea. Lo que no esté marcado no le sale en la pantalla.')}</p>
+        <div className="powers">{POWERS.map((x) => <label key={x.key}><input type="checkbox" checked={picked.includes(x.key)} onChange={(ev) => setPicked(ev.target.checked ? [...picked, x.key] : picked.filter((k) => k !== x.key))} /> {x.label}</label>)}</div>
+        <label>{tr('Turno')}{' '}<select value={shift} onChange={(ev) => setShift(Number(ev.target.value))}><option value={0}>{tr('Los dos turnos')}</option><option value={1}>{tr('Turno 1')}</option><option value={2}>{tr('Turno 2')}</option></select></label>
+        <p className="hint">{tr('Con un turno, el Reporte le abre en ese turno y solo corrige lo de su turno, salvo que tenga "Corregir lo del otro turno". Tiene que cerrar y abrir la app para que tome los cambios.')}</p>
+        {err && <p className="err">{err}</p>}
+        <div className="dbtns spread">
+          <div className="btns"><button type="button" className="lnk" disabled={busy} onClick={() => send(null)}>{tr('Volver a los de su rol')}</button></div>
+          <div className="btns">
+            <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
+            <button type="button" className="btn primary" disabled={busy} onClick={() => send(picked)}>{tr('Guardar')}</button>
+          </div>
         </div>
-      )}
-      {toggle && <ConfirmDialog title={(toggle.active ? tr('¿Desactivar a') + ' ' : tr('¿Activar a') + ' ') + toggle.name + '?'} text={toggle.active ? tr('No podrá entrar a Actividad ni a Freezer RTE hasta que se active de nuevo.') : tr('Podrá entrar otra vez con su PIN.')} yes={toggle.active ? tr('Desactivar') : tr('Activar')} danger={toggle.active} onYes={() => { const t = toggle; setToggle(null); void call({ action: 'set_active', id: t.id, active: !t.active }) }} onNo={() => setToggle(null)} />}
-    </section>
+      </div>
+    </div>
   )
 }
 

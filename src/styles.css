@@ -197,12 +197,6 @@ tr.live td{background:#f1fbf5}
 }
 .syncerr{font-weight:500;color:var(--warn)}
 /* the manager's people screen */
-.newemp{display:grid;gap:10px;background:var(--surface);border:1.5px solid var(--line);border-radius:14px;padding:12px}
-.newemp h3{margin:0;font-size:15px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
-.newemp .btn{justify-self:start}
-.emps select{min-height:36px;padding:0 8px;border-radius:10px;border:1.5px solid var(--line);background:var(--surface);font-size:15px}
-.emps tr.off td{opacity:.55}
-.emps td.btns{display:flex;gap:6px}
 .err{color:var(--warn);font-weight:600}
 .changes td.was{color:var(--muted);text-decoration:line-through}
 .changes td{white-space:normal}
@@ -661,3 +655,53 @@ table.pallets th.num,table.pallets td.num{text-align:right;font-variant-numeric:
 .setuphint{color:var(--amber);font-size:14px}
 .tile small.both{white-space:normal;line-height:1.2}
 .tile small .amber,td.amber,.stat b.amber{color:var(--amber)}
+/* Avance: the lot chosen, and the room that packs each code (RTE pouches it, MFO puts it in bins) */
+.avlot{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--muted)}
+.avlot select{min-height:40px;padding:0 8px;border-radius:10px;border:1.5px solid var(--btn-line);background:var(--surface);font-size:15px;font-weight:600}
+.avlotnote{background:var(--soft);border-radius:10px;padding:8px 12px;margin:0;font-size:14px}
+.packroom{display:inline-block;margin-left:6px;font-size:10.5px;font-weight:800;letter-spacing:.04em;border-radius:6px;padding:1px 5px;vertical-align:middle}
+.packroom.rte{background:#fff3df;color:#9a5a00}
+.packroom.mfo{background:#fdecef;color:#9f1239}
+.avance th.g5{background:#fdecef;color:#9f1239}
+.products select.room{min-height:34px;padding:0 6px;border-radius:8px;border:1.5px solid var(--btn-line);background:var(--surface);font-weight:700}
+/* Empleados: a search and filters on top, one row per person (who, role, department, shift, powers, whether active),
+   and everything about a person in one window */
+.emphead{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.emphead h2{margin:0}
+.emphead small{color:var(--muted);font-size:14px}
+.emptools{display:flex;flex-wrap:wrap;gap:10px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px}
+.empsearch{flex:1 1 240px;display:flex;align-items:center;gap:6px;min-width:0}
+.empsearch input{min-height:46px;flex:1;min-width:0}
+.emptools .chips{gap:6px}
+.chip.sm small{color:inherit;opacity:.7;margin-left:2px;font-weight:700}
+.empdept{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--muted)}
+.emps select{min-height:44px;padding:0 10px;border-radius:10px;border:1.5px solid var(--btn-line);background:var(--surface);font-size:15px;color:var(--ink)}
+.emps select:disabled{opacity:.55}
+.emplist{display:grid;gap:8px}
+.emp{display:grid;grid-template-columns:44px minmax(0,1.3fr) minmax(0,2fr) auto;gap:12px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px 12px}
+.emp.off{opacity:.6}
+.avatar{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:15px;color:#fff;background:#8a99a8}
+.avatar.op{background:#0f766e}
+.avatar.mgr{background:#1d4ed8}
+.avatar.office{background:#9a5a00}
+.who{display:grid;gap:1px;min-width:0}
+.who b{font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.who small{color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.who .mono{font-family:ui-monospace,Menlo,Consolas,monospace}
+.tags{display:flex;flex-wrap:wrap;gap:6px}
+.badge{font-size:12px;font-weight:700;border-radius:99px;padding:3px 9px;white-space:nowrap}
+.badge.op{background:var(--soft);color:#0b5a54}
+.badge.mgr{background:#e8f0fe;color:#1d4ed8}
+.badge.office{background:#fff3df;color:#9a5a00}
+.badge.none{background:var(--bg);color:var(--muted)}
+.badge.dept{background:#eef2f6;color:var(--ink)}
+.badge.plain{background:transparent;border:1px solid var(--line);color:var(--muted)}
+.badge.offb{background:var(--red-soft);color:#9b1f19}
+.nobtn{color:var(--muted);text-align:center;min-width:60px}
+@media (max-width:640px){
+  .emp{grid-template-columns:40px minmax(0,1fr) auto;grid-template-areas:'av who btn' 'av tags tags';row-gap:6px}
+  .emp .avatar{grid-area:av;align-self:start}
+  .emp .who{grid-area:who}
+  .emp .tags{grid-area:tags}
+  .emp > .btn,.emp > .nobtn{grid-area:btn}
+}

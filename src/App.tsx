@@ -1,7 +1,7 @@
 import { createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
 import { addLine, addWaste, awayDay, BIN_WORDS, binOf, binWord, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, numOf, openIn, openOrdersFor, openRun, openStop, orderCodes, orderLabel, orderOfId, orderPallets, palletDone, palletLotEnds, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, productOf, productsCsv, purgeDay, purgesOf, removeLine, removeProduct, renameLine, reopenRun, reset, restorePurged, resetRecords, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftHours, shiftSpan, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type ShiftHours, type Short, type State, type WorkDay } from './store'
-import { avanceRows, n1, pending, type AvanceRow } from './avance'
+import { avanceLots, avanceRows, n1, pending, type AvanceRow } from './avance'
 import { cellText, loadZip, xDay, xDur, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 
 const fmtN = (x: number) => Math.round(x).toLocaleString('en-US')
@@ -427,7 +427,10 @@ function Avance({ s }: { s: State }) {
   const typing = useRef({ date, codes: new Set<string>() })
   if (typing.current.date !== date) typing.current = { date, codes: new Set() }
   for (const [c, n] of Object.entries(s.schedule[date] ?? {})) if (n > 0) typing.current.codes.add(normCode(c))
-  const rows = avanceRows(s, date, typing.current.codes)
+  // one lot of the day: what was made of it, without the day's program (that is per code, not per lot)
+  const [lot, setLot] = useState('')
+  const lots = avanceLots(s, date), lotNow = lots.includes(lot) ? lot : ''
+  const rows = avanceRows(s, date, lotNow ? undefined : typing.current.codes, lotNow)
   const sum = (f: (r: AvanceRow) => number | null) => rows.reduce((t, r) => t + (f(r) ?? 0), 0)
   const cls = (v: number | null) => (v == null ? '' : v < 0 ? 'red' : v > 0 ? 'amber' : 'ok')
   const day = useDay(date)
@@ -436,6 +439,7 @@ function Avance({ s }: { s: State }) {
       <div className="rhead">
         <h2>{tr('Avance del día')}</h2>
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        <label className="avlot"><span>{tr('Lote')}</span><select value={lotNow} disabled={!lots.length} onChange={(e) => setLot(e.target.value)}><option value="">{tr('Todos')}</option>{lots.map((l) => <option key={l} value={l}>{l}</option>)}</select></label>
         <form className="addcode" onSubmit={(e) => { e.preventDefault(); if (newCode.trim()) { typing.current.codes.add(normCode(newCode)); setSchedule(date, newCode, 0); setNewCode('') } }}>
           <input placeholder={tr('Código a programar')} value={newCode} onChange={(e) => setNewCode(e.target.value)} autoComplete="off" />
           <button className="btn" type="submit" disabled={!newCode.trim()}>{tr('+ Programar')}</button>
@@ -444,28 +448,29 @@ function Avance({ s }: { s: State }) {
       </div>
       <DayNote day={day} />
       <p className="hint">{trx('{0} = lo que da el programa del día (mezclas programadas × tabla de productos). {1} = lo que ya puede salir de las mezclas hechas: las de Kitchen o las de Spiral, según dónde se haga cada código. {2} = esperado − hecho (rojo = se hizo de más). {3} = programado − hecho: lo que queda del día.', <b>{tr('Progr.')}</b>, <b>{tr('Esper.')}</b>, <b>{tr('Pend.')}</b>, <b>{tr('Faltan')}</b>)}</p>
+      {lotNow && <p className="avlotnote"><b>{trx('Viendo el lote {0}', lotNow)}</b> {tr('· lo que se hizo de ese lote en esta fecha. El programa es del día completo, por eso aquí no sale.')} <button type="button" className="lnk sm" onClick={() => setLot('')}>{tr('Ver todos los lotes')}</button></p>}
       {editing && <Products s={s} />}
       {rows.length === 0 ? <p className="hint">{tr('Nada programado ni registrado en esta fecha. Escribe un código y toca "Programar".')}</p> : (
         <div className="twrap">
           <table>
             <thead>
-              <tr><th rowSpan={2}>{tr('Código')}</th><th rowSpan={2}>{tr('Producto')}</th><th colSpan={3} className="grp g1">{tr('Mezclas (Kitchen o Spiral)')}</th><th rowSpan={2} className="gs">Spiral</th><th colSpan={5} className="grp g2">{tr('Pouches (RTE)')}</th><th colSpan={5} className="grp g3">{tr('Cajas (Packing)')}</th><th rowSpan={2} className="gs">{tr('MFO cajas')}</th><th colSpan={3} className="grp g4">{tr('Pallets')}</th><th rowSpan={2} className="gs">{tr('Waste lb')}</th></tr>
-              <tr><th className="g1 gs">{tr('Progr.')}</th><th className="g1">{tr('Hechas')}</th><th className="g1">{tr('Pend.')}</th><th className="g2 gs">{tr('Progr.')}</th><th className="g2">{tr('Esper.')}</th><th className="g2">{tr('Hechos')}</th><th className="g2">{tr('Pend.')}</th><th className="g2">{tr('Faltan')}</th><th className="g3 gs">{tr('Progr.')}</th><th className="g3">{tr('Esper.')}</th><th className="g3">{tr('Hechas')}</th><th className="g3">{tr('Pend.')}</th><th className="g3">{tr('Faltan')}</th><th className="g4 gs">{tr('Progr.')}</th><th className="g4">{tr('Esper.')}</th><th className="g4">{tr('Hechos')}</th></tr>
+              <tr><th rowSpan={2}>{tr('Código')}</th><th rowSpan={2}>{tr('Producto')}</th><th colSpan={3} className="grp g1">{tr('Mezclas (Kitchen o Spiral)')}</th><th rowSpan={2} className="gs">Spiral</th><th colSpan={5} className="grp g2">{tr('Pouches (RTE)')}</th><th colSpan={5} className="grp g3">{tr('Cajas (Packing)')}</th><th colSpan={4} className="grp g5">{tr('MFO (cajas en bins)')}</th><th colSpan={3} className="grp g4">{tr('Pallets')}</th><th rowSpan={2} className="gs">{tr('Waste lb')}</th></tr>
+              <tr><th className="g1 gs">{tr('Progr.')}</th><th className="g1">{tr('Hechas')}</th><th className="g1">{tr('Pend.')}</th><th className="g2 gs">{tr('Progr.')}</th><th className="g2">{tr('Esper.')}</th><th className="g2">{tr('Hechos')}</th><th className="g2">{tr('Pend.')}</th><th className="g2">{tr('Faltan')}</th><th className="g3 gs">{tr('Progr.')}</th><th className="g3">{tr('Esper.')}</th><th className="g3">{tr('Hechas')}</th><th className="g3">{tr('Pend.')}</th><th className="g3">{tr('Faltan')}</th><th className="g5 gs">{tr('Progr.')}</th><th className="g5">{tr('Esper.')}</th><th className="g5">{tr('Hechas')}</th><th className="g5">{tr('Pend.')}</th><th className="g4 gs">{tr('Progr.')}</th><th className="g4">{tr('Esper.')}</th><th className="g4">{tr('Hechos')}</th></tr>
             </thead>
             <tbody>{rows.map((r) => (
               <tr key={r.code}>
-                <td><b>{r.code}</b></td><td>{r.product?.name ?? <i className="red">{tr('no está en Productos')}</i>}</td>
-                <td><input className="num" inputMode="numeric" value={r.scheduled || ''} placeholder="0" onChange={(e) => setSchedule(date, r.code, Number(e.target.value.replace(/\D/g, '')) || 0)} /></td>
-                <td>{r.mixesDone}{r.mixesDone > 0 && <small className="room"> {r.mixRoom}</small>}</td><td className={cls(r.mixesPending)}>{r.mixesPending}</td>
+                <td><b>{r.code}</b><small className={'packroom ' + r.packRoom.toLowerCase()} title={r.packSaid ? tr('Lo dice la tabla de productos') : tr('Por lo que ha registrado cada cuarto (en Productos se puede decir)')}>{r.packRoom}{r.packSaid ? '' : '?'}</small></td><td>{r.product?.name ?? <i className="red">{tr('no está en Productos')}</i>}</td>
+                <td>{lotNow ? '—' : <input className="num" inputMode="numeric" value={r.scheduled || ''} placeholder="0" onChange={(e) => setSchedule(date, r.code, Number(e.target.value.replace(/\D/g, '')) || 0)} />}</td>
+                <td>{r.mixesDone}{r.mixesDone > 0 && <small className="room"> {r.mixRoom}</small>}</td><td className={lotNow ? '' : cls(r.mixesPending)}>{lotNow ? '—' : r.mixesPending}</td>
                 <td>{r.spiralDone}</td>
                 <td>{n1(r.pouchesPlan)}</td><td>{n1(r.pouchesExp)}</td><td>{r.pouchesDone}</td><td className={cls(pending(r.pouchesExp, r.pouchesDone))}>{n1(pending(r.pouchesExp, r.pouchesDone))}</td><td className={cls(pending(r.pouchesPlan, r.pouchesDone))}>{n1(pending(r.pouchesPlan, r.pouchesDone))}</td>
                 <td>{n1(r.casesPlan)}</td><td>{n1(r.casesExp)}</td><td>{r.casesDone}</td><td className={cls(pending(r.casesExp, r.casesDone))}>{n1(pending(r.casesExp, r.casesDone))}</td><td className={cls(pending(r.casesPlan, r.casesDone))}>{n1(pending(r.casesPlan, r.casesDone))}</td>
-                <td>{r.mfoCases}</td>
+                <td>{n1(r.mfoPlan)}</td><td>{n1(r.mfoExp)}</td><td>{r.mfoCases}</td><td className={cls(pending(r.mfoExp, r.mfoCases))}>{n1(pending(r.mfoExp, r.mfoCases))}</td>
                 <td>{n1(r.palletsPlan)}</td><td>{n1(r.palletsExp)}</td><td>{r.palletsDone}</td>
                 <td className={r.wasteLb ? 'red' : ''}>{r.wasteLb || '—'}</td>
               </tr>
             ))}</tbody>
-            <tfoot><tr><td colSpan={2}>{tr('Total')}</td><td>{sum((r) => r.scheduled)}</td><td>{sum((r) => r.mixesDone)}</td><td>{sum((r) => r.mixesPending)}</td><td>{sum((r) => r.spiralDone)}</td><td>{n1(sum((r) => r.pouchesPlan))}</td><td>{n1(sum((r) => r.pouchesExp))}</td><td>{sum((r) => r.pouchesDone)}</td><td></td><td></td><td>{n1(sum((r) => r.casesPlan))}</td><td>{n1(sum((r) => r.casesExp))}</td><td>{sum((r) => r.casesDone)}</td><td></td><td></td><td>{sum((r) => r.mfoCases)}</td><td>{n1(sum((r) => r.palletsPlan))}</td><td>{n1(sum((r) => r.palletsExp))}</td><td>{sum((r) => r.palletsDone)}</td><td>{n1(Math.round(sum((r) => r.wasteLb) * 100) / 100)}</td></tr></tfoot>
+            <tfoot><tr><td colSpan={2}>{tr('Total')}</td><td>{sum((r) => r.scheduled)}</td><td>{sum((r) => r.mixesDone)}</td><td>{sum((r) => r.mixesPending)}</td><td>{sum((r) => r.spiralDone)}</td><td>{n1(sum((r) => r.pouchesPlan))}</td><td>{n1(sum((r) => r.pouchesExp))}</td><td>{sum((r) => r.pouchesDone)}</td><td></td><td></td><td>{n1(sum((r) => r.casesPlan))}</td><td>{n1(sum((r) => r.casesExp))}</td><td>{sum((r) => r.casesDone)}</td><td></td><td></td><td>{n1(sum((r) => r.mfoPlan))}</td><td>{n1(sum((r) => r.mfoExp))}</td><td>{sum((r) => r.mfoCases)}</td><td></td><td>{n1(sum((r) => r.palletsPlan))}</td><td>{n1(sum((r) => r.palletsExp))}</td><td>{sum((r) => r.palletsDone)}</td><td>{n1(Math.round(sum((r) => r.wasteLb) * 100) / 100)}</td></tr></tfoot>
           </table>
         </div>
       )}
@@ -537,10 +542,10 @@ function Products({ s }: { s: State }) {
       </div>
       <div className="twrap">
         <table>
-          <thead><tr><th>{tr('Código')}</th><th>{tr('Producto')}</th><th>{tr('Pouches / caja')}</th><th>{tr('Cajas / mezcla (yield)')}</th><th>{tr('Guacales / carro')}</th><th>{tr('Pouches / guacal')}</th><th>{tr('Cajas / pallet')}</th>{unlocked && <th></th>}</tr></thead>
+          <thead><tr><th>{tr('Código')}</th><th>{tr('Producto')}</th><th>{tr('Pouches / caja')}</th><th>{tr('Cajas / mezcla (yield)')}</th><th>{tr('Guacales / carro')}</th><th>{tr('Pouches / guacal')}</th><th>{tr('Cajas / pallet')}</th><th>{tr('Lo empaca')}</th>{unlocked && <th></th>}</tr></thead>
           <tbody>
-            {s.products.length === 0 && <tr><td colSpan={8}><i>{tr('No hay productos todavía.')}{!unlocked && ' ' + tr('Toca "Editar" para escribirlos o importar el CSV de la oficina.')}</i></td></tr>}
-            {s.products.length > 0 && shown.length === 0 && <tr><td colSpan={8}><i>{trx('Ningún producto con "{0}".', q.trim())}</i></td></tr>}
+            {s.products.length === 0 && <tr><td colSpan={9}><i>{tr('No hay productos todavía.')}{!unlocked && ' ' + tr('Toca "Editar" para escribirlos o importar el CSV de la oficina.')}</i></td></tr>}
+            {s.products.length > 0 && shown.length === 0 && <tr><td colSpan={9}><i>{trx('Ningún producto con "{0}".', q.trim())}</i></td></tr>}
             {shown.map(({ p, i }) => unlocked ? (
               <tr key={(p.code || '·') + ':' + i}>
                 <td><Cell className="code" value={p.code} onCommit={(t) => upd(i, { code: t.trim().toUpperCase() })} /></td>
@@ -550,12 +555,13 @@ function Products({ s }: { s: State }) {
                 <td><Cell className="num" numeric value={text(p.cratesPerCart)} onCommit={(t) => upd(i, { cratesPerCart: numOf(t) })} /></td>
                 <td><Cell className="num" numeric value={text(p.pouchesPerCrate)} onCommit={(t) => upd(i, { pouchesPerCrate: numOf(t) })} /></td>
                 <td><Cell className="num" numeric value={text(p.casesPerPallet)} onCommit={(t) => upd(i, { casesPerPallet: numOf(t) })} /></td>
+                <td><select className="room" value={p.room ?? ''} aria-label={tr('Lo empaca')} onChange={(e) => upd(i, { room: (e.target.value || undefined) as Product['room'] })}><option value="">—</option><option value="RTE">RTE</option><option value="MFO">MFO</option></select></td>
                 <td><button type="button" className="lnk" onClick={() => setRemoveIdx(i)}>✕</button></td>
               </tr>
             ) : (
               <tr key={p.code + ':' + i}>
                 <td><b className="mono">{p.code}</b></td><td>{p.name}</td>
-                <td className="r">{show(p.pouchesPerCase)}</td><td className="r">{show(p.casesPerMix)}</td><td className="r">{show(p.cratesPerCart)}</td><td className="r">{show(p.pouchesPerCrate)}</td><td className="r">{show(p.casesPerPallet)}</td>
+                <td className="r">{show(p.pouchesPerCase)}</td><td className="r">{show(p.casesPerMix)}</td><td className="r">{show(p.cratesPerCart)}</td><td className="r">{show(p.pouchesPerCrate)}</td><td className="r">{show(p.casesPerPallet)}</td><td>{p.room ?? '—'}</td>
               </tr>
             ))}
           </tbody>
@@ -2081,8 +2087,8 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
       ...rep.byShift.flatMap((d) => [...[d.day, d.first, d.second].map((x): Cell[] => [d.dept, x.shift ? tr('Turno {0}', x.shift) : tr('Total del día'), x.shift ? shiftHours(rep.plan, x.shift) : '', x.from ? T(x.from) : '', !x.to ? '' : x.open ? tr('en curso') : T(x.to), x.span ? D(x.span) : '', x.lines, x.distinct, x.codes, x.units, CFG[d.dept].unit, CFG[d.dept].qty !== 'none' ? x.qty : '', CFG[d.dept].qty !== 'none' ? CFG[d.dept].qtyUnit : '', x.waste || '', D(x.working), D(x.down), x.setup ? D(x.setup) : '']), ...binRows(d)])]
     const cambios: Cell[][] = [[tr('Hora'), tr('Quién'), tr('Departamento'), tr('Qué'), tr('Antes'), tr('Después')], ...changes.map((c): Cell[] => [T(c.at), c.by, c.dept ?? '', c.what, c.before, c.after])]
     const av = mgr && !dept && !rep.filtered ? avanceRows(s, date) : []
-    const avance: Cell[][] = [[tr('Código'), tr('Producto'), tr('Mezclas progr.'), tr('Mezclas hechas'), tr('Mezclas pend.'), 'Spiral', tr('Pouches progr.'), tr('Pouches esper.'), tr('Pouches hechos'), tr('Pouches pend.'), tr('Pouches faltan'), tr('Cajas progr.'), tr('Cajas esper.'), tr('Cajas hechas'), tr('Cajas pend.'), tr('Cajas faltan'), tr('MFO cajas'), tr('Pallets progr.'), tr('Pallets esper.'), tr('Pallets hechos'), tr('Waste lb')],
-      ...av.map((r): Cell[] => [r.code, r.product?.name ?? '', r.scheduled, r.mixesDone, r.mixesPending, r.spiralDone, r.pouchesPlan, r.pouchesExp, r.pouchesDone, pending(r.pouchesExp, r.pouchesDone), pending(r.pouchesPlan, r.pouchesDone), r.casesPlan, r.casesExp, r.casesDone, pending(r.casesExp, r.casesDone), pending(r.casesPlan, r.casesDone), r.mfoCases, r.palletsPlan, r.palletsExp, r.palletsDone, r.wasteLb])]
+    const avance: Cell[][] = [[tr('Código'), tr('Producto'), tr('Lo empaca'), tr('Mezclas progr.'), tr('Mezclas hechas'), tr('Mezclas pend.'), 'Spiral', tr('Pouches progr.'), tr('Pouches esper.'), tr('Pouches hechos'), tr('Pouches pend.'), tr('Pouches faltan'), tr('Cajas progr.'), tr('Cajas esper.'), tr('Cajas hechas'), tr('Cajas pend.'), tr('Cajas faltan'), tr('MFO progr.'), tr('MFO esper.'), tr('MFO cajas'), tr('MFO pend.'), tr('Pallets progr.'), tr('Pallets esper.'), tr('Pallets hechos'), tr('Waste lb')],
+      ...av.map((r): Cell[] => [r.code, r.product?.name ?? '', r.packRoom, r.scheduled, r.mixesDone, r.mixesPending, r.spiralDone, r.pouchesPlan, r.pouchesExp, r.pouchesDone, pending(r.pouchesExp, r.pouchesDone), pending(r.pouchesPlan, r.pouchesDone), r.casesPlan, r.casesExp, r.casesDone, pending(r.casesExp, r.casesDone), pending(r.casesPlan, r.casesDone), r.mfoPlan, r.mfoExp, r.mfoCases, pending(r.mfoExp, r.mfoCases), r.palletsPlan, r.palletsExp, r.palletsDone, r.wasteLb])]
     const pallets: Cell[][] = [[tr('Pallet'), tr('Línea'), tr('Código'), tr('Lote'), tr('Cajas'), tr('Tag'), tr('Total del pallet'), 'PO', tr('Pallet del PO'), tr('Hora'), tr('Turno'), tr('Registró')],
       ...rep.pallets.flatMap((p) => p.parts.map((x, i): Cell[] => [p.n, lineNameOf(s, p.r.lineId, p.r.line), p.r.code, x.lot, x.qty ?? '', x.tag, i === 0 ? p.total : '', p.order, p.of ? (p.of[1] ? tr('pallet {0} de {1}', p.of[0], p.of[1]) : String(p.of[0])) : '', p.open ? tr('en armado') : T(p.at), p.shift, p.by]))]
     return { resumen, porTurno, porCodigo, porLote, pallets, unidades, paros, cambios, avance }

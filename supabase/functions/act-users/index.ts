@@ -1,6 +1,6 @@
 // Supabase Edge Function "act-users": lets an Actividad manager (or a Freezer RTE admin) create accounts for the
-// departments (username + PIN), give them their Actividad role and department, change a PIN and turn an account
-// on/off. Runs with the service key, which never reaches the tablets. Same people and PINs as Freezer RTE:
+// departments (username + PIN), give them their Actividad role and department, correct a name or a username typed
+// wrong, change a PIN and turn an account on/off. Runs with the service key, which never reaches the tablets. Same people and PINs as Freezer RTE:
 // a person created here can also use Freezer RTE as a "requester" (orders empty carts) unless a freezer admin
 // gives them more.
 import { createClient } from 'npm:@supabase/supabase-js@2'
@@ -90,6 +90,48 @@ Deno.serve(async (req) => {
       const shift = Number(body.shift) === 1 ? 1 : Number(body.shift) === 2 ? 2 : null // null = both shifts
       const { error } = await admin.from('employees').update({ act_powers: powers, act_shift: shift }).eq('id', t.id)
       return error ? json({ error: /act_powers|act_shift|column/i.test(error.message) ? 'no_columns' : error.message }, 400) : json({ ok: true })
+    }
+
+    // a name or a username typed wrong is corrected. The username is what the person signs in with (in Freezer RTE
+    // too): an account made here signs in as username@DOMAIN, so that changes with it. An account that signs in with
+    // a real e-mail (the owner's) keeps its sign-in; only the name shown changes.
+    if (body.action === 'edit') {
+      const { data: t } = await admin.from('employees').select('id, user_id, name, username').eq('id', String(body.id ?? '')).maybeSingle()
+      if (!t) return json({ error: 'not_found' }, 404)
+      if (await ownerLocked(t)) return json({ error: 'owner_protected' }, 403)
+      const patch: { name?: string; username?: string } = {}
+      if (body.name != null) {
+        const name = String(body.name).trim().replace(/\s+/g, ' ')
+        if (!name) return json({ error: 'bad_name' }, 400)
+        if (name !== t.name) patch.name = name
+      }
+      if (body.username != null) {
+        const username = String(body.username).trim().toLowerCase()
+        if (!/^[a-z0-9._-]{3,30}$/.test(username)) return json({ error: 'bad_username' }, 400)
+        if (username !== (t.username ?? '')) {
+          const { data: taken } = await admin.from('employees').select('id').eq('username', username).neq('id', t.id).maybeSingle()
+          if (taken) return json({ error: 'username_taken' }, 400)
+          patch.username = username
+        }
+      }
+      if (!patch.name && !patch.username) return json({ ok: true })
+      let undo: Record<string, unknown> | null = null
+      if (t.user_id) {
+        const { data: au } = await admin.auth.admin.getUserById(t.user_id)
+        const email = (au?.user?.email ?? '').toLowerCase(), meta = au?.user?.user_metadata ?? {}
+        const update: Record<string, unknown> = { user_metadata: { ...meta, ...(patch.name ? { name: patch.name } : {}), ...(patch.username ? { username: patch.username } : {}) } }
+        if (patch.username && email.endsWith('@' + DOMAIN)) { update.email = `${patch.username}@${DOMAIN}`; update.email_confirm = true }
+        const { error } = await admin.auth.admin.updateUserById(t.user_id, update)
+        if (error) return json({ error: /already|registered|exists/i.test(error.message) ? 'username_taken' : error.message }, 400)
+        undo = { user_metadata: meta, ...(update.email ? { email, email_confirm: true } : {}) }
+      }
+      const { error: e2 } = await admin.from('employees').update(patch).eq('id', t.id)
+      if (e2) {
+        // the sign-in goes back to what it was: the account and its row never disagree
+        if (undo && t.user_id) await admin.auth.admin.updateUserById(t.user_id, undo)
+        return json({ error: e2.code === '23505' ? 'username_taken' : e2.message }, 400)
+      }
+      return json({ ok: true })
     }
 
     if (body.action === 'set_pin') {

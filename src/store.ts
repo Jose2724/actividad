@@ -23,11 +23,11 @@ export const DEPTS: Dept[] = ['Kitchen', 'RTE', 'Spiral', 'MFO', 'Packing']
  */
 export type DeptCfg = { lineWord: string; unit: string; plural: string; done: string; saved: string; qty: 'none' | 'ask' | 'auto'; qtyQ: string; qtyUnit: string; perUnitLabel: string; refLabel: string; refWord?: string; quick: string[]; reasons: string[]; waste?: boolean; lots?: boolean; orders?: boolean }
 export const CFG: Record<Dept, DeptCfg> = {
-  Kitchen: { lineWord: tr('Braiser'), unit: tr('Mezcla'), plural: tr('Mezclas'), done: tr('Mezcla lista'), saved: tr('guardada'), qty: 'none', qtyQ: '', qtyUnit: '', perUnitLabel: '', refLabel: '', quick: ['Problema mecánico', 'Esperando ingredientes', 'Break'], reasons: ['Problema mecánico', 'Esperando ingredientes', 'Break', 'Braiser apagado', 'Esperando que recojan producto', 'Limpieza', 'Falta de personal', 'Calidad', 'Set up'] },
-  Spiral: { lineWord: tr('Línea'), unit: tr('Mezcla'), plural: tr('Mezclas'), done: tr('Mezcla lista'), saved: tr('guardada'), qty: 'none', qtyQ: '', qtyUnit: '', perUnitLabel: '', refLabel: '', quick: ['Problema mecánico', 'Falta de producto de Kitchen', 'Break'], reasons: ['Problema mecánico', 'Falta de producto de Kitchen', 'Break', 'Horno (temperatura)', 'Temperatura interna baja', 'Esperando carros / RTE', 'Limpieza', 'Falta de personal', 'Calidad', 'Set up'] },
+  Kitchen: { lineWord: tr('Braiser'), unit: tr('Mezcla'), plural: tr('Mezclas'), done: tr('Mezcla lista'), saved: tr('guardada'), waste: true, qty: 'none', qtyQ: '', qtyUnit: '', perUnitLabel: '', refLabel: '', quick: ['Problema mecánico', 'Esperando ingredientes', 'Break'], reasons: ['Problema mecánico', 'Esperando ingredientes', 'Break', 'Braiser apagado', 'Esperando que recojan producto', 'Limpieza', 'Falta de personal', 'Calidad', 'Set up'] },
+  Spiral: { lineWord: tr('Línea'), unit: tr('Mezcla'), plural: tr('Mezclas'), done: tr('Mezcla lista'), saved: tr('guardada'), waste: true, qty: 'none', qtyQ: '', qtyUnit: '', perUnitLabel: '', refLabel: '', quick: ['Problema mecánico', 'Falta de producto de Kitchen', 'Break'], reasons: ['Problema mecánico', 'Falta de producto de Kitchen', 'Break', 'Horno (temperatura)', 'Temperatura interna baja', 'Esperando carros / RTE', 'Limpieza', 'Falta de personal', 'Calidad', 'Set up'] },
   RTE: { lineWord: tr('Línea'), unit: tr('Carro'), plural: tr('Carros'), done: tr('Carro listo'), saved: tr('guardado'), qty: 'ask', qtyQ: tr('¿Cuántos pouches lleva este carro?'), qtyUnit: tr('pouches'), perUnitLabel: tr('Pouches por carro'), refLabel: '', waste: true, quick: ['Problema mecánico', 'Sin plástico', 'Break'], reasons: ['Problema mecánico', 'Sin plástico', 'Break', 'Falta de salsa (Kitchen)', 'Falta de arroz / arroz muy frío', 'Falta de carrito vacío', 'Cambio de rollo de plástico', 'Plástico atascado / no corta', 'Máquina corta o rompe paquetes (mecánico)', 'Impresora de sello no imprime', 'Peso fuera de rango (reempaque)', 'Aire en el paquete', 'Conteo / pesado de meatballs', 'Limpieza', 'Falta de personal', 'Set up'] },
-  MFO: { lineWord: tr('Línea'), unit: tr('Bin'), plural: tr('Bins'), done: tr('Bin listo'), saved: tr('guardado'), qty: 'ask', qtyQ: tr('¿Cuántas cajas lleva este bin?'), qtyUnit: tr('cajas'), perUnitLabel: '', refLabel: tr('N° de bin'), refWord: 'bin', quick: ['Problema mecánico', 'Falta de producto del freezer', 'Break'], reasons: ['Problema mecánico', 'Falta de producto del freezer', 'Break', 'Armado de máquina', 'Pegado de labels / stickers', 'Esperando gas', 'Preparación (picar pollo…)', 'Falta de material', 'Limpieza', 'Falta de personal', 'Set up'] },
-  Packing: { lineWord: tr('Línea'), unit: tr('Pallet'), plural: tr('Pallets'), done: tr('Pallet listo'), saved: tr('guardado'), lots: true, orders: true, qty: 'ask', qtyQ: tr('¿Cuántas cajas lleva este pallet?'), qtyUnit: tr('cajas'), perUnitLabel: tr('Cajas por pallet'), refLabel: tr('N° de tag'), refWord: 'tag', quick: ['Problema mecánico', 'Falta de producto que empacar', 'Break'], reasons: ['Problema mecánico', 'Falta de producto que empacar', 'Break', 'Esperando autorización de QC', 'Label equivocado (despegar labels)', 'Plástico / film', 'Falta de cajas / material de empaque', 'Personal pasó a otra línea', 'Etiquetadora / impresora', 'Montacargas / espacio', 'Limpieza', 'Falta de personal', 'Set up'] },
+  MFO: { lineWord: tr('Línea'), unit: tr('Bin'), plural: tr('Bins'), done: tr('Bin listo'), saved: tr('guardado'), waste: true, qty: 'ask', qtyQ: tr('¿Cuántas cajas lleva este bin?'), qtyUnit: tr('cajas'), perUnitLabel: '', refLabel: tr('N° de bin'), refWord: 'bin', quick: ['Problema mecánico', 'Falta de producto del freezer', 'Break'], reasons: ['Problema mecánico', 'Falta de producto del freezer', 'Break', 'Armado de máquina', 'Pegado de labels / stickers', 'Esperando gas', 'Preparación (picar pollo…)', 'Falta de material', 'Limpieza', 'Falta de personal', 'Set up'] },
+  Packing: { lineWord: tr('Línea'), unit: tr('Pallet'), plural: tr('Pallets'), done: tr('Pallet listo'), saved: tr('guardado'), waste: true, lots: true, orders: true, qty: 'ask', qtyQ: tr('¿Cuántas cajas lleva este pallet?'), qtyUnit: tr('cajas'), perUnitLabel: tr('Cajas por pallet'), refLabel: tr('N° de tag'), refWord: 'tag', quick: ['Problema mecánico', 'Falta de producto que empacar', 'Break'], reasons: ['Problema mecánico', 'Falta de producto que empacar', 'Break', 'Esperando autorización de QC', 'Label equivocado (despegar labels)', 'Plástico / film', 'Falta de cajas / material de empaque', 'Personal pasó a otra línea', 'Etiquetadora / impresora', 'Montacargas / espacio', 'Limpieza', 'Falta de personal', 'Set up'] },
 }
 /** the words of a run: its room's, or those of a bin when a Packing line fills bins */
 export function cfgOf(r: Pick<Run, 'dept' | 'extra'>): DeptCfg {
@@ -104,7 +104,10 @@ export type Stop = { id: string; dept: Dept; lineId: string | null; reason: stri
  * The office's master table ("YIEL CALCULO" + cases per pallet + pouches per cart): with it, mezclas become expected
  * pouches, cases and pallets. The demo ships with made-up example products; the real ones are typed or imported.
  */
-export type Product = { code: string; name: string; pouchesPerCase: number; casesPerMix: number; cratesPerCart: number; pouchesPerCrate: number; casesPerPallet: number; updatedAt: number; deleted?: boolean }
+/** the room that packs a product after its mezclas: RTE fills pouches, MFO fills bins of cases (the office's sheets list each code under one of them) */
+export type PackRoom = 'RTE' | 'MFO'
+export const packRoomOfText = (t: unknown): PackRoom | undefined => { const u = String(t ?? '').toUpperCase(); return u.includes('MFO') ? 'MFO' : u.includes('RTE') ? 'RTE' : undefined }
+export type Product = { code: string; name: string; pouchesPerCase: number; casesPerMix: number; cratesPerCart: number; pouchesPerCrate: number; casesPerPallet: number; room?: PackRoom; updatedAt: number; deleted?: boolean }
 /** "12x10" in the office's RTE sheet: crates per cart × pouches per crate */
 export const cartPouches = (p: Product) => p.cratesPerCart * p.pouchesPerCrate
 /** mezclas scheduled per day and code ("SCHEDULE" in the office's AVANCE sheet) */
@@ -214,7 +217,7 @@ function load(): State {
     if (s && s.lines && s.runs && s.stops) {
       const units = (r: Raw['runs'][number]): Unit[] => (r.units ? r.units.map(unitOf) : (r.carts ?? []).map((at) => ({ at, qty: null, ref: '', by: '' })))
       const sample = (code: string) => SAMPLE_PRODUCTS.some((x) => x.code === code)
-      const products: Product[] = s.products ? s.products.map((p) => ({ code: p.code ?? '', name: p.name ?? '', pouchesPerCase: p.pouchesPerCase ?? 0, casesPerMix: p.casesPerMix ?? 0, cratesPerCart: (p.cratesPerCart ?? (p.pouchesPerCart ? 12 : 0)) === 12 && sample(p.code ?? '') ? CRATES_PER_CART : p.cratesPerCart ?? (p.pouchesPerCart ? 12 : 0), pouchesPerCrate: p.pouchesPerCrate ?? (p.pouchesPerCart ? Math.round(p.pouchesPerCart / 12) : 0), casesPerPallet: p.casesPerPallet ?? 0, updatedAt: p.updatedAt ?? 0 })) : SAMPLE_PRODUCTS
+      const products: Product[] = s.products ? s.products.map((p) => ({ code: p.code ?? '', name: p.name ?? '', pouchesPerCase: p.pouchesPerCase ?? 0, casesPerMix: p.casesPerMix ?? 0, cratesPerCart: (p.cratesPerCart ?? (p.pouchesPerCart ? 12 : 0)) === 12 && sample(p.code ?? '') ? CRATES_PER_CART : p.cratesPerCart ?? (p.pouchesPerCart ? 12 : 0), pouchesPerCrate: p.pouchesPerCrate ?? (p.pouchesPerCart ? Math.round(p.pouchesPerCart / 12) : 0), casesPerPallet: p.casesPerPallet ?? 0, ...((r) => (r ? { room: r } : {}))(packRoomOfText(p.room)), updatedAt: p.updatedAt ?? 0 })) : SAMPLE_PRODUCTS
       return {
         lines: s.lines.map((l) => ({ id: l.id ?? uid(), dept: (l.dept ?? 'Kitchen') as Dept, name: l.name ?? 'Línea 1', updatedAt: l.updatedAt ?? 0 })),
         stops: s.stops.map((x) => ({ id: x.id ?? uid(), dept: (x.dept ?? 'Kitchen') as Dept, lineId: x.lineId ?? null, reason: x.reason ?? '', note: x.note ?? '', startedAt: x.startedAt ?? 0, endedAt: x.endedAt ?? null, by: x.by ?? '', updatedAt: x.updatedAt ?? 0 })),
@@ -314,7 +317,7 @@ const fromIso = (s: unknown) => (typeof s === 'string' && s ? Date.parse(s) : nu
 const rowOfLine = (l: Line) => ({ id: l.id, dept: l.dept, name: l.name, deleted: !!l.deleted, updated_at: iso(l.updatedAt), updated_by: user.get() })
 const rowOfRun = (r: Run) => ({ id: r.id, dept: r.dept, line_id: r.lineId, line: r.line, code: r.code, lot: r.lot, date: r.date, started_at: iso(r.startedAt), ended_at: iso(r.endedAt), units: r.units, per_unit: r.perUnit, waste: r.waste, by_name: r.by, deleted: !!r.deleted, updated_at: iso(r.updatedAt), updated_by: user.get(), ...(r.dept === 'Packing' ? { extra: r.extra ?? null } : {}) })
 const rowOfStop = (x: Stop) => ({ id: x.id, dept: x.dept, line_id: x.lineId, reason: x.reason, note: x.note, started_at: iso(x.startedAt), ended_at: iso(x.endedAt), by_name: x.by, deleted: !!x.deleted, updated_at: iso(x.updatedAt), updated_by: user.get() })
-const rowOfProduct = (p: Product) => ({ code: normCode(p.code), name: p.name, pouches_per_case: p.pouchesPerCase, cases_per_mix: p.casesPerMix, crates_per_cart: p.cratesPerCart, pouches_per_crate: p.pouchesPerCrate, cases_per_pallet: p.casesPerPallet, deleted: !!p.deleted, updated_at: iso(p.updatedAt), updated_by: user.get() })
+const rowOfProduct = (p: Product) => ({ code: normCode(p.code), name: p.name, pouches_per_case: p.pouchesPerCase, cases_per_mix: p.casesPerMix, crates_per_cart: p.cratesPerCart, pouches_per_crate: p.pouchesPerCrate, cases_per_pallet: p.casesPerPallet, room: p.room ?? null, deleted: !!p.deleted, updated_at: iso(p.updatedAt), updated_by: user.get() })
 const rowOfSchedule = (date: string, code: string, mixes: number) => ({ date, code: normCode(code), mixes, updated_at: iso(clockNow()), updated_by: user.get() })
 const rowOfChange = (c: Change) => ({ id: c.id, at: iso(c.at), by_name: c.by, dept: c.dept, what: c.what, before: c.before, after: c.after, ref_table: c.refTable, ref_key: c.refKey, deleted: !!c.deleted, updated_at: iso(c.updatedAt), updated_by: user.get() })
 const rowOfTarget = (t: Target) => ({ dept: t.dept, per_hour: t.perHour, per_shift: t.perShift, updated_at: iso(t.updatedAt), updated_by: user.get() })
@@ -377,7 +380,7 @@ function logChange(dept: Dept | null, what: string, before: string, after: strin
   set({ ...state, changes: upsertIn(changes, c) })
   push('act_changes', c.id, rowOfChange(c))
 }
-const PRODUCT_FIELDS: [keyof Product, string][] = [['name', 'Producto'], ['pouchesPerCase', 'Pouches / caja'], ['casesPerMix', 'Cajas / mezcla'], ['cratesPerCart', 'Guacales / carro'], ['pouchesPerCrate', 'Pouches / guacal'], ['casesPerPallet', 'Cajas / pallet']]
+const PRODUCT_FIELDS: [keyof Product, string][] = [['name', 'Producto'], ['pouchesPerCase', 'Pouches / caja'], ['casesPerMix', 'Cajas / mezcla'], ['cratesPerCart', 'Guacales / carro'], ['pouchesPerCrate', 'Pouches / guacal'], ['casesPerPallet', 'Cajas / pallet'], ['room', 'Lo empaca']]
 function logProductDiff(old: Product | undefined, p: Product) {
   if (!old) { if (p.code.trim()) logChange(null, 'Producto nuevo', '', p.code, 'act_products', normCode(p.code)); return }
   if (normCode(old.code) !== normCode(p.code)) logChange(null, old.code.trim() ? 'Producto ' + old.code + ' · Código' : 'Producto nuevo', old.code, p.code, 'act_products', normCode(p.code))
@@ -1229,7 +1232,7 @@ export function mergeProducts(list: Product[]) {
   let added = 0, changed = 0
   for (const p of list) {
     const i = products.findIndex((x) => normCode(x.code) === normCode(p.code))
-    const merged: Product = i < 0 ? { ...p, updatedAt: clockNow() } : { ...products[i], name: p.name || products[i].name, pouchesPerCase: p.pouchesPerCase || products[i].pouchesPerCase, casesPerMix: p.casesPerMix || products[i].casesPerMix, cratesPerCart: p.cratesPerCart || products[i].cratesPerCart, pouchesPerCrate: p.pouchesPerCrate || products[i].pouchesPerCrate, casesPerPallet: p.casesPerPallet || products[i].casesPerPallet, updatedAt: clockNow() }
+    const merged: Product = i < 0 ? { ...p, updatedAt: clockNow() } : { ...products[i], name: p.name || products[i].name, pouchesPerCase: p.pouchesPerCase || products[i].pouchesPerCase, casesPerMix: p.casesPerMix || products[i].casesPerMix, cratesPerCart: p.cratesPerCart || products[i].cratesPerCart, pouchesPerCrate: p.pouchesPerCrate || products[i].pouchesPerCrate, casesPerPallet: p.casesPerPallet || products[i].casesPerPallet, ...((r) => (r ? { room: r } : {}))(p.room || products[i].room), updatedAt: clockNow() }
     if (i < 0) { products.push(merged); added++ } else { if (PRODUCT_FIELDS.some(([k]) => v(products[i][k]) !== v(merged[k]))) { changed++; logProductDiff(products[i], merged) } products[i] = merged }
     push('act_products', normCode(merged.code), rowOfProduct(merged))
   }
@@ -1521,7 +1524,7 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
     const i = state.products.findIndex((p) => normCode(p.code) === key)
     const cur = i >= 0 ? state.products[i] : undefined
     if (!newer(cur)) return
-    const p: Product = { code, name: String(row.name ?? ''), pouchesPerCase: Number(row.pouches_per_case ?? 0), casesPerMix: Number(row.cases_per_mix ?? 0), cratesPerCart: Number(row.crates_per_cart ?? 0), pouchesPerCrate: Number(row.pouches_per_crate ?? 0), casesPerPallet: Number(row.cases_per_pallet ?? 0), updatedAt: at }
+    const p: Product = { code, name: String(row.name ?? ''), pouchesPerCase: Number(row.pouches_per_case ?? 0), casesPerMix: Number(row.cases_per_mix ?? 0), cratesPerCart: Number(row.crates_per_cart ?? 0), pouchesPerCrate: Number(row.pouches_per_crate ?? 0), casesPerPallet: Number(row.cases_per_pallet ?? 0), ...((r) => (r ? { room: r } : {}))(packRoomOfText(row.room)), updatedAt: at }
     // the product stays in its place in the table (a changed row must not jump to the end while someone is editing)
     const others = (x: Product, k: number) => k === i || normCode(x.code) !== key
     const products = row.deleted ? state.products.filter((x) => normCode(x.code) !== key) : cur ? state.products.map((x, k) => (k === i ? p : x)).filter(others) : [...state.products, p]
@@ -1623,20 +1626,21 @@ export function parseProductsCsv(text: string): Product[] {
   const find = (...keys: string[]) => head.findIndex((h) => keys.some((k) => h.includes(k)))
   const cCode = find('código', 'codigo', 'code'), cName = find('producto rte', 'producto', 'r-t-e', 'item', 'name')
   const cPpc = find('pouches por caja', 'pouches/'), cYield = find('cajas por mezcla', 'yield x'), cPallet = find('cajas por pallet', 'palet')
-  const cCrates = find('guacales'), cPerCrate = find('pouches por guacal')
+  const cCrates = find('guacales'), cPerCrate = find('pouches por guacal'), cRoom = find('lo empaca', 'empaca', 'room')
   const n = (r: string[], c: number) => (c < 0 ? 0 : numOf(r[c] ?? ''))
   const out: Product[] = []
   for (const r of rows) {
     const code = cCode < 0 ? '' : String(r[cCode] ?? '').trim().toUpperCase()
     if (!code) continue
-    out.push({ code, name: cName < 0 ? '' : String(r[cName] ?? '').trim(), pouchesPerCase: n(r, cPpc), casesPerMix: n(r, cYield), cratesPerCart: n(r, cCrates), pouchesPerCrate: n(r, cPerCrate), casesPerPallet: n(r, cPallet), updatedAt: 0 })
+    const room = cRoom < 0 ? undefined : packRoomOfText(r[cRoom])
+    out.push({ code, name: cName < 0 ? '' : String(r[cName] ?? '').trim(), pouchesPerCase: n(r, cPpc), casesPerMix: n(r, cYield), cratesPerCart: n(r, cCrates), pouchesPerCrate: n(r, cPerCrate), casesPerPallet: n(r, cPallet), ...(room ? { room } : {}), updatedAt: 0 })
   }
   return out
 }
 export function productsCsv(products: Product[]) {
   const q = (v: string | number) => '"' + String(v).replace(/"/g, '""') + '"'
-  const head = ['Código', 'Producto', 'Pouches por caja', 'Cajas por mezcla (yield)', 'Cajas por pallet', 'Guacales por carro', 'Pouches por guacal']
-  return '﻿' + [head, ...products.map((p) => [p.code, p.name, p.pouchesPerCase, p.casesPerMix, p.casesPerPallet, p.cratesPerCart, p.pouchesPerCrate])].map((r) => r.map(q).join(',')).join('\r\n')
+  const head = ['Código', 'Producto', 'Pouches por caja', 'Cajas por mezcla (yield)', 'Cajas por pallet', 'Guacales por carro', 'Pouches por guacal', 'Lo empaca']
+  return '﻿' + [head, ...products.map((p) => [p.code, p.name, p.pouchesPerCase, p.casesPerMix, p.casesPerPallet, p.cratesPerCart, p.pouchesPerCrate, p.room ?? ''])].map((r) => r.map(q).join(',')).join('\r\n')
 }
 
 export const openRun = (s: State, lineId: string) => s.runs.find((r) => r.lineId === lineId && !r.endedAt)
