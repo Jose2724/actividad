@@ -2022,6 +2022,24 @@ section('La tarjeta del turno sigue con un código que viene del día de trabajo
     eq('una sala que solo tiene una línea de bins corriendo también tiene su tarjeta', [b.live, b.runs.length], [true, 0])
   })
 }
+section('Empezar Set up nunca se queda sin hacer nada')
+{
+  // what Jose saw on the floor: on some lines "Empezar Set up" did nothing. A stop left open there the day before is
+  // not on the free line's card, and it stopped the button
+  const su = await device('su', { user: 'Luis', usual: true })
+  su.use((m) => {
+    const st = () => m.store.get(), open = (id) => st().stops.filter((x) => x.lineId === id && !x.endedAt)
+    m.addLine('Packing', 'Línea 3')
+    const l = st().lines.find((x) => x.dept === 'Packing' && x.name === 'Línea 3')
+    clock = oct(12, 22, 0); m.startStop('Packing', l.id, 'Problema mecánico', '')
+    clock = oct(13, 7, 0)
+    eq('un paro que quedó abierto desde otro día no está en la tarjeta de la línea libre', m.idleStop(st(), l.id, clock), undefined)
+    m.startSetup(l)
+    eq('y "Empezar Set up" empieza el Set up igual: el paro viejo se quita', open(l.id).map((x) => [x.reason, x.startedAt === clock]), [['Set up', true]])
+    m.startSetup(l)
+    eq('el que está en la tarjeta sigue: tocarlo otra vez no abre otro', open(l.id).length, 1)
+  })
+}
 section('Set up: espera al código siguiente; con las líneas vacías no corre nada')
 {
   const wai = await device('wai', { user: 'Santiago', usual: true })

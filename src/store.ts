@@ -590,9 +590,18 @@ export function orderPallets(s: State, orderId: string, perPallet?: number | nul
  */
 export function startSetup(line: Line) {
   const at = clockNow()
-  if (state.runs.some((r) => r.lineId === line.id && !r.endedAt) || state.stops.some((x) => x.lineId === line.id && !x.endedAt)) return
+  if (state.runs.some((r) => r.lineId === line.id && !r.endedAt)) return
+  // A stop left open on the line for hours, or since another day of work, is not on its card (see idleStop), which
+  // shows the line free: it was not a set up, and it is dropped as the next code would drop it. Otherwise the button
+  // did nothing at all (Jose saw it on the floor on some lines). One that is on the card goes on as it is.
+  const left = state.stops.filter((x) => x.lineId === line.id && !x.endedAt)
+  const stale = left.filter((x) => at - x.startedAt > SETUP_MAX_MS || fromOtherDay(state, x, at))
+  if (left.length > stale.length) return
   const last = state.runs.filter((r) => r.lineId === line.id && !!r.endedAt && at - (r.endedAt ?? 0) <= SETUP_MAX_MS).sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0))[0]
-  putStop({ id: uid(), dept: line.dept, lineId: line.id, reason: SETUP, note: last ? AFTER + last.code : '', startedAt: at, endedAt: null, by: user.get(), updatedAt: 0 })
+  batch(() => {
+    for (const x of stale) putStop({ ...x, deleted: true })
+    putStop({ id: uid(), dept: line.dept, lineId: line.id, reason: SETUP, note: last ? AFTER + last.code : '', startedAt: at, endedAt: null, by: user.get(), updatedAt: 0 })
+  })
 }
 /** what is still open in a room: the codes running, the set ups waiting for a code that has not come, and any other stop */
 export function openIn(s: State, dept: Dept) {
