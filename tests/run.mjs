@@ -1984,6 +1984,31 @@ section('Packing: un pallet con varios lotes, cada lote con su tag; y las línea
   clock = oct(22, 7, 0); tab.use((m) => m.endRun(c3().id, false)); settle()
   eq('nada queda pendiente de enviar', all.map((d) => d.use((m) => m.outbox.size())), [0, 0])
 }
+section('La tarjeta del turno sigue con un código que viene del día de trabajo anterior, y con una línea que solo hace bins')
+{
+  // what Jose saw on 2026-10-15 at 3:30 AM: codes started at 3:28 (still the second shift of the 14th) went on into the
+  // first shift of the 15th; the room's card went away, and what the shift made on them would not have counted in it
+  const cr = await device('carry', { user: 'Luis', usual: true })
+  cr.use((m) => {
+    const st = () => m.store.get(), run = (code) => st().runs.find((r) => r.code === code)
+    const lineOf = (name) => { m.addLine('Packing', name); return st().lines.find((l) => l.dept === 'Packing' && l.name === name) }
+    const l1 = lineOf('Línea 1'), l2 = lineOf('Línea 2')
+    clock = oct(23, 3, 28)
+    m.startRun(l1, 'A100', '6295', '2026-10-22', 36)
+    m.startRun(l2, 'B200', '6295', '2026-10-22', null, 'platos')
+    clock = oct(23, 3, 40)
+    const before = m.deptToday(st(), 'Packing', '2026-10-23', clock)
+    eq('a las 3:40 ya es el turno 1 del día nuevo: la tarjeta sigue, desde cero, con los códigos que vienen corriendo', [before.shift, before.live, before.shiftQty, before.shiftCodes.map((c) => c.code), before.runs.length], [1, true, 0, ['A100'], 0])
+    clock = oct(23, 4, 0)
+    m.palletDone(run('A100').id, [{ lot: '6295', qty: 36, tag: '1900' }], '')
+    m.unitDone(run('B200').id, 50, '7')
+    const t = m.deptToday(st(), 'Packing', '2026-10-23', clock)
+    eq('lo que el turno hace en ellos cuenta en el turno: el pallet en cajas, y el bin aparte', [t.shiftQty, t.shiftUnits, t.shiftBins], [36, 1, [{ word: 'platos', units: 1, qty: 50 }]])
+    m.endRun(run('A100').id, false)
+    const b = m.deptToday(st(), 'Packing', '2026-10-23', clock)
+    eq('una sala que solo tiene una línea de bins corriendo también tiene su tarjeta', [b.live, b.runs.length], [true, 0])
+  })
+}
 section('Set up: espera al código siguiente; con las líneas vacías no corre nada')
 {
   const wai = await device('wai', { user: 'Santiago', usual: true })

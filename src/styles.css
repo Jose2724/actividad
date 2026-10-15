@@ -1,4 +1,4 @@
-:root{--bg:#f3f6f9;--surface:#fff;--ink:#16202a;--muted:#5b6b7a;--line:#d5dde5;--accent:#0f766e;--accent-ink:#fff;--ok:#1b7446;--warn:#b3261e;--amber:#9a5a00;--soft:#e6f3f1;--red-soft:#fde8e6}
+:root{--bg:#f3f6f9;--surface:#fff;--ink:#16202a;--muted:#5b6b7a;--line:#d5dde5;--accent:#0f766e;--accent-ink:#fff;--ok:#1b7446;--warn:#b3261e;--amber:#9a5a00;--soft:#e6f3f1;--red-soft:#fde8e6;--btn:#e4ebf2;--btn-line:#9cadbe;--btn-edge:#bccad7}
 *{box-sizing:border-box}
 /* the page itself never pans sideways (only tables scroll inside their frame), and no box has type smaller than
    16px: below that, iPhone Safari zooms in when a box is tapped and the layout is left shifted */
@@ -12,10 +12,17 @@ small{color:var(--muted)}
 .code{font-family:ui-monospace,Menlo,Consolas,monospace;letter-spacing:.02em}
 
 /* buttons */
-.btn{min-height:48px;padding:0 16px;border-radius:12px;border:1.5px solid var(--line);background:var(--surface);font-weight:600;font-size:15px}
-.btn:disabled{opacity:.45;cursor:default}
-.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
-.btn.danger{background:var(--warn);border-color:var(--warn);color:#fff}
+/* every button looks like one: a filled face with a firmer edge under it, so it reads as something to press (white
+   ones looked like the cards). Green is the main thing to do, red is to stop, soft green the other actions. */
+.btn{min-height:48px;padding:0 16px;border-radius:12px;border:1.5px solid var(--btn-line);background:var(--btn);color:var(--ink);font-weight:600;font-size:15px;box-shadow:0 2px 0 var(--btn-edge);cursor:pointer}
+.btn:active:not(:disabled){transform:translateY(1px);box-shadow:0 1px 0 var(--btn-edge)}
+@media (hover:hover){.btn:hover:not(:disabled){filter:brightness(.97)}}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);box-shadow:0 2px 0 #0a4f4a}
+.btn.primary:active:not(:disabled){box-shadow:0 1px 0 #0a4f4a}
+.btn.danger{background:var(--warn);border-color:var(--warn);color:#fff;box-shadow:0 2px 0 #7e1a15}
+.btn.stopbtn{background:var(--red-soft);border-color:#df9a93;color:#9b1f19;box-shadow:0 2px 0 #f0c2bd}
+.btn.soft{background:var(--soft);border-color:#6fb3aa;color:#0b5a54;box-shadow:0 2px 0 #b9ddd7}
+.btn:disabled{opacity:.45;cursor:default;box-shadow:none}
 .btn.huge{min-height:64px;font-size:20px;flex:1}
 .lnk{border:0;background:none;color:var(--accent);font-weight:600;padding:6px 8px;text-decoration:underline;text-underline-offset:3px}
 .chip{min-height:44px;padding:0 14px;border-radius:99px;border:1.5px solid var(--line);background:var(--surface);font-weight:600;font-size:15px}

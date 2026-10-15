@@ -825,7 +825,7 @@ function TodayCard({ s, dept, now, mgr, date }: { s: State; dept: Dept; now: num
   const goal = shiftGoalOf(s, dept, t.shift)
   const [editing, setEditing] = useState(false)
   const hasGoal = !!(goal.perHour || goal.total)
-  if (!t.runs.length && !hasGoal && !mgr) return null
+  if (!t.runs.length && !t.bins.length && !t.live && !hasGoal && !mgr) return null
   const pct = goal.total ? Math.min(100, Math.floor((t.shiftQty / goal.total) * 100)) : 0
   const pace = goal.perHour && t.shiftRate != null ? t.shiftRate / goal.perHour : null
   const paceCls = pace == null ? '' : pace >= 1 ? 'ok' : 'red'
@@ -1046,9 +1046,9 @@ function DeptPanel({ s, dept, now, day }: { s: State; dept: Dept; now: number; m
         <div className="acts">
           {ds
             ? <button type="button" className="btn danger" onClick={() => endStop(ds.id)}>{trx('▶ Reanudar departamento · {0}', fmtDur(now - ds.startedAt))}</button>
-            : <button type="button" className="btn" disabled={!anyRunning} onClick={() => setStopAll(true)}>{tr('⏸ Parar departamento')}</button>}
+            : <button type="button" className="btn stopbtn" disabled={!anyRunning} onClick={() => setStopAll(true)}>{tr('⏸ Parar departamento')}</button>}
           <button type="button" className="btn" disabled={!left.runs.length && !left.setups.length && !left.stops.length} onClick={() => setLeaving(true)}>{tr('🏁 Terminar turno')}</button>
-          <button type="button" className="btn" onClick={() => setAdding(true)}>{trx('+ Agregar {0}', CFG[dept].lineWord.toLowerCase())}</button>
+          <button type="button" className="btn soft" onClick={() => setAdding(true)}>{trx('+ Agregar {0}', CFG[dept].lineWord.toLowerCase())}</button>
         </div>
       </div>
       {leaving && (
@@ -1140,7 +1140,7 @@ function PalletPanel({ s, run, saved, onDone, onLot, onLotNow, onPart, onOrder }
       ))}
       <div className="pal-now"><span>{trx('Ahora va: lote {0}', <b>{lotNowOf(run)}</b>)}</span><button type="button" className="lnk sm" onClick={onLotNow}>{tr('Cambiar')}</button></div>
       <button type="button" className={'btn primary huge' + (saved ? ' saved' : '')} disabled={!!saved} onClick={onDone}>✓ {saved || tr('Pallet listo')}</button>
-      <button type="button" className="btn" onClick={onLot}>{trx('Se acabó el lote {0}', lotNowOf(run))}</button>
+      <button type="button" className="btn soft" onClick={onLot}>{trx('Se acabó el lote {0}', lotNowOf(run))}</button>
     </div>
   )
 }
@@ -1591,8 +1591,8 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       {mineNow.carried && (
         <div className="carried">
           {run.date === day.date && cameFrom !== turn.shift
-            ? trx('↪ Viene del turno {0}: empezó a las {1} y traía {2}.', cameFrom, <b>{fmtTime(run.startedAt)}</b>, <b>{unitsText(line.dept, mineNow.before.units, mineNow.before.qty)}</b>)
-            : trx('↪ Viene de antes: empezó el {0} a las {1} y traía {2}.', <b>{shortDay(run.date)}</b>, <b>{fmtTime(run.startedAt)}</b>, <b>{unitsText(line.dept, mineNow.before.units, mineNow.before.qty)}</b>)}
+            ? trx('↪ Viene del turno {0}: empezó a las {1} y traía {2}.', cameFrom, <b>{fmtTime(run.startedAt)}</b>, <b>{unitsText(line.dept, mineNow.before.units, mineNow.before.qty, rc)}</b>)
+            : trx('↪ Viene de antes: empezó el {0} a las {1} y traía {2}.', <b>{shortDay(run.date)}</b>, <b>{fmtTime(run.startedAt)}</b>, <b>{unitsText(line.dept, mineNow.before.units, mineNow.before.qty, rc)}</b>)}
           {' '}{trx('Abajo cuenta este turno, desde cero. Total del código: {0}.', <b>{madeText(run, st.qty)}</b>)}
         </div>
       )}
@@ -1626,7 +1626,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
           ? (stop.lineId === line.id
             ? <button type="button" className="btn danger" onClick={() => endStop(stop.id)}>{tr('▶ Reanudar')}</button>
             : <button type="button" className="btn" disabled>{tr('Parado por el departamento')}</button>)
-          : <button type="button" className="btn" onClick={() => setAsking(true)}>{tr('⏸ Parar')}</button>}
+          : <button type="button" className="btn stopbtn" onClick={() => setAsking(true)}>{tr('⏸ Parar')}</button>}
         {cfg.waste && <button type="button" className="btn" onClick={() => setWasting(true)}>Waste{run.waste ? <b className="red"> {run.waste} lb</b> : ' (lb)'}</button>}
         <button type="button" className="btn" disabled={!!stop} onClick={() => setEnding(true)}>{tr('■ Terminar')}<span className="opt"> {' '}{tr('código')}</span></button>
       </div>

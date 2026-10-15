@@ -1356,15 +1356,19 @@ export function deptToday(s: State, dept: Dept, date: string, now: number, lineI
   const opens = Math.min(now, since + ahead(shift === 1 ? cuts.toFirst : cuts.toSecond, mins(shift === 1 ? plan.first : plan.second)) * 60_000)
   const one = (r: Run, u: Unit) => (cfg.qty === 'none' ? 1 : unitQty(s, r, u))
   const made = (k: 1 | 2) => runs.reduce((t, r) => t + r.units.filter((u) => shiftAt(plan, u.at) === k).reduce((a, u) => a + one(r, u), 0), 0)
-  const mine = all.filter((r) => !r.endedAt || r.endedAt > since)
+  // The shift in course is all that its people made in its hours, on every line: also on a code that came running from
+  // the work day before (a work day changes at the hour between shifts; a code left running goes on). Its bins apart.
+  const live = s.runs.filter((r) => r.dept === dept && (!lineId || r.lineId === lineId) && (r.date === date || (r.date < date && (!r.endedAt || r.endedAt > since))))
+  const liveRuns = live.filter((r) => !binOf(r)), liveBins = live.filter((r) => !!binOf(r))
+  const mine = live.filter((r) => !r.endedAt || r.endedAt > since)
   const shiftFirst = mine.length ? Math.min(...mine.map((r) => (r.startedAt >= since ? r.startedAt : opens))) : 0
   const until = nextCut(plan, now)
   const inTurn = (u: Unit) => u.at >= since && u.at < until
-  const shiftQty = runs.reduce((t, r) => t + r.units.filter(inTurn).reduce((a, u) => a + one(r, u), 0), 0)
-  const shiftUnits = runs.reduce((t, r) => t + r.units.filter(inTurn).length, 0)
+  const shiftQty = liveRuns.reduce((t, r) => t + r.units.filter(inTurn).reduce((a, u) => a + one(r, u), 0), 0)
+  const shiftUnits = liveRuns.reduce((t, r) => t + r.units.filter(inTurn).length, 0)
   // what the shift in course has made of each code: one it has running is there from zero, before its first unit
   const turn = new Map<string, { code: string; units: number; qty: number; lines: string[] }>()
-  for (const r of runs) {
+  for (const r of liveRuns) {
     const made = r.units.filter(inTurn)
     if (!made.length && !mine.includes(r)) continue
     const e = turn.get(normCode(r.code)) ?? { code: r.code, units: 0, qty: 0, lines: [] }
@@ -1380,7 +1384,7 @@ export function deptToday(s: State, dept: Dept, date: string, now: number, lineI
   const shiftMs = shiftFirst ? Math.max(0, (shiftUntil || now) - shiftFirst) : 0
   const shiftHrs = shiftMs / 3_600_000
   return { runs, units, qty, unitLabel: cfg.qty === 'none' ? cfg.plural.toLowerCase() : cfg.qtyUnit, byCode: [...codes.values()].sort((a, b) => b.qty - a.qty), hours, rate: hours >= 1 / 6 ? qty / hours : null, allEnded,
-    bins: binTotals(s, binRuns, () => true), shiftBins: binTotals(s, binRuns, (u) => u.at >= since && u.at < until),
+    bins: binTotals(s, binRuns, () => true), shiftBins: binTotals(s, liveBins, (u) => u.at >= since && u.at < until), live: mine.length > 0,
     shift, shiftQty, shiftUnits, shiftCodes: [...turn.values()].sort((a, b) => b.qty - a.qty), shiftRate: shiftHrs >= 1 / 6 ? shiftQty / shiftHrs : null, made: [made(1), made(2)] as [number, number], shiftSince: shiftFirst, shiftUntil, shiftMs }
 }
 
