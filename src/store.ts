@@ -562,6 +562,9 @@ export function palletDone(runId: string, parts: { lot: string; qty: number; tag
   const unit = palletUnit(parts, po, Math.max(clockNow(), after(r)))
   if (!unit.lots?.length) return false
   const rest: RunExtra = r.extra ? (({ open: _o, ...x }) => x)(r.extra) : {}
+  // the last lot of the pallet, when it got cases there, is the one being packed now (they may have corrected it there)
+  const last = parts[parts.length - 1], lastLot = last && last.qty > 0 ? last.lot.trim().slice(0, 30) : ''
+  if (lastLot && lastLot !== lotNowOf(r)) rest.lotNow = lastLot
   // the next pallet goes to the same order while the order still lacks cases: its pallets 1/12, 2/12...
   const o = po ? state.orders.find((x) => x.id === po && !x.closed) : undefined
   const extra: RunExtra = o && (o.cases == null || o.cases - orderMade(state, o.id) - (unit.qty ?? 0) > 0) ? { ...rest, open: { parts: [], po } } : rest

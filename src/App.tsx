@@ -1114,7 +1114,7 @@ const buzz = () => { try { (navigator as Navigator & { vibrate?: (ms: number) =>
  * lots it already holds with their cases and tags, and the lot going on now. Two things to do: the lot ran out (its
  * cases and tag stay on the pallet, which goes on with the next lot) or the pallet is finished.
  */
-function PalletPanel({ s, run, saved, onDone, onLot, onPart, onOrder }: { s: State; run: Run; saved: string; onDone: () => void; onLot: () => void; onPart: (i: number) => void; onOrder: () => void }) {
+function PalletPanel({ s, run, saved, onDone, onLot, onLotNow, onPart, onOrder }: { s: State; run: Run; saved: string; onDone: () => void; onLot: () => void; onLotNow: () => void; onPart: (i: number) => void; onOrder: () => void }) {
   const open = run.extra?.open, parts = open?.parts ?? []
   const onIt = parts.reduce((t, p) => t + p.qty, 0), per = run.perUnit ?? 0
   const order = orderOfId(s, palletPo(s, run)), seq = order ? orderPallets(s, order.id, run.perUnit) : null
@@ -1138,7 +1138,7 @@ function PalletPanel({ s, run, saved, onDone, onLot, onPart, onOrder }: { s: Sta
           <button type="button" className={'lnk sm' + (p.tag ? '' : ' notag')} onClick={() => onPart(i)}>{p.tag ? trx('Tag {0} ✎', p.tag) : tr('Sin tag · ponerlo')}</button>
         </div>
       ))}
-      <div className="pal-now">{trx('Ahora va: lote {0}', <b>{lotNowOf(run)}</b>)}</div>
+      <div className="pal-now"><span>{trx('Ahora va: lote {0}', <b>{lotNowOf(run)}</b>)}</span><button type="button" className="lnk sm" onClick={onLotNow}>{tr('Cambiar')}</button></div>
       <button type="button" className={'btn primary huge' + (saved ? ' saved' : '')} disabled={!!saved} onClick={onDone}>✓ {saved || tr('Pallet listo')}</button>
       <button type="button" className="btn" onClick={onLot}>{trx('Se acabó el lote {0}', lotNowOf(run))}</button>
     </div>
@@ -1158,12 +1158,13 @@ function poChoices(s: State, run: Run) {
 
 /**
  * The pallet is finished: every lot on it with its cases and its tag (the ones written when a lot ran out can be fixed
- * here, and a missing tag added), the last lot's cases (what is left to fill the pallet, unless they say other), its PO.
+ * here, and a missing tag added), the cases of the lot going on now, and its PO. Nothing is put for them: a pallet can
+ * end short (no more product, or the order is done), so those cases are typed, or filled up to a full pallet with one tap.
  */
 function PalletDoneDialog({ s, run, onClose, onSaved }: { s: State; run: Run; onClose: () => void; onSaved: () => void }) {
   const open = run.extra?.open, parts = open?.parts ?? []
   const per = run.perUnit ?? 0, onIt = parts.reduce((t, p) => t + p.qty, 0)
-  const [rows, setRows] = useState(() => [...parts.map((p) => ({ lot: p.lot, qty: String(p.qty), tag: p.tag })), { lot: lotNowOf(run), qty: per > onIt ? String(per - onIt) : '', tag: '' }])
+  const [rows, setRows] = useState(() => [...parts.map((p) => ({ lot: p.lot, qty: String(p.qty), tag: p.tag })), { lot: lotNowOf(run), qty: '', tag: '' }])
   // only an open PO can take the pallet: the one it was going to, unless the office closed it meanwhile
   const choices = poChoices(s, run)
   const [po, setPo] = useState(() => { const p = palletPo(s, run); return choices.some((x) => x.id === p) ? p : '' })
@@ -1174,6 +1175,7 @@ function PalletDoneDialog({ s, run, onClose, onSaved }: { s: State; run: Run; on
   // the last lot may have nothing (the pallet was full when a lot ran out); every other one has its cases
   const ok = total > 0 && rows.every((r, i) => !!r.lot.trim() && Number.isFinite(nums[i]) && (nums[i] > 0 || (i === rows.length - 1 && parts.length > 0)))
   const missing = rows.filter((r, i) => nums[i] > 0 && !r.tag.trim()).length
+  const lastRow = rows[rows.length - 1], fill = per > onIt && !lastRow.qty && lastRow.lot.trim() ? per - onIt : 0
   const save = () => { if (ok && palletDone(run.id, rows.map((r, i) => ({ lot: r.lot, qty: nums[i], tag: r.tag })), po)) onSaved() }
   return (
     <div className="veil" onClick={onClose}>
@@ -1190,7 +1192,8 @@ function PalletDoneDialog({ s, run, onClose, onSaved }: { s: State; run: Run; on
               </div>
             ))}
           </div>
-          <p className="lottotal">{trx('Total del pallet: {0} en {1}', <b>{fmtN(total)} {tr('cajas')}</b>, rows.filter((_, i) => nums[i] > 0).length === 1 ? tr('1 lote') : tr('{0} lotes', rows.filter((_, i) => nums[i] > 0).length))}{per > 0 && total !== per && <span className="amber"> {' '}{tr('· el pallet lleva {0}', fmtN(per))}</span>}</p>
+          <p className="lottotal">{total > 0 ? trx('Total del pallet: {0} en {1}', <b>{fmtN(total)} {tr('cajas')}</b>, rows.filter((_, i) => nums[i] > 0).length === 1 ? tr('1 lote') : tr('{0} lotes', rows.filter((_, i) => nums[i] > 0).length)) : tr('Escriban cuántas cajas lleva.')}{per > 0 && total !== per && <span className="muted"> {' '}{tr('· un pallet lleno lleva {0}', fmtN(per))}</span>}</p>
+          {fill > 0 && <button type="button" className="chip sm fillchip" onClick={() => change(rows.length - 1, { qty: String(fill) })}>{tr('Llenar el pallet: {0} cajas del lote {1}', fmtN(fill), lastRow.lot.trim())}</button>}
           {choices.length > 0 && (
             <div className="pochoice" role="group" aria-label={tr('¿Para qué PO es este pallet?')}>
               <span className="lab">{tr('¿Para qué PO es este pallet?')}</span>
@@ -1217,7 +1220,7 @@ function LotEndDialog({ run, onClose }: { run: Run; onClose: () => void }) {
   const lot = lotNowOf(run)
   const [qty, setQty] = useState('')
   const [tag, setTag] = useState('')
-  const [next, setNext] = useState(() => (/^\d+$/.test(lot) ? String(Number(lot) + 1) : ''))
+  const [next, setNext] = useState('') // typed by them: the app does not guess the next lot
   const ok = Number(qty) > 0 && !!next.trim() && next.trim() !== lot
   const save = () => { if (ok && palletLotEnds(run.id, Number(qty), tag, next)) onClose() }
   return (
@@ -1283,10 +1286,10 @@ function PalletOrderDialog({ s, run, onClose }: { s: State; run: Run; onClose: (
   )
 }
 
-/** the lot a bin line packs now changed: the bins from now on carry it */
-function BinLotDialog({ run, onClose }: { run: Run; onClose: () => void }) {
+/** the lot a Packing line packs now changed, or was written wrong: what is made from now on carries the one they type */
+function LotNowDialog({ run, onClose }: { run: Run; onClose: () => void }) {
   const lot = lotNowOf(run)
-  const [next, setNext] = useState(() => (/^\d+$/.test(lot) ? String(Number(lot) + 1) : ''))
+  const [next, setNext] = useState('')
   const ok = !!next.trim() && next.trim() !== lot
   return (
     <div className="veil" onClick={onClose}>
@@ -1613,7 +1616,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         <div className="tile"><label>{tr('Trabajando')}</label><b>{fmtDur(mineNow.working)}</b><small className={mineNow.down ? 'red' : ''}>{trx('parado {0}', fmtDur(mineNow.down))}</small></div>
       </div>
       {pallets
-        ? <PalletPanel s={s} run={run} saved={just ? savedText(line.dept, just.n - brought, rc) : ''} onDone={done} onLot={() => setPacking('lot')} onPart={(i) => setPacking(i)} onOrder={() => setPacking('po')} />
+        ? <PalletPanel s={s} run={run} saved={just ? savedText(line.dept, just.n - brought, rc) : ''} onDone={done} onLot={() => setPacking('lot')} onLotNow={() => setPacking('binlot')} onPart={(i) => setPacking(i)} onOrder={() => setPacking('po')} />
         : <button type="button" className={'btn primary huge' + (just ? ' saved' : '')} disabled={!!just} onClick={done}>✓ {just ? savedText(line.dept, just.n - brought, rc) : rc.done}</button>}
       {binOf(run) && <button type="button" className="lnk sm binlot" onClick={() => setPacking('binlot')}>{tr('¿Cambió el lote?')}</button>}
       {untagged.map((x) => <button key={x.u.at} type="button" className="lnk sm notag tagmiss" onClick={() => setTagging(x.i)}>{tr('Al pallet {0} le falta el tag: lote {1} · ponerlo', x.i + 1, x.lots.join(', '))}</button>)}
@@ -1640,7 +1643,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       {packing === 'done' && <PalletDoneDialog s={s} run={run} onClose={() => { setPacking(null); setEndAfter(null) }} onSaved={() => { setPacking(null); buzz(); if (endAfter !== null) { const next = endAfter; setEndAfter(null); endRun(run.id, next) } }} />}
       {packing === 'lot' && <LotEndDialog run={run} onClose={() => setPacking(null)} />}
       {packing === 'po' && <PalletOrderDialog s={s} run={run} onClose={() => setPacking(null)} />}
-      {packing === 'binlot' && <BinLotDialog run={run} onClose={() => setPacking(null)} />}
+      {packing === 'binlot' && <LotNowDialog run={run} onClose={() => setPacking(null)} />}
       {tagUnit && <LotsDialog key={'tag:' + tagUnit.at} title={tr('Tags del pallet {0}', (tagging ?? 0) + 1)} unit={rc.qtyUnit} refLabel={rc.refLabel} lot={run.lot} qty={tagUnit.qty} start={tagUnit.lots ?? [{ lot: run.lot, qty: tagUnit.qty ?? 0 }]} startRef={tagUnit.ref} onClose={() => setTagging(null)} onPick={(total, ref, lots) => { fillUnit(run.id, tagUnit.at, total, lots, ref); setTagging(null) }} />}
       {typeof packing === 'number' && run.extra?.open?.parts[packing] && <PartDialog run={run} index={packing} onClose={() => setPacking(null)} />}
       {wasting && <QtyDialog title={tr('Waste de {0} · ¿cuántas libras?', run.code)} unit="lb" refLabel="" initial={null} decimal onClose={() => setWasting(false)} onPick={(lb) => { if (lb > 0) addWaste(run.id, lb); setWasting(false) }} />}

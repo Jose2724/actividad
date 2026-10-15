@@ -1931,8 +1931,13 @@ section('Packing: un pallet con varios lotes, cada lote con su tag; y las línea
     eq('un pallet sin PO no se suma a ninguno, y el que sigue tampoco se va solo para un PO', [done(five), done(three), m.palletPo(st(), run('A102'))], ['1/5', '1/3', ''])
     m.palletOrder(run('A102').id, five); full(five, '2004')
     eq('y al volver al primer PO, sigue donde iba: 2/5', [done(five), done(three), run('A102').units.map((u) => u.po === five ? 'five' : u.po === three ? 'three' : 'none')], ['2/5', '1/3', ['five', 'three', 'none', 'five']])
+    // at "Pallet listo" the lot that was going on can be written otherwise: that one is the lot going on from then
+    clock += 60_000; m.palletDone(run('A102').id, [{ lot: '6295', qty: 30, tag: '2005' }], '')
+    eq('el lote del último renglón del pallet es el que sigue', m.lotNowOf(run('A102')), '6295')
+    clock += 60_000; m.palletLotEnds(run('A102').id, 10, '', '6296'); m.palletDone(run('A102').id, [...run('A102').extra.open.parts, { lot: '6296', qty: 0, tag: '' }], '')
+    eq('un pallet que termina con lo que ya tenía (sin cajas del lote nuevo) se guarda así, y el lote nuevo sigue', [run('A102').units.at(-1).lots, run('A102').units.at(-1).qty, m.lotNowOf(run('A102'))], [[{ lot: '6295', qty: 10 }], 10, '6296'])
     clock += 60_000; m.endRun(run('A102').id, false)
-    eq('un código que termina no deja pallet a medias', run('A102').extra, undefined)
+    eq('un código que termina no deja pallet a medias', run('A102').extra, { lotNow: '6296' })
     m.deleteRun(run('A102').id)
     eq('terminado el código, el lote que iba a seguir ya no sale en el filtro', m.reportOf(st(), DAY, clock, { only: 'Packing' }).lots.includes('6288'), false)
     // the tag of 6286 on the first pallet, written once the pallet was finished: it goes on that lot, and to the history

@@ -610,6 +610,9 @@ table.shiftgrid tr.sep td{background:var(--bg);color:var(--muted);font-size:11px
 .lnk.notag{color:var(--amber)}
 .pal-now{background:var(--soft);border-radius:10px;padding:8px 10px;font-size:15px}
 .pal-now b{font-size:18px;color:var(--accent)}
+.pal-now{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.lottotal .muted{color:var(--muted)}
+.fillchip{justify-self:start}
 .pallet .btn.huge{width:100%}
 .coderow .binkind{color:var(--accent);font-weight:700}
 .binlot{justify-self:start}
