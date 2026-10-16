@@ -1026,5 +1026,7 @@ export const EN: Record<string, string> = {
   '1 línea libre': '1 free line',
   '{0} líneas libres': '{0} free lines',
   '¿Poner en Set up todas las líneas libres?': 'Put every free line in Set up?',
-  'El Set up de cada línea empieza ahora y cuenta cuando empiece su código; con nadie trabajando no cuenta. Las líneas que ya tienen código o Set up siguen como están.': 'The set up of each line starts now and counts once its code starts; with nobody working it does not count. Lines that already have a code or a set up stay as they are.',
+  'El Set up cuenta desde las {0}, el inicio del turno.': 'The set up counts from {0}, the start of the shift.',
+  'El Set up cuenta desde ahora.': 'The set up counts from now.',
+  'Cuenta cuando empiece el código de cada línea; con nadie trabajando no cuenta. Las líneas que ya tienen código o Set up siguen como están.': 'It counts once each line\'s code starts; with nobody working it does not count. Lines that already have a code or a set up stay as they are.',
 }

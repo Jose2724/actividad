@@ -2084,6 +2084,7 @@ section('Empezar Set up nunca se queda sin hacer nada')
     clock = oct(13, 7, 5); m.startRun(b9, 'K100', '6286', '2026-10-13', null)
     eq('las líneas libres son las que no tienen código ni Set up ni paro', m.freeLines(st(), clock).map((x) => x.name), ['Línea 9'])
     eq('"Set up en todas": las libres entran en Set up a la vez; la que ya lo estaba y la que corre siguen como están', [m.startSetupAll(), open(l9.id).map((x) => x.reason), open(l.id).length, m.openRun(st(), b9.id) ? 'corre' : '', m.freeLines(st(), clock).length], [1, ['Set up'], 1, 'corre', 0])
+    eq('el Set up de todas cuenta desde el inicio del turno en curso (Jose: "el de la 2"), nunca antes de que la línea quedara libre', [open(l9.id)[0].startedAt, m.setupAllFrom(st(), clock)], [m.turnOf(st(), '2026-10-13', clock).since, m.turnOf(st(), '2026-10-13', clock).since])
     eq('con ninguna libre no hace nada', m.startSetupAll(), 0)
   })
 }

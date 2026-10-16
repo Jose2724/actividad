@@ -632,8 +632,7 @@ export function orderPallets(s: State, orderId: string, perPallet?: number | nul
  * with "Terminar", or when the next code starts. (With a code running, its "Set up" button opens one with startStop,
  * and so does "Set up" among the reasons of "Parar": the code goes on, and the set up is counted apart.)
  */
-export function startSetup(line: Line) {
-  const at = clockNow()
+export function startSetup(line: Line, at = clockNow()) {
   if (state.runs.some((r) => r.lineId === line.id && !r.endedAt)) return
   // A stop left open on the line for hours, or since another day of work, is not on its card (see idleStop), which
   // shows the line free: it was not a set up, and it is dropped as the next code would drop it. Otherwise the button
@@ -650,13 +649,27 @@ export function startSetup(line: Line) {
 /** the lines with nothing on their card: no code running, no set up or stop on them, and their room not stopped */
 export const freeLines = (s: State, now: number): Line[] => s.lines.filter((l) => !openRun(s, l.id) && !idleStop(s, l.id, now) && !deptStop(s, l.dept))
 /**
+ * When the set ups of every line start: at the start of the shift in course, when the tap comes within hours of it
+ * (Jose: the lines were being prepared since the shift began, whoever taps at 6:20 means 6:00); otherwise now.
+ */
+export function setupAllFrom(s: State, now: number): number {
+  const since = turnOf(s, workDay(s, now).date, now).since
+  return since <= now && now - since <= SETUP_MAX_MS ? since : now
+}
+/**
  * Every free line of every room goes into set up at once: a manager's or the office's tap when a shift starts and the
- * lines are being prepared, instead of a tap on each line. Each set up waits for that line's next code, as any set up
- * does (it never counts with nobody working). Returns how many lines it put in set up.
+ * lines are being prepared, instead of a tap on each line. Each set up starts at the shift's start (see setupAllFrom),
+ * never before the line's last code or stop ended, and waits for that line's next code, as any set up does (it never
+ * counts with nobody working). Returns how many lines it put in set up.
  */
 export function startSetupAll(): number {
-  const free = freeLines(state, clockNow())
-  batch(() => { for (const l of free) startSetup(l) })
+  const now = clockNow(), base = setupAllFrom(state, now), free = freeLines(state, now)
+  batch(() => {
+    for (const l of free) {
+      const lastEnd = Math.max(0, ...state.runs.filter((r) => r.lineId === l.id && r.endedAt).map((r) => r.endedAt ?? 0), ...state.stops.filter((x) => x.lineId === l.id && x.endedAt).map((x) => x.endedAt ?? 0))
+      startSetup(l, Math.min(now, Math.max(base, lastEnd + 1000)))
+    }
+  })
   return free.length
 }
 /** what is still open in a room: the codes running, the set ups waiting for a code that has not come, and any other stop */
