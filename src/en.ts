@@ -291,7 +291,6 @@ export const EN: Record<string, string> = {
   '· envío {0}': '· ships {0}',
   '⏸ Parado': '⏸ Stopped',
   '● Corriendo': '● Running',
-  '{0} {1} por {2}': '{0} {1} per {2}',
   '📦 {0} de {1}:': '📦 {0} for {1}:',
   'Pedido': 'Order',
   'Pedidos': 'Orders',
@@ -868,7 +867,6 @@ export const EN: Record<string, string> = {
   'una por una': 'one by one',
   'cada mezcla dice sus libras': 'each mix says its pounds',
   'cada mezcla dice sus cajas': 'each mix says its cases',
-  'Se cuenta en {0}': 'Counted in {0}',
   'En {0}': 'In {0}',
   'Además, {0}': 'Also, {0}',
   'aparte: {0}': 'apart: {0}',
@@ -921,7 +919,6 @@ export const EN: Record<string, string> = {
   'BINS · {0}': 'BINS · {0}',
   'PALLETS': 'PALLETS',
   'lote {0}': 'lot {0}',
-  'desde {0}': 'since {0}',
   'Buscar código, lote, tag o PO': 'Search code, lot, tag or PO',
   'Buscar pallet': 'Search pallet',
   'Quitar la búsqueda': 'Clear the search',
@@ -1000,4 +997,7 @@ export const EN: Record<string, string> = {
   '⚠ Sin servidor desde las {0}. Si en otra tablet ya cambió el código o el lote de esta línea, aquí se vería lo viejo.': '⚠ No server since {0}. If another tablet already changed this line\'s code or lot, the old one would show here.',
   '⚠ Este aparato no ha bajado nada del servidor todavía.': '⚠ This device has not brought anything from the server yet.',
   'Entiendo, registrar igual': 'I understand, record anyway',
+  // the facts of a run on its line card (2026-10-16)
+  'Por {0}': 'Per {0}',
+  'Se cuenta en': 'Counted in',
 }

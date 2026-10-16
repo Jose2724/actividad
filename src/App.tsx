@@ -1987,7 +1987,15 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       <div className={'hero' + (binOf(run) ? ' bin' : pallets ? ' pal' : '')}>
         {run.dept === 'Packing' && <span className="mode">{binOf(run) ? trx('BINS · {0}', binWord(binOf(run))) : tr('PALLETS')}</span>}
         <div className="hero-main"><b className="code">{run.code}</b><span className="lot">{trx('lote {0}', <b>{lotNowOf(run)}</b>)}</span></div>
-        <small>{[productOf(s, run.code)?.name ?? '', run.date !== day.date ? shortDay(run.date) : '', tr('desde {0}', fmtTime(run.startedAt)), run.perUnit != null ? tr('{0} {1} por {2}', run.perUnit, rc.qtyUnit, runWord) : '', binOf(run) ? tr('Turno {0}', turn.shift) : '', measureOf(run) ? tr('Se cuenta en {0}', measureName(measureOf(run))) : ''].filter(Boolean).join(' · ')}</small>
+        {productOf(s, run.code)?.name && <div className="hero-name">{productOf(s, run.code)?.name}</div>}
+        {/* the facts of the run, each with its name: when it started, what a unit carries, and what is not the usual */}
+        <div className="hero-facts">
+          <span className="fact"><small>{tr('Desde')}</small><b>{fmtTime(run.startedAt)}</b></span>
+          {run.date !== day.date && <span className="fact"><small>{tr('Fecha')}</small><b>{shortDay(run.date)}</b></span>}
+          {run.perUnit != null && <span className="fact"><small>{tr('Por {0}', runWord)}</small><b>{fmtN(run.perUnit)} {rc.qtyUnit}</b></span>}
+          {binOf(run) && <span className="fact"><small>{tr('Turno')}</small><b>{turn.shift}</b></span>}
+          {measureOf(run) && <span className="fact"><small>{tr('Se cuenta en')}</small><b>{measureName(measureOf(run))}</b></span>}
+        </div>
       </div>
       {mineNow.carried && (
         <div className="carried">
