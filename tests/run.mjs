@@ -2134,6 +2134,15 @@ section('Avance: cada código lo empaca RTE o MFO, nunca los dos; y se puede ver
     eq('el lote por código dice cada día que se trabajó', ad.codes.find((c) => c.code === 'M500').days.map((d) => [d.date, d.mixes, d.mfo, d.cases, d.pallets]), [['2026-10-20', 2, 30, 25, 1]])
     eq('las filas de Avance de un lote en todos sus días: lo hecho contra lo que sus mezclas permiten, sin programa', m.lotRows(st(), '6293').map((r) => [r.code, r.mixesDone, r.casesExp, r.mfoExp, r.pouchesExp, r.casesDone, r.scheduled, r.pouchesPlan, r.days.length]), [['M500', 2, 50, 50, null, 25, 0, null, 1], ['Q700', 0, null, null, null, 0, 0, null, 1], ['R600', 2, 37, null, 296, 0, 0, null, 1]])
     eq('los lotes que el aparato conoce, el más nuevo primero', m.lotsKnown(st()), ['6293', '6292'])
+    // several days added up (asked 2026-10-16): the next day has more of M500, and the range says both days
+    add('k3', 'Kitchen', 'M500', '6294', [{ at: oct(21, 8, 0), qty: null, ref: '', by: 'Luis' }], { date: '2026-10-21', started_at: new Date(oct(21, 7, 0)).toISOString(), ended_at: new Date(oct(21, 12, 0)).toISOString() })
+    add('mf3', 'MFO', 'M500', '6294', [{ at: oct(21, 10, 0), qty: 20, ref: '3', by: 'Luis' }], { date: '2026-10-21', started_at: new Date(oct(21, 7, 0)).toISOString(), ended_at: new Date(oct(21, 12, 0)).toISOString() })
+    m.setSchedule('2026-10-21', 'M500', 1)
+    eq('los días de un rango, los dos incluidos, también al revés', [m.datesBetween('2026-10-20', '2026-10-22'), m.datesBetween('2026-10-22', '2026-10-20').length, m.datesBetween('2026-10-20', '2026-10-20')], [['2026-10-20', '2026-10-21', '2026-10-22'], 3, ['2026-10-20']])
+    const rg = m.avanceRange(st(), '2026-10-20', '2026-10-22').find((r) => r.code === 'M500')
+    eq('un código en el rango suma sus días: programa, mezclas, cajas de MFO, y dice cada día', [rg.scheduled, rg.mixesDone, rg.mfoCases, rg.mfoPlan, rg.mfoExp, rg.casesDone, rg.palletsDone, rg.days.map((d) => [d.date, d.mixes, d.mfo])], [5, 3, 50, 125, 75, 40, 1, [['2026-10-20', 2, 30], ['2026-10-21', 1, 20]]])
+    eq('sus lotes del rango, y sus turnos sumados', [rg.lots.map((l) => [l.lot, l.mixes, l.mfo, l.cases]), rg.byShift[0].mixes, rg.byShift[0].mfo], [[['6292', 0, 0, 15], ['6293', 2, 30, 25], ['6294', 1, 20, 0]], 3, 50])
+    eq('con un lote, el rango solo trae lo de ese lote', m.avanceRange(st(), '2026-10-20', '2026-10-22', '6294').map((r) => [r.code, r.mixesDone, r.mfoCases, r.days.length]), [['M500', 1, 20, 1]])
   })
 }
 section('Solo ver: un usuario de la oficina que mira todo y no toca nada')

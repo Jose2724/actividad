@@ -1,7 +1,7 @@
 import { createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
 import { addLine, addWaste, apartLabel, apartWord, awayDay, cameFrom, carriedOver, dayAfter, BIN_WORDS, binOf, binWord, cfgFor, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, numOf, openIn, openOrdersFor, openRun, openStop, orderCodes, orderLabel, orderOfId, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, productOf, productsCsv, purgeDay, purgesOf, removeLine, removeProduct, renameLine, reopenRun, reset, restorePurged, resetRecords, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftHours, shiftSpan, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay } from './store'
-import { avanceLots, avanceRows, lotAcrossDays, lotRows, lotsKnown, n1, pending, type AvancePart, type AvanceRow } from './avance'
+import { avanceLots, avanceRange, avanceRows, datesBetween, lotAcrossDays, lotRows, lotsKnown, n1, pending, type AvancePart, type AvanceRow } from './avance'
 import { cellText, loadZip, xDay, xDur, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 
 const fmtN = (x: number) => Math.round(x).toLocaleString('en-US')
@@ -479,9 +479,16 @@ function Avance({ s }: { s: State }) {
   const [lot, setLot] = useState('')
   // the lot can be looked at on this date only, or over every day it was worked (a lot goes on into the next day)
   const [scope, setScope] = useState<'date' | 'all'>('date')
-  const lots = avanceLots(s, date), known = lotsKnown(s), lotNow = lot && (lots.includes(lot) || known.includes(lot)) ? lot : ''
-  const isAll = !!lotNow && scope === 'all'
-  const all = isAll ? lotRows(s, lotNow) : avanceRows(s, date, lotNow ? undefined : typing.current.codes, lotNow)
+  // or several days added up: from one date to another (the days the device does not hold are brought from the server)
+  const [range, setRange] = useState(false)
+  const [from, setFrom] = useState(addDays(today, -6))
+  const [to, setTo] = useState(today)
+  const span = range ? datesBetween(from, to) : [date]
+  const lots = range ? [...new Set(span.flatMap((d) => avanceLots(s, d)))].sort() : avanceLots(s, date), known = lotsKnown(s), lotNow = lot && (lots.includes(lot) || known.includes(lot)) ? lot : ''
+  const isAll = !range && !!lotNow && scope === 'all'
+  const all = range ? avanceRange(s, from, to, lotNow) : isAll ? lotRows(s, lotNow) : avanceRows(s, date, lotNow ? undefined : typing.current.codes, lotNow)
+  const away = span.filter((d) => awayDay(d)).length
+  useEffect(() => { for (const d of span) if (awayDay(d)) void loadDay(d) }, [range, from, to]) // eslint-disable-line react-hooks/exhaustive-deps
   const needle = plainText(q)
   const rows = needle ? all.filter((r) => plainText(r.code).includes(needle) || plainText(r.product?.name ?? '').includes(needle)) : all
   const sum = (f: (r: AvanceRow) => number | null) => rows.reduce((t, r) => t + (f(r) ?? 0), 0)
@@ -516,7 +523,7 @@ function Avance({ s }: { s: State }) {
   return (
     <section className="report avance av2">
       <div className="rhead">
-        <div className="rtitle"><h2>{tr('Avance del día')}</h2><span>{longDate(date)}</span></div>
+        <div className="rtitle"><h2>{range ? tr('Avance de varios días') : tr('Avance del día')}</h2><span>{range ? trx('del {0} al {1} · {2} días', shortDay(from <= to ? from : to), shortDay(from <= to ? to : from), span.length) : longDate(date)}</span></div>
         <div className="racts">
           <button type="button" className="btn" onClick={() => setEditing(!editing)}>{editing ? tr('Cerrar productos') : tr('⚙ Productos')}</button>
         </div>
@@ -525,13 +532,22 @@ function Avance({ s }: { s: State }) {
       <div className="rfilters">
         <div className="rf-row">
           <div className="rf">
-            <span className="lab">{tr('Fecha')}</span>
-            <div className="daynav">
-              <button type="button" className="btn" aria-label={tr('Día anterior')} onClick={() => setDate(addDays(date, -1))}>‹</button>
-              <input type="date" aria-label={tr('Fecha')} value={date} onChange={(e) => { if (e.target.value) setDate(e.target.value) }} />
-              <button type="button" className="btn" aria-label={tr('Día siguiente')} onClick={() => setDate(addDays(date, 1))}>›</button>
-              {date !== today && <button type="button" className="btn" onClick={() => setDate(today)}>{tr('Hoy')}</button>}
-            </div>
+            <span className="lab">{tr('Fecha')}<button type="button" className="lnk sm" onClick={() => setRange(!range)}>{range ? tr('Un día') : tr('Rango de fechas')}</button></span>
+            {range ? (
+              <div className="rangepick">
+                <label>{tr('Desde')} <input type="date" value={from} onChange={(e) => { if (e.target.value) setFrom(e.target.value) }} /></label>
+                <label>{tr('Hasta')} <input type="date" value={to} onChange={(e) => { if (e.target.value) setTo(e.target.value) }} /></label>
+                <button type="button" className="chip sm" onClick={() => { setFrom(addDays(today, -6)); setTo(today) }}>{tr('7 días')}</button>
+                <button type="button" className="chip sm" onClick={() => { setFrom(addDays(today, -29)); setTo(today) }}>{tr('30 días')}</button>
+              </div>
+            ) : (
+              <div className="daynav">
+                <button type="button" className="btn" aria-label={tr('Día anterior')} onClick={() => setDate(addDays(date, -1))}>‹</button>
+                <input type="date" aria-label={tr('Fecha')} value={date} onChange={(e) => { if (e.target.value) setDate(e.target.value) }} />
+                <button type="button" className="btn" aria-label={tr('Día siguiente')} onClick={() => setDate(addDays(date, 1))}>›</button>
+                {date !== today && <button type="button" className="btn" onClick={() => setDate(today)}>{tr('Hoy')}</button>}
+              </div>
+            )}
           </div>
           <div className="rf grow">
             <span className="lab">{tr('Lote')}</span>
@@ -546,7 +562,7 @@ function Avance({ s }: { s: State }) {
                 </select>
               )}
             </div>
-            {lotNow && (
+            {lotNow && !range && (
               <div className="seg lotscope" role="group" aria-label={tr('De cuándo')}>
                 <button type="button" className={scope === 'date' ? 'on' : ''} aria-pressed={scope === 'date'} onClick={() => setScope('date')}>{tr('Solo esta fecha')}</button>
                 <button type="button" className={scope === 'all' ? 'on' : ''} aria-pressed={scope === 'all'} onClick={() => setScope('all')}>{tr('Todos los días')}</button>
@@ -554,7 +570,7 @@ function Avance({ s }: { s: State }) {
             )}
           </div>
           <label className="rf avsearch"><span className="lab">{tr('Buscar')}</span><input value={q} onChange={(e) => setQ(e.target.value)} placeholder={tr('Código o producto')} autoComplete="off" /></label>
-          {!viewOnly && !isAll && (
+          {!viewOnly && !isAll && !range && (
             <form className="rf avadd" onSubmit={(e) => { e.preventDefault(); if (newCode.trim()) { typing.current.codes.add(normCode(newCode)); setSchedule(date, newCode, 0); setNewCode('') } }}>
               <span className="lab">{tr('Programar')}</span>
               <div className="addcode"><input placeholder={tr('Código a programar')} value={newCode} onChange={(e) => setNewCode(e.target.value)} autoComplete="off" /><button className="btn" type="submit" disabled={!newCode.trim()}>{tr('+ Programar')}</button></div>
@@ -562,10 +578,12 @@ function Avance({ s }: { s: State }) {
           )}
         </div>
       </div>
-      <DayNote day={day} />
+      {range ? (away > 0 && <p className="avlotnote">{trx('Trayendo del servidor {0} de los {1} días…', away, span.length)}</p>) : <DayNote day={day} />}
       {lotNow && across && (
         <p className="avlotnote">
-          {isAll
+          {range
+            ? <><b>{trx('Viendo el lote {0} del {1} al {2}', lotNow, shortDay(from <= to ? from : to), shortDay(from <= to ? to : from))}</b> {tr('· el programa es de cada día, por eso aquí no sale.')}</>
+            : isAll
             ? <><b>{trx('Viendo el lote {0} en todos sus días', lotNow)}</b>{across.days.length > 0 && ' (' + across.days.map(shortDay).join(', ') + ')'} {tr('· el programa es de cada día, por eso aquí no sale.')}</>
             : <><b>{trx('Viendo el lote {0}', lotNow)}</b> {tr('· lo que se hizo de ese lote en esta fecha. El programa es del día completo, por eso aquí no sale.')} {trx('Total del lote en todos sus días ({0}): {1}.', across.days.map(shortDay).join(', ') || '—', <b>{acrossText(across.total)}</b>)}</>}
           {!isAll && !lots.includes(lotNow) && <> {tr('Ese lote no se trabajó en esta fecha.')} <button type="button" className="lnk sm" onClick={() => setScope('all')}>{tr('Ver todos los días')}</button></>}
@@ -603,7 +621,7 @@ function Avance({ s }: { s: State }) {
                       </td>
                       <td data-label={tr('Mezclas')}>
                         <AvStat made={r.mixesDone} exp={isLot ? null : r.scheduled || null} plan={null} unit={tr('mezclas')} lot={isLot} note={r.mixesDone > 0 ? r.mixRoom : undefined} />
-                        {!viewOnly && !isLot && <label className="avprog">{tr('Progr.')} <input className="num" inputMode="numeric" value={r.scheduled || ''} placeholder="0" onChange={(e) => setSchedule(date, r.code, Number(e.target.value.replace(/\D/g, '')) || 0)} /></label>}
+                        {!viewOnly && !isLot && !range && <label className="avprog">{tr('Progr.')} <input className="num" inputMode="numeric" value={r.scheduled || ''} placeholder="0" onChange={(e) => setSchedule(date, r.code, Number(e.target.value.replace(/\D/g, '')) || 0)} /></label>}
                       </td>
                       <td className="slim" data-label="Spiral">{r.spiralDone || '—'}</td>
                       <td data-label={tr('Pouches · RTE')}><AvStat made={r.pouchesDone} exp={r.pouchesExp} plan={r.pouchesPlan} unit="pouches" lot={isLot} /></td>
@@ -615,12 +633,13 @@ function Avance({ s }: { s: State }) {
                     {isOpen && (
                       <tr className="avdetail"><td colSpan={8}>
                         <div className="avd">
-                          {isAll ? (
+                          {(isAll || range) && (
                             <div className="avd-block">
                               <h4>{tr('Por día')}</h4>
-                              <table className="avmini">{miniHead}<tbody>{(r.days ?? []).map((d) => miniRow(d.date, <button type="button" className="drill" title={tr('Ver ese día')} onClick={() => { setDate(d.date); setScope('date') }}>{shortDay(d.date)}</button>, d))}</tbody></table>
+                              <table className="avmini">{miniHead}<tbody>{(r.days ?? []).map((d) => miniRow(d.date, <button type="button" className="drill" title={tr('Ver ese día')} onClick={() => { setDate(d.date); setScope('date'); setRange(false) }}>{shortDay(d.date)}</button>, d))}</tbody></table>
                             </div>
-                          ) : (
+                          )}
+                          {!isAll && (
                             <>
                               <div className="avd-block">
                                 <h4>{tr('Por lote')}</h4>
@@ -894,6 +913,8 @@ function WipeDayDialog({ s, date, onClose, onDone }: { s: State; date: string; o
 /** "lun, 12 oct": a date said short */
 /** the date some days before or after another */
 const addDays = (date: string, n: number) => { const d = new Date(date + 'T12:00:00'); d.setDate(d.getDate() + n); return dayOf(d.getTime()) }
+/** the pallets of the report, by their state */
+type PalletFilter = '' | 'notag' | 'nopo' | 'po' | 'full' | 'short' | 'open'
 /** without accents or capitals: what is typed in a search matches what was written */
 const plainText = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 const shortDay = (date: string) => new Date(date + 'T12:00:00').toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' })
@@ -2350,6 +2371,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
   // long lists show ten lines at a time (the files always carry everything)
   const [more, setMore] = useState<Record<string, number>>({})
   const [palQ, setPalQ] = useState('') // the pallets of the day, found by what is written on them: a code, a lot, a tag, a PO, a line
+  const [palF, setPalF] = useState<PalletFilter>('') // ...or by their state: without a tag, without or with a PO, full, short, being built
   useEffect(() => { setMore({}) }, [date, fCode, fLot, fShift, fDept])
   const PAGE = 10
   const cut = <T,>(key: string, list: T[]) => list.slice(0, more[key] ?? PAGE)
@@ -2395,7 +2417,10 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
   /** a pallet's place among its order's pallets: "2/12" (or "2" when the order does not say how many cases it is) */
   const ofText = (of: [number, number | null]) => (of[1] ? of[0] + '/' + of[1] : String(of[0]))
   const palK = plainText(palQ)
-  const palletsShown = palK ? rep.pallets.filter((p) => [p.r.code, p.order, lineNameOf(s, p.r.lineId, p.r.line), ...p.parts.flatMap((x) => [x.lot, x.tag])].some((t) => plainText(String(t ?? '')).includes(palK))) : rep.pallets
+  const palletIs = (p: (typeof rep.pallets)[number], f: PalletFilter) => (f === '' ? true : f === 'notag' ? p.parts.some((x) => !x.tag) : f === 'nopo' ? !p.order : f === 'po' ? !!p.order : f === 'open' ? p.open : p.r.perUnit != null && !p.open && (f === 'full' ? p.total >= p.r.perUnit : p.total < p.r.perUnit))
+  const palletsFound = palK ? rep.pallets.filter((p) => [p.r.code, p.order, lineNameOf(s, p.r.lineId, p.r.line), ...p.parts.flatMap((x) => [x.lot, x.tag])].some((t) => plainText(String(t ?? '')).includes(palK))) : rep.pallets
+  const palletsShown = palletsFound.filter((p) => palletIs(p, palF))
+  const palCount = (f: PalletFilter) => palletsFound.filter((p) => palletIs(p, f)).length
   /** the words of a line of "por código": a code filled in bins speaks of bins */
   const cw = (c: { dept: Dept; bin: string }) => cfgFor(c.dept, c.bin)
   const reasonsText = (x: (typeof rows)[number]) => Object.entries(x.st.reasons).map(([k, v]) => tr(k) + ' ' + fmtDur(v)).join(', ')
@@ -2713,9 +2738,14 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
               </div>
               {!shut.pallets && (
                 <>
+                  <div className="chips palfilters">
+                    {(['', 'notag', 'nopo', 'po', 'full', 'short', 'open'] as const).filter((f) => f === '' || palCount(f) > 0 || palF === f).map((f) => (
+                      <button key={f} type="button" className={'chip sm' + (palF === f ? ' on' : '')} aria-pressed={palF === f} onClick={() => setPalF(f)}>{f === '' ? tr('Todos') : f === 'notag' ? tr('Sin tag') : f === 'nopo' ? tr('Sin PO') : f === 'po' ? tr('Con PO') : f === 'full' ? tr('Completos') : f === 'short' ? tr('Incompletos') : tr('En armado')}<small>{palCount(f)}</small></button>
+                    ))}
+                  </div>
                   <div className="twrap">
                     <table className="pallets">
-                      <thead><tr><th>{tr('Pallet')}</th><th>{tr('Código')}</th><th>{tr('Lote')}</th><th className="num">{tr('Cajas')}</th><th>{tr('Tag')}</th><th className="num">{tr('Total')}</th><th>PO</th><th>{tr('Línea')}</th><th>{tr('Hora')}</th>{!rep.shift && <th>{tr('Turno')}</th>}</tr></thead>
+                      <thead><tr><th>{tr('Pallet')}</th><th>{tr('Código')}</th><th>{tr('Lote')}</th><th className="num">{tr('Cajas')}</th><th>{tr('Tag')}</th><th className="num">{tr('Total')}</th><th>PO</th><th>{tr('Línea')}</th><th>{tr('Hora')}</th>{!rep.shift && <th>{tr('Turno')}</th>}<th></th></tr></thead>
                       {cut('pallets', palletsShown).map((p) => {
                         const span = p.parts.length
                         return (
@@ -2732,6 +2762,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
                                 {i === 0 && <td rowSpan={span}>{lineNameOf(s, p.r.lineId, p.r.line)}</td>}
                                 {i === 0 && <td rowSpan={span}>{p.open ? '—' : fmtTime(p.at)}</td>}
                                 {i === 0 && !rep.shift && <td rowSpan={span}>{p.shift}</td>}
+                                {i === 0 && <td rowSpan={span}>{can('fix') && canShift(who, spanShifts(rep.plan, p.r.startedAt, p.r.endedAt ?? now)) && <button type="button" className="lnk" onClick={() => setEditRun(p.r.id)}>{tr('Corregir')}</button>}</td>}
                               </tr>
                             ))}
                           </tbody>
@@ -2739,7 +2770,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
                       })}
                     </table>
                   </div>
-                  {palletsShown.length === 0 && <p className="hint">{tr('Ningún pallet de este día tiene eso escrito.')}</p>}
+                  {palletsShown.length === 0 && <p className="hint">{palK ? tr('Ningún pallet de este día tiene eso escrito.') : tr('Ningún pallet de este día está así.')}</p>}
                   {moreBar('pallets', palletsShown.length)}
                 </>
               )}

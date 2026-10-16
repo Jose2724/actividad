@@ -187,3 +187,41 @@ export function lotsKnown(s: State): string[] {
   for (const r of s.runs) for (const l of r.units.length ? r.units.flatMap((u) => unitParts(s, r, u).map((p) => p.lot)) : [r.lot]) if (l) out.add(l)
   return [...out].sort((a, b) => (Number(b) || 0) - (Number(a) || 0) || b.localeCompare(a))
 }
+/** the days from one date to another, both included; a range upside down is turned around; at most 92 days */
+export function datesBetween(from: string, to: string): string[] {
+  const [a, b] = from <= to ? [from, to] : [to, from]
+  const out: string[] = []
+  const d = new Date(a + 'T12:00:00')
+  for (let i = 0; i < 92; i++) {
+    const ds = d.toISOString().slice(0, 10)
+    if (ds > b) break
+    out.push(ds); d.setDate(d.getDate() + 1)
+  }
+  return out
+}
+const addPart = (t: AvancePart, x: AvancePart): AvancePart => ({ mixes: t.mixes + x.mixes, spiral: t.spiral + x.spiral, pouches: t.pouches + x.pouches, cases: t.cases + x.cases, mfo: t.mfo + x.mfo, pallets: t.pallets + x.pallets })
+const addN = (a: number | null, b: number | null) => (a == null && b == null ? null : (a ?? 0) + (b ?? 0))
+/**
+ * Avance over several days: each code with its days added up (the program and what was made alike), what each day
+ * made of it, its lots over those days and its shifts added up. With a lot, only that lot's part of each day.
+ */
+export function avanceRange(s: State, from: string, to: string, lot = ''): AvanceRow[] {
+  const byCode = new Map<string, AvanceRow & { lotMap: Map<string, AvancePart> }>()
+  for (const date of datesBetween(from, to)) for (const r of avanceRows(s, date, undefined, lot)) {
+    const key = normCode(r.code), dayRow: LotDay = { date, mixes: r.mixesDone, spiral: r.spiralDone, pouches: r.pouchesDone, cases: r.casesDone, mfo: r.mfoCases, pallets: r.palletsDone }
+    const c = byCode.get(key)
+    if (!c) { byCode.set(key, { ...r, days: [dayRow], lotMap: new Map(r.lots.map((l) => [l.lot, l])) }); continue }
+    for (const l of r.lots) c.lotMap.set(l.lot, addPart(c.lotMap.get(l.lot) ?? part(), l))
+    byCode.set(key, {
+      ...c, days: [...(c.days ?? []), dayRow],
+      scheduled: c.scheduled + r.scheduled, mixesDone: c.mixesDone + r.mixesDone, mixesPending: c.mixesPending + r.mixesPending, spiralDone: c.spiralDone + r.spiralDone,
+      mixRoom: r.mixesDone > c.mixesDone ? r.mixRoom : c.mixRoom,
+      pouchesPlan: addN(c.pouchesPlan, r.pouchesPlan), pouchesExp: addN(c.pouchesExp, r.pouchesExp), pouchesDone: c.pouchesDone + r.pouchesDone,
+      casesPlan: addN(c.casesPlan, r.casesPlan), casesExp: addN(c.casesExp, r.casesExp), casesDone: c.casesDone + r.casesDone, mfoCases: c.mfoCases + r.mfoCases,
+      palletsPlan: addN(c.palletsPlan, r.palletsPlan), palletsExp: addN(c.palletsExp, r.palletsExp), palletsDone: c.palletsDone + r.palletsDone,
+      wasteLb: Math.round((c.wasteLb + r.wasteLb) * 100) / 100, mfoPlan: addN(c.mfoPlan, r.mfoPlan), mfoExp: addN(c.mfoExp, r.mfoExp),
+      byShift: [addPart(c.byShift[0], r.byShift[0]), addPart(c.byShift[1], r.byShift[1])],
+    })
+  }
+  return [...byCode.values()].map(({ lotMap, ...r }) => ({ ...r, lots: [...lotMap].map(([l, x]) => ({ lot: l, ...x })).sort((a, b) => a.lot.localeCompare(b.lot)) })).sort((a, b) => a.code.localeCompare(b.code))
+}

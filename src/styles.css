@@ -775,7 +775,9 @@ table.otable td.obar .bar i.st-todo{background:var(--line)}
 table.otable td.obar small{font-size:12px;font-variant-numeric:tabular-nums}
 .osum{color:var(--ink)}
 .osum b{font-size:17px}
-/* the report: the pallets of the day found by what is written on them */
+/* the report: the pallets of the day found by what is written on them, or by their state */
+.palfilters{margin-bottom:8px}
+.palfilters .chip.sm small{color:inherit;opacity:.7;margin-left:4px;font-weight:700}
 .palsearch{display:flex;align-items:center;gap:4px;flex:1 1 220px;max-width:360px;min-width:0}
 .palsearch input{min-height:42px;padding:0 10px;font-size:15px;width:100%;min-width:0}
 /* the hour of a unit added after the fact */
@@ -845,6 +847,11 @@ table.avmini tbody tr:last-child td{border-bottom:0}
 .lotpick{align-items:center}
 .lotsel{min-height:44px;border-radius:99px;border:1.5px solid var(--line);background:var(--surface);padding:0 12px;font-weight:600;font-size:15px;color:var(--ink);max-width:170px}
 .seg.lotscope{margin-top:6px;max-width:340px}
+/* several days: from one date to another */
+.rangepick{display:flex;flex-wrap:wrap;gap:8px;align-items:end}
+.rangepick label{display:grid;gap:4px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.rangepick input[type=date]{min-width:150px;width:auto}
+.rangepick .chip.sm{align-self:end;min-height:40px}
 .seg.lotscope button{min-height:40px;font-size:14px}
 /* on a phone each code is a card: its cells, each with its name, two by two */
 @media (max-width:720px){
@@ -862,3 +869,9 @@ table.avmini tbody tr:last-child td{border-bottom:0}
   .avsearch{max-width:none}
   .avadd .addcode input{width:auto;flex:1}
 }
+/* ---- sticky heads (2026-10-16): a long table scrolls inside its own frame and keeps its column names in sight ---- */
+.report .twrap,.orders .twrap,.av2 .twrap{max-height:78vh;overflow:auto}
+.report .twrap thead th,.orders .twrap thead th,.av2 .twrap thead th{position:sticky;top:0;z-index:2;background:var(--surface);box-shadow:0 1px 0 var(--line)}
+.report .twrap tfoot td,.av2 .twrap tfoot td{position:sticky;bottom:0;z-index:1}
+@media (max-width:720px){.av2 .twrap{max-height:none;overflow:visible}}
+@media print{.report .twrap,.orders .twrap,.av2 .twrap{max-height:none;overflow:visible}}
