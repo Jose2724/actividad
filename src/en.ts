@@ -567,7 +567,6 @@ export const EN: Record<string, string> = {
   'Falta actualizar la función de usuarios en el servidor.': 'The users function on the server still has to be updated.',
   'Operador': 'Operator',
   'Oficina': 'Office',
-  'Los mismos usuarios y PIN que Freezer RTE. {0} solo ve su departamento; {1} ve todo y corrige; {2} ve todo y lleva productos y programa. Sin rol = no entra a Actividad.': 'The same users and PINs as Freezer RTE. {0} only sees their own department; {1} sees everything and corrects; {2} sees everything and looks after products and the schedule. No role = cannot sign in to Actividad.',
   'Nuevo usuario': 'New user',
   'Usuario': 'Username',
   'ej. maria.rte': 'e.g. maria.rte',
@@ -870,4 +869,12 @@ export const EN: Record<string, string> = {
   'Con el PIN nuevo entra la próxima vez; donde ya está dentro, sigue dentro.': 'The new PIN works from their next sign-in; where they are signed in, they stay signed in.',
   'Poderes y turno…': 'Permissions and shift…',
   'Guardando…': 'Saving…',
+  // the fourth role: somebody who only looks
+  'Solo ver': 'View only',
+  'Los mismos usuarios y PIN que Freezer RTE. {0} solo ve su departamento; {1} ve todo y corrige; {2} ve todo y lleva productos y programa; {3} ve todo, también Avance y el Reporte, y no puede tocar nada. Sin rol = no entra a Actividad.': 'The same users and PINs as Freezer RTE. {0} sees only their department; {1} sees everything and corrects; {2} sees everything and keeps products and the schedule; {3} sees everything, Progress and the Report too, and cannot touch anything. No role = no access to Actividad.',
+  'Un usuario de solo ver no tiene poderes: ve todo y no toca nada.': 'A view-only user has no permissions: they see everything and touch nothing.',
+  'Este departamento no tiene líneas todavía.': 'This department has no lines yet.',
+  'Libre: sin código.': 'Free: no code.',
+  'Nada programado ni registrado en esta fecha.': 'Nothing scheduled or recorded on this date.',
+  'Tag {0}': 'Tag {0}',
 }

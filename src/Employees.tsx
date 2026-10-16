@@ -6,18 +6,18 @@ import { ConfirmDialog } from './App'
 import { tr } from './i18n'
 import { trx } from './trx'
 
-type Emp = { id: string; user_id?: string | null; name: string; username: string | null; role: string; active: boolean; act_role: 'op' | 'mgr' | 'office' | null; act_dept: string | null; deleted?: boolean; act_powers?: string[] | null; act_shift?: number | null }
+type Emp = { id: string; user_id?: string | null; name: string; username: string | null; role: string; active: boolean; act_role: 'op' | 'mgr' | 'office' | 'viewer' | null; act_dept: string | null; deleted?: boolean; act_powers?: string[] | null; act_shift?: number | null }
 const ERRORS: Record<string, string> = {
   not_signed_in: tr('No hay sesión.'), not_manager: tr('Solo un manager puede hacer esto.'), bad_name: tr('Falta el nombre.'), bad_username: tr('Usuario: 3 a 30 letras, números, punto o guion, sin espacios.'),
-  bad_pin: tr('PIN: de 6 a 12 números.'), bad_dept: tr('Un operador necesita departamento.'), username_taken: tr('Ese usuario ya existe.'), not_found: tr('No se encontró.'), owner_protected: tr('Esa cuenta no se puede tocar.'), not_self: tr('No puedes quitarte el acceso a ti mismo.'), owner_only: tr('Los poderes de un manager solo los cambia el dueño.'), no_columns: tr('Falta aplicar el cambio de poderes en la base de datos.'), unknown_action: tr('Falta actualizar la función de usuarios en el servidor.'),
+  bad_pin: tr('PIN: de 6 a 12 números.'), bad_dept: tr('Un operador necesita departamento.'), username_taken: tr('Ese usuario ya existe.'), not_found: tr('No se encontró.'), owner_protected: tr('Esa cuenta no se puede tocar.'), not_self: tr('No puedes quitarte el acceso a ti mismo.'), owner_only: tr('Los poderes de un manager solo los cambia el dueño.'), no_columns: tr('Falta aplicar el cambio de poderes en la base de datos.'), unknown_action: tr('Falta actualizar la función de usuarios en el servidor.'), view_only: tr('Un usuario de solo ver no tiene poderes: ve todo y no toca nada.'),
 }
 
-const ROLE: Record<string, string> = { op: tr('Operador'), mgr: tr('Manager'), office: tr('Oficina') }
+const ROLE: Record<string, string> = { op: tr('Operador'), mgr: tr('Manager'), office: tr('Oficina'), viewer: tr('Solo ver') }
 /** for the search: no capitals and no accents ("José" is found typing "jose") */
 const plain = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 /** the letters of the round badge: "Juan Pérez" gives "JP" */
 const initials = (name: string) => name.trim().split(/\s+/).slice(0, 2).map((w) => w[0] ?? '').join('').toUpperCase() || '?'
-type RoleFilter = 'all' | 'op' | 'mgr' | 'office' | 'none'
+type RoleFilter = 'all' | 'op' | 'mgr' | 'office' | 'viewer' | 'none'
 
 /**
  * The manager's people screen: who may use Actividad, with what role and department. Each person is one row; "Editar"
@@ -67,7 +67,7 @@ export function Employees({ meId, admin }: { meId: string; admin: boolean }) {
     // the people in use first, each group by name
     .sort((a, b) => Number(b.active) - Number(a.active) || a.name.localeCompare(b.name))
   const count = (f: RoleFilter) => all.filter((e) => f === 'all' || (f === 'none' ? !e.act_role : e.act_role === f)).length
-  const chips: [RoleFilter, string][] = [['all', tr('Todos')], ['op', tr('Operadores')], ['mgr', tr('Managers')], ['office', tr('Oficina')], ['none', tr('Sin acceso')]]
+  const chips: [RoleFilter, string][] = [['all', tr('Todos')], ['op', tr('Operadores')], ['mgr', tr('Managers')], ['office', tr('Oficina')], ['viewer', tr('Solo ver')], ['none', tr('Sin acceso')]]
   const filtered = !!needle || roleF !== 'all' || !!deptF
   return (
     <section className="report emps">
@@ -86,7 +86,7 @@ export function Employees({ meId, admin }: { meId: string; admin: boolean }) {
       {msg && <p className="err">{msg}</p>}
       <details className="how">
         <summary>{tr('¿Qué puede hacer cada rol?')}</summary>
-        <p>{trx('Los mismos usuarios y PIN que Freezer RTE. {0} solo ve su departamento; {1} ve todo y corrige; {2} ve todo y lleva productos y programa. Sin rol = no entra a Actividad.', <b>{tr('Operador')}</b>, <b>{tr('Manager')}</b>, <b>{tr('Oficina')}</b>)}</p>
+        <p>{trx('Los mismos usuarios y PIN que Freezer RTE. {0} solo ve su departamento; {1} ve todo y corrige; {2} ve todo y lleva productos y programa; {3} ve todo, también Avance y el Reporte, y no puede tocar nada. Sin rol = no entra a Actividad.', <b>{tr('Operador')}</b>, <b>{tr('Manager')}</b>, <b>{tr('Oficina')}</b>, <b>{tr('Solo ver')}</b>)}</p>
       </details>
       {list !== null && shown.length === 0 && <p className="hint">{all.length ? tr('Nadie con esa búsqueda.') : tr('No hay usuarios todavía.')}</p>}
       <div className="emplist">
@@ -134,7 +134,7 @@ function NewUserDialog({ busy, call, onClose, onDone }: { busy: boolean; call: (
             <label>{tr('Nombre')}{' '}<input autoFocus value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoComplete="off" /></label>
             <label>{tr('Usuario')}{' '}<input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value.toLowerCase() })} autoCapitalize="none" autoComplete="off" placeholder={tr('ej. maria.rte')} /></label>
             <label>{tr('PIN (6–12 números)')}{' '}<input value={form.pin} inputMode="numeric" onChange={(e) => setForm({ ...form, pin: e.target.value.replace(/\D/g, '') })} autoComplete="off" /></label>
-            <label>{tr('Rol')}{' '}<select value={form.act_role} onChange={(e) => setForm({ ...form, act_role: e.target.value })}><option value="op">{tr('Operador')}</option><option value="mgr">{tr('Manager')}</option><option value="office">{tr('Oficina')}</option></select></label>
+            <label>{tr('Rol')}{' '}<select value={form.act_role} onChange={(e) => setForm({ ...form, act_role: e.target.value })}><option value="op">{tr('Operador')}</option><option value="mgr">{tr('Manager')}</option><option value="office">{tr('Oficina')}</option><option value="viewer">{tr('Solo ver')}</option></select></label>
             {form.act_role === 'op' && <label>{tr('Departamento')}{' '}<select value={form.act_dept} onChange={(e) => setForm({ ...form, act_dept: e.target.value })}>{DEPTS.map((d) => <option key={d} value={d}>{d}</option>)}</select></label>}
           </div>
           {err && <p className="err">{err}</p>}
@@ -167,7 +167,7 @@ function EditUserDialog({ emp, meId, admin, busy, hasPowers, call, onPowers, onC
   const roleChanged = can.role && (role !== (emp.act_role ?? '') || (role === 'op' && dept !== (emp.act_dept ?? '')))
   const pinTyped = can.pin && pin.length > 0
   const ok = !!name.trim() && (!emp.username || username.trim().length >= 3) && (!pinTyped || pin.length >= 6) && (nameChanged || userChanged || roleChanged || pinTyped)
-  const powersOk = hasPowers && !!emp.act_role && !can.locked && !can.mine && emp.role !== 'admin' && (admin || emp.act_role !== 'mgr')
+  const powersOk = hasPowers && !!emp.act_role && emp.act_role !== 'viewer' && !can.locked && !can.mine && emp.role !== 'admin' && (admin || emp.act_role !== 'mgr')
   const save = async () => {
     setErr('')
     if (nameChanged || userChanged) { const e = await call({ action: 'edit', id: emp.id, ...(nameChanged ? { name } : {}), ...(userChanged ? { username } : {}) }); if (e) return setErr(e) }
@@ -184,7 +184,7 @@ function EditUserDialog({ emp, meId, admin, busy, hasPowers, call, onPowers, onC
             <label>{tr('Nombre')}{' '}<input value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" /></label>
             <label>{tr('Usuario')}{' '}<input value={username} disabled={!emp.username} onChange={(e) => setUsername(e.target.value.toLowerCase())} autoCapitalize="none" autoComplete="off" /></label>
             {can.pin && <label>{trx('PIN nuevo {0}', <small>{tr('(vacío = no se cambia)')}</small>)} <input value={pin} inputMode="numeric" placeholder="••••••" onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} autoComplete="off" /></label>}
-            <label>{tr('Rol')}{' '}<select value={role} disabled={!can.role} onChange={(e) => setRole(e.target.value)}><option value="">{tr('Sin acceso')}</option><option value="op">{tr('Operador')}</option><option value="mgr">{tr('Manager')}</option><option value="office">{tr('Oficina')}</option></select></label>
+            <label>{tr('Rol')}{' '}<select value={role} disabled={!can.role} onChange={(e) => setRole(e.target.value)}><option value="">{tr('Sin acceso')}</option><option value="op">{tr('Operador')}</option><option value="mgr">{tr('Manager')}</option><option value="office">{tr('Oficina')}</option><option value="viewer">{tr('Solo ver')}</option></select></label>
             {role === 'op' && <label>{tr('Departamento')}{' '}<select value={dept} disabled={!can.role} onChange={(e) => setDept(e.target.value)}>{DEPTS.map((d) => <option key={d} value={d}>{d}</option>)}</select></label>}
           </div>
           {userChanged && <p className="hint">{trx('Desde ahora entra con el usuario {0}, aquí y en Freezer RTE. Avísale.', <b>{username.trim().toLowerCase()}</b>)}</p>}

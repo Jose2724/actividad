@@ -19,15 +19,16 @@ export const POWERS: { key: Power; label: string }[] = [
   { key: 'othershift', label: tr('Corregir lo del otro turno') },
 ]
 const ALL = POWERS.map((p) => p.key)
-export type Role = 'op' | 'mgr' | 'office'
+/** 'viewer' = somebody from the office who looks and never touches: every room, Avance and the report, no button */
+export type Role = 'op' | 'mgr' | 'office' | 'viewer'
 export type Who = { role: Role; admin?: boolean; powers?: Power[] | null; shift?: 0 | 1 | 2 }
-/** what a role starts with: the office everything, a manager everything but correcting the other shift, an operator nothing */
-export const defaultPowers = (role: Role | null | undefined): Power[] => (role === 'office' ? ALL : role === 'mgr' ? ALL.filter((p) => p !== 'othershift') : [])
+/** what a role starts with: the office everything, a manager everything but correcting the other shift, an operator nothing, a viewer only looking at every room */
+export const defaultPowers = (role: Role | null | undefined): Power[] => (role === 'office' ? ALL : role === 'mgr' ? ALL.filter((p) => p !== 'othershift') : role === 'viewer' ? ['depts'] : [])
 /** the powers saved for a person, as they are kept: only real ones, each once; null = none saved (the role's own) */
 export const cleanPowers = (x: unknown): Power[] | null => (Array.isArray(x) ? ALL.filter((p) => x.map(String).includes(p)) : null)
 export const cleanShift = (x: unknown): 0 | 1 | 2 => (Number(x) === 1 ? 1 : Number(x) === 2 ? 2 : 0)
-/** the owner holds every power; anybody else, the ones saved for them, or their role's */
-export const powersOf = (w: Who): Power[] => (w.admin ? ALL : w.powers ?? defaultPowers(w.role))
+/** the owner holds every power; a viewer never more than looking; anybody else, the ones saved for them, or their role's */
+export const powersOf = (w: Who): Power[] => (w.admin ? ALL : w.role === 'viewer' ? defaultPowers('viewer') : w.powers ?? defaultPowers(w.role))
 export const canDo = (w: Who, p: Power) => powersOf(w).includes(p)
 /** may this person correct a record of these shifts ("1", "2" or "1 y 2")? One of their own shift, or any with the power */
 export const canShift = (w: Who, shifts: string) => !w.shift || canDo(w, 'othershift') || shifts.includes(String(w.shift))

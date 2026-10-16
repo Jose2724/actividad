@@ -96,7 +96,7 @@ export const USER_DOMAIN = 'freezer.example.com'
 export const loginEmail = (user: string) => (user.includes('@') ? user.trim().toLowerCase() : user.trim().toLowerCase() + '@' + USER_DOMAIN)
 
 /** admin = an administrator of Freezer RTE (the owner): the only one who may wipe a whole day of tests */
-export type Me = { id: string; name: string; username: string; role: 'op' | 'mgr' | 'office'; dept: string; admin?: boolean; powers?: Power[] | null; shift?: 0 | 1 | 2 }
+export type Me = { id: string; name: string; username: string; role: 'op' | 'mgr' | 'office' | 'viewer'; dept: string; admin?: boolean; powers?: Power[] | null; shift?: 0 | 1 | 2 }
 /** the database does not have a column the app asks for (a change that has not been applied there yet) */
 export const missingColumn = (e: { code?: string; message?: string } | null | undefined) => !!e && (e.code === '42703' || e.code === 'PGRST204' || /does not exist|could not find the .* column|act_powers|act_shift/i.test(e.message ?? ''))
 
@@ -128,7 +128,7 @@ export function rememberMe(m: Me | null) { try { if (m) localStorage.setItem(ME_
 export function rememberedMe(): Me | null {
   try {
     const m = JSON.parse(localStorage.getItem(ME_KEY) || 'null') as Me | null
-    return m && typeof m.name === 'string' && m.name && ['op', 'mgr', 'office'].includes(m.role) ? m : null
+    return m && typeof m.name === 'string' && m.name && ['op', 'mgr', 'office', 'viewer'].includes(m.role) ? m : null
   } catch { return null }
 }
 /**

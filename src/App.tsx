@@ -204,7 +204,7 @@ function ServerApp() {
   if (me === 'none') return <NoRole onOut={out} onRetry={verify} />
   const home = isDept(me.dept) ? me.dept : DEPTS[0]
   if (me.role === 'op' && !isDept(me.dept)) return <NoRole onOut={out} onRetry={verify} text={tr('Tu usuario está en Actividad pero sin departamento. Pide al manager que te asigne uno.')} />
-  return <WhoCtx.Provider value={{ role: me.role, admin: !!me.admin, powers: me.powers ?? null, shift: me.shift ?? 0 }}><Main name={me.name} home={home} mgr={me.role !== 'op'} admin={!!me.admin} wholeDay={!!me.admin || me.role === 'office'} meId={me.id} onLogout={() => void out()} /></WhoCtx.Provider>
+  return <WhoCtx.Provider value={{ role: me.role, admin: !!me.admin, powers: me.powers ?? null, shift: me.shift ?? 0 }}><Main name={me.name} home={home} mgr={me.role !== 'op'} admin={!!me.admin} wholeDay={!!me.admin || me.role === 'office' || me.role === 'viewer'} meId={me.id} onLogout={() => void out()} /></WhoCtx.Provider>
 }
 
 /**
@@ -360,12 +360,14 @@ function Gate({ dept, mgr, onDept, onManager, onName, onBack }: { dept: Dept | n
 /** who is using the app, for every screen that asks what they may do (see powers.ts) */
 const WhoCtx = createContext<Who>({ role: 'op' })
 export const useWho = () => useContext(WhoCtx)
+/** somebody who only looks: the screens show everything and offer nothing to press (the server refuses their writes too) */
+export const useViewOnly = () => useWho().role === 'viewer'
 export const useCan = () => { const w = useContext(WhoCtx); return (p: Power) => canDo(w, p) }
 
 function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: string; home: Dept; mgr: boolean; admin: boolean; wholeDay?: boolean; meId?: string; onLogout: () => void }) {
   const s = useSyncExternalStore(store.subscribe, store.get)
   const now = useNow()
-  const can = useCan()
+  const can = useCan(), viewOnly = useViewOnly()
   const day = workDay(s, now)
   const [dept, setDept] = useState<Dept>(home)
   const [tab, setTab] = useState<'act' | 'av' | 'rep' | 'emp'>('act')
@@ -382,11 +384,11 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
         <div className="brand"><h1>Actividad{!supabase && <span className="demotag">DEMO</span>}</h1><small>{new Date(now).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })}</small></div>
         <nav className="tabs">
           <button type="button" className={tab === 'act' ? 'on' : ''} onClick={() => setTab('act')}>{tr('Actividad')}</button>
-          {can('products') && <button type="button" className={tab === 'av' ? 'on' : ''} onClick={() => setTab('av')}>{tr('Avance')}</button>}
+          {(can('products') || viewOnly) && <button type="button" className={tab === 'av' ? 'on' : ''} onClick={() => setTab('av')}>{tr('Avance')}</button>}
           <button type="button" className={tab === 'rep' ? 'on' : ''} onClick={() => setTab('rep')}>{tr('Reporte')}</button>
           {can('people') && supabase && <button type="button" className={tab === 'emp' ? 'on' : ''} onClick={() => setTab('emp')}>{tr('Empleados')}</button>}
         </nav>
-        <div className="me"><SyncDot /> <span className="who">{name}</span><span className="where">{mgr ? tr('Manager') : home}</span> {mgr && <QrLink label="QR" />}<LangSwitch /><button type="button" className="lnk" onClick={() => setLeaving(true)}>{supabase ? tr('Salir') : tr('Cambiar')}</button></div>
+        <div className="me"><SyncDot /> <span className="who">{name}</span><span className="where">{viewOnly ? tr('Solo ver') : mgr ? tr('Manager') : home}</span> {mgr && <QrLink label="QR" />}<LangSwitch /><button type="button" className="lnk" onClick={() => setLeaving(true)}>{supabase ? tr('Salir') : tr('Cambiar')}</button></div>
       </header>
       {leaving && <LeaveDialog onYes={() => { setLeaving(false); onLogout() }} onNo={() => setLeaving(false)} />}
       {tab === 'act' ? (
@@ -413,13 +415,14 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
           <DeptPanel key={dept} s={s} dept={can('depts') ? dept : home} now={now} mgr={mgr} day={day} />
         </div>
         </>
-      ) : tab === 'av' && can('products') ? <Avance s={s} /> : tab === 'emp' && can('people') && supabase ? <Employees meId={meId ?? ''} admin={admin} /> : <Report s={s} now={now} only={can('depts') ? undefined : home} mgr={can('depts')} admin={admin} wholeDay={!!wholeDay} />}
+      ) : tab === 'av' && (can('products') || viewOnly) ? <Avance s={s} /> : tab === 'emp' && can('people') && supabase ? <Employees meId={meId ?? ''} admin={admin} /> : <Report s={s} now={now} only={can('depts') ? undefined : home} mgr={can('depts')} admin={admin} wholeDay={!!wholeDay} />}
     </div>
   )
 }
 
 /** the office's AVANCE sheet, live: scheduled → done → pending per room, computed from the products table */
 function Avance({ s }: { s: State }) {
+  const viewOnly = useViewOnly()
   const [date, setDate] = useState(() => workDay(s).date)
   const [editing, setEditing] = useState(false)
   const [newCode, setNewCode] = useState('')
@@ -440,17 +443,17 @@ function Avance({ s }: { s: State }) {
         <h2>{tr('Avance del día')}</h2>
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         <label className="avlot"><span>{tr('Lote')}</span><select value={lotNow} disabled={!lots.length} onChange={(e) => setLot(e.target.value)}><option value="">{tr('Todos')}</option>{lots.map((l) => <option key={l} value={l}>{l}</option>)}</select></label>
-        <form className="addcode" onSubmit={(e) => { e.preventDefault(); if (newCode.trim()) { typing.current.codes.add(normCode(newCode)); setSchedule(date, newCode, 0); setNewCode('') } }}>
+        {!viewOnly && <form className="addcode" onSubmit={(e) => { e.preventDefault(); if (newCode.trim()) { typing.current.codes.add(normCode(newCode)); setSchedule(date, newCode, 0); setNewCode('') } }}>
           <input placeholder={tr('Código a programar')} value={newCode} onChange={(e) => setNewCode(e.target.value)} autoComplete="off" />
           <button className="btn" type="submit" disabled={!newCode.trim()}>{tr('+ Programar')}</button>
-        </form>
+        </form>}
         <button type="button" className="btn" onClick={() => setEditing(!editing)}>{editing ? tr('Cerrar productos') : tr('⚙ Productos')}</button>
       </div>
       <DayNote day={day} />
       <p className="hint">{trx('{0} = lo que da el programa del día (mezclas programadas × tabla de productos). {1} = lo que ya puede salir de las mezclas hechas: las de Kitchen o las de Spiral, según dónde se haga cada código. {2} = esperado − hecho (rojo = se hizo de más). {3} = programado − hecho: lo que queda del día.', <b>{tr('Progr.')}</b>, <b>{tr('Esper.')}</b>, <b>{tr('Pend.')}</b>, <b>{tr('Faltan')}</b>)}</p>
       {lotNow && <p className="avlotnote"><b>{trx('Viendo el lote {0}', lotNow)}</b> {tr('· lo que se hizo de ese lote en esta fecha. El programa es del día completo, por eso aquí no sale.')} <button type="button" className="lnk sm" onClick={() => setLot('')}>{tr('Ver todos los lotes')}</button></p>}
-      {editing && <Products s={s} />}
-      {rows.length === 0 ? <p className="hint">{tr('Nada programado ni registrado en esta fecha. Escribe un código y toca "Programar".')}</p> : (
+      {editing && <Products s={s} readOnly={viewOnly} />}
+      {rows.length === 0 ? <p className="hint">{viewOnly ? tr('Nada programado ni registrado en esta fecha.') : tr('Nada programado ni registrado en esta fecha. Escribe un código y toca "Programar".')}</p> : (
         <div className="twrap">
           <table>
             <thead>
@@ -460,7 +463,7 @@ function Avance({ s }: { s: State }) {
             <tbody>{rows.map((r) => (
               <tr key={r.code}>
                 <td><b>{r.code}</b><small className={'packroom ' + r.packRoom.toLowerCase()} title={r.packSaid ? tr('Lo dice la tabla de productos') : tr('Por lo que ha registrado cada cuarto (en Productos se puede decir)')}>{r.packRoom}{r.packSaid ? '' : '?'}</small></td><td>{r.product?.name ?? <i className="red">{tr('no está en Productos')}</i>}</td>
-                <td>{lotNow ? '—' : <input className="num" inputMode="numeric" value={r.scheduled || ''} placeholder="0" onChange={(e) => setSchedule(date, r.code, Number(e.target.value.replace(/\D/g, '')) || 0)} />}</td>
+                <td>{lotNow ? '—' : viewOnly ? (r.scheduled || '—') : <input className="num" inputMode="numeric" value={r.scheduled || ''} placeholder="0" onChange={(e) => setSchedule(date, r.code, Number(e.target.value.replace(/\D/g, '')) || 0)} />}</td>
                 <td>{r.mixesDone}{r.mixesDone > 0 && <small className="room"> {r.mixRoom}</small>}</td><td className={lotNow ? '' : cls(r.mixesPending)}>{lotNow ? '—' : r.mixesPending}</td>
                 <td>{r.spiralDone}</td>
                 <td>{n1(r.pouchesPlan)}</td><td>{n1(r.pouchesExp)}</td><td>{r.pouchesDone}</td><td className={cls(pending(r.pouchesExp, r.pouchesDone))}>{n1(pending(r.pouchesExp, r.pouchesDone))}</td><td className={cls(pending(r.pouchesPlan, r.pouchesDone))}>{n1(pending(r.pouchesPlan, r.pouchesDone))}</td>
@@ -493,7 +496,7 @@ function Cell({ value, onCommit, className, numeric }: { value: string; onCommit
 }
 
 /** the master table: read-only until "Editar", so a stray tap on a tablet cannot change a yield; every change saves itself */
-function Products({ s }: { s: State }) {
+function Products({ s, readOnly }: { s: State; readOnly?: boolean }) {
   const [unlocked, setUnlocked] = useState(false)
   const [q, setQ] = useState('')
   const [removeIdx, setRemoveIdx] = useState<number | null>(null)
@@ -538,7 +541,7 @@ function Products({ s }: { s: State }) {
           {q && <button type="button" className="lnk" onClick={() => setQ('')}>✕</button>}
           <small>{needle ? tr('{0} de', shown.length) + ' ' : ''}{s.products.length}</small>
         </div>
-        <button type="button" className={'btn' + (unlocked ? ' primary' : '')} onClick={() => setUnlocked(!unlocked)}>{unlocked ? tr('✓ Listo, bloquear') : tr('✎ Editar')}</button>
+        {!readOnly && <button type="button" className={'btn' + (unlocked ? ' primary' : '')} onClick={() => setUnlocked(!unlocked)}>{unlocked ? tr('✓ Listo, bloquear') : tr('✎ Editar')}</button>}
       </div>
       <div className="twrap">
         <table>
@@ -1023,7 +1026,7 @@ function PlanDialog({ s, dept, today, unit, onClose }: { s: State; dept: Dept; t
 function DeptPanel({ s, dept, now, day }: { s: State; dept: Dept; now: number; mgr: boolean; day: WorkDay }) {
   const lines = s.lines.filter((l) => l.dept === dept).sort(byLineName)
   const ds = deptStop(s, dept)
-  const can = useCan(), who = useWho()
+  const can = useCan(), who = useWho(), viewOnly = who.role === 'viewer'
   const [stopAll, setStopAll] = useState(false)
   const [adding, setAdding] = useState(false)
   const [leaving, setLeaving] = useState(false)
@@ -1049,13 +1052,13 @@ function DeptPanel({ s, dept, now, day }: { s: State; dept: Dept; now: number; m
     <section className="panel">
       <div className="phead">
         <h2>{dept}</h2>
-        <div className="acts">
+        {!viewOnly && <div className="acts">
           {ds
             ? <button type="button" className="btn danger" onClick={() => endStop(ds.id)}>{trx('▶ Reanudar departamento · {0}', fmtDur(now - ds.startedAt))}</button>
             : <button type="button" className="btn stopbtn" disabled={!anyRunning} onClick={() => setStopAll(true)}>{tr('⏸ Parar departamento')}</button>}
           <button type="button" className="btn" disabled={!left.runs.length && !left.setups.length && !left.stops.length} onClick={() => setLeaving(true)}>{tr('🏁 Terminar turno')}</button>
           <button type="button" className="btn soft" onClick={() => setAdding(true)}>{trx('+ Agregar {0}', CFG[dept].lineWord.toLowerCase())}</button>
-        </div>
+        </div>}
       </div>
       {leaving && (
         <div className="veil" onClick={() => setLeaving(false)}>
@@ -1081,7 +1084,7 @@ function DeptPanel({ s, dept, now, day }: { s: State; dept: Dept; now: number; m
       <PlanCard s={s} dept={dept} date={day.date} mgr={can('products')} />
       {CFG[dept].orders && <OrdersCard s={s} mgr={can('orders')} />}
       <div className="lines">{lines.map((l) => <LineCard key={l.id} s={s} line={l} now={now} mgr={can('fix')} day={day} />)}</div>
-      {lines.length === 0 && <p className="hint">{trx('Este departamento no tiene líneas. Toca "Agregar {0}".', CFG[dept].lineWord.toLowerCase())}</p>}
+      {lines.length === 0 && <p className="hint">{viewOnly ? tr('Este departamento no tiene líneas todavía.') : trx('Este departamento no tiene líneas. Toca "Agregar {0}".', CFG[dept].lineWord.toLowerCase())}</p>}
       {adding && <LineNameDialog s={s} dept={dept} onClose={() => setAdding(false)} />}
       {doneNow.length > 0 && (
         <div className="done">
@@ -1120,7 +1123,7 @@ const buzz = () => { try { (navigator as Navigator & { vibrate?: (ms: number) =>
  * lots it already holds with their cases and tags, and the lot going on now. Two things to do: the lot ran out (its
  * cases and tag stay on the pallet, which goes on with the next lot) or the pallet is finished.
  */
-function PalletPanel({ s, run, saved, onDone, onLot, onLotNow, onPart, onOrder }: { s: State; run: Run; saved: string; onDone: () => void; onLot: () => void; onLotNow: () => void; onPart: (i: number) => void; onOrder: () => void }) {
+function PalletPanel({ s, run, saved, readOnly, onDone, onLot, onLotNow, onPart, onOrder }: { s: State; run: Run; saved: string; readOnly?: boolean; onDone: () => void; onLot: () => void; onLotNow: () => void; onPart: (i: number) => void; onOrder: () => void }) {
   const open = run.extra?.open, parts = open?.parts ?? []
   const onIt = parts.reduce((t, p) => t + p.qty, 0), per = run.perUnit ?? 0
   const order = orderOfId(s, palletPo(s, run)), seq = order ? orderPallets(s, order.id, run.perUnit) : null
@@ -1135,18 +1138,20 @@ function PalletPanel({ s, run, saved, onDone, onLot, onLotNow, onPart, onOrder }
       {(order || offered) && (
         <div className="pal-po">
           <span>{order ? trx('Va para {0}{1}', <b>{orderLabel(order)}</b>, seq?.need ? <> · <b className="pof">{tr('pallet {0} de {1}', seq.done.length + 1, seq.need)}</b></> : '') : said ? tr('Este pallet va sin PO') : tr('Todavía sin PO')}</span>
-          <button type="button" className="lnk sm" onClick={onOrder}>{order ? tr('Cambiar') : tr('Escoger PO')}</button>
+          {!readOnly && <button type="button" className="lnk sm" onClick={onOrder}>{order ? tr('Cambiar') : tr('Escoger PO')}</button>}
         </div>
       )}
       {parts.map((p, i) => (
         <div key={i} className="pal-part">
           <span>{trx('Lote {0} · {1} cajas', <b>{p.lot}</b>, fmtN(p.qty))}</span>
-          <button type="button" className={'lnk sm' + (p.tag ? '' : ' notag')} onClick={() => onPart(i)}>{p.tag ? trx('Tag {0} ✎', p.tag) : tr('Sin tag · ponerlo')}</button>
+          {readOnly ? <span className={p.tag ? '' : 'notag'}>{p.tag ? tr('Tag {0}', p.tag) : tr('sin tag')}</span> : <button type="button" className={'lnk sm' + (p.tag ? '' : ' notag')} onClick={() => onPart(i)}>{p.tag ? trx('Tag {0} ✎', p.tag) : tr('Sin tag · ponerlo')}</button>}
         </div>
       ))}
-      <div className="pal-now"><span>{trx('Ahora va: lote {0}', <b>{lotNowOf(run)}</b>)}</span><button type="button" className="lnk sm" onClick={onLotNow}>{tr('Cambiar')}</button></div>
-      <button type="button" className={'btn primary huge' + (saved ? ' saved' : '')} disabled={!!saved} onClick={onDone}>✓ {saved || tr('Pallet listo')}</button>
-      <button type="button" className="btn soft" onClick={onLot}>{trx('Se acabó el lote {0}', lotNowOf(run))}</button>
+      <div className="pal-now"><span>{trx('Ahora va: lote {0}', <b>{lotNowOf(run)}</b>)}</span>{!readOnly && <button type="button" className="lnk sm" onClick={onLotNow}>{tr('Cambiar')}</button>}</div>
+      {!readOnly && <>
+        <button type="button" className={'btn primary huge' + (saved ? ' saved' : '')} disabled={!!saved} onClick={onDone}>✓ {saved || tr('Pallet listo')}</button>
+        <button type="button" className="btn soft" onClick={onLot}>{trx('Se acabó el lote {0}', lotNowOf(run))}</button>
+      </>}
     </div>
   )
 }
@@ -1315,7 +1320,7 @@ function LotNowDialog({ run, onClose }: { run: Run; onClose: () => void }) {
 
 function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: number; mgr: boolean; day: WorkDay }) {
   const cfg = CFG[line.dept]
-  const canGoal = useCan()('goals')
+  const canGoal = useCan()('goals'), viewOnly = useViewOnly()
   const run = openRun(s, line.id)
   const stop = run ? openStop(s, line.dept, line.id) : undefined
   const turn = turnOf(s, day.date, now) // the shift in course: its numbers start from zero at the hand-over
@@ -1351,7 +1356,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   const [binText, setBinText] = useState('')
   const [packing, setPacking] = useState<null | 'done' | 'lot' | 'po' | 'binlot' | number>(null)
   const [tagging, setTagging] = useState<number | null>(null)
-  const nameIt = <button type="button" className="lnk pen" title={tr('Cambiar el nombre')} aria-label={tr('Cambiar el nombre de {0}', lineLabel(line.name))} onClick={() => setRenaming(true)}>✎</button>
+  const nameIt = !viewOnly && <button type="button" className="lnk pen" title={tr('Cambiar el nombre')} aria-label={tr('Cambiar el nombre de {0}', lineLabel(line.name))} onClick={() => setRenaming(true)}>✎</button>
   const naming = renaming && <LineNameDialog s={s} dept={line.dept} line={line} onClose={() => setRenaming(false)} />
   const [wasting, setWasting] = useState(false)
   // A unit was just recorded on this run, here or on another tablet: for a moment the button says which one, the
@@ -1473,11 +1478,11 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         {idle && (
           <div className="setupbar">
             <small>{trx('Esperando el código siguiente desde las {0}. Si no viene otro, no cuenta.', fmtTime(idle.startedAt))}</small>
-            <span className="btns two">
+            {!viewOnly && <><span className="btns two">
               <button type="button" className="btn sm" onClick={() => endStop(idle.id)}>{trx('■ Terminar {0}', tr(idle.reason))}</button>
               <button type="button" className="btn sm" onClick={() => dropSetup(idle.id)}>{tr('No viene otro código: quitarlo')}</button>
             </span>
-            <button type="button" className="lnk sm" onClick={() => setFixingStop(true)}>{mgr ? tr('Corregir o dividir') : tr('Corregir')}</button>
+            <button type="button" className="lnk sm" onClick={() => setFixingStop(true)}>{mgr ? tr('Corregir o dividir') : tr('Corregir')}</button></>}
           </div>
         )}
         {prev && (
@@ -1485,11 +1490,11 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
             <span>{(prev.endedAt ?? 0) > turn.since
               ? trx('Último: {0} · lote {1} · terminó {2} · {3}', <b className="code">{prev.code}</b>, prev.lot, fmtTime(prev.endedAt ?? 0), madeText(prev, runQty(s, prev)))
               : trx('Último, del turno anterior: {0} · lote {1} · terminó {2} · {3}', <b className="code">{prev.code}</b>, prev.lot, fmtTime(prev.endedAt ?? 0), madeText(prev, runQty(s, prev)))}</span>
-            <span className="btns">
+            {!viewOnly && <span className="btns">
               <button type="button" className="lnk sm" onClick={() => setReopening(prev.id)}>{trx('↩ No había terminado: seguir con {0}', prev.code)}</button>
               {fillLink}
               <button type="button" className="lnk sm" onClick={() => setFixingId(prev.id)}>{tr('Corregir')}</button>
-            </span>
+            </span>}
           </div>
         )}
         {prev && reopening === prev.id && <ConfirmDialog title={tr('¿Seguir con {0} en {1}', prev.code, line.name) + '?'}
@@ -1499,7 +1504,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         {fixingStop && idle && <StopEditor stop={idle} mgr={mgr} onClose={() => setFixingStop(false)} />}
         {naming}
         {removing && <ConfirmDialog title={tr('¿Quitar {0} de {1}', lineLabel(line.name), line.dept) + '?'} text={tr('Se puede volver a agregar cuando haga falta.')} yes={tr('Quitar')} danger onYes={() => removeLine(line.id)} onNo={() => setRemoving(false)} />}
-        <form className="start" onSubmit={(e) => { e.preventDefault(); if (ok) { startRun(line, code.trim().toUpperCase(), lot.trim(), date, needPer ? perUnit : null, isPack && makes === 'bin' ? word : ''); setDateText(null); setLotText(null); setEditDate(false); setMaking(null); setBinText('') } }}>
+        {!viewOnly && <form className="start" onSubmit={(e) => { e.preventDefault(); if (ok) { startRun(line, code.trim().toUpperCase(), lot.trim(), date, needPer ? perUnit : null, isPack && makes === 'bin' ? word : ''); setDateText(null); setLotText(null); setEditDate(false); setMaking(null); setBinText('') } }}>
           {isPack && (
             <div className="makes">
               <span className="lab">{tr('¿Qué van a hacer?')}</span>
@@ -1541,11 +1546,12 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
               </div>
             ))}
           <button className="btn primary" type="submit" disabled={!ok}>{tr('▶ Empezar')}</button>
-        </form>
-        <div className="tools">
+        </form>}
+        {!viewOnly && <div className="tools">
           {!idle ? <button type="button" className="btn sm setupbtn" onClick={() => startSetup(line)}>{tr('⏱ Empezar Set up')}</button> : <span />}
           <button type="button" className="lnk sm muted" onClick={() => setRemoving(true)}>{trx('Quitar {0}', cfg.lineWord.toLowerCase())}</button>
-        </div>
+        </div>}
+        {viewOnly && !idle && <p className="hint">{tr('Libre: sin código.')}</p>}
       </div>
     )
   }
@@ -1593,7 +1599,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       <div className="lhead">
         <h3>{lineLabel(line.name)} {nameIt}</h3>
         <span className={'pill ' + (inSetup ? 'setup' : stop ? 'stop' : 'run')}>{inSetup ? tr('⏱ Set up') : stop ? tr('⏸ Parado') : tr('● Corriendo')}</span>
-        <span className="lacts">{goalBtn}<button type="button" className="lnk sm" onClick={() => setFixing(true)}>{tr('Corregir')}</button></span>
+        <span className="lacts">{goalBtn}{!viewOnly && <button type="button" className="lnk sm" onClick={() => setFixing(true)}>{tr('Corregir')}</button>}</span>
       </div>
       <div className="coderow"><b className="code">{run.code}</b><span>{trx('lote {0}{1} · desde {2}', lotNowOf(run), run.date !== day.date && ' · ' + shortDay(run.date), fmtTime(run.startedAt))}{run.perUnit != null && ' · ' + tr('{0} {1} por {2}', run.perUnit, rc.qtyUnit, runWord)}{binOf(run) && <> · <b className="binkind">{trx('Bins de {0} · Turno {1}', binWord(binOf(run)), turn.shift)}</b></>}</span></div>
       {mineNow.carried && (
@@ -1612,8 +1618,8 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
           {openOrders.length > 3 && <span>{trx('y {0} más', openOrders.length - 3)}</span>}
         </div>
       )}
-      {inSetup && stop && <div className="setupbar running">⏱ <b>{tr(stop.reason)}</b>{stop.note && ' · ' + noteLabel(stop.note)} · <b>{fmtDur(stopTime(s, stop, now))}</b> <small>{trx('desde las {0}', fmtTime(stop.startedAt))}</small><button type="button" className="lnk sm" onClick={() => setFixingStop(true)}>{tr('Corregir')}</button></div>}
-      {stop && !inSetup && <div className="stopbar">⏸ <b>{tr(stop.reason)}</b>{stop.note && ' · ' + noteLabel(stop.note)} · <b>{fmtDur(stopTime(s, stop, now))}</b>{stop.lineId === null && ' ' + tr('· todo el departamento')}{stop.lineId === line.id && <button type="button" className="lnk sm" onClick={() => setFixingStop(true)}>{tr('Corregir')}</button>}</div>}
+      {inSetup && stop && <div className="setupbar running">⏱ <b>{tr(stop.reason)}</b>{stop.note && ' · ' + noteLabel(stop.note)} · <b>{fmtDur(stopTime(s, stop, now))}</b> <small>{trx('desde las {0}', fmtTime(stop.startedAt))}</small>{!viewOnly && <button type="button" className="lnk sm" onClick={() => setFixingStop(true)}>{tr('Corregir')}</button>}</div>}
+      {stop && !inSetup && <div className="stopbar">⏸ <b>{tr(stop.reason)}</b>{stop.note && ' · ' + noteLabel(stop.note)} · <b>{fmtDur(stopTime(s, stop, now))}</b>{stop.lineId === null && ' ' + tr('· todo el departamento')}{!viewOnly && stop.lineId === line.id && <button type="button" className="lnk sm" onClick={() => setFixingStop(true)}>{tr('Corregir')}</button>}</div>}
       {fixing && <RunEditor s={s} run={run} mgr={mgr} onClose={() => setFixing(false)} />}
       {fixingStop && stop && <StopEditor stop={stop} mgr={mgr} onClose={() => setFixingStop(false)} />}
       {/* what is made, big: how many units and how much they carry (with its cases, where pouches are counted); then the
@@ -1625,11 +1631,12 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         <div className="tile"><label>{tr('Trabajando')}</label><b>{fmtDur(mineNow.working)}</b><small className={mineNow.setup ? 'both' : ''}><span className={mineNow.down ? 'red' : ''}>{trx('parado {0}', fmtDur(mineNow.down))}</span>{mineNow.setup > 0 && <span className="amber"> · {tr('set up {0}', fmtDur(mineNow.setup))}</span>}</small></div>
       </div>
       {pallets
-        ? <PalletPanel s={s} run={run} saved={just ? savedText(line.dept, just.n - brought, rc) : ''} onDone={done} onLot={() => setPacking('lot')} onLotNow={() => setPacking('binlot')} onPart={(i) => setPacking(i)} onOrder={() => setPacking('po')} />
-        : <button type="button" className={'btn primary huge' + (just ? ' saved' : '')} disabled={!!just} onClick={done}>✓ {just ? savedText(line.dept, just.n - brought, rc) : rc.done}</button>}
-      {binOf(run) && <button type="button" className="lnk sm binlot" onClick={() => setPacking('binlot')}>{tr('¿Cambió el lote?')}</button>}
-      {untagged.map((x) => <button key={x.u.at} type="button" className="lnk sm notag tagmiss" onClick={() => setTagging(x.i)}>{tr('Al pallet {0} le falta el tag: lote {1} · ponerlo', x.i + 1, x.lots.join(', '))}</button>)}
-      {own && <button type="button" className="btn slim" onClick={() => setFilling(own)}>{trx('➕ Completar {0} · tiene {1} de {2}', runWord + (own.run.id === run.id && own.index >= brought ? ' ' + noOf(own) : ' ' + tr('de antes')), own.unit.qty, own.usual)}</button>}
+        ? <PalletPanel s={s} run={run} readOnly={viewOnly} saved={just ? savedText(line.dept, just.n - brought, rc) : ''} onDone={done} onLot={() => setPacking('lot')} onLotNow={() => setPacking('binlot')} onPart={(i) => setPacking(i)} onOrder={() => setPacking('po')} />
+        : !viewOnly && <button type="button" className={'btn primary huge' + (just ? ' saved' : '')} disabled={!!just} onClick={done}>✓ {just ? savedText(line.dept, just.n - brought, rc) : rc.done}</button>}
+      {!viewOnly && binOf(run) && <button type="button" className="lnk sm binlot" onClick={() => setPacking('binlot')}>{tr('¿Cambió el lote?')}</button>}
+      {!viewOnly && untagged.map((x) => <button key={x.u.at} type="button" className="lnk sm notag tagmiss" onClick={() => setTagging(x.i)}>{tr('Al pallet {0} le falta el tag: lote {1} · ponerlo', x.i + 1, x.lots.join(', '))}</button>)}
+      {!viewOnly && own && <button type="button" className="btn slim" onClick={() => setFilling(own)}>{trx('➕ Completar {0} · tiene {1} de {2}', runWord + (own.run.id === run.id && own.index >= brought ? ' ' + noOf(own) : ' ' + tr('de antes')), own.unit.qty, own.usual)}</button>}
+      {!viewOnly && (
       <div className="acts2">
         {inSetup && stop
           ? <button type="button" className="btn setupgo" onClick={() => endStop(stop.id)}>{tr('✓ Set up listo')}</button>
@@ -1643,7 +1650,8 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         {cfg.waste && <button type="button" className="btn" onClick={() => setWasting(true)}>Waste{run.waste ? <b className="red"> {run.waste} lb</b> : ' (lb)'}</button>}
         <button type="button" className="btn" disabled={!!stop && !inSetup} onClick={() => setEnding(true)}>{tr('■ Terminar')}<span className="opt"> {' '}{tr('código')}</span></button>
       </div>
-      {fillLink && <div className="fillmore">{fillLink}</div>}
+      )}
+      {!viewOnly && fillLink && <div className="fillmore">{fillLink}</div>}
       {ending && <EndDialog cfg={rc} code={run.code} line={lineLabel(line.name)} now={now} lastAt={run.units.length ? run.units[run.units.length - 1].at : null}
         summary={tr('Lleva {0} · trabajando {1}{2}', madeText(run, st.qty), fmtDur(st.working), (st.down ? ' ' + tr('· parado {0}', fmtDur(st.down)) : '')) + '.'}
         onClose={() => setEnding(false)} onDone={(next) => { endRun(run.id, next); setEnding(false) }}
@@ -1949,7 +1957,7 @@ let shiftChosen: 0 | 1 | 2 | null = null
 let deptChosen: Dept | '' = ''
 
 function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number; only?: Dept; mgr: boolean; admin: boolean; wholeDay: boolean }) {
-  const can = useCan(), who = useWho()
+  const can = useCan(), who = useWho(), viewOnly = who.role === 'viewer'
   const [date, setDate] = useState(() => workDay(s).date)
   const [wiping, setWiping] = useState(false)
   const [resetting, setResetting] = useState(false)
@@ -2480,7 +2488,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
       <p className="hint foot">{supabase ? tr('Todo se guarda en el servidor y se ve en vivo desde la oficina, el teléfono o la PC.') : tr('Demo guardado en este dispositivo. La versión completa manda todo en vivo al manager (oficina, teléfono o PC) y exporta a Excel, PDF y Google Sheets como la Hoja de Freezer RTE.')}</p>
       {runToEdit && <RunEditor s={s} run={runToEdit} mgr={can('fix')} onClose={() => setEditRun(null)} />}
       {stopToEdit && <StopEditor stop={stopToEdit} mgr={can('fix')} onClose={() => setEditStop(null)} />}
-      {mgr && (
+      {mgr && !viewOnly && (
         <div className="btns">
           {!supabase && <button type="button" className="lnk" onClick={() => setClearing(true)}>{tr('Reiniciar registros (conserva productos y líneas)')}</button>}
           <button type="button" className="lnk" onClick={() => setResetting(true)}>{supabase ? tr('Limpiar este aparato y volver a bajar del servidor') : tr('Borrar todo')}</button>

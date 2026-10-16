@@ -2081,6 +2081,17 @@ section('Avance: cada código lo empaca RTE o MFO, nunca los dos; y se puede ver
     eq('el waste está en todos los departamentos', m.DEPTS.map((d) => !!m.CFG[d].waste), [true, true, true, true, true])
   })
 }
+section('Solo ver: un usuario de la oficina que mira todo y no toca nada')
+{
+  // asked on 2026-10-15: people from the office who only want to look at the app and its data (Actividad, Avance, the
+  // report), without a button to press. The role holds one power, looking at every room, and nothing can add to it.
+  calc.use((m) => {
+  eq('sus poderes son solo ver todos los departamentos, y no se le pueden dar más', [m.defaultPowers('viewer'), m.powersOf({ role: 'viewer', powers: ['fix', 'del', 'goals'] }), m.powersOf({ role: 'viewer', powers: [] })], [['depts'], ['depts'], ['depts']])
+  eq('no corrige, no borra, no pone metas ni programa, no maneja empleados', ['fix', 'del', 'goals', 'shifts', 'orders', 'day', 'products', 'people', 'othershift'].map((p) => m.canDo({ role: 'viewer' }, p)), [false, false, false, false, false, false, false, false, false])
+  eq('el reporte le abre en los dos turnos y puede mirar lo de cualquiera', [m.canDo({ role: 'viewer' }, 'depts'), m.canShift({ role: 'viewer', shift: 0 }, '1 y 2')], [true, true])
+  eq('los demás roles siguen igual', [m.defaultPowers('office').length, m.defaultPowers('mgr').includes('othershift'), m.defaultPowers('op')], [10, false, []])
+  })
+}
 section('Set up: espera al código siguiente; con las líneas vacías no corre nada')
 {
   const wai = await device('wai', { user: 'Santiago', usual: true })

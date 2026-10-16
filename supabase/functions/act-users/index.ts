@@ -33,7 +33,8 @@ Deno.serve(async (req) => {
     if (!me || !me.active || !people) return json({ error: 'not_manager' }, 403)
 
     const body = await req.json()
-    const actRoleOf = (r: unknown) => (['op', 'mgr', 'office'].includes(String(r)) ? String(r) : 'op')
+    // 'viewer' looks at everything and writes nothing: the database rules give that role no write at all
+    const actRoleOf = (r: unknown) => (['op', 'mgr', 'office', 'viewer'].includes(String(r)) ? String(r) : 'op')
     const deptOf = (d: unknown) => (DEPTS.includes(String(d)) ? String(d) : null)
     const pinOk = (p: unknown) => /^\d{6,12}$/.test(String(p ?? ''))  // Supabase Auth wants at least 6
     const target = async () => {
@@ -75,8 +76,9 @@ Deno.serve(async (req) => {
       const actDept = deptOf(body.act_dept)
       if (actRole === 'op' && !actDept) return json({ error: 'bad_dept' }, 400)
       if (t.id === me.id && actRole !== 'mgr' && !freezerAdmin) return json({ error: 'not_self' }, 400)
-      await admin.from('employees').update({ act_role: actRole, act_dept: actDept }).eq('id', t.id)
-      return json({ ok: true })
+      // a viewer keeps no powers: whatever was saved for the person before is let go
+      const { error } = await admin.from('employees').update({ act_role: actRole, act_dept: actDept, ...(actRole === 'viewer' ? { act_powers: null, act_shift: null } : {}) }).eq('id', t.id)
+      return error ? json({ error: error.message }, 400) : json({ ok: true })
     }
 
     if (body.action === 'set_powers') {
@@ -85,6 +87,7 @@ Deno.serve(async (req) => {
       if (await ownerLocked(t)) return json({ error: 'owner_protected' }, 403)
       // a manager's powers (and one's own) are the owner's to change
       if (!freezerAdmin && (t.id === me.id || t.role === 'admin' || t.act_role === 'mgr')) return json({ error: 'owner_only' }, 403)
+      if (t.act_role === 'viewer') return json({ error: 'view_only' }, 400)
       const asked = Array.isArray(body.powers) ? body.powers.map(String) : null
       const powers = asked ? POWERS.filter((p) => asked.includes(p)) : null // null = the powers of the role
       const shift = Number(body.shift) === 1 ? 1 : Number(body.shift) === 2 ? 2 : null // null = both shifts
