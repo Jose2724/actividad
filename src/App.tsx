@@ -1146,39 +1146,46 @@ function TodayCard({ s, dept, now, mgr, date }: { s: State; dept: Dept; now: num
   const unitWord = (n: number) => (n === 1 ? cfg.unit : cfg.plural).toLowerCase()
   // a room that counts its units themselves says one of them in the singular ("1 mezcla")
   const label = (n: number) => (cfg.qty === 'none' ? unitWord(n) : t.unitLabel)
+  const paceArrow = pace == null ? '' : pace >= 1 ? '▲ ' : '▼ '
+  /** "Braiser 1, 2, 3" when the lines share their word; "Línea 1, Línea 2" otherwise */
+  const linesText = (lines: string[]) => { const m = lines.map((l) => /^(.*?)\s*(\d+)$/.exec(l)); const w = m[0]?.[1]; return lines.length > 1 && w && m.every((x) => x && x[1] === w) ? w + ' ' + m.map((x) => x![2]).join(', ') : lines.join(', ') }
   return (
-    <div className="todaycard">
+    <div className="todaycard tc2">
       <div className="tc-head">
-        <h3>{trx('Turno {0} en {1} · todas las líneas juntas', t.shift, dept)}</h3>
+        <h3>{trx('Turno {0} · {1}', t.shift, dept)}<small>{tr('todas las líneas juntas')}</small></h3>
         {mgr && <button type="button" className="lnk" onClick={() => setEditing(true)}>{hasGoal ? tr('✎ Cambiar meta') : tr('+ Poner meta')}</button>}
       </div>
-      {/* the clock of the shift: from its first code until the last one ends, and from zero again with the next shift */}
-      {t.shiftSince > 0 && (
-        <div className={'tc-clock' + (t.shiftUntil ? ' over' : t.paused ? ' paused' : '')}>
-          <span>{trx('⏱ Turno {0}', t.shift)}</span>
-          <b>{fmtDur(t.shiftMs)}</b>
-          <small>{t.shiftUntil ? tr('de {0} a {1} · terminó', fmtTime(t.shiftSince), fmtTime(t.shiftUntil)) : t.paused ? tr('desde las {0} · ⏸ en pausa: nadie ha registrado nada desde la {1}', fmtTime(t.shiftSince), fmtTime(t.paused)) : tr('desde las {0}', fmtTime(t.shiftSince))}</small>
-        </div>
-      )}
-      {t.paused > 0 && <p className="tc-paused">{tr('Ese rato no cuenta. Si siguen trabajando, al registrar lo siguiente cuenta todo; si ya se fueron, toca "Terminar turno".')}</p>}
-      <div className="tc-main">
-        <div className="tc-total"><b>{fmtN(t.shiftQty)}</b> <span>{label(t.shiftQty)}</span>{cfg.qty !== 'none' && <small>{t.shiftUnits} {unitWord(t.shiftUnits)}</small>}
+      {/* four tiles: what the shift has made, its goal, its pace, its clock (from zero again with the next shift) */}
+      <div className="tc-tiles">
+        <div className="tct made">
+          <label>{tr('Hecho en el turno')}</label>
+          <b>{fmtN(t.shiftQty)} <span>{label(t.shiftQty)}</span></b>
+          <small>{cfg.qty !== 'none' ? t.shiftUnits + ' ' + unitWord(t.shiftUnits) : t.shiftCodes.length === 1 ? tr('1 código') : t.shiftCodes.length ? tr('{0} códigos', t.shiftCodes.length) : '\u00a0'}</small>
           {t.shiftBins.length > 0 && <small className="tc-bins">{dept === 'Spiral' ? tr('Además: {0}', t.shiftBins.map((b) => unitsText(dept, b.units, b.qty, cfgFor(dept, b.word))).join(' · ')) : tr('Además, en bins: {0}', t.shiftBins.map((b) => tr('{0} con {1} {2}', b.units === 1 ? tr('1 bin') : tr('{0} bins', b.units), fmtN(b.qty), binWord(b.word))).join(' · '))}</small>}
         </div>
-        {goal.total ? (
-          <div className="tc-goal">
-            <div className="tc-goalrow"><span>{trx('Meta del turno {0} / {1}', <b>{fmtN(t.shiftQty)}</b>, <b>{fmtN(goal.total)}</b>)} {t.unitLabel}</span><b className={pct >= 100 ? 'ok' : ''}>{pct}%</b></div>
-            <div className="bar"><i className={pct >= 100 ? 'ok' : ''} style={{ width: pct + '%' }} /></div>
-            <div className="tc-sub">{left > 0 ? <>{trx('Faltan {0}', <b>{fmtN(left)}</b>)}{eta && <> {' '}{etaText(eta, now)}</>}</> : <b className="ok">{tr('✓ Meta del turno cumplida')}</b>}</div>
-          </div>
-        ) : <div className="tc-goal tc-none">{mgr ? tr('Sin meta del turno todavía.') : ''}</div>}
-        <div className="tc-rate">
-          <label>{trx('Ritmo del turno {0}', t.shift)}</label>
-          <b className={paceCls}>{t.shiftRate != null ? fmtN(t.shiftRate) : '—'}</b> <span>{t.unitLabel}/h</span>
-          {goal.perHour ? <small>{trx('meta {0}/h', <b>{fmtN(goal.perHour)}</b>)}{pace != null && <> · <span className={paceCls}>{paceText}</span></>}</small> : <small>{t.shiftRate == null ? tr('desde el primer inicio del turno') : tr('sin meta por hora')}</small>}
+        <div className={'tct goal' + (goal.total ? (pct >= 100 ? ' ok' : '') : ' none')}>
+          <label>{tr('Meta del turno')}</label>
+          {goal.total ? (
+            <>
+              <b>{fmtN(t.shiftQty)} <span>/ {fmtN(goal.total)} {t.unitLabel}</span></b>
+              <div className="bar"><i className={pct >= 100 ? 'ok' : ''} style={{ width: pct + '%' }} /></div>
+              <small>{left > 0 ? <>{trx('faltan {0}', fmtN(left))}{eta && <> · {etaText(eta, now)}</>}</> : <span className="ok">{tr('✓ cumplida')}</span>}</small>
+            </>
+          ) : <><b>—</b><small>{mgr ? tr('sin meta del turno') : '\u00a0'}</small></>}
+        </div>
+        <div className={'tct pace ' + paceCls}>
+          <label>{tr('Ritmo')}</label>
+          <b>{t.shiftRate != null ? fmtN(t.shiftRate) : '—'} <span>{t.unitLabel}/h</span></b>
+          <small>{goal.perHour ? <>{trx('meta {0}/h', fmtN(goal.perHour))}{pace != null && <> · <span className={paceCls}>{paceArrow}{paceText}</span></>}</> : t.shiftRate == null ? tr('desde el primer inicio del turno') : tr('sin meta por hora')}</small>
+        </div>
+        <div className={'tct clock' + (t.shiftUntil ? ' over' : t.paused ? ' paused' : '')}>
+          <label>{tr('Reloj del turno')}</label>
+          <b>{t.shiftSince > 0 ? fmtDur(t.shiftMs) : '—'}</b>
+          <small>{t.shiftSince > 0 ? (t.shiftUntil ? tr('de {0} a {1} · terminó', fmtTime(t.shiftSince), fmtTime(t.shiftUntil)) : t.paused ? tr('desde las {0} · ⏸ en pausa desde la {1}', fmtTime(t.shiftSince), fmtTime(t.paused)) : tr('desde las {0}', fmtTime(t.shiftSince))) : tr('nada empezado todavía')}</small>
         </div>
       </div>
-      {many && <div className="tc-codes">{t.shiftCodes.map((c) => <span key={c.code} className="tc-code"><b>{c.code}</b> {fmtN(c.qty)} {t.unitLabel}{cfg.qty !== 'none' && <> · {c.units} {unitWord(c.units)}</>} · {c.lines.join(', ')}</span>)}</div>}
+      {t.paused > 0 && <p className="tc-paused">{tr('Ese rato no cuenta. Si siguen trabajando, al registrar lo siguiente cuenta todo; si ya se fueron, toca "Terminar turno".')}</p>}
+      {many && <div className="tc-codes">{t.shiftCodes.map((c) => <span key={c.code} className="tc-code"><b>{c.code}</b> {fmtN(c.qty)} {t.unitLabel}{cfg.qty !== 'none' && <> · {c.units} {unitWord(c.units)}</>} · {linesText(c.lines)}</span>)}</div>}
       {editing && <TargetDialog s={s} dept={dept} unit={t.unitLabel} inCourse={t.shift} onClose={() => setEditing(false)} />}
     </div>
   )

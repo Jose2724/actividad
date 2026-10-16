@@ -212,7 +212,6 @@ tr.live td{background:#f1fbf5}
 .tc-code b{font-family:ui-monospace,Menlo,Consolas,monospace}
 .dname{display:grid;gap:1px}
 .goalmini{font-size:11px;color:var(--muted);font-weight:500;white-space:nowrap}
-@media (max-width:700px){.tc-main{grid-template-columns:1fr}.tc-rate{text-align:left}}
 .psearch{display:flex;align-items:center;gap:6px;flex:1;min-width:220px}
 .psearch input{min-height:40px;padding:0 10px;font-size:16px;width:100%;max-width:320px}
 .psearch small{color:var(--muted);white-space:nowrap}
@@ -369,18 +368,11 @@ tr.live td{background:#f1fbf5}
 .start label.wide{grid-column:1/-1}
 .start .cartrow .eq{font-size:13px}
 @media (prefers-reduced-motion:reduce){.tile.bumped b{animation:none}}
-/* today's card: the total beside the pace, the day's goal under them on its own row; three in a row only where there is room */
-.tc-main{grid-template-columns:1fr auto;gap:10px 16px}
-.tc-goal{grid-column:1/-1;order:3}
-.tc-rate{text-align:right}
-@media (min-width:1100px){.tc-main{grid-template-columns:auto 1fr auto;gap:18px}.tc-goal{grid-column:auto;order:0}}
 /* on a phone: the room's three buttons in one row, the codes of today in one row that slides */
 @media (max-width:720px){
   .phead h2{font-size:22px}
   .acts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));width:100%;gap:6px}
   .acts .btn{min-height:44px;padding:0 6px;font-size:13.5px;white-space:normal;line-height:1.15}
-  .tc-total b{font-size:30px}
-  .tc-rate b{font-size:22px}
   .tc-codes{flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px}
   .tc-code{flex:none}
   .tile{padding:8px}
@@ -893,3 +885,27 @@ table.avmini tbody tr:last-child td{border-bottom:0}
 .tile label{white-space:normal;line-height:1.15;overflow:visible;text-overflow:clip}
 /* a narrow card (two cards side by side on a small screen, five on a wide one): the four buttons in two rows of two */
 @container line (max-width:372px){.acts2{grid-auto-flow:row;grid-template-columns:1fr 1fr}.acts2 .btn{font-size:14px;min-height:44px}.acts2 .opt{display:inline}}
+/* ---- the shift's card, redesigned (2026-10-16): four tiles (made, goal, pace, clock), then the codes of the shift ---- */
+.tc2{gap:10px}
+.tc2 .tc-head h3 small{text-transform:none;letter-spacing:0;font-weight:500;margin-left:8px;color:var(--muted)}
+.tc-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.tct{background:var(--bg);border-radius:12px;padding:10px 12px;display:grid;gap:3px;min-width:0;align-content:start}
+.tct label{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tct b{font-size:26px;line-height:1.05;font-variant-numeric:tabular-nums;letter-spacing:-.01em;overflow-wrap:anywhere}
+.tct b span{font-size:14px;font-weight:600;color:var(--muted);letter-spacing:0;white-space:nowrap}
+.tct small{font-size:12.5px;color:var(--muted);line-height:1.3}
+.tct .ok{color:var(--ok);font-weight:700}
+.tct .red{color:var(--warn);font-weight:700}
+.tct.made{background:var(--soft)}
+.tct.made b{color:var(--accent)}
+.tct .tc-bins{display:block;font-weight:600}
+.tct.goal .bar{height:8px;margin:2px 0}
+.tct.goal.ok b{color:var(--ok)}
+.tct.goal.none b{color:var(--muted)}
+.tct.pace.red b{color:var(--warn)}
+.tct.pace.ok b{color:var(--ok)}
+.tct.clock.paused{background:#fff7e6}
+.tct.clock.paused b{color:var(--amber)}
+.tct.clock.paused small{color:var(--amber);font-weight:600}
+.tct.clock.over b{color:var(--muted)}
+@media (max-width:720px){.tc-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.tct b{font-size:22px}.tct{padding:8px 10px}}
