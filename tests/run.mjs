@@ -2157,6 +2157,34 @@ section('Spiral: un código se cuenta en mezclas, en libras o en cajas, y el pro
     eq('lo que llega en extra se limpia', [m.cleanExtra({ measure: 'lb' }), m.cleanExtra({ measure: 'kg' })], [{ measure: 'lb' }, undefined])
   })
 }
+section('Un código y su lote que siguen al día siguiente: Avance dice lo pendiente, o completado')
+{
+  // what Jose confirmed on 2026-10-16: Packing had 100 cases of a code on Wednesday's program and made 60; on Thursday
+  // they went on with Wednesday's lot. Wednesday's Avance says what was pending and whether Thursday finished it, in
+  // each room's own unit; Thursday's says what came from Wednesday's lot.
+  const cy = await device('carry', { user: 'Oficina', usual: true })
+  cy.use((m) => {
+    const st = () => m.store.get(), wed = '2026-10-14', thu = '2026-10-15', lotWed = m.lotFor(wed)
+    m.addLine('Packing', 'Línea 1'); m.addLine('Kitchen', 'Braiser 1')
+    const pl = st().lines.find((l) => l.dept === 'Packing'), kl = st().lines.find((l) => l.dept === 'Kitchen')
+    m.setPlan(wed, 'Packing', 'A100', 100); m.setPlan(wed, 'Kitchen', 'A100', 10)
+    // Wednesday: 60 cases and 6 mezclas
+    clock = oct(14, 8, 0); m.startRun(pl, 'A100', lotWed, wed, 20); m.startRun(kl, 'A100', lotWed, wed, null)
+    for (let i = 1; i <= 3; i++) { clock = oct(14, 8 + i, 0); m.unitDone(st().runs.find((r) => r.lineId === pl.id && r.date === wed).id, 20) }
+    for (let i = 1; i <= 6; i++) { clock = oct(14, 8, i * 5); m.unitDone(st().runs.find((r) => r.lineId === kl.id && r.date === wed).id, null) }
+    clock = oct(14, 14, 0); for (const r of st().runs.filter((r) => !r.endedAt)) m.endRun(r.id, false)
+    eq('el miércoles quedaron pendientes 40 cajas y 4 mezclas, y el jueves todavía no hizo nada', m.carriedOver(st(), wed).map((x) => [x.dept, x.code, x.unit, x.pending, x.made, x.next, x.done]), [['Kitchen', 'A100', 'mezclas', 4, 0, thu, false], ['Packing', 'A100', 'cajas', 40, 0, thu, false]])
+    // Thursday: they go on with Wednesday's lot: 2 pallets of 20 (the second with cases of two lots), 4 mezclas
+    clock = oct(15, 7, 0); m.startRun(pl, 'A100', lotWed, thu, 20); m.startRun(kl, 'A100', lotWed, thu, null)
+    const pr = () => st().runs.find((r) => r.lineId === pl.id && r.date === thu), kr = () => st().runs.find((r) => r.lineId === kl.id && r.date === thu)
+    clock = oct(15, 8, 0); m.unitDone(pr().id, 20)
+    clock = oct(15, 9, 0); m.unitDone(pr().id, 20, '1800', [{ lot: lotWed, qty: 15 }, { lot: m.lotFor(thu), qty: 5 }])
+    for (let i = 1; i <= 4; i++) { clock = oct(15, 7, i * 5); m.unitDone(kr().id, null) }
+    eq('el jueves hizo 35 cajas del lote del miércoles (del pallet mixto solo las 15 de ese lote) y las 4 mezclas', m.carriedOver(st(), wed).map((x) => [x.dept, x.pending, x.made, x.done]), [['Kitchen', 4, 4, true], ['Packing', 40, 35, false]])
+    eq('y el jueves dice lo que vino del lote del miércoles, en la unidad de cada cuarto', m.cameFrom(st(), thu).map((x) => [x.dept, x.code, x.unit, x.made, x.from]), [['Kitchen', 'A100', 'mezclas', 4, wed], ['Packing', 'A100', 'cajas', 35, wed]])
+    eq('un día sin nada pendiente ni nada de ayer no dice nada', [m.carriedOver(st(), thu), m.cameFrom(st(), wed)], [[], []])
+  })
+}
 section('Set up: espera al código siguiente; con las líneas vacías no corre nada')
 {
   const wai = await device('wai', { user: 'Santiago', usual: true })

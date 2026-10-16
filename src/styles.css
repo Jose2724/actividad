@@ -712,3 +712,8 @@ table.pallets th.num,table.pallets td.num{text-align:right;font-variant-numeric:
 .planrow.spiral{grid-template-columns:minmax(0,1.1fr) minmax(0,.8fr) minmax(0,.9fr)}
 .planrow.spiral select{min-height:46px;padding:0 8px;border-radius:12px;border:1.5px solid var(--btn-line);background:var(--surface);font-size:15px;font-weight:600}
 .plan small.punit{color:var(--muted);font-weight:600;font-size:12px}
+/* Avance: a code and its lot that went on into the next day, or came on from the day before */
+.avance td.carry{white-space:normal;max-width:220px;font-size:12.5px;line-height:1.25}
+.avance td.carry small{display:block;color:var(--muted)}
+.avance td.carry small.ok{color:var(--ok);font-weight:700}
+.avance td.carry small.amber{color:var(--amber);font-weight:700}

@@ -1347,6 +1347,44 @@ export function planRows(s: State, date: string, dept: Dept): PlanRow[] {
     return { code: product?.code ?? set?.code ?? mine[0]?.code ?? ofCode[0]?.code ?? key, name: product?.name ?? '', planned, done, byShift: [made(1), made(2)], left: planned ? Math.round((planned - done) * 100) / 100 : 0, running: open.length > 0, unit: measure ? measureUnit(measure) : roomUnit, other, lines: [...new Set(open.map((r) => lineNameOf(s, r.lineId, r.line)))] }
   }).sort((a, b) => Number(b.planned > 0) - Number(a.planned > 0) || a.code.localeCompare(b.code, undefined, { numeric: true }))
 }
+// ---- a code and its lot that go on into the next day ----
+/** the day after / before a date (YYYY-MM-DD) */
+export const dayAfter = (d: string) => { const x = new Date(d + 'T00:00:00'); x.setDate(x.getDate() + 1); return dayOf(x.getTime()) }
+export const dayBefore = (d: string) => { const x = new Date(d + 'T00:00:00'); x.setDate(x.getDate() - 1); return dayOf(x.getTime()) }
+/** what a room's runs of a day made of a code with one lot, in the room's measure (a pallet with two lots gives the cases of that one) */
+function madeOfLot(s: State, dept: Dept, code: string, lot: string, date: string) {
+  const key = normCode(code), cfg = CFG[dept]
+  return s.runs.filter((r) => r.dept === dept && r.date === date && normCode(r.code) === key).reduce((t, r) => t + r.units.reduce((a, u) => {
+    if (u.lots?.length) return a + u.lots.filter((l) => l.lot === lot).reduce((q, l) => q + l.qty, 0)
+    return a + (lotNowOf(r) === lot || r.lot === lot ? (cfg.qty === 'none' && !apartOf(r) ? 1 : unitQty(s, r, u)) : 0)
+  }, 0), 0)
+}
+/**
+ * What each room left pending of its program on a day and went on with the next day: the next day's runs of that
+ * code with that day's lot (see lotFor). Each in the room's own unit; done = the next day finished it.
+ */
+export type CarryRow = { dept: Dept; code: string; unit: string; pending: number; made: number; next: string; done: boolean }
+export function carriedOver(s: State, date: string): CarryRow[] {
+  const next = dayAfter(date), lot = lotFor(date), out: CarryRow[] = []
+  for (const dept of DEPTS) for (const row of planRows(s, date, dept)) {
+    if (!(row.planned > 0 && row.left > 0)) continue
+    const made = madeOfLot(s, dept, row.code, lot, next)
+    out.push({ dept, code: row.code, unit: row.unit, pending: row.left, made, next, done: made >= row.left })
+  }
+  return out
+}
+/** what a day's runs made of the day before's lot: codes that came on from the day before, in each room's unit */
+export function cameFrom(s: State, date: string): { dept: Dept; code: string; unit: string; made: number; from: string }[] {
+  const from = dayBefore(date), lot = lotFor(from), out: { dept: Dept; code: string; unit: string; made: number; from: string }[] = []
+  for (const dept of DEPTS) {
+    const rows = planRows(s, date, dept)
+    for (const key of new Set(s.runs.filter((r) => r.dept === dept && r.date === date).map((r) => normCode(r.code)))) {
+      const made = madeOfLot(s, dept, key, lot, date)
+      if (made > 0) { const row = rows.find((x) => normCode(x.code) === key); out.push({ dept, code: row?.code ?? key, unit: row?.unit ?? (CFG[dept].qty === 'none' ? CFG[dept].plural.toLowerCase() : CFG[dept].qtyUnit), made, from }) }
+    }
+  }
+  return out
+}
 export const targetOf = (s: State, dept: Dept) => s.targets.find((t) => t.dept === dept)
 /**
  * Each line can have its own goal beside the room's (which is of all the lines together): it shows on the line's

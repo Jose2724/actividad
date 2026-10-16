@@ -895,4 +895,10 @@ export const EN: Record<string, string> = {
   'mezclas': 'mixes',
   'libras': 'pounds',
   'en {0}': 'in {0}',
+  // a code and its lot that go on into the next day
+  'Al día siguiente': 'Into the next day',
+  '{0}: ✓ completado el {1}': '{0}: ✓ completed on {1}',
+  '{0}: pendiente {1} {2} · siguió el {3}': '{0}: {1} {2} pending · went on {3}',
+  '{0}: pendiente {1} {2} al día siguiente': '{0}: {1} {2} pending into the next day',
+  '↪ {0}: {1} {2} del lote del {3}': '↪ {0}: {1} {2} of the lot of {3}',
 }
