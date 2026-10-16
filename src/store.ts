@@ -647,6 +647,18 @@ export function startSetup(line: Line) {
     putStop({ id: uid(), dept: line.dept, lineId: line.id, reason: SETUP, note: last ? AFTER + last.code : '', startedAt: at, endedAt: null, by: user.get(), updatedAt: 0 })
   })
 }
+/** the lines with nothing on their card: no code running, no set up or stop on them, and their room not stopped */
+export const freeLines = (s: State, now: number): Line[] => s.lines.filter((l) => !openRun(s, l.id) && !idleStop(s, l.id, now) && !deptStop(s, l.dept))
+/**
+ * Every free line of every room goes into set up at once: a manager's or the office's tap when a shift starts and the
+ * lines are being prepared, instead of a tap on each line. Each set up waits for that line's next code, as any set up
+ * does (it never counts with nobody working). Returns how many lines it put in set up.
+ */
+export function startSetupAll(): number {
+  const free = freeLines(state, clockNow())
+  batch(() => { for (const l of free) startSetup(l) })
+  return free.length
+}
 /** what is still open in a room: the codes running, the set ups waiting for a code that has not come, and any other stop */
 export function openIn(s: State, dept: Dept) {
   const runs = s.runs.filter((r) => r.dept === dept && !r.endedAt), busy = new Set(runs.map((r) => r.lineId))

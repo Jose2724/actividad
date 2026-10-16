@@ -923,3 +923,7 @@ table.pallets .lotno{display:block;font-size:10px;font-weight:700;color:var(--mu
 /* the report's boxes: the line, the code and the lot side by side */
 .rf-three{grid-template-columns:1fr 1fr 1fr;flex:1 1 420px;max-width:640px}
 @media (max-width:720px){.rf-three{grid-template-columns:1fr 1fr}.rf-three .rf:first-child{grid-column:1/-1}}
+/* under the rooms: one tap puts every free line in set up (managers and the office) */
+.side .setupall{margin-top:8px;display:grid;justify-items:center;gap:2px;line-height:1.1;min-height:52px;white-space:normal;text-align:center}
+.setupall small{font-size:11px;color:inherit;opacity:.8;font-weight:600}
+@media (max-width:720px){.side .setupall{margin-top:0;flex:none;margin-left:auto}}

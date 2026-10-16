@@ -1021,4 +1021,10 @@ export const EN: Record<string, string> = {
   'De otros días': 'Of other days',
   // the report's line filter (2026-10-16)
   'Todas': 'All',
+  // one tap puts every free line in set up (2026-10-16)
+  '⏱ Set up en todas las líneas': '⏱ Set up on every line',
+  '1 línea libre': '1 free line',
+  '{0} líneas libres': '{0} free lines',
+  '¿Poner en Set up todas las líneas libres?': 'Put every free line in Set up?',
+  'El Set up de cada línea empieza ahora y cuenta cuando empiece su código; con nadie trabajando no cuenta. Las líneas que ya tienen código o Set up siguen como están.': 'The set up of each line starts now and counts once its code starts; with nobody working it does not count. Lines that already have a code or a set up stay as they are.',
 }
