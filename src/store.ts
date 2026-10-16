@@ -1323,6 +1323,16 @@ export function removeProduct(i: number) {
 }
 /** products loaded from the office's file: an existing code is updated (blank numbers keep what was there), a new one is added */
 /** how Spiral counts a code, said from its program: a product the table does not have yet is added with it */
+/** which room packs a code (RTE or MFO), said from Avance: it goes to the products table, which adds the code when it is not there ('' = not said) */
+export function setPackRoom(code: string, room: PackRoom | '') {
+  const key = normCode(code)
+  if (!key) return
+  const i = state.products.findIndex((p) => normCode(p.code) === key)
+  if ((i >= 0 ? state.products[i].room ?? '' : '') === room) return
+  const was: Product = i >= 0 ? state.products[i] : { code: code.trim().toUpperCase(), name: '', pouchesPerCase: 0, casesPerMix: 0, cratesPerCart: 0, pouchesPerCrate: 0, casesPerPallet: 0, updatedAt: 0 }
+  const { room: _was, ...bare } = was
+  saveProduct(i >= 0 ? i : state.products.length, room ? { ...bare, room } : bare)
+}
 export function setSpiralUnit(code: string, unit: SpiralUnit) {
   const key = normCode(code)
   if (!key) return

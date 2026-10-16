@@ -2115,6 +2115,20 @@ section('Avance: cada código lo empaca RTE o MFO, nunca los dos; y se puede ver
     eq('sube al servidor con su cuarto', sent.room, 'MFO')
     // waste: every room has it now (it was RTE's only)
     eq('el waste está en todos los departamentos', m.DEPTS.map((d) => !!m.CFG[d].waste), [true, true, true, true, true])
+    // what Jose asked on 2026-10-16 for the office: each code opens into its lots and its shifts, the total of a lot
+    // across its days, and "Lo empaca" fixed from Avance itself
+    const m5 = row('M500')
+    eq('cada código dice lo hecho por lote (el pallet de dos lotes da a cada uno sus cajas y cuenta como pallet de los dos)', m5.lots.map((l) => [l.lot, l.mixes, l.mfo, l.cases, l.pallets]), [['6292', 0, 0, 15, 1], ['6293', 2, 30, 25, 1]])
+    eq('y por turno: todo fue en el turno 1', [m5.byShift[0].mixes, m5.byShift[0].mfo, m5.byShift[0].cases, m5.byShift[0].pallets, m5.byShift[1].cases, m5.byShift[1].mixes], [2, 30, 40, 1, 0, 0])
+    eq('con un lote escogido, por turno solo va lo de ese lote', row('M500', '6292').byShift[0].cases, 15)
+    const across = m.lotAcrossDays(st(), '6293')
+    eq('el total de un lote en todos sus días, código por código y en todo', [across.days, across.codes.map((c) => [c.code, c.mixes, c.pouches, c.mfo, c.cases, c.pallets]), across.total.mixes, across.total.pouches, across.total.cases, across.total.pallets], [['2026-10-20'], [['M500', 2, 0, 30, 25, 1], ['Q700', 0, 0, 20, 0, 0], ['R600', 2, 240, 0, 0, 0]], 4, 240, 25, 1])
+    m.setPackRoom('Q700', 'MFO')
+    eq('fijar desde Avance quién empaca un código lo escribe en Productos, aunque el código no estuviera', [m.productOf(st(), 'Q700').room, m.packRoomOf(st(), 'Q700')], ['MFO', { room: 'MFO', said: true }])
+    m.setPackRoom('M500', 'RTE')
+    eq('y cambia el de uno que ya estaba, con su historial', [m.productOf(st(), 'M500').room, row('M500').packRoom, st().changes.filter((c) => c.what === 'Producto M500 · Lo empaca').map((c) => [c.before, c.after])], ['RTE', 'RTE', [['MFO', 'RTE']]])
+    m.setPackRoom('M500', 'MFO')
+    eq('decir lo que ya está no cambia nada', [m.setPackRoom('M500', 'MFO'), m.productOf(st(), 'M500').room], [undefined, 'MFO'])
   })
 }
 section('Solo ver: un usuario de la oficina que mira todo y no toca nada')

@@ -1,4 +1,4 @@
-import { apartOf, normCode, productOf, unitQty, type PackRoom, type Product, type Run, type State, type Unit } from './store'
+import { apartOf, normCode, productOf, shiftAt, shiftsOf, unitQty, type PackRoom, type Product, type Run, type State, type Unit } from './store'
 import { unitParts } from './report'
 
 /**
@@ -32,7 +32,12 @@ export type AvanceRow = {
   packRoom: PackRoom; packSaid: boolean
   /** what MFO has to pack of a code it packs: the same cases (mezclas × yield). null for a code that RTE packs */
   mfoPlan: number | null; mfoExp: number | null
+  /** the same made numbers, shift by shift (a unit counts on the shift of its hour) and lot by lot (a pallet with two lots gives each its cases and is a pallet of both) */
+  byShift: [AvancePart, AvancePart]; lots: ({ lot: string } & AvancePart)[]
 }
+/** what a shift, a lot or a whole lot made of a code, in each room's unit */
+export type AvancePart = { mixes: number; spiral: number; pouches: number; cases: number; mfo: number; pallets: number }
+const part = (): AvancePart => ({ mixes: 0, spiral: 0, pouches: 0, cases: 0, mfo: 0, pallets: 0 })
 
 /**
  * Which room packs a code: the products table's "Lo empaca"; when it is blank, the room that has registered the code
@@ -89,6 +94,22 @@ export function avanceRows(s: State, date: string, keep?: Set<string>, lot = '')
     const pouches = (c: number | null) => (product && product.pouchesPerCase && c != null ? c * product.pouchesPerCase : null)
     const pallets = (c: number | null) => (product && product.casesPerPallet && c != null ? c / product.casesPerPallet : null)
     const casesExp = cases(mixesDone), casesPlan = scheduled ? cases(scheduled) : null
+    // the same, shift by shift and lot by lot; the mezclas are the ones of the room that makes the code (mixRoom)
+    const hours = shiftsOf(s, date)
+    const byShift: [AvancePart, AvancePart] = [part(), part()], lotMap = new Map<string, AvancePart>()
+    const lotPart = (l: string) => { let x = lotMap.get(l); if (!x) { x = part(); lotMap.set(l, x) } return x }
+    const kitchenBy: [number, number] = [0, 0], kitchenLot = new Map<string, number>()
+    const put = (dept: string, x: AvancePart, q: number) => { if (dept === 'Spiral') x.spiral++; else if (dept === 'RTE') x.pouches += q; else if (dept === 'Packing') { x.cases += q; x.pallets++ } else if (dept === 'MFO') x.mfo += q }
+    for (const dept of ['Kitchen', 'Spiral', 'RTE', 'Packing', 'MFO'] as const) for (const r of of(dept)) for (const u of r.units) {
+      if (!has(r, u)) continue
+      const k = shiftAt(hours, u.at) - 1
+      if (dept === 'Kitchen') kitchenBy[k]++; else put(dept, byShift[k], ofLot(r, u))
+      for (const p of unitParts(s, r, u)) { if (lot && p.lot !== lot) continue; if (dept === 'Kitchen') kitchenLot.set(p.lot, (kitchenLot.get(p.lot) ?? 0) + 1); else put(dept, lotPart(p.lot), p.qty ?? 0) }
+    }
+    for (const k of [0, 1] as const) byShift[k].mixes = mixRoom === 'Spiral' ? byShift[k].spiral : kitchenBy[k]
+    for (const l of kitchenLot.keys()) lotPart(l)
+    for (const [l, x] of lotMap) x.mixes = mixRoom === 'Spiral' ? x.spiral : (kitchenLot.get(l) ?? 0)
+    const lots = [...lotMap].map(([l, x]) => ({ lot: l, ...x })).sort((a, b) => a.lot.localeCompare(b.lot))
     return {
       key, code, product, scheduled, mixesDone, mixesPending: scheduled ? scheduled - mixesDone : 0, mixRoom, spiralDone,
       // RTE fills no pouches of a code MFO packs, and MFO no bins of one RTE packs: nothing is expected of the other room
@@ -97,6 +118,7 @@ export function avanceRows(s: State, date: string, keep?: Set<string>, lot = '')
       palletsPlan: r2(pallets(casesPlan)), palletsExp: r2(pallets(casesExp)), palletsDone: units('Packing'),
       wasteLb: Math.round(runs.filter((r) => normCode(r.code) === key).reduce((t, r) => t + (r.waste || 0), 0) * 100) / 100,
       packRoom: pack.room, packSaid: pack.said, mfoPlan: mfoRoute ? r2(casesPlan) : null, mfoExp: mfoRoute ? r2(casesExp) : null,
+      byShift, lots,
     }
   }).filter((r) => !idle(r) || !!keep?.has(r.key)).map(({ key: _key, ...r }) => r)
 }
@@ -105,3 +127,24 @@ export function avanceRows(s: State, date: string, keep?: Set<string>, lot = '')
 export const pending = (exp: number | null, done: number) => (exp == null ? null : Math.round((exp - done) * 10) / 10)
 /** a number for the table: whole when it is whole, else one decimal ("714", "142.8"), "—" when it is not known */
 export const n1 = (v: number | null) => { if (v == null) return '—'; const r = Math.round(v * 10) / 10; return Number.isInteger(r) ? String(r) : r.toFixed(1) }
+/**
+ * What was made of one lot on every day this device holds (a lot goes on into the next day), code by code and in all:
+ * the office asks for "the total of a lot". The mezclas of a code are the ones of the room that makes it.
+ */
+export function lotAcrossDays(s: State, lot: string): { days: string[]; codes: ({ code: string } & AvancePart)[]; total: AvancePart } {
+  const days = new Set<string>(), byCode = new Map<string, { code: string; kitchen: number; x: AvancePart }>()
+  for (const r of s.runs) {
+    if (apartOf(r)) continue
+    const key = normCode(r.code)
+    for (const u of r.units) for (const p of unitParts(s, r, u)) {
+      if (p.lot !== lot) continue
+      days.add(r.date)
+      let c = byCode.get(key)
+      if (!c) { c = { code: productOf(s, key)?.code ?? r.code, kitchen: 0, x: part() }; byCode.set(key, c) }
+      if (r.dept === 'Kitchen') c.kitchen++; else if (r.dept === 'Spiral') c.x.spiral++; else if (r.dept === 'RTE') c.x.pouches += p.qty ?? 0; else if (r.dept === 'Packing') { c.x.cases += p.qty ?? 0; c.x.pallets++ } else if (r.dept === 'MFO') c.x.mfo += p.qty ?? 0
+    }
+  }
+  const codes = [...byCode.values()].map((c) => ({ code: c.code, ...c.x, mixes: Math.max(c.kitchen, c.x.spiral) })).sort((a, b) => a.code.localeCompare(b.code))
+  const total = codes.reduce((t, c) => ({ mixes: t.mixes + c.mixes, spiral: t.spiral + c.spiral, pouches: t.pouches + c.pouches, cases: t.cases + c.cases, mfo: t.mfo + c.mfo, pallets: t.pallets + c.pallets }), part())
+  return { days: [...days].sort(), codes, total }
+}
