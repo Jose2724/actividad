@@ -884,3 +884,5 @@ table.avmini tbody tr:last-child td{border-bottom:0}
 .acts2 .btn{font-size:clamp(12px,4.2cqw,14.5px);padding:0 3px}
 .acts2 .btn:disabled{font-size:clamp(11.5px,3.8cqw,13px)}
 .tile label{white-space:normal;line-height:1.15;overflow:visible;text-overflow:clip}
+/* a narrow card (two cards side by side on a small screen, five on a wide one): the four buttons in two rows of two */
+@container line (max-width:372px){.acts2{grid-auto-flow:row;grid-template-columns:1fr 1fr}.acts2 .btn{font-size:14px;min-height:44px}.acts2 .opt{display:inline}}
