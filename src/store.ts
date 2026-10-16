@@ -135,7 +135,13 @@ export type TurnGoal = { key: string; perHour: number | null; total: number | nu
  * A code set to 0 is off the program.
  */
 export type Plan = { date: string; dept: Dept; code: string; qty: number; updatedAt: number }
-export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Product[]; schedule: Schedule; changes: Change[]; targets: Target[]; shifts: ShiftPlan[]; lineTargets: LineTarget[]; orders: Order[]; turnGoals: TurnGoal[]; plans: Plan[] }
+export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Product[]; schedule: Schedule; changes: Change[]; targets: Target[]; shifts: ShiftPlan[]; lineTargets: LineTarget[]; orders: Order[]; turnGoals: TurnGoal[]; plans: Plan[]
+  /**
+   * runs the device no longer keeps (older than its days) that hold pallets given to an order still open: an order's
+   * "Hechas" counts every pallet it ever got, not only the days this device holds. They come from the server (see
+   * sync's bringOrderRuns) or stay behind when a day is pruned, and go when their order closes.
+   */
+  orderRuns: Run[] }
 /**
  * An order to fill in Packing: so many cases of one product for a customer, to ship by a date. Most carry the
  * customer's purchase order number (PO); some never do and some get it later. See "the orders Packing fills".
@@ -207,10 +213,10 @@ function tidySchedule(sch: Schedule): Schedule {
 function isDay(text: string) { return /^\d{4}-\d{2}-\d{2}$/.test(text) }
 /** with a server the lines (and products) are shared and come from it; without one, each device starts with a line per room */
 const SERVER = !!import.meta.env.VITE_SUPABASE_URL
-function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], lineTargets: [], orders: [], turnGoals: [], plans: [] } }
+function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], lineTargets: [], orders: [], turnGoals: [], plans: [] } }
 function load(): State {
   try {
-    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[] }
+    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[] }
     const s = JSON.parse(localStorage.getItem(KEY) || 'null') as Raw | null
     // rows saved by earlier versions: carts as plain timestamps, units without a tag or a name, products with one
     // pouches-per-cart number, nothing with an update time
@@ -218,10 +224,12 @@ function load(): State {
       const units = (r: Raw['runs'][number]): Unit[] => (r.units ? r.units.map(unitOf) : (r.carts ?? []).map((at) => ({ at, qty: null, ref: '', by: '' })))
       const sample = (code: string) => SAMPLE_PRODUCTS.some((x) => x.code === code)
       const products: Product[] = s.products ? s.products.map((p) => ({ code: p.code ?? '', name: p.name ?? '', pouchesPerCase: p.pouchesPerCase ?? 0, casesPerMix: p.casesPerMix ?? 0, cratesPerCart: (p.cratesPerCart ?? (p.pouchesPerCart ? 12 : 0)) === 12 && sample(p.code ?? '') ? CRATES_PER_CART : p.cratesPerCart ?? (p.pouchesPerCart ? 12 : 0), pouchesPerCrate: p.pouchesPerCrate ?? (p.pouchesPerCart ? Math.round(p.pouchesPerCart / 12) : 0), casesPerPallet: p.casesPerPallet ?? 0, ...((r) => (r ? { room: r } : {}))(packRoomOfText(p.room)), updatedAt: p.updatedAt ?? 0 })) : SAMPLE_PRODUCTS
+      const runFrom = (r: Raw['runs'][number]): Run => ({ id: r.id ?? uid(), dept: (r.dept ?? 'Kitchen') as Dept, lineId: r.lineId ?? '', line: r.line ?? '', code: r.code ?? '', lot: r.lot ?? '', date: r.date ?? today(), startedAt: r.startedAt ?? 0, endedAt: r.endedAt ?? null, units: units(r), perUnit: r.perUnit ?? null, waste: r.waste ?? 0, by: r.by ?? '', updatedAt: r.updatedAt ?? 0, ...((e) => (e ? { extra: e } : {}))(cleanExtra(r.extra)) })
       return {
         lines: s.lines.map((l) => ({ id: l.id ?? uid(), dept: (l.dept ?? 'Kitchen') as Dept, name: l.name ?? 'Línea 1', updatedAt: l.updatedAt ?? 0 })),
         stops: s.stops.map((x) => ({ id: x.id ?? uid(), dept: (x.dept ?? 'Kitchen') as Dept, lineId: x.lineId ?? null, reason: x.reason ?? '', note: x.note ?? '', startedAt: x.startedAt ?? 0, endedAt: x.endedAt ?? null, by: x.by ?? '', updatedAt: x.updatedAt ?? 0 })),
-        runs: s.runs.map((r) => ({ id: r.id ?? uid(), dept: (r.dept ?? 'Kitchen') as Dept, lineId: r.lineId ?? '', line: r.line ?? '', code: r.code ?? '', lot: r.lot ?? '', date: r.date ?? today(), startedAt: r.startedAt ?? 0, endedAt: r.endedAt ?? null, units: units(r), perUnit: r.perUnit ?? null, waste: r.waste ?? 0, by: r.by ?? '', updatedAt: r.updatedAt ?? 0, ...((e) => (e ? { extra: e } : {}))(cleanExtra(r.extra)) })),
+        runs: s.runs.map(runFrom),
+        orderRuns: (s.orderRuns ?? []).map(runFrom),
         products, schedule: tidySchedule(s.schedule ?? {}),
         changes: (s.changes ?? []).filter((c) => (c.at ?? 0) > clockNow() - KEEP_CHANGES_MS).map((c) => ({ id: c.id ?? uid(), at: c.at ?? 0, by: c.by ?? '', dept: (c.dept ?? null) as Dept | null, what: c.what ?? '', before: c.before ?? '', after: c.after ?? '', refTable: c.refTable ?? '', refKey: c.refKey ?? '', updatedAt: c.updatedAt ?? 0 })),
         targets: (s.targets ?? []).filter((t) => DEPTS.includes(t.dept as Dept)).map((t) => ({ dept: t.dept as Dept, perHour: t.perHour ?? null, perShift: t.perShift ?? null, updatedAt: t.updatedAt ?? 0 })),
@@ -267,8 +275,14 @@ function pruned(s: State): State {
   const changes = s.changes.filter((c) => c.at >= fromMs || opened.has(dayOf(c.at)) || waiting.has('act_changes|' + c.id))
   const days = Object.keys(s.schedule).filter((d) => d >= from || opened.has(d))
   const plans = s.plans.filter((p) => p.date >= from || opened.has(p.date) || waiting.has('act_plan|' + planKey(p.date, p.dept, p.code)))
-  if (runs.length === s.runs.length && stops.length === s.stops.length && changes.length === s.changes.length && days.length === Object.keys(s.schedule).length && plans.length === s.plans.length) return s
-  return { ...s, runs, stops, changes, schedule: Object.fromEntries(days.map((d) => [d, s.schedule[d]])), plans }
+  // a run that goes with its day keeps counting for the order its pallets went to, as long as that order is open
+  const kept = new Set(runs.map((r) => r.id)), openIds = new Set(s.orders.filter((o) => !o.closed).map((o) => o.id))
+  const forOrder = (r: Run) => r.units.some((u) => !!u.po && openIds.has(u.po))
+  const gone = s.runs.filter((r) => !kept.has(r.id) && forOrder(r))
+  const orderRuns = [...(s.orderRuns ?? []).filter((r) => !kept.has(r.id) && !gone.some((g) => g.id === r.id) && forOrder(r)), ...gone]
+  const sameOrderRuns = orderRuns.length === (s.orderRuns ?? []).length && orderRuns.every((r, k) => r === s.orderRuns[k])
+  if (runs.length === s.runs.length && stops.length === s.stops.length && changes.length === s.changes.length && days.length === Object.keys(s.schedule).length && plans.length === s.plans.length && sameOrderRuns) return s
+  return { ...s, runs, orderRuns, stops, changes, schedule: Object.fromEntries(days.map((d) => [d, s.schedule[d]])), plans }
 }
 /** lets go of the days the device no longer keeps (see pruned) */
 export function prune() { const next = pruned(state); if (next !== state) set(next) }
@@ -582,7 +596,7 @@ export const palletPo = (s: State, r: Run) => (typeof r.extra?.open?.po === 'str
 /** the pallets an order has, in the order they were finished, and how many it needs (its cases ÷ cases per pallet) */
 export function orderPallets(s: State, orderId: string, perPallet?: number | null) {
   const o = s.orders.find((x) => x.id === orderId)
-  const done = s.runs.flatMap((r) => r.units.filter((u) => u.po === orderId).map((u) => u.at)).sort((a, b) => a - b)
+  const done = orderRunsOf(s, orderId).flatMap((r) => r.units.filter((u) => u.po === orderId).map((u) => u.at)).sort((a, b) => a - b)
   const per = perPallet || (o ? productOf(s, o.code)?.casesPerPallet : 0) || 0
   return { done, need: o?.cases != null && per > 0 ? Math.ceil(o.cases / per) : null }
 }
@@ -829,7 +843,12 @@ export function nextOrderFor(s: State, r: Run): string {
   return (lacking.find((o) => o.id === last?.po) ?? lacking[0])?.id ?? ''
 }
 /** the cases already packed for an order: every unit that was given to it, on the days this device holds */
-export const orderMade = (s: State, id: string) => s.runs.reduce((t, r) => t + r.units.filter((u) => u.po === id).reduce((a, u) => a + unitQty(s, r, u), 0), 0)
+/** the runs that gave pallets to an order: the ones on the device, and the older ones kept apart for it (never one twice) */
+export function orderRunsOf(s: State, id: string): Run[] {
+  const local = new Set(s.runs.map((r) => r.id))
+  return [...s.runs, ...(s.orderRuns ?? []).filter((r) => !local.has(r.id))].filter((r) => r.units.some((u) => u.po === id))
+}
+export const orderMade = (s: State, id: string) => orderRunsOf(s, id).reduce((t, r) => t + r.units.filter((u) => u.po === id).reduce((a, u) => a + unitQty(s, r, u), 0), 0)
 /** the product codes typed in one box, for a PO that covers several: "0100, 0200 0300" gives three (each one once) */
 export const orderCodes = (text: string) => [...new Set(text.split(/[\s,;]+/).map((c) => c.trim().toUpperCase()).filter(Boolean))]
 /**
@@ -1152,7 +1171,7 @@ export function whoText(r: Run) { return [...new Set([r.by, ...r.units.map((u) =
 const resync = () => { if (SERVER) { try { localStorage.removeItem('act_since2'); localStorage.removeItem('act_outbox') } catch { /* private */ } window.dispatchEvent(new Event('act-resync')) } }
 export function reset() { set(fresh()); resync() }
 /** a clean slate for the records only: runs, stops and the schedule go; the lines and the products table stay */
-export function resetRecords() { set({ ...state, runs: [], stops: [], schedule: {}, changes: [], plans: [] }); resync() }
+export function resetRecords() { set({ ...state, runs: [], orderRuns: [], stops: [], schedule: {}, changes: [], plans: [] }); resync() }
 
 export const productOf = (s: State, code: string) => s.products.find((p) => normCode(p.code) === normCode(code))
 /**
@@ -1508,7 +1527,7 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
     if (next) set({ ...state, lines: upsertIn(state.lines, next) })
   } else if (table === 'act_runs') {
     const next = reconcile('act_runs', state.runs.find((r) => r.id === row.id), row, RUN)
-    if (next) { set({ ...state, runs: upsertIn(state.runs, next) }); healSetup(next.lineId) }
+    if (next) { set({ ...state, runs: upsertIn(state.runs, next), orderRuns: state.orderRuns.filter((r) => r.id !== next.id) }); healSetup(next.lineId) }
   } else if (table === 'act_stops') {
     const next = reconcile('act_stops', state.stops.find((x) => x.id === row.id), row, STOP)
     if (next) { set({ ...state, stops: upsertIn(state.stops, next) }); if (next.lineId) healSetup(next.lineId) }

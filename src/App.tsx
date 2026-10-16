@@ -757,7 +757,7 @@ function OrdersCard({ s, mgr }: { s: State; mgr: boolean }) {
         {mgr && <button type="button" className="lnk" onClick={() => setEditing('new')}>{tr('+ Agregar pedido')}</button>}
       </div>
       {open.length ? table(open) : <p className="hint">{mgr ? tr('No hay pedidos abiertos. Los que se agreguen aquí los ve Packing al registrar cada pallet de ese código.') : tr('No hay pedidos abiertos.')}</p>}
-      {open.length > 0 && <p className="hint">{tr('"Hechas" suma los pallets que se le dieron a cada pedido en los días que guarda este aparato.')}</p>}
+      {open.length > 0 && <p className="hint">{tr('"Hechas" suma todos los pallets que se le dieron a cada pedido, de cualquier día.')}</p>}
       {closed.length > 0 && <button type="button" className="lnk" onClick={() => setShowClosed(!showClosed)}>{trx('{0} los completos ({1})', showClosed ? tr('Ocultar') : tr('Ver'), closed.length)}</button>}
       {showClosed && closed.length > 0 && table(closed)}
       {editing && <OrderDialog key={editing} s={s} order={s.orders.find((o) => o.id === editing)} onClose={() => setEditing(null)} />}

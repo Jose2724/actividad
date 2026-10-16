@@ -2092,6 +2092,31 @@ section('Solo ver: un usuario de la oficina que mira todo y no toca nada')
   eq('los demás roles siguen igual', [m.defaultPowers('office').length, m.defaultPowers('mgr').includes('othershift'), m.defaultPowers('op')], [10, false, []])
   })
 }
+section('Pedidos: todos los pallets que se le dieron a un pedido cuentan, también los de días que el aparato ya no guarda')
+{
+  // what the office saw on 2026-10-15: an order of 7 pallets said complete, and the next day it said 6 pallets and
+  // 36 cases missing. A pallet given to it two weeks earlier had left the device (it keeps 14 days) and "Hechas" only
+  // added what the device held. Now a run that gave pallets to an open order stays, apart, while the order is open.
+  const od = await device('od', { user: 'Oficina', usual: true })
+  od.use((m) => {
+    const st = () => m.store.get()
+    clock = oct(16, 8, 0)
+    const po = m.saveOrder(null, { customer: 'Cliente Siete', po: '7007', code: 'A700', cases: 252, shipBy: '', dest: '' })
+    const pallet = (at, qty, order) => ({ at, qty, ref: 't', by: 'Luis', po: order })
+    const long = oct(16, 8, 0) - 20 * 86_400_000 // twenty days ago: out of what the device keeps
+    m.applyRemote('act_runs', runRow({ id: 'old-run', dept: 'Packing', lineId: 'P1', code: 'A700', date: m.dayOf(long), startedAt: long, endedAt: long + 3_600_000, units: [pallet(long + 600_000, 36, po)], perUnit: 36 }))
+    m.prune()
+    eq('el pallet viejo ya no está entre las corridas del aparato, pero queda guardado aparte para su pedido', [st().runs.some((r) => r.id === 'old-run'), st().orderRuns.map((r) => r.id)], [false, ['old-run']])
+    m.applyRemote('act_runs', runRow({ id: 'new-run', dept: 'Packing', lineId: 'P1', code: 'A700', date: '2026-10-16', startedAt: oct(16, 6, 0), units: [1, 2, 3, 4, 5, 6].map((i) => pallet(oct(16, 6, i * 10), 36, po)), perUnit: 36 }))
+    eq('"Hechas" suma los 7 pallets: 252 cajas, completo, y el último es el 7 de 7', [m.orderMade(st(), po), m.orderPallets(st(), po, 36).done.length, m.orderPallets(st(), po, 36).need], [252, 7, 7])
+    const rep = m.reportOf(st(), '2026-10-16', clock, { only: 'Packing' })
+    eq('y en el reporte de hoy sus pallets son del 2 al 7 de 7', rep.pallets.map((p) => p.of), [[2, 7], [3, 7], [4, 7], [5, 7], [6, 7], [7, 7]])
+    m.prune()
+    eq('una poda más no lo cuenta dos veces ni lo suelta', [m.orderMade(st(), po), st().orderRuns.length], [252, 1])
+    m.closeOrder(po, true); m.prune()
+    eq('cerrado el pedido, el aparato suelta lo que guardaba aparte', st().orderRuns.length, 0)
+  })
+}
 section('Set up: espera al código siguiente; con las líneas vacías no corre nada')
 {
   const wai = await device('wai', { user: 'Santiago', usual: true })

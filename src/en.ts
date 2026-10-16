@@ -186,7 +186,7 @@ export const EN: Record<string, string> = {
   '+ Agregar pedido': '+ Add order',
   'No hay pedidos abiertos. Los que se agreguen aquí los ve Packing al registrar cada pallet de ese código.': 'There are no open orders. The ones added here show up for Packing when each pallet of that code is recorded.',
   'No hay pedidos abiertos.': 'There are no open orders.',
-  '"Hechas" suma los pallets que se le dieron a cada pedido en los días que guarda este aparato.': '"Made" adds up the pallets given to each order on the days this device keeps.',
+  '"Hechas" suma todos los pallets que se le dieron a cada pedido, de cualquier día.': '"Made" adds up the pallets given to each order on the days this device keeps.',
   '{0} los completos ({1})': '{0} completed orders ({1})',
   'Pedido · {0}': 'Order · {0}',
   'Pedido nuevo': 'New order',

@@ -1,7 +1,7 @@
 import { noSignal, passExpired, renewSession, supabase } from './supabase'
 import { startClock } from './clock'
 import { afterFlush, beforeFlush, flush, outbox, type Row, type Table } from './outbox'
-import { applyRemote, awayDay, batch, closeDay, firstKeptDay, myDept, openDay, prune, role, shareLocalLines } from './store'
+import { applyRemote, awayDay, batch, closeDay, firstKeptDay, myDept, openDay, prune, role, shareLocalLines, store } from './store'
 import { tr } from './i18n'
 
 /**
@@ -121,6 +121,27 @@ export async function fetchPurged(date: string): Promise<{ runs: Row[]; stops: R
   } catch { return null }
 }
 
+/** when each open order was last asked for its pallets; an order is asked again after a while, a new one at once */
+const askedOrders = new Map<string, number>()
+const ORDER_ASK_MS = 30 * 60_000
+/**
+ * An order is filled over days, more than this device keeps: the pallets it got on older days come from the server,
+ * so "Hechas" and "pallet 7 de 7" are right on every device, new or old. Each open order is asked for the runs that
+ * hold pallets given to it; what arrives is applied as any remote row and, being old, pruning keeps it apart (see
+ * State.orderRuns). A failure here never fails the pull: the numbers are then those of the days the device holds.
+ */
+async function bringOrderRuns() {
+  // (the containment is sent as a JSON string: given an array, the library would write a Postgres array instead)
+  if (!supabase) return
+  const now = Date.now()
+  for (const o of store.get().orders.filter((x) => !x.closed)) {
+    if (now - (askedOrders.get(o.id) ?? 0) < ORDER_ASK_MS) continue
+    try {
+      const error = await pages(listing('act_runs', (q) => q.eq('deleted', false).contains('units', JSON.stringify([{ po: o.id }]))), (rows) => batch(() => { for (const row of rows) applyRemote('act_runs', row) }))
+      if (!error) askedOrders.set(o.id, now)
+    } catch { /* asked again on the next pull */ }
+  }
+}
 let pull: Promise<boolean> | null = null
 /** everything changed on the server since the last pull; one pull at a time, whoever asks meanwhile waits for it */
 export function pullAll(): Promise<boolean> {
@@ -146,6 +167,7 @@ async function pullNow(): Promise<boolean> {
       if (error) { setStatus(failed(error.message)); return false }
     }
     if (newest) setSince(newest)
+    await bringOrderRuns()
     prune() // the days this device no longer keeps (also when the date changes while the app stays open)
     setStatus({ state: 'online', lastSync: Date.now(), lastError: '' })
     return true

@@ -12,6 +12,8 @@ const unquote = (v) => v.replace(/^"|"$/g, '')
 const test = (row, col, op, value) => {
   const have = row[col]
   if (op === 'is') return value === 'null' ? have == null : false
+  // jsonb containment, as the app asks for the runs that hold pallets given to an order: units=cs.[{"po":"..."}]
+  if (op === 'cs') { try { const want = JSON.parse(value); return Array.isArray(want) && Array.isArray(have) && want.every((w) => have.some((h) => h && Object.entries(w).every(([k, v]) => h[k] === v))) } catch { return false } }
   if (have == null) return false
   const a = String(have), b = unquote(value)
   // timestamps are compared as moments, the rest as text (dates written YYYY-MM-DD sort the same either way)
