@@ -197,6 +197,7 @@ console.log('· Lo que otra tablet agregó a una corrida no se pierde cuando est
   // run and merges the two, so a pallet another tablet recorded a moment ago stays.
   db.act_runs = []; net.down = false
   await m.pullAll()
+  eq('la hora de la última bajada queda guardada en el aparato: al abrir sabe qué tan vieja es su copia', [m.syncStore.get().lastSync > 0, Number(localStorage.getItem('act_last_pull')) === m.syncStore.get().lastSync], [true, true])
   m.addLine('Packing', 'Línea 8')
   const line = m.store.get().lines.find((l) => l.dept === 'Packing' && l.name === 'Línea 8')
   m.startRun(line, 'A700', '6289', m.workDay(m.store.get()).date, 36)

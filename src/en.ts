@@ -989,4 +989,15 @@ export const EN: Record<string, string> = {
   'Incompletos': 'Short',
   'En armado': 'Being built',
   'Ningún pallet de este día está así.': 'No pallet of this day is like that.',
+  // a device showing an old picture of the day (2026-10-16)
+  'sin sesión': 'signed out',
+  'sin señal': 'no signal',
+  'sin alcanzar el servidor': 'the server cannot be reached',
+  '⚠ Este aparato muestra lo de las {0}: lleva {1} sin bajar del servidor ({2}). Si en otra tablet cambió algo, aquí todavía no se ve.': '⚠ This device shows things as of {0}: it has gone {1} without bringing the server\'s records ({2}). Whatever changed on another tablet is not here yet.',
+  '⚠ Este aparato no ha bajado nada del servidor todavía ({0}).': '⚠ This device has not brought anything from the server yet ({0}).',
+  '{0} min': '{0} min',
+  '{0} h': '{0} h',
+  '⚠ Sin servidor desde las {0}. Si en otra tablet ya cambió el código o el lote de esta línea, aquí se vería lo viejo.': '⚠ No server since {0}. If another tablet already changed this line\'s code or lot, the old one would show here.',
+  '⚠ Este aparato no ha bajado nada del servidor todavía.': '⚠ This device has not brought anything from the server yet.',
+  'Entiendo, registrar igual': 'I understand, record anyway',
 }

@@ -97,7 +97,9 @@ export function avanceRows(s: State, date: string, keep?: Set<string>, lot = '')
     const cases = (mixes: number) => (product && product.casesPerMix ? mixes * product.casesPerMix : null)
     const pouches = (c: number | null) => (product && product.pouchesPerCase && c != null ? c * product.pouchesPerCase : null)
     const pallets = (c: number | null) => (product && product.casesPerPallet && c != null ? c / product.casesPerPallet : null)
-    const casesExp = cases(mixesDone), casesPlan = scheduled ? cases(scheduled) : null
+    // without a mezcla made that day nothing can be expected of it: the cases packed then come from another day's
+    // mezclas (the carry notes say so), and "0 expected" would call them "de más" and an empty room "complete"
+    const casesExp = mixesDone > 0 ? cases(mixesDone) : null, casesPlan = scheduled ? cases(scheduled) : null
     // the same, shift by shift and lot by lot; the mezclas are the ones of the room that makes the code (mixRoom)
     const hours = shiftsOf(s, date)
     const byShift: [AvancePart, AvancePart] = [part(), part()], lotMap = new Map<string, AvancePart>()
@@ -167,7 +169,7 @@ export function lotAcrossDays(s: State, lot: string): { days: string[]; codes: (
 export function lotRows(s: State, lot: string): AvanceRow[] {
   return lotAcrossDays(s, lot).codes.map((c) => {
     const product = productOf(s, c.code), pack = packRoomOf(s, c.code), mfoRoute = pack.room === 'MFO'
-    const casesExp = product && product.casesPerMix ? c.mixes * product.casesPerMix : null
+    const casesExp = product && product.casesPerMix && c.mixes > 0 ? c.mixes * product.casesPerMix : null
     const pouchesExp = product && product.pouchesPerCase && casesExp != null ? casesExp * product.pouchesPerCase : null
     const palletsExp = product && product.casesPerPallet && casesExp != null ? casesExp / product.casesPerPallet : null
     const { days, mixRoom, code, ...made } = c

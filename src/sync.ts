@@ -9,7 +9,12 @@ import { tr } from './i18n'
  * changed comes down (a pull of everything newer than the last one, plus live updates while the screen is open).
  */
 export type SyncStatus = { state: 'local' | 'signedOut' | 'connecting' | 'online' | 'offline'; pending: number; lastSync: number; lastError: string }
-let status: SyncStatus = { state: supabase ? 'connecting' : 'local', pending: outbox.size(), lastSync: 0, lastError: '' }
+/** a device that has gone this long without bringing the server's rows may show an old picture of the day: the screens say so */
+export const STALE_MS = 10 * 60_000
+// the hour of the last pull is kept on the device: when the app opens again it knows how old its copy is
+const LAST_PULL = 'act_last_pull'
+const lastPull = () => { try { return Number(localStorage.getItem(LAST_PULL)) || 0 } catch { return 0 } }
+let status: SyncStatus = { state: supabase ? 'connecting' : 'local', pending: outbox.size(), lastSync: supabase ? lastPull() : 0, lastError: '' }
 const subs = new Set<() => void>()
 const setStatus = (patch: Partial<SyncStatus>) => { status = { ...status, ...patch }; subs.forEach((f) => f()) }
 export const syncStore = { get: () => status, subscribe: (f: () => void) => { subs.add(f); return () => { subs.delete(f) } } }
@@ -169,7 +174,9 @@ async function pullNow(): Promise<boolean> {
     if (newest) setSince(newest)
     await bringOrderRuns()
     prune() // the days this device no longer keeps (also when the date changes while the app stays open)
-    setStatus({ state: 'online', lastSync: Date.now(), lastError: '' })
+    const at = Date.now()
+    try { localStorage.setItem(LAST_PULL, String(at)) } catch { /* the full-storage bar says it */ }
+    setStatus({ state: 'online', lastSync: at, lastError: '' })
     return true
   } catch (e) {
     setStatus(failed(String(e)))

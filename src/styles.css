@@ -875,3 +875,7 @@ table.avmini tbody tr:last-child td{border-bottom:0}
 .report .twrap tfoot td,.av2 .twrap tfoot td{position:sticky;bottom:0;z-index:1}
 @media (max-width:720px){.av2 .twrap{max-height:none;overflow:visible}}
 @media print{.report .twrap,.orders .twrap,.av2 .twrap{max-height:none;overflow:visible}}
+/* a device showing an old picture of the day (no server for a while): the bar on top, and the one on each line that asks before recording */
+.stalebar{background:#fff7e6;color:var(--amber);border:1.5px solid #f2c97a;border-radius:12px;padding:8px 12px;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;font-weight:600;font-size:14px;line-height:1.35}
+.stalebar.top{border-radius:0;border-width:0 0 1.5px;padding:8px 16px}
+.stalebar .btn.sm{flex:none;background:#fff;border-color:#dcae58;color:#7a4700;box-shadow:0 2px 0 #f0d7a4}
