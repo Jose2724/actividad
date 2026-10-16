@@ -697,6 +697,46 @@ export function fillUnit(runId: string, at: number, qty: number, lots?: LotPart[
   updateRun(runId, { units: r.units.map((u) => { if (u.at !== at) return u; const { lots: _was, ...bare } = u; return { ...bare, ...(parts ? { lots: parts, qty: parts.reduce((t, l) => t + l.qty, 0) } : { qty }), ...(ref != null ? { ref } : {}) } }) })
 }
 /**
+ * A unit nobody recorded (a pallet found on the floor with its tags, a cart that was not tapped) is put on its run
+ * after the fact, at the hour it was made: a correction, so who and when go to the history. Its moment is kept apart
+ * from the others' (two units are never on the same instant) and never before the code started. Returns that moment,
+ * or 0 when nothing was added.
+ */
+export function addUnit(runId: string, x: { at: number; qty: number | null; ref?: string; lots?: LotPart[]; po?: string }): number {
+  const r = run(runId)
+  if (!r || !Number.isFinite(x.at)) return 0
+  const lots = cleanLots(x.lots), qty = lots ? lots.reduce((t, l) => t + l.qty, 0) : x.qty
+  const taken = new Set(r.units.map((u) => u.at))
+  let at = Math.max(Math.floor(x.at), r.startedAt)
+  while (taken.has(at)) at++
+  const ref = (x.ref ?? '').trim() || (lots ? [...new Set(lots.map((l) => l.tag ?? '').filter(Boolean))].join(', ') : '')
+  const o = orderOfId(state, x.po)
+  const u: Unit = { at, qty, ref, by: user.get(), ...(lots ? { lots } : {}), ...(o ? { po: o.id } : {}) }
+  const units = [...r.units, u].sort((a, b) => a.at - b.at)
+  putRun({ ...r, units })
+  const cfg = cfgOf(r)
+  logChange(r.dept, 'Corrida ' + r.code + ' del ' + r.date + ' (' + r.dept + ', ' + lineNameOf(state, r.lineId, r.line) + ') · Se agregó ' + cfg.unit.toLowerCase() + ' ' + (units.indexOf(u) + 1) + ' (' + fmtTime(at) + ')', '', [qty != null ? qty + ' ' + cfg.qtyUnit : '', lots ? lotsText(lots) : ref, o ? orderLabelKept(o) : ''].filter(Boolean).join(' · ') || '1', 'act_runs', r.id)
+  return at
+}
+/**
+ * "Pallet completo" was tapped when a lot ran out, and the cases went on with the same pallet: the last pallet opens
+ * again with its lots, cases, tags and PO, and the lot they say goes on it. Only while the pallet that followed is
+ * still empty and the code still runs. It is a correction: the history says so. false = nothing to reopen.
+ */
+export function reopenPallet(runId: string, next = ''): boolean {
+  const r = run(runId), last = r?.units[r.units.length - 1]
+  if (!r || !last || r.endedAt || binOf(r) || r.dept !== 'Packing' || r.extra?.open?.parts.length) return false
+  const lots = last.lots?.length ? last.lots : last.qty ? [{ lot: r.lot, qty: last.qty, ...(last.ref ? { tag: last.ref } : {}) }] : []
+  const parts: PalletPart[] = lots.filter((l) => l.qty > 0).map((l) => ({ lot: l.lot, qty: l.qty, tag: l.tag ?? '', at: last.at, by: last.by }))
+  if (!parts.length) return false
+  const rest: RunExtra = r.extra ? (({ open: _o, ...x }) => x)(r.extra) : {}
+  const lotNow = next.trim().slice(0, 30) || lotNowOf(r)
+  putRun({ ...r, units: r.units.slice(0, -1), extra: { ...rest, lotNow, open: { parts, po: last.po ?? '' } } })
+  const o = orderOfId(state, last.po)
+  logChange(r.dept, 'Corrida ' + r.code + ' del ' + r.date + ' (' + r.dept + ', ' + lineNameOf(state, r.lineId, r.line) + ') · Pallet ' + r.units.length + ' · se volvió a abrir', [last.qty != null ? last.qty + ' cajas' : '', lotsText(last.lots), o ? orderLabelKept(o) : ''].filter(Boolean).join(' · '), 'sigue con el lote ' + lotNow, 'act_runs', r.id)
+  return true
+}
+/**
  * A code marked as finished too early goes on as if it had not ended (the set up that had started is taken away).
  * Not while its line runs another code: that one would have to end first.
  */

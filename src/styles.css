@@ -721,3 +721,87 @@ table.pallets th.num,table.pallets td.num{text-align:right;font-variant-numeric:
 .tc-clock.paused{background:#fff7e6}
 .tc-clock.paused b{color:var(--amber)}
 .tc-paused{margin:0;color:var(--amber);font-size:13px;font-weight:600}
+
+/* ---- Packing, redesigned (2026-10-16): pallets or bins at a glance, the code and the lot big, the pallet being
+   built as a table with two clear things to do, and the orders with their colour ---- */
+/* what runs on the line: a band with the code and the lot; on a Packing line it says first what the line makes */
+.hero{display:grid;gap:3px;border-radius:12px;padding:10px 12px;background:var(--bg)}
+.hero.pal{background:var(--soft)}
+.hero.bin{background:#eef2ff}
+.hero .mode{font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
+.hero.bin .mode{color:#3730a3}
+.hero-main{display:flex;align-items:baseline;gap:4px 14px;flex-wrap:wrap}
+.hero-main .code{font-size:30px;font-weight:800;line-height:1.05;letter-spacing:.01em}
+.hero-main .lot{font-size:15px;color:var(--muted)}
+.hero-main .lot b{font-size:22px;color:var(--ink);margin-left:4px;font-variant-numeric:tabular-nums}
+.hero small{color:var(--muted);font-size:13px;line-height:1.3}
+/* a line filling bins is told apart from one making pallets by its colour everywhere on its card */
+.line.running.mode-bin{border-left-color:#4f46e5}
+.line.mode-bin .tile.main{background:#eef2ff}
+.line.mode-bin .tile.main b{color:#3730a3}
+.line.mode-bin .btn.huge.primary{background:#4338ca;border-color:#4338ca;box-shadow:0 2px 0 #2b2585}
+.line.mode-bin .pill.run{background:#e0e7ff;color:#3730a3}
+.seg button.on.binopt{background:#4338ca}
+/* four tiles in one row wherever the card has room; smaller figures, so the card is shorter */
+.tile b{font-size:20px}
+.tile.main b{font-size:26px}
+@container line (min-width:380px){.tiles.four{grid-template-columns:repeat(4,minmax(0,1fr))}}
+/* the pallet being built */
+.pallet{gap:8px;padding:10px 12px}
+.pal-head b{font-size:17px}
+.pal-state{font-size:12px;font-weight:700;color:var(--ok);background:#d9f2e2;border-radius:99px;padding:2px 8px;margin-left:4px;vertical-align:middle}
+table.pal-lots{font-size:15px;border-collapse:collapse}
+table.pal-lots th{font-size:11px;padding:2px 6px;border-bottom:1px solid var(--line)}
+table.pal-lots td{padding:6px 6px;border-bottom:1px solid var(--line);white-space:nowrap;vertical-align:middle}
+table.pal-lots td:first-child b{font-size:17px;font-variant-numeric:tabular-nums}
+table.pal-lots th.num,table.pal-lots td.num{text-align:right;font-variant-numeric:tabular-nums;font-weight:700}
+table.pal-lots td:last-child{text-align:right;padding-right:0}
+table.pal-lots .tagno{font-family:ui-monospace,Menlo,Consolas,monospace}
+table.pal-lots .notag{color:var(--amber);font-weight:600}
+table.pal-lots tr.now td{background:var(--soft)}
+table.pal-lots tr.now small{color:var(--accent);font-weight:700}
+table.pal-lots tfoot td{font-weight:800;border-bottom:0;background:var(--bg)}
+table.pal-lots tfoot td:last-child{font-weight:500;color:var(--muted)}
+table.pal-lots .lnk.sm{padding:2px 4px}
+.pal-acts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.pal-acts .btn{min-height:66px;white-space:normal;line-height:1.15;display:grid;align-content:center;justify-items:center;padding:6px 8px;font-size:16px;text-align:center}
+.pal-acts .btn small{font-size:11.5px;font-weight:500;color:inherit;opacity:.85;margin-top:2px}
+.pal-acts .btn.primary.saved,.pal-acts .btn.primary.saved:disabled{opacity:1;background:#d9f2e2;border-color:var(--ok);color:var(--ok);animation:pop .35s ease-out}
+.pal-reopen{justify-self:start;color:var(--muted);text-align:left}
+/* "Pallet completo": a lot they forgot to say, in its own row with a way to take it out */
+.palrow{grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr) minmax(0,1.1fr) 28px}
+.palrow .lnk{padding:0;text-align:center}
+/* the orders: a colour for each state, what is packed as a bar, and the list ten at a time */
+.ofilters{display:flex;flex-wrap:wrap;gap:6px}
+.ofilters .chip.sm small{color:inherit;opacity:.75;margin-left:4px}
+.ofilters .dotst{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;background:var(--muted)}
+.ofilters .chip.st-todo .dotst{background:#8a99a8}
+.ofilters .chip.st-going .dotst{background:#d08a12}
+.ofilters .chip.st-done .dotst{background:var(--ok)}
+.ofilters .chip.st-open .dotst{background:#1d4ed8}
+.ofilters .chip{white-space:nowrap}
+.ofilters .chip.on .dotst{background:#fff}
+table.otable td{vertical-align:middle}
+table.otable tr.o-done td{background:#f1fbf5}
+table.otable tr.o-going td{background:#fffaf0}
+table.otable .pname{display:block;font-size:11.5px;color:var(--muted);white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis}
+table.otable td.dest{white-space:normal;min-width:120px;max-width:280px;font-size:13px}
+.ost{display:inline-block;font-weight:700;border-radius:99px;padding:2px 9px;font-size:13px;white-space:nowrap}
+.ost.st-todo{background:var(--bg);color:var(--muted)}
+.ost.st-going{background:#fff1d6;color:var(--amber)}
+.ost.st-done{background:#d9f2e2;color:var(--ok)}
+.ost.st-open{background:#e8f0fe;color:#1d4ed8}
+table.otable td.obar{min-width:120px}
+table.otable td.obar .bar{height:8px;margin:0 0 3px}
+table.otable td.obar .bar i.st-going{background:#d08a12}
+table.otable td.obar .bar i.st-done{background:var(--ok)}
+table.otable td.obar .bar i.st-todo{background:var(--line)}
+.ofn{color:var(--muted);font-weight:600}
+table.otable td.obar small{font-size:12px;font-variant-numeric:tabular-nums}
+.osum{color:var(--ink)}
+.osum b{font-size:17px}
+/* the report: the pallets of the day found by what is written on them */
+.palsearch{display:flex;align-items:center;gap:4px;flex:1 1 220px;max-width:360px;min-width:0}
+.palsearch input{min-height:42px;padding:0 10px;font-size:15px;width:100%;min-width:0}
+/* the hour of a unit added after the fact */
+input[type=time]{min-height:48px;padding:0 12px;border-radius:12px;border:1.5px solid var(--line);background:var(--surface);font-size:17px;width:100%}

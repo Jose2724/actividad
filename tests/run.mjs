@@ -1997,6 +1997,42 @@ section('Packing: un pallet con varios lotes, cada lote con su tag; y las línea
   clock = oct(22, 7, 0); tab.use((m) => m.endRun(c3().id, false)); settle()
   eq('nada queda pendiente de enviar', all.map((d) => d.use((m) => m.outbox.size())), [0, 0])
 }
+section('Agregar un pallet que nadie registró, y volver a abrir el último pallet')
+{
+  // what Jose asked on 2026-10-16: a pallet found on the floor with its tags goes on its run after the fact; and
+  // "Pallet completo" tapped by mistake when a lot changed must not leave the cases as a pallet of their own
+  const fx = await device('fix', { user: 'Mara', usual: true })
+  fx.use((m) => {
+    const st = () => m.store.get(), run = () => st().runs.find((r) => r.code === 'D400')
+    m.addLine('Packing', 'Línea 1')
+    const l1 = st().lines.find((l) => l.dept === 'Packing' && l.name === 'Línea 1')
+    const po = m.saveOrder(null, { customer: 'Cliente Seis', po: '6001', code: 'D400', cases: 108, shipBy: '', dest: '' })
+    clock = oct(10, 6, 0); m.startRun(l1, 'D400', '6283', DAY, 36)
+    const full = (tag) => { clock += 20 * M; return m.palletDone(run().id, [{ lot: '6283', qty: 36, tag }], po) }
+    full('3001'); full('3002')
+    eq('dos pallets en el PO; el tercero no se registró', [m.orderMade(st(), po), run().units.length], [72, 2])
+    // the third pallet turns up later with its tags: it is added at the hour it was made, and lands among the others by it
+    clock = oct(10, 9, 0); m.endRun(run().id, false)
+    const at = m.addUnit(run().id, { at: oct(10, 6, 30), qty: null, lots: [{ lot: '6283', qty: 20, tag: '3003' }, { lot: '6284', qty: 16, tag: '3004' }], po })
+    eq('el pallet agregado queda en su hora, con sus lotes, tags, cajas y PO, y el PO se completa', [at, run().units.map((u) => [new Date(u.at).getMinutes(), u.qty, u.ref, u.po === po]), m.orderMade(st(), po)], [oct(10, 6, 30), [[20, 36, '3001', true], [30, 36, '3003, 3004', true], [40, 36, '3002', true]], 108])
+    eq('queda en el historial con quién y qué', st().changes.filter((c) => c.refKey === run().id && c.what.includes('Se agregó pallet')).map((c) => [c.by, c.what.split(' · ').pop(), c.after]), [['Mara', 'Se agregó pallet 2 (6:30 AM)', '36 cajas · 6283: 20 (tag 3003) + 6284: 16 (tag 3004) · Cliente Seis · PO 6001']])
+    eq('a la misma hora exacta no caben dos: el segundo se corre un instante', [m.addUnit(run().id, { at: oct(10, 6, 30), qty: 36 }), run().units.length], [oct(10, 6, 30) + 1, 4])
+    eq('antes de que empezara la corrida no: se pone al inicio', m.addUnit(run().id, { at: oct(10, 5, 0), qty: 36, ref: '9' }), oct(10, 6, 0))
+    eq('sin una hora no se agrega nada', [m.addUnit(run().id, { at: NaN, qty: 36 }), run().units.length], [0, 5])
+    // "Pallet completo" tapped when lot 6285 ran out: the cases went on with the same pallet, with lot 6286
+    clock = oct(10, 10, 0); m.startRun(l1, 'D401', '6285', DAY, 36)
+    const r2 = () => st().runs.find((r) => r.code === 'D401')
+    clock = oct(10, 10, 30); m.palletDone(r2().id, [{ lot: '6285', qty: 20, tag: '3100' }], '')
+    eq('se guardó un pallet de 20 cajas por error', r2().units.length, 1)
+    eq('se vuelve a abrir con sus cajas y su tag, y sigue con el lote que dicen', [m.reopenPallet(r2().id, '6286'), r2().units.length, r2().extra.open.parts.map((p) => [p.lot, p.qty, p.tag]), m.lotNowOf(r2())], [true, 0, [['6285', 20, '3100']], '6286'])
+    eq('y queda en el historial', st().changes.filter((c) => c.refKey === r2().id).map((c) => [c.what.split(' · ').slice(-2).join(' · '), c.before, c.after]), [['Pallet 1 · se volvió a abrir', '20 cajas · 6285: 20 (tag 3100)', 'sigue con el lote 6286']])
+    eq('sin pallets no hay nada que reabrir', m.reopenPallet(r2().id), false)
+    clock += M; m.palletDone(r2().id, [...r2().extra.open.parts, { lot: '6286', qty: 16, tag: '3101' }], '')
+    clock += M; m.palletLotEnds(r2().id, 5, '', '6287')
+    eq('con el pallet que sigue ya empezado tampoco', m.reopenPallet(r2().id), false)
+    eq('el pallet quedó con sus dos lotes', r2().units.map((u) => [u.qty, u.lots.map((l) => [l.lot, l.qty, l.tag])]), [[36, [['6285', 20, '3100'], ['6286', 16, '3101']]]])
+  })
+}
 section('La tarjeta del turno sigue con un código que viene del día de trabajo anterior, y con una línea que solo hace bins')
 {
   // what Jose saw on 2026-10-15 at 3:30 AM: codes started at 3:28 (still the second shift of the 14th) went on into the

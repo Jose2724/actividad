@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { applyDraft, byLineName, byShip, CFG, cfgOf, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, setUnitOrder, splitStop, updateRun, updateStop, type Run, type State, type Stop, lineLabel } from './store'
+import { addUnit, applyDraft, byLineName, byShip, CFG, cfgOf, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, setUnitOrder, splitStop, store, updateRun, updateStop, type Run, type State, type Stop, lineLabel } from './store'
 import { clockNow } from './clock'
 import { ConfirmDialog, LotsDialog, useCan } from './App'
 import { tr } from './i18n'
@@ -27,10 +27,11 @@ export function RunEditor({ s, run, mgr, onClose }: { s: State; run: Run; mgr: b
   const [waste, setWaste] = useState(opened.waste)
   const [units, setUnits] = useState(opened.units)
   const [dropping, setDropping] = useState(false)
+  const [adding, setAdding] = useState(false) // a unit that was never recorded, added now
   const [lotsOf, setLotsOf] = useState<number | null>(null)
   const lineBusy = !!run.endedAt && !!openRun(s, run.lineId)
-  // units tapped on the line while this form is open: they are kept as they are
-  const later = run.units.filter((u) => !opened.units.some((o) => o.at === u.at)).length
+  // units tapped on the line while this form is open: they are kept as they are (one added from here is in the form)
+  const later = run.units.filter((u) => !opened.units.some((o) => o.at === u.at) && !units.some((o) => o.at === u.at)).length
   // the order each unit goes to can be corrected, where the room fills orders and there is any (applied at once)
   const withOrders = !!cfg.orders && mgr && s.orders.length > 0
   const ordersFor = (po: string | undefined) => s.orders.filter((o) => normCode(o.code) === normCode(run.code) || o.id === po).sort(byShip)
@@ -88,6 +89,7 @@ export function RunEditor({ s, run, mgr, onClose }: { s: State; run: Run; mgr: b
         {problem && <span className="err">{problem}</span>}
         <div className="dbtns spread">
           <div className="btns">
+            {mgr && <button type="button" className="btn soft" onClick={() => setAdding(true)}>{trx('+ Agregar {0}', cfg.unit.toLowerCase())}</button>}
             {run.endedAt && <button type="button" className="btn" disabled={lineBusy} title={lineBusy ? tr('La línea ya corre otro código') : ''} onClick={() => { updateRun(run.id, { endedAt: null }); onClose() }}>{tr('Reabrir código')}</button>}
             {can('del') && <button type="button" className="btn danger" onClick={() => setDropping(true)}>{tr('🗑 Borrar corrida')}</button>}
           </div>
@@ -98,7 +100,83 @@ export function RunEditor({ s, run, mgr, onClose }: { s: State; run: Run; mgr: b
         </div>
         {lotsOf != null && units[lotsOf] && <LotsDialog title={tr('Lotes de {0} {1}', cfg.unit.toLowerCase(), (lotsOf + 1))} unit={cfg.qtyUnit} refLabel={cfg.refLabel} lot={lot.trim()} qty={units[lotsOf].qty.trim() ? Number(units[lotsOf].qty) : null} start={units[lotsOf].lots} startRef={units[lotsOf].ref} onClose={() => setLotsOf(null)}
           onPick={(total, ref, lots) => { setUnits(units.map((x, k) => { if (k !== lotsOf) return x; const { lots: _was, ...bare } = x; return { ...bare, qty: String(total), ref, ...(lots ? { lots } : {}) } })); setLotsOf(null) }} />}
+        {adding && <AddUnitDialog s={s} run={run} onClose={() => setAdding(false)} onAdded={(at) => {
+          // the unit is on the run now; the form shows it among the others, and saving leaves it as it is
+          setAdding(false)
+          const u = store.get().runs.find((r) => r.id === run.id)?.units.find((x) => x.at === at)
+          if (u) setUnits([...units, { at: u.at, qty: u.qty != null ? String(u.qty) : '', ref: u.ref, by: u.by, ...(u.lots ? { lots: u.lots } : {}) }].sort((a, b) => a.at - b.at))
+        }} />}
         {dropping && <ConfirmDialog title={tr('¿Borrar la corrida de {0}', run.code) + '?'} text={tr('Se borran sus unidades y su waste. No se puede deshacer.')} yes={tr('Borrar')} danger onYes={() => { deleteRun(run.id); onClose() }} onNo={() => setDropping(false)} />}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * A unit nobody recorded is put on its run after the fact (a manager's job): the hour it was made, what it carried
+ * (a pallet: each lot with its cases and its tag; a cart or a bin: its quantity and its number) and, where the room
+ * fills orders, the order it went to. It lands among the others by its hour, and the history says who added it.
+ */
+export function AddUnitDialog({ s, run, onClose, onAdded }: { s: State; run: Run; onClose: () => void; onAdded: (at: number) => void }) {
+  const cfg = cfgOf(run), word = cfg.unit.toLowerCase(), tags = !!cfg.lots
+  const [hm, setHm] = useState('')
+  const [qty, setQty] = useState('')
+  const [ref, setRef] = useState('')
+  const [rows, setRows] = useState([{ lot: run.lot, qty: '', tag: '' }])
+  const [po, setPo] = useState('')
+  const orders = cfg.orders ? s.orders.filter((o) => normCode(o.code) === normCode(run.code)).sort(byShip) : []
+  const end = run.endedAt ?? clockNow()
+  // the hour is one of the run's day (a run that goes past midnight: the nearest to its start)
+  const at = hm ? nearDay(run.startedAt, hm) : NaN
+  const inside = Number.isFinite(at) && at >= run.startedAt && at <= end
+  const nums = rows.map((r) => Number(r.qty))
+  const repeated = rows.some((r, i) => !!r.lot.trim() && rows.findIndex((o) => o.lot.trim() === r.lot.trim()) !== i)
+  const lotsOk = !tags || (!repeated && rows.every((r, i) => !!r.lot.trim() && Number.isFinite(nums[i]) && nums[i] > 0))
+  const n = Number(qty.replace(',', '.'))
+  const qtyOk = cfg.qty === 'none' || tags || (Number.isFinite(n) && n > 0)
+  const ok = inside && lotsOk && qtyOk
+  const change = (i: number, patch: Partial<{ lot: string; qty: string; tag: string }>) => setRows(rows.map((r, k) => (k === i ? { ...r, ...patch } : r)))
+  const save = () => {
+    if (!ok) return
+    const lots = tags ? rows.map((r, i) => ({ lot: r.lot.trim(), qty: nums[i], ...(r.tag.trim() ? { tag: r.tag.trim() } : {}) })) : undefined
+    const added = addUnit(run.id, { at, qty: cfg.qty === 'none' || tags ? null : n, ref: tags ? '' : ref, lots, po })
+    if (added) onAdded(added)
+  }
+  return (
+    <div className="veil" onClick={onClose}>
+      <div className="dlg" onClick={(e) => e.stopPropagation()}>
+        <h3>{trx('Agregar {0} · {1}', word, run.code)}</h3>
+        <p>{trx('Para {0} que se hizo y nadie registró. La corrida va de {1} a {2}.', (cfg.saved.endsWith('a') ? tr('una') : tr('un')) + ' ' + word, fmtTime(run.startedAt), run.endedAt ? fmtTime(run.endedAt) : tr('ahora'))}</p>
+        <form className="qform" onSubmit={(e) => { e.preventDefault(); save() }}>
+          <label>{tr('Hora en que salió')}{' '}<input type="time" value={hm} onChange={(e) => setHm(e.target.value)} autoFocus /></label>
+          {hm && !inside && <span className="err">{tr('Esa hora queda fuera de la corrida.')}</span>}
+          {tags ? (
+            <>
+              {rows.map((r, i) => (
+                <div className="lotrow" key={i}>
+                  <label>{tr('Lote')}{' '}<input inputMode="numeric" placeholder={tr('ej. 6280')} value={r.lot} onChange={(e) => change(i, { lot: e.target.value })} autoComplete="off" /></label>
+                  <label>{cfg.qtyUnit} <input inputMode="numeric" placeholder={cfg.qtyUnit} value={r.qty} onChange={(e) => change(i, { qty: e.target.value.replace(/\D/g, '') })} /></label>
+                  <label>{tr('Tag')}{' '}<input inputMode="numeric" placeholder={tr('ej. 1749')} value={r.tag} onChange={(e) => change(i, { tag: e.target.value })} autoComplete="off" /></label>
+                  {rows.length > 1 && <button type="button" className="lnk" title={tr('Quitar este lote')} onClick={() => setRows(rows.filter((_, k) => k !== i))}>✕</button>}
+                </div>
+              ))}
+              <button type="button" className="lnk addlot" onClick={() => setRows([...rows, { lot: '', qty: '', tag: '' }])}>{tr('+ Otro lote en este pallet')}</button>
+              {repeated && <span className="err">{trx('Ese lote ya está en la lista: suma sus {0} en una sola línea.', cfg.qtyUnit)}</span>}
+            </>
+          ) : (
+            <>
+              {cfg.qty !== 'none' && <label>{cfg.qtyUnit} <input inputMode={run.dept === 'Spiral' ? 'decimal' : 'numeric'} value={qty} onChange={(e) => setQty(e.target.value.replace(/[^\d.,]/g, ''))} /></label>}
+              {cfg.refLabel && <label>{cfg.refLabel} <input value={ref} onChange={(e) => setRef(e.target.value)} autoComplete="off" /></label>}
+            </>
+          )}
+          {orders.length > 0 && (
+            <label>{tr('Pedido')}{' '}<select value={po} onChange={(e) => setPo(e.target.value)}><option value="">{tr('Sin pedido')}</option>{orders.map((o) => <option key={o.id} value={o.id}>{orderLabel(o)}</option>)}</select></label>
+          )}
+          <div className="dbtns">
+            <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
+            <button type="submit" className="btn primary" disabled={!ok}>{trx('✓ Agregar {0}', word)}</button>
+          </div>
+        </form>
       </div>
     </div>
   )

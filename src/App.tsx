@@ -1,6 +1,6 @@
 import { createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
-import { addLine, addWaste, apartLabel, apartWord, awayDay, cameFrom, carriedOver, dayAfter, BIN_WORDS, binOf, binWord, cfgFor, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, numOf, openIn, openOrdersFor, openRun, openStop, orderCodes, orderLabel, orderOfId, orderPallets, palletDone, palletLotEnds, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, productOf, productsCsv, purgeDay, purgesOf, removeLine, removeProduct, renameLine, reopenRun, reset, restorePurged, resetRecords, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftHours, shiftSpan, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type ShiftHours, type Short, type State, type WorkDay } from './store'
+import { addLine, addWaste, apartLabel, apartWord, awayDay, cameFrom, carriedOver, dayAfter, BIN_WORDS, binOf, binWord, cfgFor, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, numOf, openIn, openOrdersFor, openRun, openStop, orderCodes, orderLabel, orderOfId, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, productOf, productsCsv, purgeDay, purgesOf, removeLine, removeProduct, renameLine, reopenRun, reset, restorePurged, resetRecords, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftHours, shiftSpan, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type ShiftHours, type Short, type State, type WorkDay } from './store'
 import { avanceLots, avanceRows, n1, pending, type AvanceRow } from './avance'
 import { cellText, loadZip, xDay, xDur, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 
@@ -8,7 +8,7 @@ const fmtN = (x: number) => Math.round(x).toLocaleString('en-US')
 import { whoText } from './store'
 import { buildPdf, loadPdf } from './pdf'
 import { homeScreenApple, sharePick, shareProblem, type Kind } from './send'
-import { filterFile, filterTitle, reportOf, spanShifts, type ReportFilter } from './report'
+import { filterFile, filterTitle, reportOf, spanShifts, unitParts, type ReportFilter } from './report'
 import { canDo, canShift, type Power, type Who } from './powers'
 import { RunEditor, StopEditor } from './editors'
 import { fetchMe, finishSignOut, loginEmail, rememberedMe, rememberedUser, rememberMe, rememberUser, signedOut, signOutHere, supabase, type Me } from './supabase'
@@ -724,6 +724,8 @@ function WipeDayDialog({ s, date, onClose, onDone }: { s: State; date: string; o
 /** "lun, 12 oct": a date said short */
 /** the date some days before or after another */
 const addDays = (date: string, n: number) => { const d = new Date(date + 'T12:00:00'); d.setDate(d.getDate() + n); return dayOf(d.getTime()) }
+/** without accents or capitals: what is typed in a search matches what was written */
+const plainText = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 const shortDay = (date: string) => new Date(date + 'T12:00:00').toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' })
 /** when a goal is reached at the pace in course: the hour, and the day with it when that is not today (an hour alone would read as today's) */
 const etaText = (eta: number, now: number) => (dayOf(eta) === dayOf(now)
@@ -738,22 +740,37 @@ const leftText = (s: State, o: Order) => { if (o.cases == null) return ''; const
  * The orders Packing fills: the office (or a manager) types them, with or without a PO number, and everybody in the
  * room sees the open ones with what has been packed for each. The pallets are given to them one by one, on the line.
  */
+type OrderState = 'todo' | 'going' | 'done' | 'open'
+/** the orders are listed ten at a time: the list only grows */
+const ORDERS_PAGE = 10
 function OrdersCard({ s, mgr }: { s: State; mgr: boolean }) {
   const [editing, setEditing] = useState<string | null>(null) // an order's id, or 'new'
+  const [viewing, setViewing] = useState<string | null>(null) // an order whose pallets are being looked at
   const [showClosed, setShowClosed] = useState(false)
+  const [only, setOnly] = useState<'' | OrderState>('')
+  const [shown, setShown] = useState(ORDERS_PAGE)
   if (!s.orders.length && !mgr) return null
   const open = s.orders.filter((o) => !o.closed).sort(byShip), closed = s.orders.filter((o) => o.closed).sort(byShip)
-  const table = (list: Order[]) => (
+  // each order with what has been packed for it, and its state: not started, started, complete (or no cases said)
+  const rowOf = (o: Order) => { const made = orderMade(s, o.id), left = o.cases != null ? o.cases - made : null; return { o, made, left, seq: orderPallets(s, o.id), st: (left == null ? 'open' : left <= 0 ? 'done' : made > 0 ? 'going' : 'todo') as OrderState } }
+  const rows = open.map(rowOf), count = (k: OrderState) => rows.filter((x) => x.st === k).length
+  const list = only ? rows.filter((x) => x.st === only) : rows
+  const stateText = (k: OrderState) => (k === 'todo' ? tr('Sin empezar') : k === 'going' ? tr('Empezados') : k === 'done' ? tr('Completos') : tr('Sin cantidad'))
+  const table = (list: ReturnType<typeof rowOf>[]) => (
     <div className="twrap">
-      <table>
-        <thead><tr><th>PO</th><th>{tr('Código')}</th><th>{tr('Pedidas')}</th><th>{tr('Hechas')}</th><th>{tr('Faltan')}</th><th>{tr('Cliente')}</th><th>{tr('Envío')}</th><th>{tr('Destino')}</th>{mgr && <th></th>}</tr></thead>
-        <tbody>{list.map((o) => {
-          const made = orderMade(s, o.id), left = o.cases != null ? o.cases - made : null
+      <table className="otable">
+        <thead><tr><th>PO</th><th>{tr('Código')}</th><th>{tr('Cliente')}</th><th>{tr('Envío')}</th><th className="num">{tr('Pedidas')}</th><th className="num">{tr('Hechas')}</th><th className="num">{tr('Faltan')}</th><th>{tr('Pallets')}</th><th>{tr('Destino')}</th>{mgr && <th></th>}</tr></thead>
+        <tbody>{list.map(({ o, made, left, seq, st }) => {
+          const name = productOf(s, o.code)?.name
           return (
-            <tr key={o.id}>
-              <td>{o.po ? <b>{o.po}</b> : <i>{tr('sin PO')}</i>}</td><td><b>{o.code}</b></td><td>{o.cases != null ? fmtN(o.cases) : '—'}</td><td>{fmtN(made)}</td>
-              <td className={left != null && left <= 0 ? 'ok' : ''}>{left == null ? '—' : left > 0 ? fmtN(left) : tr('✓ completo') + (left < 0 ? ' (+' + fmtN(-left) + ')' : '')}</td>
-              <td>{o.customer || '—'}</td><td>{o.shipBy ? shipText(o.shipBy) : '—'}</td><td>{o.dest || '—'}</td>
+            <tr key={o.id} className={'o-' + st}>
+              <td><button type="button" className="drill" title={tr('Ver sus pallets')} onClick={() => setViewing(o.id)}>{o.po || <i>{tr('sin PO')}</i>}</button></td>
+              <td><b className="code">{o.code}</b>{name && <small className="pname">{name}</small>}</td>
+              <td>{o.customer || '—'}</td><td>{o.shipBy ? shipText(o.shipBy) : '—'}</td>
+              <td className="num">{o.cases != null ? fmtN(o.cases) : '—'}</td><td className="num"><b>{fmtN(made)}</b></td>
+              <td className="num">{left == null ? '—' : left > 0 ? <span className={'ost st-' + st}>{trx('faltan {0}', fmtN(left))}</span> : <span className="ost st-done">{tr('✓ completo')}{left < 0 ? ' (+' + fmtN(-left) + ')' : ''}</span>}</td>
+              <td className="obar">{o.cases != null && o.cases > 0 && <div className="bar"><i className={'st-' + st} style={{ width: Math.min(100, Math.round((made / o.cases) * 100)) + '%' }} /></div>}<small>{seq.need ? trx('{0} de {1}', seq.done.length, seq.need) : seq.done.length ? (seq.done.length === 1 ? tr('1 pallet') : trx('{0} pallets', seq.done.length)) : ''}</small></td>
+              <td className="dest">{o.dest || '—'}</td>
               {mgr && <td><button type="button" className="lnk" onClick={() => setEditing(o.id)}>{tr('Editar')}</button></td>}
             </tr>
           )
@@ -761,17 +778,87 @@ function OrdersCard({ s, mgr }: { s: State; mgr: boolean }) {
       </table>
     </div>
   )
+  const order = viewing ? s.orders.find((o) => o.id === viewing) : undefined
   return (
     <div className="orders">
       <div className="tc-head">
         <h3>{tr('Pedidos · PO')}</h3>
         {mgr && <button type="button" className="lnk" onClick={() => setEditing('new')}>{tr('+ Agregar pedido')}</button>}
       </div>
-      {open.length ? table(open) : <p className="hint">{mgr ? tr('No hay pedidos abiertos. Los que se agreguen aquí los ve Packing al registrar cada pallet de ese código.') : tr('No hay pedidos abiertos.')}</p>}
-      {open.length > 0 && <p className="hint">{tr('"Hechas" suma todos los pallets que se le dieron a cada pedido, de cualquier día.')}</p>}
-      {closed.length > 0 && <button type="button" className="lnk" onClick={() => setShowClosed(!showClosed)}>{trx('{0} los completos ({1})', showClosed ? tr('Ocultar') : tr('Ver'), closed.length)}</button>}
-      {showClosed && closed.length > 0 && table(closed)}
+      {open.length > 0 && (
+        <div className="ofilters">
+          <button type="button" className={'chip sm' + (!only ? ' on' : '')} aria-pressed={!only} onClick={() => { setOnly(''); setShown(ORDERS_PAGE) }}>{tr('Todos')}<small>{rows.length}</small></button>
+          {(['todo', 'going', 'done', 'open'] as const).filter((k) => count(k) > 0).map((k) => <button key={k} type="button" className={'chip sm st-' + k + (only === k ? ' on' : '')} aria-pressed={only === k} onClick={() => { setOnly(k); setShown(ORDERS_PAGE) }}><i className="dotst" />{stateText(k)}<small>{count(k)}</small></button>)}
+        </div>
+      )}
+      {open.length ? table(list.slice(0, shown)) : <p className="hint">{mgr ? tr('No hay pedidos abiertos. Los que se agreguen aquí los ve Packing al registrar cada pallet de ese código.') : tr('No hay pedidos abiertos.')}</p>}
+      {list.length > ORDERS_PAGE && (
+        <div className="morebar">
+          <span>{trx('Se ven {0} de {1}', Math.min(shown, list.length), list.length)}</span>
+          {shown < list.length && <button type="button" className="btn" onClick={() => setShown(shown + ORDERS_PAGE)}>{trx('Mostrar {0} más', Math.min(ORDERS_PAGE, list.length - shown))}</button>}
+          {shown < list.length && <button type="button" className="lnk" onClick={() => setShown(Number.MAX_SAFE_INTEGER)}>{tr('Mostrar todo')}</button>}
+          {shown > ORDERS_PAGE && <button type="button" className="lnk" onClick={() => setShown(ORDERS_PAGE)}>{tr('Mostrar menos')}</button>}
+        </div>
+      )}
+      {open.length > 0 && <p className="hint">{tr('"Hechas" suma todos los pallets que se le dieron a cada pedido, de cualquier día.')} {tr('Toca un PO para ver sus pallets, con sus lotes, tags y cajas.')}</p>}
+      {closed.length > 0 && <button type="button" className="lnk" onClick={() => setShowClosed(!showClosed)}>{trx('{0} los marcados completos ({1})', showClosed ? tr('Ocultar') : tr('Ver'), closed.length)}</button>}
+      {showClosed && closed.length > 0 && table(closed.map(rowOf))}
       {editing && <OrderDialog key={editing} s={s} order={s.orders.find((o) => o.id === editing)} onClose={() => setEditing(null)} />}
+      {order && <OrderPalletsDialog s={s} order={order} onClose={() => setViewing(null)} />}
+    </div>
+  )
+}
+
+/**
+ * Everything packed for an order, pallet by pallet: the day, the line, each lot with its cases and its tag, the
+ * total, the hour and who. A manager corrects the run from here. The pallets of days this device no longer holds are
+ * there too (they come from the server for every open order): seen, but corrected from that day's report.
+ */
+function OrderPalletsDialog({ s, order, onClose }: { s: State; order: Order; onClose: () => void }) {
+  const can = useCan()
+  const [editRun, setEditRun] = useState<string | null>(null)
+  const list = orderRunsOf(s, order.id).flatMap((r) => r.units.filter((u) => u.po === order.id).map((u) => ({ r, u, parts: unitParts(s, r, u), here: s.runs.some((x) => x.id === r.id) }))).sort((a, b) => a.u.at - b.u.at)
+  const made = orderMade(s, order.id), seq = orderPallets(s, order.id), left = order.cases != null ? order.cases - made : null
+  const run = editRun ? s.runs.find((r) => r.id === editRun) : undefined
+  return (
+    <div className="veil" onClick={onClose}>
+      <div className="dlg wide" onClick={(e) => e.stopPropagation()}>
+        <h3>{orderLabel(order)} · <span className="code">{order.code}</span></h3>
+        <p className="osum">
+          <b>{list.length === 1 ? tr('1 pallet') : trx('{0} pallets', list.length)}</b>{seq.need ? ' ' + tr('de {0}', seq.need) : ''} · <b>{fmtN(made)} {tr('cajas')}</b>
+          {left != null && (left > 0 ? <span className="ost st-going"> · {trx('faltan {0}', fmtN(left))}</span> : <span className="ost st-done"> · {tr('✓ completo')}</span>)}
+          {order.shipBy && <> · {trx('envío {0}', shipText(order.shipBy))}</>}
+        </p>
+        {list.length === 0 ? <p className="hint">{tr('Todavía no se le ha dado ningún pallet.')}</p> : (
+          <div className="twrap">
+            <table className="pallets">
+              <thead><tr><th>#</th><th>{tr('Fecha')}</th><th>{tr('Línea')}</th><th>{tr('Lote')}</th><th className="num">{tr('Cajas')}</th><th>{tr('Tag')}</th><th className="num">{tr('Total')}</th><th>{tr('Hora')}</th><th>{tr('Por')}</th><th></th></tr></thead>
+              {list.map((x, k) => {
+                const parts = x.parts.length ? x.parts : [{ lot: x.r.lot, qty: x.u.qty, tag: x.u.ref }], span = parts.length
+                return (
+                  <tbody key={x.r.id + ':' + x.u.at}>
+                    {parts.map((p, i) => (
+                      <tr key={i}>
+                        {i === 0 && <td rowSpan={span}><b>{k + 1}</b>{seq.need ? <small className="ofn">/{seq.need}</small> : null}</td>}
+                        {i === 0 && <td rowSpan={span}>{shortDay(x.r.date)}</td>}
+                        {i === 0 && <td rowSpan={span}>{lineNameOf(s, x.r.lineId, x.r.line)}</td>}
+                        <td>{p.lot || '—'}</td><td className="num">{p.qty != null ? fmtN(p.qty) : '—'}</td><td>{p.tag || <span className="notag">{tr('sin tag')}</span>}</td>
+                        {i === 0 && <td rowSpan={span} className="num"><b>{fmtN(unitQty(s, x.r, x.u))}</b></td>}
+                        {i === 0 && <td rowSpan={span}>{fmtTime(x.u.at)}</td>}
+                        {i === 0 && <td rowSpan={span}>{x.u.by || '—'}</td>}
+                        {i === 0 && <td rowSpan={span}>{x.here && can('fix') && <button type="button" className="lnk" onClick={() => setEditRun(x.r.id)}>{tr('Corregir')}</button>}</td>}
+                      </tr>
+                    ))}
+                  </tbody>
+                )
+              })}
+            </table>
+          </div>
+        )}
+        {list.some((x) => !x.here) && <p className="hint">{tr('Los pallets de días que este aparato ya no guarda se traen del servidor: se ven aquí y se corrigen abriendo ese día en el Reporte.')}</p>}
+        <div className="dbtns"><button type="button" className="btn" onClick={onClose}>{tr('Cerrar')}</button></div>
+        {run && <RunEditor s={s} run={run} mgr={can('fix')} onClose={() => setEditRun(null)} />}
+      </div>
     </div>
   )
 }
@@ -1096,8 +1183,6 @@ function DeptPanel({ s, dept, now, day }: { s: State; dept: Dept; now: number; m
       {ds && <div className="deptstop">{trx('⏸ Todo {0} parado · {1}{2} · desde {3} · {4}', dept, <b>{tr(ds.reason)}</b>, ds.note && ' · ' + noteLabel(ds.note), fmtTime(ds.startedAt), ds.by)} {can('fix') && <button type="button" className="lnk" onClick={() => setEditStop(true)}>{tr('Corregir')}</button>}</div>}
       {editStop && ds && <StopEditor stop={ds} mgr={can('fix')} onClose={() => setEditStop(false)} />}
       <TodayCard s={s} dept={dept} now={now} mgr={can('goals')} date={day.date} />
-      <PlanCard s={s} dept={dept} date={day.date} mgr={can('products')} />
-      {CFG[dept].orders && <OrdersCard s={s} mgr={can('orders')} />}
       <div className="lines">{lines.map((l) => <LineCard key={l.id} s={s} line={l} now={now} mgr={can('fix')} day={day} />)}</div>
       {lines.length === 0 && <p className="hint">{viewOnly ? tr('Este departamento no tiene líneas todavía.') : trx('Este departamento no tiene líneas. Toca "Agregar {0}".', CFG[dept].lineWord.toLowerCase())}</p>}
       {adding && <LineNameDialog s={s} dept={dept} onClose={() => setAdding(false)} />}
@@ -1118,6 +1203,9 @@ function DeptPanel({ s, dept, now, day }: { s: State; dept: Dept; now: number; m
           {showBefore && doneBefore.map(doneRow)}
         </div>
       )}
+      {/* what the office sets for the room, under what the room is doing: the day's program and the orders being filled */}
+      <PlanCard s={s} dept={dept} date={day.date} mgr={can('products')} />
+      {CFG[dept].orders && <OrdersCard s={s} mgr={can('orders')} />}
       {editing && <RunEditor s={s} run={editing} mgr={can('fix')} onClose={() => setEditRun(null)} />}
       {stopAll && <StopDialog title={tr('Parar todo {0}', dept)} reasons={CFG[dept].quick} onClose={() => setStopAll(false)} onPick={(reason, note) => { startStop(dept, null, reason, note); setStopAll(false) }} />}
     </section>
@@ -1134,19 +1222,20 @@ const buzz = () => { try { (navigator as Navigator & { vibrate?: (ms: number) =>
 // (the report, the list of codes ended today) is corrected by whoever holds the power for it, a manager by default;
 // so is dividing a stop, passing a run to another line or deleting one.
 /**
- * The pallet being built on a Packing line, always in sight: its number (and its place among its order's pallets), the
- * lots it already holds with their cases and tags, and the lot going on now. Two things to do: the lot ran out (its
- * cases and tag stay on the pallet, which goes on with the next lot) or the pallet is finished.
+ * The pallet being built on a Packing line, always in sight, as a table: each lot already on it with its cases and
+ * its tag, the lot going on now, and the total. Two things to do, side by side and in plain words: the lot ran out
+ * and the pallet goes on with another one (➕), or the pallet is finished (✓). When ✓ was tapped by mistake at a
+ * change of lot, the last pallet is opened again from here.
  */
-function PalletPanel({ s, run, saved, readOnly, onDone, onLot, onLotNow, onPart, onOrder }: { s: State; run: Run; saved: string; readOnly?: boolean; onDone: () => void; onLot: () => void; onLotNow: () => void; onPart: (i: number) => void; onOrder: () => void }) {
+function PalletPanel({ s, run, saved, readOnly, canReopen, onDone, onLot, onLotNow, onPart, onOrder, onReopen }: { s: State; run: Run; saved: string; readOnly?: boolean; canReopen: boolean; onDone: () => void; onLot: () => void; onLotNow: () => void; onPart: (i: number) => void; onOrder: () => void; onReopen: () => void }) {
   const open = run.extra?.open, parts = open?.parts ?? []
-  const onIt = parts.reduce((t, p) => t + p.qty, 0), per = run.perUnit ?? 0
+  const onIt = parts.reduce((t, p) => t + p.qty, 0), per = run.perUnit ?? 0, lotNow = lotNowOf(run)
   const order = orderOfId(s, palletPo(s, run)), seq = order ? orderPallets(s, order.id, run.perUnit) : null
   const offered = openOrdersFor(s, run.code).length > 0, said = typeof open?.po === 'string'
   return (
     <div className="pallet">
       <div className="pal-head">
-        <b>{trx('Pallet {0} en armado', run.units.length + 1)}</b>
+        <b>{trx('Pallet {0}', run.units.length + 1)} <span className="pal-state">{tr('en armado')}</span></b>
         {per > 0 && <span>{trx('{0} de {1} cajas', fmtN(onIt), fmtN(per))}</span>}
       </div>
       {per > 0 && <div className="bar"><i style={{ width: Math.min(100, Math.round((onIt / per) * 100)) + '%' }} /></div>}
@@ -1156,17 +1245,30 @@ function PalletPanel({ s, run, saved, readOnly, onDone, onLot, onLotNow, onPart,
           {!readOnly && <button type="button" className="lnk sm" onClick={onOrder}>{order ? tr('Cambiar') : tr('Escoger PO')}</button>}
         </div>
       )}
-      {parts.map((p, i) => (
-        <div key={i} className="pal-part">
-          <span>{trx('Lote {0} · {1} cajas', <b>{p.lot}</b>, fmtN(p.qty))}</span>
-          {readOnly ? <span className={p.tag ? '' : 'notag'}>{p.tag ? tr('Tag {0}', p.tag) : tr('sin tag')}</span> : <button type="button" className={'lnk sm' + (p.tag ? '' : ' notag')} onClick={() => onPart(i)}>{p.tag ? trx('Tag {0} ✎', p.tag) : tr('Sin tag · ponerlo')}</button>}
+      <table className="pal-lots">
+        <thead><tr><th>{tr('Lote')}</th><th className="num">{tr('Cajas')}</th><th>{tr('Tag')}</th><th></th></tr></thead>
+        <tbody>
+          {parts.map((p, i) => (
+            <tr key={i}>
+              <td><b>{p.lot}</b></td><td className="num">{fmtN(p.qty)}</td>
+              <td>{p.tag ? <b className="tagno">{p.tag}</b> : <span className="notag">{tr('sin tag')}</span>}</td>
+              <td>{!readOnly && <button type="button" className={'lnk sm' + (p.tag ? '' : ' notag')} title={tr('Cambiar las cajas o el tag de este lote')} onClick={() => onPart(i)}>{p.tag ? '✎' : tr('ponerlo')}</button>}</td>
+            </tr>
+          ))}
+          <tr className="now">
+            <td><b>{lotNow}</b> <small>{tr('va ahora')}</small></td><td className="num"><small>…</small></td><td></td>
+            <td>{!readOnly && <button type="button" className="lnk sm" title={tr('El lote que va ahora se escribió mal')} onClick={onLotNow}>{tr('Cambiar')}</button>}</td>
+          </tr>
+        </tbody>
+        {parts.length > 0 && <tfoot><tr><td>{tr('Total')}</td><td className="num">{fmtN(onIt)}</td><td colSpan={2}>{tr('{0} lotes', parts.length + 1)}</td></tr></tfoot>}
+      </table>
+      {!readOnly && (
+        <div className="pal-acts">
+          <button type="button" className="btn soft" onClick={onLot}>➕ {tr('Otro lote en este pallet')}<small>{trx('se acabó el {0} y siguen con otro', lotNow)}</small></button>
+          <button type="button" className={'btn primary' + (saved ? ' saved' : '')} disabled={!!saved} onClick={onDone}>✓ {saved || tr('Pallet completo')}{!saved && <small>{tr('ya no le ponen más cajas')}</small>}</button>
         </div>
-      ))}
-      <div className="pal-now"><span>{trx('Ahora va: lote {0}', <b>{lotNowOf(run)}</b>)}</span>{!readOnly && <button type="button" className="lnk sm" onClick={onLotNow}>{tr('Cambiar')}</button>}</div>
-      {!readOnly && <>
-        <button type="button" className={'btn primary huge' + (saved ? ' saved' : '')} disabled={!!saved} onClick={onDone}>✓ {saved || tr('Pallet listo')}</button>
-        <button type="button" className="btn soft" onClick={onLot}>{trx('Se acabó el lote {0}', lotNowOf(run))}</button>
-      </>}
+      )}
+      {!readOnly && canReopen && <button type="button" className="lnk sm pal-reopen" onClick={onReopen}>{trx('↩ ¿"Pallet completo" por error? Seguir en el pallet {0}', run.units.length)}</button>}
     </div>
   )
 }
@@ -1191,6 +1293,7 @@ function PalletDoneDialog({ s, run, onClose, onSaved }: { s: State; run: Run; on
   const open = run.extra?.open, parts = open?.parts ?? []
   const per = run.perUnit ?? 0, onIt = parts.reduce((t, p) => t + p.qty, 0)
   const [rows, setRows] = useState(() => [...parts.map((p) => ({ lot: p.lot, qty: String(p.qty), tag: p.tag })), { lot: lotNowOf(run), qty: '', tag: '' }])
+  const [added, setAdded] = useState(false) // a lot they forgot to say when it ran out: typed here
   // only an open PO can take the pallet: the one it was going to, unless the office closed it meanwhile
   const choices = poChoices(s, run)
   const [po, setPo] = useState(() => { const p = palletPo(s, run); return choices.some((x) => x.id === p) ? p : '' })
@@ -1199,7 +1302,8 @@ function PalletDoneDialog({ s, run, onClose, onSaved }: { s: State; run: Run; on
   const nums = rows.map((r) => Number(r.qty || 0))
   const total = nums.reduce((t, n) => t + (Number.isFinite(n) && n > 0 ? n : 0), 0)
   // the last lot may have nothing (the pallet was full when a lot ran out); every other one has its cases
-  const ok = total > 0 && rows.every((r, i) => !!r.lot.trim() && Number.isFinite(nums[i]) && (nums[i] > 0 || (i === rows.length - 1 && parts.length > 0)))
+  // a lot typed here without cases is left out when saving (the pallet was full when a lot ran out)
+  const ok = total > 0 && rows.every((r, i) => !!r.lot.trim() && Number.isFinite(nums[i]) && (nums[i] > 0 || i >= parts.length))
   const missing = rows.filter((r, i) => nums[i] > 0 && !r.tag.trim()).length
   const lastRow = rows[rows.length - 1], fill = per > onIt && !lastRow.qty && lastRow.lot.trim() ? per - onIt : 0
   const save = () => { if (ok && palletDone(run.id, rows.map((r, i) => ({ lot: r.lot, qty: nums[i], tag: r.tag })), po)) onSaved() }
@@ -1212,12 +1316,14 @@ function PalletDoneDialog({ s, run, onClose, onSaved }: { s: State; run: Run; on
             <div className="palrow head"><span>{tr('Lote')}</span><span>{tr('Cajas')}</span><span>{tr('Tag')}</span></div>
             {rows.map((r, i) => (
               <div key={i} className="palrow">
-                {i < parts.length ? <b>{r.lot}</b> : <input value={r.lot} inputMode="numeric" aria-label={tr('Lote')} onChange={(e) => change(i, { lot: e.target.value })} autoComplete="off" />}
-                <input value={r.qty} inputMode="numeric" placeholder="0" aria-label={tr('Cajas')} autoFocus={i === rows.length - 1 && !r.qty} onChange={(e) => change(i, { qty: e.target.value.replace(/\D/g, '') })} />
+                {i < parts.length ? <b>{r.lot}</b> : <input value={r.lot} inputMode="numeric" aria-label={tr('Lote')} autoFocus={added && i === rows.length - 1} onChange={(e) => change(i, { lot: e.target.value })} autoComplete="off" />}
+                <input value={r.qty} inputMode="numeric" placeholder="0" aria-label={tr('Cajas')} autoFocus={!added && i === rows.length - 1 && !r.qty} onChange={(e) => change(i, { qty: e.target.value.replace(/\D/g, '') })} />
                 <input value={r.tag} inputMode="numeric" placeholder={tr('ej. 1749')} aria-label={tr('Tag')} onChange={(e) => change(i, { tag: e.target.value })} autoComplete="off" />
+                {i > parts.length ? <button type="button" className="lnk" title={tr('Quitar este lote')} onClick={() => setRows(rows.filter((_, k) => k !== i))}>✕</button> : <span />}
               </div>
             ))}
           </div>
+          <button type="button" className="lnk addlot" onClick={() => { setAdded(true); setRows([...rows, { lot: '', qty: '', tag: '' }]) }}>{tr('+ Este pallet lleva otro lote más')}</button>
           <p className="lottotal">{total > 0 ? trx('Total del pallet: {0} en {1}', <b>{fmtN(total)} {tr('cajas')}</b>, rows.filter((_, i) => nums[i] > 0).length === 1 ? tr('1 lote') : tr('{0} lotes', rows.filter((_, i) => nums[i] > 0).length)) : tr('Escriban cuántas cajas lleva.')}{per > 0 && total !== per && <span className="muted"> {' '}{tr('· un pallet lleno lleva {0}', fmtN(per))}</span>}</p>
           {fill > 0 && <button type="button" className="chip sm fillchip" onClick={() => change(rows.length - 1, { qty: String(fill) })}>{tr('Llenar el pallet: {0} cajas del lote {1}', fmtN(fill), lastRow.lot.trim())}</button>}
           {choices.length > 0 && (
@@ -1261,6 +1367,39 @@ function LotEndDialog({ run, onClose }: { run: Run; onClose: () => void }) {
           <div className="dbtns">
             <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
             <button type="submit" className="btn primary" disabled={!ok}>{tr('✓ Guardar')}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * "Pallet completo" was tapped when a lot ran out, and the cases went on with the same pallet: the last pallet opens
+ * again, with its lots, cases, tags and PO, and goes on with the lot they say (the same one, or the next).
+ */
+function ReopenPalletDialog({ run, onClose }: { run: Run; onClose: () => void }) {
+  const last = run.units[run.units.length - 1], n = run.units.length, lot = lotNowOf(run)
+  const [other, setOther] = useState(false)
+  const [next, setNext] = useState('')
+  if (!last) return null
+  const ok = !other || (!!next.trim() && next.trim() !== lot)
+  const save = () => { if (ok && reopenPallet(run.id, other ? next : '')) onClose() }
+  return (
+    <div className="veil" onClick={onClose}>
+      <div className="dlg" onClick={(e) => e.stopPropagation()}>
+        <h3>{trx('¿Seguir en el pallet {0}?', n)}</h3>
+        <p>{trx('Se vuelve a abrir con lo que ya tiene: {0}. Es para cuando tocaron "Pallet completo" por error y las cajas siguen en ese mismo pallet.', <b>{last.qty != null ? fmtN(last.qty) + ' ' + tr('cajas') : ''}{last.lots?.length ? ' · ' + lotsText(last.lots) : ''}</b>)}</p>
+        <form className="qform" onSubmit={(e) => { e.preventDefault(); save() }}>
+          <span className="lab">{tr('¿Qué lote va ahora en ese pallet?')}</span>
+          <div className="chips">
+            <button type="button" className={'chip' + (!other ? ' on' : '')} aria-pressed={!other} onClick={() => setOther(false)}>{trx('El mismo: {0}', lot)}</button>
+            <button type="button" className={'chip' + (other ? ' on' : '')} aria-pressed={other} onClick={() => setOther(true)}>{tr('Otro lote')}</button>
+          </div>
+          {other && <label>{tr('Lote que va ahora')}{' '}<input autoFocus value={next} inputMode="numeric" onChange={(e) => setNext(e.target.value)} autoComplete="off" /></label>}
+          <div className="dbtns">
+            <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
+            <button type="submit" className="btn primary" disabled={!ok}>{trx('↩ Seguir en el pallet {0}', n)}</button>
           </div>
         </form>
       </div>
@@ -1369,7 +1508,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   // Packing: what the line is going to make (pallets, or bins and what they hold), and the windows of the pallet being built
   const [making, setMaking] = useState<'pallet' | 'bin' | null>(null)
   const [binText, setBinText] = useState('')
-  const [packing, setPacking] = useState<null | 'done' | 'lot' | 'po' | 'binlot' | number>(null)
+  const [packing, setPacking] = useState<null | 'done' | 'lot' | 'po' | 'binlot' | 'reopen' | number>(null)
   // Spiral: how the code about to start is counted (null = as the products table says, or as it was started last)
   const [measure, setMeasure] = useState<SpiralUnit | null>(null)
   const [tagging, setTagging] = useState<number | null>(null)
@@ -1540,7 +1679,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
               <span className="lab">{tr('¿Qué van a hacer?')}</span>
               <div className="seg" role="group" aria-label={tr('¿Qué van a hacer?')}>
                 <button type="button" className={makes === 'pallet' ? 'on' : ''} aria-pressed={makes === 'pallet'} onClick={() => setMaking('pallet')}>{tr('Pallets')}<small>{tr('cajas con su tag')}</small></button>
-                <button type="button" className={makes === 'bin' ? 'on' : ''} aria-pressed={makes === 'bin'} onClick={() => setMaking('bin')}>{tr('Bins')}<small>{tr('platos, copas, pouches…')}</small></button>
+                <button type="button" className={makes === 'bin' ? 'on binopt' : ''} aria-pressed={makes === 'bin'} onClick={() => setMaking('bin')}>{tr('Bins')}<small>{tr('platos, copas, pouches…')}</small></button>
               </div>
               {makes === 'bin' && (
                 <div className="binwords">
@@ -1624,14 +1763,19 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   // a set up on this line while its code runs: amber like every set up, never the red of a stop
   const inSetup = !!stop && stop.lineId === line.id && stop.reason === SETUP
   return (
-    <div className={'line ' + (inSetup ? 'insetup' : stop ? 'stopped' : 'running') + (just ? ' justdone' : '')}>
+    <div className={'line ' + (inSetup ? 'insetup' : stop ? 'stopped' : 'running') + (just ? ' justdone' : '') + (binOf(run) ? ' mode-bin' : pallets ? ' mode-pal' : '')}>
       {naming}
       <div className="lhead">
         <h3>{lineLabel(line.name)} {nameIt}</h3>
         <span className={'pill ' + (inSetup ? 'setup' : stop ? 'stop' : 'run')}>{inSetup ? tr('⏱ Set up') : stop ? tr('⏸ Parado') : tr('● Corriendo')}</span>
         <span className="lacts">{goalBtn}{!viewOnly && <button type="button" className="lnk sm" onClick={() => setFixing(true)}>{tr('Corregir')}</button>}</span>
       </div>
-      <div className="coderow"><b className="code">{run.code}</b><span>{trx('lote {0}{1} · desde {2}', lotNowOf(run), run.date !== day.date && ' · ' + shortDay(run.date), fmtTime(run.startedAt))}{run.perUnit != null && ' · ' + tr('{0} {1} por {2}', run.perUnit, rc.qtyUnit, runWord)}{binOf(run) && <> · <b className="binkind">{trx('Bins de {0} · Turno {1}', binWord(binOf(run)), turn.shift)}</b></>}{measureOf(run) && <> · <b className="binkind">{tr('Se cuenta en {0}', measureName(measureOf(run)))}</b></>}</span></div>
+      {/* what runs here, big: the code and the lot going on now; a Packing line says first whether it makes pallets or fills bins */}
+      <div className={'hero' + (binOf(run) ? ' bin' : pallets ? ' pal' : '')}>
+        {run.dept === 'Packing' && <span className="mode">{binOf(run) ? trx('BINS · {0}', binWord(binOf(run))) : tr('PALLETS')}</span>}
+        <div className="hero-main"><b className="code">{run.code}</b><span className="lot">{trx('lote {0}', <b>{lotNowOf(run)}</b>)}</span></div>
+        <small>{[productOf(s, run.code)?.name ?? '', run.date !== day.date ? shortDay(run.date) : '', tr('desde {0}', fmtTime(run.startedAt)), run.perUnit != null ? tr('{0} {1} por {2}', run.perUnit, rc.qtyUnit, runWord) : '', binOf(run) ? tr('Turno {0}', turn.shift) : '', measureOf(run) ? tr('Se cuenta en {0}', measureName(measureOf(run))) : ''].filter(Boolean).join(' · ')}</small>
+      </div>
       {mineNow.carried && (
         <div className="carried">
           {run.date === day.date && cameFrom !== turn.shift
@@ -1644,8 +1788,8 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       {openOrders.length > 0 && (
         <div className="orderstrip">
           <span>{trx('📦 {0} de {1}:', openOrders.length === 1 ? tr('Pedido') : tr('Pedidos'), run.code)}</span>
-          {openOrders.slice(0, 3).map((o) => <span key={o.id} className={o.id === nextOrder ? 'next' : ''}><b>{orderLabel(o)}</b>{leftText(s, o)}{o.shipBy && ' ' + tr('· envío {0}', shipText(o.shipBy))}</span>)}
-          {openOrders.length > 3 && <span>{trx('y {0} más', openOrders.length - 3)}</span>}
+          {openOrders.slice(0, 2).map((o) => <span key={o.id} className={o.id === nextOrder ? 'next' : ''}><b>{orderLabel(o)}</b>{leftText(s, o)}{o.shipBy && ' ' + tr('· envío {0}', shipText(o.shipBy))}</span>)}
+          {openOrders.length > 2 && <span>{trx('y {0} más', openOrders.length - 2)}</span>}
         </div>
       )}
       {inSetup && stop && <div className="setupbar running">⏱ <b>{tr(stop.reason)}</b>{stop.note && ' · ' + noteLabel(stop.note)} · <b>{fmtDur(stopTime(s, stop, now))}</b> <small>{trx('desde las {0}', fmtTime(stop.startedAt))}</small>{!viewOnly && <button type="button" className="lnk sm" onClick={() => setFixingStop(true)}>{tr('Corregir')}</button>}</div>}
@@ -1661,7 +1805,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         <div className="tile"><label>{tr('Trabajando')}</label><b>{fmtDur(mineNow.working)}</b><small className={mineNow.setup ? 'both' : ''}><span className={mineNow.down ? 'red' : ''}>{trx('parado {0}', fmtDur(mineNow.down))}</span>{mineNow.setup > 0 && <span className="amber"> · {tr('set up {0}', fmtDur(mineNow.setup))}</span>}</small></div>
       </div>
       {pallets
-        ? <PalletPanel s={s} run={run} readOnly={viewOnly} saved={just ? savedText(line.dept, just.n - brought, rc) : ''} onDone={done} onLot={() => setPacking('lot')} onLotNow={() => setPacking('binlot')} onPart={(i) => setPacking(i)} onOrder={() => setPacking('po')} />
+        ? <PalletPanel s={s} run={run} readOnly={viewOnly} saved={just ? savedText(line.dept, just.n - brought, rc) : ''} onDone={done} onLot={() => setPacking('lot')} onLotNow={() => setPacking('binlot')} onPart={(i) => setPacking(i)} onOrder={() => setPacking('po')} onReopen={() => setPacking('reopen')} canReopen={run.units.length > brought && !run.extra?.open?.parts.length} />
         : !viewOnly && <button type="button" className={'btn primary huge' + (just ? ' saved' : '')} disabled={!!just} onClick={done}>✓ {just ? savedText(line.dept, just.n - brought, rc) : rc.done}</button>}
       {!viewOnly && binOf(run) && <button type="button" className="lnk sm binlot" onClick={() => setPacking('binlot')}>{tr('¿Cambió el lote?')}</button>}
       {!viewOnly && untagged.map((x) => <button key={x.u.at} type="button" className="lnk sm notag tagmiss" onClick={() => setTagging(x.i)}>{tr('Al pallet {0} le falta el tag: lote {1} · ponerlo', x.i + 1, x.lots.join(', '))}</button>)}
@@ -1693,6 +1837,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         : <QtyDialog title={rc.qtyQ} unit={rc.qtyUnit} refLabel={rc.refLabel} initial={run.perUnit} perCase={perCase} decimal={measureOf(run) === 'lb'} onClose={() => { setCounting(false); setEndAfter(null) }} onPick={(q, ref) => { record(q, ref, binLots(q)); setCounting(false); if (endAfter !== null) { setEndAfter(null); endRun(run.id, endAfter) } }} />)}
       {packing === 'done' && <PalletDoneDialog s={s} run={run} onClose={() => { setPacking(null); setEndAfter(null) }} onSaved={() => { setPacking(null); buzz(); if (endAfter !== null) { const next = endAfter; setEndAfter(null); endRun(run.id, next) } }} />}
       {packing === 'lot' && <LotEndDialog run={run} onClose={() => setPacking(null)} />}
+      {packing === 'reopen' && <ReopenPalletDialog run={run} onClose={() => setPacking(null)} />}
       {packing === 'po' && <PalletOrderDialog s={s} run={run} onClose={() => setPacking(null)} />}
       {packing === 'binlot' && <LotNowDialog run={run} onClose={() => setPacking(null)} />}
       {tagUnit && <LotsDialog key={'tag:' + tagUnit.at} title={tr('Tags del pallet {0}', (tagging ?? 0) + 1)} unit={rc.qtyUnit} refLabel={rc.refLabel} lot={run.lot} qty={tagUnit.qty} start={tagUnit.lots ?? [{ lot: run.lot, qty: tagUnit.qty ?? 0 }]} startRef={tagUnit.ref} onClose={() => setTagging(null)} onPick={(total, ref, lots) => { fillUnit(run.id, tagUnit.at, total, lots, ref); setTagging(null) }} />}
@@ -2034,6 +2179,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
   const tookText = (t: string) => { const m = /^(\d+) corridas? · (\d+) paros?$/.exec(t); return m ? howMany(Number(m[1]), Number(m[2])) : t }
   // long lists show ten lines at a time (the files always carry everything)
   const [more, setMore] = useState<Record<string, number>>({})
+  const [palQ, setPalQ] = useState('') // the pallets of the day, found by what is written on them: a code, a lot, a tag, a PO, a line
   useEffect(() => { setMore({}) }, [date, fCode, fLot, fShift, fDept])
   const PAGE = 10
   const cut = <T,>(key: string, list: T[]) => list.slice(0, more[key] ?? PAGE)
@@ -2078,6 +2224,8 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
   const binsN = (n: number) => (n === 1 ? tr('1 bin') : tr('{0} bins', n))
   /** a pallet's place among its order's pallets: "2/12" (or "2" when the order does not say how many cases it is) */
   const ofText = (of: [number, number | null]) => (of[1] ? of[0] + '/' + of[1] : String(of[0]))
+  const palK = plainText(palQ)
+  const palletsShown = palK ? rep.pallets.filter((p) => [p.r.code, p.order, lineNameOf(s, p.r.lineId, p.r.line), ...p.parts.flatMap((x) => [x.lot, x.tag])].some((t) => plainText(String(t ?? '')).includes(palK))) : rep.pallets
   /** the words of a line of "por código": a code filled in bins speaks of bins */
   const cw = (c: { dept: Dept; bin: string }) => cfgFor(c.dept, c.bin)
   const reasonsText = (x: (typeof rows)[number]) => Object.entries(x.st.reasons).map(([k, v]) => tr(k) + ' ' + fmtDur(v)).join(', ')
@@ -2388,13 +2536,17 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
           {/* Packing's pallets one by one: the lots each one holds with their cases and tags, its total and its PO (2/12) */}
           {rep.pallets.length > 0 && (
             <>
-              {secHead('pallets', tr('Pallets'), rep.pallets.length)}
+              <div className="sechead">
+                <h3>{tr('Pallets')} · {palletsShown.length}{palK && palletsShown.length !== rep.pallets.length ? <small> / {rep.pallets.length}</small> : null}</h3>
+                <span className="palsearch"><input value={palQ} onChange={(e) => setPalQ(e.target.value)} placeholder={tr('Buscar código, lote, tag o PO')} aria-label={tr('Buscar pallet')} autoComplete="off" />{palQ && <button type="button" className="lnk sm" aria-label={tr('Quitar la búsqueda')} onClick={() => setPalQ('')}>✕</button>}</span>
+                <button type="button" className="lnk sm" aria-expanded={!shut.pallets} onClick={() => setShut({ ...shut, pallets: !shut.pallets })}>{shut.pallets ? tr('Mostrar ▾') : tr('Ocultar ▴')}</button>
+              </div>
               {!shut.pallets && (
                 <>
                   <div className="twrap">
                     <table className="pallets">
                       <thead><tr><th>{tr('Pallet')}</th><th>{tr('Código')}</th><th>{tr('Lote')}</th><th className="num">{tr('Cajas')}</th><th>{tr('Tag')}</th><th className="num">{tr('Total')}</th><th>PO</th><th>{tr('Línea')}</th><th>{tr('Hora')}</th>{!rep.shift && <th>{tr('Turno')}</th>}</tr></thead>
-                      {cut('pallets', rep.pallets).map((p) => {
+                      {cut('pallets', palletsShown).map((p) => {
                         const span = p.parts.length
                         return (
                           <tbody key={p.r.id + ':' + p.n} className={p.open ? 'live' : ''}>
@@ -2417,7 +2569,8 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
                       })}
                     </table>
                   </div>
-                  {moreBar('pallets', rep.pallets.length)}
+                  {palletsShown.length === 0 && <p className="hint">{tr('Ningún pallet de este día tiene eso escrito.')}</p>}
+                  {moreBar('pallets', palletsShown.length)}
                 </>
               )}
             </>
