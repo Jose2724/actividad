@@ -2129,6 +2129,11 @@ section('Avance: cada código lo empaca RTE o MFO, nunca los dos; y se puede ver
     eq('y cambia el de uno que ya estaba, con su historial', [m.productOf(st(), 'M500').room, row('M500').packRoom, st().changes.filter((c) => c.what === 'Producto M500 · Lo empaca').map((c) => [c.before, c.after])], ['RTE', 'RTE', [['MFO', 'RTE']]])
     m.setPackRoom('M500', 'MFO')
     eq('decir lo que ya está no cambia nada', [m.setPackRoom('M500', 'MFO'), m.productOf(st(), 'M500').room], [undefined, 'MFO'])
+    // the office asked (2026-10-16): the total of a lot over all its days, day by day; a lot of another day chosen from a list
+    const ad = m.lotAcrossDays(st(), '6293')
+    eq('el lote por código dice cada día que se trabajó', ad.codes.find((c) => c.code === 'M500').days.map((d) => [d.date, d.mixes, d.mfo, d.cases, d.pallets]), [['2026-10-20', 2, 30, 25, 1]])
+    eq('las filas de Avance de un lote en todos sus días: lo hecho contra lo que sus mezclas permiten, sin programa', m.lotRows(st(), '6293').map((r) => [r.code, r.mixesDone, r.casesExp, r.mfoExp, r.pouchesExp, r.casesDone, r.scheduled, r.pouchesPlan, r.days.length]), [['M500', 2, 50, 50, null, 25, 0, null, 1], ['Q700', 0, null, null, null, 0, 0, null, 1], ['R600', 2, 37, null, 296, 0, 0, null, 1]])
+    eq('los lotes que el aparato conoce, el más nuevo primero', m.lotsKnown(st()), ['6293', '6292'])
   })
 }
 section('Solo ver: un usuario de la oficina que mira todo y no toca nada')

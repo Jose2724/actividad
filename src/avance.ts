@@ -34,7 +34,11 @@ export type AvanceRow = {
   mfoPlan: number | null; mfoExp: number | null
   /** the same made numbers, shift by shift (a unit counts on the shift of its hour) and lot by lot (a pallet with two lots gives each its cases and is a pallet of both) */
   byShift: [AvancePart, AvancePart]; lots: ({ lot: string } & AvancePart)[]
+  /** a row of one lot over all its days (lotRows): what each day made of it */
+  days?: LotDay[]
 }
+/** what one day made of a lot */
+export type LotDay = { date: string } & AvancePart
 /** what a shift, a lot or a whole lot made of a code, in each room's unit */
 export type AvancePart = { mixes: number; spiral: number; pouches: number; cases: number; mfo: number; pallets: number }
 const part = (): AvancePart => ({ mixes: 0, spiral: 0, pouches: 0, cases: 0, mfo: 0, pallets: 0 })
@@ -128,11 +132,11 @@ export const pending = (exp: number | null, done: number) => (exp == null ? null
 /** a number for the table: whole when it is whole, else one decimal ("714", "142.8"), "—" when it is not known */
 export const n1 = (v: number | null) => { if (v == null) return '—'; const r = Math.round(v * 10) / 10; return Number.isInteger(r) ? String(r) : r.toFixed(1) }
 /**
- * What was made of one lot on every day this device holds (a lot goes on into the next day), code by code and in all:
- * the office asks for "the total of a lot". The mezclas of a code are the ones of the room that makes it.
+ * What was made of one lot on every day this device holds (a lot goes on into the next day), code by code, day by
+ * day and in all: the office asks for "the total of a lot". The mezclas of a code are the ones of the room that makes it.
  */
-export function lotAcrossDays(s: State, lot: string): { days: string[]; codes: ({ code: string } & AvancePart)[]; total: AvancePart } {
-  const days = new Set<string>(), byCode = new Map<string, { code: string; kitchen: number; x: AvancePart }>()
+export function lotAcrossDays(s: State, lot: string): { days: string[]; codes: ({ code: string; mixRoom: 'Kitchen' | 'Spiral'; days: LotDay[] } & AvancePart)[]; total: AvancePart } {
+  const days = new Set<string>(), byCode = new Map<string, { code: string; dates: Map<string, { kitchen: number; x: AvancePart }> }>()
   for (const r of s.runs) {
     if (apartOf(r)) continue
     const key = normCode(r.code)
@@ -140,11 +144,46 @@ export function lotAcrossDays(s: State, lot: string): { days: string[]; codes: (
       if (p.lot !== lot) continue
       days.add(r.date)
       let c = byCode.get(key)
-      if (!c) { c = { code: productOf(s, key)?.code ?? r.code, kitchen: 0, x: part() }; byCode.set(key, c) }
-      if (r.dept === 'Kitchen') c.kitchen++; else if (r.dept === 'Spiral') c.x.spiral++; else if (r.dept === 'RTE') c.x.pouches += p.qty ?? 0; else if (r.dept === 'Packing') { c.x.cases += p.qty ?? 0; c.x.pallets++ } else if (r.dept === 'MFO') c.x.mfo += p.qty ?? 0
+      if (!c) { c = { code: productOf(s, key)?.code ?? r.code, dates: new Map() }; byCode.set(key, c) }
+      let d = c.dates.get(r.date)
+      if (!d) { d = { kitchen: 0, x: part() }; c.dates.set(r.date, d) }
+      if (r.dept === 'Kitchen') d.kitchen++; else if (r.dept === 'Spiral') d.x.spiral++; else if (r.dept === 'RTE') d.x.pouches += p.qty ?? 0; else if (r.dept === 'Packing') { d.x.cases += p.qty ?? 0; d.x.pallets++ } else if (r.dept === 'MFO') d.x.mfo += p.qty ?? 0
     }
   }
-  const codes = [...byCode.values()].map((c) => ({ code: c.code, ...c.x, mixes: Math.max(c.kitchen, c.x.spiral) })).sort((a, b) => a.code.localeCompare(b.code))
-  const total = codes.reduce((t, c) => ({ mixes: t.mixes + c.mixes, spiral: t.spiral + c.spiral, pouches: t.pouches + c.pouches, cases: t.cases + c.cases, mfo: t.mfo + c.mfo, pallets: t.pallets + c.pallets }), part())
-  return { days: [...days].sort(), codes, total }
+  const add = (t: AvancePart, x: AvancePart): AvancePart => ({ mixes: t.mixes + x.mixes, spiral: t.spiral + x.spiral, pouches: t.pouches + x.pouches, cases: t.cases + x.cases, mfo: t.mfo + x.mfo, pallets: t.pallets + x.pallets })
+  const codes = [...byCode.values()].map((c) => {
+    const kitchen = [...c.dates.values()].reduce((t, d) => t + d.kitchen, 0), spiral = [...c.dates.values()].reduce((t, d) => t + d.x.spiral, 0)
+    const mixRoom = spiral > kitchen ? 'Spiral' as const : 'Kitchen' as const
+    const dayRows: LotDay[] = [...c.dates].map(([date, d]) => ({ date, ...d.x, mixes: mixRoom === 'Spiral' ? d.x.spiral : d.kitchen })).sort((a, b) => a.date.localeCompare(b.date))
+    return { code: c.code, mixRoom, days: dayRows, ...dayRows.reduce(add, part()) }
+  }).sort((a, b) => a.code.localeCompare(b.code))
+  return { days: [...days].sort(), codes, total: codes.reduce((t, c) => add(t, c), part()) }
+}
+/**
+ * The rows of Avance for one lot over all its days: what each code made of it, against what its mezclas allow.
+ * No program (a program is a day's, not a lot's), no shifts (they are a day's too: each day is said instead), no waste
+ * (it is a run's, not a lot's).
+ */
+export function lotRows(s: State, lot: string): AvanceRow[] {
+  return lotAcrossDays(s, lot).codes.map((c) => {
+    const product = productOf(s, c.code), pack = packRoomOf(s, c.code), mfoRoute = pack.room === 'MFO'
+    const casesExp = product && product.casesPerMix ? c.mixes * product.casesPerMix : null
+    const pouchesExp = product && product.pouchesPerCase && casesExp != null ? casesExp * product.pouchesPerCase : null
+    const palletsExp = product && product.casesPerPallet && casesExp != null ? casesExp / product.casesPerPallet : null
+    const { days, mixRoom, code, ...made } = c
+    return {
+      code, product, scheduled: 0, mixesDone: made.mixes, mixesPending: 0, mixRoom, spiralDone: made.spiral,
+      pouchesPlan: null, pouchesExp: mfoRoute ? null : r2(pouchesExp), pouchesDone: made.pouches,
+      casesPlan: null, casesExp: r2(casesExp), casesDone: made.cases, mfoCases: made.mfo,
+      palletsPlan: null, palletsExp: r2(palletsExp), palletsDone: made.pallets,
+      wasteLb: 0, packRoom: pack.room, packSaid: pack.said, mfoPlan: null, mfoExp: mfoRoute ? r2(casesExp) : null,
+      byShift: [part(), part()], lots: [{ lot, ...made }], days,
+    }
+  })
+}
+/** every lot on the device's runs, the newest first: to look at one that is not of the date in view */
+export function lotsKnown(s: State): string[] {
+  const out = new Set<string>()
+  for (const r of s.runs) for (const l of r.units.length ? r.units.flatMap((u) => unitParts(s, r, u).map((p) => p.lot)) : [r.lot]) if (l) out.add(l)
+  return [...out].sort((a, b) => (Number(b) || 0) - (Number(a) || 0) || b.localeCompare(a))
 }

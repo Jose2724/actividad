@@ -1,7 +1,7 @@
 import { createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
 import { addLine, addWaste, apartLabel, apartWord, awayDay, cameFrom, carriedOver, dayAfter, BIN_WORDS, binOf, binWord, cfgFor, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, numOf, openIn, openOrdersFor, openRun, openStop, orderCodes, orderLabel, orderOfId, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, productOf, productsCsv, purgeDay, purgesOf, removeLine, removeProduct, renameLine, reopenRun, reset, restorePurged, resetRecords, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftHours, shiftSpan, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay } from './store'
-import { avanceLots, avanceRows, lotAcrossDays, n1, pending, type AvancePart, type AvanceRow } from './avance'
+import { avanceLots, avanceRows, lotAcrossDays, lotRows, lotsKnown, n1, pending, type AvancePart, type AvanceRow } from './avance'
 import { cellText, loadZip, xDay, xDur, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 
 const fmtN = (x: number) => Math.round(x).toLocaleString('en-US')
@@ -477,8 +477,11 @@ function Avance({ s }: { s: State }) {
   for (const [c, n] of Object.entries(s.schedule[date] ?? {})) if (n > 0) typing.current.codes.add(normCode(c))
   // one lot of the day: what was made of it, without the day's program (that is per code, not per lot)
   const [lot, setLot] = useState('')
-  const lots = avanceLots(s, date), lotNow = lots.includes(lot) ? lot : ''
-  const all = avanceRows(s, date, lotNow ? undefined : typing.current.codes, lotNow)
+  // the lot can be looked at on this date only, or over every day it was worked (a lot goes on into the next day)
+  const [scope, setScope] = useState<'date' | 'all'>('date')
+  const lots = avanceLots(s, date), known = lotsKnown(s), lotNow = lot && (lots.includes(lot) || known.includes(lot)) ? lot : ''
+  const isAll = !!lotNow && scope === 'all'
+  const all = isAll ? lotRows(s, lotNow) : avanceRows(s, date, lotNow ? undefined : typing.current.codes, lotNow)
   const needle = plainText(q)
   const rows = needle ? all.filter((r) => plainText(r.code).includes(needle) || plainText(r.product?.name ?? '').includes(needle)) : all
   const sum = (f: (r: AvanceRow) => number | null) => rows.reduce((t, r) => t + (f(r) ?? 0), 0)
@@ -532,15 +535,26 @@ function Avance({ s }: { s: State }) {
           </div>
           <div className="rf grow">
             <span className="lab">{tr('Lote')}</span>
-            {lots.length ? (
-              <div className="chips">
-                <button type="button" className={'chip' + (!lotNow ? ' on' : '')} aria-pressed={!lotNow} onClick={() => setLot('')}>{tr('Todos')}</button>
-                {lots.map((l) => <button key={l} type="button" className={'chip' + (lotNow === l ? ' on' : '')} aria-pressed={lotNow === l} onClick={() => setLot(l)}>{l}</button>)}
+            <div className="chips lotpick">
+              <button type="button" className={'chip' + (!lotNow ? ' on' : '')} aria-pressed={!lotNow} onClick={() => setLot('')}>{tr('Todos')}</button>
+              {lots.map((l) => <button key={l} type="button" className={'chip' + (lotNow === l ? ' on' : '')} aria-pressed={lotNow === l} onClick={() => setLot(l)}>{l}</button>)}
+              {lotNow && !lots.includes(lotNow) && <button type="button" className="chip on" aria-pressed>{lotNow}</button>}
+              {known.some((l) => !lots.includes(l)) && (
+                <select className="lotsel" value="" aria-label={tr('Otro lote')} onChange={(e) => { const l = e.target.value; if (!l) return; setLot(l); if (!lots.includes(l)) setScope('all') }}>
+                  <option value="">{tr('Otro lote…')}</option>
+                  {known.filter((l) => !lots.includes(l)).map((l) => <option key={l} value={l}>{l}</option>)}
+                </select>
+              )}
+            </div>
+            {lotNow && (
+              <div className="seg lotscope" role="group" aria-label={tr('De cuándo')}>
+                <button type="button" className={scope === 'date' ? 'on' : ''} aria-pressed={scope === 'date'} onClick={() => setScope('date')}>{tr('Solo esta fecha')}</button>
+                <button type="button" className={scope === 'all' ? 'on' : ''} aria-pressed={scope === 'all'} onClick={() => setScope('all')}>{tr('Todos los días')}</button>
               </div>
-            ) : <small className="hint">{tr('Nada registrado en esta fecha.')}</small>}
+            )}
           </div>
           <label className="rf avsearch"><span className="lab">{tr('Buscar')}</span><input value={q} onChange={(e) => setQ(e.target.value)} placeholder={tr('Código o producto')} autoComplete="off" /></label>
-          {!viewOnly && (
+          {!viewOnly && !isAll && (
             <form className="rf avadd" onSubmit={(e) => { e.preventDefault(); if (newCode.trim()) { typing.current.codes.add(normCode(newCode)); setSchedule(date, newCode, 0); setNewCode('') } }}>
               <span className="lab">{tr('Programar')}</span>
               <div className="addcode"><input placeholder={tr('Código a programar')} value={newCode} onChange={(e) => setNewCode(e.target.value)} autoComplete="off" /><button className="btn" type="submit" disabled={!newCode.trim()}>{tr('+ Programar')}</button></div>
@@ -551,8 +565,10 @@ function Avance({ s }: { s: State }) {
       <DayNote day={day} />
       {lotNow && across && (
         <p className="avlotnote">
-          <b>{trx('Viendo el lote {0}', lotNow)}</b> {tr('· lo que se hizo de ese lote en esta fecha. El programa es del día completo, por eso aquí no sale.')}
-          {' '}{trx('Total del lote en todos sus días ({0}): {1}.', across.days.map(shortDay).join(', '), <b>{acrossText(across.total)}</b>)}
+          {isAll
+            ? <><b>{trx('Viendo el lote {0} en todos sus días', lotNow)}</b>{across.days.length > 0 && ' (' + across.days.map(shortDay).join(', ') + ')'} {tr('· el programa es de cada día, por eso aquí no sale.')}</>
+            : <><b>{trx('Viendo el lote {0}', lotNow)}</b> {tr('· lo que se hizo de ese lote en esta fecha. El programa es del día completo, por eso aquí no sale.')} {trx('Total del lote en todos sus días ({0}): {1}.', across.days.map(shortDay).join(', ') || '—', <b>{acrossText(across.total)}</b>)}</>}
+          {!isAll && !lots.includes(lotNow) && <> {tr('Ese lote no se trabajó en esta fecha.')} <button type="button" className="lnk sm" onClick={() => setScope('all')}>{tr('Ver todos los días')}</button></>}
           {' '}<button type="button" className="lnk sm" onClick={() => setLot('')}>{tr('Ver todos los lotes')}</button>
         </p>
       )}
@@ -565,7 +581,7 @@ function Avance({ s }: { s: State }) {
             {tile(tr('Cajas · Packing'), sum((r) => r.casesDone), sumOr((r) => r.casesExp), tr('esperadas'))}
             {tile(tr('Cajas · MFO'), sum((r) => r.mfoCases), sumOr((r) => r.mfoExp), tr('esperadas'))}
             {tile('Pallets', sum((r) => r.palletsDone), sumOr((r) => r.palletsExp), tr('esperados'))}
-            {tile('Waste', sum((r) => r.wasteLb), null, 'lb')}
+            {!isAll && tile('Waste', sum((r) => r.wasteLb), null, 'lb')}
           </div>
           <p className="hint">{trx('{0} en grande = lo que cada cuarto registró. {1} = lo que ya puede salir de las mezclas hechas (mezclas × tabla de productos). {2} = programado − hecho: lo que queda del día. Toca ▸ para ver un código por lote y por turno.', <b>{tr('Hecho')}</b>, <b>{tr('Esperado')}</b>, <b>{tr('Programa')}</b>)}</p>
           <div className="twrap">
@@ -599,14 +615,23 @@ function Avance({ s }: { s: State }) {
                     {isOpen && (
                       <tr className="avdetail"><td colSpan={8}>
                         <div className="avd">
-                          <div className="avd-block">
-                            <h4>{tr('Por lote')}</h4>
-                            {r.lots.length ? <table className="avmini">{miniHead}<tbody>{r.lots.map((l) => miniRow(l.lot, isLot ? <b>{l.lot}</b> : <button type="button" className="drill" title={tr('Ver solo este lote')} onClick={() => setLot(l.lot)}>{l.lot}</button>, l))}</tbody></table> : <p>{tr('Nada registrado de este código en esta fecha.')}</p>}
-                          </div>
-                          <div className="avd-block">
-                            <h4>{tr('Por turno')}</h4>
-                            <table className="avmini">{miniHead}<tbody>{miniRow('1', tr('Turno 1'), r.byShift[0])}{miniRow('2', tr('Turno 2'), r.byShift[1])}</tbody></table>
-                          </div>
+                          {isAll ? (
+                            <div className="avd-block">
+                              <h4>{tr('Por día')}</h4>
+                              <table className="avmini">{miniHead}<tbody>{(r.days ?? []).map((d) => miniRow(d.date, <button type="button" className="drill" title={tr('Ver ese día')} onClick={() => { setDate(d.date); setScope('date') }}>{shortDay(d.date)}</button>, d))}</tbody></table>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="avd-block">
+                                <h4>{tr('Por lote')}</h4>
+                                {r.lots.length ? <table className="avmini">{miniHead}<tbody>{r.lots.map((l) => miniRow(l.lot, isLot ? <b>{l.lot}</b> : <button type="button" className="drill" title={tr('Ver solo este lote')} onClick={() => setLot(l.lot)}>{l.lot}</button>, l))}</tbody></table> : <p>{tr('Nada registrado de este código en esta fecha.')}</p>}
+                              </div>
+                              <div className="avd-block">
+                                <h4>{tr('Por turno')}</h4>
+                                <table className="avmini">{miniHead}<tbody>{miniRow('1', tr('Turno 1'), r.byShift[0])}{miniRow('2', tr('Turno 2'), r.byShift[1])}</tbody></table>
+                              </div>
+                            </>
+                          )}
                           <div className="avd-block">
                             <h4>{tr('Lo empaca')}</h4>
                             <p>{r.packSaid ? trx('{0}, según la tabla de Productos. Toca el otro botón junto al código para cambiarlo.', <b>{r.packRoom}</b>) : trx('{0}, supuesto por lo que ha registrado cada cuarto: por eso lleva un "?". Toca RTE o MFO junto al código para fijarlo.', <b>{r.packRoom}</b>)}</p>

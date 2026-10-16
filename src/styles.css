@@ -841,6 +841,11 @@ table.avmini tbody tr:last-child td{border-bottom:0}
 .avd p{margin:0;font-size:13px;color:var(--muted);max-width:360px;line-height:1.4}
 .avd p b{color:var(--ink)}
 .av2 .avlotnote b{color:var(--accent)}
+/* one lot: the day's as chips, any other from a list; and whether to look at this date only or at all its days */
+.lotpick{align-items:center}
+.lotsel{min-height:44px;border-radius:99px;border:1.5px solid var(--line);background:var(--surface);padding:0 12px;font-weight:600;font-size:15px;color:var(--ink);max-width:170px}
+.seg.lotscope{margin-top:6px;max-width:340px}
+.seg.lotscope button{min-height:40px;font-size:14px}
 /* on a phone each code is a card: its cells, each with its name, two by two */
 @media (max-width:720px){
   .avtable{min-width:0}

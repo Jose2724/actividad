@@ -962,4 +962,15 @@ export const EN: Record<string, string> = {
   '{0}, supuesto por lo que ha registrado cada cuarto: por eso lleva un "?". Toca RTE o MFO junto al código para fijarlo.': '{0}, supposed from what each room has recorded: that is what the "?" means. Tap RTE or MFO beside the code to fix it.',
   'de lo que coincide con "{0}"': 'of what matches "{0}"',
   'Ningún código coincide con "{0}".': 'No code matches "{0}".',
+  // Avance: one lot on this date or over all its days (2026-10-16)
+  'Otro lote…': 'Another lot…',
+  'De cuándo': 'From when',
+  'Solo esta fecha': 'This date only',
+  'Todos los días': 'All days',
+  'Viendo el lote {0} en todos sus días': 'Looking at lot {0} over all its days',
+  '· el programa es de cada día, por eso aquí no sale.': '· the program belongs to each day, so it is not here.',
+  'Ese lote no se trabajó en esta fecha.': 'That lot was not worked on this date.',
+  'Ver todos los días': 'See all days',
+  'Por día': 'By day',
+  'Ver ese día': 'See that day',
 }
