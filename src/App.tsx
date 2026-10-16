@@ -922,6 +922,8 @@ function WipeDayDialog({ s, date, onClose, onDone }: { s: State; date: string; o
 const addDays = (date: string, n: number) => { const d = new Date(date + 'T12:00:00'); d.setDate(d.getDate() + n); return dayOf(d.getTime()) }
 /** "12 min", "2.5 h": how long ago */
 const agoText = (ms: number) => (ms < 3_600_000 ? tr('{0} min', Math.round(ms / 60_000)) : tr('{0} h', Math.round(ms / 360_000) / 10))
+/** "6168-6216", "6168/6216": two lots typed as one; a pallet with two lots is recorded lot by lot, each with its cases */
+const looksLikeTwoLots = (lot: string) => /^\s*\d{3,5}\s*[-/,+]\s*\d{3,5}\s*$/.test(lot)
 /** the pallets of the report, by their state */
 type PalletFilter = '' | 'notag' | 'nopo' | 'po' | 'full' | 'short' | 'open'
 /** without accents or capitals: what is typed in a search matches what was written */
@@ -1570,6 +1572,7 @@ function LotEndDialog({ run, onClose }: { run: Run; onClose: () => void }) {
           <label>{tr('Cajas de ese lote en este pallet')}{' '}<input autoFocus value={qty} inputMode="numeric" placeholder="0" onChange={(e) => setQty(e.target.value.replace(/\D/g, ''))} /></label>
           <label>{trx('Tag de ese lote {0}', <small>{tr('(si ya lo tienen; si no, después)')}</small>)} <input value={tag} inputMode="numeric" placeholder={tr('ej. 1749')} onChange={(e) => setTag(e.target.value)} autoComplete="off" /></label>
           <label>{tr('Lote que sigue en el mismo pallet')}{' '}<input value={next} inputMode="numeric" onChange={(e) => setNext(e.target.value)} autoComplete="off" /></label>
+          {looksLikeTwoLots(next) && <span className="err">{tr('Parece que son dos lotes escritos juntos: pon solo el que sigue ahora.')}</span>}
           <p className="hint">{tr('El pallet sigue abierto con el lote que sigue. Cuando esté completo, toquen "Pallet listo".')}</p>
           <div className="dbtns">
             <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
@@ -1669,6 +1672,7 @@ function LotNowDialog({ run, onClose }: { run: Run; onClose: () => void }) {
         <h3>{tr('Cambió el lote (iba el {0})', lot)}</h3>
         <form className="qform" onSubmit={(e) => { e.preventDefault(); if (ok && setLotNow(run.id, next)) onClose() }}>
           <label>{tr('Lote que va ahora')}{' '}<input autoFocus value={next} inputMode="numeric" onChange={(e) => setNext(e.target.value)} autoComplete="off" /></label>
+          {looksLikeTwoLots(next) && <span className="err">{tr('Parece que son dos lotes escritos juntos: pon solo el que va ahora.')}</span>}
           <div className="dbtns">
             <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
             <button type="submit" className="btn primary" disabled={!ok}>{tr('✓ Guardar')}</button>
@@ -1918,6 +1922,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
           )}
           <label>{tr('Código')}{' '}<input value={code} onChange={(e) => setCode(e.target.value)} placeholder={tr('ej. 0100')} autoComplete="off" /></label>
           <label>{tr('Lote')}{' '}<input value={lot} onChange={(e) => setLotText(e.target.value)} inputMode="numeric" placeholder={tr('ej. 6280')} autoComplete="off" /></label>
+          {looksLikeTwoLots(lot) && <p className="hint twolots">{isPack ? tr('Parece que son dos lotes escritos juntos. Empieza con el primero; cuando se acabe, toca "➕ Otro lote en este pallet" y el pallet lleva los dos, cada uno con sus cajas y su tag.') : tr('Parece que son dos lotes escritos juntos. Empieza con el primero; cuando cambie, toca "Cambió el lote".')}</p>}
           {showDate
             ? <label className="wide">{tr('Fecha')}{' '}<input type="date" value={date} onChange={(e) => { if (!lot.trim() || lot.trim() === lotFor(date)) setLotText(null); setDateText(e.target.value || null) }} /></label>
             : <div className="dateline">{trx('Fecha {0}', <b>{shortDay(date)}</b>)} <button type="button" className="lnk sm" onClick={() => setEditDate(true)}>{tr('Cambiar')}</button></div>}
@@ -2721,7 +2726,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
                 {rep.byDept.map((d) => {
                   const cfg = CFG[d.dept], q = cfg.qty !== 'none', b = rep.byShift.find((x) => x.dept === d.dept)
                   const boxes = (code: string, qty: number, bin = '') => (!bin && cfg.qtyUnit === 'pouches' && casesText(inCases(s, code, qty))) || '—'
-                  const lotBtn = (l: string) => (!l ? '—' : rep.lot ? l : <button type="button" className="drill" onClick={() => setFLot(l)}>{l}</button>)
+                  const lotBtn = (l: string) => (!l ? '—' : <>{rep.lot ? l : <button type="button" className="drill" onClick={() => setFLot(l)}>{l}</button>}{looksLikeTwoLots(l) && <small className="twolots-mark" title={tr('Parece dos lotes escritos juntos: se separan desde Corregir, con ✎ en el pallet, poniendo las cajas de cada lote.')}>{tr('¿dos lotes juntos?')}</small>}</>)
                   // a code filled in bins speaks of bins and of what they hold (platos, copas…), not of pallets and cases
                   const cc = (bin: string) => cfgFor(d.dept, bin)
                   const qtyText = (v: number, bin = '') => (q ? fmtN(v) + ' ' + cc(bin).qtyUnit : '—')
@@ -2787,12 +2792,12 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
                       {cut('pallets', palletsShown).map((p) => {
                         const span = p.parts.length
                         return (
-                          <tbody key={p.r.id + ':' + p.n} className={p.open ? 'live' : ''}>
+                          <tbody key={p.r.id + ':' + p.n} className={(p.open ? 'live' : '') + (span > 1 ? ' multi' : '')}>
                             {p.parts.map((x, i) => (
                               <tr key={i}>
-                                {i === 0 && <td rowSpan={span}><b>{p.n}</b>{p.open && <small className="building">{tr('en armado')}</small>}</td>}
+                                {i === 0 && <td rowSpan={span}><b>{p.n}</b>{p.open && <small className="building">{tr('en armado')}</small>}{span > 1 && <small className="manylots">{trx('{0} lotes', span)}</small>}</td>}
                                 {i === 0 && <td rowSpan={span}><b className="code">{p.r.code}</b></td>}
-                                <td className={rep.lot && x.lot === rep.lot ? 'hit' : ''}>{x.lot}</td>
+                                <td className={(rep.lot && x.lot === rep.lot ? 'hit' : '') + (span > 1 ? ' part' : '')}>{span > 1 && <small className="lotno">{tr('lote {0} de {1}', i + 1, span)}</small>}{x.lot}{looksLikeTwoLots(x.lot) && <small className="twolots-mark" title={tr('Parece dos lotes escritos juntos: se separan desde Corregir, con ✎ en el pallet, poniendo las cajas de cada lote.')}>{tr('¿dos lotes juntos?')}</small>}</td>
                                 <td className="num">{x.qty != null ? fmtN(x.qty) : '—'}</td>
                                 <td>{x.tag || <span className="notag">{tr('sin tag')}</span>}</td>
                                 {i === 0 && <td rowSpan={span} className="num"><b>{fmtN(p.total)}</b></td>}
@@ -2809,6 +2814,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
                     </table>
                   </div>
                   {palletsShown.length === 0 && <p className="hint">{palK ? tr('Ningún pallet de este día tiene eso escrito.') : tr('Ningún pallet de este día está así.')}</p>}
+                  {palletsShown.some((p) => p.parts.some((x) => looksLikeTwoLots(x.lot))) && <p className="hint">{tr('Un lote escrito como "6168-6216" parece dos lotes en uno, y así sus cajas no se pueden repartir entre los dos. Se separa desde Corregir, con ✎ en ese pallet, poniendo las cajas de cada lote. En la línea, un pallet con dos lotes se registra con "➕ Otro lote en este pallet".')}</p>}
                   {moreBar('pallets', palletsShown.length)}
                 </>
               )}

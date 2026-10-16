@@ -1007,4 +1007,13 @@ export const EN: Record<string, string> = {
   'Ritmo': 'Pace',
   'desde las {0} · ⏸ en pausa desde la {1}': 'since {0} · ⏸ paused since {1}',
   'nada empezado todavía': 'nothing started yet',
+  // a pallet with several lots in the report, and a lot typed as two (2026-10-16)
+  'Parece que son dos lotes escritos juntos: pon solo el que sigue ahora.': 'That looks like two lots typed together: put only the one that goes on now.',
+  'Parece que son dos lotes escritos juntos: pon solo el que va ahora.': 'That looks like two lots typed together: put only the one going on now.',
+  'Parece que son dos lotes escritos juntos. Empieza con el primero; cuando se acabe, toca "➕ Otro lote en este pallet" y el pallet lleva los dos, cada uno con sus cajas y su tag.': 'That looks like two lots typed together. Start with the first one; when it runs out, tap "➕ Another lot on this pallet" and the pallet carries both, each with its cases and its tag.',
+  'Parece que son dos lotes escritos juntos. Empieza con el primero; cuando cambie, toca "Cambió el lote".': 'That looks like two lots typed together. Start with the first one; when it changes, tap "The lot changed".',
+  'Parece dos lotes escritos juntos: se separan desde Corregir, con ✎ en el pallet, poniendo las cajas de cada lote.': 'Looks like two lots typed together: they are split from Correct, with ✎ on the pallet, giving each lot its cases.',
+  '¿dos lotes juntos?': 'two lots together?',
+  'lote {0} de {1}': 'lot {0} of {1}',
+  'Un lote escrito como "6168-6216" parece dos lotes en uno, y así sus cajas no se pueden repartir entre los dos. Se separa desde Corregir, con ✎ en ese pallet, poniendo las cajas de cada lote. En la línea, un pallet con dos lotes se registra con "➕ Otro lote en este pallet".': 'A lot written as "6168-6216" looks like two lots in one, so its cases cannot be split between the two. It is split from Correct, with ✎ on that pallet, giving each lot its cases. On the line, a pallet with two lots is recorded with "➕ Another lot on this pallet".',
 }

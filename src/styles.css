@@ -909,3 +909,12 @@ table.avmini tbody tr:last-child td{border-bottom:0}
 .tct.clock.paused small{color:var(--amber);font-weight:600}
 .tct.clock.over b{color:var(--muted)}
 @media (max-width:720px){.tc-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.tct b{font-size:22px}.tct{padding:8px 10px}}
+/* the report: a pallet with several lots is seen as one block, each lot numbered; a lot typed as two is marked */
+table.pallets tbody.multi td{background:#f7fbfa}
+table.pallets tbody.multi td:first-child{border-left:4px solid var(--accent)}
+table.pallets tbody.multi.live td{background:#f1fbf5}
+table.pallets .manylots{display:block;font-size:11px;font-weight:800;color:var(--accent);text-transform:uppercase;letter-spacing:.04em}
+table.pallets td.part{font-weight:700}
+table.pallets .lotno{display:block;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.twolots-mark{display:inline-block;margin-left:6px;background:#fff1d6;color:var(--amber);border-radius:6px;padding:1px 6px;font-size:11px;font-weight:700;vertical-align:middle}
+.start .twolots{grid-column:1/-1;color:var(--amber);font-weight:600;font-size:13.5px}
