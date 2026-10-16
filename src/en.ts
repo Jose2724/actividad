@@ -1016,4 +1016,9 @@ export const EN: Record<string, string> = {
   '¿dos lotes juntos?': 'two lots together?',
   'lote {0} de {1}': 'lot {0} of {1}',
   'Un lote escrito como "6168-6216" parece dos lotes en uno, y así sus cajas no se pueden repartir entre los dos. Se separa desde Corregir, con ✎ en ese pallet, poniendo las cajas de cada lote. En la línea, un pallet con dos lotes se registra con "➕ Otro lote en este pallet".': 'A lot written as "6168-6216" looks like two lots in one, so its cases cannot be split between the two. It is split from Correct, with ✎ on that pallet, giving each lot its cases. On the line, a pallet with two lots is recorded with "➕ Another lot on this pallet".',
+  // many lots: a list (2026-10-16)
+  'Todos · {0} lotes': 'All · {0} lots',
+  'De otros días': 'Of other days',
+  // the report's line filter (2026-10-16)
+  'Todas': 'All',
 }

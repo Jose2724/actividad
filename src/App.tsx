@@ -491,6 +491,7 @@ function Avance({ s }: { s: State }) {
   const [from, setFrom] = useState(addDays(today, -6))
   const [to, setTo] = useState(today)
   const span = range ? datesBetween(from, to) : [date]
+  const preset = (n: number) => from === addDays(today, -(n - 1)) && to === today
   const lots = range ? [...new Set(span.flatMap((d) => avanceLots(s, d)))].sort() : avanceLots(s, date), known = lotsKnown(s), lotNow = lot && (lots.includes(lot) || known.includes(lot)) ? lot : ''
   const isAll = !range && !!lotNow && scope === 'all'
   const all = range ? avanceRange(s, from, to, lotNow) : isAll ? lotRows(s, lotNow) : avanceRows(s, date, lotNow ? undefined : typing.current.codes, lotNow)
@@ -544,8 +545,8 @@ function Avance({ s }: { s: State }) {
               <div className="rangepick">
                 <label>{tr('Desde')} <input type="date" value={from} onChange={(e) => { if (e.target.value) setFrom(e.target.value) }} /></label>
                 <label>{tr('Hasta')} <input type="date" value={to} onChange={(e) => { if (e.target.value) setTo(e.target.value) }} /></label>
-                <button type="button" className="chip sm" onClick={() => { setFrom(addDays(today, -6)); setTo(today) }}>{tr('7 días')}</button>
-                <button type="button" className="chip sm" onClick={() => { setFrom(addDays(today, -29)); setTo(today) }}>{tr('30 días')}</button>
+                <button type="button" className={'chip sm' + (preset(7) ? ' on' : '')} aria-pressed={preset(7)} onClick={() => { setFrom(addDays(today, -6)); setTo(today) }}>{tr('7 días')}</button>
+                <button type="button" className={'chip sm' + (preset(30) ? ' on' : '')} aria-pressed={preset(30)} onClick={() => { setFrom(addDays(today, -29)); setTo(today) }}>{tr('30 días')}</button>
               </div>
             ) : (
               <div className="daynav">
@@ -558,17 +559,27 @@ function Avance({ s }: { s: State }) {
           </div>
           <div className="rf grow">
             <span className="lab">{tr('Lote')}</span>
-            <div className="chips lotpick">
-              <button type="button" className={'chip' + (!lotNow ? ' on' : '')} aria-pressed={!lotNow} onClick={() => setLot('')}>{tr('Todos')}</button>
-              {lots.map((l) => <button key={l} type="button" className={'chip' + (lotNow === l ? ' on' : '')} aria-pressed={lotNow === l} onClick={() => setLot(l)}>{l}</button>)}
-              {lotNow && !lots.includes(lotNow) && <button type="button" className="chip on" aria-pressed>{lotNow}</button>}
-              {known.some((l) => !lots.includes(l)) && (
-                <select className="lotsel" value="" aria-label={tr('Otro lote')} onChange={(e) => { const l = e.target.value; if (!l) return; setLot(l); if (!lots.includes(l)) setScope('all') }}>
-                  <option value="">{tr('Otro lote…')}</option>
-                  {known.filter((l) => !lots.includes(l)).map((l) => <option key={l} value={l}>{l}</option>)}
+            {lots.length > 6 ? (
+              <div className="chips lotpick">
+                <select className={'lotsel wide' + (lotNow ? ' on' : '')} value={lotNow} aria-label={tr('Lote')} onChange={(e) => { const l = e.target.value; setLot(l); if (l && !lots.includes(l)) setScope('all') }}>
+                  <option value="">{tr('Todos · {0} lotes', lots.length)}</option>
+                  {lots.map((l) => <option key={l} value={l}>{l}</option>)}
+                  {known.some((l) => !lots.includes(l)) && <optgroup label={tr('De otros días')}>{known.filter((l) => !lots.includes(l)).map((l) => <option key={l} value={l}>{l}</option>)}</optgroup>}
                 </select>
-              )}
-            </div>
+              </div>
+            ) : (
+              <div className="chips lotpick">
+                <button type="button" className={'chip' + (!lotNow ? ' on' : '')} aria-pressed={!lotNow} onClick={() => setLot('')}>{tr('Todos')}</button>
+                {lots.map((l) => <button key={l} type="button" className={'chip' + (lotNow === l ? ' on' : '')} aria-pressed={lotNow === l} onClick={() => setLot(l)}>{l}</button>)}
+                {lotNow && !lots.includes(lotNow) && <button type="button" className="chip on" aria-pressed>{lotNow}</button>}
+                {known.some((l) => !lots.includes(l)) && (
+                  <select className="lotsel" value="" aria-label={tr('Otro lote')} onChange={(e) => { const l = e.target.value; if (!l) return; setLot(l); if (!lots.includes(l)) setScope('all') }}>
+                    <option value="">{tr('Otro lote…')}</option>
+                    {known.filter((l) => !lots.includes(l)).map((l) => <option key={l} value={l}>{l}</option>)}
+                  </select>
+                )}
+              </div>
+            )}
             {lotNow && !range && (
               <div className="seg lotscope" role="group" aria-label={tr('De cuándo')}>
                 <button type="button" className={scope === 'date' ? 'on' : ''} aria-pressed={scope === 'date'} onClick={() => setScope('date')}>{tr('Solo esta fecha')}</button>
@@ -2380,6 +2391,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
   const [sending, setSending] = useState<Record<Kind, File> | null>(null)
   const [preparing, setPreparing] = useState(false)
   const [fCode, setFCode] = useState('')
+  const [fLine, setFLine] = useState('') // one line of the day alone (its id)
   const [fLot, setFLot] = useState('')
   // the room a manager looks at (the people of one room see only theirs)
   const [fDept, setDeptPick] = useState<Dept | ''>(only ? '' : deptChosen)
@@ -2450,7 +2462,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
   }
   // what the report holds, with the filter by code, by lot and by shift when one is chosen (the same for the screen and every file)
   const dept: Dept | undefined = only ?? (fDept || undefined)
-  const filter: ReportFilter = { only: dept, code: fCode, lot: fLot, shift: fShift }
+  const filter: ReportFilter = { only: dept, code: fCode, lot: fLot, shift: fShift, line: fLine }
   const rep = reportOf(s, date, now, filter)
   const { runs, stops, rows, unitRows, working, down, byCode, setup } = rep
   const withOrders = unitRows.some((x) => x.order) // a column says the order of each pallet when any has one
@@ -2468,7 +2480,8 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
   const cw = (c: { dept: Dept; bin: string }) => cfgFor(c.dept, c.bin)
   const reasonsText = (x: (typeof rows)[number]) => Object.entries(x.st.reasons).map(([k, v]) => tr(k) + ' ' + fmtDur(v)).join(', ')
   const lineName = (x: { lineId: string | null; dept: Dept }) => (x.lineId === null ? tr('Todo {0}', x.dept) : lineLabel(s.lines.find((l) => l.id === x.lineId)?.name ?? s.runs.find((r) => r.lineId === x.lineId)?.line ?? tr('línea')))
-  const fileName = 'actividad-' + (dept ? dept.toLowerCase() + '-' : '') + date + filterFile(rep.code, rep.lot, rep.shift)
+  const lineChosen = rep.line ? rep.lineChoices.find((l) => l.id === rep.line)?.name ?? '' : ''
+  const fileName = 'actividad-' + (dept ? dept.toLowerCase() + '-' : '') + date + filterFile(rep.code, rep.lot, rep.shift, lineChosen)
   // the history of that day (corrections, products, program, lines): the manager's and the office's
   const changes = mgr && !rep.filtered ? s.changes.filter((c) => !c.deleted && plainDay(s, c.at) === date && (!dept || c.dept === dept)).sort((a, b) => a.at - b.at) : []
   /** the report's three files, made at once; null while what makes them has not come down yet */
@@ -2544,8 +2557,8 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
   // the rooms a manager can choose among: the ones with something recorded that day
   const depts = only ? [] : DEPTS.filter((d) => d === fDept || s.runs.some((r) => r.date === date && r.dept === d))
   // what is chosen, said in words (the filters add up: any of them with any other)
-  const active = [!only && dept ? dept : '', rep.shift ? tr('Turno {0}', rep.shift) + (shiftPick === null ? (who.shift ? ' (tu turno)' : ' ' + tr('(en curso)')) : '') : '', rep.code ? tr('Código {0}', rep.code) : '', rep.lot ? tr('Lote {0}', rep.lot) : ''].filter(Boolean)
-  const clear = () => { setFCode(''); setFLot(''); setFShift(0); setFDept('') }
+  const active = [!only && dept ? dept : '', rep.shift ? tr('Turno {0}', rep.shift) + (shiftPick === null ? (who.shift ? ' (tu turno)' : ' ' + tr('(en curso)')) : '') : '', lineChosen, rep.code ? tr('Código {0}', rep.code) : '', rep.lot ? tr('Lote {0}', rep.lot) : ''].filter(Boolean)
+  const clear = () => { setFCode(''); setFLot(''); setFShift(0); setFDept(''); setFLine('') }
   const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
   /** a shift's hours in two pieces that never break inside: "6:00 AM" and "a 3:00 PM" */
   const hrs = (k: 1 | 2) => { const [from, to] = shiftSpan(rep.plan, k); return <><span>{from}</span> <span>{tr('a {0}', to)}</span></> }
@@ -2571,7 +2584,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
           <button type="button" className="lnk" onClick={csv} disabled={!rows.length}>CSV</button>
         </div>
       </div>
-      {sending && <SendDialog files={sending} subject={tr('Actividad · Reporte {0}', date) + (dept ? ' · ' + dept : '') + filterTitle(rep.code, rep.lot, rep.shift)} onClose={() => setSending(null)} />}
+      {sending && <SendDialog files={sending} subject={tr('Actividad · Reporte {0}', date) + (dept ? ' · ' + dept : '') + filterTitle(rep.code, rep.lot, rep.shift, lineChosen)} onClose={() => setSending(null)} />}
       {/* what to look at: the day, the shift, the room, the code and the lot. They add up, any of them with any other */}
       <div className="rfilters">
         <div className="rf-row">
@@ -2603,7 +2616,10 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
               </div>
             </div>
           )}
-          <div className="rf-two">
+          <div className="rf-two rf-three">
+            <label className="rf"><span className="lab">{tr('Línea')}</span>
+              <select value={rep.line} disabled={!rep.lineChoices.length} onChange={(e) => setFLine(e.target.value)}><option value="">{tr('Todas')}</option>{rep.lineChoices.map((l) => <option key={l.id} value={l.id}>{dept ? l.name : l.dept + ' · ' + l.name}</option>)}</select>
+            </label>
             <label className="rf"><span className="lab">{tr('Código')}</span>
               <select value={rep.code} disabled={!rep.codes.length} onChange={(e) => setFCode(e.target.value)}><option value="">{tr('Todos')}</option>{rep.codes.map((c) => <option key={c} value={c}>{c}</option>)}</select>
             </label>

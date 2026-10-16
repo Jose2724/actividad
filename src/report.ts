@@ -6,7 +6,7 @@ import { tr } from './i18n'
  * what is in it, so a filter by code, by lot or by shift gives the same answer everywhere.
  * shift: 0 = the whole day (with what each shift did under it); 1 or 2 = only what that shift did.
  */
-export type ReportFilter = { only?: Dept; code?: string; lot?: string; shift?: 0 | 1 | 2 }
+export type ReportFilter = { only?: Dept; code?: string; lot?: string; shift?: 0 | 1 | 2; line?: string }
 
 /**
  * the lots a unit carries, each with its tag: the ones written on it (a pallet with cases of two lots, each lot with
@@ -34,11 +34,14 @@ export function reportOf(s: State, date: string, now: number, f: ReportFilter = 
   // what this day offers to filter by
   const codes = [...new Map(day.map((r) => [normCode(r.code), r.code])).values()].sort()
   const lots = [...new Set(day.flatMap((r) => [...runLots(s, r)]))].filter(Boolean).sort()
+  // the lines that worked that day, to look at one alone ("cuánto hizo la línea 2 de RTE")
+  const lineChoices = [...new Map(day.map((r) => [r.lineId, { id: r.lineId, dept: r.dept, name: lineNameOf(s, r.lineId, r.line) }])).values()].sort((a, b) => DEPTS.indexOf(a.dept) - DEPTS.indexOf(b.dept) || a.name.localeCompare(b.name, undefined, { numeric: true }))
+  const line = f.line && lineChoices.some((l) => l.id === f.line) ? f.line : ''
   // a filter the day does not have (the date was changed) is no filter
   const code = f.code ? codes.find((c) => normCode(c) === normCode(f.code ?? '')) ?? '' : ''
   const lot = f.lot && lots.includes(f.lot) ? f.lot : ''
-  const filtered = !!code || !!lot || !!shift
-  const kept = day.filter((r) => (!code || normCode(r.code) === normCode(code)) && (!lot || runLots(s, r).has(lot)))
+  const filtered = !!code || !!lot || !!shift || !!line
+  const kept = day.filter((r) => (!code || normCode(r.code) === normCode(code)) && (!lot || runLots(s, r).has(lot)) && (!line || r.lineId === line))
   /** one line of the report for a run: all of it (k = 0), or only what one shift did of it */
   const rowOf = (r: Run, k: 0 | 1 | 2) => {
     const whole = runStats(s, r, now)
@@ -80,7 +83,8 @@ export function reportOf(s: State, date: string, now: number, f: ReportFilter = 
   // a stop belongs to the day of work it started in: one after midnight is still the second shift's, of the day before
   const dayStops = s.stops.filter((x) => plainDay(s, x.startedAt) === date && (!f.only || x.dept === f.only) && !notOne(x)).sort((a, b) => a.startedAt - b.startedAt)
   // with a code or a lot chosen, the stops that happened while those runs were on their lines
-  const ofRuns = code || lot ? dayStops.filter((x) => kept.some((r) => x.dept === r.dept && (x.lineId === r.lineId || x.lineId === null) && x.startedAt < (r.endedAt ?? now) && (x.endedAt ?? now) > r.startedAt)) : dayStops
+  // (with a line chosen, that line's stops and the room's, whether or not a code was on the line)
+  const ofRuns = code || lot || line ? dayStops.filter((x) => (!line || x.lineId === line || (x.lineId === null && kept.some((r) => r.dept === x.dept))) && (!(code || lot) || kept.some((r) => x.dept === r.dept && (x.lineId === r.lineId || x.lineId === null) && x.startedAt < (r.endedAt ?? now) && (x.endedAt ?? now) > r.startedAt))) : dayStops
   /** how long a stop counts (only the time somebody was there: see awayOn), in one shift or in the whole day */
   const inShift = (x: (typeof s.stops)[number], k: 0 | 1 | 2) => stopSpans(s, x, now).reduce((t, p) => t + (!k ? p.to - p.from : shiftPieces(plan, p.from, p.to).filter((q) => q.shift === k).reduce((a, q) => a + (q.to - q.from), 0)), 0)
   // a stop is of a shift when it counts time in it (one that counts none at all, of the shift it started in)
@@ -147,8 +151,8 @@ export function reportOf(s: State, date: string, now: number, f: ReportFilter = 
   }).sort((a, b) => a.at - b.at)
   // a code is a product; a run is a code on a line from its start to its end (the same code on two lines is two runs)
   const distinct = new Set(rows.map((x) => normCode(x.r.code))).size, lines = new Set(rows.map((x) => x.r.lineId)).size
-  return { runs, rows, unitRows, pallets, stops, byCode, byShift, byDept, reasons, distinct, lines, working: rows.reduce((t, x) => t + x.st.working, 0), down: rows.reduce((t, x) => t + x.st.down, 0), setup: setupOf(shift), codes, lots, code, lot, shift, plan, filtered }
+  return { runs, rows, unitRows, pallets, stops, byCode, byShift, byDept, reasons, distinct, lines, working: rows.reduce((t, x) => t + x.st.working, 0), down: rows.reduce((t, x) => t + x.st.down, 0), setup: setupOf(shift), codes, lots, code, lot, shift, plan, filtered, line, lineChoices }
 }
 /** the words a filtered report carries in its title and in the name of its files */
-export const filterTitle = (code: string, lot: string, shift: 0 | 1 | 2 = 0) => (shift ? ' ' + tr('· Turno {0}', shift) : '') + (code ? ' ' + tr('· código {0}', code) : '') + (lot ? ' ' + tr('· lote {0}', lot) : '')
-export const filterFile = (code: string, lot: string, shift: 0 | 1 | 2 = 0) => { const clean = (t: string) => t.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, ''); return (shift ? '-turno' + shift : '') + (code ? '-cod-' + clean(code) : '') + (lot ? '-lote-' + clean(lot) : '') }
+export const filterTitle = (code: string, lot: string, shift: 0 | 1 | 2 = 0, line = '') => (shift ? ' ' + tr('· Turno {0}', shift) : '') + (line ? ' · ' + line : '') + (code ? ' ' + tr('· código {0}', code) : '') + (lot ? ' ' + tr('· lote {0}', lot) : '')
+export const filterFile = (code: string, lot: string, shift: 0 | 1 | 2 = 0, line = '') => { const clean = (t: string) => t.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, ''); return (shift ? '-turno' + shift : '') + (line ? '-' + clean(line) : '') + (code ? '-cod-' + clean(code) : '') + (lot ? '-lote-' + clean(lot) : '') }

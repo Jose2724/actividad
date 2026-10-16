@@ -845,6 +845,8 @@ table.avmini tbody tr:last-child td{border-bottom:0}
 /* one lot: the day's as chips, any other from a list; and whether to look at this date only or at all its days */
 .lotpick{align-items:center}
 .lotsel{min-height:44px;border-radius:99px;border:1.5px solid var(--line);background:var(--surface);padding:0 12px;font-weight:600;font-size:15px;color:var(--ink);max-width:170px}
+.lotsel.wide{max-width:280px;min-width:200px;border-radius:12px;min-height:48px}
+.lotsel.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .seg.lotscope{margin-top:6px;max-width:340px}
 /* several days: from one date to another */
 .rangepick{display:flex;flex-wrap:wrap;gap:8px;align-items:end}
@@ -918,3 +920,6 @@ table.pallets td.part{font-weight:700}
 table.pallets .lotno{display:block;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
 .twolots-mark{display:inline-block;margin-left:6px;background:#fff1d6;color:var(--amber);border-radius:6px;padding:1px 6px;font-size:11px;font-weight:700;vertical-align:middle}
 .start .twolots{grid-column:1/-1;color:var(--amber);font-weight:600;font-size:13.5px}
+/* the report's boxes: the line, the code and the lot side by side */
+.rf-three{grid-template-columns:1fr 1fr 1fr;flex:1 1 420px;max-width:640px}
+@media (max-width:720px){.rf-three{grid-template-columns:1fr 1fr}.rf-three .rf:first-child{grid-column:1/-1}}

@@ -1975,6 +1975,10 @@ section('Packing: un pallet con varios lotes, cada lote con su tag; y las línea
     eq('la tarjeta de Packing no mezcla los bins con las cajas: van aparte, en platos', [t.qty, t.units, t.bins, t.byCode.map((c) => c.code)], [80, 3, [{ word: 'platos', units: 2, qty: 98 }], ['A100']])
     const r2 = m.reportOf(st(), DAY, clock, { only: 'Packing' })
     eq('en el reporte tampoco: Packing hizo 3 pallets y 80 cajas, y aparte 2 bins con 98 platos', [r2.byDept.map((d) => [d.dept, d.units, d.qty, d.bins]), r2.byCode.map((c) => [c.code, c.bin, c.units, c.qty])], [[['Packing', 3, 80, [{ word: 'platos', units: 2, qty: 98 }]]], [['A100', '', 3, 80], ['B200', 'platos', 2, 98]]])
+    // asked 2026-10-16: what one line of a room made ("cuánto hizo la línea 2"), with the day's lines to choose from
+    const rl = m.reportOf(st(), DAY, clock, { only: 'Packing', line: l2.id })
+    eq('el reporte de una sola línea: lo que hizo esa línea, y las líneas del día para escoger', [rl.rows.map((x) => x.r.code), rl.line === l2.id, rl.filtered, rl.lineChoices.map((l) => l.name), rl.byDept.map((d) => [d.dept, d.units, d.bins.map((b) => b.qty)])], [['B200'], true, true, ['Línea 1', 'Línea 2'], [['Packing', 0, [98]]]])
+    eq('una línea que ese día no trabajó no filtra nada', m.reportOf(st(), DAY, clock, { only: 'Packing', line: 'nadie' }).line, '')
     eq('Avance no cuenta los bins como cajas ni como pallets: un código que solo se hizo en bins no tiene renglón ahí', m.avanceRows(st(), DAY).filter((r) => r.code === 'B200').map((r) => [r.casesDone, r.palletsDone]), [])
     m.setPlan(DAY, 'Packing', 'B200', 100)
     eq('ni el programa de Packing, que es en cajas', m.planRows(st(), DAY, 'Packing').filter((r) => r.code === 'B200').map((r) => [r.planned, r.done, r.left]), [[100, 0, 100]])
