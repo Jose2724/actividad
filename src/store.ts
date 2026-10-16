@@ -31,6 +31,8 @@ export const CFG: Record<Dept, DeptCfg> = {
 }
 /** the words of a run: its room's, or those of a bin when a Packing line fills bins */
 export function cfgOf(r: Pick<Run, 'dept' | 'extra'>): DeptCfg {
+  const m = measureOf(r)
+  if (m) return { ...CFG.Spiral, qty: 'ask', qtyQ: m === 'lb' ? tr('¿Cuántas libras lleva esta mezcla?') : tr('¿Cuántas cajas lleva esta mezcla?'), qtyUnit: measureUnit(m), perUnitLabel: '' }
   const word = binOf(r)
   if (!word) return CFG[r.dept]
   const shown = binWord(word)
@@ -71,7 +73,16 @@ export type Run = { id: string; dept: Dept; lineId: string; line: string; code: 
  * It travels in act_runs.extra (supabase/migrations/008_run_extra.sql).
  */
 export type PalletPart = { lot: string; qty: number; tag: string; at: number; by: string }
-export type RunExtra = { bin?: string; lotNow?: string; open?: { parts: PalletPart[]; po?: string } }
+export type RunExtra = { bin?: string; lotNow?: string; open?: { parts: PalletPart[]; po?: string }; measure?: Measure }
+/**
+ * How Spiral counts a code: mezcla by mezcla (the usual, nothing kept), or each mezcla weighed in pounds or counted
+ * in cases, as the office's SPIRAL sheets program some items ("3000 LB", "200 CS"). A run keeps the measure it was
+ * started with; the products table says each code's usual one (spiralUnit).
+ */
+export type Measure = 'lb' | 'cajas'
+export type SpiralUnit = 'mezclas' | Measure
+export const SPIRAL_UNITS: SpiralUnit[] = ['mezclas', 'lb', 'cajas']
+export const spiralUnitOfText = (t: unknown): SpiralUnit | undefined => { const u = String(t ?? '').trim().toUpperCase(); return !u ? undefined : /^(LB|LBS|LIBRA|LIBRAS|POUND|POUNDS)$/.test(u) ? 'lb' : /^(CAJA|CAJAS|CS|CJ|CASE|CASES)$/.test(u) ? 'cajas' : /^(MEZCLA|MEZCLAS|BATCH|BATCHES|MIX|MIXES)$/.test(u) ? 'mezclas' : undefined }
 /** the words a bin can hold, offered as chips; any other can be typed (kept as typed, these in Spanish like all data) */
 export const BIN_WORDS = ['platos', 'copas', 'pouches']
 const cleanPart = (x: unknown): PalletPart | null => {
@@ -84,6 +95,7 @@ export function cleanExtra(x: unknown): RunExtra | undefined {
   const e = x as Record<string, unknown>, out: RunExtra = {}
   if (typeof e.bin === 'string' && e.bin.trim()) out.bin = e.bin.trim().slice(0, 30)
   if (typeof e.lotNow === 'string' && e.lotNow.trim()) out.lotNow = e.lotNow.trim().slice(0, 30)
+  if (e.measure === 'lb' || e.measure === 'cajas') out.measure = e.measure
   const o = e.open as { parts?: unknown; po?: unknown } | undefined
   if (o && typeof o === 'object') {
     const parts = Array.isArray(o.parts) ? o.parts.map(cleanPart).filter((p): p is PalletPart => !!p) : []
@@ -95,6 +107,21 @@ export function cleanExtra(x: unknown): RunExtra | undefined {
 export const binOf = (r: Pick<Run, 'dept' | 'extra'>) => (r.dept === 'Packing' && r.extra?.bin) || ''
 /** the lot a run is packing now */
 export const lotNowOf = (r: Pick<Run, 'lot' | 'extra'>) => r.extra?.lotNow || r.lot
+/** the measure a Spiral run was started with ('' = mezcla by mezcla, or not Spiral) */
+export const measureOf = (r: Pick<Run, 'dept' | 'extra'>): Measure | '' => (r.dept === 'Spiral' && r.extra?.measure) || ''
+/**
+ * The word of a run counted apart from its room's main count: what a Packing line's bins hold, or the measure of a
+ * Spiral line's mezclas ('' = counted as the room counts: pallets of cases, mezclas one by one)
+ */
+export const apartOf = (r: Pick<Run, 'dept' | 'extra'>) => (r.dept === 'Packing' ? r.extra?.bin || '' : measureOf(r))
+/** a measure as a quantity's word ("lb", "cajas") and as a name ("libras", "cajas", "mezclas") */
+export const measureUnit = (m: string) => (m === 'lb' ? tr('lb') : m === 'cajas' ? tr('cajas') : tr('mezclas'))
+export const measureName = (m: string) => (m === 'lb' ? tr('libras') : m === 'cajas' ? tr('cajas') : tr('mezclas'))
+/** what is apart, as the screen says it: "platos" / "lb" beside a number, and "en bins de platos" / "en libras" as a label */
+export const apartWord = (dept: Dept, word: string) => (dept === 'Spiral' ? measureUnit(word) : binWord(word))
+export const apartLabel = (dept: Dept, word: string) => (dept === 'Spiral' ? tr('en {0}', measureName(word)) : tr('en bins de {0}', binWord(word)))
+/** the words of a room's runs counted apart under a word ('' = the room's own) */
+export const cfgFor = (dept: Dept, word: string): DeptCfg => (word ? cfgOf({ dept, extra: dept === 'Spiral' ? { measure: word as Measure } : { bin: word } }) : CFG[dept])
 /** a bin's word as the screen says it: the offered ones in the screen's language, a typed one as typed */
 const BIN_SHOWN: Record<string, () => string> = { platos: () => tr('platos'), copas: () => tr('copas'), pouches: () => tr('pouches') }
 export const binWord = (word: string) => BIN_SHOWN[word]?.() ?? word
@@ -107,7 +134,7 @@ export type Stop = { id: string; dept: Dept; lineId: string | null; reason: stri
 /** the room that packs a product after its mezclas: RTE fills pouches, MFO fills bins of cases (the office's sheets list each code under one of them) */
 export type PackRoom = 'RTE' | 'MFO'
 export const packRoomOfText = (t: unknown): PackRoom | undefined => { const u = String(t ?? '').toUpperCase(); return u.includes('MFO') ? 'MFO' : u.includes('RTE') ? 'RTE' : undefined }
-export type Product = { code: string; name: string; pouchesPerCase: number; casesPerMix: number; cratesPerCart: number; pouchesPerCrate: number; casesPerPallet: number; room?: PackRoom; updatedAt: number; deleted?: boolean }
+export type Product = { code: string; name: string; pouchesPerCase: number; casesPerMix: number; cratesPerCart: number; pouchesPerCrate: number; casesPerPallet: number; room?: PackRoom; spiralUnit?: SpiralUnit; updatedAt: number; deleted?: boolean }
 /** "12x10" in the office's RTE sheet: crates per cart × pouches per crate */
 export const cartPouches = (p: Product) => p.cratesPerCart * p.pouchesPerCrate
 /** mezclas scheduled per day and code ("SCHEDULE" in the office's AVANCE sheet) */
@@ -223,7 +250,7 @@ function load(): State {
     if (s && s.lines && s.runs && s.stops) {
       const units = (r: Raw['runs'][number]): Unit[] => (r.units ? r.units.map(unitOf) : (r.carts ?? []).map((at) => ({ at, qty: null, ref: '', by: '' })))
       const sample = (code: string) => SAMPLE_PRODUCTS.some((x) => x.code === code)
-      const products: Product[] = s.products ? s.products.map((p) => ({ code: p.code ?? '', name: p.name ?? '', pouchesPerCase: p.pouchesPerCase ?? 0, casesPerMix: p.casesPerMix ?? 0, cratesPerCart: (p.cratesPerCart ?? (p.pouchesPerCart ? 12 : 0)) === 12 && sample(p.code ?? '') ? CRATES_PER_CART : p.cratesPerCart ?? (p.pouchesPerCart ? 12 : 0), pouchesPerCrate: p.pouchesPerCrate ?? (p.pouchesPerCart ? Math.round(p.pouchesPerCart / 12) : 0), casesPerPallet: p.casesPerPallet ?? 0, ...((r) => (r ? { room: r } : {}))(packRoomOfText(p.room)), updatedAt: p.updatedAt ?? 0 })) : SAMPLE_PRODUCTS
+      const products: Product[] = s.products ? s.products.map((p) => ({ code: p.code ?? '', name: p.name ?? '', pouchesPerCase: p.pouchesPerCase ?? 0, casesPerMix: p.casesPerMix ?? 0, cratesPerCart: (p.cratesPerCart ?? (p.pouchesPerCart ? 12 : 0)) === 12 && sample(p.code ?? '') ? CRATES_PER_CART : p.cratesPerCart ?? (p.pouchesPerCart ? 12 : 0), pouchesPerCrate: p.pouchesPerCrate ?? (p.pouchesPerCart ? Math.round(p.pouchesPerCart / 12) : 0), casesPerPallet: p.casesPerPallet ?? 0, ...((r) => (r ? { room: r } : {}))(packRoomOfText(p.room)), ...((u) => (u ? { spiralUnit: u } : {}))(spiralUnitOfText(p.spiralUnit)), updatedAt: p.updatedAt ?? 0 })) : SAMPLE_PRODUCTS
       const runFrom = (r: Raw['runs'][number]): Run => ({ id: r.id ?? uid(), dept: (r.dept ?? 'Kitchen') as Dept, lineId: r.lineId ?? '', line: r.line ?? '', code: r.code ?? '', lot: r.lot ?? '', date: r.date ?? today(), startedAt: r.startedAt ?? 0, endedAt: r.endedAt ?? null, units: units(r), perUnit: r.perUnit ?? null, waste: r.waste ?? 0, by: r.by ?? '', updatedAt: r.updatedAt ?? 0, ...((e) => (e ? { extra: e } : {}))(cleanExtra(r.extra)) })
       return {
         lines: s.lines.map((l) => ({ id: l.id ?? uid(), dept: (l.dept ?? 'Kitchen') as Dept, name: l.name ?? 'Línea 1', updatedAt: l.updatedAt ?? 0 })),
@@ -329,9 +356,9 @@ export const managerPin = { get: () => mgrPin.get() || '1234', set: (v: string) 
 const iso = (ms: number | null | undefined) => (ms == null ? null : new Date(ms).toISOString())
 const fromIso = (s: unknown) => (typeof s === 'string' && s ? Date.parse(s) : null)
 const rowOfLine = (l: Line) => ({ id: l.id, dept: l.dept, name: l.name, deleted: !!l.deleted, updated_at: iso(l.updatedAt), updated_by: user.get() })
-const rowOfRun = (r: Run) => ({ id: r.id, dept: r.dept, line_id: r.lineId, line: r.line, code: r.code, lot: r.lot, date: r.date, started_at: iso(r.startedAt), ended_at: iso(r.endedAt), units: r.units, per_unit: r.perUnit, waste: r.waste, by_name: r.by, deleted: !!r.deleted, updated_at: iso(r.updatedAt), updated_by: user.get(), ...(r.dept === 'Packing' ? { extra: r.extra ?? null } : {}) })
+const rowOfRun = (r: Run) => ({ id: r.id, dept: r.dept, line_id: r.lineId, line: r.line, code: r.code, lot: r.lot, date: r.date, started_at: iso(r.startedAt), ended_at: iso(r.endedAt), units: r.units, per_unit: r.perUnit, waste: r.waste, by_name: r.by, deleted: !!r.deleted, updated_at: iso(r.updatedAt), updated_by: user.get(), ...(r.dept === 'Packing' || r.dept === 'Spiral' ? { extra: r.extra ?? null } : {}) })
 const rowOfStop = (x: Stop) => ({ id: x.id, dept: x.dept, line_id: x.lineId, reason: x.reason, note: x.note, started_at: iso(x.startedAt), ended_at: iso(x.endedAt), by_name: x.by, deleted: !!x.deleted, updated_at: iso(x.updatedAt), updated_by: user.get() })
-const rowOfProduct = (p: Product) => ({ code: normCode(p.code), name: p.name, pouches_per_case: p.pouchesPerCase, cases_per_mix: p.casesPerMix, crates_per_cart: p.cratesPerCart, pouches_per_crate: p.pouchesPerCrate, cases_per_pallet: p.casesPerPallet, room: p.room ?? null, deleted: !!p.deleted, updated_at: iso(p.updatedAt), updated_by: user.get() })
+const rowOfProduct = (p: Product) => ({ code: normCode(p.code), name: p.name, pouches_per_case: p.pouchesPerCase, cases_per_mix: p.casesPerMix, crates_per_cart: p.cratesPerCart, pouches_per_crate: p.pouchesPerCrate, cases_per_pallet: p.casesPerPallet, room: p.room ?? null, spiral_unit: p.spiralUnit ?? null, deleted: !!p.deleted, updated_at: iso(p.updatedAt), updated_by: user.get() })
 const rowOfSchedule = (date: string, code: string, mixes: number) => ({ date, code: normCode(code), mixes, updated_at: iso(clockNow()), updated_by: user.get() })
 const rowOfChange = (c: Change) => ({ id: c.id, at: iso(c.at), by_name: c.by, dept: c.dept, what: c.what, before: c.before, after: c.after, ref_table: c.refTable, ref_key: c.refKey, deleted: !!c.deleted, updated_at: iso(c.updatedAt), updated_by: user.get() })
 const rowOfTarget = (t: Target) => ({ dept: t.dept, per_hour: t.perHour, per_shift: t.perShift, updated_at: iso(t.updatedAt), updated_by: user.get() })
@@ -394,7 +421,7 @@ function logChange(dept: Dept | null, what: string, before: string, after: strin
   set({ ...state, changes: upsertIn(changes, c) })
   push('act_changes', c.id, rowOfChange(c))
 }
-const PRODUCT_FIELDS: [keyof Product, string][] = [['name', 'Producto'], ['pouchesPerCase', 'Pouches / caja'], ['casesPerMix', 'Cajas / mezcla'], ['cratesPerCart', 'Guacales / carro'], ['pouchesPerCrate', 'Pouches / guacal'], ['casesPerPallet', 'Cajas / pallet'], ['room', 'Lo empaca']]
+const PRODUCT_FIELDS: [keyof Product, string][] = [['name', 'Producto'], ['pouchesPerCase', 'Pouches / caja'], ['casesPerMix', 'Cajas / mezcla'], ['cratesPerCart', 'Guacales / carro'], ['pouchesPerCrate', 'Pouches / guacal'], ['casesPerPallet', 'Cajas / pallet'], ['room', 'Lo empaca'], ['spiralUnit', 'Spiral cuenta en']]
 function logProductDiff(old: Product | undefined, p: Product) {
   if (!old) { if (p.code.trim()) logChange(null, 'Producto nuevo', '', p.code, 'act_products', normCode(p.code)); return }
   if (normCode(old.code) !== normCode(p.code)) logChange(null, old.code.trim() ? 'Producto ' + old.code + ' · Código' : 'Producto nuevo', old.code, p.code, 'act_products', normCode(p.code))
@@ -488,7 +515,7 @@ export const idleStop = (s: State, lineId: string, now: number) =>
  * was divided into) ends at this moment, and from this moment it counts. A set up of seconds is not one, and neither
  * is what was left open for hours on a line nobody was using, or since the day before: those are dropped.
  */
-export function startRun(line: Line, code: string, lot: string, date: string, perUnit: number | null, bin = '') {
+export function startRun(line: Line, code: string, lot: string, date: string, perUnit: number | null, bin = '', measure: Measure | '' = '') {
   const at = clockNow()
   batch(() => {
     for (const x of state.stops.filter((y) => y.lineId === line.id && !y.endedAt)) {
@@ -496,7 +523,7 @@ export function startRun(line: Line, code: string, lot: string, date: string, pe
       if (age > SETUP_MAX_MS || fromOtherDay(state, x, at) || (x.reason === SETUP && age < 60_000)) putStop({ ...x, deleted: true })
       else putStop({ ...x, endedAt: Math.max(at, x.startedAt), note: x.reason === SETUP && x.note.startsWith(AFTER) ? 'De ' + x.note.slice(AFTER.length) + ' a ' + code : x.note })
     }
-    putRun({ id: uid(), dept: line.dept, lineId: line.id, line: line.name, code, lot, date, startedAt: at, endedAt: null, units: [], perUnit, waste: 0, by: user.get(), updatedAt: 0, ...(line.dept === 'Packing' && bin.trim() ? { extra: { bin: bin.trim().slice(0, 30) } } : {}) })
+    putRun({ id: uid(), dept: line.dept, lineId: line.id, line: line.name, code, lot, date, startedAt: at, endedAt: null, units: [], perUnit, waste: 0, by: user.get(), updatedAt: 0, ...(line.dept === 'Packing' && bin.trim() ? { extra: { bin: bin.trim().slice(0, 30) } } : line.dept === 'Spiral' && measure ? { extra: { measure } } : {}) })
   })
 }
 const run = (id: string) => state.runs.find((r) => r.id === id)
@@ -523,7 +550,7 @@ export function endRun(runId: string, setup = false) {
   const units = open ? [...r.units, palletUnit(open.parts, typeof open.po === 'string' ? open.po : nextOrderFor(state, r), at)] : r.units
   const extra = r.extra?.open ? ((({ open: _o, ...rest }) => (Object.keys(rest).length ? rest : undefined))(r.extra)) : r.extra
   batch(() => {
-    putRun({ ...r, units, endedAt: at, ...(r.dept === 'Packing' ? { extra } : {}) })
+    putRun({ ...r, units, endedAt: at, ...(r.dept === 'Packing' || r.dept === 'Spiral' ? { extra } : {}) })
     if (setup && !state.stops.some((x) => x.lineId === r.lineId && !x.endedAt)) putStop({ id: uid(), dept: r.dept, lineId: r.lineId, reason: SETUP, note: AFTER + r.code, startedAt: at, endedAt: null, by: user.get(), updatedAt: 0 })
     // a set up begun while the code ran: with another code coming it goes on until that one starts; with nothing more
     // today it ends with the code, so nothing is left counting
@@ -1246,12 +1273,20 @@ export function removeProduct(i: number) {
   if (p) logChange(null, 'Producto ' + (p.code || '(sin código)') + ' quitado', p.name || p.code, '', 'act_products', normCode(p.code))
 }
 /** products loaded from the office's file: an existing code is updated (blank numbers keep what was there), a new one is added */
+/** how Spiral counts a code, said from its program: a product the table does not have yet is added with it */
+export function setSpiralUnit(code: string, unit: SpiralUnit) {
+  const key = normCode(code)
+  if (!key) return
+  const i = state.products.findIndex((p) => normCode(p.code) === key)
+  if (i >= 0 && (state.products[i].spiralUnit ?? 'mezclas') === unit) return
+  saveProduct(i >= 0 ? i : state.products.length, i >= 0 ? { ...state.products[i], spiralUnit: unit } : { code: code.trim().toUpperCase(), name: '', pouchesPerCase: 0, casesPerMix: 0, cratesPerCart: 0, pouchesPerCrate: 0, casesPerPallet: 0, spiralUnit: unit, updatedAt: 0 })
+}
 export function mergeProducts(list: Product[]) {
   const products = [...state.products]
   let added = 0, changed = 0
   for (const p of list) {
     const i = products.findIndex((x) => normCode(x.code) === normCode(p.code))
-    const merged: Product = i < 0 ? { ...p, updatedAt: clockNow() } : { ...products[i], name: p.name || products[i].name, pouchesPerCase: p.pouchesPerCase || products[i].pouchesPerCase, casesPerMix: p.casesPerMix || products[i].casesPerMix, cratesPerCart: p.cratesPerCart || products[i].cratesPerCart, pouchesPerCrate: p.pouchesPerCrate || products[i].pouchesPerCrate, casesPerPallet: p.casesPerPallet || products[i].casesPerPallet, ...((r) => (r ? { room: r } : {}))(p.room || products[i].room), updatedAt: clockNow() }
+    const merged: Product = i < 0 ? { ...p, updatedAt: clockNow() } : { ...products[i], name: p.name || products[i].name, pouchesPerCase: p.pouchesPerCase || products[i].pouchesPerCase, casesPerMix: p.casesPerMix || products[i].casesPerMix, cratesPerCart: p.cratesPerCart || products[i].cratesPerCart, pouchesPerCrate: p.pouchesPerCrate || products[i].pouchesPerCrate, casesPerPallet: p.casesPerPallet || products[i].casesPerPallet, ...((r) => (r ? { room: r } : {}))(p.room || products[i].room), ...((u) => (u ? { spiralUnit: u } : {}))(p.spiralUnit || products[i].spiralUnit), updatedAt: clockNow() }
     if (i < 0) { products.push(merged); added++ } else { if (PRODUCT_FIELDS.some(([k]) => v(products[i][k]) !== v(merged[k]))) { changed++; logProductDiff(products[i], merged) } products[i] = merged }
     push('act_products', normCode(merged.code), rowOfProduct(merged))
   }
@@ -1292,17 +1327,24 @@ export function setPlan(date: string, dept: Dept, code: string, qty: number) {
  * off by itself with every unit registered (negative = more than the program, the red cells of that sheet).
  * planned 0 = a code the room made that was not on its program.
  */
-export type PlanRow = { code: string; name: string; planned: number; done: number; byShift: [number, number]; left: number; running: boolean; lines: string[] }
+/** unit = the word of the quantity: the room's, or in Spiral each code's (mezclas, lb, cajas); other = what was registered of the code in another measure */
+export type PlanRow = { code: string; name: string; planned: number; done: number; byShift: [number, number]; left: number; running: boolean; lines: string[]; unit: string; other: { word: string; n: number }[] }
 export function planRows(s: State, date: string, dept: Dept): PlanRow[] {
   const cfg = CFG[dept], hours = shiftsOf(s, date)
-  const runs = s.runs.filter((r) => r.dept === dept && r.date === date && !binOf(r)), plan = planOf(s, date, dept)
-  const one = (r: Run, u: Unit) => (cfg.qty === 'none' ? 1 : unitQty(s, r, u))
-  const keys = [...new Set([...plan.map((p) => normCode(p.code)), ...runs.map((r) => normCode(r.code))])]
+  const all = s.runs.filter((r) => r.dept === dept && r.date === date), plan = planOf(s, date, dept)
+  const keys = [...new Set([...plan.map((p) => normCode(p.code)), ...all.map((r) => normCode(r.code))])]
+  const roomUnit = cfg.qty === 'none' ? cfg.plural.toLowerCase() : cfg.qtyUnit
   return keys.map((key): PlanRow => {
-    const mine = runs.filter((r) => normCode(r.code) === key), set = plan.find((p) => normCode(p.code) === key), product = productOf(s, key)
+    const set = plan.find((p) => normCode(p.code) === key), product = productOf(s, key), ofCode = all.filter((r) => normCode(r.code) === key)
+    // Spiral: the code's measure is the products table's; or else the one its mezclas were started with today
+    const measure: string = dept !== 'Spiral' ? '' : product?.spiralUnit ? (product.spiralUnit === 'mezclas' ? '' : product.spiralUnit) : (ofCode.map(measureOf).find(Boolean) ?? '')
+    // what counts for the program: the runs in the code's measure (bins, and mezclas in another measure, stay apart)
+    const mine = ofCode.filter((r) => apartOf(r) === measure)
+    const one = (r: Run, u: Unit) => (cfg.qty === 'none' && !measure ? 1 : unitQty(s, r, u))
     const made = (k: 0 | 1 | 2) => mine.reduce((t, r) => t + r.units.filter((u) => !k || shiftAt(hours, u.at) === k).reduce((a, u) => a + one(r, u), 0), 0)
     const done = made(0), planned = set?.qty ?? 0, open = mine.filter((r) => !r.endedAt)
-    return { code: product?.code ?? set?.code ?? mine[0]?.code ?? key, name: product?.name ?? '', planned, done, byShift: [made(1), made(2)], left: planned ? Math.round((planned - done) * 100) / 100 : 0, running: open.length > 0, lines: [...new Set(open.map((r) => lineNameOf(s, r.lineId, r.line)))] }
+    const other = [...ofCode.filter((r) => apartOf(r) !== measure && (dept === 'Spiral' || !!apartOf(r))).reduce((m, r) => { const w = apartOf(r), n = w ? runQty(s, r) : r.units.length; return m.set(w, (m.get(w) ?? 0) + n) }, new Map<string, number>())].filter(([, n]) => n > 0).map(([word, n]) => ({ word: dept === 'Spiral' ? measureUnit(word) : apartWord(dept, word), n }))
+    return { code: product?.code ?? set?.code ?? mine[0]?.code ?? ofCode[0]?.code ?? key, name: product?.name ?? '', planned, done, byShift: [made(1), made(2)], left: planned ? Math.round((planned - done) * 100) / 100 : 0, running: open.length > 0, unit: measure ? measureUnit(measure) : roomUnit, other, lines: [...new Set(open.map((r) => lineNameOf(s, r.lineId, r.line)))] }
   }).sort((a, b) => Number(b.planned > 0) - Number(a.planned > 0) || a.code.localeCompare(b.code, undefined, { numeric: true }))
 }
 export const targetOf = (s: State, dept: Dept) => s.targets.find((t) => t.dept === dept)
@@ -1376,7 +1418,7 @@ export const runQty = (s: State, r: Run) => r.units.reduce((t, u) => t + unitQty
 /** the bins of some runs, word by word: how many bins and how much they hold (only the units that pass `keep`) */
 function binTotals(s: State, runs: Run[], keep: (u: Unit) => boolean) {
   const by = new Map<string, { word: string; units: number; qty: number }>()
-  for (const r of runs) { const word = binOf(r), e = by.get(word) ?? { word, units: 0, qty: 0 }, mine = r.units.filter(keep); e.units += mine.length; e.qty += mine.reduce((t, u) => t + unitQty(s, r, u), 0); by.set(word, e) }
+  for (const r of runs) { const word = apartOf(r), e = by.get(word) ?? { word, units: 0, qty: 0 }, mine = r.units.filter(keep); e.units += mine.length; e.qty += mine.reduce((t, u) => t + unitQty(s, r, u), 0); by.set(word, e) }
   return [...by.values()].filter((b) => b.units > 0)
 }
 /** what a room has made on a day, with all its lines together; or, given a line, what that line alone has made */
@@ -1384,7 +1426,7 @@ export function deptToday(s: State, dept: Dept, date: string, now: number, lineI
   const cfg = CFG[dept]
   const all = s.runs.filter((r) => r.dept === dept && r.date === date && (!lineId || r.lineId === lineId))
   // bins hold platos, copas or pouches, not cases: they are counted apart (see bins), never in the room's cases
-  const runs = all.filter((r) => !binOf(r)), binRuns = all.filter((r) => !!binOf(r))
+  const runs = all.filter((r) => !apartOf(r)), binRuns = all.filter((r) => !!apartOf(r))
   const measure = (r: Run) => (cfg.qty === 'none' ? r.units.length : runQty(s, r))
   const codes = new Map<string, { code: string; units: number; qty: number; waste: number; lines: string[] }>()
   for (const r of runs) {
@@ -1407,7 +1449,7 @@ export function deptToday(s: State, dept: Dept, date: string, now: number, lineI
   // The shift in course is all that its people made in its hours, on every line: also on a code that came running from
   // the work day before (a work day changes at the hour between shifts; a code left running goes on). Its bins apart.
   const live = s.runs.filter((r) => r.dept === dept && (!lineId || r.lineId === lineId) && (r.date === date || (r.date < date && (!r.endedAt || r.endedAt > since))))
-  const liveRuns = live.filter((r) => !binOf(r)), liveBins = live.filter((r) => !!binOf(r))
+  const liveRuns = live.filter((r) => !apartOf(r)), liveBins = live.filter((r) => !!apartOf(r))
   const mine = live.filter((r) => !r.endedAt || r.endedAt > since)
   const shiftFirst = mine.length ? Math.min(...mine.map((r) => (r.startedAt >= since ? r.startedAt : opens))) : 0
   const until = nextCut(plan, now)
@@ -1543,7 +1585,7 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
     const i = state.products.findIndex((p) => normCode(p.code) === key)
     const cur = i >= 0 ? state.products[i] : undefined
     if (!newer(cur)) return
-    const p: Product = { code, name: String(row.name ?? ''), pouchesPerCase: Number(row.pouches_per_case ?? 0), casesPerMix: Number(row.cases_per_mix ?? 0), cratesPerCart: Number(row.crates_per_cart ?? 0), pouchesPerCrate: Number(row.pouches_per_crate ?? 0), casesPerPallet: Number(row.cases_per_pallet ?? 0), ...((r) => (r ? { room: r } : {}))(packRoomOfText(row.room)), updatedAt: at }
+    const p: Product = { code, name: String(row.name ?? ''), pouchesPerCase: Number(row.pouches_per_case ?? 0), casesPerMix: Number(row.cases_per_mix ?? 0), cratesPerCart: Number(row.crates_per_cart ?? 0), pouchesPerCrate: Number(row.pouches_per_crate ?? 0), casesPerPallet: Number(row.cases_per_pallet ?? 0), ...((r) => (r ? { room: r } : {}))(packRoomOfText(row.room)), ...((u) => (u ? { spiralUnit: u } : {}))(spiralUnitOfText(row.spiral_unit)), updatedAt: at }
     // the product stays in its place in the table (a changed row must not jump to the end while someone is editing)
     const others = (x: Product, k: number) => k === i || normCode(x.code) !== key
     const products = row.deleted ? state.products.filter((x) => normCode(x.code) !== key) : cur ? state.products.map((x, k) => (k === i ? p : x)).filter(others) : [...state.products, p]
@@ -1645,21 +1687,21 @@ export function parseProductsCsv(text: string): Product[] {
   const find = (...keys: string[]) => head.findIndex((h) => keys.some((k) => h.includes(k)))
   const cCode = find('código', 'codigo', 'code'), cName = find('producto rte', 'producto', 'r-t-e', 'item', 'name')
   const cPpc = find('pouches por caja', 'pouches/'), cYield = find('cajas por mezcla', 'yield x'), cPallet = find('cajas por pallet', 'palet')
-  const cCrates = find('guacales'), cPerCrate = find('pouches por guacal'), cRoom = find('lo empaca', 'empaca', 'room')
+  const cCrates = find('guacales'), cPerCrate = find('pouches por guacal'), cRoom = find('lo empaca', 'empaca', 'room'), cSpiral = find('spiral')
   const n = (r: string[], c: number) => (c < 0 ? 0 : numOf(r[c] ?? ''))
   const out: Product[] = []
   for (const r of rows) {
     const code = cCode < 0 ? '' : String(r[cCode] ?? '').trim().toUpperCase()
     if (!code) continue
-    const room = cRoom < 0 ? undefined : packRoomOfText(r[cRoom])
-    out.push({ code, name: cName < 0 ? '' : String(r[cName] ?? '').trim(), pouchesPerCase: n(r, cPpc), casesPerMix: n(r, cYield), cratesPerCart: n(r, cCrates), pouchesPerCrate: n(r, cPerCrate), casesPerPallet: n(r, cPallet), ...(room ? { room } : {}), updatedAt: 0 })
+    const room = cRoom < 0 ? undefined : packRoomOfText(r[cRoom]), spiralUnit = cSpiral < 0 ? undefined : spiralUnitOfText(r[cSpiral])
+    out.push({ code, name: cName < 0 ? '' : String(r[cName] ?? '').trim(), pouchesPerCase: n(r, cPpc), casesPerMix: n(r, cYield), cratesPerCart: n(r, cCrates), pouchesPerCrate: n(r, cPerCrate), casesPerPallet: n(r, cPallet), ...(room ? { room } : {}), ...(spiralUnit ? { spiralUnit } : {}), updatedAt: 0 })
   }
   return out
 }
 export function productsCsv(products: Product[]) {
   const q = (v: string | number) => '"' + String(v).replace(/"/g, '""') + '"'
-  const head = ['Código', 'Producto', 'Pouches por caja', 'Cajas por mezcla (yield)', 'Cajas por pallet', 'Guacales por carro', 'Pouches por guacal', 'Lo empaca']
-  return '﻿' + [head, ...products.map((p) => [p.code, p.name, p.pouchesPerCase, p.casesPerMix, p.casesPerPallet, p.cratesPerCart, p.pouchesPerCrate, p.room ?? ''])].map((r) => r.map(q).join(',')).join('\r\n')
+  const head = ['Código', 'Producto', 'Pouches por caja', 'Cajas por mezcla (yield)', 'Cajas por pallet', 'Guacales por carro', 'Pouches por guacal', 'Lo empaca', 'Spiral cuenta en']
+  return '﻿' + [head, ...products.map((p) => [p.code, p.name, p.pouchesPerCase, p.casesPerMix, p.casesPerPallet, p.cratesPerCart, p.pouchesPerCrate, p.room ?? '', p.spiralUnit ?? ''])].map((r) => r.map(q).join(',')).join('\r\n')
 }
 
 export const openRun = (s: State, lineId: string) => s.runs.find((r) => r.lineId === lineId && !r.endedAt)

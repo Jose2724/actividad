@@ -1,4 +1,4 @@
-import { binOf, normCode, productOf, unitQty, type PackRoom, type Product, type Run, type State, type Unit } from './store'
+import { apartOf, normCode, productOf, unitQty, type PackRoom, type Product, type Run, type State, type Unit } from './store'
 import { unitParts } from './report'
 
 /**
@@ -75,8 +75,9 @@ export function avanceRows(s: State, date: string, keep?: Set<string>, lot = '')
   return keys.map((key): AvanceRow & { key: string } => {
     const product = productOf(s, key)
     const code = product?.code ?? runs.find((r) => normCode(r.code) === key)?.code ?? key
-    // a Packing line that fills bins makes no cases and no pallets: its bins hold platos, copas or pouches
-    const of = (dept: string) => runs.filter((r) => r.dept === dept && normCode(r.code) === key && !binOf(r))
+    // a Packing line that fills bins makes no cases and no pallets; a Spiral line weighing its mezclas in pounds (or
+    // counting cases) makes no mezclas of a product: what is counted apart stays apart
+    const of = (dept: string) => runs.filter((r) => r.dept === dept && normCode(r.code) === key && !apartOf(r))
     const units = (dept: string) => of(dept).reduce((t, r) => t + r.units.filter((u) => has(r, u)).length, 0)
     const qty = (dept: string) => of(dept).reduce((t, r) => t + r.units.reduce((a, u) => a + (has(r, u) ? ofLot(r, u) : 0), 0), 0)
     const pack = packRoomOf(s, code), mfoRoute = pack.room === 'MFO'

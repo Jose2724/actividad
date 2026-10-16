@@ -1,6 +1,6 @@
 import { createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
-import { addLine, addWaste, awayDay, BIN_WORDS, binOf, binWord, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, numOf, openIn, openOrdersFor, openRun, openStop, orderCodes, orderLabel, orderOfId, orderPallets, palletDone, palletLotEnds, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, productOf, productsCsv, purgeDay, purgesOf, removeLine, removeProduct, renameLine, reopenRun, reset, restorePurged, resetRecords, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftHours, shiftSpan, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type ShiftHours, type Short, type State, type WorkDay } from './store'
+import { addLine, addWaste, apartLabel, apartWord, awayDay, BIN_WORDS, binOf, binWord, cfgFor, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, numOf, openIn, openOrdersFor, openRun, openStop, orderCodes, orderLabel, orderOfId, orderPallets, palletDone, palletLotEnds, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, productOf, productsCsv, purgeDay, purgesOf, removeLine, removeProduct, renameLine, reopenRun, reset, restorePurged, resetRecords, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftHours, shiftSpan, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type ShiftHours, type Short, type State, type WorkDay } from './store'
 import { avanceLots, avanceRows, n1, pending, type AvanceRow } from './avance'
 import { cellText, loadZip, xDay, xDur, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 
@@ -545,10 +545,10 @@ function Products({ s, readOnly }: { s: State; readOnly?: boolean }) {
       </div>
       <div className="twrap">
         <table>
-          <thead><tr><th>{tr('Código')}</th><th>{tr('Producto')}</th><th>{tr('Pouches / caja')}</th><th>{tr('Cajas / mezcla (yield)')}</th><th>{tr('Guacales / carro')}</th><th>{tr('Pouches / guacal')}</th><th>{tr('Cajas / pallet')}</th><th>{tr('Lo empaca')}</th>{unlocked && <th></th>}</tr></thead>
+          <thead><tr><th>{tr('Código')}</th><th>{tr('Producto')}</th><th>{tr('Pouches / caja')}</th><th>{tr('Cajas / mezcla (yield)')}</th><th>{tr('Guacales / carro')}</th><th>{tr('Pouches / guacal')}</th><th>{tr('Cajas / pallet')}</th><th>{tr('Lo empaca')}</th><th>{tr('Spiral cuenta en')}</th>{unlocked && <th></th>}</tr></thead>
           <tbody>
-            {s.products.length === 0 && <tr><td colSpan={9}><i>{tr('No hay productos todavía.')}{!unlocked && ' ' + tr('Toca "Editar" para escribirlos o importar el CSV de la oficina.')}</i></td></tr>}
-            {s.products.length > 0 && shown.length === 0 && <tr><td colSpan={9}><i>{trx('Ningún producto con "{0}".', q.trim())}</i></td></tr>}
+            {s.products.length === 0 && <tr><td colSpan={10}><i>{tr('No hay productos todavía.')}{!unlocked && ' ' + tr('Toca "Editar" para escribirlos o importar el CSV de la oficina.')}</i></td></tr>}
+            {s.products.length > 0 && shown.length === 0 && <tr><td colSpan={10}><i>{trx('Ningún producto con "{0}".', q.trim())}</i></td></tr>}
             {shown.map(({ p, i }) => unlocked ? (
               <tr key={(p.code || '·') + ':' + i}>
                 <td><Cell className="code" value={p.code} onCommit={(t) => upd(i, { code: t.trim().toUpperCase() })} /></td>
@@ -559,12 +559,13 @@ function Products({ s, readOnly }: { s: State; readOnly?: boolean }) {
                 <td><Cell className="num" numeric value={text(p.pouchesPerCrate)} onCommit={(t) => upd(i, { pouchesPerCrate: numOf(t) })} /></td>
                 <td><Cell className="num" numeric value={text(p.casesPerPallet)} onCommit={(t) => upd(i, { casesPerPallet: numOf(t) })} /></td>
                 <td><select className="room" value={p.room ?? ''} aria-label={tr('Lo empaca')} onChange={(e) => upd(i, { room: (e.target.value || undefined) as Product['room'] })}><option value="">—</option><option value="RTE">RTE</option><option value="MFO">MFO</option></select></td>
+                <td><select className="room" value={p.spiralUnit ?? ''} aria-label={tr('Spiral cuenta en')} onChange={(e) => upd(i, { spiralUnit: (e.target.value || undefined) as Product['spiralUnit'] })}><option value="">—</option>{SPIRAL_UNITS.map((u) => <option key={u} value={u}>{measureUnit(u)}</option>)}</select></td>
                 <td><button type="button" className="lnk" onClick={() => setRemoveIdx(i)}>✕</button></td>
               </tr>
             ) : (
               <tr key={p.code + ':' + i}>
                 <td><b className="mono">{p.code}</b></td><td>{p.name}</td>
-                <td className="r">{show(p.pouchesPerCase)}</td><td className="r">{show(p.casesPerMix)}</td><td className="r">{show(p.cratesPerCart)}</td><td className="r">{show(p.pouchesPerCrate)}</td><td className="r">{show(p.casesPerPallet)}</td><td>{p.room ?? '—'}</td>
+                <td className="r">{show(p.pouchesPerCase)}</td><td className="r">{show(p.casesPerMix)}</td><td className="r">{show(p.cratesPerCart)}</td><td className="r">{show(p.pouchesPerCrate)}</td><td className="r">{show(p.casesPerPallet)}</td><td>{p.room ?? '—'}</td><td>{p.spiralUnit ? measureUnit(p.spiralUnit) : '—'}</td>
               </tr>
             ))}
           </tbody>
@@ -864,7 +865,7 @@ function TodayCard({ s, dept, now, mgr, date }: { s: State; dept: Dept; now: num
       )}
       <div className="tc-main">
         <div className="tc-total"><b>{fmtN(t.shiftQty)}</b> <span>{label(t.shiftQty)}</span>{cfg.qty !== 'none' && <small>{t.shiftUnits} {unitWord(t.shiftUnits)}</small>}
-          {t.shiftBins.length > 0 && <small className="tc-bins">{tr('Además, en bins: {0}', t.shiftBins.map((b) => tr('{0} con {1} {2}', b.units === 1 ? tr('1 bin') : tr('{0} bins', b.units), fmtN(b.qty), binWord(b.word))).join(' · '))}</small>}
+          {t.shiftBins.length > 0 && <small className="tc-bins">{dept === 'Spiral' ? tr('Además: {0}', t.shiftBins.map((b) => unitsText(dept, b.units, b.qty, cfgFor(dept, b.word))).join(' · ')) : tr('Además, en bins: {0}', t.shiftBins.map((b) => tr('{0} con {1} {2}', b.units === 1 ? tr('1 bin') : tr('{0} bins', b.units), fmtN(b.qty), binWord(b.word))).join(' · '))}</small>}
         </div>
         {goal.total ? (
           <div className="tc-goal">
@@ -944,7 +945,7 @@ function PlanCard({ s, dept, date, mgr }: { s: State; dept: Dept; date: string; 
   const rows = planRows(s, date, dept)
   const planned = rows.filter((r) => r.planned > 0), extra = rows.filter((r) => !r.planned && r.done > 0)
   if (!planned.length && !mgr) return null
-  const cfg = CFG[dept], unit = cfg.qty === 'none' ? cfg.plural.toLowerCase() : cfg.qtyUnit
+  const cfg = CFG[dept], unit = dept === 'Spiral' ? tr('la unidad de cada código') : cfg.qty === 'none' ? cfg.plural.toLowerCase() : cfg.qtyUnit
   return (
     <div className="plan">
       <div className="tc-head">
@@ -959,8 +960,8 @@ function PlanCard({ s, dept, date, mgr }: { s: State; dept: Dept; date: string; 
               const pct = Math.max(0, Math.min(100, Math.floor((r.done / r.planned) * 100)))
               return (
                 <tr key={r.code}>
-                  <td><b className="code">{r.code}</b>{r.name && <small className="pname">{r.name}</small>}{r.running && <span className="pill run">● {r.lines.map(lineLabel).join(', ')}</span>}</td>
-                  <td className="num">{fmtN(r.planned)}</td><td className="num turn">{fmtN(r.byShift[0])}</td><td className="num turn">{fmtN(r.byShift[1])}</td><td className="num"><b>{fmtN(r.done)}</b></td>
+                  <td><b className="code">{r.code}</b>{r.name && <small className="pname">{r.name}</small>}{r.other.length > 0 && <small className="pname">{tr('también {0}', r.other.map((o) => fmtN(o.n) + ' ' + o.word).join(' · '))}</small>}{r.running && <span className="pill run">● {r.lines.map(lineLabel).join(', ')}</span>}</td>
+                  <td className="num">{fmtN(r.planned)}{dept === 'Spiral' && <small className="punit"> {r.unit}</small>}</td><td className="num turn">{fmtN(r.byShift[0])}</td><td className="num turn">{fmtN(r.byShift[1])}</td><td className="num"><b>{fmtN(r.done)}</b></td>
                   <td className={'num ' + (r.left <= 0 ? 'ok' : 'left')}>{r.left > 0 ? fmtN(r.left) : tr('✓ completo') + (r.left < 0 ? ' (+' + fmtN(-r.left) + ')' : '')}</td>
                   <td className="planbar"><div className="bar"><i className={pct >= 100 ? 'ok' : 'pend'} style={{ width: pct + '%' }} /></div><small>{pct}%</small></td>
                 </tr>
@@ -980,18 +981,20 @@ function PlanCard({ s, dept, date, mgr }: { s: State; dept: Dept; date: string; 
  * without a quantity is taken off. Nothing is saved until "Guardar".
  */
 function PlanDialog({ s, dept, today, unit, onClose }: { s: State; dept: Dept; today: string; unit: string; onClose: () => void }) {
-  type Line = { code: string; qty: string }
-  const draftOf = (date: string): Line[] => [...planOf(s, date, dept).sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true })).map((p) => ({ code: productOf(s, p.code)?.code ?? p.code, qty: String(p.qty) })), { code: '', qty: '' }]
+  type Line = { code: string; qty: string; unit: SpiralUnit }
+  const blank = (): Line => ({ code: '', qty: '', unit: 'mezclas' })
+  const draftOf = (date: string): Line[] => [...planOf(s, date, dept).sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true })).map((p) => ({ code: productOf(s, p.code)?.code ?? p.code, qty: String(p.qty), unit: productOf(s, p.code)?.spiralUnit ?? 'mezclas' })), blank()]
   const [date, setDate] = useState(today)
   const [lines, setLines] = useState<Line[]>(() => draftOf(today))
   const pickDate = (d: string) => { if (d) { setDate(d); setLines(draftOf(d)) } }
-  const change = (i: number, patch: Partial<Line>) => setLines((cur) => { const next = cur.map((l, k) => (k === i ? { ...l, ...patch } : l)); return next[next.length - 1].code.trim() ? [...next, { code: '', qty: '' }] : next })
+  // (in Spiral a code the products table knows brings how it is counted)
+  const change = (i: number, patch: Partial<Line>) => setLines((cur) => { const next = cur.map((l, k) => (k === i ? { ...l, ...patch, ...(patch.code != null && productOf(s, patch.code)?.spiralUnit ? { unit: productOf(s, patch.code)!.spiralUnit! } : {}) } : l)); return next[next.length - 1].code.trim() ? [...next, blank()] : next })
   const twice = lines.map((l) => normCode(l.code)).filter((k, i, all) => k && all.indexOf(k) !== i)
   const save = () => {
     const typed = new Map(lines.filter((l) => normCode(l.code)).map((l) => [normCode(l.code), l]))
     // a code that was on the program and is not typed any more is taken off; the rest are set to what was typed
     for (const p of planOf(s, date, dept)) if (!typed.has(normCode(p.code))) setPlan(date, dept, p.code, 0)
-    for (const l of typed.values()) setPlan(date, dept, l.code, numOf(l.qty))
+    for (const l of typed.values()) { setPlan(date, dept, l.code, numOf(l.qty)); if (dept === 'Spiral') setSpiralUnit(l.code, l.unit) }
     onClose()
   }
   const listId = 'plan-codes-' + dept
@@ -1003,11 +1006,12 @@ function PlanDialog({ s, dept, today, unit, onClose }: { s: State; dept: Dept; t
         <form className="qform" onSubmit={(e) => { e.preventDefault(); if (!twice.length) save() }}>
           <label>{tr('Día')}{' '}<input type="date" value={date} onChange={(e) => pickDate(e.target.value)} /></label>
           <div className="planrows">
-            <div className="planrow head"><span>{tr('Código')}</span><span>{trx('Cantidad ({0})', unit)}</span></div>
+            <div className={'planrow head' + (dept === 'Spiral' ? ' spiral' : '')}><span>{tr('Código')}</span><span>{dept === 'Spiral' ? tr('Cantidad') : trx('Cantidad ({0})', unit)}</span>{dept === 'Spiral' && <span>{tr('Unidad')}</span>}</div>
             {lines.map((l, i) => (
-              <div key={i} className="planrow">
+              <div key={i} className={'planrow' + (dept === 'Spiral' ? ' spiral' : '')}>
                 <input list={listId} value={l.code} placeholder={tr('ej. 0100')} autoComplete="off" aria-label={tr('Código')} onChange={(e) => change(i, { code: e.target.value })} />
                 <input value={l.qty} inputMode="decimal" placeholder="0" autoComplete="off" aria-label={tr('Cantidad ({0})', unit)} onChange={(e) => change(i, { qty: e.target.value.replace(/[^\d.,]/g, '') })} />
+                {dept === 'Spiral' && <select value={l.unit} aria-label={tr('Unidad')} onChange={(e) => change(i, { unit: e.target.value as SpiralUnit })}>{SPIRAL_UNITS.map((u) => <option key={u} value={u}>{measureUnit(u)}</option>)}</select>}
               </div>
             ))}
             <datalist id={listId}>{s.products.map((p) => <option key={p.code} value={p.code}>{p.name}</option>)}</datalist>
@@ -1355,6 +1359,8 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   const [making, setMaking] = useState<'pallet' | 'bin' | null>(null)
   const [binText, setBinText] = useState('')
   const [packing, setPacking] = useState<null | 'done' | 'lot' | 'po' | 'binlot' | number>(null)
+  // Spiral: how the code about to start is counted (null = as the products table says, or as it was started last)
+  const [measure, setMeasure] = useState<SpiralUnit | null>(null)
   const [tagging, setTagging] = useState<number | null>(null)
   const nameIt = !viewOnly && <button type="button" className="lnk pen" title={tr('Cambiar el nombre')} aria-label={tr('Cambiar el nombre de {0}', lineLabel(line.name))} onClick={() => setRenaming(true)}>✎</button>
   const naming = renaming && <LineNameDialog s={s} dept={line.dept} line={line} onClose={() => setRenaming(false)} />
@@ -1455,6 +1461,11 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
     const isCart = line.dept === 'RTE'
     const prod = productOf(s, code)
     const suggested = needPer ? lastPerUnit(s, line.dept, code) : null
+    // Spiral: mezcla by mezcla, or each mezcla weighed in pounds or counted in cases: the products table's word for the
+    // code, else the way it was started last on this device, else mezcla by mezcla
+    const isSpiral = line.dept === 'Spiral'
+    const spiralLast = isSpiral && code.trim() ? s.runs.filter((r) => r.dept === 'Spiral' && normCode(r.code) === normCode(code)).sort((a, b) => b.startedAt - a.startedAt)[0] : undefined
+    const spiralNow: SpiralUnit = measure ?? prod?.spiralUnit ?? (spiralLast ? measureOf(spiralLast) || 'mezclas' : 'mezclas')
     const cratesN = crates.trim() ? Number(crates) : prod?.cratesPerCart || CRATES_PER_CART
     const perCrateN = per.trim() ? Number(per) : prod?.pouchesPerCrate || (suggested != null ? Math.round(suggested / cratesN) : null)
     const perUnit = isCart ? (perCrateN ? cratesN * perCrateN : null) : per.trim() ? Number(per) : suggested
@@ -1504,7 +1515,15 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         {fixingStop && idle && <StopEditor stop={idle} mgr={mgr} onClose={() => setFixingStop(false)} />}
         {naming}
         {removing && <ConfirmDialog title={tr('¿Quitar {0} de {1}', lineLabel(line.name), line.dept) + '?'} text={tr('Se puede volver a agregar cuando haga falta.')} yes={tr('Quitar')} danger onYes={() => removeLine(line.id)} onNo={() => setRemoving(false)} />}
-        {!viewOnly && <form className="start" onSubmit={(e) => { e.preventDefault(); if (ok) { startRun(line, code.trim().toUpperCase(), lot.trim(), date, needPer ? perUnit : null, isPack && makes === 'bin' ? word : ''); setDateText(null); setLotText(null); setEditDate(false); setMaking(null); setBinText('') } }}>
+        {!viewOnly && <form className="start" onSubmit={(e) => { e.preventDefault(); if (ok) { startRun(line, code.trim().toUpperCase(), lot.trim(), date, needPer ? perUnit : null, isPack && makes === 'bin' ? word : '', isSpiral && spiralNow !== 'mezclas' ? spiralNow : ''); setDateText(null); setLotText(null); setEditDate(false); setMaking(null); setBinText(''); setMeasure(null) } }}>
+          {isSpiral && (
+            <div className="makes">
+              <span className="lab">{tr('¿En qué se cuenta este código?')}</span>
+              <div className="seg" role="group" aria-label={tr('¿En qué se cuenta este código?')}>
+                {SPIRAL_UNITS.map((u) => <button key={u} type="button" className={spiralNow === u ? 'on' : ''} aria-pressed={spiralNow === u} onClick={() => setMeasure(u)}>{u === 'mezclas' ? tr('Mezclas') : u === 'lb' ? tr('Libras') : tr('Cajas')}<small>{u === 'mezclas' ? tr('una por una') : u === 'lb' ? tr('cada mezcla dice sus libras') : tr('cada mezcla dice sus cajas')}</small></button>)}
+              </div>
+            </div>
+          )}
           {isPack && (
             <div className="makes">
               <span className="lab">{tr('¿Qué van a hacer?')}</span>
@@ -1524,7 +1543,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
           {todo.length > 0 && (
             <div className="todo wide">
               <small>{tr('Del programa de hoy:')}</small>
-              {todo.map((r) => <button key={r.code} type="button" className={'chip sm' + (normCode(code) === normCode(r.code) ? ' on' : '')} onClick={() => setCode(r.code)}><b>{r.code}</b> {trx('faltan {0}', fmtN(r.left))}</button>)}
+              {todo.map((r) => <button key={r.code} type="button" className={'chip sm' + (normCode(code) === normCode(r.code) ? ' on' : '')} onClick={() => setCode(r.code)}><b>{r.code}</b> {trx('faltan {0}', fmtN(r.left) + (line.dept === 'Spiral' ? ' ' + r.unit : ''))}</button>)}
             </div>
           )}
           <label>{tr('Código')}{' '}<input value={code} onChange={(e) => setCode(e.target.value)} placeholder={tr('ej. 0100')} autoComplete="off" /></label>
@@ -1601,7 +1620,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         <span className={'pill ' + (inSetup ? 'setup' : stop ? 'stop' : 'run')}>{inSetup ? tr('⏱ Set up') : stop ? tr('⏸ Parado') : tr('● Corriendo')}</span>
         <span className="lacts">{goalBtn}{!viewOnly && <button type="button" className="lnk sm" onClick={() => setFixing(true)}>{tr('Corregir')}</button>}</span>
       </div>
-      <div className="coderow"><b className="code">{run.code}</b><span>{trx('lote {0}{1} · desde {2}', lotNowOf(run), run.date !== day.date && ' · ' + shortDay(run.date), fmtTime(run.startedAt))}{run.perUnit != null && ' · ' + tr('{0} {1} por {2}', run.perUnit, rc.qtyUnit, runWord)}{binOf(run) && <> · <b className="binkind">{trx('Bins de {0} · Turno {1}', binWord(binOf(run)), turn.shift)}</b></>}</span></div>
+      <div className="coderow"><b className="code">{run.code}</b><span>{trx('lote {0}{1} · desde {2}', lotNowOf(run), run.date !== day.date && ' · ' + shortDay(run.date), fmtTime(run.startedAt))}{run.perUnit != null && ' · ' + tr('{0} {1} por {2}', run.perUnit, rc.qtyUnit, runWord)}{binOf(run) && <> · <b className="binkind">{trx('Bins de {0} · Turno {1}', binWord(binOf(run)), turn.shift)}</b></>}{measureOf(run) && <> · <b className="binkind">{tr('Se cuenta en {0}', measureName(measureOf(run)))}</b></>}</span></div>
       {mineNow.carried && (
         <div className="carried">
           {run.date === day.date && cameFrom !== turn.shift
@@ -1660,7 +1679,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       {fillUi}
       {counting && (rc.lots
         ? <LotsDialog title={rc.qtyQ} unit={rc.qtyUnit} refLabel={rc.refLabel} lot={run.lot} qty={run.perUnit} orders={orderOptions} order={nextOrder} onClose={() => { setCounting(false); setEndAfter(null) }} onPick={(q, ref, lots, po) => { record(q, ref, lots, po); setCounting(false); if (endAfter !== null) { setEndAfter(null); endRun(run.id, endAfter) } }} />
-        : <QtyDialog title={rc.qtyQ} unit={rc.qtyUnit} refLabel={rc.refLabel} initial={run.perUnit} perCase={perCase} onClose={() => { setCounting(false); setEndAfter(null) }} onPick={(q, ref) => { record(q, ref, binLots(q)); setCounting(false); if (endAfter !== null) { setEndAfter(null); endRun(run.id, endAfter) } }} />)}
+        : <QtyDialog title={rc.qtyQ} unit={rc.qtyUnit} refLabel={rc.refLabel} initial={run.perUnit} perCase={perCase} decimal={measureOf(run) === 'lb'} onClose={() => { setCounting(false); setEndAfter(null) }} onPick={(q, ref) => { record(q, ref, binLots(q)); setCounting(false); if (endAfter !== null) { setEndAfter(null); endRun(run.id, endAfter) } }} />)}
       {packing === 'done' && <PalletDoneDialog s={s} run={run} onClose={() => { setPacking(null); setEndAfter(null) }} onSaved={() => { setPacking(null); buzz(); if (endAfter !== null) { const next = endAfter; setEndAfter(null); endRun(run.id, next) } }} />}
       {packing === 'lot' && <LotEndDialog run={run} onClose={() => setPacking(null)} />}
       {packing === 'po' && <PalletOrderDialog s={s} run={run} onClose={() => setPacking(null)} />}
@@ -2049,7 +2068,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
   /** a pallet's place among its order's pallets: "2/12" (or "2" when the order does not say how many cases it is) */
   const ofText = (of: [number, number | null]) => (of[1] ? of[0] + '/' + of[1] : String(of[0]))
   /** the words of a line of "por código": a code filled in bins speaks of bins */
-  const cw = (c: { dept: Dept; bin: string }) => (c.bin ? cfgOf({ dept: c.dept, extra: { bin: c.bin } }) : CFG[c.dept])
+  const cw = (c: { dept: Dept; bin: string }) => cfgFor(c.dept, c.bin)
   const reasonsText = (x: (typeof rows)[number]) => Object.entries(x.st.reasons).map(([k, v]) => tr(k) + ' ' + fmtDur(v)).join(', ')
   const lineName = (x: { lineId: string | null; dept: Dept }) => (x.lineId === null ? tr('Todo {0}', x.dept) : lineLabel(s.lines.find((l) => l.id === x.lineId)?.name ?? s.runs.find((r) => r.lineId === x.lineId)?.line ?? tr('línea')))
   const fileName = 'actividad-' + (dept ? dept.toLowerCase() + '-' : '') + date + filterFile(rep.code, rep.lot, rep.shift)
@@ -2090,7 +2109,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
       ...stops.map((x): Cell[] => [x.dept, lineName(x), tr(x.reason), noteLabel(x.note), T(x.startedAt), x.endedAt ? T(x.endedAt) : tr('en curso'), D(x.ms), x.by, spanShifts(rep.plan, x.startedAt, x.endedAt ?? now)])]
     // the whole day first and each shift under it (not when the report is of one shift only); what a room filled in bins
     // goes under it, word by word: its bins and what they hold
-    const binRows = (d: (typeof rep.byShift)[number]) => [...new Set(d.day.bins.map((y) => y.word))].flatMap((w) => [d.day, d.first, d.second].map((x): Cell[] => { const y = x.bins.find((z) => z.word === w); return [d.dept, x.shift ? tr('Turno {0}', x.shift) : tr('Total del día'), '', '', '', '', '', '', '', y?.units ?? 0, tr('Bin'), y?.qty ?? 0, binWord(w), '', '', '', ''] }))
+    const binRows = (d: (typeof rep.byShift)[number]) => [...new Set(d.day.bins.map((y) => y.word))].flatMap((w) => [d.day, d.first, d.second].map((x): Cell[] => { const y = x.bins.find((z) => z.word === w); return [d.dept, x.shift ? tr('Turno {0}', x.shift) : tr('Total del día'), '', '', '', '', '', '', '', y?.units ?? 0, cfgFor(d.dept, w).unit, y?.qty ?? 0, apartWord(d.dept, w), '', '', '', ''] }))
     const porTurno: Cell[][] = [[tr('Departamento'), tr('Turno'), tr('Horario'), tr('Empezó'), tr('Terminó'), tr('Duración'), tr('Líneas'), tr('Códigos'), tr('Corridas'), tr('Hechas'), tr('Unidad'), tr('Cantidad'), tr('Unidad de cantidad'), tr('Waste (lb)'), tr('Tiempo trabajando'), tr('Tiempo parado'), 'Set up'],
       ...rep.byShift.flatMap((d) => [...[d.day, d.first, d.second].map((x): Cell[] => [d.dept, x.shift ? tr('Turno {0}', x.shift) : tr('Total del día'), x.shift ? shiftHours(rep.plan, x.shift) : '', x.from ? T(x.from) : '', !x.to ? '' : x.open ? tr('en curso') : T(x.to), x.span ? D(x.span) : '', x.lines, x.distinct, x.codes, x.units, CFG[d.dept].unit, CFG[d.dept].qty !== 'none' ? x.qty : '', CFG[d.dept].qty !== 'none' ? CFG[d.dept].qtyUnit : '', x.waste || '', D(x.working), D(x.down), x.setup ? D(x.setup) : '']), ...binRows(d)])]
     const cambios: Cell[][] = [[tr('Hora'), tr('Quién'), tr('Departamento'), tr('Qué'), tr('Antes'), tr('Después')], ...changes.map((c): Cell[] => [T(c.at), c.by, c.dept ?? '', c.what, c.before, c.after])]
@@ -2232,9 +2251,9 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
                   )}
                   {d.bins.map((y) => (
                     <div key={y.word} className="made bins">
-                      <label>{where} · {tr('en bins')}</label>
-                      <b>{fmtN(y.qty)} <span>{binWord(y.word)}</span></b>
-                      <small>{binsN(y.units)}</small>
+                      <label>{where} · {d.dept === 'Spiral' ? apartLabel(d.dept, y.word) : tr('en bins')}</label>
+                      <b>{fmtN(y.qty)} <span>{apartWord(d.dept, y.word)}</span></b>
+                      <small>{d.dept === 'Spiral' ? unitsText(d.dept, y.units) : binsN(y.units)}</small>
                     </div>
                   ))}
                 </Fragment>
@@ -2267,7 +2286,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
                           <tbody>
                             {q && <tr className="q"><td>{cap(cfg.qtyUnit)}</td>{cols.map((x) => cell(x, fmtN(x.qty)))}</tr>}
                             <tr className={q ? '' : 'q'}><td>{cfg.plural}</td>{cols.map((x) => cell(x, fmtN(x.units)))}</tr>
-                            {[...new Set(cols.flatMap((x) => x.bins.map((y) => y.word)))].map((w) => <tr key={'bin:' + w}><td>{tr('Bins de {0}', binWord(w))}</td>{cols.map((x) => { const y = x.bins.find((z) => z.word === w); return cell(x, y ? tr('{0} con {1}', binsN(y.units), fmtN(y.qty)) : '—') })}</tr>)}
+                            {[...new Set(cols.flatMap((x) => x.bins.map((y) => y.word)))].map((w) => <tr key={'bin:' + w}><td>{d.dept === 'Spiral' ? tr('En {0}', measureName(w)) : tr('Bins de {0}', binWord(w))}</td>{cols.map((x) => { const y = x.bins.find((z) => z.word === w); return cell(x, y ? (d.dept === 'Spiral' ? fmtN(y.qty) + ' ' + measureUnit(w) + ' · ' + unitsText(d.dept, y.units) : tr('{0} con {1}', binsN(y.units), fmtN(y.qty))) : '—') })}</tr>)}
                             {cols.some((x) => x.waste > 0) && <tr><td>Waste</td>{cols.map((x) => cell(x, x.waste ? x.waste + ' lb' : '—', x.waste > 0))}</tr>}
                             <tr><td>{tr('Códigos')}</td>{cols.map((x) => cell(x, x.distinct))}</tr>
                             <tr><td>{tr('Corridas')}</td>{cols.map((x) => cell(x, x.codes))}</tr>
@@ -2310,7 +2329,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
                   const boxes = (code: string, qty: number, bin = '') => (!bin && cfg.qtyUnit === 'pouches' && casesText(inCases(s, code, qty))) || '—'
                   const lotBtn = (l: string) => (!l ? '—' : rep.lot ? l : <button type="button" className="drill" onClick={() => setFLot(l)}>{l}</button>)
                   // a code filled in bins speaks of bins and of what they hold (platos, copas…), not of pallets and cases
-                  const cc = (bin: string) => (bin ? cfgOf({ dept: d.dept, extra: { bin } }) : cfg)
+                  const cc = (bin: string) => cfgFor(d.dept, bin)
                   const qtyText = (v: number, bin = '') => (q ? fmtN(v) + ' ' + cc(bin).qtyUnit : '—')
                   const madeN = (n: number, bin = '') => n + ' ' + (n === 1 ? cc(bin).unit : cc(bin).plural).toLowerCase()
                   return (
@@ -2319,7 +2338,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
                       {byCode.filter((c) => c.dept === d.dept).map((c) => (
                         <Fragment key={c.code + '|' + c.bin}>
                           <tr className="crow">
-                            <td>{rep.code ? <b className="code">{c.code}</b> : <button type="button" className="drill code" onClick={() => setFCode(c.code)}>{c.code}</button>}{c.bin && <small className="binkind">{tr('en bins de {0}', binWord(c.bin))}</small>}</td>
+                            <td>{rep.code ? <b className="code">{c.code}</b> : <button type="button" className="drill code" onClick={() => setFCode(c.code)}>{c.code}</button>}{c.bin && <small className="binkind">{apartLabel(c.dept, c.bin)}</small>}</td>
                             <td>{c.lots.length === 1 ? lotBtn(c.lots[0].lot) : tr('{0} lotes', c.lots.length)}</td>
                             <td className="num">{madeN(c.units, c.bin)}</td>
                             <td className="num">{qtyText(c.qty, c.bin)}</td>
@@ -2342,7 +2361,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
                       </tr>
                       {d.bins.map((y) => (
                         <tr key={'bin:' + y.word} className="trow bins">
-                          <td colSpan={2}>{tr('Además, en bins de {0}', binWord(y.word))}</td><td className="num">{madeN(y.units, y.word)}</td><td className="num">{qtyText(y.qty, y.word)}</td>
+                          <td colSpan={2}>{tr('Además, {0}', apartLabel(d.dept, y.word))}</td><td className="num">{madeN(y.units, y.word)}</td><td className="num">{qtyText(y.qty, y.word)}</td>
                           {b && [b.first, b.second].map((x, k) => <td key={k} className="num">{dash(x.bins.find((z) => z.word === y.word)?.qty ?? 0)}</td>)}
                           <td></td><td></td><td></td>
                         </tr>

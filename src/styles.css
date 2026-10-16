@@ -708,3 +708,7 @@ table.pallets th.num,table.pallets td.num{text-align:right;font-variant-numeric:
   .emp .tags{grid-area:tags}
   .emp > .btn,.emp > .nobtn{grid-area:btn}
 }
+/* Spiral: each code of its program in its own unit (mezclas, lb, cajas), typed with it */
+.planrow.spiral{grid-template-columns:minmax(0,1.1fr) minmax(0,.8fr) minmax(0,.9fr)}
+.planrow.spiral select{min-height:46px;padding:0 8px;border-radius:12px;border:1.5px solid var(--btn-line);background:var(--surface);font-size:15px;font-weight:600}
+.plan small.punit{color:var(--muted);font-weight:600;font-size:12px}

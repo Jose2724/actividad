@@ -2117,6 +2117,46 @@ section('Pedidos: todos los pallets que se le dieron a un pedido cuentan, tambi�
     eq('cerrado el pedido, el aparato suelta lo que guardaba aparte', st().orderRuns.length, 0)
   })
 }
+section('Spiral: un código se cuenta en mezclas, en libras o en cajas, y el programa lo dice')
+{
+  // what Jose learned on 2026-10-15: Spiral programs some items in pounds ("3492 libras de CHICKEN HERB"); the office's
+  // SPIRAL sheets write "3000 LB" or "200 CS" in the #BATCH cell, and each rack below carries its pounds or cases
+  const sp = await device('spi', { user: 'Luis', usual: true })
+  sp.use((m) => {
+    const st = () => m.store.get(), run = (code) => st().runs.find((r) => r.code === code && !r.endedAt) ?? st().runs.find((r) => r.code === code)
+    const lineOf = (name) => { m.addLine('Spiral', name); return st().lines.find((l) => l.dept === 'Spiral' && l.name === name) }
+    clock = oct(10, 6, 0)
+    const l1 = lineOf('Línea 1'), l2 = lineOf('Línea 2')
+    // the office programs chicken herb in pounds: the products table learns how Spiral counts it
+    m.setPlan(DAY, 'Spiral', 'CHICKEN HERB', 3492); m.setSpiralUnit('CHICKEN HERB', 'lb')
+    m.setPlan(DAY, 'Spiral', '0100', 10)
+    eq('la tabla de productos dice cómo cuenta Spiral cada código', [m.productOf(st(), 'CHICKEN HERB')?.spiralUnit, m.productOf(st(), '0100')?.spiralUnit], ['lb', undefined])
+    eq('el programa de Spiral: cada código en su unidad', m.planRows(st(), DAY, 'Spiral').map((r) => [r.code, r.planned, r.unit]), [['0100', 10, 'mezclas'], ['CHICKEN HERB', 3492, 'lb']])
+    // the line starts the code in pounds: each mezcla says its pounds
+    m.startRun(l1, 'CHICKEN HERB', '6287', DAY, null, '', 'lb')
+    const ch = run('CHICKEN HERB'), cfg = m.cfgOf(ch)
+    eq('una corrida en libras: sus palabras', [m.measureOf(ch), m.apartOf(ch), cfg.unit, cfg.qty, cfg.qtyUnit, cfg.qtyQ], ['lb', 'lb', 'Mezcla', 'ask', 'lb', '¿Cuántas libras lleva esta mezcla?'])
+    clock = oct(10, 7, 0); m.unitDone(ch.id, 1543)
+    clock = oct(10, 8, 0); m.unitDone(ch.id, 1407)
+    eq('lo hecho se dice en mezclas y libras', m.madeText(run('CHICKEN HERB'), m.runQty(st(), run('CHICKEN HERB'))), '2 mezclas · 2,950 lb')
+    const row = m.planRows(st(), DAY, 'Spiral').find((r) => r.code === 'CHICKEN HERB')
+    eq('el programa descuenta las libras: 3,492 − 2,950', [row.done, row.left, row.unit, row.other], [2950, 542, 'lb', []])
+    // a mezcla of 0100 the usual way
+    m.startRun(l2, '0100', '6287', DAY, null)
+    clock = oct(10, 8, 30); m.unitDone(run('0100').id, null)
+    const t = m.deptToday(st(), 'Spiral', DAY, clock)
+    eq('la tarjeta de Spiral cuenta las mezclas de siempre, y las libras aparte', [t.qty, t.units, t.bins], [1, 1, [{ word: 'lb', units: 2, qty: 2950 }]])
+    const rep = m.reportOf(st(), DAY, clock, { only: 'Spiral' })
+    eq('en el reporte igual: 1 mezcla, y aparte 2 mezclas con 2,950 lb', [rep.byDept.map((d) => [d.units, d.bins]), rep.byCode.map((c) => [c.code, c.bin, c.units, c.qty])], [[[1, [{ word: 'lb', units: 2, qty: 2950 }]]], [['0100', '', 1, 0], ['CHICKEN HERB', 'lb', 2, 2950]]])
+    eq('Avance no toma las libras como mezclas de un producto', m.avanceRows(st(), DAY).filter((r) => r.code === 'CHICKEN HERB').length, 0)
+    // what travels, and what the office's file says
+    const sent = m.outbox.items().filter((i) => i.table === 'act_runs').map((i) => i.row).find((x) => x.code === 'CHICKEN HERB')
+    eq('la corrida sube con su medida', sent.extra, { measure: 'lb' })
+    eq('el CSV de productos lee "Spiral cuenta en"', m.parseProductsCsv('Código,Producto,Spiral cuenta en\nCHICKEN HERB,,libras\n0200,Veggies,CS\n0300,Otro,\n').map((p) => [p.code, p.spiralUnit ?? '']), [['CHICKEN HERB', 'lb'], ['0200', 'cajas'], ['0300', '']])
+    eq('y lo que la app exporta se vuelve a leer igual', m.parseProductsCsv(m.productsCsv(st().products)).find((p) => p.code === 'CHICKEN HERB').spiralUnit, 'lb')
+    eq('lo que llega en extra se limpia', [m.cleanExtra({ measure: 'lb' }), m.cleanExtra({ measure: 'kg' })], [{ measure: 'lb' }, undefined])
+  })
+}
 section('Set up: espera al código siguiente; con las líneas vacías no corre nada')
 {
   const wai = await device('wai', { user: 'Santiago', usual: true })
