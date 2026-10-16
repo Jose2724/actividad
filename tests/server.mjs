@@ -14,6 +14,7 @@ const test = (row, col, op, value) => {
   if (op === 'is') return value === 'null' ? have == null : false
   // jsonb containment, as the app asks for the runs that hold pallets given to an order: units=cs.[{"po":"..."}]
   if (op === 'cs') { try { const want = JSON.parse(value); return Array.isArray(want) && Array.isArray(have) && want.every((w) => have.some((h) => h && Object.entries(w).every(([k, v]) => h[k] === v))) } catch { return false } }
+  if (op === 'in') return value.replace(/^\(|\)$/g, '').split(',').map((x) => unquote(x.trim())).includes(String(have))
   if (have == null) return false
   const a = String(have), b = unquote(value)
   // timestamps are compared as moments, the rest as text (dates written YYYY-MM-DD sort the same either way)
@@ -38,6 +39,14 @@ globalThis.fetch = async (input, init) => {
   }
   const table = url.pathname.split('/').pop()
   if (!url.pathname.includes('/rest/v1/') || !db[table]) return new Response('{}', { status: 404 })
+  if (init?.method === 'POST' || init?.method === 'PATCH') {
+    const key = (url.searchParams.get('on_conflict') || 'id').split(','), keyOf = (r) => key.map((k) => String(r[k])).join('|')
+    for (const row of [].concat(JSON.parse(init.body || '[]'))) {
+      const stored = { ...row, synced_at: new Date().toISOString() }, i = db[table].findIndex((r) => keyOf(r) === keyOf(row))
+      if (i >= 0) db[table][i] = stored; else db[table].push(stored)
+    }
+    return new Response('[]', { status: 201, headers: { 'Content-Type': 'application/json' } })
+  }
   let rows = db[table]
   let offset = 0, limit = MAX_ROWS
   const order = []
@@ -180,5 +189,31 @@ console.log('· El punto de arriba no dice "Sincronizado" si no se llega al serv
 
 console.log('')
 if (failed.length) { console.log(failed.length + ' FALLARON de ' + (passed + failed.length) + ':\n'); for (const f of failed) console.log('  ✗ ' + f + '\n'); process.exit(1) }
+
+console.log('· Lo que otra tablet agregó a una corrida no se pierde cuando esta manda la suya')
+{
+  // what may have taken a pallet away on 2026-10-15: a run is one row with all its units, and a device that sends
+  // its picture of the run writes the whole row. Before sending, the device now brings the server's version of that
+  // run and merges the two, so a pallet another tablet recorded a moment ago stays.
+  db.act_runs = []; net.down = false
+  await m.pullAll()
+  m.addLine('Packing', 'Línea 8')
+  const line = m.store.get().lines.find((l) => l.dept === 'Packing' && l.name === 'Línea 8')
+  m.startRun(line, 'A700', '6289', m.workDay(m.store.get()).date, 36)
+  const id = m.store.get().runs.find((r) => r.code === 'A700').id, srv = () => db.act_runs.find((r) => r.id === id), local = () => m.store.get().runs.find((r) => r.id === id)
+  m.unitDone(id, 36, '1')
+  await m.flushNow()
+  eq('la corrida subió con su primer pallet', srv()?.units.map((u) => u.ref), ['1'])
+  // another tablet records pallet 2 on the server; this one has not heard of it
+  const at2 = Date.now() + 1
+  db.act_runs = db.act_runs.map((r) => (r.id === id ? { ...r, units: [...r.units, { at: at2, qty: 36, ref: '2', by: 'Otra' }], updated_at: new Date(at2).toISOString(), synced_at: new Date(at2 + 1).toISOString() } : r))
+  await sleep(5)
+  // this tablet records pallet 3 with its old picture of the run, and sends it
+  m.unitDone(id, 36, '3')
+  eq('antes de mandar, esta tablet solo conoce dos pallets', local().units.map((u) => u.ref), ['1', '3'])
+  await m.flushNow()
+  eq('al mandar, trae antes la versión del servidor y las junta: los tres pallets quedan en el servidor y en la tablet', [srv().units.map((u) => u.ref).sort(), local().units.map((u) => u.ref).sort(), m.outbox.size()], [['1', '2', '3'], ['1', '2', '3'], 0])
+}
+
 console.log('✓ ' + passed + ' comprobaciones, todas correctas')
 process.exit(0)

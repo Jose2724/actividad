@@ -191,8 +191,23 @@ export async function loadDay(date: string): Promise<boolean> {
     return true
   } catch { closeDay(date); return false }
 }
-/** a device that has been away (no good pull for over a minute) brings down what others did before it sends its own, so the two are merged */
-beforeFlush(async () => { if (Date.now() - status.lastSync > 75_000) await pullAll() })
+/**
+ * Before a device sends a run it changed, it brings down the server's version of that run and merges the two (see
+ * reconcile and mergeRun): a pallet another tablet recorded a moment ago, which this device had not received yet, is
+ * never written over. A run is one row with all its units, so a stale row would erase what others added. (A device
+ * away for over a minute brings down everything first, so that its other rows are merged too.) A failure here changes
+ * nothing: the row goes as queued and the next pull merges.
+ */
+async function refreshQueuedRuns() {
+  if (!supabase) return
+  const ids = [...new Set(outbox.items().filter((i) => i.table === 'act_runs').map((i) => String(i.row.id ?? '')).filter(Boolean))]
+  if (!ids.length) return
+  try {
+    const { data, error } = await supabase.from('act_runs').select('*').in('id', ids)
+    if (!error && Array.isArray(data)) batch(() => { for (const row of data as Row[]) applyRemote('act_runs', row) })
+  } catch { /* sent as queued */ }
+}
+beforeFlush(async () => { if (Date.now() - status.lastSync > 75_000) await pullAll(); await refreshQueuedRuns() })
 /** down first, then up: what is queued is merged with what the server has before it is sent */
 export const syncNow = async () => { await pullAll(); await flushNow() }
 
