@@ -1026,20 +1026,29 @@ function marksOf(s: State, lineId: string) {
   if (!m) byLine.set(lineId, (m = [...s.runs.filter((r) => r.lineId === lineId).flatMap((r) => [r.startedAt, ...(r.endedAt ? [r.endedAt] : []), ...r.units.map((u) => u.at)]), ...s.stops.filter((x) => x.lineId === lineId).flatMap((x) => [x.startedAt, ...(x.endedAt ? [x.endedAt] : [])])]))
   return m
 }
+/** how long a stretch between two shifts counts live with nothing recorded in it, before it is set aside (see awayOn) */
+export const AWAY_GRACE_MS = 60 * 60_000
 /**
- * The stretches of [a, b) that do not count on a line. Time never stops by itself while it is happening: people who
- * stay after their hour or start before it are working, and it is theirs to say when they stop. Only afterwards, once
- * a whole stretch between two shifts is over (the time in which one shift leaves and the other comes in, or the
- * night), and only when nothing at all was recorded on the line in it (no unit, no stop, no code started or ended), is
- * that stretch taken out: nobody was there, so it was neither worked nor a stop. One record in it and all of it
- * counts. `own` = the records to go by when it is not one line's (a stop of the whole room).
+ * The stretches of [a, b) that do not count on a line. Time never stops by itself while people are there: those who
+ * stay after their hour or start before it are working, and it is theirs to say when they stop. A stretch between two
+ * shifts (the time in which one shift leaves and the other comes in, or the night) in which nothing at all was
+ * recorded on the line (no unit, no stop, no code started or ended) is taken out: nobody was there, so it was neither
+ * worked nor a stop. One record in it and all of it counts. While the stretch is going on it counts for an hour, in
+ * case the people are still there and about to record; after an hour with nothing recorded it is set aside from its
+ * start, and the next record in it brings it all back. `own` = the records to go by when it is not one line's.
  */
 export function awayOn(s: State, lineId: string | null, date: string, a: number, b: number, now: number, own: number[] = []): Span[] {
   if (!(b > a)) return []
   const marks = lineId ? marksOf(s, lineId) : own
   return gapsNear(shiftsOf(s, date), a, b)
-    .filter((g) => g.to <= now && !marks.some((m) => m >= g.from && m < g.to))
-    .map((g) => ({ from: Math.max(g.from, a), to: Math.min(g.to, b) })).filter((x) => x.to > x.from)
+    .filter((g) => (g.to <= now || now - g.from >= AWAY_GRACE_MS) && !marks.some((m) => m >= g.from && m < Math.min(g.to, now)))
+    .map((g) => ({ from: Math.max(g.from, a), to: Math.min(g.to, b, now) })).filter((x) => x.to > x.from)
+}
+/** the moment a room's shift clock is paused at: the start of a stretch between shifts in which, for over an hour, none of its lines recorded anything (0 = running) */
+export function pausedAt(s: State, date: string, lineIds: string[], now: number) {
+  const g = gapsNear(shiftsOf(s, date), now - 1, now + 1).find((x) => x.from <= now && now < x.to)
+  if (!g || now - g.from < AWAY_GRACE_MS || !lineIds.length) return 0
+  return lineIds.some((id) => marksOf(s, id).some((m) => m >= g.from && m < now)) ? 0 : g.from
 }
 /** the time a run has counted since a moment (its last unit, or its start) */
 export function workedSince(s: State, r: Run, from: number, now: number) {
@@ -1509,11 +1518,13 @@ export function deptToday(s: State, dept: Dept, date: string, now: number, lineI
   // shift starts), it runs while anything is running, it stops where the last code ended (the people said so: they
   // ended their codes or the shift), and the next shift starts again from zero when it starts working.
   const shiftUntil = mine.length > 0 && mine.every((r) => r.endedAt) ? Math.max(...mine.map((r) => r.endedAt ?? 0)) : 0
-  const shiftMs = shiftFirst ? Math.max(0, (shiftUntil || now) - shiftFirst) : 0
+  // codes left running with nobody recording anything after the shift's hour: the clock waits at that hour (see awayOn)
+  const paused = shiftUntil ? 0 : pausedAt(s, date, [...new Set(mine.filter((r) => !r.endedAt).map((r) => r.lineId))], now)
+  const shiftMs = shiftFirst ? Math.max(0, (shiftUntil || paused || now) - shiftFirst) : 0
   const shiftHrs = shiftMs / 3_600_000
   return { runs, units, qty, unitLabel: cfg.qty === 'none' ? cfg.plural.toLowerCase() : cfg.qtyUnit, byCode: [...codes.values()].sort((a, b) => b.qty - a.qty), hours, rate: hours >= 1 / 6 ? qty / hours : null, allEnded,
     bins: binTotals(s, binRuns, () => true), shiftBins: binTotals(s, liveBins, (u) => u.at >= since && u.at < until), live: mine.length > 0,
-    shift, shiftQty, shiftUnits, shiftCodes: [...turn.values()].sort((a, b) => b.qty - a.qty), shiftRate: shiftHrs >= 1 / 6 ? shiftQty / shiftHrs : null, made: [made(1), made(2)] as [number, number], shiftSince: shiftFirst, shiftUntil, shiftMs }
+    shift, shiftQty, shiftUnits, shiftCodes: [...turn.values()].sort((a, b) => b.qty - a.qty), shiftRate: shiftHrs >= 1 / 6 ? shiftQty / shiftHrs : null, made: [made(1), made(2)] as [number, number], shiftSince: shiftFirst, shiftUntil, paused, shiftMs }
 }
 
 // ---- what arrives from the server (another tablet, the office) ----

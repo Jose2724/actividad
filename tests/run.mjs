@@ -1673,7 +1673,7 @@ gap.use((m) => {
   // 6. the night
   clock = oct(10, 23, 0); m.startRun(lineOf(6), 'G700', '6283', DAY, 240)
   clock = oct(11, 0, 40); m.unitDone(runOf('G700').id, 240)
-  eq('de noche tampoco se detiene solo: pasada la 1:00 AM, un código que sigue corriendo sigue contando', [stats('G700', oct(11, 1, 30)), stats('G700', oct(11, 2, 0))], [[150, 0], [180, 0]])
+  eq('de noche, pasada la 1:00 AM, un código que sigue corriendo cuenta la primera hora; con una hora sin registros, ese rato espera (nada se termina solo)', [stats('G700', oct(11, 1, 30)), stats('G700', oct(11, 2, 0)), runOf('G700').endedAt], [[150, 0], [120, 0], null])
   eq('llegada la hora del turno 1 (6:00 AM), una línea que pasó toda la noche sin un solo registro no cuenta esa noche', [stats('G700', oct(11, 6, 0)), stats('G700', oct(11, 7, 0))], [[120, 0], [180, 0]])
   clock = oct(11, 1, 20); m.unitDone(runOf('G700').id, 240)
   eq('si el turno 2 siguió y registró un carro a la 1:20, hubo gente: esa noche cuenta hasta que ellos terminen el código', stats('G700', oct(11, 7, 0)), [480, 0])
@@ -2183,6 +2183,31 @@ section('Un código y su lote que siguen al día siguiente: Avance dice lo pendi
     eq('el jueves hizo 35 cajas del lote del miércoles (del pallet mixto solo las 15 de ese lote) y las 4 mezclas', m.carriedOver(st(), wed).map((x) => [x.dept, x.pending, x.made, x.done]), [['Kitchen', 4, 4, true], ['Packing', 40, 35, false]])
     eq('y el jueves dice lo que vino del lote del miércoles, en la unidad de cada cuarto', m.cameFrom(st(), thu).map((x) => [x.dept, x.code, x.unit, x.made, x.from]), [['Kitchen', 'A100', 'mezclas', 4, wed], ['Packing', 'A100', 'cajas', 35, wed]])
     eq('un día sin nada pendiente ni nada de ayer no dice nada', [m.carriedOver(st(), thu), m.cameFrom(st(), wed)], [[], []])
+  })
+}
+section('Códigos dejados corriendo de noche: el reloj se pausa cuando nadie registra nada, y nada se termina solo')
+{
+  // what Jose saw on 2026-10-16 at 2:33 AM, with nobody in the plant: "Turno 2 · 11:32:43 · desde las 3:00 PM" in
+  // Packing and Spiral, codes left running since the second shift (which ends at 1:00 AM). The hours between shifts
+  // with nothing recorded were already set aside, but only once over (at 6:00 AM); the live clock ran until then.
+  const nt = await device('night', { user: 'Luis', usual: true })
+  nt.use((m) => {
+    const st = () => m.store.get(), min = (x) => Math.round(x / M), run = () => st().runs.find((r) => r.code === 'A100')
+    m.addLine('Packing', 'Línea 1'); const l = st().lines.find((x) => x.dept === 'Packing')
+    clock = oct(10, 16, 0); m.startRun(l, 'A100', '6283', DAY, 36)
+    for (const h of [17, 19, 21, 23]) { clock = oct(10, h, 0); m.unitDone(run().id, 36) }
+    // 1:30 AM: half an hour past the shift's end, nothing recorded: still counting (they may be about to)
+    clock = oct(11, 1, 30)
+    eq('media hora después de la 1:00 AM sin registros, todavía cuenta', [min(m.runStats(st(), run(), clock).working), m.deptToday(st(), 'Packing', DAY, clock).paused], [570, 0])
+    // 2:33 AM: over an hour with nothing recorded: the time since 1:00 AM is set aside, the clock waits at 1:00 AM
+    clock = oct(11, 2, 33)
+    const t = m.deptToday(st(), 'Packing', DAY, clock)
+    eq('a las 2:33 AM, con más de una hora sin registros, el tiempo desde la 1:00 AM no cuenta y el reloj del turno espera ahí', [min(m.runStats(st(), run(), clock).working), t.paused === oct(11, 1, 0), min(t.shiftMs), run().endedAt], [540, true, 540, null])
+    eq('en el reporte igual: 9 horas trabajando, no 10 y media', min(m.reportOf(st(), DAY, clock, { only: 'Packing' }).working), 540)
+    // 2:50 AM: a pallet is recorded after all: somebody was there, the whole stretch counts again
+    clock = oct(11, 2, 50); m.unitDone(run().id, 36)
+    clock = oct(11, 3, 0)
+    eq('un registro a las 2:50 AM trae todo el rato de vuelta: 11 horas', [min(m.runStats(st(), run(), clock).working), m.deptToday(st(), 'Packing', DAY, clock).paused], [660, 0])
   })
 }
 section('Set up: espera al código siguiente; con las líneas vacías no corre nada')

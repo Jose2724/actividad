@@ -717,3 +717,7 @@ table.pallets th.num,table.pallets td.num{text-align:right;font-variant-numeric:
 .avance td.carry small{display:block;color:var(--muted)}
 .avance td.carry small.ok{color:var(--ok);font-weight:700}
 .avance td.carry small.amber{color:var(--amber);font-weight:700}
+/* the shift's clock paused: codes left running with nothing recorded for over an hour after the shift's hour */
+.tc-clock.paused{background:#fff7e6}
+.tc-clock.paused b{color:var(--amber)}
+.tc-paused{margin:0;color:var(--amber);font-size:13px;font-weight:600}

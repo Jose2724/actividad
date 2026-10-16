@@ -867,12 +867,13 @@ function TodayCard({ s, dept, now, mgr, date }: { s: State; dept: Dept; now: num
       </div>
       {/* the clock of the shift: from its first code until the last one ends, and from zero again with the next shift */}
       {t.shiftSince > 0 && (
-        <div className={'tc-clock' + (t.shiftUntil ? ' over' : '')}>
+        <div className={'tc-clock' + (t.shiftUntil ? ' over' : t.paused ? ' paused' : '')}>
           <span>{trx('⏱ Turno {0}', t.shift)}</span>
           <b>{fmtDur(t.shiftMs)}</b>
-          <small>{t.shiftUntil ? tr('de {0} a {1} · terminó', fmtTime(t.shiftSince), fmtTime(t.shiftUntil)) : tr('desde las {0}', fmtTime(t.shiftSince))}</small>
+          <small>{t.shiftUntil ? tr('de {0} a {1} · terminó', fmtTime(t.shiftSince), fmtTime(t.shiftUntil)) : t.paused ? tr('desde las {0} · ⏸ en pausa: nadie ha registrado nada desde la {1}', fmtTime(t.shiftSince), fmtTime(t.paused)) : tr('desde las {0}', fmtTime(t.shiftSince))}</small>
         </div>
       )}
+      {t.paused > 0 && <p className="tc-paused">{tr('Ese rato no cuenta. Si siguen trabajando, al registrar lo siguiente cuenta todo; si ya se fueron, toca "Terminar turno".')}</p>}
       <div className="tc-main">
         <div className="tc-total"><b>{fmtN(t.shiftQty)}</b> <span>{label(t.shiftQty)}</span>{cfg.qty !== 'none' && <small>{t.shiftUnits} {unitWord(t.shiftUnits)}</small>}
           {t.shiftBins.length > 0 && <small className="tc-bins">{dept === 'Spiral' ? tr('Además: {0}', t.shiftBins.map((b) => unitsText(dept, b.units, b.qty, cfgFor(dept, b.word))).join(' · ')) : tr('Además, en bins: {0}', t.shiftBins.map((b) => tr('{0} con {1} {2}', b.units === 1 ? tr('1 bin') : tr('{0} bins', b.units), fmtN(b.qty), binWord(b.word))).join(' · '))}</small>}

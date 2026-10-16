@@ -901,4 +901,7 @@ export const EN: Record<string, string> = {
   '{0}: pendiente {1} {2} · siguió el {3}': '{0}: {1} {2} pending · went on {3}',
   '{0}: pendiente {1} {2} al día siguiente': '{0}: {1} {2} pending into the next day',
   '↪ {0}: {1} {2} del lote del {3}': '↪ {0}: {1} {2} of the lot of {3}',
+  // the clock paused when nobody records anything after the shift's hour
+  'desde las {0} · ⏸ en pausa: nadie ha registrado nada desde la {1}': 'since {0} · ⏸ paused: nothing recorded since {1}',
+  'Ese rato no cuenta. Si siguen trabajando, al registrar lo siguiente cuenta todo; si ya se fueron, toca "Terminar turno".': 'That time does not count. If people are still working, recording the next one counts all of it; if they left, tap "End shift".',
 }
