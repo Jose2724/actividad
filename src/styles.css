@@ -936,3 +936,5 @@ table.pallets .lotno{display:block;font-size:10px;font-weight:700;color:var(--mu
 table.otable tfoot td{background:var(--bg);font-weight:700;border-top:2px solid var(--line)}
 table.otable tfoot td .pname{display:block;font-weight:500}
 table.otable tfoot td small{color:var(--muted);font-weight:600}
+/* the live time beside the date: the shared clock, to compare with a phone when a timer looks wrong */
+.brand .livetime{font-variant-numeric:tabular-nums;color:var(--ink);font-weight:700}

@@ -18,6 +18,8 @@ const KEY = 'act_clock'
 const saved = (): number => { try { const s = JSON.parse(localStorage.getItem(KEY) || 'null') as { offset?: number } | null; return s && Number.isFinite(s.offset) ? Number(s.offset) : 0 } catch { return 0 } }
 /** server − device, in milliseconds. What was measured last time is used until a new measure arrives (also without signal) */
 let offset = supabase ? saved() : 0
+/** when the measure in use was taken, by the device's clock (0 = never: the device goes by its own clock) */
+let savedAt = supabase ? ((): number => { try { const s = JSON.parse(localStorage.getItem(KEY) || 'null') as { at?: number } | null; return s && Number.isFinite(s.at) ? Number(s.at) : 0 } catch { return 0 } })() : 0
 /** the moment it is now, by the shared clock */
 export const clockNow = () => Date.now() + offset
 export const clockOffset = () => offset
@@ -40,8 +42,15 @@ export function estimate(samples: Sample[]): { offset: number; within: number } 
 export function setOffset(ms: number) {
   if (!Number.isFinite(ms) || Math.abs(ms - offset) < 150) return
   offset = Math.round(ms)
-  try { localStorage.setItem(KEY, JSON.stringify({ offset, at: Date.now() })) } catch { /* private */ }
+  savedAt = Date.now()
+  try { localStorage.setItem(KEY, JSON.stringify({ offset, at: savedAt })) } catch { /* private */ }
 }
+/**
+ * What the screen can say about this device's clock: whether it was set by the server since the page opened, and
+ * when the measure in use was taken (0 = never: the hours this device records and the timers it shows go by its own
+ * clock, which nobody has checked).
+ */
+export const clockState = () => ({ measured: measuredAt > 0, savedAt })
 
 /** the page's own stopwatch: it only goes forward and nobody can set it, unlike the device's clock */
 const stopwatch = () => performance.now()

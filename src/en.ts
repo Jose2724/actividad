@@ -1038,4 +1038,9 @@ export const EN: Record<string, string> = {
   'Ningún pedido abierto coincide con esos filtros.': 'No open order matches those filters.',
   '{0} de los marcados completos sí.': '{0} of the ones marked complete do.',
   'Verlos': 'See them',
+  // the clock: the live time in the header and the bar of a device whose clock the server could not set (2026-10-16)
+  'La hora de la app: la del servidor, la misma en todos los aparatos': 'The app\'s time: the server\'s, the same on every device',
+  '⚠ Este aparato no ha podido ajustar su reloj con el del servidor ({0}). Si su hora está mal, los tiempos de las mezclas y del turno salen corridos aquí, y las horas que registre también. Compara la hora de arriba con un teléfono.': '⚠ This device could not set its clock by the server\'s ({0}). If its time is wrong, the timers of the units and of the shift come out shifted here, and so do the hours it records. Compare the time above with a phone.',
+  'usa la medida de hace {0}': 'it uses the measure taken {0} ago',
+  'usa su propio reloj': 'it goes by its own clock',
 }
