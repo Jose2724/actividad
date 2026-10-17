@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { addUnit, applyDraft, binOf, byLineName, byShip, CFG, cfgOf, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, setUnitOrder, splitStop, store, updateRun, updateStop, type Run, type State, type Stop, lineLabel } from './store'
+import { addRunLater, addUnit, applyDraft, BIN_WORDS, binOf, binWord, byLineName, cfgFor, DEPTS, measureName, MFO_WORDS, plainDay, planRows, SPIRAL_UNITS, type Dept, byShip, CFG, cfgOf, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, setUnitOrder, splitStop, store, updateRun, updateStop, type Run, type State, type Stop, lineLabel } from './store'
 import { clockNow } from './clock'
 import { ConfirmDialog, LotsDialog, useCan } from './App'
 import { tr } from './i18n'
@@ -279,6 +279,91 @@ function StopSplitter({ stop, onBack, onClose }: { stop: Stop; onBack: () => voi
           <button type="button" className="btn" onClick={onBack}>{tr('Volver')}</button>
           <button type="button" className="btn primary" disabled={!ok || total < 2} onClick={go}>{tr('✂ Dividir')}</button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * A code that ran and nobody recorded (the office: "they did four and did not register them"), put on its line after
+ * the fact: the room, the line, the code, the day and the hours; how many units and what each carried; a lot, tags or
+ * bin numbers, waste and who made it when they are known. What is not known stays blank. The run lands closed, with
+ * its units spread over its hours, and the history says who added it (see addRunLater).
+ */
+export function AddRunDialog({ s, date, dept: first, onClose, onAdded }: { s: State; date: string; dept?: Dept; onClose: () => void; onAdded: (id: string) => void }) {
+  const [dept, setDept] = useState<Dept>(first ?? 'Kitchen')
+  const lines = s.lines.filter((l) => l.dept === dept && !l.deleted).sort(byLineName)
+  const [linePick, setLinePick] = useState('')
+  const line = lines.find((l) => l.id === linePick) ?? lines[0]
+  const [code, setCode] = useState('')
+  const [lot, setLot] = useState('')
+  const [day, setDay] = useState(date)
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
+  const [count, setCount] = useState('')
+  const [each, setEach] = useState('')
+  const [refs, setRefs] = useState('')
+  const [waste, setWaste] = useState('')
+  const [madeBy, setMadeBy] = useState('')
+  const [problem, setProblem] = useState('')
+  // how the code is counted: Packing in pallets or in bins of a word, MFO in bins of platos, copas or pounds, Spiral
+  // in mezclas, pounds or cases; the words of the form follow
+  const [kindPick, setKindPick] = useState<string | null>(null)
+  const kinds: { word: string; label: string }[] = dept === 'Packing' ? [{ word: '', label: tr('Pallets') }, ...BIN_WORDS.map((w) => ({ word: w, label: tr('Bins de {0}', binWord(w)) }))]
+    : dept === 'MFO' ? MFO_WORDS.map((w) => ({ word: w, label: w === 'lb' ? tr('Bins en libras') : tr('Bins de {0}', binWord(w)) }))
+    : dept === 'Spiral' ? SPIRAL_UNITS.map((u) => ({ word: u === 'mezclas' ? '' : u, label: u === 'mezclas' ? tr('Mezclas') : measureName(u) }))
+    : []
+  const kind = kinds.some((k) => k.word === kindPick) ? (kindPick as string) : (kinds[0]?.word ?? '')
+  const cfg = cfgFor(dept, kind), unit = cfg.unit.toLowerCase(), plural = cfg.plural.toLowerCase()
+  // the hours are of that day of work: a night shift's 1:00 AM is the next calendar day (a day of work runs from one
+  // night to the next, so the hour nearest the day's afternoon is the one meant)
+  const base = new Date(day + 'T15:30:00').getTime()
+  const startAt = from && day ? nearDay(base, from) : NaN
+  const endAt = to && day ? nearDay(base, to) : null
+  const startOk = Number.isFinite(startAt) && plainDay(s, startAt) === day
+  const endOk = endAt == null || (endAt >= startAt && plainDay(s, endAt) === day)
+  const n = count.trim() ? Number(count) : 0
+  const per = each.trim() ? Number(each.replace(',', '.')) : null
+  const ok = !!line && !!code.trim() && !!day && startOk && endOk && Number.isInteger(n) && n >= 0 && n <= 500 && (per == null || (Number.isFinite(per) && per >= 0))
+  const program = planRows(s, day, dept).filter((r) => r.planned > 0).map((r) => r.code)
+  const save = () => {
+    if (!ok || !line) return
+    const refList = refs.split(/[,;\s]+/).map((t) => t.trim()).filter(Boolean)
+    const units = Array.from({ length: n }, (_, i) => ({ qty: cfg.qty === 'none' ? null : per, ref: refList[i] ?? '' }))
+    const id = addRunLater({ dept, lineId: line.id, code, lot, date: day, startedAt: startAt, endedAt: endAt, units, perUnit: cfg.perUnitLabel && per != null ? per : null, waste: cfg.waste && waste.trim() ? Number(waste.replace(',', '.')) || 0 : 0, bin: dept === 'Spiral' ? '' : kind, measure: dept === 'Spiral' && (kind === 'lb' || kind === 'cajas') ? kind : '', madeBy })
+    if (!id) { setProblem(tr('A esas horas la línea tenía otro código. Cambia la línea o las horas.')); return }
+    onAdded(id)
+  }
+  return (
+    <div className="veil" onClick={onClose}>
+      <div className="dlg wide" onClick={(e) => e.stopPropagation()}>
+        <h3>{tr('Agregar un registro')}</h3>
+        <p>{tr('Para un código que se hizo y nadie registró. Pon lo que sepas; lo demás se deja en blanco. Queda en el historial con tu nombre.')}</p>
+        <form className="qform" onSubmit={(e) => { e.preventDefault(); save() }}>
+          <div className="egrid">
+            <label>{tr('Departamento')}{' '}<select value={dept} onChange={(e) => { setDept(e.target.value as Dept); setLinePick(''); setKindPick(null); setProblem('') }}>{DEPTS.map((d) => <option key={d} value={d}>{d}</option>)}</select></label>
+            <label>{cfg.lineWord}{' '}<select value={line?.id ?? ''} onChange={(e) => { setLinePick(e.target.value); setProblem('') }}>{lines.map((l) => <option key={l.id} value={l.id}>{lineLabel(l.name)}</option>)}</select></label>
+            {kinds.length > 0 && <label>{tr('Se cuenta en')}{' '}<select value={kind} onChange={(e) => setKindPick(e.target.value)}>{kinds.map((k) => <option key={k.word} value={k.word}>{k.label}</option>)}</select></label>}
+            <label>{tr('Código')}{' '}<input value={code} onChange={(e) => setCode(e.target.value)} placeholder={tr('ej. 0100')} autoComplete="off" autoFocus /></label>
+            <label>{tr('Lote')} <small>{tr('(si se sabe)')}</small><input value={lot} onChange={(e) => setLot(e.target.value)} inputMode="numeric" placeholder={tr('ej. 6280')} autoComplete="off" /></label>
+            <label>{tr('Fecha')}{' '}<input type="date" value={day} onChange={(e) => { setDay(e.target.value); setProblem('') }} /></label>
+            <label>{tr('Empezó')}{' '}<input type="time" value={from} onChange={(e) => { setFrom(e.target.value); setProblem('') }} /></label>
+            <label>{tr('Terminó')} <small>{tr('(si no, con la última unidad)')}</small><input type="time" value={to} onChange={(e) => { setTo(e.target.value); setProblem('') }} /></label>
+            <label>{cfg.saved.endsWith('a') ? tr('Cuántas {0}', plural) : tr('Cuántos {0}', plural)}{' '}<input value={count} onChange={(e) => setCount(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder="0" autoComplete="off" /></label>
+            {cfg.qty !== 'none' && <label>{tr('{0} por {1}', cfg.qtyUnit, unit)} <small>{tr('(si se sabe)')}</small><input value={each} onChange={(e) => setEach(e.target.value.replace(/[^\d.,]/g, ''))} inputMode="decimal" autoComplete="off" /></label>}
+            {cfg.refLabel && <label>{cfg.refLabel} <small>{tr('(en orden, separados por coma)')}</small><input value={refs} onChange={(e) => setRefs(e.target.value)} placeholder={tr('ej. 1741, 1742')} autoComplete="off" /></label>}
+            {cfg.waste && <label>{tr('Waste (lb)')}{' '}<input value={waste} onChange={(e) => setWaste(e.target.value.replace(/[^\d.,]/g, ''))} inputMode="decimal" autoComplete="off" /></label>}
+            <label>{tr('Quién lo hizo')} <small>{tr('(si se sabe)')}</small><input value={madeBy} onChange={(e) => setMadeBy(e.target.value)} autoComplete="off" /></label>
+          </div>
+          {program.length > 0 && <div className="chips">{program.map((c) => <button key={c} type="button" className={'chip sm' + (normCode(code) === normCode(c) ? ' on' : '')} onClick={() => setCode(c)}>{c}</button>)}</div>}
+          {from && !startOk && <span className="err">{tr('Esa hora cae en otro día de trabajo.')}</span>}
+          {to && !endOk && <span className="err">{tr('Termina antes de empezar, o en otro día de trabajo.')}</span>}
+          {problem && <span className="err">{problem}</span>}
+          <div className="dbtns">
+            <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
+            <button type="submit" className="btn primary" disabled={!ok}>{tr('✓ Agregar')}</button>
+          </div>
+        </form>
       </div>
     </div>
   )

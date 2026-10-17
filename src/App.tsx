@@ -10,7 +10,7 @@ import { buildPdf, loadPdf } from './pdf'
 import { homeScreenApple, sharePick, shareProblem, type Kind } from './send'
 import { filterFile, filterTitle, reportOf, spanShifts, unitParts, type ReportFilter } from './report'
 import { canDo, canShift, type Power, type Who } from './powers'
-import { RunEditor, StopEditor } from './editors'
+import { AddRunDialog, RunEditor, StopEditor } from './editors'
 import { fetchMe, finishSignOut, loginEmail, rememberedMe, rememberedUser, rememberMe, rememberUser, signedOut, signOutHere, supabase, type Me } from './supabase'
 import { leaveAsk, loadDay, STALE_MS, startSync, syncStore, syncNow, unreachable, fetchPurged } from './sync'
 import { storageFull } from './storage'
@@ -1425,6 +1425,7 @@ function DeptPanel({ s, dept, now, day }: { s: State; dept: Dept; now: number; m
   const [adding, setAdding] = useState(false)
   const [leaving, setLeaving] = useState(false)
   const [editRun, setEditRun] = useState<string | null>(null)
+  const [addingRun, setAddingRun] = useState(false) // a code that ran and nobody recorded, put on its line after the fact
   const [editStop, setEditStop] = useState(false)
   const left = openIn(s, dept) // what is still open in the room: what "Terminar turno" would close
   const editing = editRun ? s.runs.find((r) => r.id === editRun) : undefined
@@ -1495,10 +1496,12 @@ function DeptPanel({ s, dept, now, day }: { s: State; dept: Dept; now: number; m
           {showBefore && doneBefore.map(doneRow)}
         </div>
       )}
+      {can('fix') && !viewOnly && <p className="addlater"><button type="button" className="lnk sm" onClick={() => setAddingRun(true)}>{tr('+ Agregar un registro que nadie registró')}</button></p>}
       {/* what the office sets for the room, under what the room is doing: the day's program and the orders being filled */}
       <PlanCard s={s} dept={dept} date={day.date} mgr={can('products')} />
       {CFG[dept].orders && <OrdersCard s={s} mgr={can('orders')} />}
       {editing && <RunEditor s={s} run={editing} mgr={can('fix')} onClose={() => setEditRun(null)} />}
+      {addingRun && <AddRunDialog s={s} date={day.date} dept={dept} onClose={() => setAddingRun(false)} onAdded={() => setAddingRun(false)} />}
       {stopAll && <StopDialog title={tr('Parar todo {0}', dept)} reasons={CFG[dept].quick} onClose={() => setStopAll(false)} onPick={(reason, note) => { startStop(dept, null, reason, note); setStopAll(false) }} />}
     </section>
   )
@@ -2493,6 +2496,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
   const [fLot, setFLot] = useState('')
   // the room a manager looks at (the people of one room see only theirs)
   const [fDept, setDeptPick] = useState<Dept | ''>(only ? '' : deptChosen)
+  const [addingRun, setAddingRun] = useState(false) // a code that ran and nobody recorded, put on its line after the fact
   const setFDept = (d: Dept | '') => { deptChosen = d; setDeptPick(d) }
   // the long lists at the bottom open with a tap
   const [shut, setShut] = useState<Record<string, boolean>>({ units: true, changes: true })
@@ -2666,9 +2670,10 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
   /** what a time that adds up the lines is the sum of: "suma de 3 líneas" */
   const linesText = (n: number) => (n === 1 ? tr('una línea') : tr('suma de {0} líneas', n))
   /** the title of a list that opens and closes */
-  const secHead = (key: string, title: string, count: number) => (
+  const secHead = (key: string, title: string, count: number, extra?: ReactNode) => (
     <div className="sechead">
       <h3>{title} · {count}</h3>
+      {extra}
       <button type="button" className="lnk sm" aria-expanded={!shut[key]} onClick={() => setShut({ ...shut, [key]: !shut[key] })}>{shut[key] ? tr('Mostrar ▾') : tr('Ocultar ▴')}</button>
     </div>
   )
@@ -2746,7 +2751,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
         </div>
       ))}
       {shiftsOpen && <ShiftsDialog s={s} date={date} onClose={() => setShiftsOpen(false)} />}
-      {rows.length === 0 ? <p className="hint">{day.state === 'here' ? (rep.code || rep.lot || (!only && dept) ? tr('Nada registrado con estos filtros.') : rep.shift ? tr('Nada registrado en este turno.') : tr('Nada registrado en esta fecha.')) : ''}</p> : (
+      {rows.length === 0 ? <><p className="hint">{day.state === 'here' ? (rep.code || rep.lot || (!only && dept) ? tr('Nada registrado con estos filtros.') : rep.shift ? tr('Nada registrado en este turno.') : tr('Nada registrado en esta fecha.')) : ''}</p>{day.state === 'here' && can('fix') && <p><button type="button" className="btn soft" onClick={() => setAddingRun(true)}>{tr('+ Agregar registro')}</button></p>}</> : (
         <>
           {/* what was made, big: each room counts in its own unit */}
           <div className="heads">
@@ -2986,7 +2991,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
               </div>
             </>
           )}
-          {secHead('runs', tr('Corridas'), rows.length)}
+          {secHead('runs', tr('Corridas'), rows.length, day.state === 'here' && can('fix') ? <button type="button" className="lnk sm" onClick={() => setAddingRun(true)}>{tr('+ Agregar registro')}</button> : null)}
           {!shut.runs && (
             <>
         <div className="twrap">
@@ -3069,6 +3074,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
       )}
       <p className="hint foot">{supabase ? tr('Todo se guarda en el servidor y se ve en vivo desde la oficina, el teléfono o la PC.') : tr('Demo guardado en este dispositivo. La versión completa manda todo en vivo al manager (oficina, teléfono o PC) y exporta a Excel, PDF y Google Sheets como la Hoja de Freezer RTE.')}</p>
       {runToEdit && <RunEditor s={s} run={runToEdit} mgr={can('fix')} onClose={() => setEditRun(null)} />}
+      {addingRun && <AddRunDialog s={s} date={date} dept={dept} onClose={() => setAddingRun(false)} onAdded={() => setAddingRun(false)} />}
       {stopToEdit && <StopEditor stop={stopToEdit} mgr={can('fix')} onClose={() => setEditStop(null)} />}
       {mgr && !viewOnly && (
         <div className="btns">

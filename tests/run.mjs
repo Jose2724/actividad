@@ -2373,6 +2373,46 @@ section('MFO: los bins llevan platos, copas o libras; el programa, las metas y A
     eq('80 platos dichos en cajas, con 20 por caja cuando la tabla no dice', m.inCases(st(), 'M100', 90, 20), { cases: 4, loose: 10, perCase: 20 })
   })
 }
+section('Un código que nadie registró: la oficina lo agrega después, en cualquier cuarto, con lo que sepa')
+{
+  // Jose, 2026-10-17: the office wants to add any code of any room that was not recorded, choosing the date and the
+  // hours; what they do not know stays blank ("somebody said they did 4 and nothing was registered")
+  const of = await device('office', { user: 'Noelia', usual: true })
+  of.use((m) => {
+    const st = () => m.store.get()
+    m.role.set('office')
+    const lineOf = (dept, name) => { m.addLine(dept, name); return st().lines.find((l) => l.dept === dept && l.name === name) }
+    const r1 = lineOf('RTE', 'Línea 1'), k1 = lineOf('Kitchen', 'Braiser 1'), p1 = lineOf('Packing', 'Línea 1'), m1 = lineOf('MFO', 'Línea 1')
+    clock = oct(10, 14, 0)
+    // four carts of 240 pouches from 10:00 to 11:00; the lot and who made them are known
+    const id = m.addRunLater({ dept: 'RTE', lineId: r1.id, code: 'a100', lot: '6287', date: DAY, startedAt: oct(10, 10, 0), endedAt: oct(10, 11, 0), units: [{ qty: 240 }, { qty: 240 }, { qty: 240 }, { qty: 240 }], perUnit: 240, madeBy: 'Ana' })
+    const r = st().runs.find((x) => x.id === id)
+    eq('la corrida queda cerrada, con sus carros repartidos entre sus horas, hecha por quien se dijo', [r.dept, r.line, r.code, r.lot, r.date, r.startedAt, r.endedAt, r.units.map((u) => [Math.round((u.at - oct(10, 10, 0)) / M), u.qty, u.by]), r.perUnit, r.by], ['RTE', 'Línea 1', 'A100', '6287', DAY, oct(10, 10, 0), oct(10, 11, 0), [[15, 240, 'Ana'], [30, 240, 'Ana'], [45, 240, 'Ana'], [60, 240, 'Ana']], 240, 'Ana'])
+    eq('y en el historial, con el nombre de quien la agregó', st().changes.filter((c) => c.refKey === id).map((c) => [c.by, c.what.split(' · ').pop(), c.after]), [['Noelia', 'Se agregó después', '4 carros · 960 pouches · 10:00 AM – 11:00 AM · lote 6287']])
+    eq('el reporte la cuenta como cualquier otra', (({ byDept, rows }) => [byDept.map((d) => [d.dept, d.units, d.qty]), rows.map((x) => [x.r.code, x.units, x.qty, x.st.working])])(m.reportOf(st(), DAY, clock, { only: 'RTE' })), [[['RTE', 4, 960]], [['A100', 4, 960, 3_600_000]]])
+    eq('a esas horas la línea ya tenía código: no se agrega, y nada cambia', [m.addRunLater({ dept: 'RTE', lineId: r1.id, code: 'B200', date: DAY, startedAt: oct(10, 10, 30), endedAt: oct(10, 12, 0), units: [{ qty: 100 }] }), st().runs.length], ['', 1])
+    eq('justo después, sí', !!m.addRunLater({ dept: 'RTE', lineId: r1.id, code: 'B200', date: DAY, startedAt: oct(10, 11, 0), endedAt: oct(10, 11, 30), units: [] }), true)
+    // Kitchen: only the hour is known; three mezclas and nothing else
+    const k = m.addRunLater({ dept: 'Kitchen', lineId: k1.id, code: 'C300', date: DAY, startedAt: oct(10, 8, 0), units: [{ qty: null }, { qty: null }, { qty: null }] })
+    const kr = st().runs.find((x) => x.id === k)
+    eq('sin hora de fin: las mezclas van una por minuto y el código termina con la última; sin lote, y la hizo quien la agregó', [kr.lot, kr.by, kr.units.map((u) => Math.round((u.at - oct(10, 8, 0)) / M)), kr.endedAt - oct(10, 8, 0), m.madeText(kr, m.runQty(st(), kr))], ['', 'Noelia', [0, 1, 2], 2 * M, '3 mezclas'])
+    // Packing: pallets with their tags, in order; MFO: bins of platos, the same hour of start and end
+    const p = m.addRunLater({ dept: 'Packing', lineId: p1.id, code: 'A100', lot: '6287', date: DAY, startedAt: oct(10, 9, 0), endedAt: oct(10, 9, 40), units: [{ qty: 36, ref: '1741' }, { qty: 36, ref: '1742' }], perUnit: 36 })
+    const pr = st().runs.find((x) => x.id === p)
+    eq('pallets con sus tags, en la lista de pallets del reporte', [pr.units.map((u) => [u.qty, u.ref]), m.reportOf(st(), DAY, clock, { only: 'Packing' }).pallets.map((x) => [x.n, x.parts[0].tag, x.total])], [[[36, '1741'], [36, '1742']], [[1, '1741', 36], [2, '1742', 36]]])
+    const mf = m.addRunLater({ dept: 'MFO', lineId: m1.id, code: 'M100', date: DAY, startedAt: oct(10, 9, 0), endedAt: oct(10, 9, 0), units: [{ qty: 30, ref: '1' }, { qty: 30, ref: '2' }], bin: 'platos' })
+    const mr = st().runs.find((x) => x.id === mf)
+    eq('bins de platos con la misma hora de inicio y fin: cada bin en su instante, y el cuarto los cuenta en cajas', [m.binOf(mr), mr.units.map((u) => u.at - oct(10, 9, 0)), m.madeText(mr, m.runQty(st(), mr)), m.deptToday(st(), 'MFO', DAY, clock).qty], ['platos', [0, 1], '2 bins · 60 platos', 3])
+    // a set up left open on the line before those hours ends where the code started
+    clock = oct(10, 7, 0); m.startStop('RTE', r1.id, 'Set up', '')
+    const sid = st().stops.find((x) => x.lineId === r1.id && !x.endedAt).id
+    clock = oct(10, 14, 0)
+    m.addRunLater({ dept: 'RTE', lineId: r1.id, code: 'C300', date: DAY, startedAt: oct(10, 7, 30), endedAt: oct(10, 8, 0), units: [] })
+    eq('el Set up abierto termina donde empezó el código agregado', st().stops.find((x) => x.id === sid).endedAt, oct(10, 7, 30))
+    eq('sin línea, con una línea de otro cuarto, o sin código: nada', [m.addRunLater({ dept: 'RTE', lineId: 'nope', code: 'X', date: DAY, startedAt: oct(10, 12, 0), units: [] }), m.addRunLater({ dept: 'Kitchen', lineId: r1.id, code: 'X', date: DAY, startedAt: oct(10, 12, 0), units: [] }), m.addRunLater({ dept: 'RTE', lineId: r1.id, code: '  ', date: DAY, startedAt: oct(10, 12, 0), units: [] })], ['', '', ''])
+    eq('todo sube al servidor', m.outbox.items().filter((i) => i.table === 'act_runs').length, 6)
+  })
+}
 section('Un código y su lote que siguen al día siguiente: Avance dice lo pendiente, o completado')
 {
   // what Jose confirmed on 2026-10-16: Packing had 100 cases of a code on Wednesday's program and made 60; on Thursday

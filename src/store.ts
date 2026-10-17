@@ -793,6 +793,36 @@ export function reopenRun(id: string): boolean {
  * the set up that began when it ended). Not onto a line that had another code in that time, nor, while it is still
  * running, onto a line that is stopped: two things cannot be on one line at once.
  */
+/**
+ * A code that ran and nobody recorded (the office: "they did four and did not register them") is put on its line
+ * after the fact, closed, with its units spread over its hours: a manager's or the office's record, so who added it
+ * goes to the history. What is not known stays blank: the lot, the quantities, the tags, the waste, who made it.
+ * Without an end hour the units go one per minute from the start and the code ends with the last one (the office
+ * only knew the hour). Returns the new run's id, or '' when nothing was written: the line had another code in those
+ * hours (nothing of it is touched), the line is not of that room, or there is no code.
+ */
+export type LaterRun = { dept: Dept; lineId: string; code: string; lot?: string; date: string; startedAt: number; endedAt?: number | null; units?: { qty: number | null; ref?: string; lots?: LotPart[] }[]; perUnit?: number | null; waste?: number; bin?: string; measure?: Measure | ''; madeBy?: string }
+export function addRunLater(x: LaterRun): string {
+  const line = state.lines.find((l) => l.id === x.lineId && !l.deleted), code = x.code.trim().toUpperCase(), list = x.units ?? []
+  if (!line || line.dept !== x.dept || !code || !Number.isFinite(x.startedAt) || !/^\d{4}-\d{2}-\d{2}$/.test(x.date)) return ''
+  const start = Math.floor(x.startedAt), n = list.length
+  const told = x.endedAt != null && Number.isFinite(x.endedAt) && x.endedAt >= start ? Math.floor(x.endedAt) : null
+  const end = told ?? start + (n ? (n - 1) * 60_000 : 0)
+  // each unit at its moment: spread over the hours told, else one per minute; never two on the same instant
+  const atOf = (i: number) => (told == null ? start + i * 60_000 : end - start >= n * 1000 ? start + Math.round(((i + 1) * (end - start)) / n) : start + i)
+  if (state.runs.some((r) => !r.deleted && r.lineId === line.id && r.startedAt < end && (r.endedAt ?? Infinity) > start)) return ''
+  const by = (x.madeBy ?? '').trim() || user.get()
+  const units: Unit[] = list.map((u, i) => { const lots = cleanLots(u.lots), qty = lots ? lots.reduce((t, l) => t + l.qty, 0) : u.qty; return { at: atOf(i), qty: typeof qty === 'number' && Number.isFinite(qty) ? qty : null, ref: (u.ref ?? '').trim(), by, ...(lots ? { lots } : {}) } })
+  const extra: RunExtra | undefined = (line.dept === 'Packing' || line.dept === 'MFO') && x.bin?.trim() ? { bin: x.bin.trim().slice(0, 30) } : line.dept === 'Spiral' && x.measure ? { measure: x.measure } : undefined
+  const r: Run = { id: uid(), dept: line.dept, lineId: line.id, line: line.name, code, lot: (x.lot ?? '').trim(), date: x.date, startedAt: start, endedAt: end, units, perUnit: x.perUnit != null && Number.isFinite(x.perUnit) ? x.perUnit : null, waste: Math.round((x.waste ?? 0) * 100) / 100 || 0, by, updatedAt: 0, ...(extra ? { extra } : {}) }
+  batch(() => {
+    // a set up left open on the line before those hours ends where the code started, as when a code starts on the line
+    for (const y of state.stops.filter((z) => z.lineId === line.id && !z.endedAt && z.reason === SETUP && z.startedAt < start)) putStop({ ...y, endedAt: start })
+    putRun(r)
+  })
+  logChange(r.dept, 'Corrida ' + code + ' del ' + r.date + ' (' + r.dept + ', ' + lineNameOf(state, r.lineId, r.line) + ') · Se agregó después', '', madeText(r, runQty(state, r)) + ' · ' + fmtTime(start) + ' – ' + fmtTime(end) + (r.lot ? ' · lote ' + r.lot : ''), 'act_runs', r.id)
+  return r.id
+}
 export function moveRun(id: string, lineId: string): boolean {
   const r = run(id), to = state.lines.find((l) => l.id === lineId)
   if (!r || !to || to.dept !== r.dept || lineId === r.lineId) return false
