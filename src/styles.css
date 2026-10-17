@@ -1003,7 +1003,7 @@ table.binlist .binkind{display:block;font-size:11px;font-weight:800;color:#4f46e
 .daybar .dayshifts.one{color:var(--amber);font-weight:700}
 .daybar .dayshifts b{color:inherit}
 /* ---- Ajustes (2026-10-17): everything the plant sets once, each thing in its own section ---- */
-.tabs .settab{display:inline-flex;align-items:center;gap:6px}
+.tabs .settab{display:inline-flex;align-items:center;gap:5px;padding:8px 11px}
 .tabs .settab .gear{font-size:17px;line-height:1}
 .settings{display:flex;flex:1;min-height:0}
 .setnav{width:232px;flex:none;padding:12px;display:flex;flex-direction:column;gap:6px;border-right:1px solid var(--line);background:var(--surface)}
