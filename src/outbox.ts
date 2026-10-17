@@ -13,7 +13,7 @@ export type Row = Record<string, unknown>
  * a queued change: the row as it should be on the server and, for rows another device may also be changing, what the
  * server had when this device started changing it (so what the other device did can be merged in, not overwritten)
  */
-export type Item = { table: Table; key: string; row: Row; base?: Row | null }
+export type Item = { table: Table; key: string; row: Row; base?: Row | null; at?: number } // at = when it was first queued
 const KEY = 'act_outbox'
 
 /** the queue when it could not be written to the device (its storage was full): kept in memory, so it still goes up while the app stays open */
@@ -25,9 +25,22 @@ function write(items: Item[]) {
 }
 
 const listeners = new Set<() => void>()
+/**
+ * Rows of this device's own room (or of any room, for a manager) that the server refused for lack of permission: the
+ * person signed in is no longer who the server thinks (the account closed, the PIN changed, the room changed). Such a
+ * row is never dropped: it waits, and the screen says so until someone signs in again (see sync.ts, App.tsx).
+ */
+const refusedOwn = new Set<string>()
+let ownRow: (row: Row) => boolean = () => true
+/** says which rows are this device's own to write (sync.ts: the person's room, or every room for a manager) */
+export const setOwnRow = (f: (row: Row) => boolean) => { ownRow = f }
 export const outbox = {
   size: () => read().length,
   items: () => read(),
+  /** when the oldest row still waiting was queued (0 = nothing waits) */
+  oldest: () => read().reduce((t, i) => (i.at && (!t || i.at < t) ? i.at : t), 0),
+  /** the rows of this device's own that the server refuses */
+  refused: () => [...refusedOwn],
   /** tries again to write a queue that is only in memory (the device has made room) */
   resave() { if (unsaved) write(unsaved) },
   subscribe(l: () => void) { listeners.add(l); return () => { listeners.delete(l) } },
@@ -39,7 +52,7 @@ const is = (table: Table, key: string) => (i: Item) => i.table === table && i.ke
 export function push(table: Table, key: string, row: Row, base?: Row | null) {
   if (!supabase) return
   const items = read(), prev = items.find(is(table, key))
-  write([...items.filter((i) => !is(table, key)(i)), { table, key, row, base: prev ? prev.base : base }]); emit()
+  write([...items.filter((i) => !is(table, key)(i)), { table, key, row, base: prev ? prev.base : base, at: prev?.at ?? Date.now() }]); emit()
   void flush()
 }
 /** the change of this row still waiting to go up, if any */
@@ -61,6 +74,7 @@ export function markSent(it: Item) {
   if (recent.size > 300) for (const [k, r] of recent) if (Date.now() - r.at > 60_000) recent.delete(k)
   recent.set(it.table + '|' + it.key, { base: it.base, row: it.row, at: Date.now() })
   write(read().flatMap((i) => (!is(it.table, it.key)(i) ? [i] : JSON.stringify(i.row) === JSON.stringify(it.row) ? [] : [{ ...i, base: it.row }])))
+  refusedOwn.delete(it.table + '|' + it.key)
   emit()
 }
 
@@ -79,7 +93,7 @@ export function verdict(code: string, message: string): 'notReady' | 'refused' |
 }
 
 let flushing = false
-export type FlushResult = { sent: number; left: number; error?: string }
+export type FlushResult = { sent: number; left: number; error?: string; refused?: number }
 let after: ((r: FlushResult) => void) | null = null
 /**
  * told how every pass ended, whoever started it (a new record sends itself at once, without anyone waiting for the
@@ -88,18 +102,18 @@ let after: ((r: FlushResult) => void) | null = null
 export const afterFlush = (f: (r: FlushResult) => void) => { after = f }
 /** sends what is queued, oldest first; a failure of the connection stops the pass (it is retried later) */
 export async function flush(): Promise<FlushResult> {
-  if (!supabase || flushing) return { sent: 0, left: read().length }
+  if (!supabase || flushing) return { sent: 0, left: read().length, refused: refusedOwn.size }
   const r = await pass()
   try { after?.(r) } catch { /* what the dot says is not worth a failed pass */ }
   return r
 }
 async function pass(): Promise<FlushResult> {
-  if (!supabase) return { sent: 0, left: read().length }
+  if (!supabase) return { sent: 0, left: read().length, refused: refusedOwn.size }
   flushing = true
   let sent = 0, error: string | undefined
   try {
     const { data: { session }, error: authError } = await supabase.auth.getSession()
-    if (!session) return { sent: 0, left: read().length, error: noSignal(authError) ? 'offline' : 'signedOut' }
+    if (!session) return { sent: 0, left: read().length, error: noSignal(authError) ? 'offline' : 'signedOut', refused: refusedOwn.size }
     const held = before && read().length ? await before() : null
     const waiting = new Set<string>(Array.isArray(held) ? (held as string[]) : []) // tables the server does not have ready yet, or whose rows must wait for the next pass
     const skipped = new Set<string>() // rows the database rejects as they are: they stay queued, the rest goes on
@@ -112,8 +126,12 @@ async function pass(): Promise<FlushResult> {
         console.warn('actividad sync', it.table, e)
         const v = verdict(String(e.code ?? ''), e.message ?? '')
         if (v === 'notReady') { waiting.add(it.table); error = tr('Falta ejecutar en Supabase el SQL de {0}', it.table); continue }
-        // a row of a room this person may not write will never be taken: it is dropped so it does not sit in the queue for ever
-        if (v === 'refused') { drop(it.table, it.key); error += ' ' + tr('· descartado'); continue }
+        if (v === 'refused') {
+          // a row of this device's own that the server refuses: the person signed in is no longer who the server
+          // thinks. It waits (nothing recorded is lost) and the screen says so; a row of another room is dropped
+          if (ownRow(it.row)) { refusedOwn.add(it.table + '|' + it.key); skipped.add(it.table + '|' + it.key); error = tr('El servidor no acepta lo que registra esta sesión: sin permiso para {0}', String(it.row.dept ?? it.table)); continue }
+          drop(it.table, it.key); error += ' ' + tr('· descartado'); continue
+        }
         if (v === 'bad') { skipped.add(it.table + '|' + it.key); continue }
         break
       }
@@ -123,5 +141,5 @@ async function pass(): Promise<FlushResult> {
   } catch (e) {
     error = String(e)
   } finally { flushing = false }
-  return { sent, left: read().length, error }
+  return { sent, left: read().length, error, refused: refusedOwn.size }
 }

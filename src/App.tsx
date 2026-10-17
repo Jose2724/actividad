@@ -190,9 +190,10 @@ function ServerApp() {
     const again = () => { void verify() }
     // back on the screen: asked again if the server has not answered yet, or not for the last ten minutes (a role changed, an account closed)
     const seen = () => { if (document.visibilityState === 'visible' && Date.now() - confirmed.current > 600_000) void verify() }
-    window.addEventListener('online', again); document.addEventListener('visibilitychange', seen)
-    const t = setInterval(() => { if (!confirmed.current) void verify() }, 60_000)
-    return () => { clearTimeout(slow); clearInterval(t); window.removeEventListener('online', again); document.removeEventListener('visibilitychange', seen) }
+    window.addEventListener('online', again); document.addEventListener('visibilitychange', seen); window.addEventListener('act-verify', again) // the queue found the server no longer takes this session
+    // and every ten minutes while on the screen: an account closed or a PIN changed takes the session off the server, and a tablet left open all day must find out
+    const t = setInterval(() => { if (!confirmed.current || (document.visibilityState === 'visible' && Date.now() - confirmed.current > 600_000)) void verify() }, 60_000)
+    return () => { clearTimeout(slow); clearInterval(t); window.removeEventListener('online', again); document.removeEventListener('visibilitychange', seen); window.removeEventListener('act-verify', again) }
   }, [verify])
   useEffect(() => {
     if (me && me !== 'none' && me !== 'loading') { user.set(me.name); role.set(me.role === 'op' ? 'op' : 'mgr'); myDept.set(me.dept); startSync() }
@@ -394,12 +395,21 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
   // and the timers it shows can be minutes off from every other screen (what the office saw on 2026-10-16: "esta
   // mezcla" that would not go back to zero). Said after a minute and a half of trying, with the live time above to compare
   const clk = supabase ? clockState() : null, clockUnset = !!clk && !clk.measured && performance.now() > 90_000
+  // what was recorded here and has not reached the server: said loud after five minutes, or at once when the server no
+  // longer takes this session (an account closed, a PIN changed, the person is not of this room). Nothing is lost: it
+  // waits on the device and goes up as soon as someone the server accepts signs in (what the floor lived on 2026-10-16:
+  // a whole shift of mezclas "that never got recorded")
+  const stuckMs = sync.pending > 0 && sync.since ? now - sync.since : 0
+  const unsent = !!supabase && (sync.state === 'signedOut' || sync.refused > 0 || stuckMs > 5 * 60_000)
+  const mustSignIn = sync.state === 'signedOut' || sync.refused > 0
+  const unsentWhy = sync.state === 'signedOut' ? tr('este aparato ya no tiene sesión en el servidor') : sync.refused > 0 ? tr('el servidor no acepta lo que registra esta sesión ({0})', name) : sync.lastError || (sync.state === 'offline' ? tr('sin señal') : tr('sin alcanzar el servidor'))
   return (
     <div className="app">
       {away ? <div className="zonebar">{tr('⚠ Este aparato está puesto en otra zona horaria que la planta: las horas y la fecha saldrán corridas. En los ajustes del aparato, activa la zona horaria automática.')}</div>
         : off && <div className="zonebar">{trx('⚠ El reloj de este aparato está {0}. La app usa la hora correcta, la del servidor. Para arreglarlo, activa la hora automática en los ajustes del aparato.', off)}</div>}
       {clockUnset && clk && <div className="stalebar top"><span>{trx('⚠ Este aparato no ha podido ajustar su reloj con el del servidor ({0}). Si su hora está mal, los tiempos de las mezclas y del turno salen corridos aquí, y las horas que registre también. Compara la hora de arriba con un teléfono.', clk.savedAt ? tr('usa la medida de hace {0}', agoText(now - clk.savedAt)) : tr('usa su propio reloj'))}</span><button type="button" className="btn sm" onClick={() => void syncClock()}>{tr('Reintentar')}</button></div>}
       {upd.ready && <div className="updatebar"><span>{updateText()}</span><button type="button" className="btn sm" onClick={reloadNow}>{tr('Actualizar')}</button></div>}
+      {unsent && <div className="stalebar top unsent"><span>{trx('⚠ {0} sin subir desde hace {1}: {2}. Se guardan en este aparato y suben en cuanto se pueda.', sync.pending === 1 ? tr('1 registro') : tr('{0} registros', sync.pending), agoText(Math.max(60_000, stuckMs)), unsentWhy)}{mustSignIn && ' ' + tr('Sal y entra de nuevo con tu usuario; si sigue, avisa al manager.')}</span>{mustSignIn ? <button type="button" className="btn sm" onClick={() => void onLogout()}>{tr('Entrar de nuevo')}</button> : <button type="button" className="btn sm" onClick={() => window.dispatchEvent(new Event('act-resync'))}>{tr('Reintentar')}</button>}</div>}
       {full && <div className="fullbar">{trx('⚠ La memoria de este aparato está llena y lo nuevo no se está guardando aquí. {0}', supabase ? tr('Lo que ya subió al servidor está a salvo. Avisa al manager y no cierres la app hasta que diga "Sincronizado".') : tr('Manda el reporte del día y avisa al manager antes de cerrar la app: hay que hacer espacio con "Reiniciar registros".'))}</div>}
       {stale && <div className="stalebar top"><span>{sync.lastSync ? trx('⚠ Este aparato muestra lo de las {0}: lleva {1} sin bajar del servidor ({2}). Si en otra tablet cambió algo, aquí todavía no se ve.', fmtTime(sync.lastSync), agoText(staleMs), why) : trx('⚠ Este aparato no ha bajado nada del servidor todavía ({0}).', why)}</span><button type="button" className="btn sm" onClick={() => window.dispatchEvent(new Event('act-resync'))}>{tr('Reintentar')}</button></div>}
       <header className="top">

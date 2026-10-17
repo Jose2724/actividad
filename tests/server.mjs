@@ -40,6 +40,7 @@ globalThis.fetch = async (input, init) => {
   const table = url.pathname.split('/').pop()
   if (!url.pathname.includes('/rest/v1/') || !db[table]) return new Response('{}', { status: 404 })
   if (init?.method === 'POST' || init?.method === 'PATCH') {
+    if (db.refuse === table) return new Response(JSON.stringify({ code: '42501', message: 'new row violates row-level security policy for table "' + table + '"', details: null, hint: null }), { status: 403, headers: { 'Content-Type': 'application/json' } }) // the person signed in may not write this room
     const key = (url.searchParams.get('on_conflict') || 'id').split(','), keyOf = (r) => key.map((k) => String(r[k])).join('|')
     for (const row of [].concat(JSON.parse(init.body || '[]'))) {
       const stored = { ...row, synced_at: new Date().toISOString() }, i = db[table].findIndex((r) => keyOf(r) === keyOf(row))
@@ -252,6 +253,15 @@ console.log('· Lo que otra tablet agregó a una corrida no se pierde cuando est
   db.failRefresh = false
   await m.flushNow()
   eq('a la siguiente pasada sube, junta con lo del servidor', [m.outbox.size(), srv().units.map((u) => u.ref)], [0, ['1', '3', '4']])
+  // the server refuses a row of this device's own (the person signed in is no longer who it thinks): nothing is
+  // dropped, the screen knows, and it goes up as soon as the server takes it again
+  db.refuse = 'act_runs'
+  m.unitDone(id, 36, '5')
+  await m.flushNow()
+  eq('un registro propio que el servidor rechaza no se descarta: espera, y la pantalla lo sabe', [m.outbox.size(), m.outbox.refused().length, m.syncStore.get().refused, m.syncStore.get().since > 0, /sin permiso/.test(m.syncStore.get().lastError)], [1, 1, 1, true, true])
+  db.refuse = ''
+  await m.flushNow()
+  eq('cuando el servidor lo vuelve a aceptar, sube y la alerta se quita', [m.outbox.size(), m.syncStore.get().refused, srv().units.map((u) => u.ref)], [0, 0, ['1', '3', '4', '5']])
 }
 
 console.log('✓ ' + passed + ' comprobaciones, todas correctas')

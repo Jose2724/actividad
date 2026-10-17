@@ -1052,4 +1052,13 @@ export const EN: Record<string, string> = {
   // a new version reaches the open tablets by itself (2026-10-16)
   '⬆ Hay una versión nueva de la app. Se pone sola en un momento, cuando nadie esté tocando la pantalla; o toca Actualizar ahora.': '⬆ A new version of the app is up. It comes on by itself in a moment, once nobody is touching the screen; or tap Update now.',
   'Actualizar': 'Update',
+  // records that have not gone up, said loud; a session the server no longer takes (2026-10-16)
+  'El servidor no acepta lo que registra esta sesión: sin permiso para {0}': 'The server does not take what this session records: no permission for {0}',
+  'este aparato ya no tiene sesión en el servidor': 'this device no longer has a session on the server',
+  'el servidor no acepta lo que registra esta sesión ({0})': 'the server does not take what this session records ({0})',
+  '⚠ {0} sin subir desde hace {1}: {2}. Se guardan en este aparato y suben en cuanto se pueda.': '⚠ {0} not sent for {1}: {2}. They are kept on this device and go up as soon as they can.',
+  '1 registro': '1 record',
+  '{0} registros': '{0} records',
+  'Sal y entra de nuevo con tu usuario; si sigue, avisa al manager.': 'Sign out and in again with your user; if it goes on, tell the manager.',
+  'Entrar de nuevo': 'Sign in again',
 }

@@ -1,6 +1,6 @@
 import { noSignal, passExpired, renewSession, supabase } from './supabase'
 import { startClock } from './clock'
-import { afterFlush, beforeFlush, flush, outbox, type Row, type Table } from './outbox'
+import { afterFlush, beforeFlush, flush, outbox, setOwnRow, type Row, type Table } from './outbox'
 import { applyRemote, awayDay, batch, closeDay, firstKeptDay, myDept, openDay, prune, role, shareLocalLines, store } from './store'
 import { tr } from './i18n'
 
@@ -8,17 +8,23 @@ import { tr } from './i18n'
  * Keeps this device and the server in step: what is queued goes up (outbox), what other tablets and the office
  * changed comes down (a pull of everything newer than the last one, plus live updates while the screen is open).
  */
-export type SyncStatus = { state: 'local' | 'signedOut' | 'connecting' | 'online' | 'offline'; pending: number; lastSync: number; lastError: string }
+export type SyncStatus = { state: 'local' | 'signedOut' | 'connecting' | 'online' | 'offline'; pending: number; lastSync: number; lastError: string; since: number; refused: number }
+// since = when the oldest row still waiting was queued; refused = rows of this device's own the server refuses (see outbox.ts)
 /** a device that has gone this long without bringing the server's rows may show an old picture of the day: the screens say so */
 export const STALE_MS = 10 * 60_000
 // the hour of the last pull is kept on the device: when the app opens again it knows how old its copy is
 const LAST_PULL = 'act_last_pull'
 const lastPull = () => { try { return Number(localStorage.getItem(LAST_PULL)) || 0 } catch { return 0 } }
-let status: SyncStatus = { state: supabase ? 'connecting' : 'local', pending: outbox.size(), lastSync: supabase ? lastPull() : 0, lastError: '' }
+let status: SyncStatus = { state: supabase ? 'connecting' : 'local', pending: outbox.size(), lastSync: supabase ? lastPull() : 0, lastError: '', since: outbox.oldest(), refused: 0 }
 const subs = new Set<() => void>()
 const setStatus = (patch: Partial<SyncStatus>) => { status = { ...status, ...patch }; subs.forEach((f) => f()) }
 export const syncStore = { get: () => status, subscribe: (f: () => void) => { subs.add(f); return () => { subs.delete(f) } } }
-outbox.subscribe(() => setStatus({ pending: outbox.size() }))
+outbox.subscribe(() => setStatus({ pending: outbox.size(), since: outbox.oldest(), refused: outbox.refused().length }))
+// an operator writes the rows of their room; a manager or the office, of every room; rows without a room are the office's
+setOwnRow((row) => role.get() !== 'op' || !row.dept || String(row.dept) === myDept.get())
+/** the page is asked to check with the server who is signed in (a session it no longer takes): at most once every two minutes */
+let askedWho = 0
+const askWho = () => { if (Date.now() - askedWho < 120_000) return; askedWho = Date.now(); try { window.dispatchEvent(new Event('act-verify')) } catch { /* no window */ } }
 
 /**
  * What "Salir" asks before leaving. A stray tap must not leave a tablet at the sign-in screen, and the question says
@@ -228,11 +234,12 @@ export const syncNow = async () => { await pullAll(); await flushNow() }
  * "Sincronizado" on its own, also with the WiFi off.)
  */
 afterFlush((r) => {
-  if (r.error === 'signedOut') setStatus({ pending: r.left, state: 'signedOut', lastError: '' })
-  else if (r.error === 'offline') setStatus({ pending: r.left, state: 'offline', lastError: '' })
-  else if (r.error) setStatus({ pending: r.left, ...failed(r.error) })
-  else if (r.sent > 0) setStatus({ pending: r.left, state: 'online', lastError: '' })
-  else setStatus({ pending: r.left })
+  const more = { pending: r.left, since: outbox.oldest(), refused: r.refused ?? 0 }
+  if (r.error === 'signedOut') { setStatus({ ...more, state: 'signedOut', lastError: '' }); askWho() }
+  else if (r.error === 'offline') setStatus({ ...more, state: 'offline', lastError: '' })
+  else if (r.error) { setStatus({ ...more, ...failed(r.error) }); if (r.refused) askWho() }
+  else if (r.sent > 0) setStatus({ ...more, state: 'online', lastError: '' })
+  else setStatus(more)
 })
 export const flushNow = () => flush()
 
