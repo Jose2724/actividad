@@ -3,6 +3,7 @@ import { startClock } from './clock'
 import { afterFlush, beforeFlush, flush, outbox, setOwnRow, type Row, type Table } from './outbox'
 import { applyRemote, awayDay, batch, closeDay, firstKeptDay, myDept, openDay, prune, role, shareLocalLines, store } from './store'
 import { tr } from './i18n'
+import { BUILD } from './update'
 
 /**
  * Keeps this device and the server in step: what is queued goes up (outbox), what other tablets and the office
@@ -44,6 +45,8 @@ export function leaveAsk(st: Pick<SyncStatus, 'state' | 'pending'>, online = tru
 
 const TABLES: Table[] = ['act_lines', 'act_runs', 'act_stops', 'act_products', 'act_schedule', 'act_changes', 'act_targets', 'act_plan']
 const SINCE = 'act_since2' // the cursor is the server's synced_at (see migrations/003), not the tablets' clocks
+const PULLED_WITH = 'act_pulled_with' // the version of the app that last pulled everything: a new one pulls everything again
+const pulledWith = () => { try { return localStorage.getItem(PULLED_WITH) || '' } catch { return '' } }
 const since = () => { try { return localStorage.getItem(SINCE) || '' } catch { return '' } }
 const setSince = (v: string) => { try { localStorage.setItem(SINCE, v) } catch { /* full */ } }
 
@@ -177,9 +180,11 @@ async function pullNow(): Promise<boolean> {
   try {
     const { data: { session }, error: authError } = await supabase.auth.getSession()
     if (!session) { setStatus({ state: noSignal(authError) ? 'offline' : 'signedOut' }); return false }
-    // the lines are shared and never all gone: a device with a cursor but no lines has lost its copy (what was saved
-    // could not be read) and brings everything again, as on its first day, instead of only what changed since
-    const cursor = store.get().lines.length ? since() : ''
+    // A device brings everything again, as on its first day, instead of only what changed since: when it has no lines
+    // (the lines are shared and never all gone: it lost its copy), and once after every new version of the app. On
+    // 2026-10-17 a version that could not read what was saved left devices with a few recent rows and "Sincronizado":
+    // a device that kept a cursor had no way back on its own
+    const cursor = store.get().lines.length && (!BUILD || pulledWith() === BUILD) ? since() : ''
     const from = cursor ? iso(Date.parse(cursor) - OVERLAP_MS) : ''
     const first: Partial<Record<Table, (q: Q) => Q>> = cursor ? {} : firstPull(firstKeptDay())
     let newest = cursor
@@ -192,6 +197,7 @@ async function pullNow(): Promise<boolean> {
       if (error) { setStatus(failed(error.message)); return false }
     }
     if (newest) setSince(newest)
+    if (BUILD) try { localStorage.setItem(PULLED_WITH, BUILD) } catch { /* private */ }
     await bringOrderRuns()
     prune() // the days this device no longer keeps (also when the date changes while the app stays open)
     const at = Date.now()

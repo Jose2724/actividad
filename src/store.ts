@@ -302,6 +302,7 @@ function load(): State {
     // a device without lines brings everything again, see sync.ts). Never silent: on 2026-10-17 a reading that failed
     // left every device that reloaded with an empty plant, and the screen said "Sincronizado"
     console.error('Actividad: lo guardado en este aparato no se pudo leer', e)
+    try { localStorage.removeItem('act_since2') } catch { /* private */ } // the next pull starts over, as on the first day
   }
   return fresh()
 }

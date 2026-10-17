@@ -1635,6 +1635,13 @@ section('Lo guardado con una semana de turnos y un día aparte se vuelve a leer 
   const wk = await device('wk', { seed: { lines: [{ id: 'k1', dept: 'Kitchen', name: 'Braiser 1', updatedAt: 1 }, { id: 'r1', dept: 'RTE', name: 'Línea 1', updatedAt: 1 }], runs: [], stops: [], products: [], schedule: {}, changes: [], targets: [], shifts: [NO_GAP], shiftWeeks: [{ from: '2026-10-17', week: '3333331', updatedAt: 1 }], dayShifts: [{ date: '2026-10-17', only: 1, updatedAt: 1 }] } })
   wk.use((m) => eq('las líneas, la semana y el día aparte siguen ahí al volver a abrir', [m.store.get().lines.map((l) => l.name), m.weekOf(m.store.get(), '2026-10-17'), m.shiftsOf(m.store.get(), '2026-10-17').only], [['Braiser 1', 'Línea 1'], '3333331', 1]))
 }
+section('Lo guardado que no se puede leer: el aparato lo dice y olvida su cursor, para volver a bajar todo')
+{
+  // the stored state is broken (here: lines that are not a list); the app must not go on with a cursor as if it still held the plant
+  on = 'broken'; localStorage.setItem('act_since2', '2026-10-17T12:00:00.000Z')
+  const broken = await device('broken', { seed: { lines: 5, runs: [], stops: [] } })
+  broken.use((m) => eq('arranca de cero y sin cursor: la siguiente bajada trae todo', [m.store.get().lines.length, localStorage.getItem('act_since2')], [0, null]))
+}
 section('Calendario de planta: días de un solo turno (la semana, y un día aparte)')
 {
   // Saturday 2026-10-17: the second shift did not come, and from the hand-over at 3:15 PM everything the first shift
