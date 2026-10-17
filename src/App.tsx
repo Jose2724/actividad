@@ -966,15 +966,31 @@ function OrdersCard({ s, mgr }: { s: State; mgr: boolean }) {
   const [editing, setEditing] = useState<string | null>(null) // an order's id, or 'new'
   const [viewing, setViewing] = useState<string | null>(null) // an order whose pallets are being looked at
   const [showClosed, setShowClosed] = useState(false)
-  const [only, setOnly] = useState<'' | OrderState>('')
+  // the office looks for orders by what is written on them and by their state, and the filters combine (asked
+  // 2026-10-16: "PO + código, sin empezar y las que faltan"): what is seen is added up at the foot of the table
+  const [only, setOnly] = useState<'' | OrderState | 'left'>('')
+  const [q, setQ] = useState('')
+  const [fCode, setFCode] = useState('')
   const [shown, setShown] = useState(ORDERS_PAGE)
   if (!s.orders.length && !mgr) return null
   const open = s.orders.filter((o) => !o.closed).sort(byShip), closed = s.orders.filter((o) => o.closed).sort(byShip)
   // each order with what has been packed for it, and its state: not started, started, complete (or no cases said)
   const rowOf = (o: Order) => { const made = orderMade(s, o.id), left = o.cases != null ? o.cases - made : null; return { o, made, left, seq: orderPallets(s, o.id), st: (left == null ? 'open' : left <= 0 ? 'done' : made > 0 ? 'going' : 'todo') as OrderState } }
-  const rows = open.map(rowOf), count = (k: OrderState) => rows.filter((x) => x.st === k).length
-  const list = only ? rows.filter((x) => x.st === only) : rows
-  const stateText = (k: OrderState) => (k === 'todo' ? tr('Sin empezar') : k === 'going' ? tr('Empezados') : k === 'done' ? tr('Completos') : tr('Sin cantidad'))
+  const needle = plainText(q)
+  const hits = (o: Order) => !needle || [o.po, o.customer, o.dest, o.code, productOf(s, o.code)?.name ?? ''].some((t) => plainText(String(t ?? '')).includes(needle))
+  const isState = (x: ReturnType<typeof rowOf>, k: '' | OrderState | 'left') => (!k ? true : k === 'left' ? x.st === 'todo' || x.st === 'going' : x.st === k)
+  const rows = open.map(rowOf).filter((x) => hits(x.o))
+  const codes = [...new Map(rows.map((x) => [normCode(x.o.code), x.o.code])).entries()].sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }))
+  const codeNow = codes.some(([k]) => k === fCode) ? fCode : ''
+  const ofCode = rows.filter((x) => !codeNow || normCode(x.o.code) === codeNow)
+  const count = (k: OrderState | 'left') => ofCode.filter((x) => isState(x, k)).length
+  const list = ofCode.filter((x) => isState(x, only))
+  const stateText = (k: OrderState | 'left') => (k === 'todo' ? tr('Sin empezar') : k === 'going' ? tr('Empezados') : k === 'done' ? tr('Completos') : k === 'left' ? tr('Faltan') : tr('Sin cantidad'))
+  const closedHits = needle ? closed.filter(hits).length : 0
+  const active = [needle ? '"' + q.trim() + '"' : '', codeNow ? tr('Código {0}', codes.find(([k]) => k === codeNow)?.[1] ?? codeNow) : '', only ? stateText(only) : ''].filter(Boolean)
+  const clear = () => { setQ(''); setFCode(''); setOnly(''); setShown(ORDERS_PAGE) }
+  /** what is seen, added up: the foot of the table */
+  const sums = (list: ReturnType<typeof rowOf>[]) => ({ asked: list.reduce((t, x) => t + (x.o.cases ?? 0), 0), made: list.reduce((t, x) => t + x.made, 0), left: list.reduce((t, x) => t + Math.max(0, x.left ?? 0), 0), pallets: list.reduce((t, x) => t + x.seq.done.length, 0), need: list.reduce((t, x) => t + (x.seq.need ?? 0), 0), unknown: list.some((x) => x.o.cases == null) })
   const table = (list: ReturnType<typeof rowOf>[]) => (
     <div className="twrap">
       <table className="otable">
@@ -994,6 +1010,15 @@ function OrdersCard({ s, mgr }: { s: State; mgr: boolean }) {
             </tr>
           )
         })}</tbody>
+        {list.length > 1 && (() => { const t = sums(list); return (
+          <tfoot><tr>
+            <td colSpan={4}>{trx('Total de {0} pedidos', list.length)}{active.length > 0 && <small className="pname">{tr('de lo que se ve')}</small>}</td>
+            <td className="num">{fmtN(t.asked)}{t.unknown && <small title={tr('Sin cantidad')}> +?</small>}</td><td className="num"><b>{fmtN(t.made)}</b></td>
+            <td className="num">{t.left > 0 ? <span className="ost st-going">{trx('faltan {0}', fmtN(t.left))}</span> : <span className="ost st-done">{tr('✓ completo')}</span>}</td>
+            <td className="obar"><small>{t.need ? trx('{0} de {1}', t.pallets, t.need) : t.pallets ? trx('{0} pallets', t.pallets) : ''}</small></td>
+            <td className="dest"></td>{mgr && <td></td>}
+          </tr></tfoot>
+        ) })()}
       </table>
     </div>
   )
@@ -1005,12 +1030,27 @@ function OrdersCard({ s, mgr }: { s: State; mgr: boolean }) {
         {mgr && <button type="button" className="lnk" onClick={() => setEditing('new')}>{tr('+ Agregar pedido')}</button>}
       </div>
       {open.length > 0 && (
-        <div className="ofilters">
-          <button type="button" className={'chip sm' + (!only ? ' on' : '')} aria-pressed={!only} onClick={() => { setOnly(''); setShown(ORDERS_PAGE) }}>{tr('Todos')}<small>{rows.length}</small></button>
-          {(['todo', 'going', 'done', 'open'] as const).filter((k) => count(k) > 0).map((k) => <button key={k} type="button" className={'chip sm st-' + k + (only === k ? ' on' : '')} aria-pressed={only === k} onClick={() => { setOnly(k); setShown(ORDERS_PAGE) }}><i className="dotst" />{stateText(k)}<small>{count(k)}</small></button>)}
-        </div>
+        <>
+          <div className="ofilters otop">
+            <label className="osearch"><input value={q} onChange={(e) => { setQ(e.target.value); setShown(ORDERS_PAGE) }} placeholder={tr('Buscar PO, cliente o destino')} aria-label={tr('Buscar pedido')} autoComplete="off" />{q && <button type="button" className="lnk sm" aria-label={tr('Quitar la búsqueda')} onClick={() => setQ('')}>✕</button>}</label>
+            <select className="ocode" value={codeNow} aria-label={tr('Código')} onChange={(e) => { setFCode(e.target.value); setShown(ORDERS_PAGE) }}>
+              <option value="">{tr('Todos los códigos')}</option>
+              {codes.map(([k, c]) => <option key={k} value={k}>{c} · {rows.filter((x) => normCode(x.o.code) === k).length}</option>)}
+            </select>
+          </div>
+          <div className="ofilters">
+            <button type="button" className={'chip sm' + (!only ? ' on' : '')} aria-pressed={!only} onClick={() => { setOnly(''); setShown(ORDERS_PAGE) }}>{tr('Todos')}<small>{ofCode.length}</small></button>
+            {(['todo', 'going', 'left', 'done', 'open'] as const).filter((k) => count(k) > 0 && (k !== 'left' || (count('todo') > 0 && count('going') > 0))).map((k) => <button key={k} type="button" className={'chip sm st-' + (k === 'left' ? 'going' : k) + (only === k ? ' on' : '')} aria-pressed={only === k} onClick={() => { setOnly(k); setShown(ORDERS_PAGE) }}><i className="dotst" />{stateText(k)}<small>{count(k)}</small></button>)}
+          </div>
+          {active.length > 0 && (
+            <div className="rf-now">
+              <span>{tr('Viendo')}</span>{active.map((t) => <b key={t} className="tag">{t}</b>)}
+              <button type="button" className="btn sm" onClick={clear}>{tr('✕ Quitar filtros')}</button>
+            </div>
+          )}
+        </>
       )}
-      {open.length ? table(list.slice(0, shown)) : <p className="hint">{mgr ? tr('No hay pedidos abiertos. Los que se agreguen aquí los ve Packing al registrar cada pallet de ese código.') : tr('No hay pedidos abiertos.')}</p>}
+      {open.length ? (list.length ? table(list.slice(0, shown)) : <p className="hint">{tr('Ningún pedido abierto coincide con esos filtros.')}{closedHits > 0 && <> {trx('{0} de los marcados completos sí.', closedHits)} <button type="button" className="lnk sm" onClick={() => setShowClosed(true)}>{tr('Verlos')}</button></>}</p>) : <p className="hint">{mgr ? tr('No hay pedidos abiertos. Los que se agreguen aquí los ve Packing al registrar cada pallet de ese código.') : tr('No hay pedidos abiertos.')}</p>}
       {list.length > ORDERS_PAGE && (
         <div className="morebar">
           <span>{trx('Se ven {0} de {1}', Math.min(shown, list.length), list.length)}</span>
@@ -1021,7 +1061,7 @@ function OrdersCard({ s, mgr }: { s: State; mgr: boolean }) {
       )}
       {open.length > 0 && <p className="hint">{tr('"Hechas" suma todos los pallets que se le dieron a cada pedido, de cualquier día.')} {tr('Toca un PO para ver sus pallets, con sus lotes, tags y cajas.')}</p>}
       {closed.length > 0 && <button type="button" className="lnk" onClick={() => setShowClosed(!showClosed)}>{trx('{0} los marcados completos ({1})', showClosed ? tr('Ocultar') : tr('Ver'), closed.length)}</button>}
-      {showClosed && closed.length > 0 && table(closed.map(rowOf))}
+      {showClosed && closed.length > 0 && table(closed.filter(hits).map(rowOf))}
       {editing && <OrderDialog key={editing} s={s} order={s.orders.find((o) => o.id === editing)} onClose={() => setEditing(null)} />}
       {order && <OrderPalletsDialog s={s} order={order} onClose={() => setViewing(null)} />}
     </div>

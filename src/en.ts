@@ -1029,4 +1029,13 @@ export const EN: Record<string, string> = {
   'El Set up cuenta desde las {0}, el inicio del turno.': 'The set up counts from {0}, the start of the shift.',
   'El Set up cuenta desde ahora.': 'The set up counts from now.',
   'Cuenta cuando empiece el código de cada línea; con nadie trabajando no cuenta. Las líneas que ya tienen código o Set up siguen como están.': 'It counts once each line\'s code starts; with nobody working it does not count. Lines that already have a code or a set up stay as they are.',
+  // the orders: search, code and state that combine, and the total of what is seen (2026-10-16)
+  'Total de {0} pedidos': 'Total of {0} orders',
+  'de lo que se ve': 'of what is in view',
+  'Buscar PO, cliente o destino': 'Search PO, customer or destination',
+  'Buscar pedido': 'Search orders',
+  'Todos los códigos': 'All codes',
+  'Ningún pedido abierto coincide con esos filtros.': 'No open order matches those filters.',
+  '{0} de los marcados completos sí.': '{0} of the ones marked complete do.',
+  'Verlos': 'See them',
 }

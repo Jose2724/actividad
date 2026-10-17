@@ -927,3 +927,12 @@ table.pallets .lotno{display:block;font-size:10px;font-weight:700;color:var(--mu
 .side .setupall{margin-top:8px;display:grid;justify-items:center;gap:2px;line-height:1.1;min-height:52px;white-space:normal;text-align:center}
 .setupall small{font-size:11px;color:inherit;opacity:.8;font-weight:600}
 @media (max-width:720px){.side .setupall{margin-top:0;flex:none;margin-left:auto}}
+/* the orders: a search and a code beside the state chips; they combine, and what is seen is added up at the foot */
+.ofilters.otop{align-items:center}
+.osearch{display:flex;align-items:center;gap:4px;flex:1 1 220px;max-width:340px}
+.osearch input{min-height:44px;flex:1;min-width:0}
+.ocode{min-height:44px;border-radius:10px;border:1.5px solid var(--line);background:var(--surface);padding:0 10px;font-weight:600;font-size:14px;color:var(--ink);max-width:260px}
+.orders .rf-now{margin-top:2px}
+table.otable tfoot td{background:var(--bg);font-weight:700;border-top:2px solid var(--line)}
+table.otable tfoot td .pname{display:block;font-weight:500}
+table.otable tfoot td small{color:var(--muted);font-weight:600}
