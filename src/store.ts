@@ -297,7 +297,12 @@ function load(): State {
         turnGoals: (s.turnGoals ?? []).filter((g) => !!g && isTurnKey(String(g.key ?? ''))).map((g) => ({ key: String(g.key), perHour: g.perHour ?? null, total: g.total ?? null, updatedAt: g.updatedAt ?? 0 })),
       }
     }
-  } catch { /* empty */ }
+  } catch (e) {
+    // what is saved could not be read: said in the console, and the device starts over from the server (with a server,
+    // a device without lines brings everything again, see sync.ts). Never silent: on 2026-10-17 a reading that failed
+    // left every device that reloaded with an empty plant, and the screen said "Sincronizado"
+    console.error('Actividad: lo guardado en este aparato no se pudo leer', e)
+  }
   return fresh()
 }
 // ---- what a device keeps when there is a server ----
@@ -1100,7 +1105,8 @@ export function setShifts(from: string, h: ShiftHours): boolean {
  * versions and in the history, so an earlier day is still read as it was.
  */
 export const WEEK_BOTH = '3333333'
-export const weekOk = (w: unknown): w is string => typeof w === 'string' && /^[123]{7}$/.test(w)
+// (a function, not a const: the stored state is read before this line runs, see load)
+export function weekOk(w: unknown): w is string { return typeof w === 'string' && /^[123]{7}$/.test(w) }
 const WEEK_KEY = 'shiftweek:', DAY_KEY = 'shiftday:'
 const weekdayOf = (date: string) => new Date(date + 'T12:00:00').getDay()
 /** the week in force on a day: the last version that starts on or before it (both shifts every day while nobody has set any) */

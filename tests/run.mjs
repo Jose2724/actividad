@@ -1628,6 +1628,13 @@ mov.use((m) => {
   m.endStop(st().stops.find((x) => x.reason === 'Set up').id)
   eq('terminado ese Set up, sí', [m.moveRun(runOf('C300').id, L('Línea 2').id), runOf('C300').line, m.openRun(st(), L('Línea 2').id)?.code, m.openRun(st(), L('Línea 1').id)], [true, 'Línea 2', 'C300', undefined])
 })
+section('Lo guardado con una semana de turnos y un día aparte se vuelve a leer entero (2026-10-17: los aparatos abrían vacíos)')
+{
+  // the version of 2026-10-17 ~15:00 read the saved week with a const declared further down the module: a device that
+  // had saved one (any device that pulled the row) opened with an empty plant and "Sincronizado" on the screen
+  const wk = await device('wk', { seed: { lines: [{ id: 'k1', dept: 'Kitchen', name: 'Braiser 1', updatedAt: 1 }, { id: 'r1', dept: 'RTE', name: 'Línea 1', updatedAt: 1 }], runs: [], stops: [], products: [], schedule: {}, changes: [], targets: [], shifts: [NO_GAP], shiftWeeks: [{ from: '2026-10-17', week: '3333331', updatedAt: 1 }], dayShifts: [{ date: '2026-10-17', only: 1, updatedAt: 1 }] } })
+  wk.use((m) => eq('las líneas, la semana y el día aparte siguen ahí al volver a abrir', [m.store.get().lines.map((l) => l.name), m.weekOf(m.store.get(), '2026-10-17'), m.shiftsOf(m.store.get(), '2026-10-17').only], [['Braiser 1', 'Línea 1'], '3333331', 1]))
+}
 section('Calendario de planta: días de un solo turno (la semana, y un día aparte)')
 {
   // Saturday 2026-10-17: the second shift did not come, and from the hand-over at 3:15 PM everything the first shift

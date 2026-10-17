@@ -177,7 +177,9 @@ async function pullNow(): Promise<boolean> {
   try {
     const { data: { session }, error: authError } = await supabase.auth.getSession()
     if (!session) { setStatus({ state: noSignal(authError) ? 'offline' : 'signedOut' }); return false }
-    const cursor = since()
+    // the lines are shared and never all gone: a device with a cursor but no lines has lost its copy (what was saved
+    // could not be read) and brings everything again, as on its first day, instead of only what changed since
+    const cursor = store.get().lines.length ? since() : ''
     const from = cursor ? iso(Date.parse(cursor) - OVERLAP_MS) : ''
     const first: Partial<Record<Table, (q: Q) => Q>> = cursor ? {} : firstPull(firstKeptDay())
     let newest = cursor
