@@ -11,7 +11,7 @@ export { dayPull, firstPull, flushNow, leaveAsk, loadDay, pages, pullAll, syncNo
 export { storageFull } from '../src/storage'
 export { supabase } from '../src/supabase'
 export { qrPath } from '../src/qr'
-export { clockNow, clockOffset, clockOffText, estimate, otherZone, setOffset, syncClock, zoneMinutes } from '../src/clock'
+export { clockNow, clockOffset, clockOffText, clockState, estimate, otherZone, setOffset, syncClock, zoneMinutes } from '../src/clock'
 export * from '../src/powers'
 export { missingColumn } from '../src/supabase'
 export { EN } from '../src/en'

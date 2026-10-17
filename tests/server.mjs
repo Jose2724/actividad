@@ -150,6 +150,7 @@ console.log('· La hora: el aparato se pone en hora con el servidor')
   eq('sin señal no se mide: se queda con la última medida, y no insiste', [await m.syncClock(), m.clockOffset(), clockServer.asked.length], [false, had, 2])
   clockServer.mode = 'mute'
   eq('si el servidor no dice la hora, no se inventa', [await m.syncClock(), m.clockOffset()], [false, had])
+  eq('y la pantalla sabe que el reloj se puso en hora, y de cuándo es la medida que usa', [m.clockState().measured, m.clockState().savedAt > 0, Math.abs(m.clockState().savedAt - JSON.parse(disk.get('act_clock')).at) < 5], [true, true, true])
   clockServer.mode = 'ok'; clockServer.ahead = 0
   await m.syncClock()
   eq('con el reloj del aparato otra vez bien, la diferencia vuelve a cero', [near(m.clockOffset(), 0), m.clockOffText()], [true, ''])
