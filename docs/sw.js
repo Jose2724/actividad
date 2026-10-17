@@ -27,6 +27,7 @@ self.addEventListener('fetch', (e) => {
     return
   }
   const keep = (res) => { if (res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(req, copy)) } return res }
+  if (url.pathname.endsWith('version.json')) { e.respondWith(fetch(req, { cache: 'no-store' })); return } // which build is up: always asked of the network
   if (url.pathname.endsWith('.webmanifest')) { e.respondWith(fetch(req, { cache: 'no-cache' }).then(keep).catch(() => caches.match(req))); return }
   e.respondWith(caches.match(req).then((hit) => hit || fetch(req).then(keep)))
 })
