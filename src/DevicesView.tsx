@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { tr } from './i18n'
-import { fetchDevices, type DeviceRow } from './devices'
+import { fetchDevices, helloState, type DeviceRow } from './devices'
 import { BUILD, updateStore } from './update'
 import { clockNow, fmtTime } from './clock-fmt'
 
@@ -27,6 +27,7 @@ export function Devices({ now }: { now: number }) {
       </div>
       <p className="hint">{tr('Cada aparato con la app abierta avisa cada minuto: quién está dentro, qué versión tiene, qué registró que todavía no ha subido y por qué, y cómo va su reloj. Uno que lleva más de 3 minutos sin avisar está sin señal, cerrado, o el servidor ya no lo reconoce.')}</p>
       {missing && <p className="hint red">{tr('Falta ejecutar en Supabase el SQL de la tabla de tablets (013_tablets.sql).')}</p>}
+      {helloState().error && <p className="hint red">{tr('Este aparato no ha podido avisar: {0}', helloState().error)}</p>}
       {err && !missing && <p className="hint red">{err}</p>}
       {rows && rows.length === 0 && !err && <p className="hint">{tr('Ningún aparato ha avisado todavía. Avisan en cuanto abren esta versión de la app.')}</p>}
       {rows && rows.length > 0 && (

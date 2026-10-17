@@ -1088,4 +1088,5 @@ export const EN: Record<string, string> = {
   '{0} min de diferencia': '{0} min off',
   // the version beside the time (2026-10-17)
   'La versión de la app en este aparato': 'The version of the app on this device',
+  'Este aparato no ha podido avisar: {0}': 'This device could not report: {0}',
 }

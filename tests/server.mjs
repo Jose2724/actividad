@@ -270,6 +270,11 @@ console.log('· Lo que otra tablet agregó a una corrida no se pierde cuando est
   eq('lo que el aparato dice de sí: quién, qué tiene sin subir y desde cuándo, qué dijo el servidor, cómo va su reloj', [word.id === m.deviceId(), word.user_id, word.pending, !!word.oldest_at, /sin permiso/.test(word.error), ['fine', 'rough', 'own'].includes(word.clock), word.build === ''], [true, 'e-1', 1, true, true, true, true])
   eq('el aparato queda en el servidor con su palabra', [await m.sayHello('e-1'), db.act_devices.length, db.act_devices[0].pending, db.act_devices[0].id === m.deviceId()], [true, 1, 1, true])
   eq('"Android · Chrome", "Windows · Edge": qué clase de aparato es', [m.deviceKind('Mozilla/5.0 (Linux; Android 13; SM-T575) AppleWebKit/537.36 Chrome/118.0 Safari/537.36'), m.deviceKind('Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 Chrome/118.0 Safari/537.36 Edg/118.0')], ['Android · Chrome', 'Windows · Edge'])
+  // a permission refused (an operator's tablet before 014 was run) is said on the device and tried again at the next word, not silenced for ten minutes
+  db.refuse = 'act_devices'
+  eq('si el servidor rechaza el aviso, el aparato lo dice y no se calla', [await m.sayHello('e-1'), /42501/.test(m.helloState().error)], [false, true])
+  db.refuse = ''
+  eq('al siguiente aviso vuelve a intentar y pasa', [await m.sayHello('e-1'), m.helloState().error], [true, ''])
   await m.flushNow()
 }
 

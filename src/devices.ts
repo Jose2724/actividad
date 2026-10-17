@@ -43,13 +43,23 @@ export function deviceWord(meId: string): Omit<DeviceRow, 'updated_at'> {
 }
 let timer: ReturnType<typeof setInterval> | null = null
 let quietUntil = 0 // after the server said the table is not there (its SQL not run yet): asked again later, not every minute
+let helloError = '' // what the server answered the last word (''= it took it); the device's own screen can say it
+export const helloState = () => ({ error: helloError })
 export async function sayHello(meId: string): Promise<boolean> {
   if (!supabase || Date.now() < quietUntil || !user.get()) return false
   try {
     const { error } = await supabase.from('act_devices').upsert({ ...deviceWord(meId), updated_at: new Date().toISOString() }, { onConflict: 'id' })
-    if (error) { if (/act_devices|schema cache/i.test(error.message ?? '') || error.code === '42P01' || error.code === 'PGRST205') quietUntil = Date.now() + 10 * 60_000; return false }
+    if (error) {
+      // the table is not there yet (its SQL not run): asked again in ten minutes. Anything else (a permission, a
+      // hiccup) is tried again at the next word, and said on the device's own screen
+      if (error.code === '42P01' || error.code === 'PGRST205' || /schema cache/i.test(error.message ?? '')) quietUntil = Date.now() + 10 * 60_000
+      helloError = (error.code ? error.code + ' ' : '') + (error.message ?? '')
+      console.warn('actividad hello', error)
+      return false
+    }
+    helloError = ''
     return true
-  } catch { return false }
+  } catch (e) { helloError = String((e as Error)?.message ?? e); return false }
 }
 let lastHello = 0
 let unsub: (() => void) | null = null
