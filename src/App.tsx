@@ -18,10 +18,9 @@ import { clockNow, clockOffText, clockState, otherZone, startClock, syncClock } 
 import { BUILD, keepView, reloadNow, updateStore, updateText, viewKept } from './update'
 import { startHello } from './devices'
 import { keepAwake } from './awake'
-import { Devices } from './DevicesView'
+import { Settings, type SettingsKey } from './Settings'
 import { appUrl, qrPath } from './qr'
 import { uploadAll } from './store'
-import { Employees } from './Employees'
 import { lang, locale, saveLang, tr } from './i18n'
 import { trx } from './trx'
 
@@ -82,7 +81,7 @@ function QrDialog({ onClose }: { onClose: () => void }) {
 }
 /** a link that opens the QR code (on the entry screens, and for the manager beside their name) */
 /** the app in the other language: the choice is of this device, it is kept, and the app loads again in it */
-function LangSwitch() {
+export function LangSwitch() {
   const pick = (l: 'es' | 'en') => { if (l !== lang) { saveLang(l); location.reload() } }
   return (
     <span className="langsw" role="group" aria-label="Idioma / Language">
@@ -92,7 +91,7 @@ function LangSwitch() {
     </span>
   )
 }
-function QrLink({ label }: { label: string }) {
+export function QrLink({ label }: { label: string }) {
   const [open, setOpen] = useState(false)
   return <><button type="button" className="lnk" onClick={() => setOpen(true)}>{label}</button>{open && <QrDialog onClose={() => setOpen(false)} />}</>
 }
@@ -101,7 +100,7 @@ function QrLink({ label }: { label: string }) {
  * The name of a line: asked when one is added (which line of the plant is it?) and changed when it was wrong. A name
  * that another line of the room already has can be traded with it in one tap.
  */
-function LineNameDialog({ s, dept, line, onClose }: { s: State; dept: Dept; line?: Line; onClose: () => void }) {
+export function LineNameDialog({ s, dept, line, onClose }: { s: State; dept: Dept; line?: Line; onClose: () => void }) {
   const cfg = CFG[dept], word = cfg.lineWord.toLowerCase()
   const [name, setName] = useState(lineLabel(line ? line.name : freeLineNames(s, dept, 1)[0] ?? ''))
   const tidy = tidyLineName(name)
@@ -375,10 +374,12 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
   const can = useCan(), viewOnly = useViewOnly()
   const day = workDay(s, now)
   // the room and the tab come back after the reload a new version brings (see update.ts)
-  const kept = viewKept<{ dept?: string; tab?: string }>()
+  const kept = viewKept<{ dept?: string; tab?: string; sec?: string }>()
   const [dept, setDept] = useState<Dept>(kept?.dept && isDept(kept.dept) ? kept.dept : home)
-  const [tab, setTab] = useState<'act' | 'av' | 'rep' | 'emp' | 'dev'>(kept?.tab === 'av' || kept?.tab === 'rep' || kept?.tab === 'emp' || kept?.tab === 'dev' ? kept.tab : 'act')
-  useEffect(() => { keepView({ dept, tab }) }, [dept, tab])
+  // Empleados and Tablets live in Ajustes now: a view kept from before opens there, on its section
+  const [tab, setTab] = useState<'act' | 'av' | 'rep' | 'set'>(kept?.tab === 'av' || kept?.tab === 'rep' ? kept.tab : kept?.tab === 'set' || kept?.tab === 'emp' || kept?.tab === 'dev' ? 'set' : 'act')
+  const [sec, setSec] = useState<SettingsKey>(kept?.tab === 'emp' ? 'people' : kept?.tab === 'dev' ? 'devices' : ((kept?.sec as SettingsKey | undefined) ?? 'shifts'))
+  useEffect(() => { keepView({ dept, tab, sec }) }, [dept, tab, sec])
   const upd = useSyncExternalStore(updateStore.subscribe, updateStore.get)
   useEffect(() => keepAwake(), []) // a tablet on the floor must not go to sleep in the middle of a shift
   // every free line of every room into set up with one tap (a manager's or the office's, when a shift starts)
@@ -422,8 +423,7 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
           <button type="button" className={tab === 'act' ? 'on' : ''} onClick={() => setTab('act')}>{tr('Actividad')}</button>
           {(can('products') || viewOnly) && <button type="button" className={tab === 'av' ? 'on' : ''} onClick={() => setTab('av')}>{tr('Avance')}</button>}
           <button type="button" className={tab === 'rep' ? 'on' : ''} onClick={() => setTab('rep')}>{tr('Reporte')}</button>
-          {can('people') && supabase && <button type="button" className={tab === 'emp' ? 'on' : ''} onClick={() => setTab('emp')}>{tr('Empleados')}</button>}
-          {mgr && !viewOnly && supabase && <button type="button" className={tab === 'dev' ? 'on' : ''} onClick={() => setTab('dev')}>{tr('Tablets')}</button>}
+          <button type="button" className={'settab' + (tab === 'set' ? ' on' : '')} onClick={() => setTab('set')} aria-label={tr('Ajustes')}><span className="gear">⚙</span><span className="word">{tr('Ajustes')}</span></button>
         </nav>
         <div className="me"><SyncDot /> <span className="who">{name}</span><span className="where">{viewOnly ? tr('Solo ver') : mgr ? tr('Manager') : home}</span> {mgr && <QrLink label="QR" />}<LangSwitch /><button type="button" className="lnk" onClick={() => setLeaving(true)}>{supabase ? tr('Salir') : tr('Cambiar')}</button></div>
       </header>
@@ -454,7 +454,7 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
           <DeptPanel key={dept} s={s} dept={can('depts') ? dept : home} now={now} mgr={mgr} day={day} />
         </div>
         </>
-      ) : tab === 'av' && (can('products') || viewOnly) ? <Avance s={s} /> : tab === 'emp' && can('people') && supabase ? <Employees meId={meId ?? ''} admin={admin} /> : tab === 'dev' && mgr && !viewOnly && supabase ? <Devices now={now} /> : <Report s={s} now={now} only={can('depts') ? undefined : home} mgr={can('depts')} admin={admin} wholeDay={!!wholeDay} />}
+      ) : tab === 'av' && (can('products') || viewOnly) ? <Avance s={s} /> : tab === 'set' ? <Settings s={s} now={now} day={day} name={name} home={home} mgr={mgr} admin={admin} viewOnly={viewOnly} meId={meId ?? ''} section={sec} onSection={setSec} onLeave={() => setLeaving(true)} /> : <Report s={s} now={now} only={can('depts') ? undefined : home} mgr={can('depts')} admin={admin} wholeDay={!!wholeDay} />}
     </div>
   )
 }
@@ -745,7 +745,7 @@ function Cell({ value, onCommit, className, numeric }: { value: string; onCommit
 }
 
 /** the master table: read-only until "Editar", so a stray tap on a tablet cannot change a yield; every change saves itself */
-function Products({ s, readOnly }: { s: State; readOnly?: boolean }) {
+export function Products({ s, readOnly }: { s: State; readOnly?: boolean }) {
   const [unlocked, setUnlocked] = useState(false)
   const [q, setQ] = useState('')
   const [removeIdx, setRemoveIdx] = useState<number | null>(null)
@@ -840,7 +840,7 @@ function Products({ s, readOnly }: { s: State; readOnly?: boolean }) {
   )
 }
 
-const longDate = (date: string) => new Date(date + 'T12:00:00').toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })
+export const longDate = (date: string) => new Date(date + 'T12:00:00').toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })
 const hhmm = (ms: number) => { const d = new Date(ms); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') }
 /** the word to type before records are wiped: always a deliberate act, never a stray tap */
 const WIPE_WORD = 'BORRAR'
@@ -874,7 +874,7 @@ function DayBar({ s, now, day, mgr, calendar }: { s: State; now: number; day: Wo
  * up on the way: runs nobody finished on earlier days, and (only if asked, and confirmed by typing a word) what was
  * recorded today before the start, when it was tests.
  */
-function StartDayDialog({ s, now, day, onClose, onDone }: { s: State; now: number; day: WorkDay; onClose: () => void; onDone: (n: { title: string; text?: string }) => void }) {
+export function StartDayDialog({ s, now, day, onClose, onDone }: { s: State; now: number; day: WorkDay; onClose: () => void; onDone: (n: { title: string; text?: string }) => void }) {
   const was = day.started
   const [opened] = useState(() => hhmm(was ? was.at : now))
   const [time, setTime] = useState(opened)
@@ -1297,7 +1297,7 @@ const goalNum = (t: string) => { const x = Number(t); return x > 0 ? x : null }
  * A manager types the goal of a room for one shift: so many pouches (cajas, mezclas) per hour and/or in the whole
  * shift. Each shift has its own, and only what that shift makes counts against it.
  */
-function TargetDialog({ s, dept, unit, inCourse, onClose }: { s: State; dept: Dept; unit: string; inCourse: 1 | 2; onClose: () => void }) {
+export function TargetDialog({ s, dept, unit, inCourse, onClose }: { s: State; dept: Dept; unit: string; inCourse: 1 | 2; onClose: () => void }) {
   const who = useWho()
   const [shift, setShift] = useState<1 | 2>(() => goalShift(who, inCourse))
   const goal = shiftGoalOf(s, dept, shift)
@@ -2275,7 +2275,7 @@ export function ConfirmDialog({ title, text, yes, danger, onYes, onNo }: { title
 }
 
 /** a message with one button */
-function NoticeDialog({ title, text, onClose }: { title: string; text?: string; onClose: () => void }) {
+export function NoticeDialog({ title, text, onClose }: { title: string; text?: string; onClose: () => void }) {
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
@@ -2417,7 +2417,7 @@ function LineTargetDialog({ s, line, unit, inCourse, onClose }: { s: State; line
   )
 }
 
-function ShiftsDialog({ s, date, onClose }: { s: State; date: string; onClose: () => void }) {
+export function ShiftsDialog({ s, date, onClose }: { s: State; date: string; onClose: () => void }) {
   const cur = shiftsOf(s, date)
   const [from, setFrom] = useState(date)
   const [h, setH] = useState<ShiftHours>({ first: cur.first, firstEnd: cur.firstEnd, second: cur.second, secondEnd: cur.secondEnd })

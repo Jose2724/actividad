@@ -1002,3 +1002,45 @@ table.binlist .binkind{display:block;font-size:11px;font-weight:800;color:#4f46e
 .daybar .dayshifts{display:inline-flex;align-items:baseline;gap:6px;flex-wrap:wrap;color:var(--muted);font-size:14px}
 .daybar .dayshifts.one{color:var(--amber);font-weight:700}
 .daybar .dayshifts b{color:inherit}
+/* ---- Ajustes (2026-10-17): everything the plant sets once, each thing in its own section ---- */
+.tabs .settab{display:inline-flex;align-items:center;gap:6px}
+.tabs .settab .gear{font-size:17px;line-height:1}
+.settings{display:flex;flex:1;min-height:0}
+.setnav{width:232px;flex:none;padding:12px;display:flex;flex-direction:column;gap:6px;border-right:1px solid var(--line);background:var(--surface)}
+.setitem{display:grid;gap:2px;text-align:left;min-height:54px;padding:8px 14px;border-radius:12px;border:1.5px solid transparent;background:none;color:var(--ink)}
+.setitem b{font-size:15.5px}
+.setitem small{color:var(--muted);font-weight:500;font-size:12px;line-height:1.2}
+.setitem.on{background:var(--soft);border-color:var(--accent);color:var(--accent)}
+.setitem.on small{color:var(--accent);opacity:.85}
+.setpane{flex:1;min-width:0;padding:16px;display:grid;gap:14px;align-content:start}
+.setpane>.hint{margin:0}
+.setcard{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:grid;gap:10px;min-width:0}
+.setcard h3{margin:0;font-size:17px}
+.setcard h3 small{font-weight:600;color:var(--muted);font-size:13px}
+.setcard .hint{margin:0}
+.sethead{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.setfacts{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
+.setfact{display:grid;gap:2px;background:var(--bg);border-radius:10px;padding:10px 12px}
+.setfact label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:800}
+.setfact b{font-size:17px;color:var(--ink)}
+.setfact small{color:var(--muted);font-size:12.5px}
+.setrow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line);flex-wrap:wrap}
+.setrow small{color:var(--muted);font-weight:500}
+.setrow .btns{display:flex;gap:12px;flex-wrap:wrap}
+.setrow.add{border-top:0;align-items:end}
+.setrow.add label{display:grid;gap:4px;font-size:13px;font-weight:600;color:var(--muted)}
+.weekview{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.wkday{display:grid;gap:2px;justify-items:center;background:var(--bg);border-radius:10px;padding:8px 4px;text-align:center}
+.wkday small{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:800}
+.wkday b{font-size:13.5px}
+.wkday.one{background:#fde9cf;color:var(--amber)}
+table.goals td,table.goals th{padding:8px 10px}
+@media (max-width:720px){
+  .settings{flex-direction:column}
+  .setnav{width:auto;flex-direction:row;overflow-x:auto;border-right:0;border-bottom:1px solid var(--line);padding:8px 12px;gap:6px}
+  .setitem{flex:none;min-height:42px;padding:6px 12px}
+  .setitem small{display:none}
+  .setpane{padding:12px}
+  .tabs .settab .word{display:none}
+  .weekview{grid-template-columns:repeat(4,minmax(0,1fr))}
+}
