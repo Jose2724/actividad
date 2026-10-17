@@ -2325,6 +2325,51 @@ section('Spiral: un código se cuenta en mezclas, en libras o en cajas, y el pro
     eq('lo que llega en extra se limpia', [m.cleanExtra({ measure: 'lb' }), m.cleanExtra({ measure: 'kg' })], [{ measure: 'lb' }, undefined])
   })
 }
+section('MFO: los bins llevan platos, copas o libras; el programa, las metas y Avance siguen en cajas')
+{
+  // Jose, 2026-10-17: "Platos por caja en MFO: 20 platos por caja… MFO hace otros productos y cuentan por libras"
+  const mf = await device('mfo', { user: 'Luis', usual: true })
+  mf.use((m) => {
+    const st = () => m.store.get(), run = (code) => st().runs.find((r) => r.code === code && !r.endedAt) ?? st().runs.find((r) => r.code === code)
+    const lineOf = (name) => { m.addLine('MFO', name); return st().lines.find((l) => l.dept === 'MFO' && l.name === name) }
+    clock = oct(10, 6, 0)
+    const l1 = lineOf('Línea 1'), l2 = lineOf('Línea 2'), l3 = lineOf('Línea 3')
+    m.setPlan(DAY, 'MFO', 'M100', 50) // the office programs 50 cases
+    m.mergeProducts([{ code: 'M200', name: 'Copas de fruta', pouchesPerCase: 12, casesPerMix: 10, cratesPerCart: 0, pouchesPerCrate: 0, casesPerPallet: 40, room: 'MFO', updatedAt: 0 }])
+    // bins of platos: 20 to a case while the products table says nothing of the code
+    m.startRun(l1, 'M100', '6287', DAY, null, 'platos')
+    const a = run('M100'), ca = m.cfgOf(a)
+    eq('una corrida de bins de platos: sus palabras, y no se cuenta aparte', [m.binOf(a), m.apartOf(a), m.kindOf(a), ca.unit, ca.qtyUnit, ca.qtyQ, m.perCaseOf(st(), a)], ['platos', '', 'platos', 'Bin', 'platos', '¿Cuántos platos lleva este bin?', 20])
+    clock = oct(10, 7, 0); m.unitDone(a.id, 30, '1')
+    clock = oct(10, 8, 0); m.unitDone(a.id, 50, '2')
+    eq('lo hecho se dice en bins y platos', m.madeText(run('M100'), m.runQty(st(), run('M100'))), '2 bins · 80 platos')
+    eq('el programa descuenta en cajas: 80 platos son 4 cajas de las 50', (({ done, left, unit, other }) => [done, left, unit, other])(m.planRows(st(), DAY, 'MFO').find((r) => r.code === 'M100')), [4, 46, 'cajas', []])
+    // copas: the products table says 12 to a case
+    m.startRun(l2, 'M200', '6287', DAY, null, 'copas')
+    const b = run('M200')
+    eq('las copas preguntan por copas, y la tabla dice cuántas van por caja', [m.cfgOf(b).qtyQ, m.cfgOf(b).qtyUnit, m.perCaseOf(st(), b)], ['¿Cuántas copas lleva este bin?', 'copas', 12])
+    clock = oct(10, 8, 30); m.unitDone(b.id, 36, '1')
+    // pounds: each bin weighed, counted apart like Spiral's
+    m.startRun(l3, 'M300', '6287', DAY, null, 'lb')
+    const c = run('M300'), cc = m.cfgOf(c)
+    eq('una corrida en libras: sus palabras, y se cuenta aparte', [m.binOf(c), m.apartOf(c), cc.unit, cc.qtyUnit, cc.qtyQ, m.perCaseOf(st(), c)], ['lb', 'lb', 'Bin', 'lb', '¿Cuántas libras lleva este bin?', null])
+    clock = oct(10, 9, 0); m.unitDone(c.id, 120.5, '1')
+    eq('lo hecho en libras', m.madeText(run('M300'), m.runQty(st(), run('M300'))), '1 bin · 120.5 lb')
+    // an MFO run from before this change (no word) counts cases itself, as it always did
+    m.applyRemote('act_runs', { id: 'old', dept: 'MFO', line_id: l1.id, line: 'Línea 1', code: 'M100', lot: '6286', date: DAY, started_at: new Date(oct(10, 5, 0)).toISOString(), ended_at: new Date(oct(10, 5, 50)).toISOString(), units: [{ at: oct(10, 5, 40), qty: 3, ref: '9', by: 'Ana' }], per_unit: null, waste: 0, by_name: 'Ana', deleted: false, updated_at: new Date(oct(10, 5, 50)).toISOString() })
+    const old = st().runs.find((r) => r.id === 'old')
+    eq('una corrida de MFO de antes sigue en cajas, como estaba', [m.binOf(old), m.cfgOf(old).qtyUnit, m.madeText(old, m.runQty(st(), old)), m.perCaseOf(st(), old)], ['', 'cajas', '1 bin · 3 cajas', null])
+    // the room's day: cases (4 of platos + 3 of copas + 3 of before), what the bins hold beside them, the pounds apart
+    const t = m.deptToday(st(), 'MFO', DAY, clock)
+    eq('la tarjeta del cuarto cuenta cajas, dice lo que llevan los bins, y las libras aparte', [t.qty, t.units, t.unitLabel, t.held, t.bins], [10, 4, 'cajas', [{ word: 'platos', units: 2, qty: 80 }, { word: 'copas', units: 1, qty: 36 }], [{ word: 'lb', units: 1, qty: 120.5 }]])
+    eq('el programa: M100 con 7 cajas (4 de platos y 3 de antes), M200 sin programa, M300 aparte en libras', m.planRows(st(), DAY, 'MFO').map((r) => [r.code, r.planned, r.done, r.unit, r.other]), [['M100', 50, 7, 'cajas', []], ['M200', 0, 3, 'cajas', []], ['M300', 0, 0, 'cajas', [{ word: 'lb', n: 120.5 }]]])
+    const rep = m.reportOf(st(), DAY, clock, { only: 'MFO' })
+    eq('el reporte: el cuarto en cajas con lo que llevan sus bins, cada código con su palabra, las libras aparte', [rep.byDept.map((d) => [d.units, d.qty, d.held, d.bins]), rep.byCode.map((x) => [x.code, x.bin, x.units, x.qty])], [[[4, 10, [{ word: 'platos', units: 2, qty: 80 }, { word: 'copas', units: 1, qty: 36 }], [{ word: 'lb', units: 1, qty: 120.5 }]]], [['M100', '', 1, 3], ['M100', 'platos', 2, 80], ['M200', 'copas', 1, 36], ['M300', 'lb', 1, 120.5]]])
+    eq('Avance cuenta las cajas de MFO ya convertidas, y nada de las libras', m.avanceRows(st(), DAY).filter((r) => ['M100', 'M200', 'M300'].includes(r.code)).map((r) => [r.code, r.mfoCases]), [['M100', 7], ['M200', 3]])
+    eq('la corrida sube con su palabra', m.outbox.items().filter((i) => i.table === 'act_runs').map((i) => i.row).find((x) => x.code === 'M300').extra, { bin: 'lb' })
+    eq('80 platos dichos en cajas, con 20 por caja cuando la tabla no dice', m.inCases(st(), 'M100', 90, 20), { cases: 4, loose: 10, perCase: 20 })
+  })
+}
 section('Un código y su lote que siguen al día siguiente: Avance dice lo pendiente, o completado')
 {
   // what Jose confirmed on 2026-10-16: Packing had 100 cases of a code on Wednesday's program and made 60; on Thursday

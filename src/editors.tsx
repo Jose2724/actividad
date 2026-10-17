@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { addUnit, applyDraft, byLineName, byShip, CFG, cfgOf, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, setUnitOrder, splitStop, store, updateRun, updateStop, type Run, type State, type Stop, lineLabel } from './store'
+import { addUnit, applyDraft, binOf, byLineName, byShip, CFG, cfgOf, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, setUnitOrder, splitStop, store, updateRun, updateStop, type Run, type State, type Stop, lineLabel } from './store'
 import { clockNow } from './clock'
 import { ConfirmDialog, LotsDialog, useCan } from './App'
 import { tr } from './i18n'
@@ -165,7 +165,7 @@ export function AddUnitDialog({ s, run, onClose, onAdded }: { s: State; run: Run
             </>
           ) : (
             <>
-              {cfg.qty !== 'none' && <label>{cfg.qtyUnit} <input inputMode={run.dept === 'Spiral' ? 'decimal' : 'numeric'} value={qty} onChange={(e) => setQty(e.target.value.replace(/[^\d.,]/g, ''))} /></label>}
+              {cfg.qty !== 'none' && <label>{cfg.qtyUnit} <input inputMode={run.dept === 'Spiral' || binOf(run) === 'lb' ? 'decimal' : 'numeric'} value={qty} onChange={(e) => setQty(e.target.value.replace(/[^\d.,]/g, ''))} /></label>}
               {cfg.refLabel && <label>{cfg.refLabel} <input value={ref} onChange={(e) => setRef(e.target.value)} autoComplete="off" /></label>}
             </>
           )}

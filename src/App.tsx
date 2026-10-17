@@ -1,6 +1,6 @@
 import { createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
-import { addLine, addWaste, apartLabel, apartWord, awayDay, cameFrom, carriedOver, dayAfter, BIN_WORDS, binOf, binWord, cfgFor, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderOfId, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, productOf, productsCsv, purgeDay, purgesOf, removeLine, removeProduct, renameLine, reopenRun, reset, restorePurged, resetRecords, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftHours, shiftSpan, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay } from './store'
+import { addLine, addWaste, apartLabel, apartWord, awayDay, cameFrom, carriedOver, dayAfter, BIN_WORDS, binOf, binWord, cfgFor, MFO_PER_CASE, MFO_WORDS, perCaseOf as perCaseOfRun, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderOfId, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, productOf, productsCsv, purgeDay, purgesOf, removeLine, removeProduct, renameLine, reopenRun, reset, restorePurged, resetRecords, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftHours, shiftSpan, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay } from './store'
 import { avanceLots, avanceRange, avanceRows, datesBetween, lotAcrossDays, lotRows, lotsKnown, n1, pending, type AvancePart, type AvanceRow } from './avance'
 import { cellText, loadZip, xDay, xDur, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 
@@ -794,7 +794,7 @@ function Products({ s, readOnly }: { s: State; readOnly?: boolean }) {
       </div>
       <div className="twrap">
         <table>
-          <thead><tr><th>{tr('Código')}</th><th>{tr('Producto')}</th><th>{tr('Pouches / caja')}</th><th>{tr('Cajas / mezcla (yield)')}</th><th>{tr('Guacales / carro')}</th><th>{tr('Pouches / guacal')}</th><th>{tr('Cajas / pallet')}</th><th>{tr('Lo empaca')}</th><th>{tr('Spiral cuenta en')}</th>{unlocked && <th></th>}</tr></thead>
+          <thead><tr><th>{tr('Código')}</th><th>{tr('Producto')}</th><th>{tr('Pouches o platos / caja')}</th><th>{tr('Cajas / mezcla (yield)')}</th><th>{tr('Guacales / carro')}</th><th>{tr('Pouches / guacal')}</th><th>{tr('Cajas / pallet')}</th><th>{tr('Lo empaca')}</th><th>{tr('Spiral cuenta en')}</th>{unlocked && <th></th>}</tr></thead>
           <tbody>
             {s.products.length === 0 && <tr><td colSpan={10}><i>{tr('No hay productos todavía.')}{!unlocked && ' ' + tr('Toca "Editar" para escribirlos o importar el CSV de la oficina.')}</i></td></tr>}
             {s.products.length > 0 && shown.length === 0 && <tr><td colSpan={10}><i>{trx('Ningún producto con "{0}".', q.trim())}</i></td></tr>}
@@ -1245,7 +1245,7 @@ function TodayCard({ s, dept, now, mgr, date }: { s: State; dept: Dept; now: num
         <div className="tct made">
           <label>{tr('Hecho en el turno')}</label>
           <b>{fmtN(t.shiftQty)} <span>{label(t.shiftQty)}</span></b>
-          <small>{cfg.qty !== 'none' ? t.shiftUnits + ' ' + unitWord(t.shiftUnits) : t.shiftCodes.length === 1 ? tr('1 código') : t.shiftCodes.length ? tr('{0} códigos', t.shiftCodes.length) : '\u00a0'}</small>
+          <small>{cfg.qty !== 'none' ? t.shiftUnits + ' ' + unitWord(t.shiftUnits) + (t.shiftHeld.length ? ' · ' + t.shiftHeld.map((b) => fmtN(b.qty) + ' ' + binWord(b.word)).join(' · ') : '') : t.shiftCodes.length === 1 ? tr('1 código') : t.shiftCodes.length ? tr('{0} códigos', t.shiftCodes.length) : '\u00a0'}</small>
           {t.shiftBins.length > 0 && <small className="tc-bins">{dept === 'Spiral' ? tr('Además: {0}', t.shiftBins.map((b) => unitsText(dept, b.units, b.qty, cfgFor(dept, b.word))).join(' · ')) : tr('Además, en bins: {0}', t.shiftBins.map((b) => tr('{0} con {1} {2}', b.units === 1 ? tr('1 bin') : tr('{0} bins', b.units), fmtN(b.qty), binWord(b.word))).join(' · '))}</small>}
         </div>
         <div className={'tct goal' + (goal.total ? (pct >= 100 ? ' ok' : '') : ' none')}>
@@ -1913,13 +1913,18 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
     // per cart) comes from the products table or the last run of the code. RTE types it the office's way: crates
     // per cart × pouches per crate ("12x10")
     // a Packing line makes pallets (cases with their tags) or fills bins (platos, copas, pouches...): as it did last, unless they say
-    const isPack = line.dept === 'Packing'
-    const lastRun = isPack ? s.runs.filter((r) => r.lineId === line.id).sort((a, b) => b.startedAt - a.startedAt)[0] : undefined
+    const isPack = line.dept === 'Packing', isMfo = line.dept === 'MFO'
+    const lastRun = isPack || isMfo ? s.runs.filter((r) => r.lineId === line.id).sort((a, b) => b.startedAt - a.startedAt)[0] : undefined
     const makes = making ?? (lastRun && binOf(lastRun) ? 'bin' : 'pallet')
     const word = binText.trim() || (lastRun ? binOf(lastRun) : '') || BIN_WORDS[0]
     const needPer = !!cfg.perUnitLabel && !(isPack && makes === 'bin')
     const isCart = line.dept === 'RTE'
     const prod = productOf(s, code)
+    // MFO: its bins hold platos or copas (so many to a case) or are weighed in pounds: as tapped; else as this code was
+    // counted last (on this device); else as this line did last; else platos
+    const mfoLast = isMfo && code.trim() ? s.runs.filter((r) => r.dept === 'MFO' && normCode(r.code) === normCode(code) && !!binOf(r)).sort((a, b) => b.startedAt - a.startedAt)[0] : undefined
+    const mfoWord = !isMfo ? '' : (MFO_WORDS.includes(binText) ? binText : '') || (mfoLast ? binOf(mfoLast) : '') || (lastRun ? binOf(lastRun) : '') || MFO_WORDS[0]
+    const mfoPer = prod?.pouchesPerCase || MFO_PER_CASE
     const suggested = needPer ? lastPerUnit(s, line.dept, code) : null
     // Spiral: mezcla by mezcla, or each mezcla weighed in pounds or counted in cases: the products table's word for the
     // code, else the way it was started last on this device, else mezcla by mezcla
@@ -1976,7 +1981,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         {fixingStop && idle && <StopEditor stop={idle} mgr={mgr} onClose={() => setFixingStop(false)} />}
         {naming}
         {removing && <ConfirmDialog title={tr('¿Quitar {0} de {1}', lineLabel(line.name), line.dept) + '?'} text={tr('Se puede volver a agregar cuando haga falta.')} yes={tr('Quitar')} danger onYes={() => removeLine(line.id)} onNo={() => setRemoving(false)} />}
-        {!quiet && <form className="start" onSubmit={(e) => { e.preventDefault(); if (ok) { startRun(line, code.trim().toUpperCase(), lot.trim(), date, needPer ? perUnit : null, isPack && makes === 'bin' ? word : '', isSpiral && spiralNow !== 'mezclas' ? spiralNow : ''); setDateText(null); setLotText(null); setEditDate(false); setMaking(null); setBinText(''); setMeasure(null) } }}>
+        {!quiet && <form className="start" onSubmit={(e) => { e.preventDefault(); if (ok) { startRun(line, code.trim().toUpperCase(), lot.trim(), date, needPer ? perUnit : null, isPack && makes === 'bin' ? word : mfoWord, isSpiral && spiralNow !== 'mezclas' ? spiralNow : ''); setDateText(null); setLotText(null); setEditDate(false); setMaking(null); setBinText(''); setMeasure(null) } }}>
           {isSpiral && (
             <div className="makes">
               <span className="lab">{tr('¿En qué se cuenta este código?')}</span>
@@ -1999,6 +2004,14 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
                   <input value={BIN_WORDS.includes(word) ? '' : binText} placeholder={tr('Otra cosa')} aria-label={tr('Otra cosa')} onChange={(e) => setBinText(e.target.value)} autoComplete="off" />
                 </div>
               )}
+            </div>
+          )}
+          {isMfo && (
+            <div className="makes">
+              <span className="lab">{tr('¿Qué llevan los bins?')}</span>
+              <div className="seg" role="group" aria-label={tr('¿Qué llevan los bins?')}>
+                {MFO_WORDS.map((w) => <button key={w} type="button" className={mfoWord === w ? 'on' : ''} aria-pressed={mfoWord === w} onClick={() => setBinText(w)}>{w === 'lb' ? tr('Libras') : w === 'copas' ? tr('Copas') : tr('Platos')}<small>{w === 'lb' ? tr('cada bin se pesa') : trx('{0} por caja', mfoPer)}</small></button>)}
+              </div>
             </div>
           )}
           {todo.length > 0 && (
@@ -2038,7 +2051,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   }
   const st = runStats(s, run, now)
   // a Packing line that fills bins speaks of bins; one that makes pallets builds each one lot by lot (see PalletPanel)
-  const rc = cfgOf(run), pallets = run.dept === 'Packing' && !binOf(run), runWord = rc.unit.toLowerCase()
+  const rc = cfgOf(run), pallets = run.dept === 'Packing' && !binOf(run), packBins = run.dept === 'Packing' && !!binOf(run), runWord = rc.unit.toLowerCase()
   // A code that came running from the shift before: what this shift sees of it starts from zero at the hand-over (its
   // units, its quantity, its time), and one line says what it brought. A code this shift started is shown whole.
   const mineNow = runSince(s, run, turn.since, now)
@@ -2067,15 +2080,15 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   const untagged = pallets ? run.units.map((u, i) => ({ u, i, lots: u.lots?.length ? (u.lots.some((l) => !!l.tag) || !u.ref ? u.lots.filter((l) => !l.tag).map((l) => l.lot) : []) : u.ref ? [] : [run.lot] })).filter((x) => x.lots.length).slice(-2) : []
   const tagUnit = tagging != null ? run.units[tagging] : undefined
   // a bin carries the lot being packed now, when it is not the run's own
-  const binLots = (q: number) => (binOf(run) && lotNowOf(run) !== run.lot ? [{ lot: lotNowOf(run), qty: q }] : undefined)
+  const binLots = (q: number) => (packBins && lotNowOf(run) !== run.lot ? [{ lot: lotNowOf(run), qty: q }] : undefined)
   const lit = just ? ' bumped' : ''
   // pouches are also told as full cases and loose pouches, where the products table says how many go in a case
-  const perCase = perCaseOf(run.code)
-  const cases = perCase && mineNow.qty > 0 ? inCases(s, run.code, mineNow.qty) : null
+  const perCase = perCaseOf(run.code) ?? perCaseOfRun(s, run) ?? undefined
+  const cases = perCase && mineNow.qty > 0 ? inCases(s, run.code, mineNow.qty, perCase) : null
   // a set up on this line while its code runs: amber like every set up, never the red of a stop
   const inSetup = !!stop && stop.lineId === line.id && stop.reason === SETUP
   return (
-    <div className={'line ' + (inSetup ? 'insetup' : stop ? 'stopped' : 'running') + (just ? ' justdone' : '') + (binOf(run) ? ' mode-bin' : pallets ? ' mode-pal' : '')}>
+    <div className={'line ' + (inSetup ? 'insetup' : stop ? 'stopped' : 'running') + (just ? ' justdone' : '') + (packBins ? ' mode-bin' : pallets ? ' mode-pal' : '')}>
       {naming}
       <div className="lhead">
         <h3>{lineLabel(line.name)} {nameIt}</h3>
@@ -2083,8 +2096,9 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         <span className="lacts">{goalBtn}{!quiet && <button type="button" className="lnk sm" onClick={() => setFixing(true)}>{tr('Corregir')}</button>}</span>
       </div>
       {/* what runs here, big: the code and the lot going on now; a Packing line says first whether it makes pallets or fills bins */}
-      <div className={'hero' + (binOf(run) ? ' bin' : pallets ? ' pal' : '')}>
+      <div className={'hero' + (packBins ? ' bin' : pallets ? ' pal' : '')}>
         {run.dept === 'Packing' && <span className="mode">{binOf(run) ? trx('BINS · {0}', binWord(binOf(run))) : tr('PALLETS')}</span>}
+        {run.dept === 'MFO' && binOf(run) && <span className="mode">{trx('BINS · {0}', binWord(binOf(run)))}</span>}
         <div className="hero-main"><b className="code">{run.code}</b><span className="lot">{trx('lote {0}', <b>{lotNowOf(run)}</b>)}</span></div>
         {productOf(s, run.code)?.name && <div className="hero-name">{productOf(s, run.code)?.name}</div>}
         {/* the facts of the run, each with its name: when it started, what a unit carries, and what is not the usual */}
@@ -2092,7 +2106,8 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
           <span className="fact"><small>{tr('Desde')}</small><b>{fmtTime(run.startedAt)}</b></span>
           {run.date !== day.date && <span className="fact"><small>{tr('Fecha')}</small><b>{shortDay(run.date)}</b></span>}
           {run.perUnit != null && <span className="fact"><small>{tr('Por {0}', runWord)}</small><b>{fmtN(run.perUnit)} {rc.qtyUnit}</b></span>}
-          {binOf(run) && <span className="fact"><small>{tr('Turno')}</small><b>{turn.shift}</b></span>}
+          {packBins && <span className="fact"><small>{tr('Turno')}</small><b>{turn.shift}</b></span>}
+          {perCaseOfRun(s, run) != null && <span className="fact"><small>{tr('Por caja')}</small><b>{fmtN(perCaseOfRun(s, run) ?? 0)} {rc.qtyUnit}</b></span>}
           {measureOf(run) && <span className="fact"><small>{tr('Se cuenta en')}</small><b>{measureName(measureOf(run))}</b></span>}
         </div>
       </div>
@@ -2135,7 +2150,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       {pallets
         ? <PalletPanel s={s} run={run} readOnly={quiet} saved={just ? savedText(line.dept, just.n - brought, rc) : ''} onDone={done} onLot={() => setPacking('lot')} onLotNow={() => setPacking('binlot')} onPart={(i) => setPacking(i)} onOrder={() => setPacking('po')} onReopen={() => setPacking('reopen')} canReopen={run.units.length > brought && !run.extra?.open?.parts.length} />
         : !quiet && <button type="button" className={'btn primary huge' + (just ? ' saved' : '')} disabled={!!just} onClick={done}>✓ {just ? savedText(line.dept, just.n - brought, rc) : rc.done}</button>}
-      {!quiet && binOf(run) && <button type="button" className="lnk sm binlot" onClick={() => setPacking('binlot')}>{tr('¿Cambió el lote?')}</button>}
+      {!quiet && packBins && <button type="button" className="lnk sm binlot" onClick={() => setPacking('binlot')}>{tr('¿Cambió el lote?')}</button>}
       {!quiet && untagged.map((x) => <button key={x.u.at} type="button" className="lnk sm notag tagmiss" onClick={() => setTagging(x.i)}>{tr('Al pallet {0} le falta el tag: lote {1} · ponerlo', x.i + 1, x.lots.join(', '))}</button>)}
       {!quiet && own && <button type="button" className="btn slim" onClick={() => setFilling(own)}>{trx('➕ Completar {0} · tiene {1} de {2}', runWord + (own.run.id === run.id && own.index >= brought ? ' ' + noOf(own) : ' ' + tr('de antes')), own.unit.qty, own.usual)}</button>}
       {!quiet && (
@@ -2162,7 +2177,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       {fillUi}
       {counting && (rc.lots
         ? <LotsDialog title={rc.qtyQ} unit={rc.qtyUnit} refLabel={rc.refLabel} lot={run.lot} qty={run.perUnit} orders={orderOptions} order={nextOrder} onClose={() => { setCounting(false); setEndAfter(null) }} onPick={(q, ref, lots, po) => { record(q, ref, lots, po); setCounting(false); if (endAfter !== null) { setEndAfter(null); endRun(run.id, endAfter) } }} />
-        : <QtyDialog title={rc.qtyQ} unit={rc.qtyUnit} refLabel={rc.refLabel} initial={run.perUnit} perCase={perCase} decimal={measureOf(run) === 'lb'} onClose={() => { setCounting(false); setEndAfter(null) }} onPick={(q, ref) => { record(q, ref, binLots(q)); setCounting(false); if (endAfter !== null) { setEndAfter(null); endRun(run.id, endAfter) } }} />)}
+        : <QtyDialog title={rc.qtyQ} unit={rc.qtyUnit} refLabel={rc.refLabel} initial={run.perUnit} perCase={perCase} decimal={measureOf(run) === 'lb' || binOf(run) === 'lb'} onClose={() => { setCounting(false); setEndAfter(null) }} onPick={(q, ref) => { record(q, ref, binLots(q)); setCounting(false); if (endAfter !== null) { setEndAfter(null); endRun(run.id, endAfter) } }} />)}
       {packing === 'done' && <PalletDoneDialog s={s} run={run} onClose={() => { setPacking(null); setEndAfter(null) }} onSaved={() => { setPacking(null); buzz(); if (endAfter !== null) { const next = endAfter; setEndAfter(null); endRun(run.id, next) } }} />}
       {packing === 'lot' && <LotEndDialog run={run} onClose={() => setPacking(null)} />}
       {packing === 'reopen' && <ReopenPalletDialog run={run} onClose={() => setPacking(null)} />}
@@ -2744,12 +2759,12 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
                     <div className="made">
                       <label>{where}</label>
                       <b>{fmtN(q ? d.qty : d.units)} <span>{q ? cfg.qtyUnit : (d.units === 1 ? cfg.unit : cfg.plural).toLowerCase()}</span></b>
-                      <small>{[q ? unitsText(d.dept, d.units) : '', boxes, d.waste ? 'waste ' + d.waste + ' lb' : ''].filter(Boolean).join(' · ') || '\u00a0'}</small>
+                      <small>{[q ? unitsText(d.dept, d.units) : '', ...d.held.map((y) => fmtN(y.qty) + ' ' + binWord(y.word)), boxes, d.waste ? 'waste ' + d.waste + ' lb' : ''].filter(Boolean).join(' · ') || '\u00a0'}</small>
                     </div>
                   )}
                   {d.bins.map((y) => (
                     <div key={y.word} className="made bins">
-                      <label>{where} · {d.dept === 'Spiral' ? apartLabel(d.dept, y.word) : tr('en bins')}</label>
+                      <label>{where} · {d.dept === 'Packing' ? tr('en bins') : apartLabel(d.dept, y.word)}</label>
                       <b>{fmtN(y.qty)} <span>{apartWord(d.dept, y.word)}</span></b>
                       <small>{d.dept === 'Spiral' ? unitsText(d.dept, y.units) : binsN(y.units)}</small>
                     </div>
@@ -2784,7 +2799,8 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
                           <tbody>
                             {q && <tr className="q"><td>{cap(cfg.qtyUnit)}</td>{cols.map((x) => cell(x, fmtN(x.qty)))}</tr>}
                             <tr className={q ? '' : 'q'}><td>{cfg.plural}</td>{cols.map((x) => cell(x, fmtN(x.units)))}</tr>
-                            {[...new Set(cols.flatMap((x) => x.bins.map((y) => y.word)))].map((w) => <tr key={'bin:' + w}><td>{d.dept === 'Spiral' ? tr('En {0}', measureName(w)) : tr('Bins de {0}', binWord(w))}</td>{cols.map((x) => { const y = x.bins.find((z) => z.word === w); return cell(x, y ? (d.dept === 'Spiral' ? fmtN(y.qty) + ' ' + measureUnit(w) + ' · ' + unitsText(d.dept, y.units) : tr('{0} con {1}', binsN(y.units), fmtN(y.qty))) : '—') })}</tr>)}
+                            {[...new Set(cols.flatMap((x) => x.bins.map((y) => y.word)))].map((w) => <tr key={'bin:' + w}><td>{d.dept === 'Spiral' || w === 'lb' ? tr('En {0}', measureName(w)) : tr('Bins de {0}', binWord(w))}</td>{cols.map((x) => { const y = x.bins.find((z) => z.word === w); return cell(x, y ? (d.dept === 'Spiral' ? fmtN(y.qty) + ' ' + measureUnit(w) + ' · ' + unitsText(d.dept, y.units) : tr('{0} con {1}', binsN(y.units), fmtN(y.qty) + (w === 'lb' ? ' lb' : ''))) : '—') })}</tr>)}
+                            {[...new Set(cols.flatMap((x) => x.held.map((y) => y.word)))].map((w) => <tr key={'held:' + w}><td>{cap(binWord(w))}</td>{cols.map((x) => { const y = x.held.find((z) => z.word === w); return cell(x, y ? fmtN(y.qty) : '—') })}</tr>)}
                             {cols.some((x) => x.waste > 0) && <tr><td>Waste</td>{cols.map((x) => cell(x, x.waste ? x.waste + ' lb' : '—', x.waste > 0))}</tr>}
                             <tr><td>{tr('Códigos')}</td>{cols.map((x) => cell(x, x.distinct))}</tr>
                             <tr><td>{tr('Corridas')}</td>{cols.map((x) => cell(x, x.codes))}</tr>
@@ -2824,7 +2840,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
               <tbody>
                 {rep.byDept.map((d) => {
                   const cfg = CFG[d.dept], q = cfg.qty !== 'none', b = rep.byShift.find((x) => x.dept === d.dept)
-                  const boxes = (code: string, qty: number, bin = '') => (!bin && cfg.qtyUnit === 'pouches' && casesText(inCases(s, code, qty))) || '—'
+                  const boxes = (code: string, qty: number, bin = '') => (!bin && cfg.qtyUnit === 'pouches' && casesText(inCases(s, code, qty))) || (d.dept === 'MFO' && bin && bin !== 'lb' && casesText(inCases(s, code, qty, MFO_PER_CASE))) || '—'
                   const lotBtn = (l: string) => (!l ? '—' : <>{rep.lot ? l : <button type="button" className="drill" onClick={() => setFLot(l)}>{l}</button>}{looksLikeTwoLots(l) && <small className="twolots-mark" title={tr('Parece dos lotes escritos juntos: se separan desde Corregir, con ✎ en el pallet, poniendo las cajas de cada lote.')}>{tr('¿dos lotes juntos?')}</small>}</>)
                   // a code filled in bins speaks of bins and of what they hold (platos, copas…), not of pallets and cases
                   const cc = (bin: string) => cfgFor(d.dept, bin)

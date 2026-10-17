@@ -35,8 +35,10 @@ export function cfgOf(r: Pick<Run, 'dept' | 'extra'>): DeptCfg {
   if (m) return { ...CFG.Spiral, qty: 'ask', qtyQ: m === 'lb' ? tr('¿Cuántas libras lleva esta mezcla?') : tr('¿Cuántas cajas lleva esta mezcla?'), qtyUnit: measureUnit(m), perUnitLabel: '' }
   const word = binOf(r)
   if (!word) return CFG[r.dept]
+  // MFO: every line fills bins; the word says what they hold (platos, copas) or that each one is weighed (lb)
+  if (r.dept === 'MFO') return { ...CFG.MFO, qtyQ: binQ(word), qtyUnit: word === 'lb' ? tr('lb') : binWord(word) }
   const shown = binWord(word)
-  return { ...CFG[r.dept], unit: tr('Bin'), plural: tr('Bins'), done: tr('Bin listo'), saved: tr('guardado'), lots: false, orders: false, qty: 'ask', qtyQ: tr('¿Cuántos {0} lleva este bin?', shown), qtyUnit: shown, perUnitLabel: tr('{0} por bin', shown), refLabel: tr('N° de bin'), refWord: 'bin' }
+  return { ...CFG[r.dept], unit: tr('Bin'), plural: tr('Bins'), done: tr('Bin listo'), saved: tr('guardado'), lots: false, orders: false, qty: 'ask', qtyQ: binQ(word), qtyUnit: shown, perUnitLabel: tr('{0} por bin', shown), refLabel: tr('N° de bin'), refWord: 'bin' }
 }
 /** what a line's "listo" button says for a moment once the unit is recorded: "Mezcla 5 guardada", "Carro 12 guardado" */
 export const savedText = (dept: Dept, n: number, c: DeptCfg = CFG[dept]) => c.unit + ' ' + n + ' ' + c.saved
@@ -87,6 +89,12 @@ export const SPIRAL_UNITS: SpiralUnit[] = ['mezclas', 'lb', 'cajas']
 export const spiralUnitOfText = (t: unknown): SpiralUnit | undefined => { const u = String(t ?? '').trim().toUpperCase(); return !u ? undefined : /^(LB|LBS|LIBRA|LIBRAS|POUND|POUNDS)$/.test(u) ? 'lb' : /^(CAJA|CAJAS|CS|CJ|CASE|CASES)$/.test(u) ? 'cajas' : /^(MEZCLA|MEZCLAS|BATCH|BATCHES|MIX|MIXES)$/.test(u) ? 'mezclas' : undefined }
 /** the words a bin can hold, offered as chips; any other can be typed (kept as typed, these in Spanish like all data) */
 export const BIN_WORDS = ['platos', 'copas', 'pouches']
+/** what MFO's bins hold: platos or copas (so many to a case), or pounds, each bin weighed (counted apart, like Spiral's) */
+export const MFO_WORDS = ['platos', 'copas', 'lb']
+/** platos (or copas) to a case in MFO when the products table says nothing for the code (Jose, 2026-10-17) */
+export const MFO_PER_CASE = 20
+/** the question a bin asks when it is done, with the word of what it holds in its place */
+const binQ = (word: string) => (word === 'lb' ? tr('¿Cuántas libras lleva este bin?') : word === 'copas' ? tr('¿Cuántas copas lleva este bin?') : tr('¿Cuántos {0} lleva este bin?', binWord(word)))
 const cleanPart = (x: unknown): PalletPart | null => {
   const p = (x ?? {}) as Partial<PalletPart>, lot = String(p.lot ?? '').trim(), qty = Number(p.qty)
   return lot && Number.isFinite(qty) && qty > 0 ? { lot, qty, tag: String(p.tag ?? '').trim().slice(0, 30), at: Number(p.at) || 0, by: String(p.by ?? '') } : null
@@ -106,27 +114,30 @@ export function cleanExtra(x: unknown): RunExtra | undefined {
   }
   return Object.keys(out).length ? out : undefined
 }
-/** the word for what a run's bins hold ('' = the run makes pallets, or it is not Packing) */
-export const binOf = (r: Pick<Run, 'dept' | 'extra'>) => (r.dept === 'Packing' && r.extra?.bin) || ''
+/** the word for what a run's bins hold ('' = a Packing run that makes pallets, an MFO run of before that counted cases, another room) */
+export const binOf = (r: Pick<Run, 'dept' | 'extra'>) => ((r.dept === 'Packing' || r.dept === 'MFO') && r.extra?.bin) || ''
 /** the lot a run is packing now */
 export const lotNowOf = (r: Pick<Run, 'lot' | 'extra'>) => r.extra?.lotNow || r.lot
 /** the measure a Spiral run was started with ('' = mezcla by mezcla, or not Spiral) */
 export const measureOf = (r: Pick<Run, 'dept' | 'extra'>): Measure | '' => (r.dept === 'Spiral' && r.extra?.measure) || ''
 /**
- * The word of a run counted apart from its room's main count: what a Packing line's bins hold, or the measure of a
- * Spiral line's mezclas ('' = counted as the room counts: pallets of cases, mezclas one by one)
+ * The word of a run counted apart from its room's main count: what a Packing line's bins hold, the measure of a
+ * Spiral line's mezclas, or the pounds of MFO's weighed bins ('' = counted as the room counts: pallets of cases,
+ * mezclas one by one, and MFO's bins of platos or copas, which are so many to a case: see perCaseOf)
  */
-export const apartOf = (r: Pick<Run, 'dept' | 'extra'>) => (r.dept === 'Packing' ? r.extra?.bin || '' : measureOf(r))
+export const apartOf = (r: Pick<Run, 'dept' | 'extra'>) => (r.dept === 'Packing' ? r.extra?.bin || '' : r.dept === 'MFO' ? (r.extra?.bin === 'lb' ? 'lb' : '') : measureOf(r))
+/** the word a run is counted under when it is not simply its room's: apart or not (MFO's platos are not apart, but they are their own word) */
+export const kindOf = (r: Pick<Run, 'dept' | 'extra'>) => apartOf(r) || binOf(r)
 /** a measure as a quantity's word ("lb", "cajas") and as a name ("libras", "cajas", "mezclas") */
 export const measureUnit = (m: string) => (m === 'lb' ? tr('lb') : m === 'cajas' ? tr('cajas') : tr('mezclas'))
 export const measureName = (m: string) => (m === 'lb' ? tr('libras') : m === 'cajas' ? tr('cajas') : tr('mezclas'))
 /** what is apart, as the screen says it: "platos" / "lb" beside a number, and "en bins de platos" / "en libras" as a label */
-export const apartWord = (dept: Dept, word: string) => (dept === 'Spiral' ? measureUnit(word) : binWord(word))
-export const apartLabel = (dept: Dept, word: string) => (dept === 'Spiral' ? tr('en {0}', measureName(word)) : tr('en bins de {0}', binWord(word)))
+export const apartWord = (dept: Dept, word: string) => (dept === 'Spiral' || word === 'lb' ? measureUnit(word) : binWord(word))
+export const apartLabel = (dept: Dept, word: string) => (dept === 'Spiral' || word === 'lb' ? tr('en {0}', measureName(word)) : tr('en bins de {0}', binWord(word)))
 /** the words of a room's runs counted apart under a word ('' = the room's own) */
 export const cfgFor = (dept: Dept, word: string): DeptCfg => (word ? cfgOf({ dept, extra: dept === 'Spiral' ? { measure: word as Measure } : { bin: word } }) : CFG[dept])
 /** a bin's word as the screen says it: the offered ones in the screen's language, a typed one as typed */
-const BIN_SHOWN: Record<string, () => string> = { platos: () => tr('platos'), copas: () => tr('copas'), pouches: () => tr('pouches') }
+const BIN_SHOWN: Record<string, () => string> = { platos: () => tr('platos'), copas: () => tr('copas'), pouches: () => tr('pouches'), lb: () => tr('libras') }
 export const binWord = (word: string) => BIN_SHOWN[word]?.() ?? word
 /** a stop with its reason; lineId null = the whole department */
 export type Stop = { id: string; dept: Dept; lineId: string | null; reason: string; note: string; startedAt: number; endedAt: number | null; by: string; updatedAt: number; deleted?: boolean; syncedAt?: number }
@@ -526,7 +537,7 @@ export function startRun(line: Line, code: string, lot: string, date: string, pe
       if (age > SETUP_MAX_MS || fromOtherDay(state, x, at) || (x.reason === SETUP && age < 60_000)) putStop({ ...x, deleted: true })
       else putStop({ ...x, endedAt: Math.max(at, x.startedAt), note: x.reason === SETUP && x.note.startsWith(AFTER) ? 'De ' + x.note.slice(AFTER.length) + ' a ' + code : x.note })
     }
-    putRun({ id: uid(), dept: line.dept, lineId: line.id, line: line.name, code, lot, date, startedAt: at, endedAt: null, units: [], perUnit, waste: 0, by: user.get(), updatedAt: 0, ...(line.dept === 'Packing' && bin.trim() ? { extra: { bin: bin.trim().slice(0, 30) } } : line.dept === 'Spiral' && measure ? { extra: { measure } } : {}) })
+    putRun({ id: uid(), dept: line.dept, lineId: line.id, line: line.name, code, lot, date, startedAt: at, endedAt: null, units: [], perUnit, waste: 0, by: user.get(), updatedAt: 0, ...((line.dept === 'Packing' || line.dept === 'MFO') && bin.trim() ? { extra: { bin: bin.trim().slice(0, 30) } } : line.dept === 'Spiral' && measure ? { extra: { measure } } : {}) })
   })
 }
 const run = (id: string) => state.runs.find((r) => r.id === id)
@@ -1287,8 +1298,8 @@ export const productOf = (s: State, code: string) => s.products.find((p) => norm
  * Pouches told the way the floor needs them when a cart comes out short: full cases and the loose pouches left over,
  * by the product's pouches per case. null when the products table does not say how many go in a case.
  */
-export function inCases(s: State, code: string, pouches: number | null | undefined): { cases: number; loose: number; perCase: number } | null {
-  const per = productOf(s, code)?.pouchesPerCase ?? 0
+export function inCases(s: State, code: string, pouches: number | null | undefined, perDefault = 0): { cases: number; loose: number; perCase: number } | null {
+  const per = productOf(s, code)?.pouchesPerCase || perDefault
   if (!(per > 0) || pouches == null || !Number.isFinite(pouches) || pouches < 0) return null
   const cases = Math.floor(pouches / per)
   return { cases, loose: Math.round((pouches - cases * per) * 100) / 100, perCase: per }
@@ -1432,7 +1443,7 @@ export function planRows(s: State, date: string, dept: Dept): PlanRow[] {
     const measure: string = dept !== 'Spiral' ? '' : product?.spiralUnit ? (product.spiralUnit === 'mezclas' ? '' : product.spiralUnit) : (ofCode.map(measureOf).find(Boolean) ?? '')
     // what counts for the program: the runs in the code's measure (bins, and mezclas in another measure, stay apart)
     const mine = ofCode.filter((r) => apartOf(r) === measure)
-    const one = (r: Run, u: Unit) => (cfg.qty === 'none' && !measure ? 1 : unitQty(s, r, u))
+    const one = (r: Run, u: Unit) => (cfg.qty === 'none' && !measure ? 1 : roomQty(s, r, u))
     const made = (k: 0 | 1 | 2) => mine.reduce((t, r) => t + r.units.filter((u) => !k || shiftAt(hours, u.at) === k).reduce((a, u) => a + one(r, u), 0), 0)
     const done = made(0), planned = set?.qty ?? 0, open = mine.filter((r) => !r.endedAt)
     const other = [...ofCode.filter((r) => apartOf(r) !== measure && (dept === 'Spiral' || !!apartOf(r))).reduce((m, r) => { const w = apartOf(r), n = w ? runQty(s, r) : r.units.length; return m.set(w, (m.get(w) ?? 0) + n) }, new Map<string, number>())].filter(([, n]) => n > 0).map(([word, n]) => ({ word: dept === 'Spiral' ? measureUnit(word) : apartWord(dept, word), n }))
@@ -1447,8 +1458,8 @@ export const dayBefore = (d: string) => { const x = new Date(d + 'T00:00:00'); x
 function madeOfLot(s: State, dept: Dept, code: string, lot: string, date: string) {
   const key = normCode(code), cfg = CFG[dept]
   return s.runs.filter((r) => r.dept === dept && r.date === date && normCode(r.code) === key).reduce((t, r) => t + r.units.reduce((a, u) => {
-    if (u.lots?.length) return a + u.lots.filter((l) => l.lot === lot).reduce((q, l) => q + l.qty, 0)
-    return a + (lotNowOf(r) === lot || r.lot === lot ? (cfg.qty === 'none' && !apartOf(r) ? 1 : unitQty(s, r, u)) : 0)
+    if (u.lots?.length) return a + inRoomUnit(s, r, u.lots.filter((l) => l.lot === lot).reduce((q, l) => q + l.qty, 0))
+    return a + (lotNowOf(r) === lot || r.lot === lot ? (cfg.qty === 'none' && !apartOf(r) ? 1 : roomQty(s, r, u)) : 0)
   }, 0), 0)
 }
 /**
@@ -1541,23 +1552,37 @@ export function unitQty(s: State, r: Run, u: Unit): number {
   const p = productOf(s, r.code)
   return p ? (r.dept === 'RTE' ? cartPouches(p) : r.dept === 'Packing' ? p.casesPerPallet : 0) : 0
 }
-/** what a run made, in its room's quantity (pouches, cajas) */
+/** what a run made, in its own quantity (pouches, cajas; platos, copas or lb in a bin) */
 export const runQty = (s: State, r: Run) => r.units.reduce((t, u) => t + unitQty(s, r, u), 0)
+/**
+ * For an MFO run counted in platos or copas: how many of them make a case, the products table's "Pouches / caja" for
+ * the code or MFO_PER_CASE when it says nothing (null = the run counts cases itself, or pounds, or is another room's)
+ */
+export const perCaseOf = (s: State, r: Pick<Run, 'dept' | 'code' | 'extra'>): number | null => { const w = binOf(r); return r.dept === 'MFO' && w && w !== 'lb' ? productOf(s, r.code)?.pouchesPerCase || MFO_PER_CASE : null }
+/**
+ * a quantity of a run in its room's unit, the one of the program, the goals, Avance and the room's totals: MFO's
+ * platos or copas become cases; anything else already is (RTE's pouches, Packing's cases, MFO's cases of before)
+ */
+export const inRoomUnit = (s: State, r: Pick<Run, 'dept' | 'code' | 'extra'>, q: number) => { const per = perCaseOf(s, r); return per ? q / per : q }
+/** what one unit counts for in its room's unit (a bin of 30 platos, 1.5 cases) */
+export const roomQty = (s: State, r: Run, u: Unit) => inRoomUnit(s, r, unitQty(s, r, u))
 
 /** what a room made on a day with all its lines together: in total, per code, and the pace (made ÷ hours since the first start of the day) */
 /** the bins of some runs, word by word: how many bins and how much they hold (only the units that pass `keep`) */
-function binTotals(s: State, runs: Run[], keep: (u: Unit) => boolean) {
+function binTotals(s: State, runs: Run[], keep: (u: Unit) => boolean, wordOf: (r: Run) => string = apartOf) {
   const by = new Map<string, { word: string; units: number; qty: number }>()
-  for (const r of runs) { const word = apartOf(r), e = by.get(word) ?? { word, units: 0, qty: 0 }, mine = r.units.filter(keep); e.units += mine.length; e.qty += mine.reduce((t, u) => t + unitQty(s, r, u), 0); by.set(word, e) }
+  for (const r of runs) { const word = wordOf(r), e = by.get(word) ?? { word, units: 0, qty: 0 }, mine = r.units.filter(keep); e.units += mine.length; e.qty += mine.reduce((t, u) => t + unitQty(s, r, u), 0); by.set(word, e) }
   return [...by.values()].filter((b) => b.units > 0)
 }
+/** what the bins counted in the room's unit hold, word by word (MFO: so many bins with so many platos, beside the cases they make) */
+const heldTotals = (s: State, runs: Run[], keep: (u: Unit) => boolean) => binTotals(s, runs.filter((r) => !!binOf(r) && !apartOf(r)), keep, binOf)
 /** what a room has made on a day, with all its lines together; or, given a line, what that line alone has made */
 export function deptToday(s: State, dept: Dept, date: string, now: number, lineId?: string) {
   const cfg = CFG[dept]
   const all = s.runs.filter((r) => r.dept === dept && r.date === date && (!lineId || r.lineId === lineId))
   // bins hold platos, copas or pouches, not cases: they are counted apart (see bins), never in the room's cases
   const runs = all.filter((r) => !apartOf(r)), binRuns = all.filter((r) => !!apartOf(r))
-  const measure = (r: Run) => (cfg.qty === 'none' ? r.units.length : runQty(s, r))
+  const measure = (r: Run) => (cfg.qty === 'none' ? r.units.length : inRoomUnit(s, r, runQty(s, r)))
   const codes = new Map<string, { code: string; units: number; qty: number; waste: number; lines: string[] }>()
   for (const r of runs) {
     const e = codes.get(normCode(r.code)) ?? { code: r.code, units: 0, qty: 0, waste: 0, lines: [] }
@@ -1574,7 +1599,7 @@ export function deptToday(s: State, dept: Dept, date: string, now: number, lineI
   // first code; a line that came running from the other shift counts from the hour this one starts.
   const plan = shiftsOf(s, date), shift = shiftAt(plan, now), since = lastCut(plan, now), cuts = shiftCuts(plan)
   const opens = Math.min(now, since + ahead(shift === 1 ? cuts.toFirst : cuts.toSecond, mins(shift === 1 ? plan.first : plan.second)) * 60_000)
-  const one = (r: Run, u: Unit) => (cfg.qty === 'none' ? 1 : unitQty(s, r, u))
+  const one = (r: Run, u: Unit) => (cfg.qty === 'none' ? 1 : roomQty(s, r, u))
   const made = (k: 1 | 2) => runs.reduce((t, r) => t + r.units.filter((u) => shiftAt(plan, u.at) === k).reduce((a, u) => a + one(r, u), 0), 0)
   // The shift in course is all that its people made in its hours, on every line: also on a code that came running from
   // the work day before (a work day changes at the hour between shifts; a code left running goes on). Its bins apart.
@@ -1607,6 +1632,7 @@ export function deptToday(s: State, dept: Dept, date: string, now: number, lineI
   const shiftHrs = shiftMs / 3_600_000
   return { runs, units, qty, unitLabel: cfg.qty === 'none' ? cfg.plural.toLowerCase() : cfg.qtyUnit, byCode: [...codes.values()].sort((a, b) => b.qty - a.qty), hours, rate: hours >= 1 / 6 ? qty / hours : null, allEnded,
     bins: binTotals(s, binRuns, () => true), shiftBins: binTotals(s, liveBins, (u) => u.at >= since && u.at < until), live: mine.length > 0,
+    held: heldTotals(s, runs, () => true), shiftHeld: heldTotals(s, liveRuns, (u) => u.at >= since && u.at < until),
     shift, shiftQty, shiftUnits, shiftCodes: [...turn.values()].sort((a, b) => b.qty - a.qty), shiftRate: shiftHrs >= 1 / 6 ? shiftQty / shiftHrs : null, made: [made(1), made(2)] as [number, number], shiftSince: shiftFirst, shiftUntil, paused, shiftMs }
 }
 

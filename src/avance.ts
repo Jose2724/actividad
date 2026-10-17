@@ -1,4 +1,4 @@
-import { apartOf, normCode, productOf, shiftAt, shiftsOf, unitQty, type PackRoom, type Product, type Run, type State, type Unit } from './store'
+import { apartOf, inRoomUnit, normCode, productOf, roomQty, shiftAt, shiftsOf, type PackRoom, type Product, type Run, type State, type Unit } from './store'
 import { unitParts } from './report'
 
 /**
@@ -73,7 +73,8 @@ const r2 = (x: number | null) => (x == null ? null : Math.round(x * 100) / 100)
  */
 export function avanceRows(s: State, date: string, keep?: Set<string>, lot = ''): AvanceRow[] {
   const has = (r: Run, u: Unit) => !lot || unitParts(s, r, u).some((p) => p.lot === lot)
-  const ofLot = (r: Run, u: Unit) => (!lot ? unitQty(s, r, u) : unitParts(s, r, u).filter((p) => p.lot === lot).reduce((t, p) => t + (p.qty ?? 0), 0))
+  // every room in its own unit: MFO's bins of platos or copas as the cases they make (see inRoomUnit)
+  const ofLot = (r: Run, u: Unit) => (!lot ? roomQty(s, r, u) : inRoomUnit(s, r, unitParts(s, r, u).filter((p) => p.lot === lot).reduce((t, p) => t + (p.qty ?? 0), 0)))
   const runs = s.runs.filter((r) => r.date === date && (!lot || r.lot === lot || r.units.some((u) => has(r, u))))
   // 100 and 0100 are one line; the program holds one entry per code (see setSchedule), the spellings are folded here for old data
   const sched: Record<string, number> = {}
@@ -110,7 +111,7 @@ export function avanceRows(s: State, date: string, keep?: Set<string>, lot = '')
       if (!has(r, u)) continue
       const k = shiftAt(hours, u.at) - 1
       if (dept === 'Kitchen') kitchenBy[k]++; else put(dept, byShift[k], ofLot(r, u))
-      for (const p of unitParts(s, r, u)) { if (lot && p.lot !== lot) continue; if (dept === 'Kitchen') kitchenLot.set(p.lot, (kitchenLot.get(p.lot) ?? 0) + 1); else put(dept, lotPart(p.lot), p.qty ?? 0) }
+      for (const p of unitParts(s, r, u)) { if (lot && p.lot !== lot) continue; if (dept === 'Kitchen') kitchenLot.set(p.lot, (kitchenLot.get(p.lot) ?? 0) + 1); else put(dept, lotPart(p.lot), inRoomUnit(s, r, p.qty ?? 0)) }
     }
     for (const k of [0, 1] as const) byShift[k].mixes = mixRoom === 'Spiral' ? byShift[k].spiral : kitchenBy[k]
     for (const l of kitchenLot.keys()) lotPart(l)
@@ -149,7 +150,7 @@ export function lotAcrossDays(s: State, lot: string): { days: string[]; codes: (
       if (!c) { c = { code: productOf(s, key)?.code ?? r.code, dates: new Map() }; byCode.set(key, c) }
       let d = c.dates.get(r.date)
       if (!d) { d = { kitchen: 0, x: part() }; c.dates.set(r.date, d) }
-      if (r.dept === 'Kitchen') d.kitchen++; else if (r.dept === 'Spiral') d.x.spiral++; else if (r.dept === 'RTE') d.x.pouches += p.qty ?? 0; else if (r.dept === 'Packing') { d.x.cases += p.qty ?? 0; d.x.pallets++ } else if (r.dept === 'MFO') d.x.mfo += p.qty ?? 0
+      if (r.dept === 'Kitchen') d.kitchen++; else if (r.dept === 'Spiral') d.x.spiral++; else if (r.dept === 'RTE') d.x.pouches += p.qty ?? 0; else if (r.dept === 'Packing') { d.x.cases += p.qty ?? 0; d.x.pallets++ } else if (r.dept === 'MFO') d.x.mfo += inRoomUnit(s, r, p.qty ?? 0)
     }
   }
   const add = (t: AvancePart, x: AvancePart): AvancePart => ({ mixes: t.mixes + x.mixes, spiral: t.spiral + x.spiral, pouches: t.pouches + x.pouches, cases: t.cases + x.cases, mfo: t.mfo + x.mfo, pallets: t.pallets + x.pallets })

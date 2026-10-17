@@ -115,7 +115,6 @@ export const EN: Record<string, string> = {
   '{0} de': '{0} of',
   '✓ Listo, bloquear': '✓ Done, lock',
   '✎ Editar': '✎ Edit',
-  'Pouches / caja': 'Pouches / case',
   'Cajas / mezcla (yield)': 'Cases / mix (yield)',
   'Guacales / carro': 'Crates / cart',
   'Pouches / guacal': 'Pouches / crate',
@@ -1088,4 +1087,14 @@ export const EN: Record<string, string> = {
   // the version beside the time (2026-10-17)
   'La versión de la app en este aparato': 'The version of the app on this device',
   'Este aparato no ha podido avisar: {0}': 'This device could not report: {0}',
+  // MFO: what its bins hold (2026-10-17)
+  '¿Qué llevan los bins?': 'What do the bins hold?',
+  'Platos': 'Plates',
+  'Copas': 'Cups',
+  'cada bin se pesa': 'each bin is weighed',
+  '{0} por caja': '{0} per case',
+  'Por caja': 'Per case',
+  '¿Cuántas copas lleva este bin?': 'How many cups are in this bin?',
+  '¿Cuántas libras lleva este bin?': 'How many pounds are in this bin?',
+  'Pouches o platos / caja': 'Pouches or plates / case',
 }

@@ -1,4 +1,4 @@
-import { apartOf, binOf, CFG, DEPTS, lineNameOf, normCode, orderLabel, orderOfId, orderPallets, palletPo, plainDay, runInShift, runStats, SETUP, shiftAt, shiftPieces, shiftsOf, stopSpans, unitQty, waitsForCode, type Dept, type Run, type ShiftHours, type State, type Unit } from './store'
+import { apartOf, binOf, CFG, DEPTS, inRoomUnit, kindOf, lineNameOf, normCode, orderLabel, orderOfId, orderPallets, palletPo, plainDay, runInShift, runStats, SETUP, shiftAt, shiftPieces, shiftsOf, stopSpans, unitQty, waitsForCode, type Dept, type Run, type ShiftHours, type State, type Unit } from './store'
 import { tr } from './i18n'
 
 /**
@@ -94,11 +94,11 @@ export function reportOf(s: State, date: string, now: number, f: ReportFilter = 
   const setupOf = (k: 0 | 1 | 2, dept?: Dept) => ofRuns.filter((x) => x.reason === SETUP && (!dept || x.dept === dept)).reduce((t, x) => t + inShift(x, k), 0)
   // the same code on several lines of a room, added up (with what each shift made of it, when the report is the whole day's)
   const each = shift ? null : ([rowsOf(1), rowsOf(2)] as const)
-  const codeKey = (r: Run) => r.dept + '|' + normCode(r.code) + (apartOf(r) ? '|bin|' + apartOf(r) : '')
+  const codeKey = (r: Run) => r.dept + '|' + normCode(r.code) + (kindOf(r) ? '|bin|' + kindOf(r) : '')
   const madeBy = (list: ReturnType<typeof rowsOf>, key: string) => list.filter((x) => codeKey(x.r) === key).reduce((t, x) => t + (CFG[x.r.dept].qty === 'none' ? x.units : x.qty), 0)
   const byCode = [...rows.reduce((m, x) => {
     const k = codeKey(x.r)
-    const e = m.get(k) ?? { dept: x.r.dept, code: x.r.code, bin: apartOf(x.r), units: 0, qty: 0, waste: 0, lines: [] as string[], byShift: (each ? [madeBy(each[0], k), madeBy(each[1], k)] : null) as [number, number] | null, lots: [] as LotLine[] }
+    const e = m.get(k) ?? { dept: x.r.dept, code: x.r.code, bin: kindOf(x.r), units: 0, qty: 0, waste: 0, lines: [] as string[], byShift: (each ? [madeBy(each[0], k), madeBy(each[1], k)] : null) as [number, number] | null, lots: [] as LotLine[] }
     e.units += x.units; e.qty += x.qty; e.waste = round2(e.waste + x.waste)
     const line = lineNameOf(s, x.r.lineId, x.r.line)
     if (!e.lines.includes(line)) e.lines.push(line)
@@ -121,12 +121,14 @@ export function reportOf(s: State, date: string, now: number, f: ReportFilter = 
   const sum = (list: ReturnType<typeof rowsOf>, k: 0 | 1 | 2, dept: Dept) => {
     const mine = list.filter((x) => x.r.dept === dept)
     // what a line made filling bins (platos, copas, pouches) is not cases nor pallets: told apart, word by word
-    const counted = mine.filter((x) => !apartOf(x.r)), bins = [...mine.filter((x) => !!apartOf(x.r)).reduce((m, x) => { const w = apartOf(x.r), e = m.get(w) ?? { word: w, units: 0, qty: 0 }; e.units += x.units; e.qty += x.qty; return m.set(w, e) }, new Map<string, { word: string; units: number; qty: number }>()).values()].filter((b) => b.units > 0)
+    const counted = mine.filter((x) => !apartOf(x.r)), bins = [...mine.filter((x) => !!apartOf(x.r)).reduce((m, x) => { const w = apartOf(x.r), e = m.get(w) ?? { word: w, units: 0, qty: 0 }; e.units += x.units; e.qty += x.qty; return m.set(w, e) }, new Map<string, { word: string; units: number; qty: number }>()).values()]
+    // MFO's bins of platos or copas count as cases (so many to a case); what they hold is said beside, word by word
+    const held = [...counted.filter((x) => !!binOf(x.r)).reduce((m, x) => { const w = binOf(x.r), e = m.get(w) ?? { word: w, units: 0, qty: 0 }; e.units += x.units; e.qty += x.qty; return m.set(w, e) }, new Map<string, { word: string; units: number; qty: number }>()).values()].filter((b) => b.units > 0).filter((b) => b.units > 0)
     // The clock time of the room: from its first code's start to its last code's end (in this shift, when it is one).
     // "working" and "down" are another thing: the sum of every line's time, so three lines for five hours are fifteen.
     const timed = mine.filter((x) => x.to > x.from)
     const from = timed.length ? Math.min(...timed.map((x) => x.from)) : 0, to = timed.length ? Math.max(...timed.map((x) => x.to)) : 0
-    return { shift: k, from, to, span: to - from, open: timed.some((x) => !x.r.endedAt && x.to >= now), distinct: new Set(mine.map((x) => normCode(x.r.code))).size, lines: new Set(mine.map((x) => x.r.lineId)).size, codes: mine.length, units: counted.reduce((t, x) => t + x.units, 0), qty: counted.reduce((t, x) => t + x.qty, 0), bins, waste: round2(mine.reduce((t, x) => t + x.waste, 0)), working: mine.reduce((t, x) => t + x.st.working, 0), down: mine.reduce((t, x) => t + x.st.down, 0), setup: setupOf(k, dept) }
+    return { shift: k, from, to, span: to - from, open: timed.some((x) => !x.r.endedAt && x.to >= now), distinct: new Set(mine.map((x) => normCode(x.r.code))).size, lines: new Set(mine.map((x) => x.r.lineId)).size, codes: mine.length, units: counted.reduce((t, x) => t + x.units, 0), qty: counted.reduce((t, x) => t + inRoomUnit(s, x.r, x.qty), 0), held, bins, waste: round2(mine.reduce((t, x) => t + x.waste, 0)), working: mine.reduce((t, x) => t + x.st.working, 0), down: mine.reduce((t, x) => t + x.st.down, 0), setup: setupOf(k, dept) }
   }
   const here = DEPTS.filter((d) => rows.some((x) => x.r.dept === d))
   // (the day lasted what its two shifts lasted: the hours between one shift and the next are nobody's)
