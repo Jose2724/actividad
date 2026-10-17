@@ -159,12 +159,21 @@ function LinesSettings({ s }: { s: State }) {
                 </div>
               )
             })}
-            {removedLines(s, d).map((x) => (
-              <div className="setrow gone" key={x.id}>
-                <span><b>{lineLabel(x.name)}</b><small> · {trx('quitada por {0} el {1}', x.by || '—', longDate(new Date(x.at).toISOString().slice(0, 10)) + ' ' + fmtTime(x.at))}</small></span>
-                <button type="button" className="lnk" onClick={() => restoreLine(d, x.id)}>{tr('↩ Volver a ponerla')}</button>
-              </div>
-            ))}
+            {(() => {
+              // what was taken off before stays in the history: folded, for a manager who wants one of them back
+              const gone = removedLines(s, d)
+              return gone.length > 0 && (
+                <details className="gonelist">
+                  <summary>{gone.length === 1 ? tr('1 línea quitada antes') : tr('{0} líneas quitadas antes', gone.length)}</summary>
+                  {gone.map((x) => (
+                    <div className="setrow gone" key={x.id}>
+                      <span><b>{lineLabel(x.name)}</b><small> · {trx('quitada por {0} el {1}', x.by || '—', longDate(new Date(x.at).toISOString().slice(0, 10)) + ' ' + fmtTime(x.at))}</small></span>
+                      <button type="button" className="lnk" onClick={() => restoreLine(d, x.id)}>{tr('↩ Volver a ponerla')}</button>
+                    </div>
+                  ))}
+                </details>
+              )
+            })()}
           </div>
         )
       })}

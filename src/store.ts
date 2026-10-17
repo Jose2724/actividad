@@ -530,13 +530,15 @@ export function swapLineNames(idA: string, idB: string): boolean {
 export function removeLine(id: string) { const l = state.lines.find((x) => x.id === id); if (l) { putLine({ ...l, deleted: true }); logChange(l.dept, 'Línea quitada de ' + l.dept, l.name, '', 'act_lines', l.id) } }
 /**
  * The lines of a room that were taken off, newest first, as the history keeps them (who, when, the line's own id),
- * without the ones that are back or whose name another line has now. On 2026-10-17 both lines of Spiral were taken
- * off from the floor at the end of the shift; they come back as they were, with one tap (see restoreLine)
+ * one per name (the last one taken off with it), without the ones that are back or whose name another line has now.
+ * Until 2026-10-17 anybody could take a free line off, and some lines were taken off after every code (Spiral: 28 in a
+ * week); a manager can put one back as it was from Ajustes (see restoreLine), and adding a line of that name does it too
  */
 export function removedLines(s: State, dept: Dept): { id: string; name: string; at: number; by: string }[] {
   const out = new Map<string, { id: string; name: string; at: number; by: string }>()
   for (const c of s.changes) if (c.refTable === 'act_lines' && c.what === 'Línea quitada de ' + dept && c.before && !c.deleted) { const was = out.get(c.refKey); if (!was || was.at < c.at) out.set(c.refKey, { id: c.refKey, name: c.before, at: c.at, by: c.by }) }
-  return [...out.values()].filter((x) => !s.lines.some((l) => l.id === x.id) && !lineNamed(s, dept, x.name)).sort((a, b) => b.at - a.at)
+  const all = [...out.values()].filter((x) => !s.lines.some((l) => l.id === x.id) && !lineNamed(s, dept, x.name)).sort((a, b) => b.at - a.at)
+  return all.filter((x, i) => all.findIndex((y) => sameName(y.name, x.name)) === i)
 }
 /** a line taken off comes back as it was: the same line, with its name (false = it is not one taken off, or its name is another line's now) */
 export function restoreLine(dept: Dept, id: string): boolean {

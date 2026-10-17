@@ -2436,6 +2436,12 @@ section('Una línea quitada vuelve tal cual: la misma línea, con su nombre (202
     eq('agregar otra con el nombre de una quitada la trae de vuelta, sin hacer una nueva', [m.addLine('Spiral', 'spiral'), lineOf('Spiral')?.id === spiralId, st().lines.filter((l) => l.dept === 'Spiral').length, m.removedLines(st(), 'Spiral').length], [true, true, 2, 0])
     eq('y queda en el historial', st().changes.filter((c) => c.what === 'Línea puesta de nuevo en Spiral').map((c) => c.after), ['Racks', 'Spiral'])
     eq('una que no se quitó no se vuelve a poner', m.restoreLine('Spiral', 'nope'), false)
+    // the version of before made a new line each time: the same name taken off several times is offered once, the last
+    m.applyRemote('act_lines', { id: 'st1', dept: 'Spiral', name: 'Stuffed', deleted: false, updated_at: new Date(oct(10, 9, 0)).toISOString() })
+    clock = oct(10, 9, 30); m.removeLine('st1')
+    m.applyRemote('act_lines', { id: 'st2', dept: 'Spiral', name: 'Stuffed', deleted: false, updated_at: new Date(oct(10, 12, 0)).toISOString() })
+    clock = oct(10, 12, 30); m.removeLine('st2')
+    eq('un nombre quitado varias veces se ofrece una sola vez: la última', m.removedLines(st(), 'Spiral').map((x) => [x.name, x.id]), [['Stuffed', 'st2']])
     eq('suben al servidor como la misma línea, puesta otra vez', m.outbox.items().filter((i) => i.table === 'act_lines' && i.key === racks.id).map((i) => i.row.deleted), [false])
   })
 }

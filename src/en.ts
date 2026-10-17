@@ -1199,8 +1199,8 @@ export const EN: Record<string, string> = {
   'MFO en': 'MFO in',
   'MFO además': 'MFO besides',
   'Pouches / caja': 'Pouches / case',
-  'Se quitaron: {0}': 'Taken off: {0}',
   '↩ Volver a ponerla': '↩ Put it back',
-  '↩ Volver a poner las {0}': '↩ Put the {0} back',
   'quitada por {0} el {1}': 'taken off by {0} on {1}',
+  '1 línea quitada antes': '1 line taken off before',
+  '{0} líneas quitadas antes': '{0} lines taken off before',
 }
