@@ -51,13 +51,25 @@ export async function sayHello(meId: string): Promise<boolean> {
     return true
   } catch { return false }
 }
-/** says hello now and every minute while the page is open (and when it comes back to the screen) */
+let lastHello = 0
+let unsub: (() => void) | null = null
+/**
+ * Says hello a few seconds after signing in (once the first download and the clock's measure have had their chance:
+ * a word sent at once said "last download 2 hours ago" and "its own clock" of a device that was fine), then every
+ * minute while the page is open, when it comes back to the screen, and when what it has to say changes (a download
+ * done, a row that will not go up), at most every fifteen seconds.
+ */
 export function startHello(meId: string) {
   if (!supabase) return
   if (timer) clearInterval(timer)
-  void sayHello(meId)
-  timer = setInterval(() => { if (document.visibilityState === 'visible') void sayHello(meId) }, 60_000)
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void sayHello(meId) })
+  if (unsub) unsub()
+  const soon = () => { lastHello = Date.now(); void sayHello(meId) }
+  const throttled = () => { if (Date.now() - lastHello >= 15_000) soon() }
+  setTimeout(soon, 6000)
+  timer = setInterval(() => { if (document.visibilityState === 'visible') soon() }, 60_000)
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') throttled() })
+  let was = syncStore.get()
+  unsub = syncStore.subscribe(() => { const st = syncStore.get(); if (st.lastSync !== was.lastSync || st.pending !== was.pending || st.state !== was.state || st.refused !== was.refused) { was = st; setTimeout(throttled, 1500) } })
 }
 /** the devices as the server has them, the most recently heard first */
 export async function fetchDevices(): Promise<DeviceRow[]> {
