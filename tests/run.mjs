@@ -1984,7 +1984,7 @@ section('Packing: un pallet con varios lotes, cada lote con su tag; y las línea
     eq('ni el programa de Packing, que es en cajas', m.planRows(st(), DAY, 'Packing').filter((r) => r.code === 'B200').map((r) => [r.planned, r.done, r.left]), [[100, 0, 100]])
     // what is kept and what travels
     const row = m.outbox.items().filter((i) => i.table === 'act_runs').map((i) => i.row).find((x) => x.code === 'B200')
-    eq('la corrida de bins sube con lo que lleva (extra), y una de otro cuarto no lleva ese campo', [row.extra, 'extra' in m.outbox.items().find((i) => i.table === 'act_lines').row], [{ bin: 'platos', lotNow: '6286' }, false])
+    eq('la corrida de bins sube con lo que lleva (extra): su palabra, su lote de ahora y la marca de la unidad que se le quitó', { ...row.extra, removed: row.extra.removed.length }, { bin: 'platos', lotNow: '6286', removed: 1 })
     const back = m.cleanExtra({ bin: '  copas ', lotNow: 6290, open: { parts: [{ lot: '6285', qty: '20', tag: 1828 }, { lot: '', qty: 5 }, { lot: '6286', qty: -1 }], po: 'x1' }, junk: 1 })
     eq('lo que llega en extra se limpia: solo lo que tiene sentido', back, { bin: 'copas', open: { parts: [{ lot: '6285', qty: 20, tag: '1828', at: 0, by: '' }], po: 'x1' } })
     eq('y lo vacío no es nada', [m.cleanExtra(null), m.cleanExtra({}), m.cleanExtra({ open: { parts: [] } }), m.cleanExtra('x')], [undefined, undefined, undefined, undefined])
@@ -2155,6 +2155,30 @@ section('Avance: cada código lo empaca RTE o MFO, nunca los dos; y se puede ver
     eq('un código en el rango suma sus días: programa, mezclas, cajas de MFO, y dice cada día', [rg.scheduled, rg.mixesDone, rg.mfoCases, rg.mfoPlan, rg.mfoExp, rg.casesDone, rg.palletsDone, rg.days.map((d) => [d.date, d.mixes, d.mfo])], [5, 3, 50, 125, 75, 40, 1, [['2026-10-20', 2, 30], ['2026-10-21', 1, 20]]])
     eq('sus lotes del rango, y sus turnos sumados', [rg.lots.map((l) => [l.lot, l.mixes, l.mfo, l.cases]), rg.byShift[0].mixes, rg.byShift[0].mfo], [[['6292', 0, 0, 15], ['6293', 2, 30, 25], ['6294', 1, 20, 0]], 3, 50])
     eq('con un lote, el rango solo trae lo de ese lote', m.avanceRange(st(), '2026-10-20', '2026-10-22', '6294').map((r) => [r.code, r.mixesDone, r.mfoCases, r.days.length]), [['M500', 1, 20, 1]])
+  })
+}
+section('Una unidad quitada a propósito no vuelve por ninguna mezcla, venga de donde venga la otra versión')
+{
+  // 2026-10-16: a cart taken off in Corregir came back by itself (see tests/server.mjs). The unit taken off leaves
+  // its moment on the row; every merge, on every device, respects the marks of every version
+  const fx = await device('fx', { user: 'Manager', usual: true })
+  fx.use((m) => {
+    const st = () => m.store.get(), run = () => st().runs.find((r) => r.id === 'rx')
+    const row = (units, extra, at) => ({ id: 'rx', dept: 'RTE', line_id: 'RTE1', line: 'Línea 1', code: 'R900', lot: '6290', date: '2026-10-16', started_at: new Date(oct(16, 6, 0)).toISOString(), ended_at: null, units, per_unit: 240, waste: 0, by_name: 'Luis', deleted: false, extra, updated_at: new Date(at).toISOString(), synced_at: new Date(at + 1).toISOString() })
+    const u = (h, mi, ref) => ({ at: oct(16, h, mi), qty: 240, ref, by: 'Luis' })
+    m.applyRemote('act_runs', row([u(7, 0, '1'), u(8, 0, '2')], null, oct(16, 8, 1)))
+    clock = oct(16, 9, 0)
+    m.updateRun('rx', { units: run().units.filter((x) => x.ref !== '2') })
+    eq('quitar un carro deja su marca en la corrida', [run().units.map((x) => x.ref), run().extra.removed], [['1'], [oct(16, 8, 0)]])
+    // an older picture of the run from a tablet that was offline, with the cart still on it and a new one
+    m.applyRemote('act_runs', row([u(7, 0, '1'), u(8, 0, '2'), u(8, 30, '4')], null, oct(16, 8, 30)))
+    eq('la foto vieja de otra tablet trae su carro nuevo, pero no revive el quitado', run().units.map((x) => x.ref), ['1', '4'])
+    // another device took a cart off on purpose (its row carries the mark): it goes here too, and the marks join
+    m.applyRemote('act_runs', row([u(8, 30, '4')], { removed: [oct(16, 7, 0)] }, oct(16, 8, 40)))
+    eq('lo que otra tablet quitó a propósito también se quita aquí, y las marcas se juntan', [run().units.map((x) => x.ref), run().extra.removed], [['4'], [oct(16, 7, 0), oct(16, 8, 0)]])
+    // a unit added after the fact never lands on a mark
+    const at = m.addUnit('rx', { at: oct(16, 8, 0), qty: 240, ref: '9' })
+    eq('una unidad agregada a la hora de una quitada se corre un instante, y sale', [at, run().units.map((x) => x.ref)], [oct(16, 8, 0) + 1, ['9', '4']])
   })
 }
 section('Solo ver: un usuario de la oficina que mira todo y no toca nada')

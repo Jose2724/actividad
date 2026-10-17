@@ -214,6 +214,21 @@ console.log('· Lo que otra tablet agregó a una corrida no se pierde cuando est
   eq('antes de mandar, esta tablet solo conoce dos pallets', local().units.map((u) => u.ref), ['1', '3'])
   await m.flushNow()
   eq('al mandar, trae antes la versión del servidor y las junta: los tres pallets quedan en el servidor y en la tablet', [srv().units.map((u) => u.ref).sort(), local().units.map((u) => u.ref).sort(), m.outbox.size()], [['1', '2', '3'], ['1', '2', '3'], 0])
+  console.log('· Una unidad que se quita en Corregir se queda quitada cuando la corrida sube')
+  // what Jose and the office saw on 2026-10-16, in every room: a cart (a pallet, a mezcla) taken off a run with
+  // "Corregir" came back by itself within seconds. Before sending, the device brought the server's version of the
+  // run and, as nothing had changed there, it "kept every unit" of both versions: the one just taken off came back
+  // and went up. The version the device started from has nothing to add; and the unit taken off leaves its mark on
+  // the row, so that not even an older picture of the run from another tablet brings it back.
+  m.updateRun(id, { units: local().units.filter((u) => u.ref !== '2') })
+  eq('en la tablet el pallet 2 ya no está, y la corrida recuerda que se quitó', [local().units.map((u) => u.ref), local().extra?.removed?.length], [['1', '3'], 1])
+  await m.flushNow()
+  eq('al mandar sigue sin estar, en el servidor y en la tablet, y nada queda en cola', [srv().units.map((u) => u.ref), local().units.map((u) => u.ref), m.outbox.size()], [['1', '3'], ['1', '3'], 0])
+  // a late echo of the old version (realtime slow, or a tablet that was offline with its old picture of the run)
+  m.applyRemote('act_runs', { ...srv(), units: [...srv().units, { at: at2, qty: 36, ref: '2', by: 'Otra' }], extra: null, updated_at: new Date(at2).toISOString() })
+  eq('un eco tardío de la versión vieja tampoco lo trae de vuelta', local().units.map((u) => u.ref), ['1', '3'])
+  await m.flushNow()
+  eq('y el servidor sigue sin él', [srv().units.map((u) => u.ref), m.outbox.size()], [['1', '3'], 0])
 }
 
 console.log('✓ ' + passed + ' comprobaciones, todas correctas')

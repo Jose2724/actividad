@@ -73,7 +73,9 @@ export type Run = { id: string; dept: Dept; lineId: string; line: string; code: 
  * It travels in act_runs.extra (supabase/migrations/008_run_extra.sql).
  */
 export type PalletPart = { lot: string; qty: number; tag: string; at: number; by: string }
-export type RunExtra = { bin?: string; lotNow?: string; open?: { parts: PalletPart[]; po?: string }; measure?: Measure }
+export type RunExtra = { bin?: string; lotNow?: string; open?: { parts: PalletPart[]; po?: string }; measure?: Measure; removed?: number[] }
+// removed = the moments of the units taken off this run on purpose (a cart recorded twice): kept on the row, so that no
+// merge, on any device, brings one back (see updateRun, mergeRun)
 /**
  * How Spiral counts a code: mezcla by mezcla (the usual, nothing kept), or each mezcla weighed in pounds or counted
  * in cases, as the office's SPIRAL sheets program some items ("3000 LB", "200 CS"). A run keeps the measure it was
@@ -96,6 +98,7 @@ export function cleanExtra(x: unknown): RunExtra | undefined {
   if (typeof e.bin === 'string' && e.bin.trim()) out.bin = e.bin.trim().slice(0, 30)
   if (typeof e.lotNow === 'string' && e.lotNow.trim()) out.lotNow = e.lotNow.trim().slice(0, 30)
   if (e.measure === 'lb' || e.measure === 'cajas') out.measure = e.measure
+  if (Array.isArray(e.removed)) { const dead = [...new Set(e.removed.map(Number).filter((n) => Number.isFinite(n) && n > 0))].sort((a, b) => a - b); if (dead.length) out.removed = dead.slice(-500) }
   const o = e.open as { parts?: unknown; po?: unknown } | undefined
   if (o && typeof o === 'object') {
     const parts = Array.isArray(o.parts) ? o.parts.map(cleanPart).filter((p): p is PalletPart => !!p) : []
@@ -356,7 +359,7 @@ export const managerPin = { get: () => mgrPin.get() || '1234', set: (v: string) 
 const iso = (ms: number | null | undefined) => (ms == null ? null : new Date(ms).toISOString())
 const fromIso = (s: unknown) => (typeof s === 'string' && s ? Date.parse(s) : null)
 const rowOfLine = (l: Line) => ({ id: l.id, dept: l.dept, name: l.name, deleted: !!l.deleted, updated_at: iso(l.updatedAt), updated_by: user.get() })
-const rowOfRun = (r: Run) => ({ id: r.id, dept: r.dept, line_id: r.lineId, line: r.line, code: r.code, lot: r.lot, date: r.date, started_at: iso(r.startedAt), ended_at: iso(r.endedAt), units: r.units, per_unit: r.perUnit, waste: r.waste, by_name: r.by, deleted: !!r.deleted, updated_at: iso(r.updatedAt), updated_by: user.get(), ...(r.dept === 'Packing' || r.dept === 'Spiral' ? { extra: r.extra ?? null } : {}) })
+const rowOfRun = (r: Run) => ({ id: r.id, dept: r.dept, line_id: r.lineId, line: r.line, code: r.code, lot: r.lot, date: r.date, started_at: iso(r.startedAt), ended_at: iso(r.endedAt), units: r.units, per_unit: r.perUnit, waste: r.waste, by_name: r.by, deleted: !!r.deleted, updated_at: iso(r.updatedAt), updated_by: user.get(), extra: r.extra ?? null })
 const rowOfStop = (x: Stop) => ({ id: x.id, dept: x.dept, line_id: x.lineId, reason: x.reason, note: x.note, started_at: iso(x.startedAt), ended_at: iso(x.endedAt), by_name: x.by, deleted: !!x.deleted, updated_at: iso(x.updatedAt), updated_by: user.get() })
 const rowOfProduct = (p: Product) => ({ code: normCode(p.code), name: p.name, pouches_per_case: p.pouchesPerCase, cases_per_mix: p.casesPerMix, crates_per_cart: p.cratesPerCart, pouches_per_crate: p.pouchesPerCrate, cases_per_pallet: p.casesPerPallet, room: p.room ?? null, spiral_unit: p.spiralUnit ?? null, deleted: !!p.deleted, updated_at: iso(p.updatedAt), updated_by: user.get() })
 const rowOfSchedule = (date: string, code: string, mixes: number) => ({ date, code: normCode(code), mixes, updated_at: iso(clockNow()), updated_by: user.get() })
@@ -528,7 +531,7 @@ export function startRun(line: Line, code: string, lot: string, date: string, pe
 }
 const run = (id: string) => state.runs.find((r) => r.id === id)
 /** the last moment already on a run: nothing recorded after it may be stamped earlier (the clock can be corrected between two taps) */
-const after = (r: Run) => Math.max(r.startedAt, r.units.length ? r.units[r.units.length - 1].at + 1 : 0)
+const after = (r: Run) => Math.max(r.startedAt, r.units.length ? r.units[r.units.length - 1].at + 1 : 0, ...(r.extra?.removed ?? []).map((t) => t + 1))
 /** a unit finished on the line. `lots` = what it carries of each lot when it is not all of the run's lot; the quantity is then their sum */
 export function unitDone(runId: string, qty: number | null, ref = '', lots?: LotPart[], po?: string) {
   const r = run(runId)
@@ -731,7 +734,7 @@ export function addUnit(runId: string, x: { at: number; qty: number | null; ref?
   const r = run(runId)
   if (!r || !Number.isFinite(x.at)) return 0
   const lots = cleanLots(x.lots), qty = lots ? lots.reduce((t, l) => t + l.qty, 0) : x.qty
-  const taken = new Set(r.units.map((u) => u.at))
+  const taken = new Set([...r.units.map((u) => u.at), ...(r.extra?.removed ?? [])])
   let at = Math.max(Math.floor(x.at), r.startedAt)
   while (taken.has(at)) at++
   const ref = (x.ref ?? '').trim() || (lots ? [...new Set(lots.map((l) => l.tag ?? '').filter(Boolean))].join(', ') : '')
@@ -756,7 +759,7 @@ export function reopenPallet(runId: string, next = ''): boolean {
   if (!parts.length) return false
   const rest: RunExtra = r.extra ? (({ open: _o, ...x }) => x)(r.extra) : {}
   const lotNow = next.trim().slice(0, 30) || lotNowOf(r)
-  putRun({ ...r, units: r.units.slice(0, -1), extra: { ...rest, lotNow, open: { parts, po: last.po ?? '' } } })
+  putRun(withRemoved({ ...r, units: r.units.slice(0, -1), extra: { ...rest, lotNow, open: { parts, po: last.po ?? '' } } }, [last.at]))
   const o = orderOfId(state, last.po)
   logChange(r.dept, 'Corrida ' + r.code + ' del ' + r.date + ' (' + r.dept + ', ' + lineNameOf(state, r.lineId, r.line) + ') · Pallet ' + r.units.length + ' · se volvió a abrir', [last.qty != null ? last.qty + ' cajas' : '', lotsText(last.lots), o ? orderLabelKept(o) : ''].filter(Boolean).join(' · '), 'sigue con el lote ' + lotNow, 'act_runs', r.id)
   return true
@@ -795,7 +798,9 @@ export function moveRun(id: string, lineId: string): boolean {
 export function updateRun(id: string, patch: Partial<Pick<Run, 'code' | 'lot' | 'date' | 'perUnit' | 'waste' | 'endedAt' | 'units'>>) {
   const r = run(id)
   if (!r) return
-  const n = { ...r, ...patch }
+  // a unit taken off stays off: its moment is kept on the row, so that no merge with another version brings it back
+  const gone = patch.units ? r.units.filter((u) => !patch.units!.some((x) => x.at === u.at)).map((u) => u.at) : []
+  const n = gone.length ? withRemoved({ ...r, ...patch }, gone) : { ...r, ...patch }
   putRun(n)
   // reopened: the code goes on, so what started counting when it "ended" was not a set up
   if (patch.endedAt === null && r.endedAt) for (const x of state.stops.filter((y) => y.lineId === r.lineId && !y.endedAt && y.startedAt >= (r.endedAt ?? 0))) putStop({ ...x, deleted: true })
@@ -1622,8 +1627,14 @@ function merge3<T extends object>(base: T, mine: T, theirs: T, keys: (keyof T)[]
   return out
 }
 const byAt = (a: Unit, b: Unit) => a.at - b.at
-/** every unit of the first, plus the ones only the second has */
-const allUnits = (first: Run, second: Run) => { const have = new Set(first.units.map((u) => u.at)); return [...first.units, ...second.units.filter((u) => !have.has(u.at))].sort(byAt) }
+/** the moments of the units taken off on purpose, in any of these versions of a run */
+const tombs = (...runs: (Run | undefined)[]) => new Set(runs.flatMap((r) => r?.extra?.removed ?? []))
+const withTombs = (extra: RunExtra | undefined, dead: Set<number>): RunExtra | undefined => (dead.size ? { ...(extra ?? {}), removed: [...dead].sort((a, b) => a - b) } : extra)
+/** the run without these units, which it remembers as taken off */
+const withRemoved = (r: Run, ats: number[]): Run => { const dead = new Set([...(r.extra?.removed ?? []), ...ats]); return { ...r, units: r.units.filter((u) => !dead.has(u.at)), extra: withTombs(r.extra, dead) } }
+/** every unit of the first, plus the ones only the second has; never one that either version took off on purpose */
+const allUnits = (first: Run, second: Run) => { const have = new Set(first.units.map((u) => u.at)), dead = tombs(first, second); return [...first.units, ...second.units.filter((u) => !have.has(u.at))].filter((u) => !dead.has(u.at)).sort(byAt) }
+const unionRun = (first: Run, second: Run): Run => ({ ...first, units: allUnits(first, second), extra: withTombs(first.extra, tombs(first, second)) })
 /**
  * two devices changed the same run from the same version: each one's changes are kept. Units are matched by their
  * moment: the ones I added are added, the one I removed stays removed, the one I corrected keeps my correction; the
@@ -1632,10 +1643,13 @@ const allUnits = (first: Run, second: Run) => { const have = new Set(first.units
 function mergeRun(base: Run, mine: Run, theirs: Run): Run {
   const out = merge3(base, mine, theirs, ['dept', 'lineId', 'line', 'code', 'lot', 'date', 'startedAt', 'endedAt', 'perUnit', 'by', 'deleted', 'extra'])
   const inBase = new Map(base.units.map((u) => [u.at, u])), inMine = new Map(mine.units.map((u) => [u.at, u])), inTheirs = new Set(theirs.units.map((u) => u.at))
+  // what any version took off on purpose stays off, whoever took it
+  const dead = tombs(base, mine, theirs)
   out.units = [
     ...theirs.units.filter((u) => !(inBase.has(u.at) && !inMine.has(u.at))).map((u) => { const m = inMine.get(u.at), b = inBase.get(u.at); return m && b && !same(m, b) ? m : u }),
     ...mine.units.filter((u) => !inBase.has(u.at) && !inTheirs.has(u.at)),
-  ].sort(byAt)
+  ].filter((u) => !dead.has(u.at)).sort(byAt)
+  out.extra = withTombs(out.extra, dead)
   out.waste = mine.waste !== base.waste ? (theirs.waste !== base.waste ? Math.round((theirs.waste + mine.waste - base.waste) * 100) / 100 : mine.waste) : theirs.waste
   return out
 }
@@ -1644,7 +1658,7 @@ type Synced = { id: string; updatedAt: number; deleted?: boolean }
 type Kind<T> = { of: (r: Row) => T; row: (x: T) => Row; merge: (base: T, mine: T, theirs: T) => T; keep: (mine: T, theirs: T, theirsNewer: boolean) => T }
 const LINE: Kind<Line> = { of: lineOfRow, row: rowOfLine, merge: (b, m, t) => merge3(b, m, t, ['dept', 'name', 'deleted']), keep: (m, t, n) => (n ? t : m) }
 const STOP: Kind<Stop> = { of: stopOfRow, row: rowOfStop, merge: (b, m, t) => merge3(b, m, t, ['dept', 'lineId', 'reason', 'note', 'startedAt', 'endedAt', 'by', 'deleted']), keep: (m, t, n) => (n ? t : m) }
-const RUN: Kind<Run> = { of: runOfRow, row: rowOfRun, merge: mergeRun, keep: (m, t, n) => (n ? { ...t, units: allUnits(t, m) } : { ...m, units: allUnits(m, t) }) }
+const RUN: Kind<Run> = { of: runOfRow, row: rowOfRun, merge: mergeRun, keep: (m, t, n) => (n ? unionRun(t, m) : unionRun(m, t)) }
 const body = (x: Synced) => JSON.stringify({ ...x, updatedAt: 0 })
 /** rows deleted while this page is open, with when: a late echo of an earlier version must not bring one back */
 const gone = new Map<string, number>()
@@ -1666,9 +1680,12 @@ function reconcile<T extends Synced>(table: Table, cur: T | undefined, row: Row,
   const newer = theirs.updatedAt > mine.updatedAt || (theirs.updatedAt === mine.updatedAt && tb > mb)
   if (!pend && newer) return theirs
   const base = pend?.base ? k.of(pend.base) : null
-  // a common version is only good for a row that came AFTER it; an older one (a late echo) would undo what lies between
-  const forked = !!base && theirs.updatedAt > base.updatedAt
-  const merged = base && forked ? k.merge(base, mine, theirs) : k.keep(mine, theirs, newer)
+  // A common version is only good for a row that came AFTER it: that one is merged three ways. The very version this
+  // device started from, or an older echo of it, has nothing to add: what is here stands, with what it took off on
+  // purpose. (It used to be "kept" as if no common version were known, and a unit just taken off came back: the
+  // cart removed in Corregir that returned by itself, seen in every room on 2026-10-16.)
+  const forked = !!base && (theirs.updatedAt > base.updatedAt || (theirs.updatedAt === base.updatedAt && body(theirs) !== body(base)))
+  const merged = base ? (forked ? k.merge(base, mine, theirs) : mine) : k.keep(mine, theirs, newer)
   const gb = body(merged)
   if (gb === tb) { if (pend) drop(table, theirs.id); return theirs }
   if (gb === mb) {
