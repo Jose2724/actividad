@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { addRunLater, addUnit, applyDraft, BIN_WORDS, binOf, binWord, byLineName, cfgFor, DEPTS, measureName, MFO_WORDS, plainDay, planRows, SPIRAL_UNITS, type Dept, byShip, CFG, cfgOf, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, setUnitOrder, splitStop, store, updateRun, updateStop, type Run, type State, type Stop, lineLabel } from './store'
+import { addRunLater, addUnit, applyDraft, BIN_WORDS, binOf, binWord, byLineName, cfgFor, DEPTS, kindClass, MFO_PER_CASE, MFO_WORDS, plainDay, planRows, productOf, SPIRAL_UNITS, type Dept, byShip, CFG, cfgOf, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, setUnitOrder, splitStop, store, updateRun, updateStop, type Run, type State, type Stop, lineLabel } from './store'
 import { clockNow } from './clock'
 import { ConfirmDialog, LotsDialog, useCan } from './App'
 import { tr } from './i18n'
@@ -306,15 +306,20 @@ export function AddRunDialog({ s, date, dept: first, onClose, onAdded }: { s: St
   const [waste, setWaste] = useState('')
   const [madeBy, setMadeBy] = useState('')
   const [problem, setProblem] = useState('')
-  // how the code is counted: Packing in pallets or in bins of a word, MFO in bins of platos, copas or pounds, Spiral
-  // in mezclas, pounds or cases; the words of the form follow
+  // how the code is counted, chosen with the same coloured buttons as on the line: Packing in pallets or in bins of
+  // a word, MFO in bins of platos, copas or pounds, Spiral in mezclas, pounds or cases; the words of the form follow
   const [kindPick, setKindPick] = useState<string | null>(null)
-  const kinds: { word: string; label: string }[] = dept === 'Packing' ? [{ word: '', label: tr('Pallets') }, ...BIN_WORDS.map((w) => ({ word: w, label: tr('Bins de {0}', binWord(w)) }))]
-    : dept === 'MFO' ? MFO_WORDS.map((w) => ({ word: w, label: w === 'lb' ? tr('Bins en libras') : tr('Bins de {0}', binWord(w)) }))
-    : dept === 'Spiral' ? SPIRAL_UNITS.map((u) => ({ word: u === 'mezclas' ? '' : u, label: u === 'mezclas' ? tr('Mezclas') : measureName(u) }))
+  const [binText, setBinText] = useState('')
+  const mfoPer = productOf(s, code)?.pouchesPerCase || MFO_PER_CASE
+  const kinds: { word: string; label: string; hint: string }[] = dept === 'Packing' ? [{ word: '', label: tr('Pallets'), hint: tr('cajas con su tag') }, { word: 'bin', label: tr('Bins'), hint: tr('platos, copas, pouches…') }]
+    : dept === 'MFO' ? MFO_WORDS.map((w) => ({ word: w, label: w === 'lb' ? tr('Libras') : w === 'copas' ? tr('Copas') : tr('Platos'), hint: w === 'lb' ? tr('cada bin se pesa') : tr('{0} por caja', String(mfoPer)) }))
+    : dept === 'Spiral' ? SPIRAL_UNITS.map((u) => ({ word: u === 'mezclas' ? '' : u, label: u === 'mezclas' ? tr('Mezclas') : u === 'lb' ? tr('Libras') : tr('Cajas'), hint: u === 'mezclas' ? tr('una por una') : u === 'lb' ? tr('cada mezcla dice sus libras') : tr('cada mezcla dice sus cajas') }))
     : []
   const kind = kinds.some((k) => k.word === kindPick) ? (kindPick as string) : (kinds[0]?.word ?? '')
-  const cfg = cfgFor(dept, kind), unit = cfg.unit.toLowerCase(), plural = cfg.plural.toLowerCase()
+  // Packing's bins: the word for what they hold, one of the usual or typed
+  const binWordNow = binText.trim() || BIN_WORDS[0]
+  const word = dept === 'Packing' ? (kind === 'bin' ? binWordNow : '') : kind
+  const cfg = cfgFor(dept, word), unit = cfg.unit.toLowerCase(), plural = cfg.plural.toLowerCase()
   // the hours are of that day of work: a night shift's 1:00 AM is the next calendar day (a day of work runs from one
   // night to the next, so the hour nearest the day's afternoon is the one meant)
   const base = new Date(day + 'T15:30:00').getTime()
@@ -330,20 +335,36 @@ export function AddRunDialog({ s, date, dept: first, onClose, onAdded }: { s: St
     if (!ok || !line) return
     const refList = refs.split(/[,;\s]+/).map((t) => t.trim()).filter(Boolean)
     const units = Array.from({ length: n }, (_, i) => ({ qty: cfg.qty === 'none' ? null : per, ref: refList[i] ?? '' }))
-    const id = addRunLater({ dept, lineId: line.id, code, lot, date: day, startedAt: startAt, endedAt: endAt, units, perUnit: cfg.perUnitLabel && per != null ? per : null, waste: cfg.waste && waste.trim() ? Number(waste.replace(',', '.')) || 0 : 0, bin: dept === 'Spiral' ? '' : kind, measure: dept === 'Spiral' && (kind === 'lb' || kind === 'cajas') ? kind : '', madeBy })
+    const id = addRunLater({ dept, lineId: line.id, code, lot, date: day, startedAt: startAt, endedAt: endAt, units, perUnit: cfg.perUnitLabel && per != null ? per : null, waste: cfg.waste && waste.trim() ? Number(waste.replace(',', '.')) || 0 : 0, bin: dept === 'Spiral' ? '' : word, measure: dept === 'Spiral' && (word === 'lb' || word === 'cajas') ? word : '', madeBy })
     if (!id) { setProblem(tr('A esas horas la línea tenía otro código. Cambia la línea o las horas.')); return }
     onAdded(id)
   }
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg wide" onClick={(e) => e.stopPropagation()}>
-        <h3>{tr('Agregar un registro')}</h3>
+        <h3>{trx('Agregar un registro · {0}', dept)}</h3>
         <p>{tr('Para un código que se hizo y nadie registró. Pon lo que sepas; lo demás se deja en blanco. Queda en el historial con tu nombre.')}</p>
         <form className="qform" onSubmit={(e) => { e.preventDefault(); save() }}>
           <div className="egrid">
-            <label>{tr('Departamento')}{' '}<select value={dept} onChange={(e) => { setDept(e.target.value as Dept); setLinePick(''); setKindPick(null); setProblem('') }}>{DEPTS.map((d) => <option key={d} value={d}>{d}</option>)}</select></label>
+            <label>{tr('Departamento')}{' '}<select value={dept} onChange={(e) => { setDept(e.target.value as Dept); setLinePick(''); setKindPick(null); setBinText(''); setProblem('') }}>{DEPTS.map((d) => <option key={d} value={d}>{d}</option>)}</select></label>
             <label>{cfg.lineWord}{' '}<select value={line?.id ?? ''} onChange={(e) => { setLinePick(e.target.value); setProblem('') }}>{lines.map((l) => <option key={l.id} value={l.id}>{lineLabel(l.name)}</option>)}</select></label>
-            {kinds.length > 0 && <label>{tr('Se cuenta en')}{' '}<select value={kind} onChange={(e) => setKindPick(e.target.value)}>{kinds.map((k) => <option key={k.word} value={k.word}>{k.label}</option>)}</select></label>}
+          </div>
+          {kinds.length > 0 && (
+            <div className="makes">
+              <span className="lab">{dept === 'Packing' ? tr('¿Qué hicieron?') : dept === 'MFO' ? tr('¿Qué llevan los bins?') : tr('¿En qué se cuenta este código?')}</span>
+              <div className="seg" role="group" aria-label={dept === 'Packing' ? tr('¿Qué hicieron?') : dept === 'MFO' ? tr('¿Qué llevan los bins?') : tr('¿En qué se cuenta este código?')}>
+                {kinds.map((k) => <button key={k.word} type="button" className={kindClass(dept, k.word === 'bin' ? 'platos' : k.word) + (kind === k.word ? ' on' : '')} aria-pressed={kind === k.word} onClick={() => setKindPick(k.word)}>{k.label}<small>{k.hint}</small></button>)}
+              </div>
+              {dept === 'Packing' && kind === 'bin' && (
+                <div className="binwords">
+                  <span>{tr('Cada bin lleva:')}</span>
+                  {BIN_WORDS.map((w) => <button key={w} type="button" className={'chip sm' + (binWordNow === w ? ' on' : '')} aria-pressed={binWordNow === w} onClick={() => setBinText(w)}>{binWord(w)}</button>)}
+                  <input value={BIN_WORDS.includes(binWordNow) ? '' : binText} placeholder={tr('Otra cosa')} aria-label={tr('Otra cosa')} onChange={(e) => setBinText(e.target.value)} autoComplete="off" />
+                </div>
+              )}
+            </div>
+          )}
+          <div className="egrid">
             <label>{tr('Código')}{' '}<input value={code} onChange={(e) => setCode(e.target.value)} placeholder={tr('ej. 0100')} autoComplete="off" autoFocus /></label>
             <label>{tr('Lote')} <small>{tr('(si se sabe)')}</small><input value={lot} onChange={(e) => setLot(e.target.value)} inputMode="numeric" placeholder={tr('ej. 6280')} autoComplete="off" /></label>
             <label>{tr('Fecha')}{' '}<input type="date" value={day} onChange={(e) => { setDay(e.target.value); setProblem('') }} /></label>

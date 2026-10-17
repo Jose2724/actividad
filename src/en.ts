@@ -1114,4 +1114,6 @@ export const EN: Record<string, string> = {
   'Termina antes de empezar, o en otro día de trabajo.': 'It ends before it starts, or on another work day.',
   'A esas horas la línea tenía otro código. Cambia la línea o las horas.': 'At those hours the line had another code. Change the line or the hours.',
   '✓ Agregar': '✓ Add',
+  '¿Qué hicieron?': 'What did they make?',
+  'Agregar un registro · {0}': 'Add a record · {0}',
 }

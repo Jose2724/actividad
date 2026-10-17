@@ -134,6 +134,13 @@ export const measureName = (m: string) => (m === 'lb' ? tr('libras') : m === 'ca
 /** what is apart, as the screen says it: "platos" / "lb" beside a number, and "en bins de platos" / "en libras" as a label */
 export const apartWord = (dept: Dept, word: string) => (dept === 'Spiral' || word === 'lb' ? measureUnit(word) : binWord(word))
 export const apartLabel = (dept: Dept, word: string) => (dept === 'Spiral' || word === 'lb' ? tr('en {0}', measureName(word)) : tr('en bins de {0}', binWord(word)))
+/**
+ * the colour each way of counting wears on the screen, as a class on the button that chooses it (and on a card's
+ * mode): the room's usual (pallets, mezclas) in green, bins of platos in indigo, copas in rose, pounds in amber,
+ * Spiral's cases in blue. Visible also when it is not the one chosen: with white faces the people did not notice
+ * which side was on and put bins on the pallets side (Jose, 2026-10-17)
+ */
+export const kindClass = (dept: Dept, word: string) => (!word || word === 'mezclas' ? 'c-green' : word === 'lb' ? 'c-amber' : word === 'copas' ? 'c-rose' : dept === 'Spiral' && word === 'cajas' ? 'c-blue' : 'c-indigo')
 /** the words of a room's runs counted apart under a word ('' = the room's own) */
 export const cfgFor = (dept: Dept, word: string): DeptCfg => (word ? cfgOf({ dept, extra: dept === 'Spiral' ? { measure: word as Measure } : { bin: word } }) : CFG[dept])
 /** a bin's word as the screen says it: the offered ones in the screen's language, a typed one as typed */
