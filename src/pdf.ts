@@ -1,4 +1,4 @@
-import { apartLabel, apartWord, casesText, CFG, cfgFor, cfgOf, fmtDur, fmtTime, inCases, lineLabel, lineNameOf, madeText, noteLabel, shiftHours, whoText, type DeptCfg, type State } from './store'
+import { apartLabel, apartWord, binWord, casesText, CFG, cfgFor, cfgOf, fmtDur, fmtTime, inCases, lineLabel, lineNameOf, madeText, noteLabel, shiftHours, whoText, type DeptCfg, type State } from './store'
 import { filterTitle, reportOf, spanShifts, type ReportFilter } from './report'
 import { avanceRows, n1, pending } from './avance'
 import { tr } from './i18n'
@@ -25,6 +25,7 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
 
   const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' })
   const teal: [number, number, number] = [15, 118, 110]
+  const indigo: [number, number, number] = [67, 56, 202] // the colour of the bin cards
   doc.setFont('helvetica', 'bold'); doc.setFontSize(18); doc.setTextColor(22, 32, 42)
   doc.text(tr('Actividad · Reporte del día') + (only ? ' · ' + only : '') + filterTitle(rep.code, rep.lot, rep.shift, rep.line ? rep.lineChoices.find((l) => l.id === rep.line)?.name ?? '' : ''), 40, 42)
   doc.setFont('helvetica', 'normal'); doc.setFontSize(11); doc.setTextColor(91, 107, 122)
@@ -104,6 +105,17 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
         x.lot, x.qty != null ? num(x.qty) : '—', x.tag || tr('sin tag'),
         ...(i === 0 ? [span(p, num(p.total)), span(p, p.order ? p.order + (p.of ? '  ·  ' + ofText(p.of) : '') : '—'), span(p, lineNameOf(s, p.r.lineId, p.r.line)), span(p, p.open ? '—' : fmtTime(p.at)), ...(sh ? [span(p, String(p.shift))] : [])] : []),
       ])),
+    })
+  }
+  // Packing's bins one by one, apart from its pallets
+  if (rep.bins.length) {
+    const y = after() + 28
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(22, 32, 42)
+    doc.text(tr('Bins'), 40, y)
+    autoTable(doc, {
+      startY: y + 10, theme: 'grid', styles: { font: 'helvetica', fontSize: 9, cellPadding: 4, textColor: [22, 32, 42], valign: 'middle' }, headStyles: { fillColor: indigo, textColor: 255, fontStyle: 'bold' },
+      head: [[tr('Bin'), tr('Código'), tr('Lote'), tr('Cantidad'), tr('N° de bin'), tr('Línea'), tr('Hora'), ...(sh ? [tr('Turno')] : []), tr('Registró')]],
+      body: rep.bins.map((b) => [String(b.n), b.r.code, b.lot || '—', b.qty != null ? num(b.qty) + ' ' + binWord(b.word) : '—', b.ref || '—', lineNameOf(s, b.r.lineId, b.r.line), fmtTime(b.at), ...(sh ? [String(b.shift)] : []), b.by || '—']),
     })
   }
   // one line per cart, mezcla, bin or pallet with its time, as the office's sheets are filled (a pallet with two lots: two lines)

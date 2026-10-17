@@ -963,3 +963,9 @@ table.devtable td.red{color:var(--warn);font-weight:700}
 .hint.red{color:var(--warn);font-weight:600}
 /* the version of the app on this device, beside the time */
 .brand .buildtag{margin-left:8px;font-size:10.5px;color:var(--muted);font-weight:600;letter-spacing:.02em}
+/* Packing's bins in their own list apart from the pallets (2026-10-17), in the colour of the bin cards */
+.sechead.bins h3{color:#3730a3}
+.report .twrap table.binlist thead th{background:#eef2ff;color:#3730a3;box-shadow:0 1px 0 #c7d2fe}
+table.binlist td .code{color:#3730a3}
+table.binlist td.hit{background:#e0e7ff;font-weight:700}
+table.binlist .binkind{display:block;font-size:11px;font-weight:800;color:#4f46e5;text-transform:uppercase;letter-spacing:.04em}

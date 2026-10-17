@@ -151,9 +151,15 @@ export function reportOf(s: State, date: string, now: number, f: ReportFilter = 
     const building = o && last && (!lot || o.parts.some((p) => p.lot === lot)) && (!shift || o.parts.some((p) => shiftAt(plan, p.at) === shift)) ? [palletOf(x.r, x.r.units.length + 1, last.at, o.parts, palletPo(s, x.r), last.by, true)] : []
     return [...done, ...building]
   }).sort((a, b) => a.at - b.at)
+  // Packing's bins one by one, apart from its pallets (the office asked for them in their own list, 2026-10-17):
+  // each with its lot, what it holds (platos, copas…) and the number written on it. With a lot chosen, the bins of that lot.
+  const bins = rows.filter((x) => x.r.dept === 'Packing' && !!binOf(x.r)).flatMap((x) => x.view.units.map((u) => {
+    const part = unitParts(s, x.r, u)[0]
+    return { r: x.r, n: x.r.units.indexOf(u) + 1, at: u.at, word: binOf(x.r), qty: part?.qty ?? null, lot: part?.lot ?? x.r.lot, ref: u.ref, by: u.by, shift: shiftAt(plan, u.at) }
+  })).sort((a, b) => a.at - b.at)
   // a code is a product; a run is a code on a line from its start to its end (the same code on two lines is two runs)
   const distinct = new Set(rows.map((x) => normCode(x.r.code))).size, lines = new Set(rows.map((x) => x.r.lineId)).size
-  return { runs, rows, unitRows, pallets, stops, byCode, byShift, byDept, reasons, distinct, lines, working: rows.reduce((t, x) => t + x.st.working, 0), down: rows.reduce((t, x) => t + x.st.down, 0), setup: setupOf(shift), codes, lots, code, lot, shift, plan, filtered, line, lineChoices }
+  return { runs, rows, unitRows, pallets, bins, stops, byCode, byShift, byDept, reasons, distinct, lines, working: rows.reduce((t, x) => t + x.st.working, 0), down: rows.reduce((t, x) => t + x.st.down, 0), setup: setupOf(shift), codes, lots, code, lot, shift, plan, filtered, line, lineChoices }
 }
 /** the words a filtered report carries in its title and in the name of its files */
 export const filterTitle = (code: string, lot: string, shift: 0 | 1 | 2 = 0, line = '') => (shift ? ' ' + tr('· Turno {0}', shift) : '') + (line ? ' · ' + line : '') + (code ? ' ' + tr('· código {0}', code) : '') + (lot ? ' ' + tr('· lote {0}', lot) : '')

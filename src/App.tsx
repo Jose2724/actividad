@@ -2628,12 +2628,14 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
       ...av.map((r): Cell[] => [r.code, r.product?.name ?? '', carryText(r.code), r.packRoom, r.scheduled, r.mixesDone, r.mixesPending, r.spiralDone, r.pouchesPlan, r.pouchesExp, r.pouchesDone, pending(r.pouchesExp, r.pouchesDone), pending(r.pouchesPlan, r.pouchesDone), r.casesPlan, r.casesExp, r.casesDone, pending(r.casesExp, r.casesDone), pending(r.casesPlan, r.casesDone), r.mfoPlan, r.mfoExp, r.mfoCases, pending(r.mfoExp, r.mfoCases), r.palletsPlan, r.palletsExp, r.palletsDone, r.wasteLb])]
     const pallets: Cell[][] = [[tr('Pallet'), tr('Línea'), tr('Código'), tr('Lote'), tr('Cajas'), tr('Tag'), tr('Total del pallet'), 'PO', tr('Pallet del PO'), tr('Hora'), tr('Turno'), tr('Registró')],
       ...rep.pallets.flatMap((p) => p.parts.map((x, i): Cell[] => [p.n, lineNameOf(s, p.r.lineId, p.r.line), p.r.code, x.lot, x.qty ?? '', x.tag, i === 0 ? p.total : '', p.order, p.of ? (p.of[1] ? tr('pallet {0} de {1}', p.of[0], p.of[1]) : String(p.of[0])) : '', p.open ? tr('en armado') : T(p.at), p.shift, p.by]))]
-    return { resumen, porTurno, porCodigo, porLote, pallets, unidades, paros, cambios, avance }
+    const bins: Cell[][] = [[tr('Bin'), tr('Línea'), tr('Código'), tr('Lote'), tr('Cantidad'), tr('Unidad de cantidad'), tr('N° de bin'), tr('Hora'), tr('Turno'), tr('Registró')],
+      ...rep.bins.map((b): Cell[] => [b.n, lineNameOf(s, b.r.lineId, b.r.line), b.r.code, b.lot, b.qty ?? '', binWord(b.word), b.ref, T(b.at), b.shift, b.by])]
+    return { resumen, porTurno, porCodigo, porLote, pallets, bins, unidades, paros, cambios, avance }
   }
   /** the Excel file's sheets: one per table (Cambios and Avance only for the manager and the office) */
   const sheets = (): Sheet[] => {
     const b = blocks()
-    return [{ name: tr('Resumen'), rows: b.resumen }, ...(b.porTurno.length > 1 ? [{ name: tr('Por turno'), rows: b.porTurno }] : []), { name: tr('Por código'), rows: b.porCodigo }, { name: tr('Por lote'), rows: b.porLote }, ...(b.pallets.length > 1 ? [{ name: tr('Pallets'), rows: b.pallets }] : []), { name: tr('Unidades'), rows: b.unidades }, { name: tr('Paros'), rows: b.paros }, ...(mgr ? [{ name: tr('Cambios'), rows: b.cambios }] : []), ...(b.avance.length > 1 ? [{ name: tr('Avance'), rows: b.avance }] : [])]
+    return [{ name: tr('Resumen'), rows: b.resumen }, ...(b.porTurno.length > 1 ? [{ name: tr('Por turno'), rows: b.porTurno }] : []), { name: tr('Por código'), rows: b.porCodigo }, { name: tr('Por lote'), rows: b.porLote }, ...(b.pallets.length > 1 ? [{ name: tr('Pallets'), rows: b.pallets }] : []), ...(b.bins.length > 1 ? [{ name: tr('Bins'), rows: b.bins }] : []), { name: tr('Unidades'), rows: b.unidades }, { name: tr('Paros'), rows: b.paros }, ...(mgr ? [{ name: tr('Cambios'), rows: b.cambios }] : []), ...(b.avance.length > 1 ? [{ name: tr('Avance'), rows: b.avance }] : [])]
   }
   const excel = async () => {
     try {
@@ -2931,6 +2933,41 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
                   {palletsShown.length === 0 && <p className="hint">{palK ? tr('Ningún pallet de este día tiene eso escrito.') : tr('Ningún pallet de este día está así.')}</p>}
                   {palletsShown.some((p) => p.parts.some((x) => looksLikeTwoLots(x.lot))) && <p className="hint">{tr('Un lote escrito como "6168-6216" parece dos lotes en uno, y así sus cajas no se pueden repartir entre los dos. Se separa desde Corregir, con ✎ en ese pallet, poniendo las cajas de cada lote. En la línea, un pallet con dos lotes se registra con "➕ Otro lote en este pallet".')}</p>}
                   {moreBar('pallets', palletsShown.length)}
+                </>
+              )}
+            </>
+          )}
+          {/* Packing's bins one by one, apart from its pallets and in the colour of the bin cards: each with its lot, what it holds and its number */}
+          {rep.bins.length > 0 && (
+            <>
+              <div className="sechead bins">
+                <h3>{tr('Bins')} · {rep.bins.length}</h3>
+                <button type="button" className="lnk sm" aria-expanded={!shut.bins} onClick={() => setShut({ ...shut, bins: !shut.bins })}>{shut.bins ? tr('Mostrar ▾') : tr('Ocultar ▴')}</button>
+              </div>
+              {!shut.bins && (
+                <>
+                  <div className="twrap">
+                    <table className="pallets binlist">
+                      <thead><tr><th>{tr('Bin')}</th><th>{tr('Código')}</th><th>{tr('Lote')}</th><th className="num">{tr('Cantidad')}</th><th>{tr('N° de bin')}</th><th>{tr('Línea')}</th><th>{tr('Hora')}</th>{!rep.shift && <th>{tr('Turno')}</th>}<th>{tr('Registró')}</th><th></th></tr></thead>
+                      <tbody>
+                        {cut('bins', rep.bins).map((b) => (
+                          <tr key={b.r.id + ':' + b.n}>
+                            <td><b>{b.n}</b></td>
+                            <td><b className="code">{b.r.code}</b><small className="binkind">{binWord(b.word)}</small></td>
+                            <td className={rep.lot && b.lot === rep.lot ? 'hit' : ''}>{b.lot || '—'}</td>
+                            <td className="num"><b>{b.qty != null ? fmtN(b.qty) : '—'}</b> {binWord(b.word)}</td>
+                            <td>{b.ref || '—'}</td>
+                            <td>{lineNameOf(s, b.r.lineId, b.r.line)}</td>
+                            <td>{fmtTime(b.at)}</td>
+                            {!rep.shift && <td>{b.shift}</td>}
+                            <td>{b.by || '—'}</td>
+                            <td>{can('fix') && canShift(who, spanShifts(rep.plan, b.r.startedAt, b.r.endedAt ?? now)) && <button type="button" className="lnk" onClick={() => setEditRun(b.r.id)}>{tr('Corregir')}</button>}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {moreBar('bins', rep.bins.length)}
                 </>
               )}
             </>

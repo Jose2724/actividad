@@ -2013,6 +2013,8 @@ section('Packing: un pallet con varios lotes, cada lote con su tag; y las línea
     // the lot changes on a bin line: the bins from then on carry it
     clock = oct(10, 9, 40); m.setLotNow(run('B200').id, '6286'); m.unitDone(run('B200').id, 30, '9', [{ lot: '6286', qty: 30 }])
     eq('cuando cambia el lote en una línea de bins, los bins que siguen llevan el lote nuevo', [m.lotNowOf(run('B200')), m.reportOf(st(), DAY, clock, { only: 'Packing', code: 'B200' }).unitRows.map((x) => [x.lot, x.qty, x.tag])], ['6286', [['6285', 50, '7'], ['6285', 48, '8'], ['6286', 30, '9']]])
+    eq('los bins de Packing van en su propia lista, cada uno con su lote, lo que lleva y su número; los pallets en la suya', (({ bins, pallets }) => [bins.map((b) => [b.r.code, b.n, b.lot, b.qty, b.word, b.ref, b.shift]), pallets.length])(m.reportOf(st(), DAY, clock, { only: 'Packing' })), [[['B200', 1, '6285', 50, 'platos', '7', 1], ['B200', 2, '6285', 48, 'platos', '8', 1], ['B200', 3, '6286', 30, 'platos', '9', 1]], 3])
+    eq('con un lote elegido, solo los bins de ese lote', m.reportOf(st(), DAY, clock, { only: 'Packing', lot: '6286' }).bins.map((b) => [b.n, b.lot, b.qty]), [[3, '6286', 30]])
     m.updateRun(run('B200').id, { units: run('B200').units.slice(0, 2) })
     const t = m.deptToday(st(), 'Packing', DAY, clock)
     eq('la tarjeta de Packing no mezcla los bins con las cajas: van aparte, en platos', [t.qty, t.units, t.bins, t.byCode.map((c) => c.code)], [80, 3, [{ word: 'platos', units: 2, qty: 98 }], ['A100']])
@@ -2367,6 +2369,7 @@ section('MFO: los bins llevan platos, copas o libras; el programa, las metas y A
     eq('el reporte: el cuarto en cajas con lo que llevan sus bins, cada código con su palabra, las libras aparte', [rep.byDept.map((d) => [d.units, d.qty, d.held, d.bins]), rep.byCode.map((x) => [x.code, x.bin, x.units, x.qty])], [[[4, 10, [{ word: 'platos', units: 2, qty: 80 }, { word: 'copas', units: 1, qty: 36 }], [{ word: 'lb', units: 1, qty: 120.5 }]]], [['M100', '', 1, 3], ['M100', 'platos', 2, 80], ['M200', 'copas', 1, 36], ['M300', 'lb', 1, 120.5]]])
     eq('Avance cuenta las cajas de MFO ya convertidas, y nada de las libras', m.avanceRows(st(), DAY).filter((r) => ['M100', 'M200', 'M300'].includes(r.code)).map((r) => [r.code, r.mfoCases]), [['M100', 7], ['M200', 3]])
     eq('la corrida sube con su palabra', m.outbox.items().filter((i) => i.table === 'act_runs').map((i) => i.row).find((x) => x.code === 'M300').extra, { bin: 'lb' })
+    eq('los bins de MFO no van en la lista de bins de Packing', rep.bins.length, 0)
     eq('80 platos dichos en cajas, con 20 por caja cuando la tabla no dice', m.inCases(st(), 'M100', 90, 20), { cases: 4, loose: 10, perCase: 20 })
   })
 }
