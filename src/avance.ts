@@ -1,4 +1,4 @@
-import { apartOf, inRoomUnit, normCode, productOf, roomQty, shiftAt, shiftsOf, type PackRoom, type Product, type Run, type State, type Unit } from './store'
+import { apartOf, apartWord, binOf, normCode, productOf, shiftAt, shiftsOf, unitQty, type PackRoom, type Product, type Run, type State, type Unit } from './store'
 import { unitParts } from './report'
 
 /**
@@ -21,7 +21,7 @@ export type AvanceRow = {
   mixesDone: number; mixesPending: number; mixRoom: 'Kitchen' | 'Spiral'; spiralDone: number
   /** null = it cannot be worked out: the code is not in the products table, or its yield / pouches per case / cases per pallet is blank there */
   pouchesPlan: number | null; pouchesExp: number | null; pouchesDone: number
-  casesPlan: number | null; casesExp: number | null; casesDone: number; mfoCases: number
+  casesPlan: number | null; casesExp: number | null; casesDone: number
   palletsPlan: number | null; palletsExp: number | null; palletsDone: number
   wasteLb: number
   /**
@@ -30,7 +30,12 @@ export type AvanceRow = {
    * otherwise it is the room that has registered the code (see packRoomOf).
    */
   packRoom: PackRoom; packSaid: boolean
-  /** what MFO has to pack of a code it packs: the same cases (mezclas × yield). null for a code that RTE packs */
+  /**
+   * what MFO made of the code, in what its bins hold, as the operators typed it: platos, copas or pounds (nothing is
+   * turned into cases: Jose, 2026-10-17), and "cajas" for its bins of before that day, which counted cases. The usual first.
+   */
+  mfo: MfoMade[]
+  /** what MFO has to pack of a code it packs, in cases (mezclas × yield): only while its bins counted cases (before 2026-10-17); null otherwise */
   mfoPlan: number | null; mfoExp: number | null
   /** the same made numbers, shift by shift (a unit counts on the shift of its hour) and lot by lot (a pallet with two lots gives each its cases and is a pallet of both) */
   byShift: [AvancePart, AvancePart]; lots: ({ lot: string } & AvancePart)[]
@@ -40,8 +45,26 @@ export type AvanceRow = {
 /** what one day made of a lot */
 export type LotDay = { date: string } & AvancePart
 /** what a shift, a lot or a whole lot made of a code, in each room's unit */
-export type AvancePart = { mixes: number; spiral: number; pouches: number; cases: number; mfo: number; pallets: number }
-const part = (): AvancePart => ({ mixes: 0, spiral: 0, pouches: 0, cases: 0, mfo: 0, pallets: 0 })
+export type AvancePart = { mixes: number; spiral: number; pouches: number; cases: number; mfo: Record<string, number>; pallets: number }
+const part = (): AvancePart => ({ mixes: 0, spiral: 0, pouches: 0, cases: 0, mfo: {}, pallets: 0 })
+/** what MFO made of a code under one word: platos, copas, lb, or cajas for its bins of before 2026-10-17 */
+export type MfoMade = { word: string; qty: number }
+/** the word an MFO run counts in: what its bins hold; cajas for a run of before 2026-10-17, which counted cases */
+const mfoWordOf = (r: Pick<Run, 'dept' | 'extra'>) => binOf(r) || 'cajas'
+const MFO_WORDS_FROM = '2026-10-17'
+const MFO_ORDER = ['platos', 'copas', 'lb', 'cajas']
+const rankOf = (w: string) => { const i = MFO_ORDER.indexOf(w); return i < 0 ? MFO_ORDER.length : i }
+/** MFO's quantities word by word, the usual first: platos, copas, pounds, then the cases of before */
+export const mfoList = (x: Record<string, number>): MfoMade[] => Object.entries(x).filter(([, q]) => q > 0).sort((a, b) => rankOf(a[0]) - rankOf(b[0]) || a[0].localeCompare(b[0])).map(([word, qty]) => ({ word, qty: Math.round(qty * 100) / 100 }))
+const addWords = (a: Record<string, number>, b: Record<string, number>) => { const out = { ...a }; for (const [w, q] of Object.entries(b)) out[w] = (out[w] ?? 0) + q; return out }
+const wordsOf = (l: MfoMade[]) => Object.fromEntries(l.map((x) => [x.word, x.qty])) as Record<string, number>
+/** an MFO word as the screen says it: "platos", "copas", "lb", "cajas" */
+export const mfoWord = (w: string) => apartWord('MFO', w)
+const qtyText = (q: number) => (Math.round(q * 10) / 10).toLocaleString('en-US')
+/** "88 platos · 239.5 lb": what MFO made, word by word */
+export const mfoText = (x: Record<string, number> | MfoMade[]) => (Array.isArray(x) ? x : mfoList(x)).map((m) => qtyText(m.qty) + ' ' + mfoWord(m.word)).join(' · ')
+/** MFO's bins of before 2026-10-17 counted cases: only then is there something to expect of them in cases */
+const casesOnly = (l: MfoMade[]) => l.length > 0 && l.every((x) => x.word === 'cajas')
 
 /**
  * Which room packs a code: the products table's "Lo empaca"; when it is blank, the room that has registered the code
@@ -73,21 +96,22 @@ const r2 = (x: number | null) => (x == null ? null : Math.round(x * 100) / 100)
  */
 export function avanceRows(s: State, date: string, keep?: Set<string>, lot = ''): AvanceRow[] {
   const has = (r: Run, u: Unit) => !lot || unitParts(s, r, u).some((p) => p.lot === lot)
-  // every room in its own unit: MFO's bins of platos or copas as the cases they make (see inRoomUnit)
-  const ofLot = (r: Run, u: Unit) => (!lot ? roomQty(s, r, u) : inRoomUnit(s, r, unitParts(s, r, u).filter((p) => p.lot === lot).reduce((t, p) => t + (p.qty ?? 0), 0)))
+  // every room in its own unit, as it was recorded (MFO in what each bin holds)
+  const ofLot = (r: Run, u: Unit) => (!lot ? unitQty(s, r, u) : unitParts(s, r, u).filter((p) => p.lot === lot).reduce((t, p) => t + (p.qty ?? 0), 0))
   const runs = s.runs.filter((r) => r.date === date && (!lot || r.lot === lot || r.units.some((u) => has(r, u))))
   // 100 and 0100 are one line; the program holds one entry per code (see setSchedule), the spellings are folded here for old data
   const sched: Record<string, number> = {}
   if (!lot) for (const [c, n] of Object.entries(s.schedule[date] ?? {})) sched[normCode(c)] = normCode(c) === c ? n : sched[normCode(c)] ?? n
   const keys = [...new Set([...Object.keys(sched), ...runs.map((r) => normCode(r.code))])].sort()
   // a code with nothing programmed and nothing made is not a row (setting a program to 0 takes it off the list)
-  const idle = (r: AvanceRow) => !r.scheduled && !r.mixesDone && !r.spiralDone && !r.pouchesDone && !r.casesDone && !r.mfoCases && !r.palletsDone && !r.wasteLb
+  const idle = (r: AvanceRow) => !r.scheduled && !r.mixesDone && !r.spiralDone && !r.pouchesDone && !r.casesDone && !r.mfo.length && !r.palletsDone && !r.wasteLb
   return keys.map((key): AvanceRow & { key: string } => {
     const product = productOf(s, key)
     const code = product?.code ?? runs.find((r) => normCode(r.code) === key)?.code ?? key
     // a Packing line that fills bins makes no cases and no pallets; a Spiral line weighing its mezclas in pounds (or
-    // counting cases) makes no mezclas of a product: what is counted apart stays apart
-    const of = (dept: string) => runs.filter((r) => r.dept === dept && normCode(r.code) === key && !apartOf(r))
+    // counting cases) makes no mezclas of a product: what is counted apart stays apart. MFO's bins all count, each in
+    // what it holds (platos, copas, pounds), word by word
+    const of = (dept: string) => runs.filter((r) => r.dept === dept && normCode(r.code) === key && (dept === 'MFO' || !apartOf(r)))
     const units = (dept: string) => of(dept).reduce((t, r) => t + r.units.filter((u) => has(r, u)).length, 0)
     const qty = (dept: string) => of(dept).reduce((t, r) => t + r.units.reduce((a, u) => a + (has(r, u) ? ofLot(r, u) : 0), 0), 0)
     const pack = packRoomOf(s, code), mfoRoute = pack.room === 'MFO'
@@ -106,25 +130,26 @@ export function avanceRows(s: State, date: string, keep?: Set<string>, lot = '')
     const byShift: [AvancePart, AvancePart] = [part(), part()], lotMap = new Map<string, AvancePart>()
     const lotPart = (l: string) => { let x = lotMap.get(l); if (!x) { x = part(); lotMap.set(l, x) } return x }
     const kitchenBy: [number, number] = [0, 0], kitchenLot = new Map<string, number>()
-    const put = (dept: string, x: AvancePart, q: number) => { if (dept === 'Spiral') x.spiral++; else if (dept === 'RTE') x.pouches += q; else if (dept === 'Packing') { x.cases += q; x.pallets++ } else if (dept === 'MFO') x.mfo += q }
+    const put = (dept: string, x: AvancePart, q: number, w = '') => { if (dept === 'Spiral') x.spiral++; else if (dept === 'RTE') x.pouches += q; else if (dept === 'Packing') { x.cases += q; x.pallets++ } else if (dept === 'MFO') x.mfo[w] = (x.mfo[w] ?? 0) + q }
     for (const dept of ['Kitchen', 'Spiral', 'RTE', 'Packing', 'MFO'] as const) for (const r of of(dept)) for (const u of r.units) {
       if (!has(r, u)) continue
       const k = shiftAt(hours, u.at) - 1
-      if (dept === 'Kitchen') kitchenBy[k]++; else put(dept, byShift[k], ofLot(r, u))
-      for (const p of unitParts(s, r, u)) { if (lot && p.lot !== lot) continue; if (dept === 'Kitchen') kitchenLot.set(p.lot, (kitchenLot.get(p.lot) ?? 0) + 1); else put(dept, lotPart(p.lot), inRoomUnit(s, r, p.qty ?? 0)) }
+      if (dept === 'Kitchen') kitchenBy[k]++; else put(dept, byShift[k], ofLot(r, u), mfoWordOf(r))
+      for (const p of unitParts(s, r, u)) { if (lot && p.lot !== lot) continue; if (dept === 'Kitchen') kitchenLot.set(p.lot, (kitchenLot.get(p.lot) ?? 0) + 1); else put(dept, lotPart(p.lot), p.qty ?? 0, mfoWordOf(r)) }
     }
     for (const k of [0, 1] as const) byShift[k].mixes = mixRoom === 'Spiral' ? byShift[k].spiral : kitchenBy[k]
     for (const l of kitchenLot.keys()) lotPart(l)
     for (const [l, x] of lotMap) x.mixes = mixRoom === 'Spiral' ? x.spiral : (kitchenLot.get(l) ?? 0)
     const lots = [...lotMap].map(([l, x]) => ({ lot: l, ...x })).sort((a, b) => a.lot.localeCompare(b.lot))
+    const mfo = mfoList(addWords(byShift[0].mfo, byShift[1].mfo)), old = mfoRoute && (casesOnly(mfo) || !mfo.length && date < MFO_WORDS_FROM)
     return {
       key, code, product, scheduled, mixesDone, mixesPending: scheduled ? scheduled - mixesDone : 0, mixRoom, spiralDone,
       // RTE fills no pouches of a code MFO packs, and MFO no bins of one RTE packs: nothing is expected of the other room
       pouchesPlan: mfoRoute ? null : r2(pouches(casesPlan)), pouchesExp: mfoRoute ? null : r2(pouches(casesExp)), pouchesDone: qty('RTE'),
-      casesPlan: r2(casesPlan), casesExp: r2(casesExp), casesDone: qty('Packing'), mfoCases: qty('MFO'),
+      casesPlan: r2(casesPlan), casesExp: r2(casesExp), casesDone: qty('Packing'), mfo,
       palletsPlan: r2(pallets(casesPlan)), palletsExp: r2(pallets(casesExp)), palletsDone: units('Packing'),
       wasteLb: Math.round(runs.filter((r) => normCode(r.code) === key).reduce((t, r) => t + (r.waste || 0), 0) * 100) / 100,
-      packRoom: pack.room, packSaid: pack.said, mfoPlan: mfoRoute ? r2(casesPlan) : null, mfoExp: mfoRoute ? r2(casesExp) : null,
+      packRoom: pack.room, packSaid: pack.said, mfoPlan: old ? r2(casesPlan) : null, mfoExp: old ? r2(casesExp) : null,
       byShift, lots,
     }
   }).filter((r) => !idle(r) || !!keep?.has(r.key)).map(({ key: _key, ...r }) => r)
@@ -141,7 +166,7 @@ export const n1 = (v: number | null) => { if (v == null) return '—'; const r =
 export function lotAcrossDays(s: State, lot: string): { days: string[]; codes: ({ code: string; mixRoom: 'Kitchen' | 'Spiral'; days: LotDay[] } & AvancePart)[]; total: AvancePart } {
   const days = new Set<string>(), byCode = new Map<string, { code: string; dates: Map<string, { kitchen: number; x: AvancePart }> }>()
   for (const r of s.runs) {
-    if (apartOf(r)) continue
+    if (apartOf(r) && r.dept !== 'MFO') continue // (MFO's bins all count, word by word)
     const key = normCode(r.code)
     for (const u of r.units) for (const p of unitParts(s, r, u)) {
       if (p.lot !== lot) continue
@@ -150,10 +175,10 @@ export function lotAcrossDays(s: State, lot: string): { days: string[]; codes: (
       if (!c) { c = { code: productOf(s, key)?.code ?? r.code, dates: new Map() }; byCode.set(key, c) }
       let d = c.dates.get(r.date)
       if (!d) { d = { kitchen: 0, x: part() }; c.dates.set(r.date, d) }
-      if (r.dept === 'Kitchen') d.kitchen++; else if (r.dept === 'Spiral') d.x.spiral++; else if (r.dept === 'RTE') d.x.pouches += p.qty ?? 0; else if (r.dept === 'Packing') { d.x.cases += p.qty ?? 0; d.x.pallets++ } else if (r.dept === 'MFO') d.x.mfo += inRoomUnit(s, r, p.qty ?? 0)
+      if (r.dept === 'Kitchen') d.kitchen++; else if (r.dept === 'Spiral') d.x.spiral++; else if (r.dept === 'RTE') d.x.pouches += p.qty ?? 0; else if (r.dept === 'Packing') { d.x.cases += p.qty ?? 0; d.x.pallets++ } else if (r.dept === 'MFO') { const w = mfoWordOf(r); d.x.mfo[w] = (d.x.mfo[w] ?? 0) + (p.qty ?? 0) }
     }
   }
-  const add = (t: AvancePart, x: AvancePart): AvancePart => ({ mixes: t.mixes + x.mixes, spiral: t.spiral + x.spiral, pouches: t.pouches + x.pouches, cases: t.cases + x.cases, mfo: t.mfo + x.mfo, pallets: t.pallets + x.pallets })
+  const add = (t: AvancePart, x: AvancePart): AvancePart => ({ mixes: t.mixes + x.mixes, spiral: t.spiral + x.spiral, pouches: t.pouches + x.pouches, cases: t.cases + x.cases, mfo: addWords(t.mfo, x.mfo), pallets: t.pallets + x.pallets })
   const codes = [...byCode.values()].map((c) => {
     const kitchen = [...c.dates.values()].reduce((t, d) => t + d.kitchen, 0), spiral = [...c.dates.values()].reduce((t, d) => t + d.x.spiral, 0)
     const mixRoom = spiral > kitchen ? 'Spiral' as const : 'Kitchen' as const
@@ -174,12 +199,13 @@ export function lotRows(s: State, lot: string): AvanceRow[] {
     const pouchesExp = product && product.pouchesPerCase && casesExp != null ? casesExp * product.pouchesPerCase : null
     const palletsExp = product && product.casesPerPallet && casesExp != null ? casesExp / product.casesPerPallet : null
     const { days, mixRoom, code, ...made } = c
+    const mfo = mfoList(made.mfo), old = mfoRoute && casesOnly(mfo)
     return {
       code, product, scheduled: 0, mixesDone: made.mixes, mixesPending: 0, mixRoom, spiralDone: made.spiral,
       pouchesPlan: null, pouchesExp: mfoRoute ? null : r2(pouchesExp), pouchesDone: made.pouches,
-      casesPlan: null, casesExp: r2(casesExp), casesDone: made.cases, mfoCases: made.mfo,
+      casesPlan: null, casesExp: r2(casesExp), casesDone: made.cases, mfo,
       palletsPlan: null, palletsExp: r2(palletsExp), palletsDone: made.pallets,
-      wasteLb: 0, packRoom: pack.room, packSaid: pack.said, mfoPlan: null, mfoExp: mfoRoute ? r2(casesExp) : null,
+      wasteLb: 0, packRoom: pack.room, packSaid: pack.said, mfoPlan: null, mfoExp: old ? r2(casesExp) : null,
       byShift: [part(), part()], lots: [{ lot, ...made }], days,
     }
   })
@@ -202,7 +228,7 @@ export function datesBetween(from: string, to: string): string[] {
   }
   return out
 }
-const addPart = (t: AvancePart, x: AvancePart): AvancePart => ({ mixes: t.mixes + x.mixes, spiral: t.spiral + x.spiral, pouches: t.pouches + x.pouches, cases: t.cases + x.cases, mfo: t.mfo + x.mfo, pallets: t.pallets + x.pallets })
+const addPart = (t: AvancePart, x: AvancePart): AvancePart => ({ mixes: t.mixes + x.mixes, spiral: t.spiral + x.spiral, pouches: t.pouches + x.pouches, cases: t.cases + x.cases, mfo: addWords(t.mfo, x.mfo), pallets: t.pallets + x.pallets })
 const addN = (a: number | null, b: number | null) => (a == null && b == null ? null : (a ?? 0) + (b ?? 0))
 /**
  * Avance over several days: each code with its days added up (the program and what was made alike), what each day
@@ -211,7 +237,7 @@ const addN = (a: number | null, b: number | null) => (a == null && b == null ? n
 export function avanceRange(s: State, from: string, to: string, lot = ''): AvanceRow[] {
   const byCode = new Map<string, AvanceRow & { lotMap: Map<string, AvancePart> }>()
   for (const date of datesBetween(from, to)) for (const r of avanceRows(s, date, undefined, lot)) {
-    const key = normCode(r.code), dayRow: LotDay = { date, mixes: r.mixesDone, spiral: r.spiralDone, pouches: r.pouchesDone, cases: r.casesDone, mfo: r.mfoCases, pallets: r.palletsDone }
+    const key = normCode(r.code), dayRow: LotDay = { date, mixes: r.mixesDone, spiral: r.spiralDone, pouches: r.pouchesDone, cases: r.casesDone, mfo: wordsOf(r.mfo), pallets: r.palletsDone }
     const c = byCode.get(key)
     if (!c) { byCode.set(key, { ...r, days: [dayRow], lotMap: new Map(r.lots.map((l) => [l.lot, l])) }); continue }
     for (const l of r.lots) c.lotMap.set(l.lot, addPart(c.lotMap.get(l.lot) ?? part(), l))
@@ -220,7 +246,7 @@ export function avanceRange(s: State, from: string, to: string, lot = ''): Avanc
       scheduled: c.scheduled + r.scheduled, mixesDone: c.mixesDone + r.mixesDone, mixesPending: c.mixesPending + r.mixesPending, spiralDone: c.spiralDone + r.spiralDone,
       mixRoom: r.mixesDone > c.mixesDone ? r.mixRoom : c.mixRoom,
       pouchesPlan: addN(c.pouchesPlan, r.pouchesPlan), pouchesExp: addN(c.pouchesExp, r.pouchesExp), pouchesDone: c.pouchesDone + r.pouchesDone,
-      casesPlan: addN(c.casesPlan, r.casesPlan), casesExp: addN(c.casesExp, r.casesExp), casesDone: c.casesDone + r.casesDone, mfoCases: c.mfoCases + r.mfoCases,
+      casesPlan: addN(c.casesPlan, r.casesPlan), casesExp: addN(c.casesExp, r.casesExp), casesDone: c.casesDone + r.casesDone, mfo: mfoList(addWords(wordsOf(c.mfo), wordsOf(r.mfo))),
       palletsPlan: addN(c.palletsPlan, r.palletsPlan), palletsExp: addN(c.palletsExp, r.palletsExp), palletsDone: c.palletsDone + r.palletsDone,
       wasteLb: Math.round((c.wasteLb + r.wasteLb) * 100) / 100, mfoPlan: addN(c.mfoPlan, r.mfoPlan), mfoExp: addN(c.mfoExp, r.mfoExp),
       byShift: [addPart(c.byShift[0], r.byShift[0]), addPart(c.byShift[1], r.byShift[1])],

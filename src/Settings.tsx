@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore } from 'react'
-import { byLineName, CFG, dayShiftsText, DEPTS, lineLabel, lotFor, nightText, openRun, removeLine, setDayShifts, shiftGoalOf, shiftHours, shiftsOf, turnOf, weekOf, type Dept, type Line, type State, type WorkDay } from './store'
+import { byLineName, CFG, dayShiftsText, DEPTS, lineLabel, lotFor, nightText, openRun, removedLines, removeLine, restoreLine, setDayShifts, shiftGoalOf, shiftHours, shiftsOf, turnOf, weekOf, type Dept, type Line, type State, type WorkDay } from './store'
 import { ConfirmDialog, LangSwitch, LineNameDialog, longDate, NoticeDialog, Products, QrLink, ShiftsDialog, StartDayDialog, TargetDialog, useCan } from './App'
 import { Employees } from './Employees'
 import { Devices } from './DevicesView'
@@ -159,6 +159,12 @@ function LinesSettings({ s }: { s: State }) {
                 </div>
               )
             })}
+            {removedLines(s, d).map((x) => (
+              <div className="setrow gone" key={x.id}>
+                <span><b>{lineLabel(x.name)}</b><small> · {trx('quitada por {0} el {1}', x.by || '—', longDate(new Date(x.at).toISOString().slice(0, 10)) + ' ' + fmtTime(x.at))}</small></span>
+                <button type="button" className="lnk" onClick={() => restoreLine(d, x.id)}>{tr('↩ Volver a ponerla')}</button>
+              </div>
+            ))}
           </div>
         )
       })}

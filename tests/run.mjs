@@ -174,7 +174,7 @@ calc.use((m) => {
   eq('pouches esperados = 74 × 8', a.pouchesExp, 592)
   eq('pallets esperados = 74 ÷ 36', a.palletsExp, 2.06)
   eq('pouches hechos (RTE, las dos líneas)', a.pouchesDone, 1120)
-  eq('cajas hechas (Packing), MFO y pallets', [a.casesDone, a.mfoCases, a.palletsDone], [72, 30, 2])
+  eq('cajas hechas (Packing), MFO y pallets', [a.casesDone, a.mfo, a.palletsDone], [72, [{ word: 'cajas', qty: 30 }], 2])
   eq('waste del código', a.wasteLb, 2.25)
   eq('Pend. pouches = esperado − hecho', m.pending(a.pouchesExp, a.pouchesDone), -528)
   eq('Faltan pouches = programado − hecho', m.pending(a.pouchesPlan, a.pouchesDone), 360)
@@ -2203,7 +2203,7 @@ section('Avance: cada código lo empaca RTE o MFO, nunca los dos; y se puede ver
     add('rt', 'RTE', 'R600', '6293', [u(10, 240)])
     add('pk', 'Packing', 'M500', '6292', [u(11, 40, '1900', [{ lot: '6292', qty: 15 }, { lot: '6293', qty: 25 }])], { per_unit: 40 })
     const a = row('M500'), b = row('R600')
-    eq('un código que la tabla dice que empaca MFO: RTE no tiene nada que hacer con él, y MFO espera las cajas de sus mezclas', [a.packRoom, a.packSaid, a.pouchesPlan, a.pouchesExp, a.mfoPlan, a.mfoExp, a.mfoCases, m.pending(a.mfoExp, a.mfoCases)], ['MFO', true, null, null, 100, 50, 30, 20])
+    eq('un código que la tabla dice que empaca MFO: RTE no tiene nada que hacer con él, y MFO espera las cajas de sus mezclas', [a.packRoom, a.packSaid, a.pouchesPlan, a.pouchesExp, a.mfoPlan, a.mfoExp, a.mfo, m.pending(a.mfoExp, a.mfo[0].qty)], ['MFO', true, null, null, 100, 50, [{ word: 'cajas', qty: 30 }], 20])
     eq('y uno de RTE, al revés: MFO no espera nada de él', [b.packRoom, b.pouchesPlan, b.pouchesExp, b.mfoPlan, b.mfoExp], ['RTE', 296, 296, null, null])
     // with nothing in the table, the room that has registered the code says it
     m.applyRemote('act_runs', { id: 'mf2', dept: 'MFO', line_id: 'MFO1', line: 'Línea 1', code: 'Q700', lot: '6293', date: '2026-10-20', started_at: new Date(oct(20, 7, 0)).toISOString(), ended_at: null, units: [u(9, 20, '2')], per_unit: null, waste: 0, by_name: 'Luis', deleted: false, updated_at: new Date(oct(20, 9, 0)).toISOString() })
@@ -2211,8 +2211,8 @@ section('Avance: cada código lo empaca RTE o MFO, nunca los dos; y se puede ver
     // one lot: the mezclas, bins and cases of that lot; a pallet with two lots gives the cases of the one chosen
     eq('los lotes del día, también los de un pallet con dos', m.avanceLots(st(), '2026-10-20'), ['6292', '6293'])
     const l3 = row('M500', '6293'), l2 = row('M500', '6292')
-    eq('con un lote: lo hecho de ese lote, sin el programa del día (que no es por lote)', [l3.scheduled, l3.mixesDone, l3.mfoCases, l3.casesDone, l3.palletsDone, l3.mfoPlan, l3.mfoExp], [0, 2, 30, 25, 1, null, 50])
-    eq('y el otro lote del mismo pallet: sus 15 cajas, y ninguna mezcla de ese día', [l2.mixesDone, l2.casesDone, l2.palletsDone, l2.mfoCases], [0, 15, 1, 0])
+    eq('con un lote: lo hecho de ese lote, sin el programa del día (que no es por lote)', [l3.scheduled, l3.mixesDone, l3.mfo, l3.casesDone, l3.palletsDone, l3.mfoPlan, l3.mfoExp], [0, 2, [{ word: 'cajas', qty: 30 }], 25, 1, null, 50])
+    eq('y el otro lote del mismo pallet: sus 15 cajas, y ninguna mezcla de ese día', [l2.mixesDone, l2.casesDone, l2.palletsDone, l2.mfo], [0, 15, 1, []])
     eq('un código que no tocó ese lote no sale', m.avanceRows(st(), '2026-10-20', undefined, '6292').map((r) => r.code), ['M500'])
     // the office's file can say which room packs each code; one that does not say it leaves what the table had
     const csv = 'Código,Producto,Lo empaca\nR600,Albóndigas,RTE\nM500,Pollo asado,mfo\nX1,Otro,\n'
@@ -2227,11 +2227,11 @@ section('Avance: cada código lo empaca RTE o MFO, nunca los dos; y se puede ver
     // what Jose asked on 2026-10-16 for the office: each code opens into its lots and its shifts, the total of a lot
     // across its days, and "Lo empaca" fixed from Avance itself
     const m5 = row('M500')
-    eq('cada código dice lo hecho por lote (el pallet de dos lotes da a cada uno sus cajas y cuenta como pallet de los dos)', m5.lots.map((l) => [l.lot, l.mixes, l.mfo, l.cases, l.pallets]), [['6292', 0, 0, 15, 1], ['6293', 2, 30, 25, 1]])
-    eq('y por turno: todo fue en el turno 1', [m5.byShift[0].mixes, m5.byShift[0].mfo, m5.byShift[0].cases, m5.byShift[0].pallets, m5.byShift[1].cases, m5.byShift[1].mixes], [2, 30, 40, 1, 0, 0])
+    eq('cada código dice lo hecho por lote (el pallet de dos lotes da a cada uno sus cajas y cuenta como pallet de los dos)', m5.lots.map((l) => [l.lot, l.mixes, l.mfo, l.cases, l.pallets]), [['6292', 0, {}, 15, 1], ['6293', 2, { cajas: 30 }, 25, 1]])
+    eq('y por turno: todo fue en el turno 1', [m5.byShift[0].mixes, m5.byShift[0].mfo, m5.byShift[0].cases, m5.byShift[0].pallets, m5.byShift[1].cases, m5.byShift[1].mixes], [2, { cajas: 30 }, 40, 1, 0, 0])
     eq('con un lote escogido, por turno solo va lo de ese lote', row('M500', '6292').byShift[0].cases, 15)
     const across = m.lotAcrossDays(st(), '6293')
-    eq('el total de un lote en todos sus días, código por código y en todo', [across.days, across.codes.map((c) => [c.code, c.mixes, c.pouches, c.mfo, c.cases, c.pallets]), across.total.mixes, across.total.pouches, across.total.cases, across.total.pallets], [['2026-10-20'], [['M500', 2, 0, 30, 25, 1], ['Q700', 0, 0, 20, 0, 0], ['R600', 2, 240, 0, 0, 0]], 4, 240, 25, 1])
+    eq('el total de un lote en todos sus días, código por código y en todo', [across.days, across.codes.map((c) => [c.code, c.mixes, c.pouches, c.mfo, c.cases, c.pallets]), across.total.mixes, across.total.pouches, across.total.cases, across.total.pallets], [['2026-10-20'], [['M500', 2, 0, { cajas: 30 }, 25, 1], ['Q700', 0, 0, { cajas: 20 }, 0, 0], ['R600', 2, 240, {}, 0, 0]], 4, 240, 25, 1])
     m.setPackRoom('Q700', 'MFO')
     eq('fijar desde Avance quién empaca un código lo escribe en Productos, aunque el código no estuviera', [m.productOf(st(), 'Q700').room, m.packRoomOf(st(), 'Q700')], ['MFO', { room: 'MFO', said: true }])
     m.setPackRoom('M500', 'RTE')
@@ -2240,7 +2240,7 @@ section('Avance: cada código lo empaca RTE o MFO, nunca los dos; y se puede ver
     eq('decir lo que ya está no cambia nada', [m.setPackRoom('M500', 'MFO'), m.productOf(st(), 'M500').room], [undefined, 'MFO'])
     // the office asked (2026-10-16): the total of a lot over all its days, day by day; a lot of another day chosen from a list
     const ad = m.lotAcrossDays(st(), '6293')
-    eq('el lote por código dice cada día que se trabajó', ad.codes.find((c) => c.code === 'M500').days.map((d) => [d.date, d.mixes, d.mfo, d.cases, d.pallets]), [['2026-10-20', 2, 30, 25, 1]])
+    eq('el lote por código dice cada día que se trabajó', ad.codes.find((c) => c.code === 'M500').days.map((d) => [d.date, d.mixes, d.mfo, d.cases, d.pallets]), [['2026-10-20', 2, { cajas: 30 }, 25, 1]])
     eq('las filas de Avance de un lote en todos sus días: lo hecho contra lo que sus mezclas permiten, sin programa', m.lotRows(st(), '6293').map((r) => [r.code, r.mixesDone, r.casesExp, r.mfoExp, r.pouchesExp, r.casesDone, r.scheduled, r.pouchesPlan, r.days.length]), [['M500', 2, 50, 50, null, 25, 0, null, 1], ['Q700', 0, null, null, null, 0, 0, null, 1], ['R600', 2, 37, null, 296, 0, 0, null, 1]])
     eq('los lotes que el aparato conoce, el más nuevo primero', m.lotsKnown(st()), ['6293', '6292'])
     // several days added up (asked 2026-10-16): the next day has more of M500, and the range says both days
@@ -2249,9 +2249,9 @@ section('Avance: cada código lo empaca RTE o MFO, nunca los dos; y se puede ver
     m.setSchedule('2026-10-21', 'M500', 1)
     eq('los días de un rango, los dos incluidos, también al revés', [m.datesBetween('2026-10-20', '2026-10-22'), m.datesBetween('2026-10-22', '2026-10-20').length, m.datesBetween('2026-10-20', '2026-10-20')], [['2026-10-20', '2026-10-21', '2026-10-22'], 3, ['2026-10-20']])
     const rg = m.avanceRange(st(), '2026-10-20', '2026-10-22').find((r) => r.code === 'M500')
-    eq('un código en el rango suma sus días: programa, mezclas, cajas de MFO, y dice cada día', [rg.scheduled, rg.mixesDone, rg.mfoCases, rg.mfoPlan, rg.mfoExp, rg.casesDone, rg.palletsDone, rg.days.map((d) => [d.date, d.mixes, d.mfo])], [5, 3, 50, 125, 75, 40, 1, [['2026-10-20', 2, 30], ['2026-10-21', 1, 20]]])
-    eq('sus lotes del rango, y sus turnos sumados', [rg.lots.map((l) => [l.lot, l.mixes, l.mfo, l.cases]), rg.byShift[0].mixes, rg.byShift[0].mfo], [[['6292', 0, 0, 15], ['6293', 2, 30, 25], ['6294', 1, 20, 0]], 3, 50])
-    eq('con un lote, el rango solo trae lo de ese lote', m.avanceRange(st(), '2026-10-20', '2026-10-22', '6294').map((r) => [r.code, r.mixesDone, r.mfoCases, r.days.length]), [['M500', 1, 20, 1]])
+    eq('un código en el rango suma sus días: programa, mezclas, cajas de MFO, y dice cada día', [rg.scheduled, rg.mixesDone, rg.mfo, rg.mfoPlan, rg.mfoExp, rg.casesDone, rg.palletsDone, rg.days.map((d) => [d.date, d.mixes, d.mfo])], [5, 3, [{ word: 'cajas', qty: 50 }], 125, 75, 40, 1, [['2026-10-20', 2, { cajas: 30 }], ['2026-10-21', 1, { cajas: 20 }]]])
+    eq('sus lotes del rango, y sus turnos sumados', [rg.lots.map((l) => [l.lot, l.mixes, l.mfo, l.cases]), rg.byShift[0].mixes, rg.byShift[0].mfo], [[['6292', 0, {}, 15], ['6293', 2, { cajas: 30 }, 25], ['6294', 1, { cajas: 20 }, 0]], 3, { cajas: 50 }])
+    eq('con un lote, el rango solo trae lo de ese lote', m.avanceRange(st(), '2026-10-20', '2026-10-22', '6294').map((r) => [r.code, r.mixesDone, r.mfo, r.days.length]), [['M500', 1, [{ word: 'cajas', qty: 20 }], 1]])
   })
 }
 section('Una unidad quitada a propósito no vuelve por ninguna mezcla, venga de donde venga la otra versión')
@@ -2379,50 +2379,64 @@ section('Spiral: un código se cuenta en mezclas, en libras o en cajas, y el pro
     eq('lo que llega en extra se limpia', [m.cleanExtra({ measure: 'lb' }), m.cleanExtra({ measure: 'kg' })], [{ measure: 'lb' }, undefined])
   })
 }
-section('MFO: los bins llevan platos, copas o libras; el programa, las metas y Avance siguen en cajas')
+section('MFO: cada bin guarda lo que escriben, en platos, copas o libras; nada se pasa a cajas')
 {
-  // Jose, 2026-10-17: "Platos por caja en MFO: 20 platos por caja… MFO hace otros productos y cuentan por libras"
+  // Jose, 2026-10-17: "en MFO no va nada de 20 por cajas, es solo poner la cantidad que le toca poner, o sea la que
+  // hicieron por bin, libras, etc., y sí poner platos en Avance o libras si ese producto es libra"
   const mf = await device('mfo', { user: 'Luis', usual: true })
   mf.use((m) => {
     const st = () => m.store.get(), run = (code) => st().runs.find((r) => r.code === code && !r.endedAt) ?? st().runs.find((r) => r.code === code)
     const lineOf = (name) => { m.addLine('MFO', name); return st().lines.find((l) => l.dept === 'MFO' && l.name === name) }
     clock = oct(10, 6, 0)
     const l1 = lineOf('Línea 1'), l2 = lineOf('Línea 2'), l3 = lineOf('Línea 3')
-    m.setPlan(DAY, 'MFO', 'M100', 50) // the office programs 50 cases
-    m.mergeProducts([{ code: 'M200', name: 'Copas de fruta', pouchesPerCase: 12, casesPerMix: 10, cratesPerCart: 0, pouchesPerCrate: 0, casesPerPallet: 40, room: 'MFO', updatedAt: 0 }])
-    // bins of platos: 20 to a case while the products table says nothing of the code
+    m.setPlan(DAY, 'MFO', 'M100', 100) // the office programs 100 platos
     m.startRun(l1, 'M100', '6287', DAY, null, 'platos')
     const a = run('M100'), ca = m.cfgOf(a)
-    eq('una corrida de bins de platos: sus palabras, y no se cuenta aparte', [m.binOf(a), m.apartOf(a), m.kindOf(a), ca.unit, ca.qtyUnit, ca.qtyQ, m.perCaseOf(st(), a)], ['platos', '', 'platos', 'Bin', 'platos', '¿Cuántos platos lleva este bin?', 20])
+    eq('una corrida de bins de platos: sus palabras, y es lo que cuenta el cuarto', [m.binOf(a), m.apartOf(a), m.kindOf(a), ca.unit, ca.qtyUnit, ca.qtyQ, m.CFG.MFO.qtyUnit], ['platos', '', 'platos', 'Bin', 'platos', '¿Cuántos platos lleva este bin?', 'platos'])
     clock = oct(10, 7, 0); m.unitDone(a.id, 30, '1')
-    clock = oct(10, 8, 0); m.unitDone(a.id, 50, '2')
-    eq('lo hecho se dice en bins y platos', m.madeText(run('M100'), m.runQty(st(), run('M100'))), '2 bins · 80 platos')
-    eq('el programa descuenta en cajas: 80 platos son 4 cajas de las 50', (({ done, left, unit, other }) => [done, left, unit, other])(m.planRows(st(), DAY, 'MFO').find((r) => r.code === 'M100')), [4, 46, 'cajas', []])
-    // copas: the products table says 12 to a case
-    m.startRun(l2, 'M200', '6287', DAY, null, 'copas')
+    clock = oct(10, 8, 0); m.unitDone(a.id, 57, '2')
+    eq('cada bin guarda lo que escribieron, y lo hecho se dice en bins y platos', [run('M100').units.map((u) => u.qty), m.madeText(run('M100'), m.runQty(st(), run('M100')))], [[30, 57], '2 bins · 87 platos'])
+    eq('el programa descuenta en platos, tal cual', (({ done, left, unit, other }) => [done, left, unit, other])(m.planRows(st(), DAY, 'MFO').find((r) => r.code === 'M100')), [87, 13, 'platos', []])
+    clock = oct(10, 8, 10); m.startRun(l2, 'M200', '6287', DAY, null, 'copas')
     const b = run('M200')
-    eq('las copas preguntan por copas, y la tabla dice cuántas van por caja', [m.cfgOf(b).qtyQ, m.cfgOf(b).qtyUnit, m.perCaseOf(st(), b)], ['¿Cuántas copas lleva este bin?', 'copas', 12])
-    clock = oct(10, 8, 30); m.unitDone(b.id, 36, '1')
-    // pounds: each bin weighed, counted apart like Spiral's
-    m.startRun(l3, 'M300', '6287', DAY, null, 'lb')
+    eq('las copas preguntan por copas', [m.cfgOf(b).qtyQ, m.cfgOf(b).qtyUnit, m.apartOf(b)], ['¿Cuántas copas lleva este bin?', 'copas', 'copas'])
+    clock = oct(10, 8, 30); m.unitDone(b.id, 37, '1')
+    clock = oct(10, 8, 40); m.startRun(l3, 'M300', '6287', DAY, null, 'lb')
     const c = run('M300'), cc = m.cfgOf(c)
-    eq('una corrida en libras: sus palabras, y se cuenta aparte', [m.binOf(c), m.apartOf(c), cc.unit, cc.qtyUnit, cc.qtyQ, m.perCaseOf(st(), c)], ['lb', 'lb', 'Bin', 'lb', '¿Cuántas libras lleva este bin?', null])
+    eq('una corrida en libras: sus palabras', [m.binOf(c), m.apartOf(c), cc.unit, cc.qtyUnit, cc.qtyQ], ['lb', 'lb', 'Bin', 'lb', '¿Cuántas libras lleva este bin?'])
     clock = oct(10, 9, 0); m.unitDone(c.id, 120.5, '1')
-    eq('lo hecho en libras', m.madeText(run('M300'), m.runQty(st(), run('M300'))), '1 bin · 120.5 lb')
-    // an MFO run from before this change (no word) counts cases itself, as it always did
+    eq('lo hecho en libras, con su decimal', m.madeText(run('M300'), m.runQty(st(), run('M300'))), '1 bin · 120.5 lb')
+    // an MFO run from before 2026-10-17 (no word) counted cases, and stays so
     m.applyRemote('act_runs', { id: 'old', dept: 'MFO', line_id: l1.id, line: 'Línea 1', code: 'M100', lot: '6286', date: DAY, started_at: new Date(oct(10, 5, 0)).toISOString(), ended_at: new Date(oct(10, 5, 50)).toISOString(), units: [{ at: oct(10, 5, 40), qty: 3, ref: '9', by: 'Ana' }], per_unit: null, waste: 0, by_name: 'Ana', deleted: false, updated_at: new Date(oct(10, 5, 50)).toISOString() })
     const old = st().runs.find((r) => r.id === 'old')
-    eq('una corrida de MFO de antes sigue en cajas, como estaba', [m.binOf(old), m.cfgOf(old).qtyUnit, m.madeText(old, m.runQty(st(), old)), m.perCaseOf(st(), old)], ['', 'cajas', '1 bin · 3 cajas', null])
-    // the room's day: cases (4 of platos + 3 of copas + 3 of before), what the bins hold beside them, the pounds apart
+    eq('una corrida de MFO de antes sigue en cajas, como estaba', [m.binOf(old), m.apartOf(old), m.cfgOf(old).qtyUnit, m.cfgOf(old).qtyQ, m.madeText(old, m.runQty(st(), old))], ['', 'cajas', 'cajas', '¿Cuántas cajas lleva este bin?', '1 bin · 3 cajas'])
     const t = m.deptToday(st(), 'MFO', DAY, clock)
-    eq('la tarjeta del cuarto cuenta cajas, dice lo que llevan los bins, y las libras aparte', [t.qty, t.units, t.unitLabel, t.held, t.bins], [10, 4, 'cajas', [{ word: 'platos', units: 2, qty: 80 }, { word: 'copas', units: 1, qty: 36 }], [{ word: 'lb', units: 1, qty: 120.5 }]])
-    eq('el programa: M100 con 7 cajas (4 de platos y 3 de antes), M200 sin programa, M300 aparte en libras', m.planRows(st(), DAY, 'MFO').map((r) => [r.code, r.planned, r.done, r.unit, r.other]), [['M100', 50, 7, 'cajas', []], ['M200', 0, 3, 'cajas', []], ['M300', 0, 0, 'cajas', [{ word: 'lb', n: 120.5 }]]])
+    eq('la tarjeta del cuarto: los platos, y aparte las copas, las libras y las cajas de antes', [t.qty, t.units, t.unitLabel, t.bins], [87, 2, 'platos', [{ word: 'copas', units: 1, qty: 37 }, { word: 'lb', units: 1, qty: 120.5 }, { word: 'cajas', units: 1, qty: 3 }]])
+    eq('el programa: cada código en lo suyo; M100 dice también sus cajas de antes', m.planRows(st(), DAY, 'MFO').map((r) => [r.code, r.planned, r.done, r.unit, r.other]), [['M100', 100, 87, 'platos', [{ word: 'cajas', n: 3 }]], ['M200', 0, 37, 'copas', []], ['M300', 0, 120.5, 'lb', []]])
     const rep = m.reportOf(st(), DAY, clock, { only: 'MFO' })
-    eq('el reporte: el cuarto en cajas con lo que llevan sus bins, cada código con su palabra, las libras aparte', [rep.byDept.map((d) => [d.units, d.qty, d.held, d.bins]), rep.byCode.map((x) => [x.code, x.bin, x.units, x.qty])], [[[4, 10, [{ word: 'platos', units: 2, qty: 80 }, { word: 'copas', units: 1, qty: 36 }], [{ word: 'lb', units: 1, qty: 120.5 }]]], [['M100', '', 1, 3], ['M100', 'platos', 2, 80], ['M200', 'copas', 1, 36], ['M300', 'lb', 1, 120.5]]])
-    eq('Avance cuenta las cajas de MFO ya convertidas, y nada de las libras', m.avanceRows(st(), DAY).filter((r) => ['M100', 'M200', 'M300'].includes(r.code)).map((r) => [r.code, r.mfoCases]), [['M100', 7], ['M200', 3]])
+    eq('el reporte: el cuarto en platos, cada código con su palabra, lo demás aparte', [rep.byDept.map((d) => [d.units, d.qty, d.bins]), rep.byCode.map((x) => [x.code, x.bin, x.units, x.qty])], [[[2, 87, [{ word: 'cajas', units: 1, qty: 3 }, { word: 'copas', units: 1, qty: 37 }, { word: 'lb', units: 1, qty: 120.5 }]]], [['M100', 'cajas', 1, 3], ['M100', 'platos', 2, 87], ['M200', 'copas', 1, 37], ['M300', 'lb', 1, 120.5]]])
+    eq('Avance: MFO en lo que escribieron, platos primero, y nada esperado en cajas', m.avanceRows(st(), DAY).filter((r) => ['M100', 'M200', 'M300'].includes(r.code)).map((r) => [r.code, r.mfo, r.mfoExp]), [['M100', [{ word: 'platos', qty: 87 }, { word: 'cajas', qty: 3 }], null], ['M200', [{ word: 'copas', qty: 37 }], null], ['M300', [{ word: 'lb', qty: 120.5 }], null]])
+    eq('y en texto, como lo dice la pantalla', [m.mfoText([{ word: 'platos', qty: 87 }, { word: 'lb', qty: 120.5 }]), m.mfoText({ copas: 37 })], ['87 platos · 120.5 lb', '37 copas'])
     eq('la corrida sube con su palabra', m.outbox.items().filter((i) => i.table === 'act_runs').map((i) => i.row).find((x) => x.code === 'M300').extra, { bin: 'lb' })
     eq('los bins de MFO no van en la lista de bins de Packing', rep.bins.length, 0)
-    eq('80 platos dichos en cajas, con 20 por caja cuando la tabla no dice', m.inCases(st(), 'M100', 90, 20), { cases: 4, loose: 10, perCase: 20 })
+  })
+}
+section('Una línea quitada vuelve tal cual: la misma línea, con su nombre (2026-10-17: Spiral quedó sin líneas)')
+{
+  const ln = await device('ln', { user: 'Eli', usual: true })
+  ln.use((m) => {
+    const st = () => m.store.get(), lineOf = (name) => st().lines.find((l) => l.dept === 'Spiral' && l.name === name)
+    clock = oct(10, 6, 0)
+    m.addLine('Spiral', 'Racks'); m.addLine('Spiral', 'Spiral')
+    const racks = lineOf('Racks'), spiralId = lineOf('Spiral').id
+    m.startRun(racks, '0889', '6290', DAY, null); clock = oct(10, 7, 0); m.unitDone(st().runs.at(-1).id, null); clock = oct(10, 8, 0); m.endRun(st().runs.at(-1).id, false)
+    clock = oct(10, 16, 25); m.removeLine(racks.id); m.removeLine(spiralId)
+    eq('las dos se quitaron, y el historial dice cuáles, quién y cuándo', [st().lines.filter((l) => l.dept === 'Spiral').length, m.removedLines(st(), 'Spiral').map((x) => [x.name, x.by, x.at === oct(10, 16, 25)])], [0, [['Racks', 'Eli', true], ['Spiral', 'Eli', true]]])
+    eq('volver a poner una: la misma línea, con su nombre, y sus registros con ella', [m.restoreLine('Spiral', racks.id), lineOf('Racks')?.id === racks.id, m.lineNameOf(st(), st().runs.at(-1).lineId, '')], [true, true, 'Racks'])
+    eq('agregar otra con el nombre de una quitada la trae de vuelta, sin hacer una nueva', [m.addLine('Spiral', 'spiral'), lineOf('Spiral')?.id === spiralId, st().lines.filter((l) => l.dept === 'Spiral').length, m.removedLines(st(), 'Spiral').length], [true, true, 2, 0])
+    eq('y queda en el historial', st().changes.filter((c) => c.what === 'Línea puesta de nuevo en Spiral').map((c) => c.after), ['Racks', 'Spiral'])
+    eq('una que no se quitó no se vuelve a poner', m.restoreLine('Spiral', 'nope'), false)
+    eq('suben al servidor como la misma línea, puesta otra vez', m.outbox.items().filter((i) => i.table === 'act_lines' && i.key === racks.id).map((i) => i.row.deleted), [false])
   })
 }
 section('Un código que nadie registró: la oficina lo agrega después, en cualquier cuarto, con lo que sepa')
@@ -2454,7 +2468,7 @@ section('Un código que nadie registró: la oficina lo agrega después, en cualq
     eq('pallets con sus tags, en la lista de pallets del reporte', [pr.units.map((u) => [u.qty, u.ref]), m.reportOf(st(), DAY, clock, { only: 'Packing' }).pallets.map((x) => [x.n, x.parts[0].tag, x.total])], [[[36, '1741'], [36, '1742']], [[1, '1741', 36], [2, '1742', 36]]])
     const mf = m.addRunLater({ dept: 'MFO', lineId: m1.id, code: 'M100', date: DAY, startedAt: oct(10, 9, 0), endedAt: oct(10, 9, 0), units: [{ qty: 30, ref: '1' }, { qty: 30, ref: '2' }], bin: 'platos' })
     const mr = st().runs.find((x) => x.id === mf)
-    eq('bins de platos con la misma hora de inicio y fin: cada bin en su instante, y el cuarto los cuenta en cajas', [m.binOf(mr), mr.units.map((u) => u.at - oct(10, 9, 0)), m.madeText(mr, m.runQty(st(), mr)), m.deptToday(st(), 'MFO', DAY, clock).qty], ['platos', [0, 1], '2 bins · 60 platos', 3])
+    eq('bins de platos con la misma hora de inicio y fin: cada bin en su instante, y el cuarto los cuenta en platos, tal cual', [m.binOf(mr), mr.units.map((u) => u.at - oct(10, 9, 0)), m.madeText(mr, m.runQty(st(), mr)), m.deptToday(st(), 'MFO', DAY, clock).qty], ['platos', [0, 1], '2 bins · 60 platos', 60])
     // a set up left open on the line before those hours ends where the code started
     clock = oct(10, 7, 0); m.startStop('RTE', r1.id, 'Set up', '')
     const sid = st().stops.find((x) => x.lineId === r1.id && !x.endedAt).id

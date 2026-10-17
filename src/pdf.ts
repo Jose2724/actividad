@@ -1,6 +1,6 @@
 import { apartLabel, apartWord, binWord, casesText, CFG, cfgFor, cfgOf, fmtDur, fmtTime, inCases, lineLabel, lineNameOf, madeText, noteLabel, shiftHours, whoText, type DeptCfg, type State } from './store'
 import { filterTitle, reportOf, spanShifts, type ReportFilter } from './report'
-import { avanceRows, n1, pending } from './avance'
+import { avanceRows, n1, pending, mfoText } from './avance'
 import { tr } from './i18n'
 
 type Libs = { jsPDF: typeof import('jspdf').jsPDF; autoTable: typeof import('jspdf-autotable').default }
@@ -150,8 +150,8 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
     doc.text(tr('Progr. = del programa del día (mezclas programadas × tabla de productos). Esper. = de las mezclas ya hechas. Pend. = esperado − hecho (negativo = de más). Faltan = programado − hecho.'), 40, 58)
     autoTable(doc, {
       startY: 70, theme: 'grid', styles: { font: 'helvetica', fontSize: 7.5, cellPadding: 3, textColor: [22, 32, 42] }, headStyles: { fillColor: teal, textColor: 255, fontStyle: 'bold' },
-      head: [[tr('Código'), tr('Producto'), tr('Mezclas progr.'), tr('Hechas'), tr('Pend.'), 'Spiral', tr('Pouches progr.'), tr('Esper.'), tr('Hechos'), tr('Pend.'), tr('Faltan'), tr('Cajas progr.'), tr('Esper.'), tr('Hechas'), tr('Pend.'), tr('Faltan'), tr('MFO esper.'), tr('MFO cajas'), tr('MFO pend.'), tr('Pallets progr.'), tr('Esper.'), tr('Hechos'), tr('Waste lb')]],
-      body: av.map((r) => [r.code + ' · ' + r.packRoom, r.product?.name ?? tr('(no está en Productos)'), String(r.scheduled), r.mixesDone ? r.mixesDone + ' ' + r.mixRoom : '0', String(r.mixesPending), String(r.spiralDone), n1(r.pouchesPlan), n1(r.pouchesExp), String(r.pouchesDone), n1(pending(r.pouchesExp, r.pouchesDone)), n1(pending(r.pouchesPlan, r.pouchesDone)), n1(r.casesPlan), n1(r.casesExp), String(r.casesDone), n1(pending(r.casesExp, r.casesDone)), n1(pending(r.casesPlan, r.casesDone)), n1(r.mfoExp), String(r.mfoCases), n1(pending(r.mfoExp, r.mfoCases)), n1(r.palletsPlan), n1(r.palletsExp), String(r.palletsDone), r.wasteLb ? String(r.wasteLb) : '—']),
+      head: [[tr('Código'), tr('Producto'), tr('Mezclas progr.'), tr('Hechas'), tr('Pend.'), 'Spiral', tr('Pouches progr.'), tr('Esper.'), tr('Hechos'), tr('Pend.'), tr('Faltan'), tr('Cajas progr.'), tr('Esper.'), tr('Hechas'), tr('Pend.'), tr('Faltan'), tr('MFO esper.'), 'MFO', tr('MFO pend.'), tr('Pallets progr.'), tr('Esper.'), tr('Hechos'), tr('Waste lb')]],
+      body: av.map((r) => [r.code + ' · ' + r.packRoom, r.product?.name ?? tr('(no está en Productos)'), String(r.scheduled), r.mixesDone ? r.mixesDone + ' ' + r.mixRoom : '0', String(r.mixesPending), String(r.spiralDone), n1(r.pouchesPlan), n1(r.pouchesExp), String(r.pouchesDone), n1(pending(r.pouchesExp, r.pouchesDone)), n1(pending(r.pouchesPlan, r.pouchesDone)), n1(r.casesPlan), n1(r.casesExp), String(r.casesDone), n1(pending(r.casesExp, r.casesDone)), n1(pending(r.casesPlan, r.casesDone)), n1(r.mfoExp), mfoText(r.mfo) || '0', n1(pending(r.mfoExp, r.mfo[0]?.qty ?? 0)), n1(r.palletsPlan), n1(r.palletsExp), String(r.palletsDone), r.wasteLb ? String(r.wasteLb) : '—']),
     })
   }
   const pages = doc.getNumberOfPages()

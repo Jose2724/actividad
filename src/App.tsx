@@ -1,7 +1,7 @@
 import { createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
-import { addLine, addWaste, apartLabel, apartWord, awayDay, cameFrom, carriedOver, dayAfter, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_PER_CASE, MFO_WORDS, perCaseOf as perCaseOfRun, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderOfId, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, productOf, productsCsv, purgeDay, purgesOf, removeLine, removeProduct, renameLine, reopenRun, reset, restorePurged, resetRecords, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftHours, shiftSpan, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay } from './store'
-import { avanceLots, avanceRange, avanceRows, datesBetween, lotAcrossDays, lotRows, lotsKnown, n1, pending, type AvancePart, type AvanceRow } from './avance'
+import { addLine, addWaste, apartLabel, apartWord, awayDay, cameFrom, carriedOver, dayAfter, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, kindClass, removedLines, restoreLine, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderOfId, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, productOf, productsCsv, purgeDay, purgesOf, removeLine, removeProduct, renameLine, reopenRun, reset, restorePurged, resetRecords, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftHours, shiftSpan, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay } from './store'
+import { avanceLots, avanceRange, avanceRows, datesBetween, lotAcrossDays, lotRows, lotsKnown, mfoList, mfoText, mfoWord, n1, pending, type AvancePart, type AvanceRow, type MfoMade } from './avance'
 import { cellText, loadZip, xDay, xDur, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 
 const fmtN = (x: number) => Math.round(x).toLocaleString('en-US')
@@ -472,7 +472,7 @@ function AvStat({ made, exp, plan, unit, lot, note }: { made: number; exp: numbe
   const cls = pend == null ? '' : pend < 0 ? 'over' : pend > 0 ? 'left' : 'ok'
   return (
     <div className={'avstat ' + cls}>
-      <div className="avs-top"><b>{fmtN(Math.round(made * 100) / 100)}</b><small>{exp != null ? trx('de {0} {1}', n1(exp), unit) : unit}</small>{note && <small className="avs-note">{note}</small>}</div>
+      <div className="avs-top"><b>{(Math.round(made * 10) / 10).toLocaleString('en-US')}</b><small>{exp != null ? trx('de {0} {1}', n1(exp), unit) : unit}</small>{note && <small className="avs-note">{note}</small>}</div>
       {exp != null && <div className="bar"><i className={cls} style={{ width: pct + '%' }} /></div>}
       {pend != null && <small className="avs-pend">{pend > 0 ? trx('faltan {0}', n1(pend)) : pend < 0 ? trx('{0} de más', n1(-pend)) : tr('✓ completo')}</small>}
       {left != null && plan !== exp && <small className="avs-plan">{trx('programa {0} · faltan {1}', n1(plan), n1(Math.max(0, left)))}</small>}
@@ -546,6 +546,9 @@ function Avance({ s }: { s: State }) {
   const across = lotNow ? lotAcrossDays(s, lotNow) : null
   const toggle = (code: string) => setOpen({ ...open, [code]: !open[code] })
   const isLot = !!lotNow
+  // MFO in what its bins hold, word by word (platos, copas, pounds), as the operators typed it: the usual first
+  const mfoAll = mfoList(rows.reduce((t, r) => { const out = { ...t }; for (const x of r.mfo) out[x.word] = (out[x.word] ?? 0) + x.qty; return out }, {} as Record<string, number>))
+  const mfoRest = (l: MfoMade[]) => (l.length > 1 ? tr('y {0}', mfoText(l.slice(1))) : undefined)
   /** one of the day's totals on top: what was made, against what is expected, and what is lacking */
   const tile = (label: string, made: number, exp: number | null, expWord: string) => {
     const pend = pending(exp, made)
@@ -558,8 +561,8 @@ function Avance({ s }: { s: State }) {
     )
   }
   const miniHead = <thead><tr><th></th><th>{tr('Mezclas')}</th><th>Spiral</th><th>Pouches</th><th>{tr('Cajas')}</th><th>MFO</th><th>Pallets</th></tr></thead>
-  const miniRow = (key: string, label: ReactNode, x: AvancePart) => <tr key={key}><td>{label}</td><td>{x.mixes || '—'}</td><td>{x.spiral || '—'}</td><td>{x.pouches ? fmtN(x.pouches) : '—'}</td><td>{x.cases ? fmtN(x.cases) : '—'}</td><td>{x.mfo ? fmtN(x.mfo) : '—'}</td><td>{x.pallets || '—'}</td></tr>
-  const acrossText = (x: AvancePart) => [x.mixes ? x.mixes + ' ' + tr('mezclas') : '', x.pouches ? fmtN(x.pouches) + ' pouches' : '', x.cases ? fmtN(x.cases) + ' ' + tr('cajas') : '', x.mfo ? fmtN(x.mfo) + ' ' + tr('cajas MFO') : '', x.pallets ? x.pallets + ' pallets' : ''].filter(Boolean).join(' · ') || tr('nada')
+  const miniRow = (key: string, label: ReactNode, x: AvancePart) => <tr key={key}><td>{label}</td><td>{x.mixes || '—'}</td><td>{x.spiral || '—'}</td><td>{x.pouches ? fmtN(x.pouches) : '—'}</td><td>{x.cases ? fmtN(x.cases) : '—'}</td><td>{mfoText(x.mfo) || '—'}</td><td>{x.pallets || '—'}</td></tr>
+  const acrossText = (x: AvancePart) => [x.mixes ? x.mixes + ' ' + tr('mezclas') : '', x.pouches ? fmtN(x.pouches) + ' pouches' : '', x.cases ? fmtN(x.cases) + ' ' + tr('cajas') : '', mfoText(x.mfo) ? 'MFO ' + mfoText(x.mfo) : '', x.pallets ? x.pallets + ' pallets' : ''].filter(Boolean).join(' · ') || tr('nada')
   return (
     <section className="report avance av2">
       <div className="rhead">
@@ -647,14 +650,16 @@ function Avance({ s }: { s: State }) {
             {tile(tr('Mezclas'), sum((r) => r.mixesDone), isLot ? null : sumOr((r) => r.scheduled || null), tr('programadas'))}
             {tile(tr('Pouches · RTE'), sum((r) => r.pouchesDone), sumOr((r) => r.pouchesExp), tr('esperados'))}
             {tile(tr('Cajas · Packing'), sum((r) => r.casesDone), sumOr((r) => r.casesExp), tr('esperadas'))}
-            {tile(tr('Cajas · MFO'), sum((r) => r.mfoCases), sumOr((r) => r.mfoExp), tr('esperadas'))}
+            {mfoAll[0]?.word === 'cajas' || !mfoAll.length ? tile('MFO', mfoAll[0]?.qty ?? 0, sumOr((r) => r.mfoExp), tr('cajas esperadas')) : (
+              <div className="made" key="MFO"><label>MFO</label><b>{(Math.round(mfoAll[0].qty * 10) / 10).toLocaleString('en-US')} <span>{mfoWord(mfoAll[0].word)}</span></b><small>{mfoRest(mfoAll) ?? '\u00a0'}</small></div>
+            )}
             {tile('Pallets', sum((r) => r.palletsDone), sumOr((r) => r.palletsExp), tr('esperados'))}
             {!isAll && tile('Waste', sum((r) => r.wasteLb), null, 'lb')}
           </div>
           <p className="hint">{trx('{0} en grande = lo que cada cuarto registró. {1} = lo que ya puede salir de las mezclas hechas (mezclas × tabla de productos). {2} = programado − hecho: lo que queda del día. Toca ▸ para ver un código por lote y por turno.', <b>{tr('Hecho')}</b>, <b>{tr('Esperado')}</b>, <b>{tr('Programa')}</b>)}</p>
           <div className="twrap">
             <table className="avtable">
-              <thead><tr><th>{tr('Código')}</th><th>{tr('Mezclas')}</th><th>Spiral</th><th>{tr('Pouches · RTE')}</th><th>{tr('Cajas · Packing')}</th><th>{tr('Cajas · MFO')}</th><th>Pallets</th><th>Waste</th></tr></thead>
+              <thead><tr><th>{tr('Código')}</th><th>{tr('Mezclas')}</th><th>Spiral</th><th>{tr('Pouches · RTE')}</th><th>{tr('Cajas · Packing')}</th><th>MFO</th><th>Pallets</th><th>Waste</th></tr></thead>
               <tbody>{rows.map((r) => {
                 const notes = carryNotes(r.code), isOpen = !!open[r.code]
                 return (
@@ -676,7 +681,7 @@ function Avance({ s }: { s: State }) {
                       <td className="slim" data-label="Spiral">{r.spiralDone || '—'}</td>
                       <td data-label={tr('Pouches · RTE')}><AvStat made={r.pouchesDone} exp={r.pouchesExp} plan={r.pouchesPlan} unit="pouches" lot={isLot} /></td>
                       <td data-label={tr('Cajas · Packing')}><AvStat made={r.casesDone} exp={r.casesExp} plan={r.casesPlan} unit={tr('cajas')} lot={isLot} /></td>
-                      <td data-label={tr('Cajas · MFO')}><AvStat made={r.mfoCases} exp={r.mfoExp} plan={r.mfoPlan} unit={tr('cajas')} lot={isLot} /></td>
+                      <td data-label="MFO"><AvStat made={r.mfo[0]?.qty ?? 0} exp={r.mfoExp} plan={r.mfoPlan} unit={r.mfo[0] ? mfoWord(r.mfo[0].word) : tr('cajas')} lot={isLot} note={mfoRest(r.mfo)} /></td>
                       <td data-label="Pallets"><AvStat made={r.palletsDone} exp={r.palletsExp} plan={r.palletsPlan} unit="pallets" lot={isLot} /></td>
                       <td className={'slim' + (r.wasteLb ? ' red' : '')} data-label="Waste">{r.wasteLb ? r.wasteLb + ' lb' : '—'}</td>
                     </tr>
@@ -717,7 +722,7 @@ function Avance({ s }: { s: State }) {
                 <td className="slim" data-label="Spiral">{sum((r) => r.spiralDone) || '—'}</td>
                 <td data-label={tr('Pouches · RTE')}><AvStat made={sum((r) => r.pouchesDone)} exp={sumOr((r) => r.pouchesExp)} plan={sumOr((r) => r.pouchesPlan)} unit="pouches" lot={isLot} /></td>
                 <td data-label={tr('Cajas · Packing')}><AvStat made={sum((r) => r.casesDone)} exp={sumOr((r) => r.casesExp)} plan={sumOr((r) => r.casesPlan)} unit={tr('cajas')} lot={isLot} /></td>
-                <td data-label={tr('Cajas · MFO')}><AvStat made={sum((r) => r.mfoCases)} exp={sumOr((r) => r.mfoExp)} plan={sumOr((r) => r.mfoPlan)} unit={tr('cajas')} lot={isLot} /></td>
+                <td data-label="MFO"><AvStat made={mfoAll[0]?.qty ?? 0} exp={mfoAll.length > 1 ? null : sumOr((r) => r.mfoExp)} plan={mfoAll.length > 1 ? null : sumOr((r) => r.mfoPlan)} unit={mfoAll[0] ? mfoWord(mfoAll[0].word) : tr('cajas')} lot={isLot} note={mfoRest(mfoAll)} /></td>
                 <td data-label="Pallets"><AvStat made={sum((r) => r.palletsDone)} exp={sumOr((r) => r.palletsExp)} plan={sumOr((r) => r.palletsPlan)} unit="pallets" lot={isLot} /></td>
                 <td className={'slim' + (sum((r) => r.wasteLb) ? ' red' : '')} data-label="Waste">{sum((r) => r.wasteLb) ? Math.round(sum((r) => r.wasteLb) * 100) / 100 + ' lb' : '—'}</td>
               </tr></tfoot>
@@ -794,7 +799,7 @@ export function Products({ s, readOnly }: { s: State; readOnly?: boolean }) {
       </div>
       <div className="twrap">
         <table>
-          <thead><tr><th>{tr('Código')}</th><th>{tr('Producto')}</th><th>{tr('Pouches o platos / caja')}</th><th>{tr('Cajas / mezcla (yield)')}</th><th>{tr('Guacales / carro')}</th><th>{tr('Pouches / guacal')}</th><th>{tr('Cajas / pallet')}</th><th>{tr('Lo empaca')}</th><th>{tr('Spiral cuenta en')}</th>{unlocked && <th></th>}</tr></thead>
+          <thead><tr><th>{tr('Código')}</th><th>{tr('Producto')}</th><th>{tr('Pouches / caja')}</th><th>{tr('Cajas / mezcla (yield)')}</th><th>{tr('Guacales / carro')}</th><th>{tr('Pouches / guacal')}</th><th>{tr('Cajas / pallet')}</th><th>{tr('Lo empaca')}</th><th>{tr('Spiral cuenta en')}</th>{unlocked && <th></th>}</tr></thead>
           <tbody>
             {s.products.length === 0 && <tr><td colSpan={10}><i>{tr('No hay productos todavía.')}{!unlocked && ' ' + tr('Toca "Editar" para escribirlos o importar el CSV de la oficina.')}</i></td></tr>}
             {s.products.length > 0 && shown.length === 0 && <tr><td colSpan={10}><i>{trx('Ningún producto con "{0}".', q.trim())}</i></td></tr>}
@@ -1249,7 +1254,7 @@ function TodayCard({ s, dept, now, mgr, date }: { s: State; dept: Dept; now: num
         <div className="tct made">
           <label>{tr('Hecho en el turno')}</label>
           <b>{fmtN(t.shiftQty)} <span>{label(t.shiftQty)}</span></b>
-          <small>{cfg.qty !== 'none' ? t.shiftUnits + ' ' + unitWord(t.shiftUnits) + (t.shiftHeld.length ? ' · ' + t.shiftHeld.map((b) => fmtN(b.qty) + ' ' + binWord(b.word)).join(' · ') : '') : t.shiftCodes.length === 1 ? tr('1 código') : t.shiftCodes.length ? tr('{0} códigos', t.shiftCodes.length) : '\u00a0'}</small>
+          <small>{cfg.qty !== 'none' ? t.shiftUnits + ' ' + unitWord(t.shiftUnits) : t.shiftCodes.length === 1 ? tr('1 código') : t.shiftCodes.length ? tr('{0} códigos', t.shiftCodes.length) : '\u00a0'}</small>
           {t.shiftBins.length > 0 && <small className="tc-bins">{dept === 'Spiral' ? tr('Además: {0}', t.shiftBins.map((b) => unitsText(dept, b.units, b.qty, cfgFor(dept, b.word))).join(' · ')) : tr('Además, en bins: {0}', t.shiftBins.map((b) => tr('{0} con {1} {2}', b.units === 1 ? tr('1 bin') : tr('{0} bins', b.units), fmtN(b.qty), binWord(b.word))).join(' · '))}</small>}
         </div>
         <div className={'tct goal' + (goal.total ? (pct >= 100 ? ' ok' : '') : ' none')}>
@@ -1339,7 +1344,7 @@ function PlanCard({ s, dept, date, mgr }: { s: State; dept: Dept; date: string; 
   const rows = planRows(s, date, dept)
   const planned = rows.filter((r) => r.planned > 0), extra = rows.filter((r) => !r.planned && r.done > 0)
   if (!planned.length && !mgr) return null
-  const cfg = CFG[dept], unit = dept === 'Spiral' ? tr('la unidad de cada código') : cfg.qty === 'none' ? cfg.plural.toLowerCase() : cfg.qtyUnit
+  const cfg = CFG[dept], byCode = dept === 'Spiral' || dept === 'MFO', unit = byCode ? tr('la unidad de cada código') : cfg.qty === 'none' ? cfg.plural.toLowerCase() : cfg.qtyUnit
   return (
     <div className="plan">
       <div className="tc-head">
@@ -1355,7 +1360,7 @@ function PlanCard({ s, dept, date, mgr }: { s: State; dept: Dept; date: string; 
               return (
                 <tr key={r.code}>
                   <td><b className="code">{r.code}</b>{r.name && <small className="pname">{r.name}</small>}{r.other.length > 0 && <small className="pname">{tr('también {0}', r.other.map((o) => fmtN(o.n) + ' ' + o.word).join(' · '))}</small>}{r.running && <span className="pill run">● {r.lines.map(lineLabel).join(', ')}</span>}</td>
-                  <td className="num">{fmtN(r.planned)}{dept === 'Spiral' && <small className="punit"> {r.unit}</small>}</td><td className="num turn">{fmtN(r.byShift[0])}</td><td className="num turn">{fmtN(r.byShift[1])}</td><td className="num"><b>{fmtN(r.done)}</b></td>
+                  <td className="num">{fmtN(r.planned)}{byCode && <small className="punit"> {r.unit}</small>}</td><td className="num turn">{fmtN(r.byShift[0])}</td><td className="num turn">{fmtN(r.byShift[1])}</td><td className="num"><b>{fmtN(r.done)}</b></td>
                   <td className={'num ' + (r.left <= 0 ? 'ok' : 'left')}>{r.left > 0 ? fmtN(r.left) : tr('✓ completo') + (r.left < 0 ? ' (+' + fmtN(-r.left) + ')' : '')}</td>
                   <td className="planbar"><div className="bar"><i className={pct >= 100 ? 'ok' : 'pend'} style={{ width: pct + '%' }} /></div><small>{pct}%</small></td>
                 </tr>
@@ -1400,7 +1405,7 @@ function PlanDialog({ s, dept, today, unit, onClose }: { s: State; dept: Dept; t
         <form className="qform" onSubmit={(e) => { e.preventDefault(); if (!twice.length) save() }}>
           <label>{tr('Día')}{' '}<input type="date" value={date} onChange={(e) => pickDate(e.target.value)} /></label>
           <div className="planrows">
-            <div className={'planrow head' + (dept === 'Spiral' ? ' spiral' : '')}><span>{tr('Código')}</span><span>{dept === 'Spiral' ? tr('Cantidad') : trx('Cantidad ({0})', unit)}</span>{dept === 'Spiral' && <span>{tr('Unidad')}</span>}</div>
+            <div className={'planrow head' + (dept === 'Spiral' ? ' spiral' : '')}><span>{tr('Código')}</span><span>{dept === 'Spiral' || dept === 'MFO' ? tr('Cantidad') : trx('Cantidad ({0})', unit)}</span>{dept === 'Spiral' && <span>{tr('Unidad')}</span>}</div>
             {lines.map((l, i) => (
               <div key={i} className={'planrow' + (dept === 'Spiral' ? ' spiral' : '')}>
                 <input list={listId} value={l.code} placeholder={tr('ej. 0100')} autoComplete="off" aria-label={tr('Código')} onChange={(e) => change(i, { code: e.target.value })} />
@@ -1482,6 +1487,15 @@ function DeptPanel({ s, dept, now, day }: { s: State; dept: Dept; now: number; m
       <TodayCard s={s} dept={dept} now={now} mgr={can('goals')} date={day.date} />
       <div className="lines">{lines.map((l) => <LineCard key={l.id} s={s} line={l} now={now} mgr={can('fix')} day={day} />)}</div>
       {lines.length === 0 && <p className="hint">{viewOnly ? tr('Este departamento no tiene líneas todavía.') : trx('Este departamento no tiene líneas. Toca "Agregar {0}".', CFG[dept].lineWord.toLowerCase())}</p>}
+      {!viewOnly && can('fix') && (() => {
+        const back = removedLines(s, dept).filter((x) => x.at > now - 7 * 86_400_000)
+        return back.length > 0 && (
+          <div className="linesback">
+            <span>{trx('Se quitaron: {0}', <b>{back.map((x) => lineLabel(x.name) + ' (' + (x.by || '—') + ', ' + fmtTime(x.at) + ')').join(', ')}</b>)}</span>
+            <button type="button" className="btn soft" onClick={() => { for (const x of back) restoreLine(dept, x.id) }}>{back.length === 1 ? tr('↩ Volver a ponerla') : tr('↩ Volver a poner las {0}', back.length)}</button>
+          </div>
+        )
+      })()}
       {adding && <LineNameDialog s={s} dept={dept} onClose={() => setAdding(false)} />}
       {doneNow.length > 0 && (
         <div className="done">
@@ -1931,7 +1945,6 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
     // counted last (on this device); else as this line did last; else platos
     const mfoLast = isMfo && code.trim() ? s.runs.filter((r) => r.dept === 'MFO' && normCode(r.code) === normCode(code) && !!binOf(r)).sort((a, b) => b.startedAt - a.startedAt)[0] : undefined
     const mfoWord = !isMfo ? '' : (MFO_WORDS.includes(binText) ? binText : '') || (mfoLast ? binOf(mfoLast) : '') || (lastRun ? binOf(lastRun) : '') || MFO_WORDS[0]
-    const mfoPer = prod?.pouchesPerCase || MFO_PER_CASE
     const suggested = needPer ? lastPerUnit(s, line.dept, code) : null
     // Spiral: mezcla by mezcla, or each mezcla weighed in pounds or counted in cases: the products table's word for the
     // code, else the way it was started last on this device, else mezcla by mezcla
@@ -2017,7 +2030,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
             <div className="makes">
               <span className="lab">{tr('¿Qué llevan los bins?')}</span>
               <div className="seg" role="group" aria-label={tr('¿Qué llevan los bins?')}>
-                {MFO_WORDS.map((w) => <button key={w} type="button" className={kindClass('MFO', w) + (mfoWord === w ? ' on' : '')} aria-pressed={mfoWord === w} onClick={() => setBinText(w)}>{w === 'lb' ? tr('Libras') : w === 'copas' ? tr('Copas') : tr('Platos')}<small>{w === 'lb' ? tr('cada bin se pesa') : trx('{0} por caja', mfoPer)}</small></button>)}
+                {MFO_WORDS.map((w) => <button key={w} type="button" className={kindClass('MFO', w) + (mfoWord === w ? ' on' : '')} aria-pressed={mfoWord === w} onClick={() => setBinText(w)}>{w === 'lb' ? tr('Libras') : w === 'copas' ? tr('Copas') : tr('Platos')}<small>{w === 'lb' ? tr('cada bin se pesa') : w === 'copas' ? tr('cada bin dice cuántas') : tr('cada bin dice cuántos')}</small></button>)}
               </div>
             </div>
           )}
@@ -2050,7 +2063,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         </form>}
         {!quiet && <div className="tools">
           {!idle ? <button type="button" className="btn sm setupbtn" onClick={() => startSetup(line)}>{tr('⏱ Empezar Set up')}</button> : <span />}
-          <button type="button" className="lnk sm muted" onClick={() => setRemoving(true)}>{trx('Quitar {0}', cfg.lineWord.toLowerCase())}</button>
+          {mgr && <button type="button" className="lnk sm muted" onClick={() => setRemoving(true)}>{trx('Quitar {0}', cfg.lineWord.toLowerCase())}</button>}
         </div>}
         {viewOnly && !idle && <p className="hint">{tr('Libre: sin código.')}</p>}
       </div>
@@ -2090,8 +2103,8 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   const binLots = (q: number) => (packBins && lotNowOf(run) !== run.lot ? [{ lot: lotNowOf(run), qty: q }] : undefined)
   const lit = just ? ' bumped' : ''
   // pouches are also told as full cases and loose pouches, where the products table says how many go in a case
-  const perCase = perCaseOf(run.code) ?? perCaseOfRun(s, run) ?? undefined
-  const cases = perCase && mineNow.qty > 0 ? inCases(s, run.code, mineNow.qty, perCase) : null
+  const perCase = perCaseOf(run.code)
+  const cases = perCase && mineNow.qty > 0 ? inCases(s, run.code, mineNow.qty) : null
   // a set up on this line while its code runs: amber like every set up, never the red of a stop
   const inSetup = !!stop && stop.lineId === line.id && stop.reason === SETUP
   return (
@@ -2114,7 +2127,6 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
           {run.date !== day.date && <span className="fact"><small>{tr('Fecha')}</small><b>{shortDay(run.date)}</b></span>}
           {run.perUnit != null && <span className="fact"><small>{tr('Por {0}', runWord)}</small><b>{fmtN(run.perUnit)} {rc.qtyUnit}</b></span>}
           {packBins && <span className="fact"><small>{tr('Turno')}</small><b>{turn.shift}</b></span>}
-          {perCaseOfRun(s, run) != null && <span className="fact"><small>{tr('Por caja')}</small><b>{fmtN(perCaseOfRun(s, run) ?? 0)} {rc.qtyUnit}</b></span>}
           {measureOf(run) && <span className="fact"><small>{tr('Se cuenta en')}</small><b>{measureName(measureOf(run))}</b></span>}
         </div>
       </div>
@@ -2658,8 +2670,8 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
     const av = mgr && !dept && !rep.filtered ? avanceRows(s, date) : []
     const carry = av.length ? carriedOver(s, date).filter((x) => x.next <= today) : [], came = av.length ? cameFrom(s, date) : []
     const carryText = (code: string) => [...carry.filter((x) => normCode(x.code) === normCode(code)).map((x) => x.done ? tr('{0}: ✓ completado el {1}', x.dept, shortDay(x.next)) : x.made > 0 ? tr('{0}: pendiente {1} {2} · siguió el {3}', x.dept, fmtN(x.pending - x.made), x.unit, shortDay(x.next)) : tr('{0}: pendiente {1} {2} al día siguiente', x.dept, fmtN(x.pending), x.unit)), ...came.filter((x) => normCode(x.code) === normCode(code)).map((x) => tr('↪ {0}: {1} {2} del lote del {3}', x.dept, fmtN(x.made), x.unit, shortDay(x.from)))].join(' · ')
-    const avance: Cell[][] = [[tr('Código'), tr('Producto'), tr('Al día siguiente'), tr('Lo empaca'), tr('Mezclas progr.'), tr('Mezclas hechas'), tr('Mezclas pend.'), 'Spiral', tr('Pouches progr.'), tr('Pouches esper.'), tr('Pouches hechos'), tr('Pouches pend.'), tr('Pouches faltan'), tr('Cajas progr.'), tr('Cajas esper.'), tr('Cajas hechas'), tr('Cajas pend.'), tr('Cajas faltan'), tr('MFO progr.'), tr('MFO esper.'), tr('MFO cajas'), tr('MFO pend.'), tr('Pallets progr.'), tr('Pallets esper.'), tr('Pallets hechos'), tr('Waste lb')],
-      ...av.map((r): Cell[] => [r.code, r.product?.name ?? '', carryText(r.code), r.packRoom, r.scheduled, r.mixesDone, r.mixesPending, r.spiralDone, r.pouchesPlan, r.pouchesExp, r.pouchesDone, pending(r.pouchesExp, r.pouchesDone), pending(r.pouchesPlan, r.pouchesDone), r.casesPlan, r.casesExp, r.casesDone, pending(r.casesExp, r.casesDone), pending(r.casesPlan, r.casesDone), r.mfoPlan, r.mfoExp, r.mfoCases, pending(r.mfoExp, r.mfoCases), r.palletsPlan, r.palletsExp, r.palletsDone, r.wasteLb])]
+    const avance: Cell[][] = [[tr('Código'), tr('Producto'), tr('Al día siguiente'), tr('Lo empaca'), tr('Mezclas progr.'), tr('Mezclas hechas'), tr('Mezclas pend.'), 'Spiral', tr('Pouches progr.'), tr('Pouches esper.'), tr('Pouches hechos'), tr('Pouches pend.'), tr('Pouches faltan'), tr('Cajas progr.'), tr('Cajas esper.'), tr('Cajas hechas'), tr('Cajas pend.'), tr('Cajas faltan'), tr('MFO progr.'), tr('MFO esper.'), tr('MFO hecho'), tr('MFO en'), tr('MFO además'), tr('MFO pend.'), tr('Pallets progr.'), tr('Pallets esper.'), tr('Pallets hechos'), tr('Waste lb')],
+      ...av.map((r): Cell[] => [r.code, r.product?.name ?? '', carryText(r.code), r.packRoom, r.scheduled, r.mixesDone, r.mixesPending, r.spiralDone, r.pouchesPlan, r.pouchesExp, r.pouchesDone, pending(r.pouchesExp, r.pouchesDone), pending(r.pouchesPlan, r.pouchesDone), r.casesPlan, r.casesExp, r.casesDone, pending(r.casesExp, r.casesDone), pending(r.casesPlan, r.casesDone), r.mfoPlan, r.mfoExp, r.mfo[0]?.qty ?? 0, r.mfo[0] ? mfoWord(r.mfo[0].word) : '', mfoText(r.mfo.slice(1)), pending(r.mfoExp, r.mfo[0]?.qty ?? 0), r.palletsPlan, r.palletsExp, r.palletsDone, r.wasteLb])]
     const pallets: Cell[][] = [[tr('Pallet'), tr('Línea'), tr('Código'), tr('Lote'), tr('Cajas'), tr('Tag'), tr('Total del pallet'), 'PO', tr('Pallet del PO'), tr('Hora'), tr('Turno'), tr('Registró')],
       ...rep.pallets.flatMap((p) => p.parts.map((x, i): Cell[] => [p.n, lineNameOf(s, p.r.lineId, p.r.line), p.r.code, x.lot, x.qty ?? '', x.tag, i === 0 ? p.total : '', p.order, p.of ? (p.of[1] ? tr('pallet {0} de {1}', p.of[0], p.of[1]) : String(p.of[0])) : '', p.open ? tr('en armado') : T(p.at), p.shift, p.by]))]
     const bins: Cell[][] = [[tr('Bin'), tr('Línea'), tr('Código'), tr('Lote'), tr('Cantidad'), tr('Unidad de cantidad'), tr('N° de bin'), tr('Hora'), tr('Turno'), tr('Registró')],
@@ -2796,7 +2808,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
                     <div className="made">
                       <label>{where}</label>
                       <b>{fmtN(q ? d.qty : d.units)} <span>{q ? cfg.qtyUnit : (d.units === 1 ? cfg.unit : cfg.plural).toLowerCase()}</span></b>
-                      <small>{[q ? unitsText(d.dept, d.units) : '', ...d.held.map((y) => fmtN(y.qty) + ' ' + binWord(y.word)), boxes, d.waste ? 'waste ' + d.waste + ' lb' : ''].filter(Boolean).join(' · ') || '\u00a0'}</small>
+                      <small>{[q ? unitsText(d.dept, d.units) : '', boxes, d.waste ? 'waste ' + d.waste + ' lb' : ''].filter(Boolean).join(' · ') || '\u00a0'}</small>
                     </div>
                   )}
                   {d.bins.map((y) => (
@@ -2837,7 +2849,6 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
                             {q && <tr className="q"><td>{cap(cfg.qtyUnit)}</td>{cols.map((x) => cell(x, fmtN(x.qty)))}</tr>}
                             <tr className={q ? '' : 'q'}><td>{cfg.plural}</td>{cols.map((x) => cell(x, fmtN(x.units)))}</tr>
                             {[...new Set(cols.flatMap((x) => x.bins.map((y) => y.word)))].map((w) => <tr key={'bin:' + w}><td>{d.dept === 'Spiral' || w === 'lb' ? tr('En {0}', measureName(w)) : tr('Bins de {0}', binWord(w))}</td>{cols.map((x) => { const y = x.bins.find((z) => z.word === w); return cell(x, y ? (d.dept === 'Spiral' ? fmtN(y.qty) + ' ' + measureUnit(w) + ' · ' + unitsText(d.dept, y.units) : tr('{0} con {1}', binsN(y.units), fmtN(y.qty) + (w === 'lb' ? ' lb' : ''))) : '—') })}</tr>)}
-                            {[...new Set(cols.flatMap((x) => x.held.map((y) => y.word)))].map((w) => <tr key={'held:' + w}><td>{cap(binWord(w))}</td>{cols.map((x) => { const y = x.held.find((z) => z.word === w); return cell(x, y ? fmtN(y.qty) : '—') })}</tr>)}
                             {cols.some((x) => x.waste > 0) && <tr><td>Waste</td>{cols.map((x) => cell(x, x.waste ? x.waste + ' lb' : '—', x.waste > 0))}</tr>}
                             <tr><td>{tr('Códigos')}</td>{cols.map((x) => cell(x, x.distinct))}</tr>
                             <tr><td>{tr('Corridas')}</td>{cols.map((x) => cell(x, x.codes))}</tr>
@@ -2877,7 +2888,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
               <tbody>
                 {rep.byDept.map((d) => {
                   const cfg = CFG[d.dept], q = cfg.qty !== 'none', b = rep.byShift.find((x) => x.dept === d.dept)
-                  const boxes = (code: string, qty: number, bin = '') => (!bin && cfg.qtyUnit === 'pouches' && casesText(inCases(s, code, qty))) || (d.dept === 'MFO' && bin && bin !== 'lb' && casesText(inCases(s, code, qty, MFO_PER_CASE))) || '—'
+                  const boxes = (code: string, qty: number, bin = '') => (!bin && cfg.qtyUnit === 'pouches' && casesText(inCases(s, code, qty))) || '—'
                   const lotBtn = (l: string) => (!l ? '—' : <>{rep.lot ? l : <button type="button" className="drill" onClick={() => setFLot(l)}>{l}</button>}{looksLikeTwoLots(l) && <small className="twolots-mark" title={tr('Parece dos lotes escritos juntos: se separan desde Corregir, con ✎ en el pallet, poniendo las cajas de cada lote.')}>{tr('¿dos lotes juntos?')}</small>}</>)
                   // a code filled in bins speaks of bins and of what they hold (platos, copas…), not of pallets and cases
                   const cc = (bin: string) => cfgFor(d.dept, bin)

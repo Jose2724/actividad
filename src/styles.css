@@ -1044,3 +1044,8 @@ table.goals td,table.goals th{padding:8px 10px}
   .tabs .settab .word{display:none}
   .weekview{grid-template-columns:repeat(4,minmax(0,1fr))}
 }
+/* lines taken off, ready to come back (2026-10-17: Spiral's two lines were taken off from the floor) */
+.linesback{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;background:#fff4d6;border:1px solid #f0c184;border-radius:12px;padding:10px 14px;color:var(--amber)}
+.linesback b{color:var(--ink)}
+.setrow.gone{color:var(--muted)}
+.setrow.gone b{color:var(--muted);text-decoration:line-through}

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { addRunLater, addUnit, applyDraft, BIN_WORDS, binOf, binWord, byLineName, cfgFor, DEPTS, kindClass, MFO_PER_CASE, MFO_WORDS, plainDay, planRows, productOf, SPIRAL_UNITS, type Dept, byShip, CFG, cfgOf, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, setUnitOrder, splitStop, store, updateRun, updateStop, type Run, type State, type Stop, lineLabel } from './store'
+import { addRunLater, addUnit, applyDraft, BIN_WORDS, binOf, binWord, byLineName, cfgFor, DEPTS, kindClass, MFO_WORDS, plainDay, planRows, SPIRAL_UNITS, type Dept, byShip, CFG, cfgOf, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, setUnitOrder, splitStop, store, updateRun, updateStop, type Run, type State, type Stop, lineLabel } from './store'
 import { clockNow } from './clock'
 import { ConfirmDialog, LotsDialog, useCan } from './App'
 import { tr } from './i18n'
@@ -310,9 +310,8 @@ export function AddRunDialog({ s, date, dept: first, onClose, onAdded }: { s: St
   // a word, MFO in bins of platos, copas or pounds, Spiral in mezclas, pounds or cases; the words of the form follow
   const [kindPick, setKindPick] = useState<string | null>(null)
   const [binText, setBinText] = useState('')
-  const mfoPer = productOf(s, code)?.pouchesPerCase || MFO_PER_CASE
   const kinds: { word: string; label: string; hint: string }[] = dept === 'Packing' ? [{ word: '', label: tr('Pallets'), hint: tr('cajas con su tag') }, { word: 'bin', label: tr('Bins'), hint: tr('platos, copas, pouches…') }]
-    : dept === 'MFO' ? MFO_WORDS.map((w) => ({ word: w, label: w === 'lb' ? tr('Libras') : w === 'copas' ? tr('Copas') : tr('Platos'), hint: w === 'lb' ? tr('cada bin se pesa') : tr('{0} por caja', String(mfoPer)) }))
+    : dept === 'MFO' ? MFO_WORDS.map((w) => ({ word: w, label: w === 'lb' ? tr('Libras') : w === 'copas' ? tr('Copas') : tr('Platos'), hint: w === 'lb' ? tr('cada bin se pesa') : w === 'copas' ? tr('cada bin dice cuántas') : tr('cada bin dice cuántos') }))
     : dept === 'Spiral' ? SPIRAL_UNITS.map((u) => ({ word: u === 'mezclas' ? '' : u, label: u === 'mezclas' ? tr('Mezclas') : u === 'lb' ? tr('Libras') : tr('Cajas'), hint: u === 'mezclas' ? tr('una por una') : u === 'lb' ? tr('cada mezcla dice sus libras') : tr('cada mezcla dice sus cajas') }))
     : []
   const kind = kinds.some((k) => k.word === kindPick) ? (kindPick as string) : (kinds[0]?.word ?? '')
