@@ -941,3 +941,6 @@ table.otable tfoot td small{color:var(--muted);font-weight:600}
 /* a line with two codes open at once: said in red on its card until the one too many is ended */
 .stalebar.twice{background:#fdecef;color:#9f1239;border-color:#f3b4c0}
 .stalebar.twice .btn.sm{background:#fff;border-color:#e58aa0;color:#9f1239;box-shadow:0 2px 0 #f3b4c0}
+/* a new version is up: said on top until the page reloads by itself (or is told to) */
+.updatebar{background:var(--soft);color:var(--accent);border-bottom:1.5px solid #9fd3c7;padding:8px 16px;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;font-weight:600;font-size:14px;line-height:1.35}
+.updatebar .btn.sm{flex:none;background:var(--accent);border-color:var(--accent);color:var(--accent-ink);box-shadow:0 2px 0 #0b5c55}

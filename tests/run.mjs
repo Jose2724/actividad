@@ -2224,6 +2224,13 @@ section('Una unidad quitada a propósito no vuelve por ninguna mezcla, venga de 
     eq('una unidad agregada a la hora de una quitada se corre un instante, y sale', [at, run().units.map((x) => x.ref)], [oct(16, 8, 0) + 1, ['9', '4']])
   })
 }
+section('Una versión nueva entra sola cuando nadie está en medio de algo')
+calc.use((m) => {
+  const t = 10_000_000
+  eq('un minuto sin tocar, sin ventana abierta y sin escribir: se recarga', m.quietToReload(t, t - 61_000, false, false), true)
+  eq('tocado hace poco, una ventana abierta o alguien escribiendo: espera', [m.quietToReload(t, t - 30_000, false, false), m.quietToReload(t, t - 61_000, true, false), m.quietToReload(t, t - 61_000, false, true)], [false, false, false])
+})
+
 section('Solo ver: un usuario de la oficina que mira todo y no toca nada')
 {
   // asked on 2026-10-15: people from the office who only want to look at the app and its data (Actividad, Avance, the

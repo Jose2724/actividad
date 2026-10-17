@@ -1049,4 +1049,7 @@ export const EN: Record<string, string> = {
   '¿Terminar {0} en {1}': 'End {0} on {1}',
   'Termina a la hora en que empezó {0} (o en su última unidad, si fue después). Lo que registró queda tal cual, y queda en el historial. Si el que sobra es el nuevo, termínalo desde Reporte › Corregir.': 'It ends at the time {0} started (or at its last unit, if that came later). What it recorded stays as it is, and it goes in the history. If the one too many is the new one, end it from Report › Correct.',
   'Terminar': 'End',
+  // a new version reaches the open tablets by itself (2026-10-16)
+  '⬆ Hay una versión nueva de la app. Se pone sola en un momento, cuando nadie esté tocando la pantalla; o toca Actualizar ahora.': '⬆ A new version of the app is up. It comes on by itself in a moment, once nobody is touching the screen; or tap Update now.',
+  'Actualizar': 'Update',
 }

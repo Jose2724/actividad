@@ -15,6 +15,7 @@ import { fetchMe, finishSignOut, loginEmail, rememberedMe, rememberedUser, remem
 import { leaveAsk, loadDay, STALE_MS, startSync, syncStore, syncNow, unreachable, fetchPurged } from './sync'
 import { storageFull } from './storage'
 import { clockNow, clockOffText, clockState, otherZone, startClock, syncClock } from './clock'
+import { keepView, reloadNow, updateStore, updateText, viewKept } from './update'
 import { appUrl, qrPath } from './qr'
 import { uploadAll } from './store'
 import { Employees } from './Employees'
@@ -369,8 +370,12 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
   const now = useNow()
   const can = useCan(), viewOnly = useViewOnly()
   const day = workDay(s, now)
-  const [dept, setDept] = useState<Dept>(home)
-  const [tab, setTab] = useState<'act' | 'av' | 'rep' | 'emp'>('act')
+  // the room and the tab come back after the reload a new version brings (see update.ts)
+  const kept = viewKept<{ dept?: string; tab?: string }>()
+  const [dept, setDept] = useState<Dept>(kept?.dept && isDept(kept.dept) ? kept.dept : home)
+  const [tab, setTab] = useState<'act' | 'av' | 'rep' | 'emp'>(kept?.tab === 'av' || kept?.tab === 'rep' || kept?.tab === 'emp' ? kept.tab : 'act')
+  useEffect(() => { keepView({ dept, tab }) }, [dept, tab])
+  const upd = useSyncExternalStore(updateStore.subscribe, updateStore.get)
   // every free line of every room into set up with one tap (a manager's or the office's, when a shift starts)
   const [setupAll, setSetupAll] = useState(false)
   const free = mgr && !viewOnly ? freeLines(s, now) : []
@@ -394,6 +399,7 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
       {away ? <div className="zonebar">{tr('⚠ Este aparato está puesto en otra zona horaria que la planta: las horas y la fecha saldrán corridas. En los ajustes del aparato, activa la zona horaria automática.')}</div>
         : off && <div className="zonebar">{trx('⚠ El reloj de este aparato está {0}. La app usa la hora correcta, la del servidor. Para arreglarlo, activa la hora automática en los ajustes del aparato.', off)}</div>}
       {clockUnset && clk && <div className="stalebar top"><span>{trx('⚠ Este aparato no ha podido ajustar su reloj con el del servidor ({0}). Si su hora está mal, los tiempos de las mezclas y del turno salen corridos aquí, y las horas que registre también. Compara la hora de arriba con un teléfono.', clk.savedAt ? tr('usa la medida de hace {0}', agoText(now - clk.savedAt)) : tr('usa su propio reloj'))}</span><button type="button" className="btn sm" onClick={() => void syncClock()}>{tr('Reintentar')}</button></div>}
+      {upd.ready && <div className="updatebar"><span>{updateText()}</span><button type="button" className="btn sm" onClick={reloadNow}>{tr('Actualizar')}</button></div>}
       {full && <div className="fullbar">{trx('⚠ La memoria de este aparato está llena y lo nuevo no se está guardando aquí. {0}', supabase ? tr('Lo que ya subió al servidor está a salvo. Avisa al manager y no cierres la app hasta que diga "Sincronizado".') : tr('Manda el reporte del día y avisa al manager antes de cerrar la app: hay que hacer espacio con "Reiniciar registros".'))}</div>}
       {stale && <div className="stalebar top"><span>{sync.lastSync ? trx('⚠ Este aparato muestra lo de las {0}: lleva {1} sin bajar del servidor ({2}). Si en otra tablet cambió algo, aquí todavía no se ve.', fmtTime(sync.lastSync), agoText(staleMs), why) : trx('⚠ Este aparato no ha bajado nada del servidor todavía ({0}).', why)}</span><button type="button" className="btn sm" onClick={() => window.dispatchEvent(new Event('act-resync'))}>{tr('Reintentar')}</button></div>}
       <header className="top">
