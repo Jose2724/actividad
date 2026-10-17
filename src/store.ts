@@ -710,6 +710,9 @@ export function dropSetup(id: string) { const x = state.stops.find((y) => y.id =
 function healSetup(lineId: string) {
   const r = state.runs.find((x) => x.lineId === lineId && !x.endedAt)
   if (!r) return
+  // an operator's device only writes its own room: another room's line is healed by a manager's device or by that
+  // room's own (2026-10-17: MFO's tablet tried to end an RTE set up and the server refused it)
+  if (role.get() === 'op' && r.dept !== myDept.get()) return
   for (const x of state.stops.filter((y) => y.lineId === lineId && !y.endedAt && y.reason === SETUP && y.startedAt <= r.startedAt)) putStop(r.startedAt - x.startedAt > SETUP_MAX_MS || fromOtherDay(state, x, r.startedAt) ? { ...x, deleted: true } : { ...x, endedAt: r.startedAt })
 }
 /** pounds thrown away, added to what the run already has */

@@ -2231,6 +2231,24 @@ calc.use((m) => {
   eq('tocado hace poco, una ventana abierta o alguien escribiendo: espera', [m.quietToReload(t, t - 30_000, false, false), m.quietToReload(t, t - 61_000, true, false), m.quietToReload(t, t - 61_000, false, true)], [false, false, false])
 })
 
+section('La tablet de un operador no escribe nada de otro cuarto')
+{
+  // 2026-10-17: MFO's tablet, hearing an RTE code start, tried to end an RTE set up left open and the server refused
+  // it (the row was of another room). An operator's device only heals its own room's lines; a manager's heals all
+  const op = await device('op', { user: 'Yaima', usual: true })
+  op.use((m) => {
+    const st = () => m.store.get()
+    m.role.set('op'); m.myDept.set('MFO')
+    const at = oct(17, 9, 0)
+    m.applyRemote('act_stops', { id: 'su-rte', dept: 'RTE', line_id: 'RTE1', reason: 'Set up', note: '', started_at: new Date(at - 600_000).toISOString(), ended_at: null, by_name: 'Alma', deleted: false, updated_at: new Date(at - 600_000).toISOString(), synced_at: new Date(at - 599_000).toISOString() })
+    m.applyRemote('act_runs', { id: 'r-rte', dept: 'RTE', line_id: 'RTE1', line: 'Línea 1', code: '0889', lot: '6290', date: '2026-10-17', started_at: new Date(at).toISOString(), ended_at: null, units: [], per_unit: 240, waste: 0, by_name: 'Alma', deleted: false, updated_at: new Date(at).toISOString(), synced_at: new Date(at + 1000).toISOString() })
+    eq('oye el código de RTE y el Set up abierto de esa línea, pero no manda nada: no es su cuarto', [st().stops.find((x) => x.id === 'su-rte').endedAt, m.outbox.size()], [null, 0])
+    m.role.set('mgr')
+    m.applyRemote('act_runs', { id: 'r-rte', dept: 'RTE', line_id: 'RTE1', line: 'Línea 1', code: '0889', lot: '6290', date: '2026-10-17', started_at: new Date(at).toISOString(), ended_at: null, units: [{ at: at + 60_000, qty: 240, ref: '', by: 'Alma' }], per_unit: 240, waste: 0, by_name: 'Alma', deleted: false, updated_at: new Date(at + 60_000).toISOString(), synced_at: new Date(at + 61_000).toISOString() })
+    eq('un manager sí cierra ese Set up donde empezó el código, y lo manda', [st().stops.find((x) => x.id === 'su-rte').endedAt, m.outbox.items().map((i) => i.table)], [at, ['act_stops']])
+  })
+}
+
 section('Solo ver: un usuario de la oficina que mira todo y no toca nada')
 {
   // asked on 2026-10-15: people from the office who only want to look at the app and its data (Actividad, Avance, the

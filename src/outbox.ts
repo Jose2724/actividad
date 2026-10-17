@@ -130,7 +130,8 @@ async function pass(): Promise<FlushResult> {
           // a row of this device's own that the server refuses: the person signed in is no longer who the server
           // thinks. It waits (nothing recorded is lost) and the screen says so; a row of another room is dropped
           if (ownRow(it.row)) { refusedOwn.add(it.table + '|' + it.key); skipped.add(it.table + '|' + it.key); error = tr('El servidor no acepta lo que registra esta sesión: sin permiso para {0}', String(it.row.dept ?? it.table)); continue }
-          drop(it.table, it.key); error += ' ' + tr('· descartado'); continue
+          // a row of another room (a device should never send one; a manager's would have been taken): dropped, and no error for the pass
+          drop(it.table, it.key); console.warn('actividad sync', 'fila de otro cuarto descartada', it.table, it.key); continue
         }
         if (v === 'bad') { skipped.add(it.table + '|' + it.key); continue }
         break

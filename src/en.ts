@@ -580,7 +580,6 @@ export const EN: Record<string, string> = {
   'No podrá entrar a Actividad ni a Freezer RTE hasta que se active de nuevo.': 'They will not be able to sign in to Actividad or Freezer RTE until they are activated again.',
   'Podrá entrar otra vez con su PIN.': 'They will be able to sign in again with their PIN.',
   'Falta ejecutar en Supabase el SQL de {0}': 'The SQL for {0} still has to be run in Supabase',
-  '· descartado': '· discarded',
   'Actividad · Reporte del día': 'Actividad · Daily report',
   '{0}   ·   {1}{2} en {3}{4}   ·   trabajando {5}   ·   parado {6}{7}   ({8}': '{0}   ·   {1}{2} in {3}{4}   ·   working {5}   ·   stopped {6}{7}   ({8}',
   'códigos': 'codes',
