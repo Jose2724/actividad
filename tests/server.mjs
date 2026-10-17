@@ -32,9 +32,9 @@ globalThis.fetch = async (input, init) => {
   if (init?.method === 'HEAD') {
     clockServer.asked.push(init.headers.Authorization)
     if (clockServer.mode === 'down') throw new TypeError('fetch failed')
-    await sleep(15 + Math.random() * 30) // the way up
+    await sleep(clockServer.mode === 'slow' ? 900 : 15 + Math.random() * 30) // the way up
     const stamp = Date.now() + clockServer.ahead
-    await sleep(15 + Math.random() * 30) // the way down
+    await sleep(clockServer.mode === 'slow' ? 900 : 15 + Math.random() * 30) // the way down
     return new Response(null, { status: 200, headers: clockServer.mode === 'mute' ? {} : { Date: new Date(Math.floor(stamp / 1000) * 1000).toUTCString() } })
   }
   const table = url.pathname.split('/').pop()
@@ -151,6 +151,19 @@ console.log('· La hora: el aparato se pone en hora con el servidor')
   clockServer.mode = 'mute'
   eq('si el servidor no dice la hora, no se inventa', [await m.syncClock(), m.clockOffset()], [false, had])
   eq('y la pantalla sabe que el reloj se puso en hora, y de cuándo es la medida que usa', [m.clockState().measured, m.clockState().savedAt > 0, Math.abs(m.clockState().savedAt - JSON.parse(disk.get('act_clock')).at) < 5], [true, true, true])
+  // the tablets on the floor: answers that take over a second give a measure good to a few seconds, which still
+  // beats a clock that can be minutes off. Someone moves the device's clock 2 minutes while the signal is slow: the
+  // fine measure no longer holds, the rough one is taken, and a fine one replaces it as soon as the answers are quick
+  clockServer.mode = 'slow'
+  eq('una medida a ojo no reemplaza a una fina que sigue valiendo', [await m.syncClock(), m.clockState().rough], [false, false])
+  const realNow = Date.now
+  Date.now = () => realNow() + 120_000; clockServer.ahead = -305_000 - 120_000 // the device moved 2 minutes; the server did not
+  eq('si mueven el reloj del aparato y la señal está lenta, se mide a ojo igual: queda a unos segundos, y se sabe que es a ojo', [await m.lookAtClock(), Math.abs(m.clockOffset() + 425_000) < 3000, m.clockState().measured, m.clockState().rough], [true, true, true, true])
+  clockServer.mode = 'ok'
+  eq('y en cuanto las respuestas vuelven a ser rápidas, la medida fina la reemplaza', [await m.lookAtClock(), near(m.clockOffset(), -425_000), m.clockState().rough], [true, true, false])
+  Date.now = realNow; clockServer.ahead = -305_000
+  await m.lookAtClock() // the clock moved back: measured again, fine
+  eq('vuelto el reloj a su sitio, la hora vuelve a ser la correcta', near(m.clockOffset(), -305_000), true)
   clockServer.mode = 'ok'; clockServer.ahead = 0
   await m.syncClock()
   eq('con el reloj del aparato otra vez bien, la diferencia vuelve a cero', [near(m.clockOffset(), 0), m.clockOffText()], [true, ''])

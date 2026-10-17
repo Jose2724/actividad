@@ -50,7 +50,7 @@ export function setOffset(ms: number) {
  * when the measure in use was taken (0 = never: the hours this device records and the timers it shows go by its own
  * clock, which nobody has checked).
  */
-export const clockState = () => ({ measured: measuredAt > 0, savedAt })
+export const clockState = () => ({ measured: measuredAt > 0, rough: measuredAt > 0 && rough, savedAt })
 
 /** the page's own stopwatch: it only goes forward and nobody can set it, unlike the device's clock */
 const stopwatch = () => performance.now()
@@ -58,6 +58,14 @@ const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 let measuring = false
 /** when the clock was last set, by the stopwatch; 0 = not since the page opened */
 let measuredAt = 0
+/**
+ * A measure good to within a tenth of a second needs quick answers. On a slow WiFi (the tablets on the floor) the
+ * answers take a second or more and the measure is only good to a few seconds: still far better than a device's own
+ * clock, which can be minutes off (what the office saw on 2026-10-16: a timer that never went back to zero). A rough
+ * measure is used, and a better one is looked for every minute until it comes.
+ */
+export const PRECISE_MS = 700, ROUGH_MS = 5000
+let rough = false
 /** the measure in use may no longer hold: none was taken since the page opened, or the device's clock was set after it */
 let stale = true
 
@@ -81,15 +89,18 @@ export async function syncClock(): Promise<boolean> {
         const wall = Date.now(), t0 = stopwatch()
         const res = await fetch(url, { method: 'HEAD', headers, cache: 'no-store', signal: stop.signal })
         const rtt = stopwatch() - t0, server = Date.parse(res.headers.get('date') ?? '')
-        if (Number.isFinite(server) && rtt < 1500) { samples.push({ server, mid: wall + rtt / 2, rtt }); lost = 0 } else lost++
+        if (Number.isFinite(server)) { samples.push({ server, mid: wall + rtt / 2, rtt }); lost = 0 } else lost++
       } catch { lost++ } finally { clearTimeout(late) }
       await wait(137) // not a round number: each answer catches the server at another point of its second
     }
     const e = estimate(samples)
-    if (!e || e.within > 700) return false
+    if (!e || e.within > ROUGH_MS) return false
+    // a rough measure (slow answers) is not taken over a precise one already in use since the page opened
+    if (e.within > PRECISE_MS && measuredAt > 0 && !rough && !stale) return false
     setOffset(e.offset)
     measuredAt = Math.max(1, stopwatch())
-    stale = false
+    rough = e.within > PRECISE_MS
+    stale = rough // a rough measure keeps looking for a better one
     return true
   } catch { return false } finally { measuring = false }
 }
@@ -105,10 +116,10 @@ function moved() {
   wall0 = wall; watch0 = watch
   return jump > 500
 }
-/** measures again when the one in use may no longer hold, or is a quarter of an hour old */
-function look() {
+/** measures again when the one in use may no longer hold (the device's clock was moved, or the measure is rough), or is a quarter of an hour old */
+export function lookAtClock(): Promise<boolean> {
   if (moved()) stale = true
-  if (stale || stopwatch() - measuredAt > 900_000) void syncClock()
+  return stale || stopwatch() - measuredAt > 900_000 ? syncClock() : Promise.resolve(false)
 }
 let started = false
 /**
@@ -123,8 +134,8 @@ export function startClock() {
   started = true
   wall0 = Date.now(); watch0 = stopwatch()
   window.addEventListener('online', () => { void syncClock() })
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') look() })
-  setInterval(look, 60_000)
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void lookAtClock() })
+  setInterval(() => { void lookAtClock() }, 60_000)
 }
 
 /**
