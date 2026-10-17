@@ -1632,8 +1632,8 @@ section('Lo guardado con una semana de turnos y un día aparte se vuelve a leer 
 {
   // the version of 2026-10-17 ~15:00 read the saved week with a const declared further down the module: a device that
   // had saved one (any device that pulled the row) opened with an empty plant and "Sincronizado" on the screen
-  const wk = await device('wk', { seed: { lines: [{ id: 'k1', dept: 'Kitchen', name: 'Braiser 1', updatedAt: 1 }, { id: 'r1', dept: 'RTE', name: 'Línea 1', updatedAt: 1 }], runs: [], stops: [], products: [], schedule: {}, changes: [], targets: [], shifts: [NO_GAP], shiftWeeks: [{ from: '2026-10-17', week: '3333331', updatedAt: 1 }], dayShifts: [{ date: '2026-10-17', only: 1, updatedAt: 1 }] } })
-  wk.use((m) => eq('las líneas, la semana y el día aparte siguen ahí al volver a abrir', [m.store.get().lines.map((l) => l.name), m.weekOf(m.store.get(), '2026-10-17'), m.shiftsOf(m.store.get(), '2026-10-17').only], [['Braiser 1', 'Línea 1'], '3333331', 1]))
+  const wk = await device('wk', { seed: { lines: [{ id: 'k1', dept: 'Kitchen', name: 'Braiser 1', updatedAt: 1 }, { id: 'r1', dept: 'RTE', name: 'Línea 1', updatedAt: 1 }], runs: [], stops: [], products: [], schedule: {}, changes: [], targets: [], shifts: [NO_GAP], shiftWeeks: [{ from: '2026-10-17', week: '3333331', updatedAt: 1 }], dayShifts: [{ date: '2026-10-17', only: 1, updatedAt: 1 }], lineRules: { add: false, remove: true, updatedAt: 5 } } })
+  wk.use((m) => eq('las líneas, la semana, el día aparte y lo que pueden los operadores siguen ahí al volver a abrir', [m.store.get().lines.map((l) => l.name), m.weekOf(m.store.get(), '2026-10-17'), m.shiftsOf(m.store.get(), '2026-10-17').only, m.store.get().lineRules], [['Braiser 1', 'Línea 1'], '3333331', 1, { add: false, remove: true, updatedAt: 5 }]))
 }
 section('Lo guardado que no se puede leer: el aparato lo dice y olvida su cursor, para volver a bajar todo')
 {
@@ -2443,6 +2443,16 @@ section('Una línea quitada vuelve tal cual: la misma línea, con su nombre (202
     clock = oct(10, 12, 30); m.removeLine('st2')
     eq('un nombre quitado varias veces se ofrece una sola vez: la última', m.removedLines(st(), 'Spiral').map((x) => [x.name, x.id]), [['Stuffed', 'st2']])
     eq('suben al servidor como la misma línea, puesta otra vez', m.outbox.items().filter((i) => i.table === 'act_lines' && i.key === racks.id).map((i) => i.row.deleted), [false])
+    // what operators may do with their room's lines: a manager turns each on or off in Ajustes, for every device
+    eq('al principio los operadores agregan líneas y no las quitan', [st().lineRules.add, st().lineRules.remove], [true, false])
+    clock = oct(10, 17, 0); m.setLineRules({ remove: true })
+    eq('quitar se enciende: sube con lo que fija el manager, y queda en el historial', [st().lineRules.remove, m.outbox.items().filter((i) => i.table === 'act_targets' && i.key === 'opt:oplines').map((i) => [i.row.per_hour, i.row.per_shift]), st().changes.filter((c) => c.refKey === 'opt:oplines').map((c) => [c.before, c.after])], [true, [[1, 1]], [['agregan líneas · no quitan líneas', 'agregan líneas · quitan líneas libres']]])
+    m.setLineRules({ remove: true })
+    eq('decir lo que ya está no manda nada', m.outbox.items().filter((i) => i.table === 'act_targets' && i.key === 'opt:oplines').length, 1)
+    m.applyRemote('act_targets', { dept: 'opt:oplines', per_hour: 0, per_shift: 0, updated_at: new Date(oct(10, 18, 0)).toISOString() })
+    eq('lo que dice otro manager llega a este aparato', [st().lineRules.add, st().lineRules.remove], [false, false])
+    m.applyRemote('act_targets', { dept: 'opt:oplines', per_hour: 1, per_shift: 1, updated_at: new Date(oct(10, 17, 30)).toISOString() })
+    eq('una versión vieja no lo cambia', [st().lineRules.add, st().lineRules.remove], [false, false])
   })
 }
 section('Un código que nadie registró: la oficina lo agrega después, en cualquier cuarto, con lo que sepa')

@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore } from 'react'
-import { byLineName, CFG, dayShiftsText, DEPTS, lineLabel, lotFor, nightText, openRun, removedLines, removeLine, restoreLine, setDayShifts, shiftGoalOf, shiftHours, shiftsOf, turnOf, weekOf, type Dept, type Line, type State, type WorkDay } from './store'
+import { byLineName, CFG, dayShiftsText, DEPTS, lineLabel, lotFor, nightText, openRun, removedLines, removeLine, restoreLine, setDayShifts, setLineRules, shiftGoalOf, shiftHours, shiftsOf, turnOf, weekOf, type Dept, type Line, type State, type WorkDay } from './store'
 import { ConfirmDialog, LangSwitch, LineNameDialog, longDate, NoticeDialog, Products, QrLink, ShiftsDialog, StartDayDialog, TargetDialog, useCan } from './App'
 import { Employees } from './Employees'
 import { Devices } from './DevicesView'
@@ -144,6 +144,12 @@ function LinesSettings({ s }: { s: State }) {
   const [removing, setRemoving] = useState<Line | null>(null)
   return (
     <>
+      <div className="setcard">
+        <div className="sethead"><h3>{tr('Lo que pueden hacer los operadores')}</h3></div>
+        <label className="switch"><span>{tr('Agregar líneas en su cuarto')}</span><input type="checkbox" role="switch" checked={s.lineRules.add} onChange={(e) => setLineRules({ add: e.target.checked })} /></label>
+        <label className="switch"><span>{tr('Quitar una línea libre de su cuarto')}</span><input type="checkbox" role="switch" checked={s.lineRules.remove} onChange={(e) => setLineRules({ remove: e.target.checked })} /></label>
+        <p className="hint">{tr('Los managers y la oficina siempre pueden. Una línea con un código corriendo, parada o en Set up nunca se puede quitar. Lo ven todas las tablets y queda en el historial.')}</p>
+      </div>
       <p className="hint">{tr('Cada cuarto tiene sus líneas (en Kitchen, braisers). Una línea con un código corriendo no se quita; se puede volver a agregar cuando haga falta. Todo queda en el historial.')}</p>
       {DEPTS.map((d) => {
         const lines = s.lines.filter((l) => l.dept === d && !l.deleted).sort(byLineName), word = CFG[d].lineWord.toLowerCase()
@@ -151,11 +157,11 @@ function LinesSettings({ s }: { s: State }) {
           <div className="setcard" key={d}>
             <div className="sethead"><h3>{d}<small> · {lines.length === 1 ? trx('1 {0}', word) : trx('{0} {1}', lines.length, CFG[d].lineWord === 'Braiser' ? tr('braisers') : tr('líneas'))}</small></h3><button type="button" className="btn" onClick={() => setAdding(d)}>{trx('+ Agregar {0}', word)}</button></div>
             {lines.map((l) => {
-              const run = openRun(s, l.id)
+              const run = openRun(s, l.id), busy = !!run || s.stops.some((x) => x.lineId === l.id && !x.endedAt)
               return (
                 <div className="setrow" key={l.id}>
                   <span><b>{lineLabel(l.name)}</b><small> · {run ? trx('corriendo {0}', run.code) : tr('libre')}</small></span>
-                  <span className="btns"><button type="button" className="lnk" onClick={() => setRenaming(l)}>{tr('Cambiar nombre')}</button><button type="button" className="lnk" disabled={!!run} title={run ? tr('Tiene un código corriendo') : ''} onClick={() => setRemoving(l)}>{tr('Quitar')}</button></span>
+                  <span className="btns"><button type="button" className="lnk" onClick={() => setRenaming(l)}>{tr('Cambiar nombre')}</button><button type="button" className="lnk" disabled={busy} title={busy ? tr('Tiene un código corriendo, está parada o en Set up') : ''} onClick={() => setRemoving(l)}>{tr('Quitar')}</button></span>
                 </div>
               )
             })}

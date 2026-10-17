@@ -175,6 +175,12 @@ export type ShiftPlan = ShiftHours & { from: string; updatedAt: number }
 export type ShiftWeek = { from: string; week: string; updatedAt: number }
 /** a day apart from its week: only one shift worked (1 or 2), or both (3) on a day whose week says one */
 export type DayShifts = { date: string; only: 1 | 2 | 3; updatedAt: number }
+/**
+ * What an operator may do with the lines of their room, set by a manager in Ajustes (Jose, 2026-10-17, after Spiral's
+ * lines were taken off at the end of every code): add = add a line (yes until said otherwise); remove = take a free
+ * line off (no until said otherwise: a line is never "closed" by taking it off). Managers and the office always may.
+ */
+export type LineRules = { add: boolean; remove: boolean; updatedAt: number }
 /** the goal of one line: so much per hour and/or in the whole day, in its room's quantity */
 export type LineTarget = { lineId: string; perHour: number | null; perDay: number | null; updatedAt: number }
 /**
@@ -190,7 +196,7 @@ export type TurnGoal = { key: string; perHour: number | null; total: number | nu
  * A code set to 0 is off the program.
  */
 export type Plan = { date: string; dept: Dept; code: string; qty: number; updatedAt: number }
-export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Product[]; schedule: Schedule; changes: Change[]; targets: Target[]; shifts: ShiftPlan[]; shiftWeeks: ShiftWeek[]; dayShifts: DayShifts[]; lineTargets: LineTarget[]; orders: Order[]; turnGoals: TurnGoal[]; plans: Plan[]
+export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Product[]; schedule: Schedule; changes: Change[]; targets: Target[]; shifts: ShiftPlan[]; shiftWeeks: ShiftWeek[]; dayShifts: DayShifts[]; lineRules: LineRules; lineTargets: LineTarget[]; orders: Order[]; turnGoals: TurnGoal[]; plans: Plan[]
   /**
    * runs the device no longer keeps (older than its days) that hold pallets given to an order still open: an order's
    * "Hechas" counts every pallet it ever got, not only the days this device holds. They come from the server (see
@@ -268,10 +274,10 @@ function tidySchedule(sch: Schedule): Schedule {
 function isDay(text: string) { return /^\d{4}-\d{2}-\d{2}$/.test(text) }
 /** with a server the lines (and products) are shared and come from it; without one, each device starts with a line per room */
 const SERVER = !!import.meta.env.VITE_SUPABASE_URL
-function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineTargets: [], orders: [], turnGoals: [], plans: [] } }
+function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, lineTargets: [], orders: [], turnGoals: [], plans: [] } }
 function load(): State {
   try {
-    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[] }
+    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[] }
     const s = JSON.parse(localStorage.getItem(KEY) || 'null') as Raw | null
     // rows saved by earlier versions: carts as plain timestamps, units without a tag or a name, products with one
     // pouches-per-cart number, nothing with an update time
@@ -291,6 +297,7 @@ function load(): State {
         shifts: (s.shifts ?? []).filter((x): x is ShiftPlan => !!x && /^\d{4}-\d{2}-\d{2}$/.test(x.from ?? '') && !shiftsProblem(x as ShiftHours)).map((x) => ({ from: x.from, first: x.first, firstEnd: x.firstEnd, second: x.second, secondEnd: x.secondEnd, updatedAt: x.updatedAt ?? 0 })),
         shiftWeeks: (s.shiftWeeks ?? []).filter((x): x is ShiftWeek => !!x && isDay(String(x.from ?? '')) && weekOk(x.week)).map((x) => ({ from: x.from, week: x.week, updatedAt: x.updatedAt ?? 0 })),
         dayShifts: (s.dayShifts ?? []).filter((x): x is DayShifts => !!x && isDay(String(x.date ?? '')) && [1, 2, 3].includes(Number(x.only))).map((x) => ({ date: x.date, only: Number(x.only) as 1 | 2 | 3, updatedAt: x.updatedAt ?? 0 })),
+        lineRules: { add: s.lineRules?.add !== false, remove: s.lineRules?.remove === true, updatedAt: Number(s.lineRules?.updatedAt) || 0 },
         lineTargets: (s.lineTargets ?? []).filter((t) => !!t && !!t.lineId && !isTurnKey(String(t.lineId))).map((t) => ({ lineId: String(t.lineId), perHour: t.perHour ?? null, perDay: t.perDay ?? null, updatedAt: t.updatedAt ?? 0 })),
         orders: (s.orders ?? []).map((o) => (o ? orderOf(String(o.id ?? ''), o, String(o.by ?? ''), o.updatedAt ?? 0) : null)).filter((o): o is Order => !!o),
         plans: (s.plans ?? []).filter((p) => !!p && isDay(String(p.date ?? '')) && DEPTS.includes(p.dept as Dept) && !!normCode(String(p.code ?? ''))).map((p) => ({ date: String(p.date), dept: p.dept as Dept, code: String(p.code).trim().toUpperCase(), qty: Number(p.qty) > 0 ? Number(p.qty) : 0, updatedAt: p.updatedAt ?? 0 })),
@@ -546,6 +553,17 @@ export function restoreLine(dept: Dept, id: string): boolean {
   if (!x) return false
   putLine({ id, dept, name: x.name, updatedAt: 0 }); logChange(dept, 'Línea puesta de nuevo en ' + dept, '', x.name, 'act_lines', id)
   return true
+}
+/** the key of the operators' line rules in act_targets (add in per_hour, remove in per_shift: 1 = yes, 0 = no) */
+const OPT_LINES = 'opt:oplines'
+const linesText = (r: LineRules) => (r.add ? 'agregan líneas' : 'no agregan líneas') + ' · ' + (r.remove ? 'quitan líneas libres' : 'no quitan líneas')
+/** a manager says what operators may do with their room's lines; every device sees it, and it goes to the history */
+export function setLineRules(patch: Partial<Pick<LineRules, 'add' | 'remove'>>) {
+  const was = state.lineRules, next: LineRules = { add: patch.add ?? was.add, remove: patch.remove ?? was.remove, updatedAt: stamp(was) }
+  if (next.add === was.add && next.remove === was.remove) return
+  set({ ...state, lineRules: next })
+  push('act_targets', OPT_LINES, { dept: OPT_LINES, per_hour: next.add ? 1 : 0, per_shift: next.remove ? 1 : 0, updated_at: iso(next.updatedAt), updated_by: user.get() })
+  logChange(null, 'Operadores y líneas', linesText(was), linesText(next), 'act_targets', OPT_LINES)
 }
 /** the reason of the stop the app writes by itself when a line finishes a code and another one is coming */
 export const SETUP = 'Set up'
@@ -1912,6 +1930,10 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
     if (!newer(cur)) return
     const c = changeOfRow(row)
     set({ ...state, changes: upsertIn(state.changes, c) })
+  } else if (table === 'act_targets' && String(row.dept ?? '') === OPT_LINES) {
+    // what operators may do with their room's lines (a row without values: as at first, add yes, remove no)
+    if (!newer(state.lineRules)) return
+    set({ ...state, lineRules: { add: row.per_hour == null || Number(row.per_hour) !== 0, remove: Number(row.per_shift) === 1, updatedAt: at } })
   } else if (table === 'act_targets' && String(row.dept ?? '').startsWith(WEEK_KEY)) {
     // which shifts work each day of the week, from a date on (a version without its digits was taken back)
     const from = String(row.dept).slice(WEEK_KEY.length), w = row.per_hour == null ? '' : String(row.per_hour)

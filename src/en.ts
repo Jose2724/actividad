@@ -1179,7 +1179,6 @@ export const EN: Record<string, string> = {
   'corriendo {0}': 'running {0}',
   'libre': 'free',
   'Cambiar nombre': 'Rename',
-  'Tiene un código corriendo': 'It has a code running',
   'Metas por turno': 'Goals per shift',
   'Cada turno tiene su meta, del turno entero y por hora, en la unidad del cuarto. Lo que cuenta contra ella es solo lo que ese turno hace. Las metas de cada línea se ponen desde su tarjeta.': "Each shift has its goal, for the whole shift and per hour, in the room's unit. Only what that shift makes counts against it. Each line's goals are set from its card.",
   'Cuarto': 'Room',
@@ -1203,4 +1202,10 @@ export const EN: Record<string, string> = {
   'quitada por {0} el {1}': 'taken off by {0} on {1}',
   '1 línea quitada antes': '1 line taken off before',
   '{0} líneas quitadas antes': '{0} lines taken off before',
+  // what operators may do with lines (2026-10-17)
+  'Lo que pueden hacer los operadores': 'What operators may do',
+  'Agregar líneas en su cuarto': 'Add lines in their room',
+  'Quitar una línea libre de su cuarto': 'Take a free line off in their room',
+  'Los managers y la oficina siempre pueden. Una línea con un código corriendo, parada o en Set up nunca se puede quitar. Lo ven todas las tablets y queda en el historial.': 'Managers and the office always may. A line with a code running, stopped or in Set up can never be taken off. Every tablet sees it and it goes to the history.',
+  'Tiene un código corriendo, está parada o en Set up': 'It has a code running, is stopped or in Set up',
 }

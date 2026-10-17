@@ -1461,7 +1461,7 @@ function DeptPanel({ s, dept, now, day }: { s: State; dept: Dept; now: number; m
             ? <button type="button" className="btn danger" onClick={() => endStop(ds.id)}>{trx('▶ Reanudar departamento · {0}', fmtDur(now - ds.startedAt))}</button>
             : <button type="button" className="btn stopbtn" disabled={!anyRunning} onClick={() => setStopAll(true)}>{tr('⏸ Parar departamento')}</button>}
           <button type="button" className="btn" disabled={!left.runs.length && !left.setups.length && !left.stops.length} onClick={() => setLeaving(true)}>{tr('🏁 Terminar turno')}</button>
-          <button type="button" className="btn soft" onClick={() => setAdding(true)}>{trx('+ Agregar {0}', CFG[dept].lineWord.toLowerCase())}</button>
+          {(can('fix') || s.lineRules.add) && <button type="button" className="btn soft" onClick={() => setAdding(true)}>{trx('+ Agregar {0}', CFG[dept].lineWord.toLowerCase())}</button>}
         </div>}
       </div>
       {leaving && (
@@ -1486,7 +1486,7 @@ function DeptPanel({ s, dept, now, day }: { s: State; dept: Dept; now: number; m
       {editStop && ds && <StopEditor stop={ds} mgr={can('fix')} onClose={() => setEditStop(false)} />}
       <TodayCard s={s} dept={dept} now={now} mgr={can('goals')} date={day.date} />
       <div className="lines">{lines.map((l) => <LineCard key={l.id} s={s} line={l} now={now} mgr={can('fix')} day={day} />)}</div>
-      {lines.length === 0 && <p className="hint">{viewOnly ? tr('Este departamento no tiene líneas todavía.') : trx('Este departamento no tiene líneas. Toca "Agregar {0}".', CFG[dept].lineWord.toLowerCase())}</p>}
+      {lines.length === 0 && <p className="hint">{viewOnly || !(can('fix') || s.lineRules.add) ? tr('Este departamento no tiene líneas todavía.') : trx('Este departamento no tiene líneas. Toca "Agregar {0}".', CFG[dept].lineWord.toLowerCase())}</p>}
       {adding && <LineNameDialog s={s} dept={dept} onClose={() => setAdding(false)} />}
       {doneNow.length > 0 && (
         <div className="done">
@@ -2054,7 +2054,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         </form>}
         {!quiet && <div className="tools">
           {!idle ? <button type="button" className="btn sm setupbtn" onClick={() => startSetup(line)}>{tr('⏱ Empezar Set up')}</button> : <span />}
-          {mgr && <button type="button" className="lnk sm muted" onClick={() => setRemoving(true)}>{trx('Quitar {0}', cfg.lineWord.toLowerCase())}</button>}
+          {(mgr || s.lineRules.remove) && !idle && <button type="button" className="lnk sm muted" onClick={() => setRemoving(true)}>{trx('Quitar {0}', cfg.lineWord.toLowerCase())}</button>}
         </div>}
         {viewOnly && !idle && <p className="hint">{tr('Libre: sin código.')}</p>}
       </div>
