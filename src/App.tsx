@@ -1,6 +1,6 @@
 import { createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
-import { addLine, addWaste, apartLabel, apartWord, awayDay, cameFrom, carriedOver, dayAfter, BIN_WORDS, binOf, binWord, cfgFor, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, numOf, openIn, openOrdersFor, openRun, openStop, orderCodes, orderLabel, orderOfId, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, productOf, productsCsv, purgeDay, purgesOf, removeLine, removeProduct, renameLine, reopenRun, reset, restorePurged, resetRecords, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftHours, shiftSpan, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay } from './store'
+import { addLine, addWaste, apartLabel, apartWord, awayDay, cameFrom, carriedOver, dayAfter, BIN_WORDS, binOf, binWord, cfgFor, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderOfId, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, productOf, productsCsv, purgeDay, purgesOf, removeLine, removeProduct, renameLine, reopenRun, reset, restorePurged, resetRecords, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftHours, shiftSpan, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay } from './store'
 import { avanceLots, avanceRange, avanceRows, datesBetween, lotAcrossDays, lotRows, lotsKnown, n1, pending, type AvancePart, type AvanceRow } from './avance'
 import { cellText, loadZip, xDay, xDur, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 
@@ -1762,6 +1762,10 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   )
   const run = openRun(s, line.id)
   const stop = run ? openStop(s, line.dept, line.id) : undefined
+  // two codes open on the line at once (two devices that could not see each other both started one): the card goes by
+  // the newest, says so, and a manager ends the others with one tap (what each one made stays)
+  const twice = openRuns(s, line.id)
+  const [closingOld, setClosingOld] = useState(false)
   const turn = turnOf(s, day.date, now) // the shift in course: its numbers start from zero at the hand-over
   // the units the shift before made of the code that is running: this shift numbers its own from one
   const brought = run && run.startedAt < turn.since ? run.units.filter((u) => u.at < turn.since).length : 0
@@ -2081,6 +2085,13 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       )}
       {goalStrip}
       {staleBar}
+      {run && twice.length > 1 && (
+        <div className="stalebar twice">
+          <span>{trx('⚠ Esta línea tiene {0} códigos abiertos a la vez. Aquí va el más nuevo, {1} desde las {2}; también sigue abierto {3}. Cuenta y tiempos se ven partidos hasta cerrar el que sobra.', twice.length, <b>{run.code}</b>, fmtTime(run.startedAt), twice.slice(1).map((r) => r.code + ' ' + tr('desde las {0}', fmtTime(r.startedAt)) + ' (' + unitsText(r.dept, r.units.length, runQty(s, r), cfgOf(r)) + ')').join(', '))}</span>
+          {mgr && !quiet && <button type="button" className="btn sm" onClick={() => setClosingOld(true)}>{tr('Terminar el que sobra')}</button>}
+        </div>
+      )}
+      {closingOld && run && <ConfirmDialog title={tr('¿Terminar {0} en {1}', twice.slice(1).map((r) => r.code + ' ' + tr('desde las {0}', fmtTime(r.startedAt))).join(', '), lineLabel(line.name)) + '?'} text={tr('Termina a la hora en que empezó {0} (o en su última unidad, si fue después). Lo que registró queda tal cual, y queda en el historial. Si el que sobra es el nuevo, termínalo desde Reporte › Corregir.', run.code + ' ' + fmtTime(run.startedAt))} yes={tr('Terminar')} onYes={() => { endOlderRuns(line.id); setClosingOld(false) }} onNo={() => setClosingOld(false)} />}
       {openOrders.length > 0 && (
         <div className="orderstrip">
           <span>{trx('📦 {0} de {1}:', openOrders.length === 1 ? tr('Pedido') : tr('Pedidos'), run.code)}</span>

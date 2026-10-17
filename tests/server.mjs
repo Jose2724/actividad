@@ -47,6 +47,7 @@ globalThis.fetch = async (input, init) => {
     }
     return new Response('[]', { status: 201, headers: { 'Content-Type': 'application/json' } })
   }
+  if (db.failRefresh && table === 'act_runs' && url.searchParams.has('id')) return new Response('{"message":"timeout"}', { status: 500, headers: { 'Content-Type': 'application/json' } }) // the question "what do you have of these runs?" gets no answer
   let rows = db[table]
   let offset = 0, limit = MAX_ROWS
   const order = []
@@ -243,6 +244,14 @@ console.log('· Lo que otra tablet agregó a una corrida no se pierde cuando est
   eq('un eco tardío de la versión vieja tampoco lo trae de vuelta', local().units.map((u) => u.ref), ['1', '3'])
   await m.flushNow()
   eq('y el servidor sigue sin él', [srv().units.map((u) => u.ref), m.outbox.size()], [['1', '3'], 0])
+  // a run is never sent blind: when the server cannot say what it has of it, the run waits for the next pass
+  m.unitDone(id, 36, '4')
+  db.failRefresh = true
+  await m.flushNow()
+  eq('sin poder traer la versión del servidor, la corrida espera en la cola y el servidor no cambia', [m.outbox.size(), srv().units.map((u) => u.ref)], [1, ['1', '3']])
+  db.failRefresh = false
+  await m.flushNow()
+  eq('a la siguiente pasada sube, junta con lo del servidor', [m.outbox.size(), srv().units.map((u) => u.ref)], [0, ['1', '3', '4']])
 }
 
 console.log('✓ ' + passed + ' comprobaciones, todas correctas')

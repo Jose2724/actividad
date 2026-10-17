@@ -938,3 +938,6 @@ table.otable tfoot td .pname{display:block;font-weight:500}
 table.otable tfoot td small{color:var(--muted);font-weight:600}
 /* the live time beside the date: the shared clock, to compare with a phone when a timer looks wrong */
 .brand .livetime{font-variant-numeric:tabular-nums;color:var(--ink);font-weight:700}
+/* a line with two codes open at once: said in red on its card until the one too many is ended */
+.stalebar.twice{background:#fdecef;color:#9f1239;border-color:#f3b4c0}
+.stalebar.twice .btn.sm{background:#fff;border-color:#e58aa0;color:#9f1239;box-shadow:0 2px 0 #f3b4c0}

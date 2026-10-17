@@ -205,16 +205,20 @@ export async function loadDay(date: string): Promise<boolean> {
  * away for over a minute brings down everything first, so that its other rows are merged too.) A failure here changes
  * nothing: the row goes as queued and the next pull merges.
  */
-async function refreshQueuedRuns() {
-  if (!supabase) return
+async function refreshQueuedRuns(): Promise<boolean> {
+  if (!supabase) return true
   const ids = [...new Set(outbox.items().filter((i) => i.table === 'act_runs').map((i) => String(i.row.id ?? '')).filter(Boolean))]
-  if (!ids.length) return
+  if (!ids.length) return true
   try {
     const { data, error } = await supabase.from('act_runs').select('*').in('id', ids)
-    if (!error && Array.isArray(data)) batch(() => { for (const row of data as Row[]) applyRemote('act_runs', row) })
-  } catch { /* sent as queued */ }
+    if (error || !Array.isArray(data)) return false
+    batch(() => { for (const row of data as Row[]) applyRemote('act_runs', row) })
+    return true
+  } catch { return false }
 }
-beforeFlush(async () => { if (Date.now() - status.lastSync > 75_000) await pullAll(); await refreshQueuedRuns() })
+// a run is not sent without having brought the server's version of it first: sent blind, it would write its whole row
+// over what other tablets recorded meanwhile. The runs wait for the next pass; everything else goes
+beforeFlush(async () => { if (Date.now() - status.lastSync > 75_000) await pullAll(); return (await refreshQueuedRuns()) ? [] : ['act_runs'] })
 /** down first, then up: what is queued is merged with what the server has before it is sent */
 export const syncNow = async () => { await pullAll(); await flushNow() }
 

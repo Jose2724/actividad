@@ -1043,4 +1043,10 @@ export const EN: Record<string, string> = {
   '⚠ Este aparato no ha podido ajustar su reloj con el del servidor ({0}). Si su hora está mal, los tiempos de las mezclas y del turno salen corridos aquí, y las horas que registre también. Compara la hora de arriba con un teléfono.': '⚠ This device could not set its clock by the server\'s ({0}). If its time is wrong, the timers of the units and of the shift come out shifted here, and so do the hours it records. Compare the time above with a phone.',
   'usa la medida de hace {0}': 'it uses the measure taken {0} ago',
   'usa su propio reloj': 'it goes by its own clock',
+  // a line with two codes open at once (2026-10-16)
+  '⚠ Esta línea tiene {0} códigos abiertos a la vez. Aquí va el más nuevo, {1} desde las {2}; también sigue abierto {3}. Cuenta y tiempos se ven partidos hasta cerrar el que sobra.': '⚠ This line has {0} codes open at once. This card follows the newest, {1} since {2}; {3} is still open too. Counts and times look split until the one too many is ended.',
+  'Terminar el que sobra': 'End the one too many',
+  '¿Terminar {0} en {1}': 'End {0} on {1}',
+  'Termina a la hora en que empezó {0} (o en su última unidad, si fue después). Lo que registró queda tal cual, y queda en el historial. Si el que sobra es el nuevo, termínalo desde Reporte › Corregir.': 'It ends at the time {0} started (or at its last unit, if that came later). What it recorded stays as it is, and it goes in the history. If the one too many is the new one, end it from Report › Correct.',
+  'Terminar': 'End',
 }

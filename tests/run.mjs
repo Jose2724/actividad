@@ -314,9 +314,15 @@ const tab = await device('tab', { user: 'Nino' })
 const mgr = await device('mgr', { user: 'Santiago' })
 const all = [tab, mgr]
 const first = (d) => d.use((m) => m.outbox.items()[0])
-const land = (it) => server.set(it.table + '|' + it.key, it.row)
+// the server's own clock: each version it takes is stamped after the one before (migrations/003), and whoever hears a
+// version hears it with its stamp. A version is known by its content, so a late echo of it carries the stamp it got
+let landed = T0
+const stamps = new Map()
+const contentOf = (row) => JSON.stringify({ ...row, synced_at: 0 })
+const land = (it) => { landed += 1000; const row = { ...it.row, synced_at: iso(landed) }; stamps.set(contentOf(it.row), row.synced_at); server.set(it.table + '|' + it.key, row) }
 const ack = (d, it) => d.use((m) => m.markSent(it))
-const hear = (to, it) => { for (const o of to) o.use((m) => m.applyRemote(it.table, it.row)) }
+// (a row a device sends carries the stamp of the version it started from; the server stamps it anew, as the trigger does)
+const hear = (to, it) => { const row = { ...it.row, synced_at: stamps.get(contentOf(it.row)) ?? it.row.synced_at ?? iso(landed + 1) }; for (const o of to) o.use((m) => m.applyRemote(it.table, row)) }
 /** the device sends its whole queue: each row lands on the server, is acknowledged, and every device listed hears it live */
 function send(d, to = all) {
   for (let n = 0; n < 60; n++) { const it = first(d); if (!it) return; land(it); ack(d, it); hear(to, it) }
@@ -449,6 +455,43 @@ section('Relojes distintos entre aparatos')
   clock = base + 27 * M; mgr.use((m) => m.addWaste(id, 2)); settle()
   clock = base + 21 * M; tab.use((m) => m.unitDone(id, 240)); settle()
   agreed('el carro marcado después se ve en el teléfono adelantado', id, { units: cartsAt(base, [10, 21]), waste: 2, code: 'A100', ended: false })
+}
+
+section('El servidor manda: una copia vieja con el reloj adelantado no vuelve a abrir lo que otro terminó')
+{
+  // 2026-10-16: on RTE's Línea 1 a code ended by the tablet came back open, and two codes were open at once. A
+  // device whose clock ran ahead held a copy stamped later than the real end, took the server's version for the
+  // older one and wrote its own back. Now the server's order of versions is the truth, whatever the clocks say
+  const { id, base } = newRun(2)
+  // the manager's phone runs 30 minutes fast and writes the waste; the tablet has not heard of it yet
+  clock = base + 50 * M; mgr.use((m) => m.addWaste(id, 2)); send(mgr, [mgr])
+  // the tablet, with the right clock, ends the code: it brings the server's version first, merges and sends
+  clock = base + 25 * M; tab.use((m) => m.endRun(id)); comeBack(tab)
+  agreed('el código terminado queda terminado también en el teléfono adelantado, con su waste', id, { units: cartsAt(base, [10, 20]), waste: 2, code: 'A100', ended: true })
+  // a copy that differs but brings nothing new (an echo of a version the server already left behind) changes nothing
+  const old = { ...server.get('act_runs|' + id), ended_at: null, synced_at: iso(T0) }
+  hear(all, { table: 'act_runs', row: old })
+  eq('un eco de una versión vieja no reabre el código ni manda nada', [all.map((d) => !!runOn(d, id).endedAt), all.map((d) => d.use((m) => m.outbox.size()))], [[true, true], [0, 0]])
+}
+
+section('Dos códigos abiertos a la vez en una línea: la tarjeta va con el más nuevo y un manager termina el que sobra')
+{
+  // the fault seen on 2026-10-16: two devices that could not see each other each started a code on the same line
+  clock += 10 * M
+  const base = clock
+  tab.use((m) => m.addLine('RTE', 'Línea Z')); settle()
+  const line = tab.use((m) => m.store.get().lines.find((l) => l.name === 'Línea Z')), lid = line.id
+  tab.use((m) => m.startRun(line, 'A100', '6283', DAY, 240))
+  clock = base + 10 * M; const id = tab.use((m) => m.store.get().runs.at(-1).id); tab.use((m) => m.unitDone(id, 240)); settle()
+  clock = base + 15 * M
+  mgr.use((m) => m.startRun(m.store.get().lines.find((l) => l.id === lid), 'A101', '6283', DAY, 240)); settle()
+  const bid = mgr.use((m) => m.store.get().runs.at(-1).id)
+  eq('los dos aparatos ven dos códigos abiertos en la línea, y la tarjeta va con el más nuevo', all.map((d) => d.use((m) => [m.openRuns(m.store.get(), lid).length, m.openRun(m.store.get(), lid).id === bid])), [[2, true], [2, true]])
+  clock = base + 18 * M; tab.use((m) => m.unitDone(id, 240)); settle() // a cart still lands on the old one, from a device that showed it
+  clock = base + 20 * M; mgr.use((m) => m.endOlderRuns(lid)); settle()
+  eq('el viejo termina en su última unidad (vino después de que empezó el nuevo), el nuevo sigue, y queda en el historial', [all.map((d) => [Math.round((runOn(d, id).endedAt - base) / M), !!runOn(d, bid).endedAt]), mgr.use((m) => m.store.get().changes.some((c) => /abierta a la vez que A101/.test(c.before)))], [[[18, false], [18, false]], true])
+  eq('con un solo código abierto no hay nada que terminar', mgr.use((m) => { m.endOlderRuns(lid); return m.openRuns(m.store.get(), lid).length }), 1)
+  eq('nada pendiente', all.map((d) => d.use((m) => m.outbox.size())), [0, 0])
 }
 
 section('Paros: terminar en la línea y corregir la razón desde la oficina')

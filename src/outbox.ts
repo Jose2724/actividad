@@ -64,9 +64,9 @@ export function markSent(it: Item) {
   emit()
 }
 
-let before: (() => Promise<unknown>) | null = null
-/** something to do before a pass (sync.ts brings down what changed while this device was away, so the queue is merged with it first) */
-export const beforeFlush = (f: () => Promise<unknown>) => { before = f }
+let before: (() => Promise<Table[] | unknown>) | null = null
+/** something to do before a pass (sync.ts brings down what changed while this device was away, so the queue is merged with it first); it may name tables whose rows must wait for the next pass */
+export const beforeFlush = (f: () => Promise<Table[] | unknown>) => { before = f }
 
 /** how the server answered a row it did not take */
 export function verdict(code: string, message: string): 'notReady' | 'refused' | 'bad' | 'later' {
@@ -100,8 +100,8 @@ async function pass(): Promise<FlushResult> {
   try {
     const { data: { session }, error: authError } = await supabase.auth.getSession()
     if (!session) return { sent: 0, left: read().length, error: noSignal(authError) ? 'offline' : 'signedOut' }
-    if (before && read().length) await before()
-    const waiting = new Set<string>() // tables the server does not have ready yet
+    const held = before && read().length ? await before() : null
+    const waiting = new Set<string>(Array.isArray(held) ? (held as string[]) : []) // tables the server does not have ready yet, or whose rows must wait for the next pass
     const skipped = new Set<string>() // rows the database rejects as they are: they stay queued, the rest goes on
     while (true) {
       const it = read().find((i) => !waiting.has(i.table) && !skipped.has(i.table + '|' + i.key))

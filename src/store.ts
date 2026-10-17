@@ -1,6 +1,6 @@
 // Everything is saved on this device first (localStorage). With a server configured (see supabase.ts) every change is
 // also queued for upload (outbox.ts) and what other devices send arrives through sync.ts.
-import { drop, justSent, outbox, push, queued, rebase, type Row, type Table } from './outbox'
+import { drop, outbox, push, queued, rebase, type Row, type Table } from './outbox'
 import { storageFull } from './storage'
 import { clockNow } from './clock'
 import { lang, tr, trIn } from './i18n'
@@ -41,7 +41,7 @@ export function cfgOf(r: Pick<Run, 'dept' | 'extra'>): DeptCfg {
 /** what a line's "listo" button says for a moment once the unit is recorded: "Mezcla 5 guardada", "Carro 12 guardado" */
 export const savedText = (dept: Dept, n: number, c: DeptCfg = CFG[dept]) => c.unit + ' ' + n + ' ' + c.saved
 
-export type Line = { id: string; dept: Dept; name: string; updatedAt: number; deleted?: boolean }
+export type Line = { id: string; dept: Dept; name: string; updatedAt: number; deleted?: boolean; syncedAt?: number }
 /** one finished unit of work (a cart, a mezcla, a pallet…), how much it carried, its tag / bin number and who tapped it */
 export type Unit = { at: number; qty: number | null; ref: string; by: string; lots?: LotPart[]; po?: string } // po = the order it goes to (Order.id)
 /** the part of a unit that belongs to one lot: a pallet can carry cases of two lots of the same product */
@@ -60,7 +60,7 @@ export const lotsText = (lots: LotPart[] | undefined) => (lots?.length ? lots.ma
  * one product code run on one line: the clock starts at startedAt; perUnit = quantity per unit (boxes per pallet,
  * pouches per cart); waste = pounds thrown away while running it (the WASTE column of the office's RTE sheet)
  */
-export type Run = { id: string; dept: Dept; lineId: string; line: string; code: string; lot: string; date: string; startedAt: number; endedAt: number | null; units: Unit[]; perUnit: number | null; waste: number; by: string; updatedAt: number; deleted?: boolean; extra?: RunExtra }
+export type Run = { id: string; dept: Dept; lineId: string; line: string; code: string; lot: string; date: string; startedAt: number; endedAt: number | null; units: Unit[]; perUnit: number | null; waste: number; by: string; updatedAt: number; deleted?: boolean; extra?: RunExtra; syncedAt?: number }
 /**
  * What a Packing run carries besides the pallets it finished.
  *  - bin: the line fills bins instead of pallets, and this is the word for what a bin holds (platos, copas, pouches or
@@ -129,7 +129,7 @@ export const cfgFor = (dept: Dept, word: string): DeptCfg => (word ? cfgOf({ dep
 const BIN_SHOWN: Record<string, () => string> = { platos: () => tr('platos'), copas: () => tr('copas'), pouches: () => tr('pouches') }
 export const binWord = (word: string) => BIN_SHOWN[word]?.() ?? word
 /** a stop with its reason; lineId null = the whole department */
-export type Stop = { id: string; dept: Dept; lineId: string | null; reason: string; note: string; startedAt: number; endedAt: number | null; by: string; updatedAt: number; deleted?: boolean }
+export type Stop = { id: string; dept: Dept; lineId: string | null; reason: string; note: string; startedAt: number; endedAt: number | null; by: string; updatedAt: number; deleted?: boolean; syncedAt?: number }
 /**
  * The office's master table ("YIEL CALCULO" + cases per pallet + pouches per cart): with it, mezclas become expected
  * pouches, cases and pallets. The demo ships with made-up example products; the real ones are typed or imported.
@@ -358,9 +358,9 @@ export const managerPin = { get: () => mgrPin.get() || '1234', set: (v: string) 
 // ---- rows as the server stores them (see supabase/migrations) ----
 const iso = (ms: number | null | undefined) => (ms == null ? null : new Date(ms).toISOString())
 const fromIso = (s: unknown) => (typeof s === 'string' && s ? Date.parse(s) : null)
-const rowOfLine = (l: Line) => ({ id: l.id, dept: l.dept, name: l.name, deleted: !!l.deleted, updated_at: iso(l.updatedAt), updated_by: user.get() })
-const rowOfRun = (r: Run) => ({ id: r.id, dept: r.dept, line_id: r.lineId, line: r.line, code: r.code, lot: r.lot, date: r.date, started_at: iso(r.startedAt), ended_at: iso(r.endedAt), units: r.units, per_unit: r.perUnit, waste: r.waste, by_name: r.by, deleted: !!r.deleted, updated_at: iso(r.updatedAt), updated_by: user.get(), extra: r.extra ?? null })
-const rowOfStop = (x: Stop) => ({ id: x.id, dept: x.dept, line_id: x.lineId, reason: x.reason, note: x.note, started_at: iso(x.startedAt), ended_at: iso(x.endedAt), by_name: x.by, deleted: !!x.deleted, updated_at: iso(x.updatedAt), updated_by: user.get() })
+const rowOfLine = (l: Line) => ({ id: l.id, dept: l.dept, name: l.name, deleted: !!l.deleted, updated_at: iso(l.updatedAt), updated_by: user.get(), ...(l.syncedAt ? { synced_at: iso(l.syncedAt) } : {}) })
+const rowOfRun = (r: Run) => ({ id: r.id, dept: r.dept, line_id: r.lineId, line: r.line, code: r.code, lot: r.lot, date: r.date, started_at: iso(r.startedAt), ended_at: iso(r.endedAt), units: r.units, per_unit: r.perUnit, waste: r.waste, by_name: r.by, deleted: !!r.deleted, updated_at: iso(r.updatedAt), updated_by: user.get(), extra: r.extra ?? null, ...(r.syncedAt ? { synced_at: iso(r.syncedAt) } : {}) })
+const rowOfStop = (x: Stop) => ({ id: x.id, dept: x.dept, line_id: x.lineId, reason: x.reason, note: x.note, started_at: iso(x.startedAt), ended_at: iso(x.endedAt), by_name: x.by, deleted: !!x.deleted, updated_at: iso(x.updatedAt), updated_by: user.get(), ...(x.syncedAt ? { synced_at: iso(x.syncedAt) } : {}) })
 const rowOfProduct = (p: Product) => ({ code: normCode(p.code), name: p.name, pouches_per_case: p.pouchesPerCase, cases_per_mix: p.casesPerMix, crates_per_cart: p.cratesPerCart, pouches_per_crate: p.pouchesPerCrate, cases_per_pallet: p.casesPerPallet, room: p.room ?? null, spiral_unit: p.spiralUnit ?? null, deleted: !!p.deleted, updated_at: iso(p.updatedAt), updated_by: user.get() })
 const rowOfSchedule = (date: string, code: string, mixes: number) => ({ date, code: normCode(code), mixes, updated_at: iso(clockNow()), updated_by: user.get() })
 const rowOfChange = (c: Change) => ({ id: c.id, at: iso(c.at), by_name: c.by, dept: c.dept, what: c.what, before: c.before, after: c.after, ref_table: c.refTable, ref_key: c.refKey, deleted: !!c.deleted, updated_at: iso(c.updatedAt), updated_by: user.get() })
@@ -1608,16 +1608,18 @@ export function deptToday(s: State, dept: Dept, date: string, now: number, lineI
 }
 
 // ---- what arrives from the server (another tablet, the office) ----
-const lineOfRow = (row: Row): Line => ({ id: String(row.id), dept: row.dept as Dept, name: String(row.name ?? ''), updatedAt: fromIso(row.updated_at) ?? 0, deleted: !!row.deleted })
+const lineOfRow = (row: Row): Line => ({ id: String(row.id), dept: row.dept as Dept, name: String(row.name ?? ''), updatedAt: fromIso(row.updated_at) ?? 0, deleted: !!row.deleted, ...syncedOf(row) })
 const runOfRow = (row: Row): Run => ({
   id: String(row.id), dept: row.dept as Dept, lineId: String(row.line_id ?? ''), line: String(row.line ?? ''), code: String(row.code ?? ''), lot: String(row.lot ?? ''), date: String(row.date ?? '').slice(0, 10),
   startedAt: fromIso(row.started_at) ?? 0, endedAt: fromIso(row.ended_at),
   units: (Array.isArray(row.units) ? (row.units as Partial<Unit>[]) : []).map(unitOf),
-  perUnit: row.per_unit == null ? null : Number(row.per_unit), waste: Number(row.waste ?? 0), by: String(row.by_name ?? ''), updatedAt: fromIso(row.updated_at) ?? 0, deleted: !!row.deleted,
+  perUnit: row.per_unit == null ? null : Number(row.per_unit), waste: Number(row.waste ?? 0), by: String(row.by_name ?? ''), updatedAt: fromIso(row.updated_at) ?? 0, deleted: !!row.deleted, ...syncedOf(row),
   ...((e) => (e ? { extra: e } : {}))(cleanExtra(row.extra)),
 })
 function changeOfRow(row: Row): Change { return { id: String(row.id), at: fromIso(row.at) ?? 0, by: String(row.by_name ?? ''), dept: (row.dept ?? null) as Dept | null, what: String(row.what ?? ''), before: String(row.before ?? ''), after: String(row.after ?? ''), refTable: String(row.ref_table ?? ''), refKey: String(row.ref_key ?? ''), updatedAt: fromIso(row.updated_at) ?? 0, deleted: !!row.deleted } }
-const stopOfRow = (row: Row): Stop => ({ id: String(row.id), dept: row.dept as Dept, lineId: row.line_id == null ? null : String(row.line_id), reason: String(row.reason ?? ''), note: String(row.note ?? ''), startedAt: fromIso(row.started_at) ?? 0, endedAt: fromIso(row.ended_at), by: String(row.by_name ?? ''), updatedAt: fromIso(row.updated_at) ?? 0, deleted: !!row.deleted })
+const stopOfRow = (row: Row): Stop => ({ id: String(row.id), dept: row.dept as Dept, lineId: row.line_id == null ? null : String(row.line_id), reason: String(row.reason ?? ''), note: String(row.note ?? ''), startedAt: fromIso(row.started_at) ?? 0, endedAt: fromIso(row.ended_at), by: String(row.by_name ?? ''), updatedAt: fromIso(row.updated_at) ?? 0, deleted: !!row.deleted, ...syncedOf(row) })
+/** when the server took this version of the row, by its own clock (nothing for a row that was never there) */
+const syncedOf = (row: Row) => { const t = fromIso(row.synced_at); return t ? { syncedAt: t } : {} }
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 /** this device's changes (whatever differs from the version it started from) laid over what the server has now */
@@ -1653,21 +1655,32 @@ function mergeRun(base: Run, mine: Run, theirs: Run): Run {
   out.waste = mine.waste !== base.waste ? (theirs.waste !== base.waste ? Math.round((theirs.waste + mine.waste - base.waste) * 100) / 100 : mine.waste) : theirs.waste
   return out
 }
-type Synced = { id: string; updatedAt: number; deleted?: boolean }
-/** how one kind of row is read, written and merged; `keep` is for when no common version is known: the newer one stands, and a run never loses a unit */
-type Kind<T> = { of: (r: Row) => T; row: (x: T) => Row; merge: (base: T, mine: T, theirs: T) => T; keep: (mine: T, theirs: T, theirsNewer: boolean) => T }
-const LINE: Kind<Line> = { of: lineOfRow, row: rowOfLine, merge: (b, m, t) => merge3(b, m, t, ['dept', 'name', 'deleted']), keep: (m, t, n) => (n ? t : m) }
-const STOP: Kind<Stop> = { of: stopOfRow, row: rowOfStop, merge: (b, m, t) => merge3(b, m, t, ['dept', 'lineId', 'reason', 'note', 'startedAt', 'endedAt', 'by', 'deleted']), keep: (m, t, n) => (n ? t : m) }
-const RUN: Kind<Run> = { of: runOfRow, row: rowOfRun, merge: mergeRun, keep: (m, t, n) => (n ? unionRun(t, m) : unionRun(m, t)) }
-const body = (x: Synced) => JSON.stringify({ ...x, updatedAt: 0 })
+type Synced = { id: string; updatedAt: number; deleted?: boolean; syncedAt?: number }
+/**
+ * How one kind of row is read, written and merged. `keep` is for a change of this device with no common version
+ * known: the server's row stands, with what the device holds that only adds (a run's units). `grow` is for a row this
+ * device did NOT change: what it holds that the server's version lacks and only adds (units nobody took off on
+ * purpose) goes back up as a change of this device; nothing else of the device's copy is ever written over the server.
+ */
+type Kind<T> = { of: (r: Row) => T; row: (x: T) => Row; merge: (base: T, mine: T, theirs: T) => T; keep: (mine: T, theirs: T) => T; grow?: (theirs: T, mine: T) => T }
+const LINE: Kind<Line> = { of: lineOfRow, row: rowOfLine, merge: (b, m, t) => merge3(b, m, t, ['dept', 'name', 'deleted']), keep: (_m, t) => t }
+const STOP: Kind<Stop> = { of: stopOfRow, row: rowOfStop, merge: (b, m, t) => merge3(b, m, t, ['dept', 'lineId', 'reason', 'note', 'startedAt', 'endedAt', 'by', 'deleted']), keep: (_m, t) => t }
+const RUN: Kind<Run> = { of: runOfRow, row: rowOfRun, merge: mergeRun, keep: (m, t) => unionRun(t, m), grow: (t, m) => unionRun(t, m) }
+const body = (x: Synced) => JSON.stringify({ ...x, updatedAt: 0, syncedAt: 0 })
 /** rows deleted while this page is open, with when: a late echo of an earlier version must not bring one back */
 const gone = new Map<string, number>()
 /**
  * A row from the server meets what this device has; returns the row to keep here (null = no change).
- * Normally the newer one stands. Two cases put a change of this device at stake, and then nothing is thrown away:
- *  - a change here is still waiting to go up: it is merged with the server's row, from the version both started from;
- *  - the row that arrived is OLDER than what is here (a tablet that was offline, or one that wrote over a newer row):
- *    what is here stays, any unit only the other one has is added, and the server is told again.
+ *
+ * The server's order of versions is the truth: each version it takes carries its own clock (synced_at), and a version
+ * it has already left behind (a late echo of an earlier one) brings nothing. The devices' clocks (updated_at) decide
+ * nothing here: a device whose clock runs minutes ahead used to pass its own copy off as the newer one and write it
+ * back over the server, undoing what another tablet had just recorded (a code ended that came back open, a cart
+ * gone; seen on the floor on 2026-10-15 and 2026-10-16). Now:
+ *  - a row this device did not change: the server's version stands. Only what the device holds that merely adds and
+ *    the server lacks (a run's units nobody took off on purpose) goes back up, as a change of this device;
+ *  - a change of this device still waiting to go up: it is merged with the server's version from the version both
+ *    started from (three ways, each one's changes kept), and that version is the one it then starts from.
  */
 function reconcile<T extends Synced>(table: Table, cur: T | undefined, row: Row, k: Kind<T>): T | null {
   const theirs = k.of(row)
@@ -1675,28 +1688,31 @@ function reconcile<T extends Synced>(table: Table, cur: T | undefined, row: Row,
   const mine = pend ? k.of(pend.row) : cur ? k.of(k.row(cur)) : undefined
   if (theirs.deleted) gone.set(table + '|' + theirs.id, Math.max(theirs.updatedAt, gone.get(table + '|' + theirs.id) ?? 0))
   if (!mine) return !theirs.deleted && theirs.updatedAt < (gone.get(table + '|' + theirs.id) ?? 0) ? null : theirs
+  // a version the server took no later than the one this device already holds: an echo of what is known (or of a
+  // version since replaced, together with a change of this device not yet echoed back)
+  const known = cur?.syncedAt ?? 0
+  const late = !!theirs.syncedAt && !!known && theirs.syncedAt <= known
   const tb = body(theirs), mb = body(mine)
-  if (tb === mb) { if (pend) drop(table, theirs.id); return theirs.updatedAt >= mine.updatedAt ? theirs : null } // the same row (an echo of what was sent)
-  const newer = theirs.updatedAt > mine.updatedAt || (theirs.updatedAt === mine.updatedAt && tb > mb)
-  if (!pend && newer) return theirs
-  const base = pend?.base ? k.of(pend.base) : null
-  // A common version is only good for a row that came AFTER it: that one is merged three ways. The very version this
-  // device started from, or an older echo of it, has nothing to add: what is here stands, with what it took off on
-  // purpose. (It used to be "kept" as if no common version were known, and a unit just taken off came back: the
-  // cart removed in Corregir that returned by itself, seen in every room on 2026-10-16.)
-  const forked = !!base && (theirs.updatedAt > base.updatedAt || (theirs.updatedAt === base.updatedAt && body(theirs) !== body(base)))
-  const merged = base ? (forked ? k.merge(base, mine, theirs) : mine) : k.keep(mine, theirs, newer)
-  const gb = body(merged)
-  if (gb === tb) { if (pend) drop(table, theirs.id); return theirs }
-  if (gb === mb) {
-    // nothing of theirs to take. If mine is waiting to go up, it will; if it went up a moment ago this is just a late
-    // echo; otherwise the server has fallen behind and is told again
-    if (!pend && !justSent(table, theirs.id)) push(table, theirs.id, k.row(mine), row)
-    return null
+  if (tb === mb) { if (pend) drop(table, theirs.id); return late ? null : theirs } // the same row (an echo of what was sent)
+  if (late) return null
+  if (!pend) {
+    // this device changed nothing here: the server's version stands. What the device holds that only adds goes up as its own change
+    const grown = k.grow ? k.grow(theirs, mine) : theirs
+    if (body(grown) === tb) return theirs
+    const next = { ...grown, updatedAt: Math.max(clockNow(), theirs.updatedAt + 1) }
+    push(table, theirs.id, k.row(next), row)
+    return next
   }
+  const base = pend.base ? k.of(pend.base) : null
+  // the server moved past the version this change started from: that one is merged three ways; the version it
+  // started from itself (or a later echo of it) has nothing to add, and the change goes up as it is
+  const forked = !!base && (theirs.syncedAt && base.syncedAt ? theirs.syncedAt > base.syncedAt : theirs.updatedAt > base.updatedAt || (theirs.updatedAt === base.updatedAt && tb !== body(base)))
+  const merged = base ? (forked ? k.merge(base, mine, theirs) : mine) : k.keep(mine, theirs)
+  const gb = body(merged)
+  if (gb === tb) { drop(table, theirs.id); return theirs }
+  if (gb === mb) { if (forked || !base) rebase(table, theirs.id, pend.row, row); return null } // nothing of theirs to take: mine goes up, from the server's version now
   const next = { ...merged, updatedAt: Math.max(clockNow(), mine.updatedAt + 1, theirs.updatedAt + 1) }
-  if (pend && forked) rebase(table, theirs.id, k.row(next), row) // the server's version is theirs now
-  else push(table, theirs.id, k.row(next), pend ? undefined : row)
+  rebase(table, theirs.id, k.row(next), row) // the server's version is the one this change starts from now
   return next
 }
 
@@ -1845,7 +1861,26 @@ export function productsCsv(products: Product[]) {
   return '﻿' + [head, ...products.map((p) => [p.code, p.name, p.pouchesPerCase, p.casesPerMix, p.casesPerPallet, p.cratesPerCart, p.pouchesPerCrate, p.room ?? '', p.spiralUnit ?? ''])].map((r) => r.map(q).join(',')).join('\r\n')
 }
 
-export const openRun = (s: State, lineId: string) => s.runs.find((r) => r.lineId === lineId && !r.endedAt)
+/** the codes open on a line at once (one, except by a fault: two devices that could not see each other both started one), the newest first */
+export const openRuns = (s: State, lineId: string) => s.runs.filter((r) => r.lineId === lineId && !r.endedAt).sort((a, b) => b.startedAt - a.startedAt)
+/** the code running on a line: the newest one started, when by a fault there is more than one (see openRuns) */
+export const openRun = (s: State, lineId: string) => openRuns(s, lineId)[0]
+/**
+ * A line with two codes open at once: the older ones end where the newest started (or at their own last unit, when
+ * it came later), so the line's card and the day's numbers go by one code. What each one made stays as it is.
+ */
+export function endOlderRuns(lineId: string) {
+  const open = openRuns(state, lineId)
+  if (open.length < 2) return
+  const newest = open[0]
+  batch(() => {
+    for (const r of open.slice(1)) {
+      const at = Math.max(newest.startedAt, after(r))
+      putRun({ ...r, endedAt: at })
+      logChange(r.dept, 'Corrida ' + r.code + ' del ' + r.date + ' (' + r.dept + ', ' + lineNameOf(state, r.lineId, r.line) + ') · Fin', 'abierta a la vez que ' + newest.code + ' desde las ' + fmtTime(newest.startedAt), fmtTime(at), 'act_runs', r.id)
+    }
+  })
+}
 /** the stop holding this line right now: its own, or one of the whole department */
 export const openStop = (s: State, dept: Dept, lineId: string) => s.stops.find((x) => !x.endedAt && x.dept === dept && (x.lineId === lineId || x.lineId === null))
 export const deptStop = (s: State, dept: Dept) => s.stops.find((x) => !x.endedAt && x.dept === dept && x.lineId === null)
