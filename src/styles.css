@@ -947,3 +947,13 @@ table.otable tfoot td small{color:var(--muted);font-weight:600}
 /* records that have not gone up: red, on top */
 .stalebar.unsent{background:#fdecef;color:#9f1239;border-color:#f3b4c0}
 .stalebar.unsent .btn.sm{background:#fff;border-color:#e58aa0;color:#9f1239;box-shadow:0 2px 0 #f3b4c0}
+/* the devices: one row each, red when something is wrong with it */
+table.devtable td{vertical-align:top;white-space:normal}
+table.devtable td .pname{display:block;font-size:11.5px;color:var(--muted);white-space:normal;max-width:260px}
+table.devtable td .pname.red{color:var(--warn)}
+table.devtable tr.dev-bad td:first-child{border-left:4px solid var(--warn)}
+table.devtable tr.dev-ok td:first-child{border-left:4px solid var(--ok)}
+table.devtable td.ok{color:var(--ok);font-weight:600}
+table.devtable td.amber{color:var(--amber);font-weight:600}
+table.devtable td.red{color:var(--warn);font-weight:700}
+.hint.red{color:var(--warn);font-weight:600}

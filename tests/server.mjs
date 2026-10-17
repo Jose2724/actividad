@@ -262,6 +262,15 @@ console.log('· Lo que otra tablet agregó a una corrida no se pierde cuando est
   db.refuse = ''
   await m.flushNow()
   eq('cuando el servidor lo vuelve a aceptar, sube y la alerta se quita', [m.outbox.size(), m.syncStore.get().refused, srv().units.map((u) => u.ref)], [0, 0, ['1', '3', '4', '5']])
+  // the device tells the server how it is (tab Tablets): who is on it, its build, what has not gone up, its clock
+  eq('sin la tabla de tablets (su SQL sin correr) el aviso no insiste ni estorba', await m.sayHello('e-1'), false)
+  db.act_devices = []
+  m.unitDone(id, 36, '6'); db.refuse = 'act_runs'; await m.flushNow(); db.refuse = ''
+  const word = m.deviceWord('e-1')
+  eq('lo que el aparato dice de sí: quién, qué tiene sin subir y desde cuándo, qué dijo el servidor, cómo va su reloj', [word.id === m.deviceId(), word.user_id, word.pending, !!word.oldest_at, /sin permiso/.test(word.error), ['fine', 'rough', 'own'].includes(word.clock), word.build === ''], [true, 'e-1', 1, true, true, true, true])
+  eq('el aparato queda en el servidor con su palabra', [await m.sayHello('e-1'), db.act_devices.length, db.act_devices[0].pending, db.act_devices[0].id === m.deviceId()], [true, 1, 1, true])
+  eq('"Android · Chrome", "Windows · Edge": qué clase de aparato es', [m.deviceKind('Mozilla/5.0 (Linux; Android 13; SM-T575) AppleWebKit/537.36 Chrome/118.0 Safari/537.36'), m.deviceKind('Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 Chrome/118.0 Safari/537.36 Edg/118.0')], ['Android · Chrome', 'Windows · Edge'])
+  await m.flushNow()
 }
 
 console.log('✓ ' + passed + ' comprobaciones, todas correctas')

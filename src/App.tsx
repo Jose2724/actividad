@@ -16,6 +16,8 @@ import { leaveAsk, loadDay, STALE_MS, startSync, syncStore, syncNow, unreachable
 import { storageFull } from './storage'
 import { clockNow, clockOffText, clockState, otherZone, startClock, syncClock } from './clock'
 import { keepView, reloadNow, updateStore, updateText, viewKept } from './update'
+import { startHello } from './devices'
+import { Devices } from './DevicesView'
 import { appUrl, qrPath } from './qr'
 import { uploadAll } from './store'
 import { Employees } from './Employees'
@@ -196,7 +198,7 @@ function ServerApp() {
     return () => { clearTimeout(slow); clearInterval(t); window.removeEventListener('online', again); document.removeEventListener('visibilitychange', seen); window.removeEventListener('act-verify', again) }
   }, [verify])
   useEffect(() => {
-    if (me && me !== 'none' && me !== 'loading') { user.set(me.name); role.set(me.role === 'op' ? 'op' : 'mgr'); myDept.set(me.dept); startSync() }
+    if (me && me !== 'none' && me !== 'loading') { user.set(me.name); role.set(me.role === 'op' ? 'op' : 'mgr'); myDept.set(me.dept); startSync(); startHello(me.id) }
   }, [me])
   const out = async () => { leaving.current = true; rememberMe(null); user.set(''); confirmed.current = 0; setErr(''); setMe(null); await signOutHere() }
   /** the PIN was accepted: the server is asked who that is */
@@ -374,7 +376,7 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
   // the room and the tab come back after the reload a new version brings (see update.ts)
   const kept = viewKept<{ dept?: string; tab?: string }>()
   const [dept, setDept] = useState<Dept>(kept?.dept && isDept(kept.dept) ? kept.dept : home)
-  const [tab, setTab] = useState<'act' | 'av' | 'rep' | 'emp'>(kept?.tab === 'av' || kept?.tab === 'rep' || kept?.tab === 'emp' ? kept.tab : 'act')
+  const [tab, setTab] = useState<'act' | 'av' | 'rep' | 'emp' | 'dev'>(kept?.tab === 'av' || kept?.tab === 'rep' || kept?.tab === 'emp' || kept?.tab === 'dev' ? kept.tab : 'act')
   useEffect(() => { keepView({ dept, tab }) }, [dept, tab])
   const upd = useSyncExternalStore(updateStore.subscribe, updateStore.get)
   // every free line of every room into set up with one tap (a manager's or the office's, when a shift starts)
@@ -419,6 +421,7 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
           {(can('products') || viewOnly) && <button type="button" className={tab === 'av' ? 'on' : ''} onClick={() => setTab('av')}>{tr('Avance')}</button>}
           <button type="button" className={tab === 'rep' ? 'on' : ''} onClick={() => setTab('rep')}>{tr('Reporte')}</button>
           {can('people') && supabase && <button type="button" className={tab === 'emp' ? 'on' : ''} onClick={() => setTab('emp')}>{tr('Empleados')}</button>}
+          {mgr && !viewOnly && supabase && <button type="button" className={tab === 'dev' ? 'on' : ''} onClick={() => setTab('dev')}>{tr('Tablets')}</button>}
         </nav>
         <div className="me"><SyncDot /> <span className="who">{name}</span><span className="where">{viewOnly ? tr('Solo ver') : mgr ? tr('Manager') : home}</span> {mgr && <QrLink label="QR" />}<LangSwitch /><button type="button" className="lnk" onClick={() => setLeaving(true)}>{supabase ? tr('Salir') : tr('Cambiar')}</button></div>
       </header>
@@ -449,7 +452,7 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
           <DeptPanel key={dept} s={s} dept={can('depts') ? dept : home} now={now} mgr={mgr} day={day} />
         </div>
         </>
-      ) : tab === 'av' && (can('products') || viewOnly) ? <Avance s={s} /> : tab === 'emp' && can('people') && supabase ? <Employees meId={meId ?? ''} admin={admin} /> : <Report s={s} now={now} only={can('depts') ? undefined : home} mgr={can('depts')} admin={admin} wholeDay={!!wholeDay} />}
+      ) : tab === 'av' && (can('products') || viewOnly) ? <Avance s={s} /> : tab === 'emp' && can('people') && supabase ? <Employees meId={meId ?? ''} admin={admin} /> : tab === 'dev' && mgr && !viewOnly && supabase ? <Devices now={now} /> : <Report s={s} now={now} only={can('depts') ? undefined : home} mgr={can('depts')} admin={admin} wholeDay={!!wholeDay} />}
     </div>
   )
 }
