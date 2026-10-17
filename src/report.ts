@@ -29,7 +29,8 @@ export function spanShifts(h: ShiftHours, a: number, b: number) {
 
 export function reportOf(s: State, date: string, now: number, f: ReportFilter = {}) {
   const plan = shiftsOf(s, date)
-  const shift: 0 | 1 | 2 = f.shift === 1 || f.shift === 2 ? f.shift : 0
+  // a day with one shift has no other shift to look at: asking for it gives the whole day
+  const shift: 0 | 1 | 2 = (f.shift === 1 || f.shift === 2) && !(plan.only && plan.only !== f.shift) ? f.shift : 0
   const day = s.runs.filter((r) => r.date === date && (!f.only || r.dept === f.only)).sort((a, b) => a.startedAt - b.startedAt)
   // what this day offers to filter by
   const codes = [...new Map(day.map((r) => [normCode(r.code), r.code])).values()].sort()

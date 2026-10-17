@@ -1628,6 +1628,44 @@ mov.use((m) => {
   m.endStop(st().stops.find((x) => x.reason === 'Set up').id)
   eq('terminado ese Set up, sí', [m.moveRun(runOf('C300').id, L('Línea 2').id), runOf('C300').line, m.openRun(st(), L('Línea 2').id)?.code, m.openRun(st(), L('Línea 1').id)], [true, 'Línea 2', 'C300', undefined])
 })
+section('Calendario de planta: días de un solo turno (la semana, y un día aparte)')
+{
+  // Saturday 2026-10-17: the second shift did not come, and from the hand-over at 3:15 PM everything the first shift
+  // made was counted as the second's (Jose: "ahora sale como que es el turno 2 que está registrando"). A day of work
+  // with one shift gives all of its records to that shift, and the plant's week says which days are like that.
+  const cal = await device('cal', { user: 'Jose', usual: true })
+  cal.use((m) => {
+    const st = () => m.store.get()
+    const SAT = '2026-10-17', FRI = '2026-10-16', SUN = '2026-10-18'
+    clock = oct(17, 16, 0)
+    eq('mientras nadie lo diga, los dos turnos trabajan todos los días', [m.weekOf(st(), SAT), m.shiftsOf(st(), SAT).only, m.shiftAt(m.shiftsOf(st(), SAT), oct(17, 16, 0))], ['3333333', undefined, 2])
+    eq('un día aparte: solo el turno 1, todo el día de trabajo', [m.setDayShifts(SAT, 1), m.shiftsOf(st(), SAT).only, m.shiftAt(m.shiftsOf(st(), SAT), oct(17, 16, 0)), m.shiftAt(m.shiftsOf(st(), SAT), oct(18, 2, 0)), m.shiftsOf(st(), FRI).only], [true, 1, 1, 1, undefined])
+    const t = m.turnOf(st(), SAT, oct(17, 16, 0))
+    eq('el turno en curso es el 1, entre el corte de la noche y el siguiente', [t.shift, t.since, t.until], [1, oct(17, 3, 30), oct(18, 3, 30)])
+    eq('el día de trabajo no cambia por eso', [m.plainDay(st(), oct(17, 23, 0)), m.plainDay(st(), oct(18, 3, 0)), m.plainDay(st(), oct(18, 3, 30))], [SAT, SAT, SUN])
+    // what the first shift made that afternoon is its own, on the room's card and in the report
+    m.addLine('RTE', 'Línea 1'); const l = st().lines.find((x) => x.dept === 'RTE')
+    clock = oct(17, 15, 40); m.startRun(l, 'A100', '6287', SAT, 240)
+    clock = oct(17, 16, 0); m.unitDone(st().runs[0].id, 240)
+    const td = m.deptToday(st(), 'RTE', SAT, oct(17, 16, 10))
+    eq('la tarjeta del cuarto: turno 1, único de hoy, con lo hecho a las 4 PM', [td.shift, td.only, td.shiftQty, td.made], [1, 1, 240, [240, 0]])
+    const rep = m.reportOf(st(), SAT, oct(17, 16, 10), { only: 'RTE' })
+    eq('el reporte: todo del turno 1; pedir el turno 2 da el día entero', [rep.byShift[0].first.qty, rep.byShift[0].second.qty, rep.plan.only, m.reportOf(st(), SAT, oct(17, 16, 10), { only: 'RTE', shift: 2 }).shift, m.reportOf(st(), SAT, oct(17, 16, 10), { only: 'RTE', shift: 1 }).shift], [240, 0, 1, 0, 1])
+    eq('sube al servidor con lo que fija el manager, y queda en el historial', [m.outbox.items().filter((i) => i.table === 'act_targets').map((i) => [i.key, i.row.per_hour]), st().changes.filter((c) => c.refKey === 'shiftday:' + SAT).map((c) => [c.before, c.after])], [[['shiftday:2026-10-17', 1]], [['Turnos 1 y 2', 'Solo el turno 1']]])
+    // the week: Saturdays with one shift from a date on; a day apart beats the week; "as its week" takes the day back
+    eq('la semana: los sábados solo el turno 1 desde el 2026-10-24', [m.setShiftWeek('2026-10-24', '3333331'), m.shiftsOf(st(), '2026-10-31').only, m.shiftsOf(st(), '2026-10-30').only, m.shiftsOf(st(), '2026-10-24').only, m.shiftsOf(st(), '2026-10-10').only], [true, 1, undefined, 1, undefined])
+    eq('un día aparte manda sobre la semana, y "como su semana" lo quita', [m.setDayShifts('2026-10-31', 3), m.shiftsOf(st(), '2026-10-31').only, m.setDayShifts('2026-10-31', null), m.shiftsOf(st(), '2026-10-31').only, st().dayShifts.length], [true, undefined, true, 1, 1])
+    eq('lo que no es no se guarda', [m.setShiftWeek('2026-10-24', '333333'), m.setShiftWeek('hoy', '3333333'), m.setDayShifts('ayer', 1), m.setDayShifts(SAT, 5)], [false, false, false, false])
+    eq('la semana queda en el historial con sus días', st().changes.filter((c) => c.refKey === 'shiftweek:2026-10-24').map((c) => [c.before, c.after]), [['Turnos 1 y 2 todos los días', 'dom 1 y 2, lun 1 y 2, mar 1 y 2, mié 1 y 2, jue 1 y 2, vie 1 y 2, sáb solo 1']])
+    // what arrives from another device (or the office)
+    m.applyRemote('act_targets', { dept: 'shiftday:2026-10-18', per_hour: 2, per_shift: null, updated_at: new Date(oct(17, 17, 0)).toISOString() })
+    m.applyRemote('act_targets', { dept: 'shiftweek:2026-11-01', per_hour: 3333333, per_shift: null, updated_at: new Date(oct(17, 17, 0)).toISOString() })
+    eq('lo que llega: un domingo solo del turno 2, y la semana de siempre desde noviembre', [m.shiftsOf(st(), SUN).only, m.shiftAt(m.shiftsOf(st(), SUN), oct(18, 8, 0)), m.turnOf(st(), SUN, oct(18, 8, 0)).shift, m.shiftsOf(st(), '2026-11-07').only], [2, 2, 2, undefined])
+    m.applyRemote('act_targets', { dept: 'shiftday:2026-10-18', per_hour: null, per_shift: null, updated_at: new Date(oct(17, 17, 1)).toISOString() })
+    eq('un día aparte retirado desde otro aparato', m.shiftsOf(st(), SUN).only, undefined)
+    eq('lo que llega sin sentido no entra', [(m.applyRemote('act_targets', { dept: 'shiftweek:2026-12-01', per_hour: 4444444, per_shift: null, updated_at: new Date(oct(17, 17, 2)).toISOString() }), st().shiftWeeks.some((x) => x.from === '2026-12-01')), (m.applyRemote('act_targets', { dept: 'shiftday:2026-12-01', per_hour: 7, per_shift: null, updated_at: new Date(oct(17, 17, 2)).toISOString() }), st().dayShifts.some((x) => x.date === '2026-12-01'))], [false, false])
+  })
+}
 section('Poderes y turno de cada persona')
 calc.use((m) => {
   const keys = m.POWERS.map((p) => p.key)

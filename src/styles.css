@@ -989,3 +989,16 @@ table.binlist .binkind{display:block;font-size:11px;font-weight:800;color:#4f46e
 .hero .mode.c-indigo{color:#3730a3}
 .hero .mode.c-rose{color:#9d174d}
 .hero .mode.c-amber{color:#8a4b00}
+/* the calendar of the plant (2026-10-17): the week in the hours window, the day apart, and the day bar's line */
+.week{display:grid;gap:6px}
+.week .lab{font-size:13px;font-weight:600;color:var(--muted)}
+.week .wk{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.week .wk label{display:grid;gap:3px;font-size:12px;font-weight:700;color:var(--muted);text-align:center;text-transform:uppercase;letter-spacing:.04em}
+.week .wk select{min-height:40px;font-size:13px;padding:4px 2px;width:100%}
+.dayapart{border-top:1px solid var(--line);padding-top:12px;display:grid;gap:8px}
+.dayapart h4{margin:0;font-size:15px}
+.dayapart .seg button{min-height:52px}
+.hint.ok{color:var(--ok);font-weight:600}
+.daybar .dayshifts{display:inline-flex;align-items:baseline;gap:6px;flex-wrap:wrap;color:var(--muted);font-size:14px}
+.daybar .dayshifts.one{color:var(--amber);font-weight:700}
+.daybar .dayshifts b{color:inherit}

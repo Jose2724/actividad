@@ -30,7 +30,7 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
   doc.text(tr('Actividad · Reporte del día') + (only ? ' · ' + only : '') + filterTitle(rep.code, rep.lot, rep.shift, rep.line ? rep.lineChoices.find((l) => l.id === rep.line)?.name ?? '' : ''), 40, 42)
   doc.setFont('helvetica', 'normal'); doc.setFontSize(11); doc.setTextColor(91, 107, 122)
   doc.text(tr('{0}   ·   {1}{2} en {3}{4}   ·   trabajando {5}   ·   parado {6}{7}   ({8}', fmtDate(date), rep.distinct, (rep.distinct === 1 ? ' ' + tr('código') : ' ' + tr('códigos')), rows.length, (rows.length === 1 ? ' ' + tr('corrida') : ' ' + tr('corridas')), fmtDur(working), fmtDur(down), (rep.setup ? '   ' + tr('·   set up {0}', fmtDur(rep.setup)) : ''), (rep.lines === 1 ? tr('una línea') : tr('suma de {0} líneas', rep.lines))) + ')', 40, 62)
-  doc.text(tr('Turno 1: {0}   ·   Turno 2: {1}', shiftHours(rep.plan, 1), shiftHours(rep.plan, 2)), 40, 78)
+  doc.text(rep.plan.only ? tr('Turno {0}: {1}   ·   el único del día', rep.plan.only, shiftHours(rep.plan, rep.plan.only)) : tr('Turno 1: {0}   ·   Turno 2: {1}', shiftHours(rep.plan, 1), shiftHours(rep.plan, 2)), 40, 78)
   const after = () => (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY
   let top = 94
   // what was made, room by room, said first and in bold: it is what the report is read for
@@ -47,12 +47,13 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
     autoTable(doc, {
       startY: top, theme: 'grid', styles: { font: 'helvetica', fontSize: 9, cellPadding: 5, textColor: [22, 32, 42] }, headStyles: { fillColor: [22, 32, 42], textColor: 255, fontStyle: 'bold' },
       head: [[tr('Depto'), '', tr('Horario'), tr('Empezó'), tr('Terminó'), tr('Duración'), tr('Líneas'), tr('Códigos'), tr('Corridas'), tr('Hecho'), tr('Waste lb'), tr('Trabajando'), tr('Parado'), 'Set up']],
-      body: rep.byShift.flatMap((d) => [d.day, d.first, d.second].map((x) => [x.shift ? '' : d.dept, x.shift ? tr('Turno {0}', x.shift) : tr('Total del día'), x.shift ? shiftHours(rep.plan, x.shift) : '', x.from ? fmtTime(x.from) : '—', !x.to ? '—' : x.open ? tr('en curso') : fmtTime(x.to), x.span ? fmtDur(x.span) : '—', String(x.lines), String(x.distinct), String(x.codes), made(d.dept, x), x.waste ? String(x.waste) : '—', fmtDur(x.working), fmtDur(x.down), x.setup ? fmtDur(x.setup) : '—'])),
-      didParseCell: (c) => { if (c.section === 'body' && c.row.index % 3 === 0) { c.cell.styles.fontStyle = 'bold'; c.cell.styles.fillColor = [243, 246, 249] } },
+      body: rep.byShift.flatMap((d) => [d.day, ...shiftCols.map((k) => (k === 1 ? d.first : d.second))].map((x) => [x.shift ? '' : d.dept, x.shift ? tr('Turno {0}', x.shift) : tr('Total del día'), x.shift ? shiftHours(rep.plan, x.shift) : '', x.from ? fmtTime(x.from) : '—', !x.to ? '—' : x.open ? tr('en curso') : fmtTime(x.to), x.span ? fmtDur(x.span) : '—', String(x.lines), String(x.distinct), String(x.codes), made(d.dept, x), x.waste ? String(x.waste) : '—', fmtDur(x.working), fmtDur(x.down), x.setup ? fmtDur(x.setup) : '—'])),
+      didParseCell: (c) => { if (c.section === 'body' && c.row.index % (shiftCols.length + 1) === 0) { c.cell.styles.fontStyle = 'bold'; c.cell.styles.fillColor = [243, 246, 249] } },
     })
     top = after() + 18
   }
   const sh = !rep.shift // a column says the shift of each line when the report is the whole day's
+  const shiftCols = ([1, 2] as const).filter((k) => !rep.plan.only || rep.plan.only === k) // the shifts of the day, side by side: both, or the only one
   // each code with its lots under it, and the total of each room: what was made of what
   if (rep.byCode.length) {
     doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(22, 32, 42)
@@ -64,15 +65,15 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
       const boxes = (code: string, qty: number) => (CFG[d.dept].qtyUnit === 'pouches' && casesText(inCases(s, code, qty))) || '—'
       for (const c of rep.byCode.filter((x) => x.dept === d.dept)) {
         const cc = binCfg(c.dept, c.bin), box = (code: string, qty: number) => (c.bin ? '—' : boxes(code, qty))
-        body.push([c.dept, c.code + (c.bin ? ' (' + apartLabel(c.dept, c.bin) + ')' : ''), c.lots.length === 1 ? c.lots[0].lot || '—' : tr('{0} lotes', c.lots.length), unitsOf(c.dept, c.units, cc), qtyOf(c.dept, c.qty, cc), ...(c.byShift ? [dashed(c.byShift[0]), dashed(c.byShift[1])] : []), box(c.code, c.qty), c.waste ? String(c.waste) : '—', c.lines.join(', ')]); kind.push('code')
-        if (c.lots.length > 1) for (const l of c.lots) { body.push(['', '', l.lot || '—', unitsOf(c.dept, l.units, cc), qtyOf(c.dept, l.qty, cc), ...(l.byShift ? [dashed(l.byShift[0]), dashed(l.byShift[1])] : []), box(c.code, l.qty), '', '']); kind.push('lot') }
+        body.push([c.dept, c.code + (c.bin ? ' (' + apartLabel(c.dept, c.bin) + ')' : ''), c.lots.length === 1 ? c.lots[0].lot || '—' : tr('{0} lotes', c.lots.length), unitsOf(c.dept, c.units, cc), qtyOf(c.dept, c.qty, cc), ...(c.byShift ? shiftCols.map((k) => dashed((c.byShift as [number, number])[k - 1])) : []), box(c.code, c.qty), c.waste ? String(c.waste) : '—', c.lines.join(', ')]); kind.push('code')
+        if (c.lots.length > 1) for (const l of c.lots) { body.push(['', '', l.lot || '—', unitsOf(c.dept, l.units, cc), qtyOf(c.dept, l.qty, cc), ...(l.byShift ? shiftCols.map((k) => dashed((l.byShift as [number, number])[k - 1])) : []), box(c.code, l.qty), '', '']); kind.push('lot') }
       }
-      body.push([tr('Total {0}', d.dept), '', '', unitsOf(d.dept, d.units), qtyOf(d.dept, d.qty), ...(b ? [dashed(q ? b.first.qty : b.first.units), dashed(q ? b.second.qty : b.second.units)] : []), '', d.waste ? String(d.waste) : '—', '']); kind.push('total')
-      for (const y of d.bins) { const cc = binCfg(d.dept, y.word); body.push([tr('Además, {0}', apartLabel(d.dept, y.word)), '', '', unitsOf(d.dept, y.units, cc), qtyOf(d.dept, y.qty, cc), ...(b ? [b.first, b.second].map((x) => dashed(x.bins.find((z) => z.word === y.word)?.qty ?? 0)) : []), '', '', '']); kind.push('total') }
+      body.push([tr('Total {0}', d.dept), '', '', unitsOf(d.dept, d.units), qtyOf(d.dept, d.qty), ...(b ? shiftCols.map((k) => { const x = k === 1 ? b.first : b.second; return dashed(q ? x.qty : x.units) }) : []), '', d.waste ? String(d.waste) : '—', '']); kind.push('total')
+      for (const y of d.bins) { const cc = binCfg(d.dept, y.word); body.push([tr('Además, {0}', apartLabel(d.dept, y.word)), '', '', unitsOf(d.dept, y.units, cc), qtyOf(d.dept, y.qty, cc), ...(b ? shiftCols.map((k) => (k === 1 ? b.first : b.second)).map((x) => dashed(x.bins.find((z) => z.word === y.word)?.qty ?? 0)) : []), '', '', '']); kind.push('total') }
     }
     autoTable(doc, {
       startY: top + 14, theme: 'grid', styles: { font: 'helvetica', fontSize: 9, cellPadding: 5, textColor: [22, 32, 42] }, headStyles: { fillColor: teal, textColor: 255, fontStyle: 'bold' },
-      head: [[tr('Depto'), tr('Código'), tr('Lote'), tr('Hechas'), tr('Cantidad'), ...(sh ? [tr('Turno 1'), tr('Turno 2')] : []), tr('En cajas'), tr('Waste lb'), tr('Líneas')]],
+      head: [[tr('Depto'), tr('Código'), tr('Lote'), tr('Hechas'), tr('Cantidad'), ...(sh ? shiftCols.map((k) => tr('Turno {0}', k)) : []), tr('En cajas'), tr('Waste lb'), tr('Líneas')]],
       body,
       didParseCell: (c) => {
         if (c.section !== 'body') return

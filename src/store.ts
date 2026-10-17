@@ -164,10 +164,17 @@ export type Schedule = Record<string, Record<string, number>>
 export type Change = { id: string; at: number; by: string; dept: Dept | null; what: string; before: string; after: string; refTable: string; refKey: string; updatedAt: number; deleted?: boolean }
 /** the goal the manager set for a room: per hour and/or per shift, in the room's own quantity (pouches, cajas, mezclas) */
 export type Target = { dept: Dept; perHour: number | null; perShift: number | null; updatedAt: number }
-/** the hours of the two shifts ("HH:MM"; the second may end after midnight) */
-export type ShiftHours = { first: string; firstEnd: string; second: string; secondEnd: string }
+/**
+ * the hours of the two shifts ("HH:MM"; the second may end after midnight). only = on a day of work with one shift,
+ * which one (see shiftsOf): then every record of the day is that shift's, and the day has one hand-over, the night's
+ */
+export type ShiftHours = { first: string; firstEnd: string; second: string; secondEnd: string; only?: 1 | 2 }
 /** those hours from a date on */
 export type ShiftPlan = ShiftHours & { from: string; updatedAt: number }
+/** which shifts work each day of the week, from a date on: seven digits Sunday to Saturday, 3 = both, 1 = only the first, 2 = only the second */
+export type ShiftWeek = { from: string; week: string; updatedAt: number }
+/** a day apart from its week: only one shift worked (1 or 2), or both (3) on a day whose week says one */
+export type DayShifts = { date: string; only: 1 | 2 | 3; updatedAt: number }
 /** the goal of one line: so much per hour and/or in the whole day, in its room's quantity */
 export type LineTarget = { lineId: string; perHour: number | null; perDay: number | null; updatedAt: number }
 /**
@@ -183,7 +190,7 @@ export type TurnGoal = { key: string; perHour: number | null; total: number | nu
  * A code set to 0 is off the program.
  */
 export type Plan = { date: string; dept: Dept; code: string; qty: number; updatedAt: number }
-export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Product[]; schedule: Schedule; changes: Change[]; targets: Target[]; shifts: ShiftPlan[]; lineTargets: LineTarget[]; orders: Order[]; turnGoals: TurnGoal[]; plans: Plan[]
+export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Product[]; schedule: Schedule; changes: Change[]; targets: Target[]; shifts: ShiftPlan[]; shiftWeeks: ShiftWeek[]; dayShifts: DayShifts[]; lineTargets: LineTarget[]; orders: Order[]; turnGoals: TurnGoal[]; plans: Plan[]
   /**
    * runs the device no longer keeps (older than its days) that hold pallets given to an order still open: an order's
    * "Hechas" counts every pallet it ever got, not only the days this device holds. They come from the server (see
@@ -261,10 +268,10 @@ function tidySchedule(sch: Schedule): Schedule {
 function isDay(text: string) { return /^\d{4}-\d{2}-\d{2}$/.test(text) }
 /** with a server the lines (and products) are shared and come from it; without one, each device starts with a line per room */
 const SERVER = !!import.meta.env.VITE_SUPABASE_URL
-function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], lineTargets: [], orders: [], turnGoals: [], plans: [] } }
+function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineTargets: [], orders: [], turnGoals: [], plans: [] } }
 function load(): State {
   try {
-    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[] }
+    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[] }
     const s = JSON.parse(localStorage.getItem(KEY) || 'null') as Raw | null
     // rows saved by earlier versions: carts as plain timestamps, units without a tag or a name, products with one
     // pouches-per-cart number, nothing with an update time
@@ -282,6 +289,8 @@ function load(): State {
         changes: (s.changes ?? []).filter((c) => (c.at ?? 0) > clockNow() - KEEP_CHANGES_MS).map((c) => ({ id: c.id ?? uid(), at: c.at ?? 0, by: c.by ?? '', dept: (c.dept ?? null) as Dept | null, what: c.what ?? '', before: c.before ?? '', after: c.after ?? '', refTable: c.refTable ?? '', refKey: c.refKey ?? '', updatedAt: c.updatedAt ?? 0 })),
         targets: (s.targets ?? []).filter((t) => DEPTS.includes(t.dept as Dept)).map((t) => ({ dept: t.dept as Dept, perHour: t.perHour ?? null, perShift: t.perShift ?? null, updatedAt: t.updatedAt ?? 0 })),
         shifts: (s.shifts ?? []).filter((x): x is ShiftPlan => !!x && /^\d{4}-\d{2}-\d{2}$/.test(x.from ?? '') && !shiftsProblem(x as ShiftHours)).map((x) => ({ from: x.from, first: x.first, firstEnd: x.firstEnd, second: x.second, secondEnd: x.secondEnd, updatedAt: x.updatedAt ?? 0 })),
+        shiftWeeks: (s.shiftWeeks ?? []).filter((x): x is ShiftWeek => !!x && isDay(String(x.from ?? '')) && weekOk(x.week)).map((x) => ({ from: x.from, week: x.week, updatedAt: x.updatedAt ?? 0 })),
+        dayShifts: (s.dayShifts ?? []).filter((x): x is DayShifts => !!x && isDay(String(x.date ?? '')) && [1, 2, 3].includes(Number(x.only))).map((x) => ({ date: x.date, only: Number(x.only) as 1 | 2 | 3, updatedAt: x.updatedAt ?? 0 })),
         lineTargets: (s.lineTargets ?? []).filter((t) => !!t && !!t.lineId && !isTurnKey(String(t.lineId))).map((t) => ({ lineId: String(t.lineId), perHour: t.perHour ?? null, perDay: t.perDay ?? null, updatedAt: t.updatedAt ?? 0 })),
         orders: (s.orders ?? []).map((o) => (o ? orderOf(String(o.id ?? ''), o, String(o.by ?? ''), o.updatedAt ?? 0) : null)).filter((o): o is Order => !!o),
         plans: (s.plans ?? []).filter((p) => !!p && isDay(String(p.date ?? '')) && DEPTS.includes(p.dept as Dept) && !!normCode(String(p.code ?? ''))).map((p) => ({ date: String(p.date), dept: p.dept as Dept, code: String(p.code).trim().toUpperCase(), qty: Number(p.qty) > 0 ? Number(p.qty) : 0, updatedAt: p.updatedAt ?? 0 })),
@@ -1056,7 +1065,11 @@ const unpackShift = (n: unknown): [string, string] | null => {
 const rowOfShifts = (x: ShiftPlan) => ({ dept: SHIFTS_KEY + x.from, per_hour: packShift(x.first, x.firstEnd), per_shift: packShift(x.second, x.secondEnd), updated_at: iso(x.updatedAt), updated_by: user.get() })
 /** the hours in force on a day: the last version that starts on or before it (the usual ones while nobody has set any) */
 export function shiftsOf(s: State, date: string): ShiftHours & { from: string } {
-  return s.shifts.filter((x) => x.from <= date).sort((a, b) => (a.from < b.from ? 1 : -1))[0] ?? { ...SHIFTS_DEFAULT, from: '' }
+  const hours = s.shifts.filter((x) => x.from <= date).sort((a, b) => (a.from < b.from ? 1 : -1))[0] ?? { ...SHIFTS_DEFAULT, from: '' }
+  // the shifts of the day: the day apart from its week, else what its week says (see the calendar below)
+  const code = s.dayShifts.find((x) => x.date === date)?.only ?? Number(weekOf(s, date).charAt(weekdayOf(date)) || 3)
+  const { first, firstEnd, second, secondEnd, from } = hours
+  return { first, firstEnd, second, secondEnd, from, ...(code === 1 || code === 2 ? { only: code as 1 | 2 } : {}) }
 }
 /** "6:00 AM" for "06:00" */
 export const clockText = (hm: string) => fmtTime(new Date(2000, 0, 1, Number(hm.slice(0, 2)), Number(hm.slice(3, 5))).getTime())
@@ -1078,25 +1091,67 @@ export function setShifts(from: string, h: ShiftHours): boolean {
   return true
 }
 /**
+ * The calendar of the plant (2026-10-17, the Saturday the second shift did not come and from 3:15 PM everything was
+ * counted as its): which shifts work each day of the week, from a date on like the hours; and the days apart from
+ * their week (a Saturday with one shift, a holiday worked by both). With one shift on a day of work, every record of
+ * the day is that shift's: nothing is counted to a shift that did not come, and the day has one hand-over, the
+ * night's. They travel in act_targets too: key "shiftweek:<date>" with the seven digits in per_hour, and
+ * "shiftday:<date>" with 1, 2 or 3 in per_hour (null = the day is as its week says again). Everything is kept in
+ * versions and in the history, so an earlier day is still read as it was.
+ */
+export const WEEK_BOTH = '3333333'
+export const weekOk = (w: unknown): w is string => typeof w === 'string' && /^[123]{7}$/.test(w)
+const WEEK_KEY = 'shiftweek:', DAY_KEY = 'shiftday:'
+const weekdayOf = (date: string) => new Date(date + 'T12:00:00').getDay()
+/** the week in force on a day: the last version that starts on or before it (both shifts every day while nobody has set any) */
+export const weekOf = (s: State, date: string) => s.shiftWeeks.filter((x) => x.from <= date).sort((a, b) => (a.from < b.from ? 1 : -1))[0]?.week ?? WEEK_BOTH
+/** "Turnos 1 y 2" / "Solo el turno 1": a day's shifts, as the history and the screen say them */
+export const dayShiftsText = (only: 1 | 2 | 3 | undefined) => (only === 1 || only === 2 ? tr('Solo el turno {0}', only) : tr('Turnos 1 y 2'))
+const WEEKDAY_NAMES = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb']
+const weekText = (w: string) => (w === WEEK_BOTH ? 'Turnos 1 y 2 todos los días' : [...w].map((c, i) => WEEKDAY_NAMES[i] + ' ' + (c === '3' ? '1 y 2' : 'solo ' + c)).join(', '))
+const rowOfWeek = (x: ShiftWeek) => ({ dept: WEEK_KEY + x.from, per_hour: Number(x.week), per_shift: null, updated_at: iso(x.updatedAt), updated_by: user.get() })
+const rowOfDayShifts = (date: string, only: 1 | 2 | 3 | null, at: number) => ({ dept: DAY_KEY + date, per_hour: only, per_shift: null, updated_at: iso(at), updated_by: user.get() })
+/** the manager says which shifts work each day of the week, from a date on (the same date again replaces what was set for it) */
+export function setShiftWeek(from: string, week: string): boolean {
+  if (!isDay(from) || !weekOk(week)) return false
+  const was = weekOf(state, from), old = state.shiftWeeks.find((x) => x.from === from)
+  const x: ShiftWeek = { from, week, updatedAt: stamp(old) }
+  set({ ...state, shiftWeeks: [...state.shiftWeeks.filter((y) => y.from !== from), x] })
+  push('act_targets', WEEK_KEY + from, rowOfWeek(x))
+  logChange(null, 'Turnos de la semana desde el ' + from, weekText(was), weekText(week), 'act_targets', WEEK_KEY + from)
+  return true
+}
+/** the manager says what a day apart has: only one shift (1 or 2), both (3), or (null) what its week says again */
+export function setDayShifts(date: string, only: 1 | 2 | 3 | null): boolean {
+  if (!isDay(date) || (only !== null && only !== 1 && only !== 2 && only !== 3)) return false
+  const was = shiftsOf(state, date), old = state.dayShifts.find((x) => x.date === date), at = stamp(old)
+  set({ ...state, dayShifts: [...state.dayShifts.filter((y) => y.date !== date), ...(only ? [{ date, only, updatedAt: at }] : [])] })
+  push('act_targets', DAY_KEY + date, rowOfDayShifts(date, only, at))
+  logChange(null, 'Turnos del ' + date, dayShiftsText(was.only), dayShiftsText(shiftsOf(state, date).only), 'act_targets', DAY_KEY + date)
+  return true
+}
+/**
  * The two moments of the clock (in minutes) where one shift hands over to the other: halfway between the end of one
  * and the start of the next. So the last cart of people who stay a little late, and the first one of people who come
- * in a little early, are counted with their own shift.
+ * in a little early, are counted with their own shift. A day of work with one shift has one hand-over: the night's.
  */
 export function shiftCuts(h: ShiftHours) {
   const mid = (from: string, to: string) => (mins(from) + ahead(mins(from), mins(to)) / 2) % DAY_MIN
-  return { toSecond: mid(h.firstEnd, h.second), toFirst: mid(h.secondEnd, h.first) }
+  const toFirst = mid(h.secondEnd, h.first)
+  return { toSecond: h.only ? toFirst : mid(h.firstEnd, h.second), toFirst }
 }
 const clockMin = (at: number) => { const d = new Date(at); return d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60 + d.getMilliseconds() / 60_000 }
 /** the shift a moment belongs to, by the clock */
 export function shiftAt(h: ShiftHours, at: number): 1 | 2 {
+  if (h.only) return h.only
   const { toFirst, toSecond } = shiftCuts(h), m = clockMin(at)
   return (toFirst <= toSecond ? m >= toFirst && m < toSecond : m >= toFirst || m < toSecond) ? 1 : 2
 }
 /** the hand-overs of the calendar days around a moment, in order */
 function cutsNear(h: ShiftHours, at: number) {
-  const { toFirst, toSecond } = shiftCuts(h), d = new Date(at)
+  const { toFirst, toSecond } = shiftCuts(h), d = new Date(at), cuts = h.only ? [toFirst] : [toFirst, toSecond]
   d.setHours(0, 0, 0, 0)
-  return [-1, 0, 1].flatMap((day) => [toFirst, toSecond].map((c) => d.getTime() + day * 86_400_000 + Math.round(c * 60_000))).sort((a, b) => a - b)
+  return [-1, 0, 1].flatMap((day) => cuts.map((c) => d.getTime() + day * 86_400_000 + Math.round(c * 60_000))).sort((a, b) => a - b)
 }
 /** the first hand-over after a moment, and the last one at or before it */
 const nextCut = (h: ShiftHours, at: number) => cutsNear(h, at).find((t) => t > at) ?? at + 86_400_000
@@ -1634,8 +1689,8 @@ export function deptToday(s: State, dept: Dept, date: string, now: number, lineI
   const hours = first ? Math.max(0, (allEnded ? Math.max(...runs.map((r) => r.endedAt ?? 0)) : now) - first) / 3_600_000 : 0
   // The shift in course has its own pace, so a good morning does not hide a slow afternoon. Its clock starts with its
   // first code; a line that came running from the other shift counts from the hour this one starts.
-  const plan = shiftsOf(s, date), shift = shiftAt(plan, now), since = lastCut(plan, now), cuts = shiftCuts(plan)
-  const opens = Math.min(now, since + ahead(shift === 1 ? cuts.toFirst : cuts.toSecond, mins(shift === 1 ? plan.first : plan.second)) * 60_000)
+  const plan = shiftsOf(s, date), shift = shiftAt(plan, now), since = lastCut(plan, now)
+  const opens = Math.min(now, since + ahead(clockMin(since), mins(shift === 1 ? plan.first : plan.second)) * 60_000)
   const one = (r: Run, u: Unit) => (cfg.qty === 'none' ? 1 : roomQty(s, r, u))
   const made = (k: 1 | 2) => runs.reduce((t, r) => t + r.units.filter((u) => shiftAt(plan, u.at) === k).reduce((a, u) => a + one(r, u), 0), 0)
   // The shift in course is all that its people made in its hours, on every line: also on a code that came running from
@@ -1669,7 +1724,7 @@ export function deptToday(s: State, dept: Dept, date: string, now: number, lineI
   const shiftHrs = shiftMs / 3_600_000
   return { runs, units, qty, unitLabel: cfg.qty === 'none' ? cfg.plural.toLowerCase() : cfg.qtyUnit, byCode: [...codes.values()].sort((a, b) => b.qty - a.qty), hours, rate: hours >= 1 / 6 ? qty / hours : null, allEnded,
     bins: binTotals(s, binRuns, () => true), shiftBins: binTotals(s, liveBins, (u) => u.at >= since && u.at < until), live: mine.length > 0,
-    held: heldTotals(s, runs, () => true), shiftHeld: heldTotals(s, liveRuns, (u) => u.at >= since && u.at < until),
+    held: heldTotals(s, runs, () => true), shiftHeld: heldTotals(s, liveRuns, (u) => u.at >= since && u.at < until), only: plan.only,
     shift, shiftQty, shiftUnits, shiftCodes: [...turn.values()].sort((a, b) => b.qty - a.qty), shiftRate: shiftHrs >= 1 / 6 ? shiftQty / shiftHrs : null, made: [made(1), made(2)] as [number, number], shiftSince: shiftFirst, shiftUntil, paused, shiftMs }
 }
 
@@ -1833,6 +1888,16 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
     if (!newer(cur)) return
     const c = changeOfRow(row)
     set({ ...state, changes: upsertIn(state.changes, c) })
+  } else if (table === 'act_targets' && String(row.dept ?? '').startsWith(WEEK_KEY)) {
+    // which shifts work each day of the week, from a date on (a version without its digits was taken back)
+    const from = String(row.dept).slice(WEEK_KEY.length), w = row.per_hour == null ? '' : String(row.per_hour)
+    if (!isDay(from) || !newer(state.shiftWeeks.find((x) => x.from === from))) return
+    set({ ...state, shiftWeeks: [...state.shiftWeeks.filter((y) => y.from !== from), ...(weekOk(w) ? [{ from, week: w, updatedAt: at }] : [])] })
+  } else if (table === 'act_targets' && String(row.dept ?? '').startsWith(DAY_KEY)) {
+    // a day apart from its week (null = as its week says again)
+    const date = String(row.dept).slice(DAY_KEY.length), n = Number(row.per_hour)
+    if (!isDay(date) || !newer(state.dayShifts.find((x) => x.date === date))) return
+    set({ ...state, dayShifts: [...state.dayShifts.filter((y) => y.date !== date), ...(row.per_hour != null && (n === 1 || n === 2 || n === 3) ? [{ date, only: n as 1 | 2 | 3, updatedAt: at }] : [])] })
   } else if (table === 'act_targets' && String(row.dept ?? '').startsWith(SHIFTS_KEY)) {
     // the hours of the shifts from a date on (a version without its hours was taken back)
     const from = String(row.dept).slice(SHIFTS_KEY.length), a = unpackShift(row.per_hour), b = unpackShift(row.per_shift)

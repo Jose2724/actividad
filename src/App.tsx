@@ -1,6 +1,6 @@
 import { createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
-import { addLine, addWaste, apartLabel, apartWord, awayDay, cameFrom, carriedOver, dayAfter, BIN_WORDS, binOf, binWord, cfgFor, kindClass, MFO_PER_CASE, MFO_WORDS, perCaseOf as perCaseOfRun, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderOfId, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, productOf, productsCsv, purgeDay, purgesOf, removeLine, removeProduct, renameLine, reopenRun, reset, restorePurged, resetRecords, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftHours, shiftSpan, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay } from './store'
+import { addLine, addWaste, apartLabel, apartWord, awayDay, cameFrom, carriedOver, dayAfter, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_PER_CASE, MFO_WORDS, perCaseOf as perCaseOfRun, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderOfId, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, productOf, productsCsv, purgeDay, purgesOf, removeLine, removeProduct, renameLine, reopenRun, reset, restorePurged, resetRecords, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftHours, shiftSpan, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay } from './store'
 import { avanceLots, avanceRange, avanceRows, datesBetween, lotAcrossDays, lotRows, lotsKnown, n1, pending, type AvancePart, type AvanceRow } from './avance'
 import { cellText, loadZip, xDay, xDur, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 
@@ -430,7 +430,7 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
       {leaving && <LeaveDialog onYes={() => { setLeaving(false); onLogout() }} onNo={() => setLeaving(false)} />}
       {tab === 'act' ? (
         <>
-        <DayBar s={s} now={now} day={day} mgr={can('day')} />
+        <DayBar s={s} now={now} day={day} mgr={can('day')} calendar={can('shifts')} />
         <div className="main">
           {/* the manager moves between rooms; a supervisor or operator only has their own */}
           {can('depts') && (
@@ -849,9 +849,11 @@ const wipeOk = (typed: string) => typed.trim().toUpperCase() === WIPE_WORD
 const howMany = (runs: number, stops: number) => tr('{0} y {1}', runs + ' ' + (runs === 1 ? tr('corrida') : tr('corridas')), stops + ' ' + (stops === 1 ? tr('paro') : tr('paros')))
 
 /** which day of work it is, for everyone; the manager starts it here */
-function DayBar({ s, now, day, mgr }: { s: State; now: number; day: WorkDay; mgr: boolean }) {
+function DayBar({ s, now, day, mgr, calendar }: { s: State; now: number; day: WorkDay; mgr: boolean; calendar: boolean }) {
   const [open, setOpen] = useState(false)
+  const [cal, setCal] = useState(false) // the calendar of the plant: the day's shifts, the week, the hours
   const [notice, setNotice] = useState<{ title: string; text?: string } | null>(null)
+  const plan = shiftsOf(s, day.date)
   if (!day.started && !mgr) return null
   return (
     <div className={'daybar' + (day.started ? ' on' : '')}>
@@ -859,6 +861,8 @@ function DayBar({ s, now, day, mgr }: { s: State; now: number; day: WorkDay; mgr
         ? <span>{trx('Día de trabajo: {0} · empezó a las {1}', <b>{longDate(day.date)}</b>, <b>{fmtTime(day.started.at)}</b>)}{day.started.by ? ' · ' + day.started.by : ''}</span>
         : <span>{tr('El día de hoy todavía no se ha empezado.')}</span>}
       {mgr && <button type="button" className={day.started ? 'lnk' : 'btn primary'} onClick={() => setOpen(true)}>{day.started ? tr('Cambiar') : tr('▶ Empezar el día')}</button>}
+      {day.started && <span className={'dayshifts' + (plan.only ? ' one' : '')}>{plan.only ? trx('Hoy solo trabaja el turno {0}', <b>{plan.only}</b>) : tr('Hoy trabajan los turnos 1 y 2')}{calendar && <button type="button" className="lnk sm" onClick={() => setCal(true)}>{tr('Cambiar')}</button>}</span>}
+      {cal && <ShiftsDialog s={s} date={day.date} onClose={() => setCal(false)} />}
       {open && <StartDayDialog s={s} now={now} day={day} onClose={() => setOpen(false)} onDone={setNotice} />}
       {notice && <NoticeDialog title={notice.title} text={notice.text} onClose={() => setNotice(null)} />}
     </div>
@@ -1237,7 +1241,7 @@ function TodayCard({ s, dept, now, mgr, date }: { s: State; dept: Dept; now: num
   return (
     <div className="todaycard tc2">
       <div className="tc-head">
-        <h3>{trx('Turno {0} · {1}', t.shift, dept)}<small>{tr('todas las líneas juntas')}</small></h3>
+        <h3>{trx('Turno {0} · {1}', t.shift, dept)}<small>{t.only ? tr('único de hoy · todas las líneas juntas') : tr('todas las líneas juntas')}</small></h3>
         {mgr && <button type="button" className="lnk" onClick={() => setEditing(true)}>{hasGoal ? tr('✎ Cambiar meta') : tr('+ Poner meta')}</button>}
       </div>
       {/* four tiles: what the shift has made, its goal, its pace, its clock (from zero again with the next shift) */}
@@ -2418,14 +2422,27 @@ function ShiftsDialog({ s, date, onClose }: { s: State; date: string; onClose: (
   const [from, setFrom] = useState(date)
   const [h, setH] = useState<ShiftHours>({ first: cur.first, firstEnd: cur.firstEnd, second: cur.second, secondEnd: cur.secondEnd })
   const problem = shiftsProblem(h), cuts = problem ? null : shiftCuts(h)
-  const field = (key: keyof ShiftHours, label: string) => <label>{label} <input type="time" value={h[key]} onChange={(e) => setH({ ...h, [key]: e.target.value })} /></label>
+  const field = (key: 'first' | 'firstEnd' | 'second' | 'secondEnd', label: string) => <label>{label} <input type="time" value={h[key]} onChange={(e) => setH({ ...h, [key]: e.target.value })} /></label>
+  // the calendar: which shifts work each day of the week (from the same date on), and this day apart from its week
+  const [week, setWeek] = useState(weekOf(s, date))
+  const names = [tr('dom'), tr('lun'), tr('mar'), tr('mié'), tr('jue'), tr('vie'), tr('sáb')]
+  const apart = s.dayShifts.find((x) => x.date === date)
+  const weekSays = Number(weekOf(s, date).charAt(new Date(date + 'T12:00:00').getDay()))
+  const [said, setSaid] = useState('')
+  const pick = (only: 1 | 2 | 3 | null) => { if (setDayShifts(date, only)) setSaid(tr('✓ Guardado para el {0}. Lo ven todos los aparatos, todo lo de ese día se cuenta así, y queda en el historial.', longDate(date))) }
   return (
     <div className="veil" onClick={onClose}>
-      <div className="dlg" onClick={(e) => e.stopPropagation()}>
+      <div className="dlg wide" onClick={(e) => e.stopPropagation()}>
         <h3>{tr('Horario de los turnos')}</h3>
         <p>{tr('Lo ven todos los aparatos y queda en el historial. Los días anteriores a la fecha que pongas siguen con el horario que tenían.')}</p>
-        <form className="qform" onSubmit={(e) => { e.preventDefault(); if (!problem && from && setShifts(from, h)) onClose() }}>
+        <form className="qform" onSubmit={(e) => { e.preventDefault(); if (!problem && from && setShifts(from, h)) { setShiftWeek(from, week); onClose() } }}>
           <div className="egrid">{field('first', tr('Turno 1 empieza'))}{field('firstEnd', tr('Turno 1 termina'))}{field('second', tr('Turno 2 empieza'))}{field('secondEnd', tr('Turno 2 termina'))}</div>
+          <div className="week">
+            <span className="lab">{tr('Qué turnos trabajan cada día de la semana')}</span>
+            <div className="wk">
+              {names.map((n, i) => <label key={i}>{n}<select value={week.charAt(i)} onChange={(e) => setWeek(week.slice(0, i) + e.target.value + week.slice(i + 1))}><option value="3">{tr('1 y 2')}</option><option value="1">{tr('Solo 1')}</option><option value="2">{tr('Solo 2')}</option></select></label>)}
+            </div>
+          </div>
           <label>{tr('Vale desde el día')}{' '}<input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
           {cuts
             ? <p className="hint">{trx('Cada registro cuenta para un turno por su hora: hasta las {0} es del turno 1 y después del turno 2. Pasada la medianoche sigue siendo del turno 2 hasta las {1}. El corte es la mitad del rato entre un turno y el otro, para que quien se queda un poco o llega un poco antes cuente con su turno. El tiempo nunca se detiene solo: quien sigue trabajando después de su hora, o empieza antes, sigue contando. Solo cuando ya pasó el rato entre un turno y el otro, si en una línea nadie registró nada en todo ese rato, ese rato se descuenta.', <b>{minuteText(cuts.toSecond)}</b>, <b>{minuteText(cuts.toFirst)}</b>)}</p>
@@ -2435,6 +2452,17 @@ function ShiftsDialog({ s, date, onClose }: { s: State; date: string; onClose: (
             <button type="submit" className="btn primary" disabled={!!problem || !from}>{tr('✓ Guardar')}</button>
           </div>
         </form>
+        <div className="dayapart">
+          <h4>{trx('Solo el {0}', longDate(date))}</h4>
+          <p className="hint">{tr('Para un día distinto de los demás: un sábado en que solo vino un turno, o un día de dos turnos que no suele tenerlos. No cambia el horario ni la semana. Con un solo turno, todo lo del día es de ese turno.')}</p>
+          <div className="seg" role="group" aria-label={tr('Turnos de este día')}>
+            <button type="button" className={!apart ? 'on' : ''} aria-pressed={!apart} onClick={() => pick(null)}>{tr('Como su semana')}<small>{dayShiftsText(weekSays === 1 || weekSays === 2 ? weekSays : undefined)}</small></button>
+            <button type="button" className={apart?.only === 1 ? 'on' : ''} aria-pressed={apart?.only === 1} onClick={() => pick(1)}>{tr('Solo turno 1')}</button>
+            <button type="button" className={apart?.only === 2 ? 'on' : ''} aria-pressed={apart?.only === 2} onClick={() => pick(2)}>{tr('Solo turno 2')}</button>
+            <button type="button" className={apart?.only === 3 ? 'on' : ''} aria-pressed={apart?.only === 3} onClick={() => pick(3)}>{tr('Los dos')}</button>
+          </div>
+          {said && <p className="hint ok">{said}</p>}
+        </div>
       </div>
     </div>
   )
@@ -2606,24 +2634,26 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
     } catch (e) { failed(tr('preparar el reporte'), e) }
   }
   /** the day's tables, typed (numbers, times, spans) so Excel can sort and add them; the CSV takes the same as text */
+  // the shifts of the day, side by side: both, or the only one that worked
+  const shiftCols = ([1, 2] as const).filter((k) => !rep.plan.only || rep.plan.only === k)
   const blocks = () => {
     const T = (ms: number) => xTime(ms, fmtTime(ms)), D = (ms: number) => xDur(ms, fmtDur(ms))
     const resumen: Cell[][] = [[tr('Departamento'), tr('Línea'), tr('Código'), tr('Lote'), tr('Fecha'), tr('Inicio'), tr('Fin'), tr('Unidad'), tr('Hechas'), tr('Cantidad'), tr('Unidad de cantidad'), tr('Tags / bins'), tr('Waste (lb)'), tr('Tiempo trabajando'), tr('Promedio por unidad'), tr('Tiempo parado'), 'Set up', tr('Razones de paro'), tr('Registró'), tr('Turno')],
       ...rows.map((x): Cell[] => [x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.lots, xDay(x.r.date), T(x.r.startedAt), x.r.endedAt ? T(x.r.endedAt) : tr('en curso'), cfgOf(x.r).unit, x.units, CFG[x.r.dept].qty !== 'none' ? x.qty : '', CFG[x.r.dept].qty !== 'none' ? cfgOf(x.r).qtyUnit : '', x.view.units.map((u) => u.ref).filter(Boolean).join(', '), x.waste || '', D(x.st.working), x.timed ? D(x.st.avg) : '', D(x.st.down), x.st.setup ? D(x.st.setup) : '', reasonsText(x), whoText(x.r), rep.shift ? String(rep.shift) : x.shifts])]
     const boxes = (c: (typeof byCode)[number]) => (!c.bin && CFG[c.dept].qtyUnit === 'pouches' ? inCases(s, c.code, c.qty) : null)
-    const porCodigo: Cell[][] = [[tr('Departamento'), tr('Código'), tr('Unidad'), tr('Hechas'), tr('Cantidad'), tr('Unidad de cantidad'), tr('Waste (lb)'), tr('Líneas'), tr('Cajas completas'), tr('Pouches sueltos'), ...(rep.shift ? [] : [tr('Turno 1'), tr('Turno 2')])],
-      ...byCode.map((c): Cell[] => [c.dept, c.code, cw(c).unit, c.units, CFG[c.dept].qty !== 'none' ? c.qty : '', CFG[c.dept].qty !== 'none' ? cw(c).qtyUnit : '', c.waste || '', c.lines.join(', '), boxes(c)?.cases ?? '', boxes(c)?.loose ?? '', ...(c.byShift ?? [])])]
-    const porLote: Cell[][] = [[tr('Departamento'), tr('Código'), tr('Lote'), tr('Unidad'), tr('Hechas'), tr('Cantidad'), tr('Unidad de cantidad'), ...(rep.shift ? [] : [tr('Turno 1'), tr('Turno 2')])],
-      ...byCode.flatMap((c) => c.lots.map((l): Cell[] => [c.dept, c.code, l.lot, cw(c).unit, l.units, CFG[c.dept].qty !== 'none' ? l.qty : '', CFG[c.dept].qty !== 'none' ? cw(c).qtyUnit : '', ...(l.byShift ?? [])]))]
+    const porCodigo: Cell[][] = [[tr('Departamento'), tr('Código'), tr('Unidad'), tr('Hechas'), tr('Cantidad'), tr('Unidad de cantidad'), tr('Waste (lb)'), tr('Líneas'), tr('Cajas completas'), tr('Pouches sueltos'), ...(rep.shift ? [] : shiftCols.map((k) => tr('Turno {0}', k)))],
+      ...byCode.map((c): Cell[] => [c.dept, c.code, cw(c).unit, c.units, CFG[c.dept].qty !== 'none' ? c.qty : '', CFG[c.dept].qty !== 'none' ? cw(c).qtyUnit : '', c.waste || '', c.lines.join(', '), boxes(c)?.cases ?? '', boxes(c)?.loose ?? '', ...(c.byShift ? shiftCols.map((k) => (c.byShift as [number, number])[k - 1]) : [])])]
+    const porLote: Cell[][] = [[tr('Departamento'), tr('Código'), tr('Lote'), tr('Unidad'), tr('Hechas'), tr('Cantidad'), tr('Unidad de cantidad'), ...(rep.shift ? [] : shiftCols.map((k) => tr('Turno {0}', k)))],
+      ...byCode.flatMap((c) => c.lots.map((l): Cell[] => [c.dept, c.code, l.lot, cw(c).unit, l.units, CFG[c.dept].qty !== 'none' ? l.qty : '', CFG[c.dept].qty !== 'none' ? cw(c).qtyUnit : '', ...(l.byShift ? shiftCols.map((k) => (l.byShift as [number, number])[k - 1]) : [])]))]
     const unidades: Cell[][] = [[tr('Departamento'), tr('Línea'), tr('Código'), tr('Lote'), '#', tr('Hora'), tr('Unidad'), tr('Cantidad'), tr('Unidad de cantidad'), tr('Tag / bin'), tr('Desde la anterior'), tr('Registró'), tr('Turno'), tr('Pedido')],
       ...unitRows.map((x): Cell[] => [x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.lot, x.i + 1, T(x.u.at), cfgOf(x.r).unit, x.qty ?? '', x.qty != null ? cfgOf(x.r).qtyUnit : '', x.tag, D(x.gap), x.u.by, x.shift, x.order])]
     const paros: Cell[][] = [[tr('Departamento'), tr('Línea'), tr('Razón'), tr('Detalle'), tr('Inicio'), tr('Fin'), tr('Duración'), tr('Registró'), tr('Turno')],
       ...stops.map((x): Cell[] => [x.dept, lineName(x), tr(x.reason), noteLabel(x.note), T(x.startedAt), x.endedAt ? T(x.endedAt) : tr('en curso'), D(x.ms), x.by, spanShifts(rep.plan, x.startedAt, x.endedAt ?? now)])]
     // the whole day first and each shift under it (not when the report is of one shift only); what a room filled in bins
     // goes under it, word by word: its bins and what they hold
-    const binRows = (d: (typeof rep.byShift)[number]) => [...new Set(d.day.bins.map((y) => y.word))].flatMap((w) => [d.day, d.first, d.second].map((x): Cell[] => { const y = x.bins.find((z) => z.word === w); return [d.dept, x.shift ? tr('Turno {0}', x.shift) : tr('Total del día'), '', '', '', '', '', '', '', y?.units ?? 0, cfgFor(d.dept, w).unit, y?.qty ?? 0, apartWord(d.dept, w), '', '', '', ''] }))
+    const binRows = (d: (typeof rep.byShift)[number]) => [...new Set(d.day.bins.map((y) => y.word))].flatMap((w) => [d.day, ...shiftCols.map((k) => (k === 1 ? d.first : d.second))].map((x): Cell[] => { const y = x.bins.find((z) => z.word === w); return [d.dept, x.shift ? tr('Turno {0}', x.shift) : tr('Total del día'), '', '', '', '', '', '', '', y?.units ?? 0, cfgFor(d.dept, w).unit, y?.qty ?? 0, apartWord(d.dept, w), '', '', '', ''] }))
     const porTurno: Cell[][] = [[tr('Departamento'), tr('Turno'), tr('Horario'), tr('Empezó'), tr('Terminó'), tr('Duración'), tr('Líneas'), tr('Códigos'), tr('Corridas'), tr('Hechas'), tr('Unidad'), tr('Cantidad'), tr('Unidad de cantidad'), tr('Waste (lb)'), tr('Tiempo trabajando'), tr('Tiempo parado'), 'Set up'],
-      ...rep.byShift.flatMap((d) => [...[d.day, d.first, d.second].map((x): Cell[] => [d.dept, x.shift ? tr('Turno {0}', x.shift) : tr('Total del día'), x.shift ? shiftHours(rep.plan, x.shift) : '', x.from ? T(x.from) : '', !x.to ? '' : x.open ? tr('en curso') : T(x.to), x.span ? D(x.span) : '', x.lines, x.distinct, x.codes, x.units, CFG[d.dept].unit, CFG[d.dept].qty !== 'none' ? x.qty : '', CFG[d.dept].qty !== 'none' ? CFG[d.dept].qtyUnit : '', x.waste || '', D(x.working), D(x.down), x.setup ? D(x.setup) : '']), ...binRows(d)])]
+      ...rep.byShift.flatMap((d) => [...[d.day, ...shiftCols.map((k) => (k === 1 ? d.first : d.second))].map((x): Cell[] => [d.dept, x.shift ? tr('Turno {0}', x.shift) : tr('Total del día'), x.shift ? shiftHours(rep.plan, x.shift) : '', x.from ? T(x.from) : '', !x.to ? '' : x.open ? tr('en curso') : T(x.to), x.span ? D(x.span) : '', x.lines, x.distinct, x.codes, x.units, CFG[d.dept].unit, CFG[d.dept].qty !== 'none' ? x.qty : '', CFG[d.dept].qty !== 'none' ? CFG[d.dept].qtyUnit : '', x.waste || '', D(x.working), D(x.down), x.setup ? D(x.setup) : '']), ...binRows(d)])]
     const cambios: Cell[][] = [[tr('Hora'), tr('Quién'), tr('Departamento'), tr('Qué'), tr('Antes'), tr('Después')], ...changes.map((c): Cell[] => [T(c.at), c.by, c.dept ?? '', c.what, c.before, c.after])]
     const av = mgr && !dept && !rep.filtered ? avanceRows(s, date) : []
     const carry = av.length ? carriedOver(s, date).filter((x) => x.next <= today) : [], came = av.length ? cameFrom(s, date) : []
@@ -2677,7 +2707,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
       <button type="button" className="lnk sm" aria-expanded={!shut[key]} onClick={() => setShut({ ...shut, [key]: !shut[key] })}>{shut[key] ? tr('Mostrar ▾') : tr('Ocultar ▴')}</button>
     </div>
   )
-  const colsN = 7 + (rep.shift ? 0 : 2)
+  const colsN = 7 + (rep.shift ? 0 : shiftCols.length)
   return (
     <section className="report">
       <div className="rhead">
@@ -2705,8 +2735,8 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
           <div className="rf grow">
             <span className="lab">{tr('Turno')}{can('shifts') && <button type="button" className="lnk sm" onClick={() => setShiftsOpen(true)}>{tr('Cambiar horario')}</button>}</span>
             <div className="seg" role="group" aria-label={tr('Turno')}>
-              {([0, 1, 2] as const).map((k) => (
-                <button key={k} type="button" className={rep.shift === k ? 'on' : ''} aria-pressed={rep.shift === k} onClick={() => setFShift(k)}>{k ? tr('Turno {0}', k) : tr('Día completo')}<small className="hrs">{k ? hrs(k) : tr('los dos turnos')}</small></button>
+              {([0, 1, 2] as const).filter((k) => !k || !rep.plan.only || rep.plan.only === k).map((k) => (
+                <button key={k} type="button" className={rep.shift === k ? 'on' : ''} aria-pressed={rep.shift === k} onClick={() => setFShift(k)}>{k ? tr('Turno {0}', k) : tr('Día completo')}<small className="hrs">{k ? hrs(k) : rep.plan.only ? tr('un solo turno') : tr('los dos turnos')}</small></button>
               ))}
             </div>
           </div>
@@ -2793,7 +2823,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
               <h3>{rep.shift ? tr('Por departamento · Turno {0}', rep.shift) : tr('Total del día y cada turno')}</h3>
               <div className="deptgrid">
                 {rep.byDept.map((d) => {
-                  const b = rep.byShift.find((x) => x.dept === d.dept), cols = b ? [b.day, b.first, b.second] : [d]
+                  const b = rep.byShift.find((x) => x.dept === d.dept), cols = b ? [b.day, ...shiftCols.map((k) => (k === 1 ? b.first : b.second))] : [d]
                   const cfg = CFG[d.dept], q = cfg.qty !== 'none'
                   const mark = (x: (typeof cols)[number]) => (b && !x.shift ? 'day' : '')
                   const cell = (x: (typeof cols)[number], v: ReactNode, red = false) => <td key={x.shift} className={mark(x) + (red ? ' red' : '')}>{v}</td>
@@ -2843,7 +2873,7 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
           <div className="sechead"><h3>{tr('Por código y lote')}</h3>{!(rep.code && rep.lot) && <small>{tr('Toca un código o un lote para ver solo eso.')}</small>}</div>
           <div className="twrap">
             <table className="bycode">
-              <thead><tr><th>{tr('Código')}</th><th>{tr('Lote')}</th><th className="num">{tr('Hechas')}</th><th className="num">{tr('Cantidad')}</th>{!rep.shift && <><th className="num">{tr('Turno 1')}</th><th className="num">{tr('Turno 2')}</th></>}<th>{tr('En cajas')}</th><th className="num">Waste</th><th>{tr('Líneas')}</th></tr></thead>
+              <thead><tr><th>{tr('Código')}</th><th>{tr('Lote')}</th><th className="num">{tr('Hechas')}</th><th className="num">{tr('Cantidad')}</th>{!rep.shift && shiftCols.map((k) => <th key={k} className="num">{tr('Turno {0}', k)}</th>)}<th>{tr('En cajas')}</th><th className="num">Waste</th><th>{tr('Líneas')}</th></tr></thead>
               <tbody>
                 {rep.byDept.map((d) => {
                   const cfg = CFG[d.dept], q = cfg.qty !== 'none', b = rep.byShift.find((x) => x.dept === d.dept)
@@ -2863,13 +2893,13 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
                             <td>{c.lots.length === 1 ? lotBtn(c.lots[0].lot) : tr('{0} lotes', c.lots.length)}</td>
                             <td className="num">{madeN(c.units, c.bin)}</td>
                             <td className="num">{qtyText(c.qty, c.bin)}</td>
-                            {c.byShift && <><td className="num">{dash(c.byShift[0])}</td><td className="num">{dash(c.byShift[1])}</td></>}
+                            {c.byShift && shiftCols.map((k) => <td key={k} className="num">{dash((c.byShift as [number, number])[k - 1])}</td>)}
                             <td>{boxes(c.code, c.qty, c.bin)}</td><td className={'num' + (c.waste ? ' red' : '')}>{c.waste ? c.waste + ' lb' : '—'}</td><td>{c.lines.join(', ')}</td>
                           </tr>
                           {c.lots.length > 1 && c.lots.map((l) => (
                             <tr key={l.lot} className="lrow">
                               <td></td><td>{lotBtn(l.lot)}</td><td className="num">{madeN(l.units, c.bin)}</td><td className="num">{qtyText(l.qty, c.bin)}</td>
-                              {l.byShift && <><td className="num">{dash(l.byShift[0])}</td><td className="num">{dash(l.byShift[1])}</td></>}
+                              {l.byShift && shiftCols.map((k) => <td key={k} className="num">{dash((l.byShift as [number, number])[k - 1])}</td>)}
                               <td>{boxes(c.code, l.qty, c.bin)}</td><td></td><td></td>
                             </tr>
                           ))}
@@ -2877,13 +2907,13 @@ function Report({ s, now, only, mgr, admin, wholeDay }: { s: State; now: number;
                       ))}
                       <tr className="trow">
                         <td colSpan={2}>{trx('Total {0}', d.dept)}</td><td className="num">{unitsText(d.dept, d.units)}</td><td className="num">{qtyText(d.qty)}</td>
-                        {b && <><td className="num">{dash(q ? b.first.qty : b.first.units)}</td><td className="num">{dash(q ? b.second.qty : b.second.units)}</td></>}
+                        {b && shiftCols.map((k) => { const x = k === 1 ? b.first : b.second; return <td key={k} className="num">{dash(q ? x.qty : x.units)}</td> })}
                         <td></td><td className={'num' + (d.waste ? ' red' : '')}>{d.waste ? d.waste + ' lb' : '—'}</td><td></td>
                       </tr>
                       {d.bins.map((y) => (
                         <tr key={'bin:' + y.word} className="trow bins">
                           <td colSpan={2}>{tr('Además, {0}', apartLabel(d.dept, y.word))}</td><td className="num">{madeN(y.units, y.word)}</td><td className="num">{qtyText(y.qty, y.word)}</td>
-                          {b && [b.first, b.second].map((x, k) => <td key={k} className="num">{dash(x.bins.find((z) => z.word === y.word)?.qty ?? 0)}</td>)}
+                          {b && shiftCols.map((k) => { const x = k === 1 ? b.first : b.second; return <td key={k} className="num">{dash(x.bins.find((z) => z.word === y.word)?.qty ?? 0)}</td> })}
                           <td></td><td></td><td></td>
                         </tr>
                       ))}
