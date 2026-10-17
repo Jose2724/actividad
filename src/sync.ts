@@ -84,8 +84,20 @@ export async function pages(get: (from: number, to: number) => PromiseLike<Page>
 type Q = any // a query to the server while it is being put together
 /** the columns that tell two rows with the same synced_at apart, so the listing always comes in the same order */
 const ORDER: Record<Table, string[]> = { act_lines: ['id'], act_runs: ['id'], act_stops: ['id'], act_changes: ['id'], act_products: ['code'], act_schedule: ['date', 'code'], act_targets: ['dept'], act_plan: ['date', 'dept', 'code'] }
+/**
+ * An operator's device asks only for its own room (the server would give it nothing else anyway, see
+ * migrations/015): the rooms' tables by their room, the history by its room or with none (the start of the day).
+ * A manager's, the office's and a viewer's ask for every room.
+ */
+const scoped = (t: Table, q: Q): Q => {
+  const dept = myDept.get()
+  if (role.get() !== 'op' || !dept) return q
+  if (t === 'act_lines' || t === 'act_runs' || t === 'act_stops' || t === 'act_plan') return q.eq('dept', dept)
+  if (t === 'act_changes') return q.or(`dept.eq.${dept},dept.is.null`)
+  return q
+}
 const listing = (t: Table, narrow: (q: Q) => Q) => (from: number, to: number) => {
-  let q: Q = narrow(supabase!.from(t).select('*')).order('synced_at', { ascending: true })
+  let q: Q = scoped(t, narrow(supabase!.from(t).select('*'))).order('synced_at', { ascending: true })
   for (const k of ORDER[t]) q = q.order(k, { ascending: true })
   return q.range(from, to) as PromiseLike<Page>
 }

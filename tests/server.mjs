@@ -136,6 +136,25 @@ delete db.act_runs // the stand-in stops answering for the runs
 eq('no se pudo bajar: se dice, y la tablet conserva lo que tenía', [await m.pullAll(), m.store.get().runs.length], [false, before])
 eq('un día viejo no se pudo traer, y se puede volver a pedir', [await m.loadDay(other), m.awayDay(other)], [false, true])
 
+console.log('· Una tablet de operador baja solo su cuarto')
+{
+  // 2026-10-17: an operator's tablet downloaded the whole plant. It asks for its own room only (the server gives it
+  // nothing else, migrations/015); a manager's asks for every room
+  const was = { role: m.role.get(), dept: m.myDept.get() }
+  m.role.set('op'); m.myDept.set('RTE')
+  db.act_runs ??= [] // the stand-in answers for the runs again
+  db.act_runs.push(runRow('mfo-run', now - 20 * 60_000, { dept: 'MFO', line_id: 'M1', line: 'Línea 1', synced_at: synced() }))
+  db.act_runs.push(runRow('rte-run', now - 19 * 60_000, { synced_at: synced() }))
+  await m.pullAll()
+  const has = (id) => m.store.get().runs.some((r) => r.id === id)
+  eq('la de RTE llega, la de MFO no', [has('rte-run'), has('mfo-run')], [true, false])
+  m.role.set('mgr'); m.myDept.set(was.dept)
+  localStorage.removeItem('act_since2') // a manager's device, as if just set up: it asks for everything
+  await m.pullAll()
+  eq('un manager baja todos los cuartos', [has('rte-run'), has('mfo-run')], [true, true])
+  m.role.set(was.role)
+}
+
 console.log('· La hora: el aparato se pone en hora con el servidor')
 {
   const near = (got, want) => Math.abs(got - want) <= 500
