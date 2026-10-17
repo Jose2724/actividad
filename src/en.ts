@@ -1086,4 +1086,6 @@ export const EN: Record<string, string> = {
   'a ojo': 'rough',
   'en hora': 'on time',
   '{0} min de diferencia': '{0} min off',
+  // the version beside the time (2026-10-17)
+  'La versión de la app en este aparato': 'The version of the app on this device',
 }

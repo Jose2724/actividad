@@ -957,3 +957,5 @@ table.devtable td.ok{color:var(--ok);font-weight:600}
 table.devtable td.amber{color:var(--amber);font-weight:600}
 table.devtable td.red{color:var(--warn);font-weight:700}
 .hint.red{color:var(--warn);font-weight:600}
+/* the version of the app on this device, beside the time */
+.brand .buildtag{margin-left:8px;font-size:10.5px;color:var(--muted);font-weight:600;letter-spacing:.02em}

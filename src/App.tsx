@@ -15,8 +15,9 @@ import { fetchMe, finishSignOut, loginEmail, rememberedMe, rememberedUser, remem
 import { leaveAsk, loadDay, STALE_MS, startSync, syncStore, syncNow, unreachable, fetchPurged } from './sync'
 import { storageFull } from './storage'
 import { clockNow, clockOffText, clockState, otherZone, startClock, syncClock } from './clock'
-import { keepView, reloadNow, updateStore, updateText, viewKept } from './update'
+import { BUILD, keepView, reloadNow, updateStore, updateText, viewKept } from './update'
 import { startHello } from './devices'
+import { keepAwake } from './awake'
 import { Devices } from './DevicesView'
 import { appUrl, qrPath } from './qr'
 import { uploadAll } from './store'
@@ -379,6 +380,7 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
   const [tab, setTab] = useState<'act' | 'av' | 'rep' | 'emp' | 'dev'>(kept?.tab === 'av' || kept?.tab === 'rep' || kept?.tab === 'emp' || kept?.tab === 'dev' ? kept.tab : 'act')
   useEffect(() => { keepView({ dept, tab }) }, [dept, tab])
   const upd = useSyncExternalStore(updateStore.subscribe, updateStore.get)
+  useEffect(() => keepAwake(), []) // a tablet on the floor must not go to sleep in the middle of a shift
   // every free line of every room into set up with one tap (a manager's or the office's, when a shift starts)
   const [setupAll, setSetupAll] = useState(false)
   const free = mgr && !viewOnly ? freeLines(s, now) : []
@@ -415,7 +417,7 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
       {full && <div className="fullbar">{trx('⚠ La memoria de este aparato está llena y lo nuevo no se está guardando aquí. {0}', supabase ? tr('Lo que ya subió al servidor está a salvo. Avisa al manager y no cierres la app hasta que diga "Sincronizado".') : tr('Manda el reporte del día y avisa al manager antes de cerrar la app: hay que hacer espacio con "Reiniciar registros".'))}</div>}
       {stale && <div className="stalebar top"><span>{sync.lastSync ? trx('⚠ Este aparato muestra lo de las {0}: lleva {1} sin bajar del servidor ({2}). Si en otra tablet cambió algo, aquí todavía no se ve.', fmtTime(sync.lastSync), agoText(staleMs), why) : trx('⚠ Este aparato no ha bajado nada del servidor todavía ({0}).', why)}</span><button type="button" className="btn sm" onClick={() => window.dispatchEvent(new Event('act-resync'))}>{tr('Reintentar')}</button></div>}
       <header className="top">
-        <div className="brand"><h1>Actividad{!supabase && <span className="demotag">DEMO</span>}</h1><small>{new Date(now).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })} · <b className="livetime" title={supabase ? tr('La hora de la app: la del servidor, la misma en todos los aparatos') : ''}>{new Date(now).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' })}</b></small></div>
+        <div className="brand"><h1>Actividad{!supabase && <span className="demotag">DEMO</span>}</h1><small>{new Date(now).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })} · <b className="livetime" title={supabase ? tr('La hora de la app: la del servidor, la misma en todos los aparatos') : ''}>{new Date(now).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' })}</b>{BUILD && BUILD !== 'dev' && <span className="buildtag" title={tr('La versión de la app en este aparato')}>v {BUILD.slice(0, 6)}</span>}</small></div>
         <nav className="tabs">
           <button type="button" className={tab === 'act' ? 'on' : ''} onClick={() => setTab('act')}>{tr('Actividad')}</button>
           {(can('products') || viewOnly) && <button type="button" className={tab === 'av' ? 'on' : ''} onClick={() => setTab('av')}>{tr('Avance')}</button>}
