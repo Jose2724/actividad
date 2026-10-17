@@ -974,15 +974,15 @@ table.binlist .binkind{display:block;font-size:11px;font-weight:800;color:#4f46e
 /* the choice of what a line makes or how it counts (pallets or bins; platos, copas or pounds; mezclas, pounds or
    cases): every option in its own colour, visible also when it is not the one chosen (Jose, 2026-10-17: with white
    faces they did not notice which side was on and put bins on the pallets side) */
-.seg button.c-green{background:#dcefe9;color:#0b5c56;border:1px solid #9bd0c3}
+.seg button.c-green{background:#d3ebe4;color:#0b5c56;border:1.5px solid #7fc4b4}
 .seg button.c-green.on{background:var(--accent);color:#fff;border-color:var(--accent)}
-.seg button.c-indigo{background:#e3e7ff;color:#3730a3;border:1px solid #b3bcf9}
+.seg button.c-indigo{background:#dde1ff;color:#3730a3;border:1.5px solid #9ba6f6}
 .seg button.c-indigo.on{background:#4338ca;color:#fff;border-color:#4338ca}
-.seg button.c-rose{background:#fce4f0;color:#9d174d;border:1px solid #f3b3d2}
+.seg button.c-rose{background:#fbdcec;color:#9d174d;border:1.5px solid #ee9ec6}
 .seg button.c-rose.on{background:#be185d;color:#fff;border-color:#be185d}
-.seg button.c-amber{background:#fde9cf;color:#8a4b00;border:1px solid #f0c184}
+.seg button.c-amber{background:#fce3c2;color:#8a4b00;border:1.5px solid #ebb266}
 .seg button.c-amber.on{background:#c2410c;color:#fff;border-color:#c2410c}
-.seg button.c-blue{background:#deeafe;color:#1e40af;border:1px solid #adc5f5}
+.seg button.c-blue{background:#d6e4fd;color:#1e40af;border:1.5px solid #98b7f2}
 .seg button.c-blue.on{background:#1d4ed8;color:#fff;border-color:#1d4ed8}
 .seg button[class*="c-"].on{box-shadow:0 1px 3px rgba(0,0,0,.22)}
 /* an MFO card says in the same colour what its bins hold */
