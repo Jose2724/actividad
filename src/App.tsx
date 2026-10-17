@@ -1,6 +1,6 @@
 import { createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
-import { addLine, addWaste, apartLabel, apartWord, awayDay, cameFrom, carriedOver, dayAfter, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderOfId, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, productOf, productsCsv, purgeDay, purgesOf, removeLine, removeProduct, renameLine, reopenRun, reset, restorePurged, resetRecords, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftHours, shiftSpan, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay } from './store'
+import { addLine, addWaste, apartLabel, apartWord, awayDay, cameFrom, carriedOver, dayAfter, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderOfId, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, productOf, productsCsv, purgeDay, purgesOf, removeLine, removeProduct, renameLine, reopenRun, reset, restorePurged, resetRecords, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftHours, shiftSpan, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay } from './store'
 import { avanceLots, avanceRange, avanceRows, datesBetween, lotAcrossDays, lotRows, lotsKnown, mfoList, mfoText, mfoWord, n1, pending, type AvancePart, type AvanceRow, type MfoMade } from './avance'
 import { cellText, loadZip, xDay, xDur, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 
@@ -12,7 +12,7 @@ import { filterFile, filterTitle, reportOf, spanShifts, unitParts, type ReportFi
 import { canDo, canShift, type Power, type Who } from './powers'
 import { AddRunDialog, RunEditor, StopEditor } from './editors'
 import { fetchMe, finishSignOut, loginEmail, rememberedMe, rememberedUser, rememberMe, rememberUser, signedOut, signOutHere, supabase, type Me } from './supabase'
-import { leaveAsk, loadDay, STALE_MS, startSync, syncStore, syncNow, unreachable, fetchPurged } from './sync'
+import { checkLineName, leaveAsk, loadDay, STALE_MS, startSync, syncStore, syncNow, unreachable, fetchPurged } from './sync'
 import { storageFull } from './storage'
 import { clockNow, clockOffText, clockState, otherZone, startClock, syncClock } from './clock'
 import { BUILD, keepView, reloadNow, updateStore, updateText, viewKept } from './update'
@@ -107,7 +107,20 @@ export function LineNameDialog({ s, dept, line, onClose }: { s: State; dept: Dep
   const taken = tidy ? lineNamed(s, dept, tidy, line?.id) : undefined
   const same = !!line && tidy === line.name
   const others = line ? s.lines.filter((l) => l.dept === dept && l.id !== line.id).sort(byLineName) : []
-  const save = () => { if (tidy && !taken && !same && (line ? renameLine(line.id, tidy) : addLine(dept, tidy))) onClose() }
+  // the server is asked first which lines the room has now (see checkLineName): a tablet with an old or empty copy
+  // never makes a line that already exists
+  const [busy, setBusy] = useState(false)
+  const [why, setWhy] = useState('')
+  const save = async () => {
+    if (!tidy || taken || same || busy) return
+    setBusy(true); setWhy('')
+    const v = await checkLineName(dept, tidy, line?.id)
+    setBusy(false)
+    if (v === 'wait') return setWhy(tr('Este aparato todavía está bajando las líneas del servidor. Espera a que arriba diga "Sincronizado" y vuelve a intentarlo.'))
+    if (v === 'offline') return setWhy(tr('Sin conexión con el servidor. Para agregar una línea o cambiarle el nombre hace falta señal: así ninguna tablet crea una línea que ya existe.'))
+    if (v === 'taken') return setWhy(tr('Ya hay una línea que se llama {0} en {1}: el servidor la acaba de traer a este aparato. Usa esa.', lineLabel(tidy), dept))
+    if (line ? renameLine(line.id, tidy) : addLine(dept, tidy)) onClose()
+  }
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
@@ -126,11 +139,55 @@ export function LineNameDialog({ s, dept, line, onClose }: { s: State; dept: Dep
             </div>
           )}
           {taken && !line && <span className="err">{trx('Ya hay una {0} en {1}. Elige otro nombre.', lineLabel(taken.name), dept)}</span>}
+          {why && <span className="err">{why}</span>}
           <div className="dbtns">
             <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
-            <button type="submit" className="btn primary" disabled={!tidy || !!taken || same}>{line ? tr('✓ Guardar') : tr('+ Agregar')}</button>
+            <button type="submit" className="btn primary" disabled={!tidy || !!taken || same || busy}>{busy ? tr('Comprobando con el servidor…') : line ? tr('✓ Guardar') : tr('+ Agregar')}</button>
           </div>
         </form>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Lines of one room with the same name, side by side: what each one has (its code, since when, what it recorded) so
+ * the manager sees which is the copy, and for each one "Cambiar nombre" or, once it is free, "Quitar". Nothing is
+ * moved or erased by itself: a line with a code open is ended first on its own card, as always.
+ */
+function DupLinesDialog({ s, ids, onClose }: { s: State; ids: string[]; onClose: () => void }) {
+  const lines = ids.map((id) => s.lines.find((l) => l.id === id)).filter((l): l is Line => !!l)
+  const [renaming, setRenaming] = useState<Line | null>(null)
+  const [removing, setRemoving] = useState<Line | null>(null)
+  if (lines.length < 2 && !renaming) return <NoticeDialog title={tr('Listo')} text={tr('Ya no hay dos líneas con ese nombre.')} onClose={onClose} />
+  return (
+    <div className="veil" onClick={onClose}>
+      <div className="dlg wide" onClick={(e) => e.stopPropagation()}>
+        <h3>{trx('Líneas con el mismo nombre · {0}', lines[0] ? lines[0].dept : '')}</h3>
+        <p>{tr('Deja una con su nombre. A la otra cámbiale el nombre, o quítala si es una copia: primero, en su tarjeta, ▶ Reanudar si está parada y ■ Terminar su código.')}</p>
+        <div className="duplist">
+          {lines.map((l) => {
+            const run = openRun(s, l.id), stop = s.stops.find((x) => x.lineId === l.id && !x.endedAt)
+            const runs = s.runs.filter((r) => r.lineId === l.id), units = runs.reduce((t, r) => t + r.units.length, 0)
+            const first = runs.length ? Math.min(...runs.map((r) => r.startedAt)) : 0
+            const busy = !!run || !!stop
+            return (
+              <div key={l.id} className="dupline">
+                <div><b>{lineLabel(l.name)}</b>
+                  <small>{run ? trx('corriendo {0} desde las {1}', run.code, fmtTime(run.startedAt)) : stop ? tr('parada · {0}', tr(stop.reason)) : tr('libre')}</small>
+                  <small>{runs.length ? [runs.length === 1 ? tr('1 corrida') : tr('{0} corridas', runs.length), units === 1 ? tr('1 unidad registrada') : tr('{0} unidades registradas', units), tr('la primera el {0}', new Date(first).toLocaleDateString(locale, { day: 'numeric', month: 'short' }) + ' ' + fmtTime(first))].join(' · ') : tr('nada registrado en ella')}</small>
+                </div>
+                <div className="btns">
+                  <button type="button" className="btn" onClick={() => setRenaming(l)}>{tr('Cambiar nombre')}</button>
+                  <button type="button" className="btn danger" disabled={busy} title={busy ? tr('Primero termina su código en su tarjeta') : ''} onClick={() => setRemoving(l)}>{tr('Quitar')}</button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+        <div className="dbtns"><button type="button" className="btn" onClick={onClose}>{tr('Cerrar')}</button></div>
+        {renaming && <LineNameDialog s={s} dept={renaming.dept} line={renaming} onClose={() => setRenaming(null)} />}
+        {removing && <ConfirmDialog title={tr('¿Quitar {0} de {1}', lineLabel(removing.name), removing.dept) + '?'} text={tr('Lo registrado en ella se queda en el reporte. Se puede volver a poner desde Ajustes.')} yes={tr('Quitar')} danger onYes={() => { removeLine(removing.id); setRemoving(null) }} onNo={() => setRemoving(null)} />}
       </div>
     </div>
   )
@@ -1436,6 +1493,7 @@ function DeptPanel({ s, dept, now, day }: { s: State; dept: Dept; now: number; m
   const [editRun, setEditRun] = useState<string | null>(null)
   const [addingRun, setAddingRun] = useState(false) // a code that ran and nobody recorded, put on its line after the fact
   const [editStop, setEditStop] = useState(false)
+  const [dupOpen, setDupOpen] = useState<string[] | null>(null) // lines of this room that share a name, being fixed
   const left = openIn(s, dept) // what is still open in the room: what "Terminar turno" would close
   const editing = editRun ? s.runs.find((r) => r.id === editRun) : undefined
   const anyRunning = lines.some((l) => openRun(s, l.id))
@@ -1485,6 +1543,13 @@ function DeptPanel({ s, dept, now, day }: { s: State; dept: Dept; now: number; m
       {ds && <div className="deptstop">{trx('⏸ Todo {0} parado · {1}{2} · desde {3} · {4}', dept, <b>{tr(ds.reason)}</b>, ds.note && ' · ' + noteLabel(ds.note), fmtTime(ds.startedAt), ds.by)} {can('fix') && <button type="button" className="lnk" onClick={() => setEditStop(true)}>{tr('Corregir')}</button>}</div>}
       {editStop && ds && <StopEditor stop={ds} mgr={can('fix')} onClose={() => setEditStop(false)} />}
       <TodayCard s={s} dept={dept} now={now} mgr={can('goals')} date={day.date} />
+      {!viewOnly && can('fix') && duplicateLines(s, dept).map((g) => (
+        <div key={g[0].id} className="dupbar">
+          <span>{trx('Hay {0} líneas que se llaman {1} en {2}. Casi siempre una es una copia, hecha en una tablet que no tenía las líneas del cuarto.', g.length, <b>{lineLabel(g[0].name)}</b>, dept)}</span>
+          <button type="button" className="btn soft" onClick={() => setDupOpen(g.map((l) => l.id))}>{tr('Arreglar')}</button>
+        </div>
+      ))}
+      {dupOpen && <DupLinesDialog s={s} ids={dupOpen} onClose={() => setDupOpen(null)} />}
       <div className="lines">{lines.map((l) => <LineCard key={l.id} s={s} line={l} now={now} mgr={can('fix')} day={day} />)}</div>
       {lines.length === 0 && <p className="hint">{viewOnly || !(can('fix') || s.lineRules.add) ? tr('Este departamento no tiene líneas todavía.') : trx('Este departamento no tiene líneas. Toca "Agregar {0}".', CFG[dept].lineWord.toLowerCase())}</p>}
       {adding && <LineNameDialog s={s} dept={dept} onClose={() => setAdding(false)} />}

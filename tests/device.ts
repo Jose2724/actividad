@@ -7,7 +7,7 @@ export { cellText, loadZip, xDay, xDur, xTime, xlsxBytes, xlsxNow } from '../src
 export { homeScreenApple, sharePick, shareProblem } from '../src/send'
 export { filterFile, filterTitle, reportOf, spanShifts, unitParts } from '../src/report'
 export { fetchMe, finishSignOut, keepStorage, passExpired, patience, rememberedMe, rememberedUser, rememberMe, rememberUser, renewSession, rowRights, sessionFetch, sessionIsOver, signedOut, signOutHere } from '../src/supabase'
-export { dayPull, firstPull, flushNow, leaveAsk, loadDay, pages, pullAll, syncNow, syncStore, unreachable } from '../src/sync'
+export { checkLineName, dayPull, firstPull, flushNow, leaveAsk, loadDay, pages, pullAll, syncNow, syncStore, unreachable } from '../src/sync'
 export { storageFull } from '../src/storage'
 export { supabase } from '../src/supabase'
 export { qrPath } from '../src/qr'

@@ -492,7 +492,17 @@ function lineWordKept(d: Dept) { return d === 'Kitchen' ? 'Braiser' : 'Línea' }
 /** a name as it is kept: tidy, and with the app's own word for a line (somebody typing "Line 4" on an English screen means "Línea 4") */
 export const tidyLineName = (t: string) => (lang === 'en' ? t.trim().replace(/^Line(?=\s|$)/i, 'Línea') : t).replace(/\s+/g, ' ').trim().slice(0, LINE_NAME_MAX).trim()
 /** two names are the same line name whatever the capitals, accents or spaces: "linea  2" = "Línea 2" */
-const sameName = (a: string, b: string) => { const f = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toLowerCase(); return f(a) === f(b) }
+export const sameName = (a: string, b: string) => { const f = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toLowerCase(); return f(a) === f(b) }
+/**
+ * the lines of a room that share a name, group by group (each group two or more lines, the one with more codes first):
+ * one of them is nearly always a copy, added on a tablet that did not have its room's lines (2026-10-17, Packing)
+ */
+export function duplicateLines(s: State, dept: Dept): Line[][] {
+  const lines = s.lines.filter((l) => l.dept === dept && !l.deleted), used = (l: Line) => s.runs.filter((r) => r.lineId === l.id).length
+  const groups: Line[][] = []
+  for (const l of lines) { const g = groups.find((x) => sameName(x[0].name, l.name)); if (g) g.push(l); else groups.push([l]) }
+  return groups.filter((g) => g.length > 1).map((g) => g.sort((a, b) => used(b) - used(a)))
+}
 /** the line of that room that already has this name, other than `selfId` */
 export const lineNamed = (s: State, dept: Dept, name: string, selfId?: string) => s.lines.find((l) => l.dept === dept && l.id !== selfId && sameName(l.name, name))
 /** the standard names nobody has yet in a room ("Línea 1", "Línea 3"…), lowest first */

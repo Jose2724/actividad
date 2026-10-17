@@ -2436,6 +2436,12 @@ section('Una línea quitada vuelve tal cual: la misma línea, con su nombre (202
     eq('agregar otra con el nombre de una quitada la trae de vuelta, sin hacer una nueva', [m.addLine('Spiral', 'spiral'), lineOf('Spiral')?.id === spiralId, st().lines.filter((l) => l.dept === 'Spiral').length, m.removedLines(st(), 'Spiral').length], [true, true, 2, 0])
     eq('y queda en el historial', st().changes.filter((c) => c.what === 'Línea puesta de nuevo en Spiral').map((c) => c.after), ['Racks', 'Spiral'])
     eq('una que no se quitó no se vuelve a poner', m.restoreLine('Spiral', 'nope'), false)
+    // two lines of one room with one name (a copy made on a tablet that had no lines): told, the one with codes first
+    m.applyRemote('act_lines', { id: 'cp1', dept: 'Spiral', name: 'racks ', deleted: false, updated_at: new Date(oct(10, 15, 36)).toISOString() })
+    eq('dos líneas con el mismo nombre se dicen juntas, la que tiene códigos primero', m.duplicateLines(st(), 'Spiral').map((g) => g.map((l) => l.id)), [[racks.id, 'cp1']])
+    eq('y no en otro cuarto', m.duplicateLines(st(), 'RTE'), [])
+    m.removeLine('cp1')
+    eq('quitada la copia, ya no hay aviso', m.duplicateLines(st(), 'Spiral'), [])
     // the version of before made a new line each time: the same name taken off several times is offered once, the last
     m.applyRemote('act_lines', { id: 'st1', dept: 'Spiral', name: 'Stuffed', deleted: false, updated_at: new Date(oct(10, 9, 0)).toISOString() })
     clock = oct(10, 9, 30); m.removeLine('st1')

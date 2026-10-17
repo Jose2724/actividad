@@ -96,7 +96,16 @@ for (let d = 59; d >= 0; d--) db.act_schedule.push({ date: dayOf(now - d * DAYMS
 
 console.log('· Una tablet nueva baja del servidor (60 días de planta: 6,001 corridas, 1,200 productos)')
 const first = m.firstKeptDay()
+// a line is never added on a tablet that has not brought the plant since it was opened (2026-10-17, Packing)
+eq('antes de la primera bajada no se agrega ni renombra ninguna línea', await m.checkLineName('RTE', 'Línea 9'), 'wait')
 eq('se pudo bajar', await m.pullAll(), true)
+eq('ya con la planta: un nombre libre se puede usar', await m.checkLineName('RTE', 'Línea 9'), '')
+eq('uno que ya tiene otra línea del cuarto, no (aunque se escriba distinto)', [await m.checkLineName('RTE', 'linea  1'), await m.checkLineName('RTE', 'Línea 1', 'L1')], ['taken', ''])
+db.act_lines.push({ id: 'L7', dept: 'RTE', name: 'Línea 7', deleted: false, updated_at: new Date().toISOString(), synced_at: new Date().toISOString() })
+eq('lo que el servidor tiene y el aparato no, se pregunta en ese momento y se queda en el aparato', [await m.checkLineName('RTE', 'Línea 7'), m.store.get().lines.some((l) => l.id === 'L7')], ['taken', true])
+net.down = true
+eq('sin servidor no se agrega: se dice que falta señal', await m.checkLineName('RTE', 'Línea 8'), 'offline')
+net.down = false
 let s = m.store.get()
 const inWindow = db.act_runs.filter((r) => r.date >= first).length
 eq('trae las corridas de los últimos 14 días, ni una menos, aunque sean más de mil', [s.runs.filter((r) => r.date >= first).length, inWindow > 1000], [inWindow, true])

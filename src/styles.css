@@ -1057,3 +1057,11 @@ table.goals td,table.goals th{padding:8px 10px}
 .switch input:checked::after{transform:translateX(22px)}
 .switch input:focus-visible{outline:3px solid #9bd0c3;outline-offset:2px}
 .setrow .lnk:disabled{opacity:.4;cursor:not-allowed}
+/* two lines of a room with one name (2026-10-17, Packing): said to the manager, with what each one holds */
+.dupbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;background:#fff4d6;border:1px solid #f0c184;border-radius:12px;padding:10px 14px;color:var(--amber);font-weight:600}
+.dupbar b{color:var(--ink)}
+.duplist{display:grid;gap:8px}
+.dupline{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px 14px;border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.dupline>div:first-child{display:grid;gap:2px;min-width:0}
+.dupline small{color:var(--muted);font-size:13px}
+.dupline .btns{display:flex;gap:8px;flex-wrap:wrap}

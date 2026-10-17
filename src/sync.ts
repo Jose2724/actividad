@@ -1,7 +1,7 @@
 import { noSignal, passExpired, renewSession, supabase } from './supabase'
 import { startClock } from './clock'
 import { afterFlush, beforeFlush, flush, outbox, setOwnRow, type Row, type Table } from './outbox'
-import { applyRemote, awayDay, batch, closeDay, firstKeptDay, myDept, openDay, prune, role, shareLocalLines, store } from './store'
+import { applyRemote, awayDay, batch, closeDay, firstKeptDay, myDept, openDay, prune, role, sameName, shareLocalLines, store, type Dept } from './store'
 import { tr } from './i18n'
 import { BUILD } from './update'
 
@@ -9,14 +9,15 @@ import { BUILD } from './update'
  * Keeps this device and the server in step: what is queued goes up (outbox), what other tablets and the office
  * changed comes down (a pull of everything newer than the last one, plus live updates while the screen is open).
  */
-export type SyncStatus = { state: 'local' | 'signedOut' | 'connecting' | 'online' | 'offline'; pending: number; lastSync: number; lastError: string; since: number; refused: number }
-// since = when the oldest row still waiting was queued; refused = rows of this device's own the server refuses (see outbox.ts)
+export type SyncStatus = { state: 'local' | 'signedOut' | 'connecting' | 'online' | 'offline'; pending: number; lastSync: number; lastError: string; since: number; refused: number; pulled: boolean }
+// since = when the oldest row still waiting was queued; refused = rows of this device's own the server refuses (see outbox.ts);
+// pulled = this device has brought the server's rows since the app was opened (what it holds is the plant's, not an old copy)
 /** a device that has gone this long without bringing the server's rows may show an old picture of the day: the screens say so */
 export const STALE_MS = 10 * 60_000
 // the hour of the last pull is kept on the device: when the app opens again it knows how old its copy is
 const LAST_PULL = 'act_last_pull'
 const lastPull = () => { try { return Number(localStorage.getItem(LAST_PULL)) || 0 } catch { return 0 } }
-let status: SyncStatus = { state: supabase ? 'connecting' : 'local', pending: outbox.size(), lastSync: supabase ? lastPull() : 0, lastError: '', since: outbox.oldest(), refused: 0 }
+let status: SyncStatus = { state: supabase ? 'connecting' : 'local', pending: outbox.size(), lastSync: supabase ? lastPull() : 0, lastError: '', since: outbox.oldest(), refused: 0, pulled: !supabase }
 const subs = new Set<() => void>()
 const setStatus = (patch: Partial<SyncStatus>) => { status = { ...status, ...patch }; subs.forEach((f) => f()) }
 export const syncStore = { get: () => status, subscribe: (f: () => void) => { subs.add(f); return () => { subs.delete(f) } } }
@@ -202,12 +203,30 @@ async function pullNow(): Promise<boolean> {
     prune() // the days this device no longer keeps (also when the date changes while the app stays open)
     const at = Date.now()
     try { localStorage.setItem(LAST_PULL, String(at)) } catch { /* the full-storage bar says it */ }
-    setStatus({ state: 'online', lastSync: at, lastError: '' })
+    setStatus({ state: 'online', lastSync: at, lastError: '', pulled: true })
     return true
   } catch (e) {
     setStatus(failed(String(e)))
     return false
   }
+}
+/**
+ * Before a line is added or renamed, the server is asked which lines its room has now: a line is the plant's, not a
+ * tablet's. On 2026-10-17 a tablet that had opened without its room's lines let somebody add "Línea 2" again in
+ * Packing. Not until this device has brought the plant since it was opened, and not without the server: adding a line
+ * can wait, a copy of a line cannot be undone without help. What the server says is kept on the device at once.
+ * '' = the name is free; 'wait' = still bringing the plant; 'offline' = the server cannot be asked; 'taken' = another
+ * line of the room has it. (The server settles it too, see migrations/017: a copy that gets through is renamed "(2)".)
+ */
+export async function checkLineName(dept: Dept, name: string, selfId?: string): Promise<'' | 'wait' | 'offline' | 'taken'> {
+  if (!supabase) return ''
+  if (!status.pulled) return 'wait'
+  try {
+    const { data, error } = await supabase.from('act_lines').select('*').eq('dept', dept).eq('deleted', false)
+    if (error || !Array.isArray(data)) return 'offline'
+    batch(() => { for (const row of data as Row[]) applyRemote('act_lines', row) })
+    return (data as Row[]).some((r) => String(r.id) !== selfId && sameName(String(r.name ?? ''), name)) ? 'taken' : ''
+  } catch { return 'offline' }
 }
 /**
  * an older day, brought from the server because someone opened it in Reporte or Avance. It stays on the device while
