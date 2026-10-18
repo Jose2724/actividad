@@ -1,5 +1,5 @@
-import { Fragment, useEffect, useRef, useState } from 'react'
-import type { ReactNode, Ref } from 'react'
+import { Fragment, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { apartLabel, apartWord, binWord, cameFrom, carriedOver, casesText, CFG, cfgFor, cfgOf, DEPTS, fmtDur, fmtN, fmtTime, inCases, kindClass, lineLabel, lineNameOf, looksLikeTwoLots, madeText, measureName, measureUnit, normCode, noteLabel, orderLabel, orderOfId, plainDay, plainText, productOf, purgesOf, restorePurged, runStats, SETUP, shiftAt, shiftHours, shiftSpan, shiftsOf, stopTime, unitQty, user, whoText, workDay, type Dept, type State } from './store'
 import { avanceRows, mfoText, mfoWord, pending } from './avance'
 import { cellText, loadZip, xDay, xDur, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
@@ -35,7 +35,7 @@ type PalSub = 'pallets' | 'bins'
 /** the pallets of the report, by their state */
 type PalletFilter = '' | 'notag' | 'nopo' | 'po' | 'full' | 'short' | 'open'
 /** where a drill came from: "‹ Volver" puts all of it back (the shift as it was chosen: null = the report decides) */
-type Snap = { view: View; rec: RecSub; pal: PalSub; dept: Dept | ''; shift: 0 | 1 | 2 | null; line: string; code: string; lot: string; cause: string; runChip: '' | 'live' | 'waste' }
+type Snap = { view: View; rec: RecSub; pal: PalSub; dept: Dept | ''; shift: 0 | 1 | 2 | null; line: string; code: string; lot: string; cause: string; runChip: '' | 'live' | 'waste'; palF: PalletFilter }
 type ReportProps = { s: State; now: number; only?: Dept; mgr: boolean; admin: boolean; wholeDay: boolean }
 
 /** the shift somebody chose to look at in the report, kept while the app stays open (null = none chosen: the report decides) */
@@ -80,6 +80,11 @@ function hl(text: string | number | null | undefined, toks: string[]): ReactNode
 }
 /** pieces of a line one after the other, with a separator between them (the empty ones left out) */
 const joined = (parts: ReactNode[], sep = ' · ') => parts.filter((p) => p !== null && p !== undefined && p !== false && p !== '').map((p, i) => <Fragment key={i}>{i > 0 && sep}{p}</Fragment>)
+/**
+ * What the search found as the screen shows it, each record once: a unit of Packing is one of its pallets or bins,
+ * found on their own (their fields hold the unit's), so its unit is not counted again in "N resultados".
+ */
+const onScreen = (hits: Hit[]) => hits.filter((h) => !(h.kind === 'unit' && h.dept === 'Packing'))
 /** a cell that holds nothing ("—") is left out of a record's card on a phone */
 const none = (v: unknown) => (v === '—' ? 'c-none' : undefined)
 
@@ -150,16 +155,19 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
   const setPalSub = (x: PalSub) => { palChosen = x; setPalPick(x) }
   const [q, setQPick] = useState(searchKept)
   const setQ = (t: string) => { searchKept = t; setQPick(t) }
+  // What the report is searched with: the words in the box, a moment behind while they are typed, so a big day's
+  // search never holds the typing up (the box itself always shows what is typed).
+  const qs = useDeferredValue(q)
   // the quick chips of Registros: a cause of stop (or every stop but Set up: '!setup'), and the runs still going or with waste
   const [cause, setCause] = useState('')
   const [runChip, setRunChip] = useState<'' | 'live' | 'waste'>('')
   const [palF, setPalF] = useState<PalletFilter>('') // the pallets by their state: without a tag, without or with a PO, full, short, being built
   const [back, setBack] = useState<Snap | null>(null)
-  const [drills, setDrills] = useState(0) // how many drills so far: each one brings the tabs into view (below)
+  const [shows, setShows] = useState(0) // how many drills and tabs tapped so far: each one brings what it opened into view (below)
   const [page, setPage] = useState<Record<string, number>>({})
   const [detail, setDetail] = useState<{ runId: string; at?: number } | null>(null)
   const [help, setHelp] = useState(false)
-  const tabsRef = useRef<HTMLDivElement>(null)
+  const scopeRef = useRef<HTMLDivElement>(null) // the "Viendo" line, just above the part in view
   const day = useDay(date)
   const runToEdit = editRun ? s.runs.find((r) => r.id === editRun.id) : undefined
   const stopToEdit = editStop ? s.stops.find((x) => x.id === editStop) : undefined
@@ -282,9 +290,15 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
   /** what a time that adds up the lines is the sum of: "suma de 3 líneas" */
   const linesText = (n: number) => (n === 1 ? tr('una línea') : tr('suma de {0} líneas', n))
   // ---- the search: what the report in view holds that answers it (the files never follow it) ----
-  const toks = plainText(q).split(/\s+/).filter(Boolean), searching = toks.length > 0
-  const found = searchReport(s, rep, q, changes, now)
+  const toks = plainText(qs).split(/\s+/).filter(Boolean), searching = toks.length > 0
+  // Searched again only when what it looks in changes: the day, the filters, the records, the words. The report redraws
+  // every second for its live clocks; the search follows the clock once a minute (a stop still going, a time "en curso").
+  const minute = Math.floor(now / 60_000)
+  const found = useMemo(() => searchReport(s, rep, qs, changes, now), [s, date, dept, fCode, fLot, fShift, fLine, qs, mgr, minute]) // eslint-disable-line react-hooks/exhaustive-deps
   const keys = found.keys
+  // what the search found, each record once as the screen shows it: a unit of Packing is its pallet or its bin, which
+  // are found on their own (the Registros tab still counts it: Unidades lists it)
+  const shownN = useMemo(() => onScreen(found.hits).length, [found])
   const hitsOf = (...kinds: HitKind[]) => found.hits.filter((h) => kinds.includes(h.kind))
   // the scopes a whole query names: a room only for whoever can choose rooms, and not the one already chosen
   const scopes = found.scopes.filter((x) => x.kind !== 'dept' || (!only && x.value !== dept))
@@ -300,7 +314,8 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
   const lineChoiceText = (id: string) => { const l = rep.lineChoices.find((x) => x.id === id); return !l ? '' : dept ? l.name : DEPT_LOOK[l.dept].emoji + ' ' + l.dept + ' · ' + l.name }
   // nothing found with filters on: is it somewhere else in the day? (asked only then: it is the whole day's report again)
   const narrowed = !!(rep.shift || (!only && dept) || rep.line || rep.code || rep.lot)
-  const wholeN = searching && !found.hits.length && narrowed ? searchReport(s, reportOf(s, date, now, { only }), q, mgr ? s.changes.filter((c) => !c.deleted && plainDay(s, c.at) === date && (!only || c.dept === only)) : [], now).hits.length : 0
+  const askWhole = searching && !found.hits.length && narrowed
+  const wholeN = useMemo(() => (askWhole ? onScreen(searchReport(s, reportOf(s, date, now, { only }), qs, mgr ? s.changes.filter((c) => !c.deleted && plainDay(s, c.at) === date && (!only || c.dept === only)) : [], now).hits).length : 0), [askWhole, s, date, only, qs, mgr, minute]) // eslint-disable-line react-hooks/exhaustive-deps
   const searchWholeDay = () => { setFShift(0); if (!only) setFDept(''); setFLine(''); setFCode(''); setFLot('') }
   // ---- each list, as the search leaves it, then as its chips leave it ----
   const codesShown = searching ? byCode.filter((c) => keys.has(hitKey.code(c.dept, c.code, c.bin))) : byCode
@@ -324,13 +339,14 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
   const hitCount = (x: View) => (x === 'code' ? hitsOf('code').length : x === 'pal' ? hitsOf('pallet', 'bin').length : x === 'rec' ? hitsOf('unit', 'run', 'stop').length : x === 'chg' ? hitsOf('change').length : null)
   const tabs = views.map((x) => {
     const hits = hitCount(x)
-    const n = searching ? hits : x === 'code' ? byCode.length : x === 'pal' ? rep.pallets.length + rep.bins.length : x === 'chg' ? changes.length : null
+    // (Registros says how many stops there are when they are all the day has: no code ran, and only it holds them)
+    const n = searching ? hits : x === 'code' ? byCode.length : x === 'pal' ? rep.pallets.length + rep.bins.length : x === 'chg' ? changes.length : x === 'rec' && !rows.length ? stops.length || null : null
     return { v: x, label: viewLabel(x), n, zero: searching && hits === 0 }
   })
   // ---- drills: a number tapped takes to the records behind it, and "‹ Volver" brings back what was in view ----
   const putShift = (k: 0 | 1 | 2 | null) => { shiftChosen = k; setShiftPick(k) }
   const go = (to: View, patch: Partial<Snap> = {}) => {
-    setBack({ view: v, rec: recSub, pal: palSub, dept: fDept, shift: shiftPick, line: fLine, code: fCode, lot: fLot, cause, runChip })
+    setBack({ view: v, rec: recSub, pal: palSub, dept: fDept, shift: shiftPick, line: fLine, code: fCode, lot: fLot, cause, runChip, palF })
     if (patch.dept !== undefined && !only) setFDept(patch.dept)
     if (patch.shift !== undefined) putShift(patch.shift)
     if (patch.line !== undefined) setFLine(patch.line)
@@ -338,29 +354,49 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
     if (patch.lot !== undefined) setFLot(patch.lot)
     setCause(patch.cause ?? '')
     setRunChip(patch.runChip ?? '')
+    setPalF(patch.palF ?? '')
     if (patch.rec) setRecSub(patch.rec)
     if (patch.pal) setPalSub(patch.pal)
     setView(to)
-    setDrills((n) => n + 1)
+    setShows((n) => n + 1)
   }
-  // The only scroll of the page the report makes: once a drill's part is drawn, the tabs come into view when they were
-  // hidden above (under the app's bar on top), so what the tap opened is seen and not left below the fold.
+  /** the phone's layout (styles.css): the tabs first, then the filters, then the part in view */
+  const phone = () => !!window.matchMedia?.('(max-width:720px)').matches
+  /** a tab tapped: its part (on a phone, where the filters stand between the tabs and the part, brought into view like a drill's) */
+  const pickView = (x: View) => { setView(x); if (phone()) setShows((n) => n + 1) }
+  // ---- the only scrolls of the page the report makes ----
+  /** how far down the screen the app's bar covers (nothing once it has scrolled away with the page) */
+  const coveredTo = () => Math.max(0, document.querySelector('header.top')?.getBoundingClientRect().bottom ?? 0)
+  /** a piece of the report brought to the top of the screen when it is hidden above (or, asked, when it is below the screen) */
+  const reveal = (el: Element | null | undefined, below = false) => {
+    if (!el) return
+    const gap = () => el.getBoundingClientRect().top - coveredTo() - 8
+    const g = gap()
+    if (g >= -8 && !(below && el.getBoundingClientRect().top > window.innerHeight - 80)) return
+    window.scrollBy(0, g)
+    // the app's bar scrolls away with the page too: when it has gone, the piece goes up to the very top
+    const again = gap()
+    if (again > 0) window.scrollBy(0, again)
+  }
+  // Once a drill's part (or a tab's, on a phone) is drawn, what the tap opened is seen with what is in view said above
+  // it: the "Viendo" line ("‹ Volver" is there), then the part. On a PC or a tablet, where the tabs sit just above the
+  // part, this only happens when that line had scrolled away above; on a phone it also comes up from below.
   useEffect(() => {
-    const el = tabsRef.current, bar = Math.max(0, document.querySelector('.top')?.getBoundingClientRect().bottom ?? 0)
-    if (drills && el && el.getBoundingClientRect().top < bar) el.scrollIntoView({ block: 'start' })
-  }, [drills])
+    if (!shows) return
+    reveal(scopeRef.current, phone())
+  }, [shows]) // eslint-disable-line react-hooks/exhaustive-deps
   const goBack = () => {
     if (!back) return
     if (!only) setFDept(back.dept)
     putShift(back.shift)
-    setFLine(back.line); setFCode(back.code); setFLot(back.lot); setCause(back.cause); setRunChip(back.runChip)
+    setFLine(back.line); setFCode(back.code); setFLot(back.lot); setCause(back.cause); setRunChip(back.runChip); setPalF(back.palF)
     setRecSub(back.rec); setPalSub(back.pal); setView(back.view)
     setBack(null)
   }
   // another date: the drill and the quick chips were about the other day; the search and the part in view stay (the same lot, another day)
   const pickDate = (d: string) => { setDate(d); setBack(null); setCause(''); setRunChip('') }
   // ---- long lists, fifty rows a page; any change of what is in view goes back to the first page ----
-  useEffect(() => { setPage({}) }, [date, dept, fCode, fLot, fShift, fLine, q, v, recSub, palSub, cause, runChip, palF])
+  useEffect(() => { setPage({}) }, [date, dept, fCode, fLot, fShift, fLine, qs, v, recSub, palSub, cause, runChip, palF])
   const pageNo = (key: string, total: number) => Math.min(page[key] ?? 0, Math.max(0, Math.ceil(total / PAGE) - 1))
   const pageOf = <T,>(key: string, list: T[]) => { const p = pageNo(key, list.length); return list.slice(p * PAGE, p * PAGE + PAGE) }
   const turnPage = (key: string, p: number, from: HTMLElement) => {
@@ -369,8 +405,7 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
     // its own) its toolbar comes back into view when it had scrolled away above
     const list = from.closest('.rp-list'), wrap = list?.querySelector('.twrap')
     if (wrap) wrap.scrollTop = 0
-    const bar = Math.max(0, document.querySelector('.top')?.getBoundingClientRect().bottom ?? 0)
-    if (list && list.getBoundingClientRect().top < bar) list.scrollIntoView({ block: 'start' })
+    reveal(list)
   }
   const pageBar = (key: string, total: number) => <Pager total={total} page={pageNo(key, total)} onPage={(p, el) => turnPage(key, p, el)} />
   // ---- who may correct or add (a viewer never) ----
@@ -391,8 +426,8 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
     dept, fDept, setFDept, fShift, shiftPick, setFShift, fCode, setFCode, fLot, setFLot, setFLine, lineChosen, lineChoiceText, active, clear,
     purges, recovering, recover, tookText, sending, setSending, preparing, send, pdf, excel, csv, shiftsOpen, setShiftsOpen, wiping, setWiping,
     notice, setNotice, editRun, setEditRun, runToEdit, stopToEdit, setEditStop, addFor, setAddFor, detail, setDetail, help, setHelp,
-    q, setQ, toks, searching, found, hitsOf, scopes, applyScope, scopeText, wholeN, searchWholeDay,
-    views, v, tabs, setView, recSub, setRecSub, palSub, setPalSub, cause, setCause, runChip, setRunChip, palF, setPalF, back, go, goBack, tabsRef,
+    q, qs, setQ, toks, searching, found, shownN, hitsOf, scopes, applyScope, scopeText, wholeN, searchWholeDay,
+    views, v, tabs, setView, pickView, scopeRef, recSub, setRecSub, palSub, setPalSub, cause, setCause, runChip, setRunChip, palF, setPalF, back, go, goBack,
     codesShown, palletsFound, palletsShown, palCount, binsShown, runsFound, runsShown, runIs, unitsShown, stopsFound, stopsShown, stopIs, changes, changesShown,
     manyRooms, canAdd, fix, spanOf, seeBtn, fixBtn, acts, pageOf, pageBar, withOrders, unitsText, binsN, ofText, cw, reasonsText, lineName, cap, hrs, dash, linesText, shiftCols,
   }
@@ -401,7 +436,7 @@ type Kit = ReturnType<typeof useReport>
 
 export function Report(props: ReportProps) {
   const k = useReport(props)
-  const { s, now, only, mgr, admin, can, date, pickDate, today, day, rep, rows, dept, lineChosen, purges, recovering, recover, tookText, sending, setSending, preparing, send, pdf, excel, csv, shiftsOpen, setShiftsOpen, wiping, setWiping, notice, setNotice, editRun, setEditRun, runToEdit, stopToEdit, setEditStop, addFor, setAddFor, detail, setDetail, help, setHelp, v, tabs, setView, setFShift, hrs, setFCode, setFLot, fix } = k
+  const { s, now, only, mgr, admin, can, date, pickDate, today, day, rep, rows, dept, lineChosen, purges, recovering, recover, tookText, sending, setSending, preparing, send, pdf, excel, csv, shiftsOpen, setShiftsOpen, wiping, setWiping, notice, setNotice, editRun, setEditRun, runToEdit, stopToEdit, setEditStop, addFor, setAddFor, detail, setDetail, help, setHelp, v, tabs, pickView, setFShift, hrs, setFCode, setFLot, fix } = k
   return (
     <section className="report">
       <div className="rhead">
@@ -414,12 +449,13 @@ export function Report(props: ReportProps) {
         </div>
       </div>
       {sending && <SendDialog files={sending} subject={tr('Actividad · Reporte {0}', date) + (dept ? ' · ' + dept : '') + filterTitle(rep.code, rep.lot, rep.shift, lineChosen)} onClose={() => setSending(null)} />}
-      {/* what to look at: the search first, then the day, the shift, the room, the line, the code and the lot. They add up */}
+      {/* what to look at: the search first, then the day, the shift, the room, the line, the code and the lot. They add up.
+          (On a phone the captions marked rf-cap are left out: the box, the date and the rooms already say what they are) */}
       <div className="rp-filters">
         <SearchBox k={k} />
         <div className="rf-row">
           <div className="rf">
-            <span className="lab">{tr('Fecha')}</span>
+            <span className="lab rf-cap">{tr('Fecha')}</span>
             <div className="daynav">
               <button type="button" className="btn" aria-label={tr('Día anterior')} onClick={() => pickDate(addDays(date, -1))}>‹</button>
               <input type="date" aria-label={tr('Fecha del reporte')} value={date} onChange={(e) => { if (e.target.value) pickDate(e.target.value) }} />
@@ -438,7 +474,7 @@ export function Report(props: ReportProps) {
         </div>
         {!only && (
           <div className="rf">
-            <span className="lab">{tr('Departamento')}</span>
+            <span className="lab rf-cap">{tr('Departamento')}</span>
             <DeptChips s={s} date={date} dept={dept} onPick={k.setFDept} />
           </div>
         )}
@@ -465,11 +501,12 @@ export function Report(props: ReportProps) {
         </div>
       ))}
       {shiftsOpen && <ShiftsDialog s={s} date={date} onClose={() => setShiftsOpen(false)} />}
-      <ViewTabs tabs={tabs} on={v} onPick={setView} tabsRef={k.tabsRef} />
+      <ViewTabs tabs={tabs} on={v} onPick={pickView} />
       <div className="rp-sub"><span>{viewSub(v)}</span><button type="button" className="btn sm" onClick={() => setHelp(true)}>ⓘ {tr('Cómo leer este reporte')}</button></div>
       <div id="rp-panel" role="tabpanel" aria-labelledby={'rp-tab-' + v} className="rp-panel">
-        {v === 'chg' ? <ChangesView k={k} /> : rows.length === 0 ? <><EmptyDay k={k} />{v === 'rec' && k.stops.length > 0 && <RecordsView k={k} />}</>
-          : k.searching && (v === 'gen' || v === 'shift') ? <SearchResults k={k} />
+        {/* (a day, or a filter, with no code but with stops: every part says so and Registros opens on them) */}
+        {v === 'chg' ? <ChangesView k={k} /> : k.searching && (v === 'gen' || v === 'shift') ? <SearchResults k={k} />
+          : rows.length === 0 ? (v === 'rec' && k.stops.length > 0 ? <RecordsView k={k} /> : <EmptyDay k={k} />)
             : v === 'gen' ? <GeneralView k={k} /> : v === 'code' ? <CodesView k={k} /> : v === 'shift' ? <ShiftsView k={k} /> : v === 'pal' ? <PalletsView k={k} /> : <RecordsView k={k} />}
       </div>
       <p className="hint foot">{supabase ? tr('Todo se guarda en el servidor y se ve en vivo desde la oficina, el teléfono o la PC.') : tr('Demo guardado en este dispositivo. La versión completa manda todo en vivo al manager (oficina, teléfono o PC) y exporta a Excel, PDF y Google Sheets como la Hoja de Freezer RTE.')}</p>
@@ -486,11 +523,10 @@ export function Report(props: ReportProps) {
 
 /** the search: one box for every room (with a room chosen, it is that room's search), first in the filter card */
 function SearchBox({ k }: { k: Kit }) {
-  const { q, setQ, found, scopes, applyScope, scopeText } = k
-  const n = found.hits.length
+  const { q, qs, setQ, shownN: n, scopes, applyScope, scopeText } = k
   return (
     <div className="rf rp-searchrow">
-      <span className="lab">{tr('Buscar en este día')}</span>
+      <span className="lab rf-cap">{tr('Buscar en este día')}</span>
       <div className="rp-search" role="search">
         <svg className="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" strokeWidth="2.2" /><path d="M15.5 15.5 21 21" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" /></svg>
         <input type="search" enterKeyHint="search" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
@@ -498,7 +534,7 @@ function SearchBox({ k }: { k: Kit }) {
           value={q} onChange={(e) => setQ(e.target.value)} />
         {q && <button type="button" className="btn rp-clear" aria-label={tr('Quitar la búsqueda')} onClick={() => setQ('')}>✕</button>}
       </div>
-      {q.trim() && <p className="rp-searchnote">{n === 1 ? tr('1 resultado') : tr('{0} resultados', n)} · {tr('La búsqueda no cambia los archivos: salen con los filtros.')}</p>}
+      {qs.trim() && <p className="rp-searchnote">{n === 1 ? tr('1 resultado') : tr('{0} resultados', n)} · {tr('La búsqueda no cambia los archivos: salen con los filtros.')}</p>}
       {scopes.length > 0 && <div className="rp-scopes">{scopes.map((x) => <button key={x.kind + x.value} type="button" className="btn sm soft" onClick={() => applyScope(x)}>{scopeText(x)}</button>)}</div>}
     </div>
   )
@@ -520,11 +556,11 @@ function DeptChips({ s, date, dept, onPick }: { s: State; date: string; dept: De
 
 /** "Viendo …": always on screen, it says in words the shift and the room in view, and every filter on, each with its ✕ */
 function Scope({ k }: { k: Kit }) {
-  const { rep, only, dept, who, shiftPick, setFShift, setFDept, setFLine, setFCode, setFLot, lineChosen, lineChoiceText, q, setQ, active, clear, back, goBack } = k
+  const { rep, only, dept, who, shiftPick, setFShift, setFDept, setFLine, setFCode, setFLot, lineChosen, lineChoiceText, q, setQ, active, clear, back, goBack, scopeRef } = k
   const chip = (key: string, label: ReactNode, name: string, off: () => void) => <button key={key} type="button" className="btn sm rp-on" aria-label={tr('Quitar {0}', name)} onClick={off}>{label}<span className="x" aria-hidden="true">✕</span></button>
   const shiftName = rep.shift ? tr('Turno {0}', rep.shift) + (shiftPick === null ? ' ' + (who.shift ? tr('(tu turno)') : tr('(en curso)')) : '') : ''
   return (
-    <div className="rp-scopebox">
+    <div className="rp-scopebox" ref={scopeRef}>
       <div className="rp-scope">
         {back && <button type="button" className="btn sm" onClick={goBack}>{'‹ ' + tr('Volver')}</button>}
         <span>{tr('Viendo')}</span>
@@ -542,9 +578,9 @@ function Scope({ k }: { k: Kit }) {
 }
 
 /** the six parts of the report, one at a time; each says how many things it holds (or how many the search found in it) */
-function ViewTabs({ tabs, on, onPick, tabsRef }: { tabs: { v: View; label: string; n: number | null; zero: boolean }[]; on: View; onPick: (v: View) => void; tabsRef: Ref<HTMLDivElement> }) {
+function ViewTabs({ tabs, on, onPick }: { tabs: { v: View; label: string; n: number | null; zero: boolean }[]; on: View; onPick: (v: View) => void }) {
   return (
-    <div className="rp-tabs" role="tablist" aria-label={tr('Partes del reporte')} ref={tabsRef}>
+    <div className="rp-tabs" role="tablist" aria-label={tr('Partes del reporte')}>
       {tabs.map((t) => (
         <button key={t.v} id={'rp-tab-' + t.v} type="button" role="tab" aria-selected={on === t.v} aria-controls="rp-panel" className={'rp-tab' + (on === t.v ? ' on' : '') + (t.zero ? ' zero' : '')} onClick={() => onPick(t.v)}>
           <span>{t.label}</span>{t.n != null && <span className="n">{t.n}</span>}
@@ -569,13 +605,18 @@ function Pager({ total, page, onPage }: { total: number; page: number; onPage: (
   )
 }
 
-/** a day (or a filter) with nothing recorded: said, with the way to add what is missing and to see more */
+/**
+ * A day (or a filter) with no code recorded: said, with the way to add what is missing and to see more. Stops can be
+ * there without any code (a meeting of the whole room before the first one, a line stopped all along): then it says
+ * so, and takes to them.
+ */
 function EmptyDay({ k }: { k: Kit }) {
-  const { rep, only, dept, day, canAdd, setAddFor, active, clear } = k
+  const { rep, only, dept, day, stops, go, canAdd, setAddFor, active, clear } = k
   return (
     <div className="rp-empty">
-      <p className="hint">{day.state === 'here' ? (rep.code || rep.lot || (!only && dept) ? tr('Nada registrado con estos filtros.') : rep.shift ? tr('Nada registrado en este turno.') : tr('Nada registrado en esta fecha.')) : ''}</p>
+      <p className="hint">{day.state !== 'here' ? '' : stops.length ? tr('Ningún código registrado en lo que estás viendo, pero sí paros.') : rep.code || rep.lot || (!only && dept) ? tr('Nada registrado con estos filtros.') : rep.shift ? tr('Nada registrado en este turno.') : tr('Nada registrado en esta fecha.')}</p>
       <div className="btns">
+        {stops.length > 0 && <button type="button" className="btn" onClick={() => go('rec', { rec: 'stops' })}>{tr('Paros') + ' ' + stops.length + ' ›'}</button>}
         {canAdd && <button type="button" className="btn soft" onClick={() => setAddFor({})}>{tr('+ Agregar registro')}</button>}
         {active.length > 0 && <button type="button" className="btn" onClick={clear}>{tr('✕ Quitar filtros')}</button>}
       </div>
@@ -585,7 +626,7 @@ function EmptyDay({ k }: { k: Kit }) {
 
 /** nothing found with the search: where else it is (another part, the whole day), and the way to add it if it was never recorded */
 function Nothing({ k, subs = [] }: { k: Kit; subs?: { label: string; n: number; open: () => void }[] }) {
-  const { q, found, tabs, v, setView, wholeN, searchWholeDay, canAdd, setAddFor } = k
+  const { qs: q, found, tabs, v, setView, wholeN, searchWholeDay, canAdd, setAddFor } = k
   const elsewhere = tabs.filter((t) => t.v !== v && (t.v === 'code' || t.v === 'pal' || t.v === 'rec' || t.v === 'chg') && (t.n ?? 0) > 0)
   if (found.hits.length > 0) {
     return (
@@ -609,25 +650,31 @@ function Nothing({ k, subs = [] }: { k: Kit; subs?: { label: string; n: number; 
 
 /** with a search typed on General or Por turno: what it found, kind by kind, five of each, each with what opens it */
 function SearchResults({ k }: { k: Kit }) {
-  const { q, found, hitsOf, setQ, go } = k
+  const { qs: q, shownN, hitsOf, setQ, go, dept } = k
   // the units of Packing are its pallets and bins, which have their own groups
   const units = hitsOf('unit').filter((h) => h.dept !== 'Packing')
   const rooms = [...new Set(units.map((h) => h.dept))]
+  // Unidades lists Packing's units too: with the units found all of one room, that room is chosen on the way, so the
+  // list holds exactly the ones counted here; with several rooms (and Packing's among them) the button gives no number
+  const mixed = units.length !== hitsOf('unit').length
+  const oneRoom = mixed && !dept && rooms.length === 1 && rooms[0] ? rooms[0] : null
+  const toUnits = () => go('rec', { rec: 'units', ...(oneRoom ? { dept: oneRoom } : {}) })
+  const unitsCount = !mixed || !!oneRoom
   const groups: { kind: HitKind; title: string; hits: Hit[]; tab: View; open: () => void }[] = [
     { kind: 'code' as const, title: tr('Códigos'), hits: hitsOf('code'), tab: 'code' as const, open: () => go('code') },
     { kind: 'pallet' as const, title: tr('Pallets'), hits: hitsOf('pallet'), tab: 'pal' as const, open: () => go('pal', { pal: 'pallets' }) },
     { kind: 'bin' as const, title: tr('Bins'), hits: hitsOf('bin'), tab: 'pal' as const, open: () => go('pal', { pal: 'bins' }) },
-    { kind: 'unit' as const, title: rooms.length === 1 && rooms[0] ? CFG[rooms[0]].plural : tr('Unidades'), hits: units, tab: 'rec' as const, open: () => go('rec', { rec: 'units' }) },
+    { kind: 'unit' as const, title: rooms.length === 1 && rooms[0] ? CFG[rooms[0]].plural : tr('Unidades'), hits: units, tab: 'rec' as const, open: toUnits },
     { kind: 'run' as const, title: tr('Corridas'), hits: hitsOf('run'), tab: 'rec' as const, open: () => go('rec', { rec: 'runs' }) },
     { kind: 'stop' as const, title: tr('Paros'), hits: hitsOf('stop'), tab: 'rec' as const, open: () => go('rec', { rec: 'stops' }) },
     { kind: 'change' as const, title: tr('Cambios'), hits: hitsOf('change'), tab: 'chg' as const, open: () => go('chg') },
   ].filter((g) => g.hits.length > 0)
   return (
     <div className="rp-results">
-      <div className="rp-reshead"><h3>{tr('Resultados de «{0}»', q.trim())} · {found.hits.length}</h3><button type="button" className="btn sm" onClick={() => setQ('')}>✕ {tr('Quitar la búsqueda')}</button></div>
-      {found.hits.length === 0 ? <Nothing k={k} /> : groups.map((g) => (
+      <div className="rp-reshead"><h3>{tr('Resultados de «{0}»', q.trim())} · {shownN}</h3><button type="button" className="btn sm" onClick={() => setQ('')}>✕ {tr('Quitar la búsqueda')}</button></div>
+      {shownN === 0 ? <Nothing k={k} /> : groups.map((g) => (
         <section key={g.kind} className="rp-group">
-          <div className="rp-grouphead"><h4>{g.title} · {g.hits.length}</h4>{g.hits.length > 5 && <button type="button" className="btn sm" onClick={g.open}>{tr('Ver los {0} en {1}', g.hits.length, viewLabel(g.tab)) + ' ›'}</button>}</div>
+          <div className="rp-grouphead"><h4>{g.title} · {g.hits.length}</h4>{g.hits.length > 5 && <button type="button" className="btn sm" onClick={g.open}>{(g.kind !== 'unit' || unitsCount ? tr('Ver los {0} en {1}', g.hits.length, viewLabel(g.tab)) : tr('Ver todos en {0}', viewLabel(g.tab))) + ' ›'}</button>}</div>
           {g.hits.slice(0, 5).map((h) => <HitCard key={h.key} k={k} h={h} />)}
         </section>
       ))}
@@ -840,8 +887,13 @@ function CodesView({ k }: { k: Kit }) {
                 const cc = (bin: string) => cfgFor(d.dept, bin)
                 const qtyText = (v: number, bin = '') => (q ? fmtN(v) + ' ' + cc(bin).qtyUnit : '—')
                 const madeN = (n: number, bin = '') => n + ' ' + (n === 1 ? cc(bin).unit : cc(bin).plural).toLowerCase()
-                // what was made, tapped: every unit of that code (and lot) in Registros
-                const made = (n: number, code: string, bin: string, lot?: string) => <button type="button" className="drill" onClick={() => go('rec', { rec: 'units', code, ...(lot ? { lot } : {}) })}>{madeN(n, bin)}</button>
+                // What was made, tapped: exactly the records behind that number. Packing's are its pallets (or, for a code
+                // filled in bins, its bins) one by one; another room's, its units in Registros, with this room chosen when
+                // none is (the same code goes through several rooms in a day: Kitchen's mezclas, RTE's carts…)
+                const toMade = (code: string, bin: string, lot?: string) => (d.dept === 'Packing'
+                  ? go('pal', { pal: bin ? 'bins' : 'pallets', code, ...(lot ? { lot } : {}) })
+                  : go('rec', { rec: 'units', code, ...(lot ? { lot } : {}), ...(!dept ? { dept: d.dept } : {}) }))
+                const made = (n: number, code: string, bin: string, lot?: string) => <button type="button" className="drill" onClick={() => toMade(code, bin, lot)}>{madeN(n, bin)}</button>
                 return (
                   <Fragment key={d.dept}>
                     {rep.byDept.length > 1 && <tr className="rp-dband" style={deptVars(d.dept)}><td colSpan={colsN}><DeptBadge d={d.dept} /> · {mine.length === 1 ? tr('1 código') : tr('{0} códigos', mine.length)}</td></tr>}
@@ -1025,16 +1077,17 @@ function PalletsView({ k }: { k: Kit }) {
 
 /** Registros: every run, every unit and every stop, each with what sees it and corrects it, and the way to add one */
 function RecordsView({ k }: { k: Kit }) {
-  const { only, dept, recSub, setRecSub, runsFound, unitsShown, stopsFound, searching, canAdd, setAddFor } = k
+  const { only, dept, rows, recSub, setRecSub, runsFound, unitsShown, stopsFound, searching, canAdd, setAddFor } = k
   const unitsWord = dept ? CFG[dept].plural : tr('Unidades')
   const subs: { key: RecSub; label: string; n: number }[] = [{ key: 'runs', label: tr('Corridas'), n: runsFound.length }, { key: 'units', label: unitsWord, n: unitsShown.length }, { key: 'stops', label: tr('Paros'), n: stopsFound.length }]
-  const sub = recSub
+  // with no code in view there are no runs nor units: the stops are all there is, and the list opens on them
+  const sub: RecSub = rows.length ? recSub : 'stops'
   const lost = searching && (subs.find((x) => x.key === sub)?.n ?? 0) === 0
   return (
     <div className="rp-list">
       <div className="rp-tools">
         <div className="seg rp-subs" role="group" aria-label={tr('Registros')}>
-          {subs.map((x) => <button key={x.key} type="button" className={sub === x.key ? 'on' : ''} aria-pressed={sub === x.key} onClick={() => setRecSub(x.key)}>{x.label}<small>{x.n}</small></button>)}
+          {subs.map((x) => <button key={x.key} type="button" className={sub === x.key ? 'on' : ''} aria-pressed={sub === x.key} disabled={!rows.length && x.key !== 'stops'} onClick={() => setRecSub(x.key)}>{x.label}<small>{x.n}</small></button>)}
         </div>
         {canAdd && <button type="button" className="btn sm soft" onClick={() => setAddFor({ dept: only ?? dept })}>{tr('+ Agregar registro')}</button>}
       </div>
