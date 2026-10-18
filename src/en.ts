@@ -1148,7 +1148,7 @@ export const EN: Record<string, string> = {
   'siempre': 'always',
   'Solo {0}': 'Only {0}',
   'Días aparte de su semana': 'Days apart from their week',
-  'Un sábado en que solo vino un turno, o un día de dos turnos que no suele tenerlos. Con un solo turno, todo lo del día es de ese turno; nada se reescribe, se recalcula.': 'A Saturday when only one shift came, or a two-shift day that usually has one. With one shift, everything of the day belongs to that shift; nothing is rewritten, it is recomputed.',
+  'Un sábado en que solo vino un turno, un domingo de un turno, o un día de dos turnos que no suele tenerlos. Con un solo turno, todo lo del día es de ese turno, empiece a la hora que empiece (no hace falta poner horas), y su tiempo no se corta entre turnos; nada se reescribe, se recalcula.': "A Saturday when only one shift came, a Sunday of one shift, or a day of two shifts that does not usually have them. With one shift, everything of the day is that shift's, whatever hour it starts (no hours to set), and its time is not cut between shifts; nothing is rewritten, it is recalculated.",
   'Ningún día aparte: todos van como su semana.': 'No day apart: all go as their week says.',
   'como su semana': 'as its week',
   'Versiones del horario': 'Versions of the hours',

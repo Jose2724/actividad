@@ -86,7 +86,7 @@ function ShiftsSettings({ s, day }: { s: State; day: WorkDay }) {
       </div>
       <div className="setcard">
         <div className="sethead"><h3>{tr('Días aparte de su semana')}</h3></div>
-        <p className="hint">{tr('Un sábado en que solo vino un turno, o un día de dos turnos que no suele tenerlos. Con un solo turno, todo lo del día es de ese turno; nada se reescribe, se recalcula.')}</p>
+        <p className="hint">{tr('Un sábado en que solo vino un turno, un domingo de un turno, o un día de dos turnos que no suele tenerlos. Con un solo turno, todo lo del día es de ese turno, empiece a la hora que empiece (no hace falta poner horas), y su tiempo no se corta entre turnos; nada se reescribe, se recalcula.')}</p>
         <div className="setrow add">
           <label>{tr('Día')}{' '}<input type="date" value={date} onChange={(e) => { setDate(e.target.value); setSaid('') }} /></label>
           <div className="btns">
