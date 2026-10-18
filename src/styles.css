@@ -1249,3 +1249,52 @@ table.bycode tr.trow.rp-dtotal td.red{color:var(--warn)}
 /* a room that is coming: in the list, greyed, with its lock; nothing opens it */
 .side .dept.soon{border-left:5px dashed #b9c6d2;color:var(--muted);background:repeating-linear-gradient(135deg,transparent 0 8px,#f3f6f9 8px 16px);cursor:not-allowed}
 .side .dept.soon .soonnote{font-size:11.5px;font-weight:700;color:var(--muted)}
+/* "Agregar un registro" in Packing (2026-10-18): the pallets one by one, each with its cases, its tag and its order.
+   A quick bar on top adds several of the same at once; on a phone each pallet is a little card of two lines (cases and
+   tag, then the order), so nothing pans sideways */
+.lp{display:grid;gap:8px;border:1.5px solid var(--line);border-radius:14px;padding:10px 12px;background:var(--bg)}
+.lp>.lab{font-size:13px;font-weight:600;color:var(--muted)}
+.lp-quick{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:8px 10px}
+.lp-say{display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px;font-weight:600}
+.dlg .lp-quick input.num{width:72px;min-height:44px;text-align:right}
+.lp label{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--muted);min-width:0}
+.lp-quick .lp-po{flex:1 1 220px}
+.lp select{min-height:44px;font-size:16px;flex:1;min-width:0;max-width:100%}
+.lp-quick .btn{flex:0 0 auto}
+.lp-rows{display:grid;gap:6px}
+.lp-row{display:grid;grid-template-columns:28px minmax(0,1fr) minmax(0,1.3fr) 44px;gap:8px;align-items:center}
+.lp-rows.po .lp-row{grid-template-columns:28px minmax(0,.8fr) minmax(0,1fr) minmax(0,1.7fr) 44px}
+.lp-row.head span{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.lp-row .lp-n{text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
+.lp-row label>span{display:none}
+.lp-row input{min-height:44px;text-align:right;font-variant-numeric:tabular-nums}
+.lp-row select{width:100%}
+.lp-row .lp-x{min-height:44px;padding:0;width:44px}
+.lp input.bad{border-color:var(--warn);background:var(--red-soft)}
+.lp-one{justify-self:start}
+.lp-total{display:grid;gap:2px;font-size:14px;color:var(--muted)}
+.lp-total b{font-size:16px;color:var(--ink)}
+@media (max-width:560px){
+  .lp{padding:8px}
+  .lp-row.head{display:none}
+  .lp-rows .lp-row,.lp-rows.po .lp-row{grid-template-columns:22px minmax(0,1fr) minmax(0,1fr) 44px;grid-template-areas:"n c t x";gap:6px 8px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:6px 8px}
+  .lp-rows.po .lp-row{grid-template-areas:"n c t x" ". p p p"}
+  .lp-row .lp-n{grid-area:n;align-self:end;padding-bottom:12px}
+  .lp-row .lp-c{grid-area:c} .lp-row .lp-t{grid-area:t} .lp-row .lp-p{grid-area:p} .lp-row .lp-x{grid-area:x;align-self:end}
+  .lp-row .lp-c,.lp-row .lp-t{display:grid;gap:2px}
+  .lp-row label>span{display:block;font-size:11.5px}
+  .lp-row .lp-p>span{display:inline}
+}
+/* "Agregar y otro": how many went on the run from this window; the three buttons wrap on a phone. Its lines are kept
+   from the start, empty until one is added, so the window does not grow and move the buttons under the finger */
+.dlg .addednote{display:grid;gap:2px;color:var(--ok);font-weight:700}
+.dlg .addednote b,.dlg .addednote small{display:block;line-height:20px;min-height:20px}
+.dlg .addednote small{font-size:13px;font-weight:600;color:var(--muted)}
+.dbtns.more{flex-wrap:wrap}
+@media (max-width:480px){.dbtns.more .btn{flex:1 1 auto}}
+/* on a phone a window has 14px of padding (see the 720px rules): its title and its buttons, which stay in sight, reach
+   its edges with that and not with 18px (they stood 4px out, and the window slid sideways a little) */
+@media (max-width:720px){
+  .dlg>h3{top:-14px;margin:-14px -14px 0;padding:14px 14px 8px}
+  .dlg>.dbtns{bottom:-14px;margin:0 -14px -14px;padding:12px 14px 14px}
+}

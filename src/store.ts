@@ -923,8 +923,13 @@ export function reopenRun(id: string): boolean {
  * Without an end hour the units go one per minute from the start and the code ends with the last one (the office
  * only knew the hour). Returns the new run's id, or '' when nothing was written: the line had another code in those
  * hours (nothing of it is touched), the line is not of that room, or there is no code.
+ * Packing's pallets come one by one, each with its cases, its tag and its order (Jose, 2026-10-18: "que aparezca lo
+ * de poner PO cuando estamos agregando registro en packing"), and each is kept exactly as a pallet finished on the
+ * line (palletUnit): its lots with their cases and tags, its total, its tags as its number, and its order. So the
+ * report, Avance, the orders and what they lack, a PO's pallets and the search count them like any other. An order
+ * this device does not know, or one given to something that does not fill orders (a bin), is dropped: never invented.
  */
-export type LaterRun = { dept: Dept; lineId: string; code: string; lot?: string; date: string; startedAt: number; endedAt?: number | null; units?: { qty: number | null; ref?: string; lots?: LotPart[] }[]; perUnit?: number | null; waste?: number | string; bin?: string; measure?: Measure | ''; madeBy?: string }
+export type LaterRun = { dept: Dept; lineId: string; code: string; lot?: string; date: string; startedAt: number; endedAt?: number | null; units?: { qty: number | null; ref?: string; lots?: LotPart[]; po?: string }[]; perUnit?: number | null; waste?: number | string; bin?: string; measure?: Measure | ''; madeBy?: string }
 export function addRunLater(x: LaterRun): string {
   const line = state.lines.find((l) => l.id === x.lineId && !l.deleted), code = x.code.trim().toUpperCase(), list = x.units ?? []
   // the waste as typed in the box ("25,5" is 25.5, blank is none); one that is not a number adds nothing (the box says
@@ -938,16 +943,69 @@ export function addRunLater(x: LaterRun): string {
   const atOf = (i: number) => (told == null ? start + i * 60_000 : end - start >= n * 1000 ? start + Math.round(((i + 1) * (end - start)) / n) : start + i)
   if (state.runs.some((r) => !r.deleted && r.lineId === line.id && r.startedAt < end && (r.endedAt ?? Infinity) > start)) return ''
   const by = (x.madeBy ?? '').trim() || user.get()
-  const units: Unit[] = list.map((u, i) => { const lots = cleanLots(u.lots), qty = lots ? lots.reduce((t, l) => t + l.qty, 0) : u.qty; return { at: atOf(i), qty: typeof qty === 'number' && Number.isFinite(qty) ? qty : null, ref: (u.ref ?? '').trim(), by, ...(lots ? { lots } : {}) } })
   const extra: RunExtra | undefined = (line.dept === 'Packing' || line.dept === 'MFO') && x.bin?.trim() ? { bin: x.bin.trim().slice(0, 30) } : line.dept === 'Spiral' && x.measure ? { measure: x.measure } : undefined
+  // only what fills orders carries one (Packing's pallets, not its bins), and only an order this device knows
+  const fills = !!cfgOf({ dept: line.dept, extra }).orders
+  const units: Unit[] = list.map((u, i) => {
+    const lots = cleanLots(u.lots), qty = lots ? lots.reduce((t, l) => t + l.qty, 0) : u.qty
+    // its number as on the line: the one typed, else the tags of its lots (a pallet's tags are its number, see palletUnit)
+    const ref = (u.ref ?? '').trim() || (lots ? [...new Set(lots.map((l) => l.tag ?? '').filter(Boolean))].join(', ') : '')
+    const o = fills ? orderOfId(state, u.po) : undefined
+    return { at: atOf(i), qty: typeof qty === 'number' && Number.isFinite(qty) ? qty : null, ref, by, ...(lots ? { lots } : {}), ...(o ? { po: o.id } : {}) }
+  })
   const r: Run = { id: uid(), dept: line.dept, lineId: line.id, line: line.name, code, lot: (x.lot ?? '').trim(), date: x.date, startedAt: start, endedAt: end, units, perUnit: x.perUnit != null && Number.isFinite(x.perUnit) ? x.perUnit : null, waste: Math.round(waste * 100) / 100 || 0, by, updatedAt: 0, ...(extra ? { extra } : {}) }
   batch(() => {
     // a set up left open on the line before those hours ends where the code started, as when a code starts on the line
     for (const y of state.stops.filter((z) => z.lineId === line.id && !z.endedAt && z.reason === SETUP && z.startedAt < start)) putStop({ ...y, endedAt: start })
     putRun(r)
   })
-  logChange(r.dept, 'Corrida ' + code + ' del ' + r.date + ' (' + r.dept + ', ' + lineNameOf(state, r.lineId, r.line) + ') · Se agregó después', '', madeText(r, runQty(state, r)) + ' · ' + fmtTime(start) + ' – ' + fmtTime(end) + (r.lot ? ' · lote ' + r.lot : ''), 'act_runs', r.id)
+  // the orders its pallets went to, named as addUnit names one: "Cliente Seis · PO 6001: 2 pallets"
+  const given = [...units.reduce((m, u) => (u.po ? m.set(u.po, (m.get(u.po) ?? 0) + 1) : m), new Map<string, number>())].map(([id, k]) => { const o = orderOfId(state, id); return o ? ' · ' + orderLabelKept(o) + ': ' + k + (k === 1 ? ' pallet' : ' pallets') : '' }).join('')
+  logChange(r.dept, 'Corrida ' + code + ' del ' + r.date + ' (' + r.dept + ', ' + lineNameOf(state, r.lineId, r.line) + ') · Se agregó después', '', madeText(r, runQty(state, r)) + ' · ' + fmtTime(start) + ' – ' + fmtTime(end) + (r.lot ? ' · lote ' + r.lot : '') + given, 'act_runs', r.id)
   return r.id
+}
+/**
+ * The cases per pallet of a code added after the fact with its pallets one by one (Jose, 2026-10-18): what the line
+ * starts the code with (the products table's, else the last run's: lastPerUnit), the run's full pallet, against which
+ * one with fewer cases is a short one. Never the pallets' own number: one short pallet (or a few equally short) would
+ * then count as complete in the report and set its place in its PO, and for a code the table lacks it would become
+ * the line's proposal next time. Nobody types it in that window, so when the line would have none, it has none.
+ */
+export function laterPerPallet(s: State, code: string, cases: number[]): number | null {
+  return cases.some((n) => Number.isFinite(n) && n > 0) ? lastPerUnit(s, 'Packing', code) : null
+}
+/** one pallet as it is typed in "Agregar un registro" (Packing): its cases, its tag, its order ('' = none) */
+export type LaterPalletRow = { qty: string; tag: string; po: string }
+/** the most units one record added after the fact brings (the limit its box "how many" always had) */
+export const LATER_MAX = 500
+const tagKey = (t: string) => t.trim().toUpperCase()
+/**
+ * What a list of pallets typed for a record says: each one's cases (NaN while they are not a whole number above 0),
+ * the pallets that still lack them (by their number in the list), the tags written more than once (one tag is one
+ * pallet), and whether it can be saved: at least one pallet, every one with its cases, no tag twice, at most LATER_MAX.
+ */
+export function checkLaterPallets(list: LaterPalletRow[]) {
+  const cases = list.map((p) => (/^\d+$/.test(p.qty.trim()) && Number(p.qty) > 0 ? Number(p.qty) : NaN))
+  const missing = list.flatMap((_, i) => (Number.isNaN(cases[i]) ? [i + 1] : []))
+  const seen = list.reduce((m, p) => { const t = tagKey(p.tag); return t ? m.set(t, (m.get(t) ?? 0) + 1) : m }, new Map<string, number>())
+  const twice = [...seen].filter(([, k]) => k > 1).map(([t]) => t)
+  return { cases, missing, twice, ok: list.length > 0 && list.length <= LATER_MAX && !missing.length && !twice.length }
+}
+/** a tag written more than once in that list */
+export const tagTwice = (twice: string[], tag: string) => twice.includes(tagKey(tag))
+/**
+ * That list as addRunLater takes it: each pallet as the line keeps one, the run's lot with its cases and its tag
+ * (when the lot is not known, its cases and its tag alone, as a pallet of before lots were kept), and its order only
+ * when it is one of the code's; and the run's cases per pallet (laterPerPallet). Only for a list that passes
+ * checkLaterPallets.
+ */
+export function laterPalletUnits(s: State, code: string, lot: string, list: LaterPalletRow[]) {
+  const { cases } = checkLaterPallets(list), lotNow = lot.trim(), key = normCode(code)
+  const units = list.map((p, i) => {
+    const qty = cases[i], tag = p.tag.trim().slice(0, 30), po = s.orders.some((o) => o.id === p.po && normCode(o.code) === key) ? p.po : ''
+    return { qty, ref: tag, ...(lotNow ? { lots: [{ lot: lotNow, qty, ...(tag ? { tag } : {}) }] } : {}), ...(po ? { po } : {}) }
+  })
+  return { units, perUnit: laterPerPallet(s, code, cases) }
 }
 export function moveRun(id: string, lineId: string): boolean {
   const r = run(id), to = state.lines.find((l) => l.id === lineId)

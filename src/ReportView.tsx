@@ -1371,7 +1371,9 @@ function RunDetail({ s, runId, at, now, mgr, fix, fixable, onFix, onFixStop, onC
             ) : canFixAny && <small className="rp-lock" title={tr('Lo corrige el turno {0} o quien tenga el permiso "Corregir lo del otro turno".', shifts)}>🔒 {tr('Otro turno')}</small>}
           </div>
         </div>
-        {adding && <AddUnitDialog s={s} run={r} onClose={() => setAdding(false)} onAdded={(added) => { setAdding(false); setFocus(added) }} />}
+        {/* "Agregar y otro" (Jose, 2026-10-18) leaves the window open for the next one; this sheet reads the run from
+            the store, so each one added shows in it while the window stays */}
+        {adding && <AddUnitDialog s={s} run={r} onClose={() => setAdding(false)} onAdded={(added, more) => { if (!more) setAdding(false); setFocus(added) }} />}
       </div>
     </div>
   )

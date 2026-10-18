@@ -2619,6 +2619,91 @@ section('Un código que nadie registró: la oficina lo agrega después, en cualq
     eq('todo sube al servidor', m.outbox.items().filter((i) => i.table === 'act_runs').length, 6)
   })
 }
+section('Un registro de Packing agregado después: sus pallets uno por uno, con sus cajas, su tag y su PO, como los de la línea')
+{
+  // Jose, 2026-10-18: "Puedes hacer que aparezca lo de poner PO cuando estamos agregando registro en packing y también
+  // que podamos agregar múltiples pallets más rápido". Each pallet of the record is kept exactly as one finished on the
+  // line, so the report, Avance, the orders (and what they lack) and the search count it like any other
+  const lt = await device('later', { user: 'Noelia', usual: true })
+  lt.use((m) => {
+    const st = () => m.store.get()
+    m.role.set('office')
+    m.addLine('Packing', 'Línea 1'); m.addLine('Packing', 'Línea 2')
+    const [p1, p2] = ['Línea 1', 'Línea 2'].map((n) => st().lines.find((l) => l.dept === 'Packing' && l.name === n))
+    clock = oct(10, 5, 0)
+    const po1 = m.saveOrder(null, { customer: 'Cliente Seis', po: '6001', code: 'P700', cases: 240, shipBy: '', dest: '' })
+    const po2 = m.saveOrder(null, { customer: '', po: '6002', code: 'P700', cases: null, shipBy: '', dest: '' })
+    const other = m.saveOrder(null, { customer: 'Cliente Ocho', po: '8001', code: 'E500', cases: 100, shipBy: '', dest: '' })
+    // a pallet finished on the line, to hold the added ones against
+    clock = oct(10, 6, 0); m.startRun(p2, 'P700', '6283', DAY, 48)
+    const lr = () => st().runs.find((r) => r.lineId === p2.id)
+    clock = oct(10, 6, 30); m.palletDone(lr().id, [{ lot: '6283', qty: 48, tag: '3100' }], po1)
+    clock = oct(10, 7, 0); m.endRun(lr().id, false)
+    clock = oct(10, 14, 0)
+    // the list as it was typed: two of 48 for PO 6001 (from the quick bar), one of 30 for PO 6002 without its tag yet,
+    // one given to an order of another code and one to an order this device does not know
+    const rows = [{ qty: '48', tag: '3001', po: po1 }, { qty: '48', tag: ' 3002 ', po: po1 }, { qty: '30', tag: '', po: po2 }, { qty: '40', tag: '3004', po: other }, { qty: '40', tag: '3005', po: 'nope' }]
+    eq('la lista se puede guardar', [m.checkLaterPallets(rows).ok, m.checkLaterPallets(rows).cases], [true, [48, 48, 30, 40, 40]])
+    const { units, perUnit } = m.laterPalletUnits(st(), 'p700', ' 6287 ', rows)
+    eq('cada pallet lleva el lote del registro con sus cajas y su tag, y su PO; el de otro código o uno que no existe no se pone', units, [
+      { qty: 48, ref: '3001', lots: [{ lot: '6287', qty: 48, tag: '3001' }], po: po1 },
+      { qty: 48, ref: '3002', lots: [{ lot: '6287', qty: 48, tag: '3002' }], po: po1 },
+      { qty: 30, ref: '', lots: [{ lot: '6287', qty: 30 }], po: po2 },
+      { qty: 40, ref: '3004', lots: [{ lot: '6287', qty: 40, tag: '3004' }] },
+      { qty: 40, ref: '3005', lots: [{ lot: '6287', qty: 40, tag: '3005' }] }])
+    eq('sus cajas por pallet son las que propondría la línea (aquí, las de la última corrida del código)', perUnit, 48)
+    const id = m.addRunLater({ dept: 'Packing', lineId: p1.id, code: 'p700', lot: '6287', date: DAY, startedAt: oct(10, 9, 0), endedAt: oct(10, 9, 50), units, perUnit, madeBy: 'Ana' })
+    const r = () => st().runs.find((x) => x.id === id)
+    const keys = (u) => Object.keys(u).sort()
+    eq('se guardan con las mismas partes que el pallet de la línea', [keys(r().units[0]), keys(lr().units[0])], [['at', 'by', 'lots', 'po', 'qty', 'ref'], ['at', 'by', 'lots', 'po', 'qty', 'ref']])
+    eq('en orden, repartidos en sus horas, con sus cajas, tags, lotes y PO, hechos por quien se dijo', r().units.map((u) => [Math.round((u.at - oct(10, 9, 0)) / M), u.qty, u.ref, u.lots.map((l) => [l.lot, l.qty, l.tag ?? '']), u.po === po1 ? 1 : u.po === po2 ? 2 : u.po ?? '', u.by]), [[10, 48, '3001', [['6287', 48, '3001']], 1, 'Ana'], [20, 48, '3002', [['6287', 48, '3002']], 1, 'Ana'], [30, 30, '', [['6287', 30, '']], 2, 'Ana'], [40, 40, '3004', [['6287', 40, '3004']], '', 'Ana'], [50, 40, '3005', [['6287', 40, '3005']], '', 'Ana']])
+    eq('la corrida: código escrito como se guarda, su lote, y sus cajas por pallet', [r().code, r().lot, r().perUnit], ['P700', '6287', 48])
+    // the orders: what each has, and what it still lacks
+    const lacks = (o) => { const x = st().orders.find((y) => y.id === o); return x.cases == null ? null : x.cases - m.orderMade(st(), o) }
+    eq('el PO 6001 suma el pallet de la línea y los dos agregados (le faltan 96 cajas); el 6002, el de 30; el de otro código, nada', [m.orderMade(st(), po1), lacks(po1), m.orderPallets(st(), po1).done.length, m.orderMade(st(), po2), m.orderMade(st(), other)], [144, 96, 3, 30, 0])
+    eq('en el historial, con quién y los PO de sus pallets', st().changes.filter((c) => c.refKey === id).map((c) => [c.by, c.what.split(' · ').pop(), c.after]), [['Noelia', 'Se agregó después', '5 pallets · 206 cajas · 9:00 AM – 9:50 AM · lote 6287 · Cliente Seis · PO 6001: 2 pallets · PO 6002: 1 pallet']])
+    // the report, Avance, the room's total and the search count them as the line's
+    const rep = m.reportOf(st(), DAY, clock, { only: 'Packing' })
+    eq('en la lista de pallets del reporte: sus lotes, tags, cajas, PO y su lugar en el PO', rep.pallets.filter((p) => p.r.id === id).map((p) => [p.n, p.parts.map((x) => [x.lot, x.qty, x.tag]), p.total, p.order, p.of]), [[1, [['6287', 48, '3001']], 48, 'Cliente Seis · PO 6001', [2, 5]], [2, [['6287', 48, '3002']], 48, 'Cliente Seis · PO 6001', [3, 5]], [3, [['6287', 30, '']], 30, 'PO 6002', [1, null]], [4, [['6287', 40, '3004']], 40, '', null], [5, [['6287', 40, '3005']], 40, '', null]])
+    const av = m.avanceRows(st(), DAY).find((x) => x.code === 'P700')
+    eq('Avance y el total del cuarto cuentan sus cajas y sus pallets como los de la línea', [av.casesDone, av.palletsDone, m.deptToday(st(), 'Packing', DAY, clock).qty], [254, 6, 254])
+    const found = (q) => m.searchReport(st(), rep, q, [], clock).hits.filter((h) => h.kind === 'pallet').map((h) => h.key)
+    eq('la búsqueda encuentra cada pallet por su tag y por su PO', [found('3002'), found('6002')], [[m.hitKey.pallet(id, 2)], [m.hitKey.pallet(id, 3)]])
+    // without the lot known: its cases and its tag alone, as a pallet of before lots were kept
+    const bare = m.laterPalletUnits(st(), 'P700', '  ', [{ qty: '36', tag: '3200', po: po2 }])
+    eq('sin lote: el pallet lleva sus cajas, su tag y su PO, sin lotes', bare.units, [{ qty: 36, ref: '3200', po: po2 }])
+    const nb = m.addRunLater({ dept: 'Packing', lineId: p1.id, code: 'P700', date: DAY, startedAt: oct(10, 10, 0), endedAt: oct(10, 10, 20), units: bare.units, perUnit: bare.perUnit })
+    eq('y el reporte lo muestra con su tag y su PO', m.reportOf(st(), DAY, clock, { only: 'Packing' }).pallets.filter((p) => p.r.id === nb).map((p) => [p.parts.map((x) => [x.lot, x.qty, x.tag]), p.order]), [[[['', 36, '3200']], 'PO 6002']])
+    // what addRunLater itself keeps: only an order this device knows, only on what fills orders; a pallet's tags are its number
+    const kept = (x) => st().runs.find((y) => y.id === x).units.map((u) => [u.qty, u.ref, u.po === po1 ? 1 : u.po ?? ''])
+    const unknown = m.addRunLater({ dept: 'Packing', lineId: p1.id, code: 'P700', lot: '6287', date: DAY, startedAt: oct(10, 11, 0), endedAt: oct(10, 11, 10), units: [{ qty: 40, ref: '3400', po: 'nope' }, { qty: null, lots: [{ lot: '6287', qty: 20, tag: '3401' }, { lot: '6288', qty: 16, tag: '3402' }], po: po1 }] })
+    eq('un PO que este aparato no conoce no se inventa; sin número escrito, el pallet lleva por número los tags de sus lotes', kept(unknown), [[40, '3400', ''], [36, '3401, 3402', 1]])
+    const bins = m.addRunLater({ dept: 'Packing', lineId: p1.id, code: 'P700', date: DAY, startedAt: oct(10, 11, 30), endedAt: oct(10, 11, 40), units: [{ qty: 20, ref: '1', po: po1 }], bin: 'platos' })
+    eq('un bin no lleva pedido', kept(bins), [[20, '1', '']])
+    // the cases per pallet nobody types in that window
+    clock = oct(10, 14, 30)
+    m.saveProduct(st().products.length, { code: 'P800', name: 'Prueba', pouchesPerCase: 0, casesPerMix: 0, cratesPerCart: 24, pouchesPerCrate: 0, casesPerPallet: 60, updatedAt: 0 })
+    // what the line starts the code with, never the pallets' own number (a short pallet would count as complete)
+    eq('cajas por pallet: las que la línea pondría (tabla de productos, o la última corrida del código), aunque todos los pallets tengan otro número igual; si no, ninguna', [m.laterPerPallet(st(), 'P700', [40, 40]), m.laterPerPallet(st(), 'P800', [48, 30]), m.laterPerPallet(st(), 'P800', [40, 40]), m.laterPerPallet(st(), 'P800', [30]), m.laterPerPallet(st(), 'Z999', [48, 48]), m.laterPerPallet(st(), 'Z999', [48, 30]), m.laterPerPallet(st(), 'Z999', []), m.laterPerPallet(st(), 'Z999', [NaN, 0])], [48, 60, 60, 60, null, null, null, null])
+    // one short pallet of 30 added for a PO of 240 cases of a code of 60 to the pallet: it is short, and its place in
+    // the PO counts the PO's 4 pallets (240 / 60), not 8 (240 / 30)
+    const po8 = m.saveOrder(null, { customer: '', po: '8800', code: 'P800', cases: 240, shipBy: '', dest: '' })
+    const short = m.laterPalletUnits(st(), 'P800', '6290', [{ qty: '30', tag: '3500', po: po8 }])
+    const sid = m.addRunLater({ dept: 'Packing', lineId: p1.id, code: 'P800', lot: '6290', date: DAY, startedAt: oct(10, 12, 0), endedAt: oct(10, 12, 10), units: short.units, perUnit: short.perUnit })
+    const sp = m.reportOf(st(), DAY, clock, { only: 'Packing' }).pallets.filter((p) => p.r.id === sid)
+    eq('un pallet corto agregado después queda corto: la corrida lleva las cajas por pallet del código, y su lugar en el PO es 1 de 4', [st().runs.find((x) => x.id === sid).perUnit, sp.map((p) => [p.total, p.total < p.r.perUnit, p.of])], [60, [[30, true, [1, 4]]]])
+    // what the window checks before it saves
+    const ck = (list) => { const c = m.checkLaterPallets(list.map((x) => (typeof x === 'string' ? { qty: x, tag: '', po: '' } : { po: '', ...x }))); return [c.ok, c.missing, c.twice] }
+    eq('sin pallets no se guarda', ck([]), [false, [], []])
+    eq('cada pallet con sus cajas: un número entero mayor que 0 (dice cuáles faltan)', [ck(['48', '', '0']), ck(['4.5', 'x', ' 12 '])], [[false, [2, 3], []], [false, [1, 2], []]])
+    eq('un tag escrito dos veces en la lista se señala (con espacios o en minúsculas es el mismo); sin tag no cuenta', [ck([{ qty: '48', tag: ' 3001' }, { qty: '48', tag: '3001 ' }, '48', '48']), ck([{ qty: '1', tag: 'a1' }, { qty: '1', tag: 'A1' }]), m.tagTwice(['A1'], ' a1 ')], [[false, [], ['3001']], [false, [], ['A1']], true])
+    eq('hasta 500 pallets por registro', [ck(Array.from({ length: 500 }, () => '1'))[0], ck(Array.from({ length: 501 }, () => '1'))[0], m.LATER_MAX], [true, false, 500])
+    // "Agregar y otro" on a run: three pallets found together, added one after the other at the hour they chose, with its PO
+    const ats = ['3101', '3102', '3103'].map((tag) => m.addUnit(lr().id, { at: oct(10, 6, 45), qty: null, lots: [{ lot: '6283', qty: 48, tag }], po: po1 }))
+    eq('tres pallets seguidos a la misma hora: cada uno en su instante, en el orden en que se agregaron, cada uno con su PO', [ats.map((a) => a - oct(10, 6, 45)), lr().units.map((u) => [u.ref, u.po === po1])], [[0, 1, 2], [['3100', true], ['3101', true], ['3102', true], ['3103', true]]])
+    eq('el PO los suma y cada uno queda en el historial con su PO', [m.orderMade(st(), po1), st().changes.filter((c) => c.refKey === lr().id && c.what.includes('Se agregó pallet')).map((c) => c.after)], [144 + 36 + 144, ['48 cajas · 6283: 48 (tag 3101) · Cliente Seis · PO 6001', '48 cajas · 6283: 48 (tag 3102) · Cliente Seis · PO 6001', '48 cajas · 6283: 48 (tag 3103) · Cliente Seis · PO 6001']])
+  })
+}
 section('Un código y su lote que siguen al día siguiente: Avance dice lo pendiente, o completado')
 {
   // what Jose confirmed on 2026-10-16: Packing had 100 cases of a code on Wednesday's program and made 60; on Thursday
