@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { addRunLater, addUnit, applyDraft, wasteProblem, BIN_WORDS, binOf, binWord, byLineName, cfgFor, DEPTS, kindClass, MFO_WORDS, plainDay, planRows, SPIRAL_UNITS, type Dept, byShip, CFG, cfgOf, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, setUnitOrder, splitStop, store, updateRun, updateStop, type Run, type State, type Stop, lineLabel } from './store'
+import { addRunLater, addUnit, applyDraft, draftChecks, usualFor, usualOf, wasteProblem, BIN_WORDS, binOf, binWord, byLineName, cfgFor, DEPTS, kindClass, MFO_WORDS, plainDay, planRows, SPIRAL_UNITS, type Dept, byShip, CFG, cfgOf, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, setUnitOrder, splitStop, store, updateRun, updateStop, type Run, type State, type Stop, lineLabel } from './store'
 import { clockNow } from './clock'
-import { ConfirmDialog, LotsDialog, useCan, useWho } from './App'
+import { ConfirmDialog, LotsDialog, useCan, useSure, useWho, type SureBox } from './App'
 import { writesIn } from './powers'
 import { tr } from './i18n'
 import { trx } from './trx'
@@ -43,20 +43,31 @@ export function RunEditor({ s, run, mgr, focusAt, onClose }: { s: State; run: Ru
   const lines = s.lines.filter((l) => l.dept === run.dept).sort(byLineName)
   const [lineId, setLineId] = useState(run.lineId)
   const [problem, setProblem] = useState('')
+  const sure = useSure()
+  // What was changed here to more than twice the usual is asked about before saving, one box at a time (Jose,
+  // 2026-10-18): the quantity per unit and each unit whose quantity or lots changed (see draftChecks). What was not
+  // touched is not asked about.
+  const doubtful = (): SureBox[] => draftChecks(s, run, opened, { code, lot, date, per, waste, units }).map((b) => ({
+    ...b, unit: cfg.qtyUnit, per: cfg.unit.toLowerCase(), total: b.lots > 1,
+    label: b.index < 0 ? cfg.perUnitLabel : cfg.unit + ' ' + (b.index + 1) + ' · ' + fmtTime(units[b.index].at),
+  }))
   const save = () => {
     // a waste that is not a number ("25..5") is said here and nothing is saved, before the run is moved to another line:
     // the box used to close as if it had been saved, and the waste typed was lost without a word (review of 2026-10-18)
     const bad = cfg.waste ? wasteProblem(waste) : ''
     if (bad) { setProblem(bad); return }
-    if (lineId !== run.lineId && !moveRun(run.id, lineId)) { setProblem(tr('No se pudo pasar a esa línea: a esa hora tenía otro código, o ahora mismo está parada o en Set up.')); return }
-    const why = applyDraft(run.id, opened, { code, lot, date, per, waste, units })
-    if (why) { setProblem(why); return }
-    onClose()
+    sure.check(doubtful(), () => {
+      if (lineId !== run.lineId && !moveRun(run.id, lineId)) { setProblem(tr('No se pudo pasar a esa línea: a esa hora tenía otro código, o ahora mismo está parada o en Set up.')); return }
+      const why = applyDraft(run.id, opened, { code, lot, date, per, waste, units })
+      if (why) { setProblem(why); return }
+      onClose()
+    })
   }
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg wide" onClick={(e) => e.stopPropagation()}>
         <h3>{trx('Corregir · {0} · {1}', run.code, lineNameOf(s, run.lineId, run.line))}</h3>
+        {sure.ui}
         <div className="egrid">
           <label>{tr('Código')}{' '}<input value={code} onChange={(e) => setCode(e.target.value)} autoComplete="off" /></label>
           <label>{tr('Lote')}{' '}<input value={lot} onChange={(e) => setLot(e.target.value)} inputMode="numeric" autoComplete="off" /></label>
@@ -145,16 +156,22 @@ export function AddUnitDialog({ s, run, onClose, onAdded }: { s: State; run: Run
   const qtyOk = cfg.qty === 'none' || tags || (Number.isFinite(n) && n > 0)
   const ok = inside && lotsOk && qtyOk
   const change = (i: number, patch: Partial<{ lot: string; qty: string; tag: string }>) => setRows(rows.map((r, k) => (k === i ? { ...r, ...patch } : r)))
+  // what the unit carried, typed more than twice the usual of one unit of the run, is asked about first (Jose, 2026-10-18)
+  const sure = useSure()
   const save = () => {
     if (!ok) return
     const lots = tags ? rows.map((r, i) => ({ lot: r.lot.trim(), qty: nums[i], ...(r.tag.trim() ? { tag: r.tag.trim() } : {}) })) : undefined
-    const added = addUnit(run.id, { at, qty: cfg.qty === 'none' || tags ? null : n, ref: tags ? '' : ref, lots, po })
-    if (added) onAdded(added)
+    const total = lots ? lots.reduce((t, l) => t + l.qty, 0) : n
+    sure.check(cfg.qty === 'none' ? [] : [{ key: 'qty', n: total, usual: usualOf(s, run), unit: cfg.qtyUnit, per: word, total: !!lots && lots.length > 1 }], () => {
+      const added = addUnit(run.id, { at, qty: cfg.qty === 'none' || tags ? null : n, ref: tags ? '' : ref, lots, po })
+      if (added) onAdded(added)
+    })
   }
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
         <h3>{trx('Agregar {0} · {1}', word, run.code)}</h3>
+        {sure.ui}
         <p>{trx('Para {0} que se hizo y nadie registró. La corrida va de {1} a {2}.', (cfg.saved.endsWith('a') ? tr('una') : tr('un')) + ' ' + word, fmtTime(run.startedAt), run.endedAt ? fmtTime(run.endedAt) : tr('ahora'))}</p>
         <form className="qform" onSubmit={(e) => { e.preventDefault(); save() }}>
           <label>{tr('Hora en que salió')}{' '}<input type="time" value={hm} onChange={(e) => setHm(e.target.value)} autoFocus /></label>
@@ -343,18 +360,24 @@ export function AddRunDialog({ s, date, dept: first, onClose, onAdded }: { s: St
   const wasteBad = cfg.waste ? wasteProblem(waste) : ''
   const ok = !!line && !!code.trim() && !!day && startOk && endOk && Number.isInteger(n) && n >= 0 && n <= 500 && (per == null || (Number.isFinite(per) && per >= 0)) && !wasteBad
   const program = planRows(s, day, dept).filter((r) => r.planned > 0).map((r) => r.code)
+  // what each unit carried, typed more than twice the usual for the code in that room counted that way (the products
+  // table's, or its last run's), is asked about first (Jose, 2026-10-18). How many units has no usual: never asked.
+  const sure = useSure()
   const save = () => {
     if (!ok || !line) return
     const refList = refs.split(/[,;\s]+/).map((t) => t.trim()).filter(Boolean)
     const units = Array.from({ length: n }, (_, i) => ({ qty: cfg.qty === 'none' ? null : per, ref: refList[i] ?? '' }))
-    const id = addRunLater({ dept, lineId: line.id, code, lot, date: day, startedAt: startAt, endedAt: endAt, units, perUnit: cfg.perUnitLabel && per != null ? per : null, waste: cfg.waste ? waste : 0, bin: dept === 'Spiral' ? '' : word, measure: dept === 'Spiral' && (word === 'lb' || word === 'cajas') ? word : '', madeBy })
-    if (!id) { setProblem(tr('A esas horas la línea tenía otro código. Cambia la línea o las horas.')); return }
-    onAdded(id)
+    sure.check(cfg.qty === 'none' || per == null ? [] : [{ key: 'each', n: per, usual: usualFor(s, dept, code, word), unit: cfg.qtyUnit, per: unit }], () => {
+      const id = addRunLater({ dept, lineId: line.id, code, lot, date: day, startedAt: startAt, endedAt: endAt, units, perUnit: cfg.perUnitLabel && per != null ? per : null, waste: cfg.waste ? waste : 0, bin: dept === 'Spiral' ? '' : word, measure: dept === 'Spiral' && (word === 'lb' || word === 'cajas') ? word : '', madeBy })
+      if (!id) { setProblem(tr('A esas horas la línea tenía otro código. Cambia la línea o las horas.')); return }
+      onAdded(id)
+    })
   }
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg wide" onClick={(e) => e.stopPropagation()}>
         <h3>{trx('Agregar un registro · {0}', dept)}</h3>
+        {sure.ui}
         <p>{tr('Para un código que se hizo y nadie registró. Pon lo que sepas; lo demás se deja en blanco. Queda en el historial con tu nombre.')}</p>
         <form className="qform" onSubmit={(e) => { e.preventDefault(); save() }}>
           <div className="egrid">

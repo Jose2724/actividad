@@ -1,5 +1,5 @@
 import { createClient, isAuthRetryableFetchError, type SupabaseClient } from '@supabase/supabase-js'
-import { cleanPowers, cleanShift, type Power } from './powers'
+import { cleanPowers, cleanShift, POWERS, rolesGiven, type Power } from './powers'
 import { tr } from './i18n'
 
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined
@@ -144,11 +144,33 @@ export function rememberedMe(): Me | null {
  * Freezer RTE admin may change their own role. A row without a user name has no PIN to change. Another Freezer RTE
  * admin's account is the owner's alone (the function refuses it to anyone else since 2026-10-18: a manager could change
  * that admin's PIN and sign in as them, audit E1), so the screen offers nothing on it to anyone else either.
+ * Jose's decision of 2026-10-18: manager and office accounts are his alone too, so to anybody else they are as locked
+ * as an admin's (only their own row is theirs: PIN and name). A Freezer RTE crew account ('worker') is given its
+ * Actividad role, powers and shift by anybody who manages people, but its PIN, name and on/off (its Freezer sign-in)
+ * stay the owner's.
+ * Nobody but the owner re-PINs an account holding a power they do not hold (it would hand that power over), and the
+ * powers they may tick are their own (grant). me.powers = what the person looking holds (powersOf).
  */
-export function rowRights(row: { id: string; user_id?: string | null; username?: string | null; role?: string | null }, meId: string, meAdmin: boolean) {
-  const mine = row.id === meId
-  const locked = !mine && ((!!row.user_id && !row.username) || (!meAdmin && row.role === 'admin'))
-  return { mine, locked, role: !locked && (!mine || meAdmin), pin: !locked && !!row.username, active: !locked && !mine }
+export function rowRights(row: { id: string; user_id?: string | null; username?: string | null; role?: string | null; act_role?: string | null; act_powers?: unknown }, me: { id: string; admin: boolean; powers?: readonly string[] | null }) {
+  const mine = row.id === me.id
+  const high = row.act_role === 'mgr' || row.act_role === 'office'
+  const locked = !mine && ((!!row.user_id && !row.username) || (!me.admin && (row.role === 'admin' || high)))
+  const crew = !me.admin && !mine && row.role === 'worker'
+  const holds = me.admin ? POWERS.map((p) => p.key as string) : [...(me.powers ?? [])]
+  // the powers saved for the person as the function reads them (savedPowers), not cleaned: it compares the raw list
+  const lacks = !me.admin && !mine && Array.isArray(row.act_powers) && row.act_powers.some((p) => !holds.includes(String(p)))
+  const sign = !locked && !crew // what is also the person's sign-in: name, user name, PIN, on/off
+  return {
+    mine, locked,
+    edit: sign,
+    pin: sign && !!row.username && !lacks,
+    role: !locked && (!mine || me.admin),
+    active: sign && !mine,
+    // (not `sign`: powers and shift are Actividad's alone, so a crew account's are given with its role)
+    powers: !locked && !mine && row.role !== 'admin' && !!row.act_role && row.act_role !== 'viewer',
+    roles: rolesGiven(me.admin),
+    grant: holds,
+  }
 }
 
 // ---- the user name last used to sign in on this device: written once, offered from then on. Never the PIN: that is

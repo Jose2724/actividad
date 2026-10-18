@@ -1,6 +1,7 @@
 // Supabase Edge Function "act-users": lets an Actividad manager (or a Freezer RTE admin) create accounts for the
 // departments (username + PIN), give them their Actividad role and department, correct a name or a username typed
-// wrong, change a PIN and turn an account on/off. Runs with the service key, which never reaches the tablets. Same people and PINs as Freezer RTE:
+// wrong, change a PIN and turn an account on/off (manager and office accounts: only the owner, since 2026-10-18).
+// Runs with the service key, which never reaches the tablets. Same people and PINs as Freezer RTE:
 // a person created here can also use Freezer RTE as a "requester" (orders empty carts) unless a freezer admin
 // gives them more.
 import { createClient } from 'npm:@supabase/supabase-js@2'
@@ -38,12 +39,20 @@ Deno.serve(async (req) => {
     // another Freezer RTE admin's account is the owner's to touch, as in Freezer RTE's own admin-users. Until 2026-10-18
     // a manager could change that admin's PIN here and then sign in as them, in both apps
     const adminOnly = (t: { role?: string | null }) => !freezerAdmin && t.role === 'admin'
-    // an operator who was given "people" looks after operators and "Solo ver" accounts and hands out only the powers
-    // they hold (what Jose wanted on 2026-10-13: they change operators, never a manager). Managers and the office keep
-    // what they could do; whether they may manage each other is still Jose's to decide
-    const opCaller = !freezerAdmin && me.act_role === 'op'
+    // Jose decided on 2026-10-18: manager and office accounts are his alone (a Freezer RTE admin's) to create, re-PIN,
+    // rename, turn off, re-role or give powers to. Everybody else who manages people (a manager, the office, an operator
+    // given "people") follows what an operator with "people" already followed since 2026-10-13: they create and look
+    // after operators and "Solo ver" accounts (and people with no Actividad role yet), hand out only the powers they
+    // hold, and never touch a manager or the office. Until then a manager could re-PIN another manager and sign in as them
+    const limited = !freezerAdmin
     const low = (r: unknown) => r === 'op' || r === 'viewer'
-    const myPowers: string[] = Array.isArray(me.act_powers) ? me.act_powers : []
+    const high = (r: unknown) => r === 'mgr' || r === 'office'
+    // a Freezer RTE crew account: its PIN, name and on/off are its Freezer RTE sign-in too, so somebody who is not a
+    // Freezer admin only gives it its Actividad role, powers and shift here (what the lead told Jose on 2026-10-18)
+    const crew = (t: { role?: string | null }) => limited && t.role === 'worker'
+    // what the caller holds: the powers saved for them, or their role's (the same as defaultPowers in src/powers.ts). A
+    // manager with nothing saved holds every power but correcting the other shift; until 2026-10-18 this read [] for them
+    const myPowers: string[] = Array.isArray(me.act_powers) ? me.act_powers.map(String) : me.act_role === 'office' ? POWERS : me.act_role === 'mgr' ? POWERS.filter((p) => p !== 'othershift') : []
     // the powers saved for a person ([] = none saved: an operator's role gives none)
     const savedPowers = async (id: string): Promise<string[]> => {
       const { data } = await admin.from('employees').select('act_powers').eq('id', id).maybeSingle()
@@ -75,7 +84,8 @@ Deno.serve(async (req) => {
       if (!/^[a-z0-9._-]{3,30}$/.test(username)) return json({ error: 'bad_username' }, 400)
       if (!pinOk(body.pin)) return json({ error: 'bad_pin' }, 400)
       if (actRole === 'op' && !actDept) return json({ error: 'bad_dept' }, 400)
-      if (opCaller && !low(actRole)) return json({ error: 'not_manager' }, 403)
+      // a manager or office account only by the owner (Jose, 2026-10-18)
+      if (limited && !low(actRole)) return json({ error: 'owner_only' }, 403)
       const { data: taken } = await admin.from('employees').select('id').eq('username', username).maybeSingle()
       if (taken) return json({ error: 'username_taken' }, 400)
       const { data, error } = await admin.auth.admin.createUser({ email: `${username}@${DOMAIN}`, password: String(body.pin), email_confirm: true, user_metadata: { name, username } })
@@ -97,10 +107,21 @@ Deno.serve(async (req) => {
       // one's own role, whatever the value, is the owner's to change (the screen never offers it: rowRights). Until
       // 2026-10-18 this let anyone holding "people" make themselves a manager
       if (t.id === me.id && !freezerAdmin) return json({ error: 'not_self' }, 400)
-      if (opCaller && (!low(t.act_role) || (actRole !== null && !low(actRole)))) return json({ error: 'not_manager' }, 403)
+      // a manager's or the office's account, and those two roles, are the owner's to give or change (Jose, 2026-10-18).
+      // Somebody with no Actividad role yet (a Freezer RTE crew account, say) may be given operator or "Solo ver"
+      if (limited && high(t.act_role)) return json({ error: 'owner_protected' }, 403)
+      if (limited && actRole !== null && !low(actRole)) return json({ error: 'owner_only' }, 403)
+      // somebody who does not work in Actividad now holds no power (E4), whatever their row kept from before: made an
+      // operator by somebody who is not the owner, they get back only the kept powers that person holds too, or it
+      // would hand out a power the giver does not have
+      let kept: { act_powers: string[] } | Record<string, never> = {}
+      if (limited && actRole === 'op' && t.act_role !== 'op') {
+        const had = await savedPowers(t.id)
+        if (had.some((p) => !myPowers.includes(p))) kept = { act_powers: had.filter((p) => myPowers.includes(p)) }
+      }
       // a viewer, or somebody left without Actividad, keeps no powers: whatever was saved for the person before is let go
       // (given a role again later, they start from that role's)
-      const { error } = await admin.from('employees').update({ act_role: actRole, act_dept: actDept, ...(actRole === 'viewer' || actRole === null ? { act_powers: null, act_shift: null } : {}) }).eq('id', t.id)
+      const { error } = await admin.from('employees').update({ act_role: actRole, act_dept: actDept, ...kept, ...(actRole === 'viewer' || actRole === null ? { act_powers: null, act_shift: null } : {}) }).eq('id', t.id)
       return error ? json({ error: error.message }, 400) : json({ ok: true })
     }
 
@@ -108,14 +129,16 @@ Deno.serve(async (req) => {
       const t = await target()
       if (!t) return json({ error: 'not_found' }, 404)
       if (await ownerLocked(t)) return json({ error: 'owner_protected' }, 403)
-      // a manager's powers (and one's own) are the owner's to change
-      if (!freezerAdmin && (t.id === me.id || t.role === 'admin' || t.act_role === 'mgr')) return json({ error: 'owner_only' }, 403)
+      // one's own powers, a Freezer RTE admin's, a manager's and (since 2026-10-18) the office's are the owner's to change.
+      // A Freezer RTE crew account's are not: its powers and its shift are Actividad's alone, not its Freezer sign-in, so
+      // whoever gives it its Actividad role sets them too, within what they hold (the lead's rule as Jose told it,
+      // 2026-10-18; a review of that day found the first version of this refused them)
+      if (limited && (t.id === me.id || t.role === 'admin' || high(t.act_role))) return json({ error: 'owner_only' }, 403)
       if (t.act_role === 'viewer') return json({ error: 'view_only' }, 400)
-      if (opCaller && !low(t.act_role)) return json({ error: 'not_manager' }, 403)
       const asked = Array.isArray(body.powers) ? body.powers.map(String) : null
       const powers = asked ? POWERS.filter((p) => asked.includes(p)) : null // null = the powers of the role
-      // an operator gives nothing they do not hold; what the person had already may stay (only the shift may change)
-      if (opCaller && powers) {
+      // nobody but the owner gives a power they do not hold; what the person had already may stay (only the shift may change)
+      if (limited && powers) {
         const had = await savedPowers(t.id)
         if (powers.some((p) => !myPowers.includes(p) && !had.includes(p))) return json({ error: 'not_manager' }, 403)
       }
@@ -131,7 +154,8 @@ Deno.serve(async (req) => {
       const { data: t } = await admin.from('employees').select('id, user_id, name, username, role, act_role').eq('id', String(body.id ?? '')).maybeSingle()
       if (!t) return json({ error: 'not_found' }, 404)
       if (await ownerLocked(t) || adminOnly(t)) return json({ error: 'owner_protected' }, 403)
-      if (opCaller && t.id !== me.id && !low(t.act_role)) return json({ error: 'not_manager' }, 403)
+      // one's own name, yes; a manager's, the office's or a Freezer RTE crew account's, only the owner (2026-10-18)
+      if (t.id !== me.id && (crew(t) || (limited && high(t.act_role)))) return json({ error: 'owner_protected' }, 403)
       const patch: { name?: string; username?: string } = {}
       if (body.name != null) {
         const name = String(body.name).trim().replace(/\s+/g, ' ')
@@ -171,8 +195,11 @@ Deno.serve(async (req) => {
       const t = await target()
       if (!t?.user_id) return json({ error: 'not_found' }, 404)
       if (await ownerLocked(t) || adminOnly(t)) return json({ error: 'owner_protected' }, 403)
-      // a new PIN hands over the account: an operator does not get one that holds a power they do not hold
-      if (opCaller && t.id !== me.id && (!low(t.act_role) || (await savedPowers(t.id)).some((p) => !myPowers.includes(p)))) return json({ error: 'not_manager' }, 403)
+      // one's own PIN, always. A manager's, the office's or a Freezer RTE crew account's (its Freezer sign-in too) only
+      // the owner (Jose and the lead, 2026-10-18)
+      if (t.id !== me.id && (crew(t) || (limited && high(t.act_role)))) return json({ error: 'owner_protected' }, 403)
+      // a new PIN hands over the account: nobody but the owner gets one that holds a power they do not hold
+      if (limited && t.id !== me.id && (await savedPowers(t.id)).some((p) => !myPowers.includes(p))) return json({ error: 'not_manager' }, 403)
       if (!pinOk(body.pin)) return json({ error: 'bad_pin' }, 400)
       const { error } = await admin.auth.admin.updateUserById(t.user_id, { password: String(body.pin) })
       return error ? json({ error: error.message }, 400) : json({ ok: true })
@@ -183,7 +210,8 @@ Deno.serve(async (req) => {
       if (!t) return json({ error: 'not_found' }, 404)
       if (t.id === me.id) return json({ error: 'not_self' }, 400)
       if (await ownerLocked(t) || adminOnly(t)) return json({ error: 'owner_protected' }, 403)
-      if (opCaller && !low(t.act_role)) return json({ error: 'not_manager' }, 403)
+      // a manager, the office or a Freezer RTE crew account (turning it off closes its Freezer sign-in too): the owner (2026-10-18)
+      if (crew(t) || (limited && high(t.act_role))) return json({ error: 'owner_protected' }, 403)
       const active = !!body.active
       await admin.from('employees').update({ active }).eq('id', t.id)
       if (t.user_id) await admin.auth.admin.updateUserById(t.user_id, { ban_duration: active ? 'none' : '876000h' })

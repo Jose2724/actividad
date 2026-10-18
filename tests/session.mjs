@@ -61,7 +61,7 @@ globalThis.fetch = async (input, init = {}) => {
     const issued = server.passes.get((h.get('authorization') || '').replace(/^Bearer /, ''))
     if (issued === undefined) return json(401, { code: '42501', message: 'permission denied' })
     if (trueNow() - issued > H * 1000) { server.rejected++; return json(401, { code: 'PGRST301', message: 'JWT expired' }) }
-    return json(200, url.pathname.endsWith('/employees') ? [{ id: 'e1', name: 'Prueba', username: 'prueba.rte', role: 'requester', act_role: 'op', act_dept: 'RTE', active: true }] : [])
+    return json(200, url.pathname.endsWith('/employees') ? [server.emp ?? { id: 'e1', name: 'Prueba', username: 'prueba.rte', role: 'requester', act_role: 'op', act_dept: 'RTE', active: true }] : [])
   }
   return json(404, {})
 }
@@ -254,6 +254,23 @@ console.log('· Un enlace que trae la sesión de otra cuenta no cambia quién es
   eq('la app abre con la sesión que la tablet ya tenía; la del enlace no se toma', [data.session?.access_token === mine, stored()?.access_token === mine], [true, true])
   eq('y ni siquiera se le pregunta al servidor de quién es', server.userAsks.length, 0)
   window.location = new URL('http://localhost/')
+}
+
+console.log('· El navegador ofrece guardar el PIN solo a un operador (Jose, 2026-10-18)')
+{
+  // who signed in, as the server's employees row says, and whether the app asks the browser to keep that PIN
+  // (keepsPin, read right after the sign-in with what fetchMe answered: App.tsx LoginGate)
+  const offered = async (row) => { await fresh(); server.emp = row; await enter(); const me = await m.fetchMe(); return m.keepsPin(me) }
+  const base = { id: 'e9', name: 'Prueba', username: 'prueba.x', role: 'requester', act_dept: 'RTE', active: true }
+  eq('un operador, y un operador que es trabajador de Freezer RTE: sí', [await offered({ ...base, act_role: 'op' }), await offered({ ...base, role: 'worker', act_role: 'op' })], [true, true])
+  eq('un manager, la Oficina, un "Solo ver" o un admin de Freezer RTE (aunque trabaje como operador): no', [
+    await offered({ ...base, act_role: 'mgr' }), await offered({ ...base, act_role: 'office' }), await offered({ ...base, act_role: 'viewer' }),
+    await offered({ ...base, role: 'admin', act_role: 'op' }), await offered({ ...base, role: 'admin', act_role: 'mgr' }),
+  ], [false, false, false, false, false])
+  eq('alguien sin acceso a Actividad, o con la cuenta desactivada: no', [await offered({ ...base, act_role: null }), await offered({ ...base, act_role: 'op', active: false })], [false, false])
+  // when the server could not say who it was (no signal right after the PIN), the app has nobody to ask about: no offer
+  eq('si no se sabe quién entró: no', [m.keepsPin(undefined), m.keepsPin(null), m.keepsPin('none')], [false, false, false])
+  server.emp = undefined
 }
 
 console.log('· Lo que guarda el aparato')

@@ -43,13 +43,20 @@ const exp = Math.floor(Date.now() / 1000) + 3600
 const token = (who) => 'h.' + Buffer.from(JSON.stringify({ ...who.claims, exp })).toString('base64url') + '.s'
 disk.set('sb-127-auth-token', JSON.stringify({ access_token: token(ana), refresh_token: 'r', token_type: 'bearer', expires_in: 3600, expires_at: exp, user: { id: ana.id, aud: 'authenticated', email: 'ana@prueba.local' } }))
 disk.set('act_user', 'Ana')
+/**
+ * who the server said is signed in, as App.tsx keeps it when it asks (rememberMe): the queue reads the powers of the
+ * person from it (a run taken off waits for someone holding "Borrar corridas y paros", see sync.ts, mayGo)
+ */
+const meOf = (who, role, dept = '', more = {}) => ({ id: who.id, name: who.name, username: who.name.toLowerCase(), role, dept, ...more })
+const remember = (me) => disk.set('act_me', JSON.stringify(me))
+remember(meOf(ana, 'op', 'Packing'))
 const asked = []
 // the network between the tablet and the server, with switches for the sections that need a bad one (off = as is):
 // down = no connection; lose = the next write to that table reaches the server and its answer is lost; fail = the
 // server answers every write to that table with an error; inFlight = something happens on the tablet while that
 // table's next write is on its way (after the server took it, before the answer arrives); onGet = something happens
 // before each read reaches the server (it may take its time: a slow WiFi); failGet = the server answers the reads of
-// that table by id ("what do you have of these?") with an error. gets = every read asked, as table?query
+// that table by id or by key ("what do you have of these?") with an error. gets = every read asked, as table?query
 const rest = restOver(db, { log: asked })
 const net = { down: false, lose: null, fail: null, inFlight: null, onGet: null, failGet: null, gets: [], busy: 0, failed: 0 }
 globalThis.fetch = async (input, init = {}) => {
@@ -59,7 +66,8 @@ globalThis.fetch = async (input, init = {}) => {
     const method = (init.method ?? 'GET').toUpperCase(), url = new URL(typeof input === 'string' ? input : input.url), table = url.pathname.split('/').pop()
     if (method === 'GET' && url.pathname.includes('/rest/v1/')) {
       net.gets.push(table + url.search)
-      if (net.failGet === table && url.searchParams.has('id')) { net.failed++; return new Response(JSON.stringify({ code: 'XX000', message: 'server hiccup', details: null, hint: null }), { status: 500, headers: { 'Content-Type': 'application/json' } }) }
+      // (by id, or by key: the goals and settings are asked for by theirs, "dept=in.(…)")
+      if (net.failGet === table && (url.searchParams.has('id') || /^in\./.test(url.searchParams.get('dept') ?? ''))) { net.failed++; return new Response(JSON.stringify({ code: 'XX000', message: 'server hiccup', details: null, hint: null }), { status: 500, headers: { 'Content-Type': 'application/json' } }) }
       if (net.onGet) await net.onGet(table)
     }
     if (method === 'POST' && net.fail === table) { net.failed++; return new Response(JSON.stringify({ code: 'XX000', message: 'server hiccup', details: null, hint: null }), { status: 500, headers: { 'Content-Type': 'application/json' } }) }
@@ -108,7 +116,11 @@ eq('y la tablet la ve con el nombre que le dio el servidor: ya no hay dos con un
 
 section('Un Set up que llegó de otra tablet lo cierra el servidor cuando la línea empieza un código')
 const setupId = uuid(), line3 = st().lines.find((l) => l.name === 'Línea 3')
-await sql(ana, "insert into public.act_stops (id, dept, line_id, reason, note, started_at, ended_at, by_name, deleted, updated_at) values ($1, 'Packing', $2, 'Set up', '', $3, null, 'Otra tablet', false, now())", [setupId, line3.id, iso(Date.now() - 20 * 60_000)])
+// 20 minutes before the code, but never before this work day began (3:30 AM plant time, migrations/016): run between
+// 3:30 and 3:50 AM, a Set up from 20 minutes before was of the day before, and 016 rightly dropped it instead of ending
+// it (a failure that looked real; review of 2026-10-18)
+const workDayStart = "((date_trunc('day', (now() at time zone 'America/New_York') - interval '3 hours 30 minutes') + interval '3 hours 30 minutes') at time zone 'America/New_York')"
+await sql(ana, `insert into public.act_stops (id, dept, line_id, reason, note, started_at, ended_at, by_name, deleted, updated_at) values ($1, 'Packing', $2, 'Set up', '', greatest($3::timestamptz, ${workDayStart}), null, 'Otra tablet', false, now())`, [setupId, line3.id, iso(Date.now() - 20 * 60_000)])
 m.startRun(line3, '0889', '6290', m.workDay(st()).date, 36); await drain()
 const stopRow = (await sql(null, 'select ended_at, updated_by from public.act_stops where id = $1', [setupId])).rows[0]
 const runRow = (await sql(null, "select started_at from public.act_runs where line_id = $1 and ended_at is null", [line3.id])).rows[0]
@@ -174,12 +186,16 @@ const date = () => m.workDay(st()).date
   m.endRun(rid); await drain()
 }
 {
+  // a run is taken off only by someone holding "Borrar corridas y paros" (Jose, 2026-10-18: migrations/018, 9): Ana
+  // holds it for this check, on the server and as the tablet knows her
+  await sql(null, "update public.employees set act_powers = '{del}' where user_id = $1", [ana.id]); remember(meOf(ana, 'op', 'Packing', { powers: ['del'] }))
   net.lose = 'act_runs'
   m.startRun(line2(), '0892', '6290', date(), 36); await lost()
   const rid = st().runs.find((r) => r.code === '0892').id
   await offline(() => m.deleteRun(rid))
   await m.syncNow(); await sent()
   eq('un código borrado sin señal queda borrado en el servidor y no vuelve a la tablet', [(await runSrv(rid)).deleted, !!runHere(rid), m.outbox.size()], [true, false, 0])
+  await sql(null, 'update public.employees set act_powers = null where user_id = $1', [ana.id]); remember(meOf(ana, 'op', 'Packing'))
 }
 {
   // no answer lost at all: the stop is ended while its first write is still on its way, and the live notice of that
@@ -225,9 +241,9 @@ section('Una fila que el servidor no toma sigue diciendo desde cuándo espera, a
 // ---- who is signed in on the tablet: the session the library keeps, and what the app sets when the server says who it is ----
 const sessionOf = (who) => JSON.stringify({ access_token: token(who), refresh_token: 'r', token_type: 'bearer', expires_in: 3600, expires_at: exp, user: { id: who.id, aud: 'authenticated', email: who.name.toLowerCase() + '@prueba.local' } })
 /** as App.tsx does when the server confirms who signed in (role 'mgr' for a manager and for somebody who only looks) */
-const signedInAs = (who, roleText, dept, look = false) => { disk.set('sb-127-auth-token', sessionOf(who)); disk.set('act_user', who.name); m.role.set(roleText); m.myDept.set(dept); disk.set('act_view_only', look ? '1' : '') }
-/** "Salir" (or a session the server ended): the session leaves the tablet, the role and the room stay as they were */
-const signedOut = () => disk.delete('sb-127-auth-token')
+const signedInAs = (who, roleText, dept, look = false) => { disk.set('sb-127-auth-token', sessionOf(who)); disk.set('act_user', who.name); m.role.set(roleText); m.myDept.set(dept); disk.set('act_view_only', look ? '1' : ''); remember(meOf(who, look ? 'viewer' : roleText === 'op' ? 'op' : 'mgr', dept, who === jose ? { admin: true } : {})) }
+/** "Salir" (or a session the server ended): the session leaves the tablet, and who it was (App.tsx forgets it); the role and the room stay as they were */
+const signedOut = () => { disk.delete('sb-127-auth-token'); disk.delete('act_me') }
 const wireRow = (row) => Object.fromEntries(Object.entries(row).map(([k, v]) => [k, v instanceof Date ? v.toISOString() : v]))
 const lineFromServer = async (id) => m.applyRemote('act_lines', wireRow((await sql(null, 'select * from public.act_lines where id = $1', [id])).rows[0]))
 const runsOn = async (lineId) => (await sql(null, 'select count(*)::int n from public.act_runs where line_id = $1', [lineId])).rows[0].n
@@ -400,6 +416,154 @@ section('Lo registrado en un cuarto no se pierde cuando entra en la tablet algui
   eq('entra alguien de "Solo ver": lo del manager espera aparte, sin la alerta roja de una sesión rechazada', [m.syncStore.get().refused, m.syncStore.get().other > 0, m.syncStore.get().otherRooms, await runsOn(P25)], [0, true, ['Packing'], 0])
   signedInAs(jose, 'mgr', ''); await m.syncNow(); await sent()
   eq('y sube cuando entra el manager', [await runsOn(P25), m.outbox.size(), m.syncStore.get().other], [1, 0, 0])
+  // the tablet is Ana's again for what follows
+  signedInAs(ana, 'op', 'Packing'); await m.pullAll()
+}
+
+section('Borrar una corrida o quitar una línea: el servidor no se lo deja a quien no puede, y la tablet la vuelve a mostrar sin mandarla otra vez (Jose, 2026-10-18)')
+{
+  // migrations/018, 9 and 10: a run taken off by somebody without "Borrar corridas y paros", or a line by somebody the
+  // managers' rule does not let, is kept by the server, with no error, and the rest of that write is taken as sent.
+  // Here the tablet still believes Ana holds "Borrar" and "Corregir" (taken from her on the server a moment ago)
+  const posts = (t) => asked.filter(([method, x]) => method === 'POST' && x === t).length
+  const said = async (what) => (await sql(null, 'select by_name, before, after from public.act_changes where what = $1 order by at', [what])).rows.map((r) => [r.by_name, r.before, r.after])
+  const lineGone = async (id) => (await sql(null, 'select deleted from public.act_lines where id = $1', [id])).rows[0].deleted
+  const startOn = (id, code) => { m.startRun(st().lines.find((l) => l.id === id), code, '6290', date(), 36); return st().runs.find((r) => r.code === code && r.lineId === id).id }
+  const [P26, P27] = [uuid(), uuid()]
+  await addLineSql(jose, P26, 'Packing', 'Línea 26'); await addLineSql(jose, P27, 'Packing', 'Línea 27'); await m.pullAll()
+  remember(meOf(ana, 'op', 'Packing', { powers: ['del', 'fix'] }))
+  const r1 = startOn(P26, '0894'); await drain(); m.unitDone(r1, 36, '1'); await drain()
+  let before = posts('act_runs')
+  m.deleteRun(r1); await drain(); await quiet()
+  eq('Ana borra la corrida: el servidor la deja, y la tablet la vuelve a mostrar enseguida, sin nada en la cola ni alerta', [(await runSrv(r1)).deleted, runHere(r1), m.outbox.size(), m.syncStore.get().refused], [false, { ended: false, units: 1, waste: 0, deleted: false }, 0, 0])
+  eq('se mandó una vez, y el historial dice que el servidor no dejó borrarla', [posts('act_runs') - before, await said('El servidor no dejó borrar la corrida 0894 del ' + date() + ' (Packing, Línea 26)')], [1, [['Ana', '', '1 pallets']]])
+  await m.syncNow(); await sent()
+  eq('la vuelta siguiente no manda nada más, y la corrida sigue ahí', [posts('act_runs') - before, !!runHere(r1), m.outbox.size()], [1, true, 0])
+  m.endRun(r1); await drain()
+  // the answer of that write is lost: the server's copy comes down before the queue is sent again, and it is that same
+  // version, kept. It leaves the queue: sent once more, it would only be kept once more
+  const r2 = startOn(P26, '0895'); await drain()
+  before = posts('act_runs')
+  net.lose = 'act_runs'
+  m.deleteRun(r2); await lost()
+  eq('la respuesta se perdió: la corrida sigue en la cola', m.outbox.items().some((i) => i.key === r2), true)
+  await m.syncNow(); await sent()
+  eq('al bajar la copia del servidor sale de la cola sin mandarse otra vez, y la tablet la muestra', [(await runSrv(r2)).deleted, !!runHere(r2), m.outbox.size(), posts('act_runs') - before], [false, true, 0, 1])
+  m.endRun(r2); await drain()
+  // a line, with the managers' rule "quitar líneas libres" off
+  await sql(jose, "update public.act_targets set per_shift = 0, updated_at = now() where dept = 'opt:oplines'"); await m.pullAll()
+  before = posts('act_lines')
+  m.removeLine(P27); await drain(); await quiet()
+  eq('Ana quita una línea: el servidor la deja, y la tablet la vuelve a mostrar enseguida, sin nada en la cola', [await lineGone(P27), st().lines.some((l) => l.id === P27), m.outbox.size(), posts('act_lines') - before], [false, true, 0, 1])
+  eq('y el historial lo dice', await said('El servidor no dejó quitar una línea de Packing'), [['Ana', '', 'Línea 27']])
+  await sql(jose, "update public.act_targets set per_shift = 1, updated_at = now() where dept = 'opt:oplines'"); await m.pullAll()
+  m.removeLine(P27); await drain(); await quiet()
+  eq('con la regla encendida la quita, y no vuelve', [await lineGone(P27), st().lines.some((l) => l.id === P27), m.outbox.size()], [true, false, 0])
+  remember(meOf(ana, 'op', 'Packing'))
+
+  // A manager takes off a run on this tablet with no session, and leaves; Ana, who may not, signs in. Sent with her,
+  // the server would keep the run and the manager's "Borrar corrida" would be undone without a word: it waits for
+  // someone who may. One that also ended the code goes up with her: its end is taken, and the history says the rest
+  signedInAs(jose, 'mgr', ''); await m.pullAll()
+  const [P28, P29, P30, P31, P32] = [uuid(), uuid(), uuid(), uuid(), uuid()]
+  for (const [id, name] of [[P28, 'Línea 28'], [P29, 'Línea 29'], [P30, 'Línea 30'], [P31, 'Línea 31'], [P32, 'Línea 32']]) await addLineSql(jose, id, 'Packing', name)
+  await m.pullAll()
+  const r3 = startOn(P28, '0896'), r4 = startOn(P29, '0897'), r5 = startOn(P31, '0898'), r6 = startOn(P32, '0899'); await drain()
+  m.endRun(r3); m.endRun(r6); await drain()
+  // another tablet renames Línea 32 after its code ended, and this one hears it: the app writes a line's name as it is
+  // now into its run on every change (putRun), so taking that run off is still taking it off and nothing else (review of
+  // 2026-10-18: counted as a change, the manager's deletion went up under Ana and was undone)
+  await sql(ana, "update public.act_lines set name = 'Línea 32A', updated_at = now(), updated_by = 'Otra tablet' where id = $1", [P32]); await m.pullAll()
+  signedOut(); m.deleteRun(r3); m.endRun(r4); m.deleteRun(r4); m.deleteRun(r5); m.deleteRun(r6); await quiet()
+  const held6 = m.outbox.items().find((i) => i.key === r6)
+  eq('quitar la corrida de una línea que cambió de nombre es solo quitarla', [held6.row.line, held6.base.line, m.onlyTakesOff('act_runs', held6.row, held6.base)], ['Línea 32A', 'Línea 32', true])
+  signedInAs(ana, 'op', 'Packing'); before = posts('act_runs'); await m.syncNow(); await quiet()
+  eq('entra Ana: el borrado del manager no sube con ella; espera, dicho aparte, sin alerta roja', [(await runSrv(r3)).deleted, (await runSrv(r6)).deleted, m.outbox.items().map((i) => i.key).sort(), posts('act_runs') - before, m.syncStore.get().other, m.syncStore.get().otherRooms, m.syncStore.get().refused, !!runHere(r3), !!runHere(r6)], [false, false, [r3, r6].sort(), 2, 2, [], 0, false, false])
+  // the history line of a deletion the server kept is its author's (the manager's), not of whoever is signed in now
+  eq('el que también terminó el código sube con ella: el fin queda, el servidor deja la corrida, y el historial lo dice a nombre del manager', [await runSrv(r4), runHere(r4), await said('El servidor no dejó borrar la corrida 0897 del ' + date() + ' (Packing, Línea 29)')], [{ ended: true, units: 0, waste: 0, deleted: false }, { ended: true, units: 0, waste: 0, deleted: false }, [['Jose', '', '0 pallets']]])
+  // A code still running is not held (review of 2026-10-18): held, it went on running on the server and on every other
+  // tablet while this one showed its line free, and the code Ana started there next left two open on that line
+  eq('el que seguía corriendo sube también: el servidor lo deja, y aquí sigue corriendo en su línea', [await runSrv(r5), runHere(r5), m.openRun(st(), P31)?.id, await said('El servidor no dejó borrar la corrida 0898 del ' + date() + ' (Packing, Línea 31)')], [{ ended: false, units: 0, waste: 0, deleted: false }, { ended: false, units: 0, waste: 0, deleted: false }, r5, [['Jose', '', '0 pallets']]])
+  m.endRun(r5); const r7 = startOn(P31, '0900'); await drain()
+  eq('Ana lo termina y empieza el siguiente: un solo código abierto en esa línea', (await sql(null, 'select code from public.act_runs where line_id = $1 and ended_at is null and not deleted', [P31])).rows.map((r) => r.code), ['0900'])
+  m.endRun(r7); await drain()
+  // while the manager's deletion waits, another tablet adds a pallet to that run: the two are merged, it still waits,
+  // and it is still the manager's (rebuilt, it was stamped as Ana's and went up named as hers; review of 2026-10-18)
+  await sql(ana, "update public.act_runs set units = units || $2::jsonb, updated_at = now(), updated_by = 'Otra tablet' where id = $1", [r3, JSON.stringify([{ at: Date.now(), qty: 36, ref: '2', by: 'Otra' }])])
+  before = posts('act_runs'); await m.syncNow(); await quiet()
+  const held3 = m.outbox.items().find((i) => i.key === r3)
+  eq('otra tablet le agrega un pallet mientras espera: sigue esperando, con el pallet, y a nombre del manager', [posts('act_runs') - before, held3?.row.units.length, held3?.row.updated_by, !!held3 && m.onlyTakesOff('act_runs', held3.row, held3.base), (await runSrv(r3)).deleted], [0, 1, 'Jose', true, false])
+  await sql(null, "update public.employees set act_powers = '{del}' where user_id = $1", [ana.id]); remember(meOf(ana, 'op', 'Packing', { powers: ['del'] }))
+  await m.flushNow(); await quiet()
+  const by3 = (await sql(null, 'select updated_by from public.act_runs where id = $1', [r3])).rows[0].updated_by
+  eq('le dan a Ana el poder: sube en la vuelta siguiente, y la corrida queda borrada, con su pallet y a nombre del manager', [await runSrv(r3), by3, (await runSrv(r6)).deleted, !!runHere(r3), m.outbox.size(), m.syncStore.get().other], [{ ended: true, units: 1, waste: 0, deleted: true }, 'Jose', true, false, 0, 0])
+  await sql(null, 'update public.employees set act_powers = null where user_id = $1', [ana.id]); remember(meOf(ana, 'op', 'Packing'))
+  // a line the manager took off with the rule off waits the same way, and goes up when the manager is back; while the
+  // tablet does not know yet who signed in (the server has not said), it waits too
+  await sql(jose, "update public.act_targets set per_shift = 0, updated_at = now() where dept = 'opt:oplines'"); await m.pullAll()
+  signedOut(); m.removeLine(P30); await quiet()
+  signedInAs(ana, 'op', 'Packing'); await m.syncNow(); await quiet()
+  eq('entra Ana: la línea que quitó el manager espera', [await lineGone(P30), m.outbox.items().map((i) => i.key)], [false, [P30]])
+  signedInAs(jose, 'mgr', ''); disk.delete('act_me'); await m.syncNow(); await quiet()
+  eq('entra el manager, y el servidor todavía no ha dicho quién es: espera', [await lineGone(P30), m.outbox.items().map((i) => i.key)], [false, [P30]])
+  remember(meOf(jose, 'mgr', '', { admin: true })); await m.flushNow(); await sent()
+  eq('ya se sabe que es el manager: sube, y la línea queda quitada', [await lineGone(P30), st().lines.some((l) => l.id === P30), m.outbox.size()], [true, false, 0])
+  await sql(jose, "update public.act_targets set per_shift = 1, updated_at = now() where dept = 'opt:oplines'")
+  signedInAs(ana, 'op', 'Packing'); await m.pullAll()
+}
+
+section('Un cambio del programa o de una meta que esperó en la tablet no pisa otro más nuevo del servidor (Jose, 2026-10-18)')
+{
+  // A room's program and each shift's goal go whole, the last change standing. One that waited on this tablet (the
+  // server would not take it from whoever signed in after its author, audit S2) must not write over one somebody made
+  // after it: the newer one stands, by the moment each was made, and the history says what was not sent
+  const edgar = await person(db, { name: 'Edgar', actRole: 'office' })
+  const posts = (t) => asked.filter(([method, x]) => method === 'POST' && x === t).length
+  const goalSrv = async (key) => { const r = (await sql(null, 'select per_hour, per_shift, updated_by from public.act_targets where dept = $1', [key])).rows[0]; return r ? [Number(r.per_hour), Number(r.per_shift), r.updated_by] : null }
+  const goalHere = (dept, shift) => { const g = m.shiftGoalOf(st(), dept, shift); return [g.perHour, g.total] }
+  const setGoalSql = (key, perHour, perShift, when = 'now()') => sql(edgar, `insert into public.act_targets (dept, per_hour, per_shift, updated_at, updated_by) values ($1, $2, $3, ${when}, 'Edgar') on conflict (dept) do update set per_hour = excluded.per_hour, per_shift = excluded.per_shift, updated_at = excluded.updated_at, updated_by = excluded.updated_by`, [key, perHour, perShift])
+  const notSent = async (key) => (await sql(null, "select by_name, what, before, after from public.act_changes where ref_key = $1 and what like '%no se subió%' order by at", [key])).rows.map((r) => [r.by_name, r.what, r.before, r.after])
+  const waiting = (t) => m.outbox.items().filter((i) => i.table === t).map((i) => i.key)
+  // the manager sets the goal of RTE's second shift with no session and leaves; Ana, who may not set goals, signs in
+  signedInAs(jose, 'mgr', ''); await m.pullAll()
+  signedOut(); m.setShiftGoal('RTE', 2, 10, 80); await quiet()
+  signedInAs(ana, 'op', 'Packing'); await m.syncNow(); await quiet()
+  eq('entra Ana: la meta del manager espera en la tablet', [waiting('act_targets'), await goalSrv('RTE@2')], [['RTE@2'], null])
+  // the office sets that same goal from its PC; then the manager comes back to this tablet
+  await setGoalSql('RTE@2', 12, 96)
+  signedInAs(jose, 'mgr', ''); await m.syncNow(); await sent()
+  eq('entra el manager: queda la de la oficina, hecha después, en el servidor y en la tablet, y nada espera', [await goalSrv('RTE@2'), goalHere('RTE', 2), m.outbox.size()], [[12, 96, 'Edgar'], [12, 96], 0])
+  eq('el historial dice lo que no se subió, de quién era y quién lo cambió después', await notSent('RTE@2'), [['Jose', 'Meta RTE · Turno 2 · no se subió: Edgar lo cambió después', '10 por hora · 80 del turno', '12 por hora · 96 del turno']])
+  // the office's change lands after this tablet's last pull, while its own waits: the tablet asks the server for that
+  // goal before sending its own (it had not heard of the office's)
+  signedOut(); m.setShiftGoal('RTE', 1, 20, 160); await quiet()
+  signedInAs(jose, 'mgr', ''); await m.pullAll()
+  await setGoalSql('RTE@1', 22, 176)
+  await m.flushNow(); await sent()
+  eq('la tablet pregunta antes de mandar: queda la de la oficina', [await goalSrv('RTE@1'), goalHere('RTE', 1), m.outbox.size(), (await notSent('RTE@1')).map((x) => x[1])], [[22, 176, 'Edgar'], [22, 176], 0, ['Meta RTE · Turno 1 · no se subió: Edgar lo cambió después']])
+  // the other way round: the office set it before the manager did here, and the manager's goes up
+  await setGoalSql('Kitchen@1', 5, 40, "now() - interval '1 minute'")
+  signedOut(); m.setShiftGoal('Kitchen', 1, 6, 48); await quiet()
+  signedInAs(jose, 'mgr', ''); await m.syncNow(); await sent()
+  eq('la de la oficina era de antes: sube la del manager', [await goalSrv('Kitchen@1'), goalHere('Kitchen', 1), await notSent('Kitchen@1')], [[6, 48, 'Jose'], [6, 48], []])
+  // when the server cannot say what it has of that goal, the goal waits for the next pass instead of going blind
+  signedOut(); m.setShiftGoal('Kitchen', 2, 7, 56); await quiet()
+  signedInAs(jose, 'mgr', ''); await m.pullAll()
+  net.failGet = 'act_targets'; const b = posts('act_targets')
+  await m.flushNow(); await quiet()
+  net.failGet = null
+  eq('sin respuesta del servidor sobre esa meta, no se manda a ciegas: espera', [posts('act_targets') - b, waiting('act_targets')], [0, ['Kitchen@2']])
+  await m.flushNow(); await sent()
+  eq('y en la vuelta siguiente sube', [await goalSrv('Kitchen@2'), m.outbox.size()], [[7, 56, 'Jose'], 0])
+  // a room's program: the manager types RTE's for today with no session and leaves; Ana (Packing) does not even hear
+  // RTE's program. The office changes that code meanwhile; then the manager comes back
+  const day = date(), planSrv = async () => { const r = (await sql(null, "select qty, updated_by from public.act_plan where date = $1 and dept = 'RTE' and code = '100'", [day])).rows[0]; return r ? [Number(r.qty), r.updated_by] : null }
+  signedOut(); m.setPlan(day, 'RTE', '0100', 500); await quiet()
+  signedInAs(ana, 'op', 'Packing'); await m.syncNow(); await quiet()
+  eq('entra Ana: el programa de RTE espera aparte', [waiting('act_plan'), m.syncStore.get().otherRooms.includes('RTE'), await planSrv()], [[day + '|RTE|100'], true, null])
+  await sql(edgar, "insert into public.act_plan (date, dept, code, qty, updated_at, updated_by) values ($1, 'RTE', '100', 650, now(), 'Edgar') on conflict (date, dept, code) do update set qty = excluded.qty, updated_at = excluded.updated_at, updated_by = excluded.updated_by", [day])
+  signedInAs(jose, 'mgr', ''); await m.syncNow(); await sent()
+  eq('entra el manager: queda el 650 de la oficina, y el historial dice que el 500 no se subió', [await planSrv(), m.planOf(st(), day, 'RTE').map((p) => [p.code, p.qty]), m.outbox.size(), await notSent(day + '|RTE|100')], [[650, 'Edgar'], [['0100', 650]], 0, [['Jose', 'Programa ' + day + ' · RTE · 100 · no se subió: Edgar lo cambió después', '500', '650']]])
   // the tablet is Ana's again for what follows
   signedInAs(ana, 'op', 'Packing'); await m.pullAll()
 }

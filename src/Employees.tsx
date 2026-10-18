@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react'
 import { missingColumn, rowRights, supabase } from './supabase'
-import { cleanPowers, defaultPowers, POWERS, type Power } from './powers'
+import { cleanPowers, defaultPowers, POWERS, powersOf, rolesGiven, type Power, type Role } from './powers'
 import { DEPTS } from './store'
-import { ConfirmDialog } from './App'
+import { ConfirmDialog, useWho } from './App'
 import { tr } from './i18n'
 import { trx } from './trx'
 
 type Emp = { id: string; user_id?: string | null; name: string; username: string | null; role: string; active: boolean; act_role: 'op' | 'mgr' | 'office' | 'viewer' | null; act_dept: string | null; deleted?: boolean; act_powers?: string[] | null; act_shift?: number | null }
 const ERRORS: Record<string, string> = {
-  not_signed_in: tr('No hay sesión.'), not_manager: tr('Solo un manager puede hacer esto.'), bad_name: tr('Falta el nombre.'), bad_username: tr('Usuario: 3 a 30 letras, números, punto o guion, sin espacios.'),
-  bad_pin: tr('PIN: de 6 a 12 números.'), bad_dept: tr('Un operador necesita departamento.'), username_taken: tr('Ese usuario ya existe.'), not_found: tr('No se encontró.'), owner_protected: tr('Esa cuenta no se puede tocar.'), not_self: tr('No puedes quitarte el acceso a ti mismo.'), owner_only: tr('Los poderes de un manager solo los cambia el dueño.'), no_columns: tr('Falta aplicar el cambio de poderes en la base de datos.'), unknown_action: tr('Falta actualizar la función de usuarios en el servidor.'), view_only: tr('Un usuario de solo ver no tiene poderes: ve todo y no toca nada.'),
+  not_signed_in: tr('No hay sesión.'), not_manager: tr('No tienes permiso para hacer esto.'), bad_name: tr('Falta el nombre.'), bad_username: tr('Usuario: 3 a 30 letras, números, punto o guion, sin espacios.'),
+  bad_pin: tr('PIN: de 6 a 12 números.'), bad_dept: tr('Un operador necesita departamento.'), username_taken: tr('Ese usuario ya existe.'), not_found: tr('No se encontró.'), owner_protected: tr('Esa cuenta no se puede tocar.'), not_self: tr('No puedes quitarte el acceso a ti mismo.'), owner_only: tr('Eso solo lo puede hacer el dueño.'), no_columns: tr('Falta aplicar el cambio de poderes en la base de datos.'), unknown_action: tr('Falta actualizar la función de usuarios en el servidor.'), view_only: tr('Un usuario de solo ver no tiene poderes: ve todo y no toca nada.'),
 }
 
 const ROLE: Record<string, string> = { op: tr('Operador'), mgr: tr('Manager'), office: tr('Oficina'), viewer: tr('Solo ver') }
@@ -24,9 +24,12 @@ type RoleFilter = 'all' | 'op' | 'mgr' | 'office' | 'viewer' | 'none'
  * opens everything about them in one window: the name or the username typed wrong, a new PIN, the role and the
  * department, their powers and shift, and turning the account off. New accounts are made in a window too.
  * meId / admin = who is looking (their row in employees, and whether they are a Freezer RTE admin): a row only offers
- * what that person may really do to it (see rowRights; the server checks it again).
+ * what that person may really do to it (see rowRights; the server checks it again), and that depends on the powers
+ * they hold too (only the ones they hold are handed out, Jose 2026-10-18).
  */
 export function Employees({ meId, admin }: { meId: string; admin: boolean }) {
+  const who = useWho()
+  const me = { id: meId, admin, powers: powersOf({ ...who, admin }) }
   const [list, setList] = useState<Emp[] | null>(null)
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
@@ -87,18 +90,19 @@ export function Employees({ meId, admin }: { meId: string; admin: boolean }) {
       <details className="how">
         <summary>{tr('¿Qué puede hacer cada rol?')}</summary>
         <p>{trx('Los mismos usuarios y PIN que Freezer RTE. {0} solo ve su departamento; {1} ve todo y corrige; {2} ve todo y lleva productos y programa; {3} ve todo, también Avance y el Reporte, y no puede tocar nada. Sin rol = no entra a Actividad.', <b>{tr('Operador')}</b>, <b>{tr('Manager')}</b>, <b>{tr('Oficina')}</b>, <b>{tr('Solo ver')}</b>)}</p>
+        <p>{tr('Las cuentas de manager y de Oficina solo las crea y las cambia el dueño. A una cuenta de trabajador de Freezer RTE aquí se le dan su rol de Actividad, sus poderes y su turno: su PIN, su nombre y activarla los cambia el dueño. Cada quien da solo los poderes que tiene.')}</p>
       </details>
       {list !== null && shown.length === 0 && <p className="hint">{all.length ? tr('Nadie con esa búsqueda.') : tr('No hay usuarios todavía.')}</p>}
       <div className="emplist">
         {shown.map((e) => {
-          const can = rowRights(e, meId, admin)
+          const can = rowRights(e, me)
           const editable = !can.locked
           return (
             <div key={e.id} className={'emp' + (e.active ? '' : ' off')}>
               <span className={'avatar ' + (e.act_role ?? 'none')} aria-hidden="true">{initials(e.name)}</span>
               <div className="who">
                 <b>{e.name}</b>
-                <small><span className="mono">{e.username ?? '—'}</span>{e.role === 'admin' && ' · ' + tr('admin freezer')}{can.mine && ' · ' + tr('tú')}{can.locked && ' · ' + tr('cuenta protegida')}</small>
+                <small><span className="mono">{e.username ?? '—'}</span>{e.role === 'admin' && ' · ' + tr('admin freezer')}{e.role === 'worker' && ' · ' + tr('trabajador freezer')}{can.mine && ' · ' + tr('tú')}{can.locked && ' · ' + tr('cuenta protegida')}</small>
               </div>
               <div className="tags">
                 <span className={'badge ' + (e.act_role ?? 'none')}>{e.act_role ? ROLE[e.act_role] ?? e.act_role : tr('Sin acceso')}</span>
@@ -113,15 +117,18 @@ export function Employees({ meId, admin }: { meId: string; admin: boolean }) {
         })}
       </div>
       {hasPowers === false && <p className="hint">{tr('Los poderes y el turno de cada persona aparecen aquí cuando se aplique el cambio en la base de datos. Mientras tanto cada quien tiene los de su rol.')}</p>}
-      {creating && <NewUserDialog busy={busy} call={call} onClose={() => setCreating(false)} onDone={() => { setCreating(false); void load() }} />}
-      {editing && <EditUserDialog emp={editing} meId={meId} admin={admin} busy={busy} hasPowers={!!hasPowers} call={call} onPowers={() => { setPowersFor(editing); setEditing(null) }} onClose={() => setEditing(null)} onDone={() => { setEditing(null); void load() }} />}
-      {powersFor && <PowersDialog emp={powersFor} busy={busy} call={call} onClose={() => setPowersFor(null)} onDone={() => { setPowersFor(null); void load() }} />}
+      {creating && <NewUserDialog roles={rolesGiven(admin)} busy={busy} call={call} onClose={() => setCreating(false)} onDone={() => { setCreating(false); void load() }} />}
+      {editing && <EditUserDialog emp={editing} can={rowRights(editing, me)} busy={busy} hasPowers={!!hasPowers} call={call} onPowers={() => { setPowersFor(editing); setEditing(null) }} onClose={() => setEditing(null)} onDone={() => { setEditing(null); void load() }} />}
+      {powersFor && <PowersDialog emp={powersFor} grant={rowRights(powersFor, me).grant} admin={admin} busy={busy} call={call} onClose={() => setPowersFor(null)} onDone={() => { setPowersFor(null); void load() }} />}
     </section>
   )
 }
 
-/** a new account: name, username and PIN (the same ones Freezer RTE uses), role and department */
-function NewUserDialog({ busy, call, onClose, onDone }: { busy: boolean; call: (b: Record<string, unknown>) => Promise<string>; onClose: () => void; onDone: () => void }) {
+/**
+ * a new account: name, username and PIN (the same ones Freezer RTE uses), role and department. roles = the ones this
+ * person may give (rolesGiven: manager and office only the owner, Jose 2026-10-18)
+ */
+function NewUserDialog({ roles, busy, call, onClose, onDone }: { roles: Role[]; busy: boolean; call: (b: Record<string, unknown>) => Promise<string>; onClose: () => void; onDone: () => void }) {
   const [form, setForm] = useState({ name: '', username: '', pin: '', act_role: 'op', act_dept: 'RTE' })
   const [err, setErr] = useState('')
   const ok = !!form.name.trim() && !!form.username.trim() && form.pin.length >= 6
@@ -134,7 +141,7 @@ function NewUserDialog({ busy, call, onClose, onDone }: { busy: boolean; call: (
             <label>{tr('Nombre')}{' '}<input autoFocus value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoComplete="off" /></label>
             <label>{tr('Usuario')}{' '}<input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value.toLowerCase() })} autoCapitalize="none" autoComplete="off" placeholder={tr('ej. maria.rte')} /></label>
             <label>{tr('PIN (6–12 números)')}{' '}<input value={form.pin} inputMode="numeric" onChange={(e) => setForm({ ...form, pin: e.target.value.replace(/\D/g, '') })} autoComplete="off" /></label>
-            <label>{tr('Rol')}{' '}<select value={form.act_role} onChange={(e) => setForm({ ...form, act_role: e.target.value })}><option value="op">{tr('Operador')}</option><option value="mgr">{tr('Manager')}</option><option value="office">{tr('Oficina')}</option><option value="viewer">{tr('Solo ver')}</option></select></label>
+            <label>{tr('Rol')}{' '}<select value={form.act_role} onChange={(e) => setForm({ ...form, act_role: e.target.value })}>{roles.map((r) => <option key={r} value={r}>{ROLE[r]}</option>)}</select></label>
             {form.act_role === 'op' && <label>{tr('Departamento')}{' '}<select value={form.act_dept} onChange={(e) => setForm({ ...form, act_dept: e.target.value })}>{DEPTS.map((d) => <option key={d} value={d}>{d}</option>)}</select></label>}
           </div>
           {err && <p className="err">{err}</p>}
@@ -151,10 +158,9 @@ function NewUserDialog({ busy, call, onClose, onDone }: { busy: boolean; call: (
 /**
  * Everything about one person in one window. Only what changed is sent, each part to the action the server has for it
  * (the name and the username; the PIN; the role and the department), and the first refusal is said here, in words.
- * What the person looking may not do to this account is shown but cannot be changed.
+ * What the person looking may not do to this account is shown but cannot be changed (can = rowRights).
  */
-function EditUserDialog({ emp, meId, admin, busy, hasPowers, call, onPowers, onClose, onDone }: { emp: Emp; meId: string; admin: boolean; busy: boolean; hasPowers: boolean; call: (b: Record<string, unknown>) => Promise<string>; onPowers: () => void; onClose: () => void; onDone: () => void }) {
-  const can = rowRights(emp, meId, admin)
+function EditUserDialog({ emp, can, busy, hasPowers, call, onPowers, onClose, onDone }: { emp: Emp; can: ReturnType<typeof rowRights>; busy: boolean; hasPowers: boolean; call: (b: Record<string, unknown>) => Promise<string>; onPowers: () => void; onClose: () => void; onDone: () => void }) {
   const [name, setName] = useState(emp.name)
   const [username, setUsername] = useState(emp.username ?? '')
   const [pin, setPin] = useState('')
@@ -162,12 +168,14 @@ function EditUserDialog({ emp, meId, admin, busy, hasPowers, call, onPowers, onC
   const [dept, setDept] = useState(emp.act_dept ?? 'RTE')
   const [err, setErr] = useState('')
   const [toggle, setToggle] = useState(false)
-  const nameChanged = name.trim().replace(/\s+/g, ' ') !== emp.name
-  const userChanged = !!emp.username && username.trim().toLowerCase() !== emp.username
+  const nameChanged = can.edit && name.trim().replace(/\s+/g, ' ') !== emp.name
+  const userChanged = can.edit && !!emp.username && username.trim().toLowerCase() !== emp.username
   const roleChanged = can.role && (role !== (emp.act_role ?? '') || (role === 'op' && dept !== (emp.act_dept ?? '')))
   const pinTyped = can.pin && pin.length > 0
   const ok = !!name.trim() && (!emp.username || username.trim().length >= 3) && (!pinTyped || pin.length >= 6) && (nameChanged || userChanged || roleChanged || pinTyped)
-  const powersOk = hasPowers && !!emp.act_role && emp.act_role !== 'viewer' && !can.locked && !can.mine && emp.role !== 'admin' && (admin || emp.act_role !== 'mgr')
+  const powersOk = hasPowers && can.powers
+  // the roles in the list: the ones this person may give, and the one the account has now (so it reads right)
+  const roles = (['op', 'mgr', 'office', 'viewer'] as const).filter((r) => can.roles.includes(r) || r === emp.act_role)
   const save = async () => {
     setErr('')
     if (nameChanged || userChanged) { const e = await call({ action: 'edit', id: emp.id, ...(nameChanged ? { name } : {}), ...(userChanged ? { username } : {}) }); if (e) return setErr(e) }
@@ -181,12 +189,13 @@ function EditUserDialog({ emp, meId, admin, busy, hasPowers, call, onPowers, onC
         <h3>{trx('Editar a {0}', emp.name)}</h3>
         <form className="qform" onSubmit={(ev) => { ev.preventDefault(); if (ok) void save() }}>
           <div className="egrid">
-            <label>{tr('Nombre')}{' '}<input value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" /></label>
-            <label>{tr('Usuario')}{' '}<input value={username} disabled={!emp.username} onChange={(e) => setUsername(e.target.value.toLowerCase())} autoCapitalize="none" autoComplete="off" /></label>
+            <label>{tr('Nombre')}{' '}<input value={name} disabled={!can.edit} onChange={(e) => setName(e.target.value)} autoComplete="off" /></label>
+            <label>{tr('Usuario')}{' '}<input value={username} disabled={!emp.username || !can.edit} onChange={(e) => setUsername(e.target.value.toLowerCase())} autoCapitalize="none" autoComplete="off" /></label>
             {can.pin && <label>{trx('PIN nuevo {0}', <small>{tr('(vacío = no se cambia)')}</small>)} <input value={pin} inputMode="numeric" placeholder="••••••" onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} autoComplete="off" /></label>}
-            <label>{tr('Rol')}{' '}<select value={role} disabled={!can.role} onChange={(e) => setRole(e.target.value)}><option value="">{tr('Sin acceso')}</option><option value="op">{tr('Operador')}</option><option value="mgr">{tr('Manager')}</option><option value="office">{tr('Oficina')}</option><option value="viewer">{tr('Solo ver')}</option></select></label>
+            <label>{tr('Rol')}{' '}<select value={role} disabled={!can.role} onChange={(e) => setRole(e.target.value)}><option value="">{tr('Sin acceso')}</option>{roles.map((r) => <option key={r} value={r}>{ROLE[r]}</option>)}</select></label>
             {role === 'op' && <label>{tr('Departamento')}{' '}<select value={dept} disabled={!can.role} onChange={(e) => setDept(e.target.value)}>{DEPTS.map((d) => <option key={d} value={d}>{d}</option>)}</select></label>}
           </div>
+          {!can.edit && <p className="hint">{tr('Es una cuenta de Freezer RTE: aquí se le dan o se le cambian el rol de Actividad, los poderes y el turno. Su PIN, su nombre y activarla los cambia el dueño.')}</p>}
           {userChanged && <p className="hint">{trx('Desde ahora entra con el usuario {0}, aquí y en Freezer RTE. Avísale.', <b>{username.trim().toLowerCase()}</b>)}</p>}
           {pinTyped && <p className="hint">{tr('Con el PIN nuevo entra la próxima vez; donde ya está dentro, sigue dentro.')}</p>}
           {err && <p className="err">{err}</p>}
@@ -208,9 +217,15 @@ function EditUserDialog({ emp, meId, admin, busy, hasPowers, call, onPowers, onC
   )
 }
 
-/** what a person may do besides working their line, and their shift */
-function PowersDialog({ emp, busy, call, onClose, onDone }: { emp: Emp; busy: boolean; call: (b: Record<string, unknown>) => Promise<string>; onClose: () => void; onDone: () => void }) {
-  const [picked, setPicked] = useState<Power[]>(() => cleanPowers(emp.act_powers) ?? defaultPowers(emp.act_role))
+/**
+ * what a person may do besides working their line, and their shift. grant = the powers the person looking holds: only
+ * those can be ticked (nobody but the owner hands out a power they do not have, Jose 2026-10-18); one the person
+ * already has stays in the list, so it can be taken away or left as it is (the server takes both)
+ */
+function PowersDialog({ emp, grant, admin, busy, call, onClose, onDone }: { emp: Emp; grant: readonly string[]; admin: boolean; busy: boolean; call: (b: Record<string, unknown>) => Promise<string>; onClose: () => void; onDone: () => void }) {
+  const [had] = useState<Power[]>(() => cleanPowers(emp.act_powers) ?? defaultPowers(emp.act_role))
+  const [picked, setPicked] = useState<Power[]>(had)
+  const offered = POWERS.filter((x) => grant.includes(x.key) || had.includes(x.key))
   const [shift, setShift] = useState(emp.act_shift === 1 || emp.act_shift === 2 ? emp.act_shift : 0)
   const [err, setErr] = useState('')
   const send = (powers: Power[] | null) => void call({ action: 'set_powers', id: emp.id, powers, shift: shift || null }).then((e) => (e ? setErr(e) : onDone()))
@@ -219,7 +234,8 @@ function PowersDialog({ emp, busy, call, onClose, onDone }: { emp: Emp; busy: bo
       <div className="dlg" onClick={(ev) => ev.stopPropagation()}>
         <h3>{trx('Poderes de {0}', emp.name)}</h3>
         <p>{ROLE[emp.act_role ?? ''] ?? tr('Sin rol')}{emp.act_role === 'op' && emp.act_dept ? ' ' + tr('de {0}', emp.act_dept) : ''}{tr('. Marca lo que puede hacer además de trabajar su línea. Lo que no esté marcado no le sale en la pantalla.')}</p>
-        <div className="powers">{POWERS.map((x) => <label key={x.key}><input type="checkbox" checked={picked.includes(x.key)} onChange={(ev) => setPicked(ev.target.checked ? [...picked, x.key] : picked.filter((k) => k !== x.key))} /> {x.label}</label>)}</div>
+        <div className="powers">{offered.map((x) => <label key={x.key}><input type="checkbox" checked={picked.includes(x.key)} onChange={(ev) => setPicked(ev.target.checked ? [...picked, x.key] : picked.filter((k) => k !== x.key))} /> {x.label}</label>)}</div>
+        {!admin && <p className="hint">{tr('Solo puedes dar los poderes que tú tienes.')}</p>}
         <label>{tr('Turno')}{' '}<select value={shift} onChange={(ev) => setShift(Number(ev.target.value))}><option value={0}>{tr('Los dos turnos')}</option><option value={1}>{tr('Turno 1')}</option><option value={2}>{tr('Turno 2')}</option></select></label>
         <p className="hint">{tr('Con un turno, el Reporte le abre en ese turno y solo corrige lo de su turno, salvo que tenga "Corregir lo del otro turno". Tiene que cerrar y abrir la app para que tome los cambios.')}</p>
         {err && <p className="err">{err}</p>}

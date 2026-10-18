@@ -1,7 +1,8 @@
-import { noSignal, passExpired, renewSession, supabase } from './supabase'
+import { noSignal, passExpired, rememberedMe, renewSession, supabase } from './supabase'
 import { startClock } from './clock'
-import { afterFlush, beforeFlush, flush, outbox, setOwnRow, type Row, type Table } from './outbox'
-import { applyRemote, awayDay, batch, closeDay, DEPTS, firstKeptDay, myDept, openDay, prune, role, sameName, shareLocalLines, store, viewOnly, type Dept } from './store'
+import { afterFlush, beforeFlush, flush, outbox, setMayGo, setOwnRow, type Item, type Row, type Table } from './outbox'
+import { applyRemote, awayDay, batch, closeDay, DEPTS, firstKeptDay, myDept, onlyTakesOff, openDay, prune, role, sameName, shareLocalLines, store, viewOnly, type Dept } from './store'
+import { canDo } from './powers'
 import { tr } from './i18n'
 import { BUILD } from './update'
 
@@ -23,8 +24,35 @@ let status: SyncStatus = { state: supabase ? 'connecting' : 'local', pending: ou
 const subs = new Set<() => void>()
 const setStatus = (patch: Partial<SyncStatus>) => { status = { ...status, ...patch }; subs.forEach((f) => f()) }
 export const syncStore = { get: () => status, subscribe: (f: () => void) => { subs.add(f); return () => { subs.delete(f) } } }
-/** the rows waiting for someone else (see outbox.ts) and the rooms they are of, as the screen says them */
-const others = () => { const rows = outbox.otherRoom(); return { other: rows.length, otherRooms: [...new Set(rows.map((i) => String(i.row.dept ?? '')).filter((d) => (DEPTS as string[]).includes(d)))].sort() } }
+/**
+ * May the person signed in take off the run or the line this queued row takes off? Jose's decision of 2026-10-18: a
+ * run only with "Borrar corridas y paros" (the owner holds every power); a line only a manager, the office, someone
+ * with "Corregir registros", or anyone while the managers' rule "quitar líneas libres" is on. The server keeps the run
+ * or the line otherwise (migrations/018, 9 and 10), so a manager's "Borrar corrida" on a tablet with no signal that went
+ * up after an operator signed in there was undone without a word. Such a row waits on the device, said apart, and
+ * goes up when someone who may signs in. Only a row whose one change is taking it off (onlyTakesOff), of a run that
+ * has ended: one that also ends the code goes up at once, its end with it, the server keeps the run, and the history
+ * says so; one still running goes up too (see below). Who is signed in is the person the server last confirmed here
+ * (App.tsx keeps it, rememberMe); while that is not known, it waits.
+ */
+const mayGo = (it: Item): boolean => {
+  if ((it.table !== 'act_runs' && it.table !== 'act_lines') || !it.base || !onlyTakesOff(it.table, it.row, it.base)) return true
+  // A code still running is not held either (review of 2026-10-18): held, it ran on the server and on every other tablet
+  // for days while this one showed the line free, and the next code started here left two open on that line (what the
+  // floor saw on 2026-10-16). It goes up: the server keeps it, it shows here again at once (lookBack), still running, so
+  // the line can end it, and the history says the server did not let it be taken off
+  if (it.table === 'act_runs' && it.row.ended_at == null) return true
+  const me = rememberedMe()
+  if (!me) return false
+  const w = { role: me.role, admin: me.admin, powers: me.powers ?? null }
+  return it.table === 'act_runs' ? canDo(w, 'del') : me.role === 'mgr' || me.role === 'office' || canDo(w, 'fix') || store.get().lineRules.remove
+}
+setMayGo(mayGo)
+/**
+ * the rows waiting for someone else (see outbox.ts) and the rooms they are of, as the screen says them. A run or a line
+ * waiting for someone who may take it off (mayGo) names no room: someone of that room would not be enough
+ */
+const others = () => { const rows = outbox.otherRoom(); return { other: rows.length, otherRooms: [...new Set(rows.filter(mayGo).map((i) => String(i.row.dept ?? '')).filter((d) => (DEPTS as string[]).includes(d)))].sort() } }
 outbox.subscribe(() => setStatus({ pending: outbox.size(), since: outbox.oldest(true), refused: outbox.refused().length, ...others() }))
 /**
  * Which rows are this person's own to write: an operator's, those of their room; a manager's or the office's, every
@@ -39,7 +67,9 @@ setOwnRow((row) => {
   if (role.get() !== 'op') return true
   const dept = String(row.dept ?? '')
   return !dept || dept === myDept.get() || !(DEPTS as string[]).includes(dept)
-}, () => role.get() + ':' + myDept.get() + (viewOnly.get() ? ':ver' : ''))
+}, () => role.get() + ':' + myDept.get() + (viewOnly.get() ? ':ver' : '') + ':' + powersNow())
+/** the powers of the person signed in, as the server last said them: a power given or taken tries the waiting rows again */
+function powersNow() { const me = rememberedMe(); return !me ? '?' : me.admin ? 'admin' : me.powers ? me.powers.join(',') : 'rol' }
 /** the page is asked to check with the server who is signed in (a session it no longer takes): at most once every two minutes */
 let askedWho = 0
 const askWho = () => { if (Date.now() - askedWho < 120_000) return; askedWho = Date.now(); try { window.dispatchEvent(new Event('act-verify')) } catch { /* no window */ } }
@@ -296,9 +326,12 @@ export async function loadDay(date: string): Promise<boolean> {
  * the server to start from is not asked for: merged with nothing in common, the server's copy would stand and the
  * change of this device would be lost. A hundred ids per question, so a tablet back after a long time offline asks
  * short ones. Returns the tables whose rows must wait for the next pass: the runs, when the server could not say what
- * it has of them (sent blind, a run would write over the pallets of others). A stop or a line goes as queued then
+ * it has of them (sent blind, a run would write over the pallets of others), and the program and the settings (see
+ * BY_TIME). A stop or a line goes as queued then
  */
 const REFRESHED: Table[] = ['act_runs', 'act_stops', 'act_lines']
+/** the tables kept by the last change, whose queued rows are brought from the server before they go up (see below) */
+const BY_TIME: Table[] = ['act_plan', 'act_targets']
 async function refreshQueued(): Promise<Table[]> {
   if (!supabase) return []
   const held: Table[] = []
@@ -315,7 +348,45 @@ async function refreshQueued(): Promise<Table[]> {
       }
     }
   }
+  // A room's program and what is set for everybody go up whole, the last change standing (see keepNewer in store.ts):
+  // one that waited here (days, for someone who may send it: audit S2) must not write over one made after it on the
+  // server. So their server version is brought first, whatever this device heard meanwhile (an operator's tablet does
+  // not even hear another room's program), and the newer one stands (Jose's decision of 2026-10-18). When the server
+  // cannot say, they wait for the next pass: sent blind, one could write over a newer change
+  for (const t of BY_TIME) {
+    const rows = outbox.items().filter((i) => i.table === t).map((i) => i.row)
+    for (let k = 0; k < rows.length; k += 100) {
+      const part = rows.slice(k, k + 100), of = (c: string) => [...new Set(part.map((r) => String(r[c] ?? '')))]
+      try {
+        const q = supabase.from(t).select('*')
+        const { data, error } = await (t === 'act_targets' ? q.in('dept', of('dept')) : q.in('date', of('date')).in('dept', of('dept')))
+        if (error && missing(error.code)) break // the table's SQL has not been run: the pass says so when it sends
+        if (error || !Array.isArray(data)) throw error
+        batch(() => { for (const row of data as Row[]) applyRemote(t, row) })
+      } catch {
+        held.push(t)
+        break
+      }
+    }
+  }
   return held
+}
+/**
+ * The runs and lines a pass sent taken off are asked for again at once: the server keeps one taken off by somebody it
+ * does not let (Jose's decision of 2026-10-18), and this device, which hid it, shows it again now (reconcile, in
+ * store.ts), not a minute later with the next pull (the live notice of it may never come). A hundred ids per question
+ */
+async function lookBack(rows: { table: Table; key: string }[]) {
+  if (!supabase) return
+  for (const t of ['act_runs', 'act_lines'] as Table[]) {
+    const ids = [...new Set(rows.filter((x) => x.table === t).map((x) => x.key))]
+    for (let k = 0; k < ids.length; k += 100) {
+      try {
+        const { data, error } = await supabase.from(t).select('*').in('id', ids.slice(k, k + 100))
+        if (!error && Array.isArray(data)) batch(() => { for (const row of data as Row[]) applyRemote(t, row) })
+      } catch { /* the next pull brings it */ }
+    }
+  }
 }
 // a row is not sent without having brought the server's version of it first (see refreshQueued)
 beforeFlush(async () => { if (Date.now() - status.lastSync > 75_000) await pullAll(); return refreshQueued() })
@@ -328,6 +399,7 @@ export const syncNow = async () => { await pullAll(); await flushNow() }
  * "Sincronizado" on its own, also with the WiFi off.)
  */
 afterFlush((r) => {
+  if (r.tookOff?.length) void lookBack(r.tookOff)
   const more = { pending: r.left, since: outbox.oldest(true), refused: r.refused ?? 0, ...others() }
   if (r.error === 'signedOut') { setStatus({ ...more, state: 'signedOut', lastError: '' }); askWho() }
   else if (r.error === 'offline') setStatus({ ...more, state: 'offline', lastError: '' })

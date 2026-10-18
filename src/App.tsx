@@ -4,11 +4,11 @@ import { addLine, addWaste, awayDay, cameFrom, carriedOver, dayAfter, BIN_WORDS,
 import { avanceLots, avanceRange, avanceRows, datesBetween, lotAcrossDays, lotRows, lotsKnown, mfoList, mfoText, mfoWord, n1, pending, type AvancePart, type AvanceRow, type MfoMade } from './avance'
 import { loadZip, type Cell } from './xlsx'
 
-import { fmtN, looksLikeTwoLots, plainText, viewOnly, whoText } from './store'
+import { fmtN, looksLikeTwoLots, plainText, viewOnly, whoText, askFirst, usualFor, usualOf, type QtyCheck } from './store'
 import { loadPdf } from './pdf'
 import { sharePick, shareProblem, type Kind } from './send'
 import { spanShifts, unitParts } from './report'
-import { canDo, canShift, writesIn, type Power, type Who } from './powers'
+import { canDo, canShift, keepsPin, writesIn, type Power, type Who } from './powers'
 import { AddRunDialog, RunEditor, StopEditor } from './editors'
 import { fetchMe, finishSignOut, loginEmail, rememberedMe, rememberedUser, rememberMe, rememberUser, signedOut, signOutHere, supabase, type Me } from './supabase'
 import { checkLineName, leaveAsk, loadDay, STALE_MS, startSync, syncStore, syncNow, unreachable } from './sync'
@@ -249,24 +249,27 @@ function ServerApp() {
   const now = useRef(me); now.current = me
   // asking: one question to the server at a time; confirmed: it answered; leaving: "Salir" was tapped and nobody has signed in since
   const asking = useRef(false), confirmed = useRef(0), leaving = useRef(false)
-  const verify = useCallback(async () => {
-    if (asking.current || leaving.current) return
+  // (it answers who the server said is signed in, or undefined when it did not ask or got no answer)
+  const verify = useCallback(async (): Promise<Me | null | 'none' | undefined> => {
+    if (asking.current || leaving.current) return undefined
     asking.current = true
     try {
       const who = await fetchMe()
-      if (leaving.current) return
+      if (leaving.current) return undefined
       confirmed.current = Date.now()
       const inside = who && who !== 'none' ? who : null
       const wasIn = !!now.current && now.current !== 'none' && now.current !== 'loading'
       rememberMe(inside)
       if (!inside) user.set('')
       setMe(who); setErr(wasIn && who === null ? CLOSED : '')
+      return who
     } catch (e) {
       // no signal, or the server did not answer: whoever is in stays in; with nobody remembered, the sign-in screen says why
       confirmed.current = 0
       const text = String((e as Error)?.message ?? e)
       setErr(/fetch|network|load failed/i.test(text) || !navigator.onLine ? NO_SIGNAL : text)
       setMe((cur) => (cur === 'loading' ? null : cur))
+      return undefined
     } finally { asking.current = false }
   }, [])
   useEffect(() => {
@@ -288,7 +291,7 @@ function ServerApp() {
   }, [me])
   const out = async () => { leaving.current = true; rememberMe(null); user.set(''); confirmed.current = 0; setErr(''); setMe(null); await signOutHere() }
   /** the PIN was accepted: the server is asked who that is */
-  const entered = async () => { leaving.current = false; await verify() }
+  const entered = async () => { leaving.current = false; return verify() }
   if (me === 'loading') return <div className="gate"><LangSwitch /><h1>Actividad</h1><p>{tr('Entrando…')}</p></div>
   if (me === null) return <LoginGate error={err} onDone={entered} />
   if (me === 'none') return <NoRole onOut={out} onRetry={verify} />
@@ -300,7 +303,7 @@ function ServerApp() {
 /**
  * Asks the browser to keep the user and the PIN in its own password store (the phone's, the tablet's or the PC's),
  * where a page is allowed to ask; elsewhere the browser offers it by itself when it sees the form. The app itself
- * never keeps a PIN.
+ * never keeps a PIN. Asked only for an operator, once the server has said who signed in (keepsPin: Jose, 2026-10-18).
  */
 function offerToSave(id: string, password: string) {
   try {
@@ -326,7 +329,7 @@ function SecretInput({ value, onChange, what, hide, inputRef, ...box }: { value:
   )
 }
 
-function LoginGate({ error, onDone }: { error: string; onDone: () => Promise<void> }) {
+function LoginGate({ error, onDone }: { error: string; onDone: () => Promise<Me | null | 'none' | undefined> }) {
   // the user name last used on this device is already written: only the PIN is left (or the browser fills it in)
   const [u, setU] = useState(rememberedUser)
   const [known] = useState(() => !!rememberedUser())
@@ -347,8 +350,11 @@ function LoginGate({ error, onDone }: { error: string; onDone: () => Promise<voi
     setBusy(false)
     if (e) { setMsg(/invalid/i.test(e.message) ? tr('Usuario o PIN incorrectos.') : /fetch|network/i.test(e.message) || unreachable(e.message) ? tr('Sin conexión. Revisa el WiFi e intenta otra vez.') : e.message); return }
     rememberUser(user)
-    offerToSave(user.toLowerCase(), secret)
-    await onDone()
+    // the browser is offered the PIN only for an operator (Jose, 2026-10-18): a manager's, the office's, a "Solo ver" or
+    // a Freezer RTE admin's PIN kept on a shared floor tablet lets anybody in with that account. Asked after the server
+    // said who this is: not known (no answer) = not offered
+    const who = await onDone()
+    if (keepsPin(who)) offerToSave(user.toLowerCase(), secret)
   }
   const mail = u.includes('@')
   return (
@@ -1805,11 +1811,14 @@ function PalletDoneDialog({ s, run, onClose, onSaved }: { s: State; run: Run; on
   const ok = total > 0 && rows.every((r, i) => !!r.lot.trim() && Number.isFinite(nums[i]) && (nums[i] > 0 || i >= parts.length))
   const missing = rows.filter((r, i) => nums[i] > 0 && !r.tag.trim()).length
   const lastRow = rows[rows.length - 1], fill = per > onIt && !lastRow.qty && lastRow.lot.trim() ? per - onIt : 0
-  const save = () => { if (ok && palletDone(run.id, rows.map((r, i) => ({ lot: r.lot, qty: nums[i], tag: r.tag })), po)) onSaved() }
+  // a pallet of more than twice the usual cases is asked about first (Jose, 2026-10-18): the cases typed for its lots
+  const sure = useSure(), lots = rows.filter((_, i) => nums[i] > 0).length
+  const save = () => { if (ok) sure.check([{ key: 'pallet', n: total, usual: usualOf(s, run), unit: tr('cajas'), per: 'pallet', total: lots > 1 }], () => { if (palletDone(run.id, rows.map((r, i) => ({ lot: r.lot, qty: nums[i], tag: r.tag })), po)) onSaved() }) }
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
         <h3>{trx('Pallet listo · {0}', run.code)}</h3>
+        {sure.ui}
         <form className="qform" onSubmit={(e) => { e.preventDefault(); save() }}>
           <div className="palrows">
             <div className="palrow head"><span>{tr('Lote')}</span><span>{tr('Cajas')}</span><span>{tr('Tag')}</span></div>
@@ -1853,11 +1862,14 @@ function LotEndDialog({ run, onClose }: { run: Run; onClose: () => void }) {
   const [tag, setTag] = useState('')
   const [next, setNext] = useState('') // typed by them: the app does not guess the next lot
   const ok = Number(qty) > 0 && !!next.trim() && next.trim() !== lot
-  const save = () => { if (ok && palletLotEnds(run.id, Number(qty), tag, next)) onClose() }
+  // the cases of one lot that are more than twice a whole pallet's usual are asked about first (Jose, 2026-10-18)
+  const sure = useSure()
+  const save = () => { if (ok) sure.check([{ key: 'qty', n: Number(qty), usual: usualOf(store.get(), run), unit: tr('cajas'), per: 'pallet' }], () => { if (palletLotEnds(run.id, Number(qty), tag, next)) onClose() }) }
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
         <h3>{trx('Se acabó el lote {0} en este pallet', lot)}</h3>
+        {sure.ui}
         <form className="qform" onSubmit={(e) => { e.preventDefault(); save() }}>
           <label>{tr('Cajas de ese lote en este pallet')}{' '}<input autoFocus value={qty} inputMode="numeric" placeholder="0" onChange={(e) => setQty(e.target.value.replace(/\D/g, ''))} /></label>
           <label>{trx('Tag de ese lote {0}', <small>{tr('(si ya lo tienen; si no, después)')}</small>)} <input value={tag} inputMode="numeric" placeholder={tr('ej. 1749')} onChange={(e) => setTag(e.target.value)} autoComplete="off" /></label>
@@ -1912,13 +1924,17 @@ function PartDialog({ run, index, onClose }: { run: Run; index: number; onClose:
   const p = run.extra?.open?.parts[index]
   const [qty, setQty] = useState(String(p?.qty ?? ''))
   const [tag, setTag] = useState(p?.tag ?? '')
+  const sure = useSure()
   if (!p) return null
   const ok = Number(qty) > 0
+  // cases changed to more than twice a whole pallet's usual are asked about first; a tag added alone is not (Jose, 2026-10-18)
+  const save = () => { if (ok) sure.check(Number(qty) === p.qty ? [] : [{ key: 'qty', n: Number(qty), usual: usualOf(store.get(), run), unit: tr('cajas'), per: 'pallet' }], () => { if (palletPartFix(run.id, index, { qty: Number(qty), tag })) onClose() }) }
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
         <h3>{trx('Lote {0} en este pallet', p.lot)}</h3>
-        <form className="qform" onSubmit={(e) => { e.preventDefault(); if (ok && palletPartFix(run.id, index, { qty: Number(qty), tag })) onClose() }}>
+        {sure.ui}
+        <form className="qform" onSubmit={(e) => { e.preventDefault(); save() }}>
           <label>{tr('Cajas')}{' '}<input value={qty} inputMode="numeric" onChange={(e) => setQty(e.target.value.replace(/\D/g, ''))} /></label>
           <label>{tr('Tag')}{' '}<input autoFocus={!p.tag} value={tag} inputMode="numeric" placeholder={tr('ej. 1749')} onChange={(e) => setTag(e.target.value)} autoComplete="off" /></label>
           <div className="dbtns">
@@ -2029,6 +2045,11 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   // Spiral: how the code about to start is counted (null = as the products table says, or as it was started last)
   const [measure, setMeasure] = useState<SpiralUnit | null>(null)
   const [tagging, setTagging] = useState<number | null>(null)
+  // the quantity per unit typed when a code starts, more than twice the usual, is asked about first (Jose, 2026-10-18).
+  // A question left open when the line got a code meanwhile (from another tablet) is dropped: shown again once the line
+  // is free, its "Sí" would start the old code
+  const sure = useSure()
+  useEffect(() => { if (run && sure.open) sure.cancel() }, [run?.id, sure.open])
   const nameIt = !quiet && <button type="button" className="lnk pen" title={tr('Cambiar el nombre')} aria-label={tr('Cambiar el nombre de {0}', lineLabel(line.name))} onClick={() => setRenaming(true)}>✎</button>
   const naming = renaming && <LineNameDialog s={s} dept={line.dept} line={line} onClose={() => setRenaming(false)} />
   const [wasting, setWasting] = useState(false)
@@ -2082,8 +2103,8 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         </div>
       )}
       {filling && (cfg.lots
-        ? <LotsDialog key={'fill:' + filling.run.id} title={tr('Completar {0} {1} de {2} · ¿qué lleva ahora en total?', unitWord, noOf(filling), filling.run.code)} unit={cfg.qtyUnit} refLabel={cfg.refLabel} lot={filling.run.lot} qty={filling.usual} start={filling.unit.lots ?? [{ lot: filling.run.lot, qty: filling.usual }]} startRef={filling.unit.ref} onClose={() => setFilling(null)} onPick={(total, ref, lots) => { fillUnit(filling.run.id, filling.unit.at, total, lots, ref); setFilling(null) }} />
-        : <QtyDialog key={'fill:' + filling.run.id} title={tr('Completar {0} {1} de {2} · tiene {3} {4}. ¿Cuántos tiene ahora en total?', unitWord, noOf(filling), filling.run.code, filling.unit.qty, cfg.qtyUnit)} unit={cfg.qtyUnit} refLabel="" initial={filling.usual} perCase={perCaseOf(filling.run.code)} onClose={() => setFilling(null)} onPick={(q) => { fillUnit(filling.run.id, filling.unit.at, q); setFilling(null) }} />)}
+        ? <LotsDialog key={'fill:' + filling.run.id} title={tr('Completar {0} {1} de {2} · ¿qué lleva ahora en total?', unitWord, noOf(filling), filling.run.code)} unit={cfg.qtyUnit} refLabel={cfg.refLabel} lot={filling.run.lot} qty={filling.usual} usual={filling.usual} per={unitWord} start={filling.unit.lots ?? [{ lot: filling.run.lot, qty: filling.usual }]} startRef={filling.unit.ref} onClose={() => setFilling(null)} onPick={(total, ref, lots) => { fillUnit(filling.run.id, filling.unit.at, total, lots, ref); setFilling(null) }} />
+        : <QtyDialog key={'fill:' + filling.run.id} title={tr('Completar {0} {1} de {2} · tiene {3} {4}. ¿Cuántos tiene ahora en total?', unitWord, noOf(filling), filling.run.code, filling.unit.qty, cfg.qtyUnit)} unit={cfg.qtyUnit} refLabel="" initial={filling.usual} usual={filling.usual} per={unitWord} perCase={perCaseOf(filling.run.code)} onClose={() => setFilling(null)} onPick={(q) => { fillUnit(filling.run.id, filling.unit.at, q); setFilling(null) }} />)}
     </>
   )
   // The line's own goal, set by the manager of each shift (the room's goal is of all its lines together): what the
@@ -2187,7 +2208,16 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         {fixingStop && idle && <StopEditor stop={idle} mgr={mgr} onClose={() => setFixingStop(false)} />}
         {naming}
         {removing && <ConfirmDialog title={tr('¿Quitar {0} de {1}', lineLabel(line.name), line.dept) + '?'} text={tr('Se puede volver a agregar cuando haga falta.')} yes={tr('Quitar')} danger onYes={() => removeLine(line.id)} onNo={() => setRemoving(false)} />}
-        {!quiet && <form className="start" onSubmit={(e) => { e.preventDefault(); if (ok) { startRun(line, code.trim().toUpperCase(), lot.trim(), date, needPer ? perUnit : null, isPack && makes === 'bin' ? word : mfoWord, isSpiral && spiralNow !== 'mezclas' ? spiralNow : ''); setDateText(null); setLotText(null); setEditDate(false); setMaking(null); setBinText(''); setMeasure(null) } }}>
+        {sure.ui}
+        {!quiet && <form className="start" onSubmit={(e) => {
+          e.preventDefault()
+          if (!ok) return
+          // only a quantity typed is asked about (the one the line proposes is the usual); RTE's is crates × pouches
+          const typedPer = needPer && perUnit != null && (!!per.trim() || (isCart && !!crates.trim()))
+          sure.check(typedPer ? [{ key: 'per', n: perUnit, usual: usualFor(s, line.dept, code, ''), unit: cfg.qtyUnit, per: cfg.unit.toLowerCase(), total: isCart }] : [], () => {
+            startRun(line, code.trim().toUpperCase(), lot.trim(), date, needPer ? perUnit : null, isPack && makes === 'bin' ? word : mfoWord, isSpiral && spiralNow !== 'mezclas' ? spiralNow : ''); setDateText(null); setLotText(null); setEditDate(false); setMaking(null); setBinText(''); setMeasure(null)
+          })
+        }}>
           {isSpiral && (
             <div className="makes">
               <span className="lab">{tr('¿En qué se cuenta este código?')}</span>
@@ -2381,14 +2411,14 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       {asking && <StopDialog title={tr('Parar {0} · {1}', lineLabel(line.name), run.code)} reasons={cfg.quick} setup onClose={() => setAsking(false)} onPick={(reason, note) => { startStop(line.dept, line.id, reason, note); setAsking(false) }} />}
       {fillUi}
       {counting && (rc.lots
-        ? <LotsDialog title={rc.qtyQ} unit={rc.qtyUnit} refLabel={rc.refLabel} lot={run.lot} qty={run.perUnit} orders={orderOptions} order={nextOrder} onClose={() => { setCounting(false); setEndAfter(null) }} onPick={(q, ref, lots, po) => { record(q, ref, lots, po); setCounting(false); if (endAfter !== null) { setEndAfter(null); endRun(run.id, endAfter) } }} />
-        : <QtyDialog title={rc.qtyQ} unit={rc.qtyUnit} refLabel={rc.refLabel} initial={run.perUnit} perCase={perCase} decimal={measureOf(run) === 'lb' || binOf(run) === 'lb'} onClose={() => { setCounting(false); setEndAfter(null) }} onPick={(q, ref) => { record(q, ref, binLots(q)); setCounting(false); if (endAfter !== null) { setEndAfter(null); endRun(run.id, endAfter) } }} />)}
+        ? <LotsDialog title={rc.qtyQ} unit={rc.qtyUnit} refLabel={rc.refLabel} lot={run.lot} qty={run.perUnit} usual={usualOf(s, run)} per={runWord} orders={orderOptions} order={nextOrder} onClose={() => { setCounting(false); setEndAfter(null) }} onPick={(q, ref, lots, po) => { record(q, ref, lots, po); setCounting(false); if (endAfter !== null) { setEndAfter(null); endRun(run.id, endAfter) } }} />
+        : <QtyDialog title={rc.qtyQ} unit={rc.qtyUnit} refLabel={rc.refLabel} initial={run.perUnit} usual={usualOf(s, run)} per={runWord} perCase={perCase} decimal={measureOf(run) === 'lb' || binOf(run) === 'lb'} onClose={() => { setCounting(false); setEndAfter(null) }} onPick={(q, ref) => { record(q, ref, binLots(q)); setCounting(false); if (endAfter !== null) { setEndAfter(null); endRun(run.id, endAfter) } }} />)}
       {packing === 'done' && <PalletDoneDialog s={s} run={run} onClose={() => { setPacking(null); setEndAfter(null) }} onSaved={() => { setPacking(null); buzz(); if (endAfter !== null) { const next = endAfter; setEndAfter(null); endRun(run.id, next) } }} />}
       {packing === 'lot' && <LotEndDialog run={run} onClose={() => setPacking(null)} />}
       {packing === 'reopen' && <ReopenPalletDialog run={run} onClose={() => setPacking(null)} />}
       {packing === 'po' && <PalletOrderDialog s={s} run={run} onClose={() => setPacking(null)} />}
       {packing === 'binlot' && <LotNowDialog run={run} onClose={() => setPacking(null)} />}
-      {tagUnit && <LotsDialog key={'tag:' + tagUnit.at} title={tr('Tags del pallet {0}', (tagging ?? 0) + 1)} unit={rc.qtyUnit} refLabel={rc.refLabel} lot={run.lot} qty={tagUnit.qty} start={tagUnit.lots ?? [{ lot: run.lot, qty: tagUnit.qty ?? 0 }]} startRef={tagUnit.ref} onClose={() => setTagging(null)} onPick={(total, ref, lots) => { fillUnit(run.id, tagUnit.at, total, lots, ref); setTagging(null) }} />}
+      {tagUnit && <LotsDialog key={'tag:' + tagUnit.at} title={tr('Tags del pallet {0}', (tagging ?? 0) + 1)} unit={rc.qtyUnit} refLabel={rc.refLabel} lot={run.lot} qty={tagUnit.qty} usual={usualOf(s, run)} per={runWord} start={tagUnit.lots ?? [{ lot: run.lot, qty: tagUnit.qty ?? 0 }]} startRef={tagUnit.ref} onClose={() => setTagging(null)} onPick={(total, ref, lots) => { fillUnit(run.id, tagUnit.at, total, lots, ref); setTagging(null) }} />}
       {typeof packing === 'number' && run.extra?.open?.parts[packing] && <PartDialog run={run} index={packing} onClose={() => setPacking(null)} />}
       {wasting && <QtyDialog title={tr('Waste de {0} · ¿cuántas libras?', run.code)} unit="lb" refLabel="" initial={null} decimal onClose={() => setWasting(false)} onPick={(lb) => { if (lb > 0) addWaste(run.id, lb); setWasting(false) }} />}
     </div>
@@ -2472,6 +2502,54 @@ export function ConfirmDialog({ title, text, yes, danger, onYes, onNo }: { title
   )
 }
 
+/**
+ * "¿Seguro?" (Jose, 2026-10-18): a quantity typed that is more than twice the usual for that product and room (see
+ * tooMuch) is asked about before it is saved, with both numbers in sight. "Sí, <n>" (green) saves exactly what was
+ * typed; "Corregir" (grey, and a tap outside) goes back to the box with the number still in it. The box is never
+ * written for them, not with the usual nor with anything else (no guessed data). Corregir has the focus: an Enter
+ * pressed twice by habit goes back to the box instead of saving the number in doubt.
+ * unit = the quantity's word ("pouches"), per = the unit's ("carro"), total = the number is a sum (lots, crates ×
+ * pouches) rather than one box, label = which box, in a form with several (Corregir).
+ */
+export type SureBox = QtyCheck & { unit: string; per: string; total?: boolean; label?: string }
+const qtyText = (x: number) => x.toLocaleString('en-US', { maximumFractionDigits: 2 })
+function SureDialog({ box, onYes, onBack }: { box: SureBox; onYes: () => void; onBack: () => void }) {
+  const said = <b>{qtyText(box.n)} {box.unit}</b>
+  return (
+    <div className="veil" onClick={onBack}>
+      <div className="dlg" onClick={(e) => e.stopPropagation()}>
+        <h3>{tr('¿Seguro?')}</h3>
+        {box.label && <p><b>{box.label}</b></p>}
+        <p>{box.total ? trx('En total son {0}.', said) : trx('Escribiste {0}.', said)}{' '}{trx('Lo usual es {0} por {1}: esto es más del doble.', <b>{qtyText(box.usual ?? 0)} {box.unit}</b>, box.per)}</p>
+        <div className="dbtns">
+          <button type="button" className="btn" autoFocus onClick={onBack}>{tr('Corregir')}</button>
+          <button type="button" className="btn primary" onClick={onYes}>{tr('Sí, {0}', qtyText(box.n))}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+/**
+ * The "¿Seguro?" of a form: check(boxes, save) saves at once when no box holds more than twice its usual; otherwise it
+ * asks about the first such box, and each "Sí" goes on to the next one, then saves. `ui` goes inside the form's
+ * dialog. What was answered "Sí" is not asked again until that save, unless its number changes; once saved, every "Sí"
+ * is spent (a form that stays, like a line's "Empezar", asks again for the next code). cancel() drops a question left
+ * open when the form no longer stands (the line got a code from another tablet): it must not come back later.
+ */
+export function useSure() {
+  const sure = useRef<Record<string, number>>({})
+  const [asking, setAsking] = useState<{ box: SureBox; boxes: SureBox[]; save: () => void } | null>(null)
+  const check = (boxes: SureBox[], save: () => void) => {
+    const box = askFirst(boxes, sure.current)
+    if (box) { setAsking({ box, boxes, save }); return }
+    sure.current = {}
+    save()
+  }
+  const cancel = () => { sure.current = {}; setAsking(null) }
+  const ui = asking && <SureDialog box={asking.box} onBack={() => setAsking(null)} onYes={() => { sure.current[asking.box.key] = asking.box.n; setAsking(null); check(asking.boxes, asking.save) }} />
+  return { check, ui, cancel, open: !!asking }
+}
+
 /** a message with one button */
 export function NoticeDialog({ title, text, onClose }: { title: string; text?: string; onClose: () => void }) {
   return (
@@ -2492,10 +2570,14 @@ export function NoticeDialog({ title, text, onClose }: { title: string; text?: s
  * `start` / `startRef` = what the unit already has, when it is being corrected (a pallet of before, with one tag for
  * all of it, gives that tag to each of its lots).
  * `orders` / `order` = the orders open for the product and the one proposed: the unit is given to one of them, or to none.
+ * `usual` / `per` = the usual quantity of one unit and the unit's word: a total typed more than twice it is asked about
+ * first (useSure); a total left as the box opened with (only a tag added) is not asked about again.
  */
-export function LotsDialog({ title, unit, refLabel, lot, qty, start, startRef, orders, order, onClose, onPick }: { title: string; unit: string; refLabel: string; lot: string; qty: number | null; start?: LotPart[]; startRef?: string; orders?: { id: string; label: string }[]; order?: string; onClose: () => void; onPick: (total: number, ref: string, lots: LotPart[] | undefined, po?: string) => void }) {
+export function LotsDialog({ title, unit, refLabel, lot, qty, start, startRef, orders, order, usual, per, onClose, onPick }: { title: string; unit: string; refLabel: string; lot: string; qty: number | null; start?: LotPart[]; startRef?: string; orders?: { id: string; label: string }[]; order?: string; usual?: number | null; per?: string; onClose: () => void; onPick: (total: number, ref: string, lots: LotPart[] | undefined, po?: string) => void }) {
   const tags = !!refLabel, own = !!start?.some((l) => !!l.tag)
   const [rows, setRows] = useState(() => (start?.length ? start.map((l) => ({ lot: l.lot, qty: String(l.qty), tag: l.tag ?? (own ? '' : startRef ?? '') })) : [{ lot, qty: qty != null ? String(qty) : '', tag: startRef ?? '' }]))
+  const [opened] = useState(() => rows.reduce((t, r) => t + (Number(r.qty) || 0), 0))
+  const sure = useSure()
   const [added, setAdded] = useState(false)
   const [po, setPo] = useState(order ?? '')
   const change = (i: number, patch: Partial<{ lot: string; qty: string; tag: string }>) => setRows(rows.map((r, k) => (k === i ? { ...r, ...patch } : r)))
@@ -2509,12 +2591,14 @@ export function LotsDialog({ title, unit, refLabel, lot, qty, start, startRef, o
     // the unit's tag number is its lots' tags together; all of it of the run's own lot is the plain case: nothing to
     // write beside the quantity and its tag
     const ref = [...new Set(parts.map((p) => p.tag ?? '').filter(Boolean))].join(', ')
-    onPick(total, ref, parts.length === 1 && parts[0].lot === lot ? undefined : parts, orders?.length ? po || undefined : undefined)
+    sure.check(total === opened ? [] : [{ key: 'total', n: total, usual, unit, per: per ?? '', total: parts.length > 1 }],
+      () => onPick(total, ref, parts.length === 1 && parts[0].lot === lot ? undefined : parts, orders?.length ? po || undefined : undefined))
   }
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
         <h3>{title}</h3>
+        {sure.ui}
         <form onSubmit={(e) => { e.preventDefault(); save() }} className="qform">
           {rows.map((r, i) => (
             <div className="lotrow" key={i}>
@@ -2547,10 +2631,14 @@ export function LotsDialog({ title, unit, refLabel, lot, qty, start, startRef, o
 }
 
 /** departments that type how much a unit carried (boxes on a pallet or in a bin) and its tag / bin number */
-/** a quantity already suggested (pouches per cart, cases per pallet) opens without the keyboard: a tap on "Guardar" takes it, a tap on the box changes it */
-function QtyDialog({ title, unit, refLabel, initial, decimal, perCase, onClose, onPick }: { title: string; unit: string; refLabel: string; initial: number | null; decimal?: boolean; perCase?: number; onClose: () => void; onPick: (q: number, ref: string) => void }) {
+/**
+ * a quantity already suggested (pouches per cart, cases per pallet) opens without the keyboard: a tap on "Guardar" takes it, a tap on the box changes it.
+ * usual / per = the usual quantity of one unit and the unit's word: more than twice it is asked about first (useSure)
+ */
+function QtyDialog({ title, unit, refLabel, initial, decimal, perCase, usual, per, onClose, onPick }: { title: string; unit: string; refLabel: string; initial: number | null; decimal?: boolean; perCase?: number; usual?: number | null; per?: string; onClose: () => void; onPick: (q: number, ref: string) => void }) {
   const [v, setV] = useState(initial != null ? String(initial) : '')
   const [ref, setRef] = useState('')
+  const sure = useSure()
   const n = Number(v.replace(',', '.'))
   const ok = v.trim() !== '' && Number.isFinite(n) && n >= 0
   const clean = (t: string) => (decimal ? t.replace(/[^\d.,]/g, '').replace(/([.,].*)[.,]/, '$1') : t.replace(/\D/g, ''))
@@ -2558,7 +2646,8 @@ function QtyDialog({ title, unit, refLabel, initial, decimal, perCase, onClose, 
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
         <h3>{title}</h3>
-        <form onSubmit={(e) => { e.preventDefault(); if (ok) onPick(n, ref.trim()) }} className="qform">
+        {sure.ui}
+        <form onSubmit={(e) => { e.preventDefault(); if (ok) sure.check([{ key: 'qty', n, usual, unit, per: per ?? '' }], () => onPick(n, ref.trim())) }} className="qform">
           <label>{unit} <input autoFocus={initial == null} inputMode={decimal ? 'decimal' : 'numeric'} placeholder={unit} value={v} onChange={(e) => setV(clean(e.target.value))} /></label>
           {perCase && ok ? <p className="incases">= {casesText({ cases: Math.floor(n / perCase), loose: Math.round((n - Math.floor(n / perCase) * perCase) * 100) / 100 })} <small>{trx('({0} por caja)', perCase)}</small></p> : null}
           {refLabel && <label>{refLabel} <small>{tr('(opcional)')}</small> <input inputMode="numeric" placeholder={tr('ej. 1749')} value={ref} onChange={(e) => setRef(e.target.value)} autoComplete="off" /></label>}

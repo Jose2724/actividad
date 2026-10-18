@@ -22,6 +22,11 @@
 --   7. Each device's row in the Tablets list says who really sent it (the server fills in the person signed in).
 --   8. Nobody can DELETE or TRUNCATE an Actividad table from the app's side (the app never does; rows are only
 --      marked deleted). The Freezer RTE tables are not touched.
+--   9. (Jose, 2026-10-18) A run is marked deleted only by someone holding "Borrar corridas y paros"; from anybody
+--      else the server keeps it as it was, without refusing anything. Putting a run back always works.
+--  10. (Jose, 2026-10-18) A line is taken off only by a manager, the office, someone holding "Corregir registros", or
+--      an operator while the rule "quitar líneas libres" is on (the app's own rules); from anybody else the server
+--      keeps it. Renames and putting a line back are not touched. The stops are not guarded (see 9 and 10 below).
 -- The order matters while the floor is working: a tablet's write takes act_runs or act_stops (or act_lines) first and
 -- act_runs_log after, so this file does the same, and a tablet's write that meets it waits a moment instead of
 -- failing. The new triggers are created only when they are not there (no DROP, which would lock the table for reading).
@@ -66,6 +71,61 @@ end $$;
 -- predicate is "ended_at is null" alone, the only part of 016's question the planner can match)
 create index if not exists act_runs_open_line on public.act_runs (line_id) where ended_at is null;
 create index if not exists act_stops_open_line on public.act_stops (line_id) where ended_at is null;
+
+-- 9 and 10, Jose's decision of 2026-10-18: deleting a run and taking a line off are the server's rule too, not only
+-- the app's buttons (until now an operator could do both through the API, whatever her powers or the managers' rule).
+-- They are written here, before 3, and not at the end of the file: like a tablet's write, this file must take act_runs
+-- and act_lines before act_runs_log (3 locks act_runs_log until the whole file ends; a trigger made on act_runs after
+-- that would wait for a tablet's write that waits for this file, and Postgres would cancel one of the two).
+-- Neither ever refuses: a refused row stays in a tablet's queue and holds back what comes after it (outbox.ts), and
+-- when someone else signs in on that tablet it goes up under their account. The server only keeps the run or the
+-- line as it was (deleted stays false). Everything else of that same write is taken as sent, updated_at included, so
+-- the tablet that sent it shows the run or the line again with the next word from the server, and sends nothing more
+-- (store.ts, reconcile: the stamp is the one it kept when it took the row off). Who sent it is in act_runs_log
+-- (3: the account in uid; the history triggers run before these). The SQL Editor and the service (no account,
+-- auth.uid() null) are not limited. Putting a run or a line back (deleted true -> false), and a row that arrives
+-- already deleted (it was never on the server: nothing there to keep), are not touched. The stops are not guarded:
+-- the app itself takes off, on any operator's tablet and with no power, a Set up left open or one under a minute
+-- (store.ts: startRun, startSetup, endShift, dropSetup, healSetup), and 016 does the same on the server.
+
+-- 9. a run is marked deleted only by someone holding "Borrar corridas y paros" (del). The app shows "Borrar corrida"
+-- only to them, and the start of the day that clears a day only to the owner (a Freezer RTE admin, who holds every
+-- power); act_has reads the powers as the app does (powers.ts): the office and the managers hold it unless it was
+-- taken from them in Empleados. From anybody else (a hand-made request, a tablet that still had a power taken away
+-- minutes before) the run stays. A run a tablet still had as deleted while someone put it back is not deleted again.
+create or replace function public.act_runs_keep() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.deleted and not coalesce(old.deleted, false) and auth.uid() is not null and not public.act_has('del') then
+    new.deleted := false;
+  end if;
+  return new;
+end $$;
+do $$ begin
+  if not exists (select 1 from pg_trigger where tgrelid = 'public.act_runs'::regclass and tgname = 'act_runs_keep') then
+    create trigger act_runs_keep before update on public.act_runs for each row execute function public.act_runs_keep();
+  end if;
+end $$;
+
+-- 10. a line is taken off only by whom the app lets: a manager or the office (Ajustes > Líneas, whatever their
+-- powers), someone holding "Corregir registros" (fix: the line card, two lines with one name), or any operator of the
+-- room while the managers' rule "quitar líneas libres" is on (act_targets 'opt:oplines', per_shift 1: store.ts,
+-- setLineRules). Renaming is every operator's (the pencil on each line card) and is not touched.
+create or replace function public.act_lines_keep() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.deleted and not coalesce(old.deleted, false) and auth.uid() is not null
+     and not public.act_is_mgr() and not public.act_has('fix')
+     and not exists (select 1 from public.act_targets t where t.dept = 'opt:oplines' and t.per_shift = 1) then
+    new.deleted := false;
+  end if;
+  return new;
+end $$;
+do $$ begin
+  if not exists (select 1 from pg_trigger where tgrelid = 'public.act_lines'::regclass and tgname = 'act_lines_keep') then
+    create trigger act_lines_keep before update on public.act_lines for each row execute function public.act_lines_keep();
+  end if;
+end $$;
 
 -- 3. who sent each version, by the server. The lines' versions are kept too (a line renamed or removed), with the
 -- same trigger as the runs and the stops. Then the account of the request (null from the SQL Editor): the 011

@@ -2,8 +2,10 @@
 // for real on this machine, with no build: Node strips its types, Deno.serve hands over the handler, and the service
 // client it makes is a stand-in whose employees table is the server's database (pg.mjs: the shared project's schema
 // and every Actividad migration) and whose accounts (e-mail, PIN, turned off) live in memory. It checks who may create,
-// rename, re-PIN, re-role and turn off whom (the 2026-10-18 audit: E1 to E4), and that everything the Empleados screen
-// does today still goes through. Made-up people only. Run by: npm run check
+// rename, re-PIN, re-role and turn off whom (the 2026-10-18 audit: E1 to E4, and Jose's decision of that day: manager
+// and office accounts are his alone), that everything the Empleados screen does today still goes through, and that the
+// screen (rowRights, from the app's own bundle that npm run check builds first) offers exactly what the function takes.
+// Made-up people only. Run by: npm run check
 // `node tests/users.mjs <file>` runs another copy of the function instead (an older one, to see what it let through).
 import { registerHooks } from 'node:module'
 import { randomUUID } from 'node:crypto'
@@ -127,29 +129,72 @@ const vero = await mk({ name: 'Vero', username: 'vero.ver', pin: '121212', actRo
 const lead = await mk({ name: 'Lucas', username: 'lucas.mfo', pin: '131313', actRole: 'op', actDept: 'MFO', powers: ['del'] }) // an operator Jose gave "borrar"
 
 section('Lo que la pantalla de Empleados hace hoy sigue funcionando')
-eq('un manager crea un operador, un "Solo ver", un manager y una Oficina', [
+eq('un manager crea un operador y un "Solo ver"; el dueño, un manager y una Oficina', [
   await call(mgr, { action: 'create', name: 'Nora', username: 'nora.k', pin: '141414', act_role: 'op', act_dept: 'Kitchen' }),
   await call(mgr, { action: 'create', name: 'Vale', username: 'vale.ver', pin: '151515', act_role: 'viewer' }),
-  await call(mgr, { action: 'create', name: 'Memo', username: 'memo.mgr', pin: '161616', act_role: 'mgr' }),
-  await call(mgr, { action: 'create', name: 'Ofelia', username: 'ofelia.ofi', pin: '171717', act_role: 'office' }),
+  await call(jose, { action: 'create', name: 'Memo', username: 'memo.mgr', pin: '161616', act_role: 'mgr' }),
+  await call(jose, { action: 'create', name: 'Ofelia', username: 'ofelia.ofi', pin: '171717', act_role: 'office' }),
 ], ['ok', 'ok', 'ok', 'ok'])
 eq('y cada cuenta nueva entra con su usuario y PIN', [opens('nora.k', '141414'), opens('vale.ver', '151515'), opens('memo.mgr', '161616'), opens('ofelia.ofi', '171717')], [true, true, true, true])
-eq('cada una con el rol pedido y "requester" en Freezer RTE', [(await row(await idOf('nora.k'))).act_role, (await row(await idOf('ofelia.ofi'))).act_role, (await row(await idOf('memo.mgr'))).role], ['op', 'office', 'requester'])
+eq('cada una con el rol pedido y "requester" en Freezer RTE', [(await row(await idOf('nora.k'))).act_role, (await row(await idOf('ofelia.ofi'))).act_role, (await row(await idOf('memo.mgr'))).role, (await row(await idOf('vale.ver'))).role], ['op', 'office', 'requester', 'requester'])
 eq('un manager cambia el PIN de un operador, y el operador entra con el nuevo', [await call(mgr, { action: 'set_pin', id: ana.emp, pin: '181818' }), opens('ana.pack', '181818'), opens('ana.pack', '888888')], ['ok', true, false])
 eq('le corrige el nombre y el usuario', [await call(mgr, { action: 'edit', id: ana.emp, name: 'Ana María', username: 'anam.pack' }), (await row(ana.emp)).name, opens('anam.pack', '181818')], ['ok', 'Ana María', true])
 eq('le cambia el departamento, le da poderes y turno', [await call(mgr, { action: 'set_act', id: ana.emp, act_role: 'op', act_dept: 'MFO' }), await call(mgr, { action: 'set_powers', id: ana.emp, powers: ['fix'], shift: 1 })], ['ok', 'ok'])
 eq('y la desactiva y la activa', [await call(mgr, { action: 'set_active', id: ana.emp, active: false }), opens('anam.pack', '181818'), await call(mgr, { action: 'set_active', id: ana.emp, active: true }), opens('anam.pack', '181818')], ['ok', false, 'ok', true])
 eq('un manager cambia su propio PIN y su nombre', [await call(mgr, { action: 'set_pin', id: mgr.emp, pin: '191919' }), await call(mgr, { action: 'edit', id: mgr.emp, name: 'Mario B' })], ['ok', 'ok'])
 eq('un manager le da Actividad a un trabajador de Freezer RTE', [await call(mgr, { action: 'set_act', id: fworker.emp, act_role: 'op', act_dept: 'RTE' }), (await row(fworker.emp)).act_role], ['ok', 'op'])
-// whether managers and the office keep managing each other is Jose's call (pending): until he says, nothing changes
-eq('un manager con otro manager, y la Oficina con otra Oficina: igual que hoy, mientras Jose decide', [
-  await call(mgr, { action: 'set_pin', id: mgr2.emp, pin: '202020' }),
-  await call(ofi, { action: 'set_active', id: ofi2.emp, active: false }),
-  await call(ofi, { action: 'set_active', id: ofi2.emp, active: true }),
-  await call(ofi, { action: 'set_powers', id: ofi2.emp, powers: ['depts'] }),
+// (the lead told Jose on 2026-10-18: a crew account's Actividad role, yes; its Freezer sign-in, no. See D1 below)
+eq('y se lo cambia: otro cuarto, "Solo ver", y de vuelta a operador', [
+  await call(mgr, { action: 'set_act', id: fworker.emp, act_role: 'op', act_dept: 'Packing' }),
+  await call(mgr, { action: 'set_act', id: fworker.emp, act_role: 'viewer' }),
+  await call(mgr, { action: 'set_act', id: fworker.emp, act_role: 'op', act_dept: 'RTE' }),
+  (await row(fworker.emp)).act_dept,
+], ['ok', 'ok', 'ok', 'RTE'])
+eq('la Oficina crea un operador y un "Solo ver", y le da Actividad a un trabajador de Freezer RTE', [
+  await call(ofi, { action: 'create', name: 'Omar', username: 'omar.mfo', pin: '212121', act_role: 'op', act_dept: 'MFO' }),
+  await call(ofi, { action: 'create', name: 'Olivia', username: 'olivia.ver', pin: '212122', act_role: 'viewer' }),
+  await call(ofi, { action: 'set_act', id: fworker2.emp, act_role: 'viewer' }),
+  await call(ofi, { action: 'set_act', id: fworker2.emp, act_role: null }),
 ], ['ok', 'ok', 'ok', 'ok'])
-eq('la Oficina crea cuentas: un operador y un manager', [await call(ofi, { action: 'create', name: 'Omar', username: 'omar.mfo', pin: '212121', act_role: 'op', act_dept: 'MFO' }), await call(ofi, { action: 'create', name: 'Mili', username: 'mili.mgr', pin: '222121', act_role: 'mgr' })], ['ok', 'ok'])
-eq('el dueño lo hace todo con un manager', [await call(jose, { action: 'set_pin', id: mgr2.emp, pin: '242424' }), await call(jose, { action: 'set_act', id: mgr2.emp, act_role: 'mgr' }), await call(jose, { action: 'set_powers', id: mgr2.emp, powers: null })], ['ok', 'ok', 'ok'])
+const omar = { emp: await idOf('omar.mfo') }
+eq('y a su operador le cambia el PIN, el nombre, el rol, le da poderes (también el del otro turno, que la Oficina tiene) y lo desactiva', [
+  await call(ofi, { action: 'set_pin', id: omar.emp, pin: '212123' }),
+  await call(ofi, { action: 'edit', id: omar.emp, name: 'Omar B', username: 'omarb.mfo' }),
+  await call(ofi, { action: 'set_act', id: omar.emp, act_role: 'op', act_dept: 'Spiral' }),
+  await call(ofi, { action: 'set_powers', id: omar.emp, powers: ['fix', 'othershift'], shift: 1 }),
+  await call(ofi, { action: 'set_active', id: omar.emp, active: false }),
+  await call(ofi, { action: 'set_active', id: omar.emp, active: true }),
+  opens('omarb.mfo', '212123'),
+], ['ok', 'ok', 'ok', 'ok', 'ok', 'ok', true])
+eq('la Oficina cambia su propio PIN y su nombre', [await call(ofi, { action: 'set_pin', id: ofi.emp, pin: '666667' }), await call(ofi, { action: 'edit', id: ofi.emp, name: 'Olga B' }), opens('olga.ofi', '666667')], ['ok', 'ok', true])
+eq('el dueño lo hace todo con un manager', [
+  await call(jose, { action: 'set_pin', id: mgr2.emp, pin: '242424' }),
+  await call(jose, { action: 'edit', id: mgr2.emp, name: 'Marta B', username: 'martab.mgr' }),
+  await call(jose, { action: 'set_act', id: mgr2.emp, act_role: 'mgr' }),
+  await call(jose, { action: 'set_powers', id: mgr2.emp, powers: ['people', 'fix'] }),
+  await call(jose, { action: 'set_powers', id: mgr2.emp, powers: null }),
+  await call(jose, { action: 'set_active', id: mgr2.emp, active: false }),
+  await call(jose, { action: 'set_active', id: mgr2.emp, active: true }),
+  opens('martab.mgr', '242424'),
+], ['ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', true])
+eq('y con la Oficina, y sube a un operador a manager y a Oficina, y de vuelta', [
+  await call(jose, { action: 'set_pin', id: ofi2.emp, pin: '686868' }),
+  await call(jose, { action: 'set_powers', id: ofi2.emp, powers: ['depts'] }),
+  await call(jose, { action: 'set_powers', id: ofi2.emp, powers: null }),
+  await call(jose, { action: 'set_act', id: ana.emp, act_role: 'mgr' }),
+  await call(jose, { action: 'set_act', id: ana.emp, act_role: 'office' }),
+  await call(jose, { action: 'set_act', id: ana.emp, act_role: 'op', act_dept: 'MFO' }),
+  (await row(ana.emp)).act_role,
+], ['ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'op'])
+eq('y con un trabajador de Freezer RTE: su PIN, su nombre, sus poderes, desactivarlo', [
+  await call(jose, { action: 'set_pin', id: fworker.emp, pin: '343536' }),
+  await call(jose, { action: 'edit', id: fworker.emp, name: 'Trabajador B' }),
+  await call(jose, { action: 'set_powers', id: fworker.emp, powers: ['fix'] }),
+  await call(jose, { action: 'set_active', id: fworker.emp, active: false }),
+  await call(jose, { action: 'set_active', id: fworker.emp, active: true }),
+  opens('trab.fz', '343536'),
+], ['ok', 'ok', 'ok', 'ok', 'ok', true])
+await db.query('update public.employees set act_powers = null where id = $1', [fworker.emp])
 eq('y con un admin de Freezer RTE', [
   await call(jose, { action: 'set_pin', id: fadmin.emp, pin: '252525' }),
   await call(jose, { action: 'edit', id: fadmin.emp, name: 'Admin Freezer B' }),
@@ -198,27 +243,34 @@ eq('la Oficina y un operador con "Manejar empleados" tampoco', [await call(ofi, 
 eq('la cuenta del dueño (correo de verdad) sigue protegida', [await call(mgr, { action: 'set_pin', id: jose.emp, pin: '333444' }), await call(fadmin, { action: 'set_pin', id: jose.emp, pin: '333444' })], ['403 owner_protected', '403 owner_protected'])
 eq('otro admin de Freezer RTE sí puede (ya es admin allá)', [await call(fadmin2, { action: 'set_pin', id: fadmin.emp, pin: '343535' }), opens('admin.fz', '343535')], ['ok', true])
 
+// (until 2026-10-18 the refusals below said not_manager; since Jose's decision managers are refused the same, so they
+// say whose these accounts are: owner_only for creating or giving a manager or the office, owner_protected for their accounts)
 section('E2 · Un operador con "Manejar empleados" maneja operadores y "Solo ver", y da solo lo que tiene')
 eq('no crea una Oficina ni un manager, y esas cuentas no existen', [
   await call(pedro, { action: 'create', name: 'Falsa Oficina', username: 'falsa.ofi', pin: '353535', act_role: 'office' }),
   await call(pedro, { action: 'create', name: 'Falso Manager', username: 'falso.mgr', pin: '363636', act_role: 'mgr' }),
   await idOf('falsa.ofi'), await idOf('falso.mgr'), opens('falsa.ofi', '353535'),
-], ['403 not_manager', '403 not_manager', null, null, false])
+], ['403 owner_only', '403 owner_only', null, null, false])
 eq('no le cambia el PIN a un manager ni a la Oficina, y siguen entrando con el suyo', [
   await call(pedro, { action: 'set_pin', id: mgr.emp, pin: '373737' }),
   await call(pedro, { action: 'set_pin', id: ofi.emp, pin: '373737' }),
-  opens('mario.mgr', '191919'), opens('olga.ofi', '666666'), opens('mario.mgr', '373737'),
-], ['403 not_manager', '403 not_manager', true, true, false])
+  opens('mario.mgr', '191919'), opens('olga.ofi', '666667'), opens('mario.mgr', '373737'),
+], ['403 owner_protected', '403 owner_protected', true, true, false])
 const mgrBefore = await row(mgr.emp)
 eq('ni su nombre, ni su rol, ni lo desactiva, ni toca los poderes de la Oficina', [
   await call(pedro, { action: 'edit', id: mgr.emp, name: 'Otro' }),
   await call(pedro, { action: 'set_act', id: mgr.emp, act_role: 'op', act_dept: 'RTE' }),
   await call(pedro, { action: 'set_active', id: mgr.emp, active: false }),
   await call(pedro, { action: 'set_powers', id: ofi.emp, powers: ['people'] }),
-], ['403 not_manager', '403 not_manager', '403 not_manager', '403 not_manager'])
+], ['403 owner_protected', '403 owner_protected', '403 owner_protected', '403 owner_only'])
 eq('el manager queda como estaba', await row(mgr.emp), mgrBefore)
-eq('no sube a un operador a manager ni a Oficina', [await call(pedro, { action: 'set_act', id: ana.emp, act_role: 'mgr' }), await call(pedro, { action: 'set_act', id: ana.emp, act_role: 'office' }), (await row(ana.emp)).act_role], ['403 not_manager', '403 not_manager', 'op'])
-eq('no le da Actividad a alguien que no tiene rol (un trabajador de Freezer RTE)', [await call(pedro, { action: 'set_act', id: fworker2.emp, act_role: 'op', act_dept: 'RTE' }), (await row(fworker2.emp)).act_role], ['403 not_manager', null])
+eq('no sube a un operador a manager ni a Oficina', [await call(pedro, { action: 'set_act', id: ana.emp, act_role: 'mgr' }), await call(pedro, { action: 'set_act', id: ana.emp, act_role: 'office' }), (await row(ana.emp)).act_role], ['403 owner_only', '403 owner_only', 'op'])
+// until 2026-10-18 an operator could not give Actividad to somebody without a role; since the lead's word to Jose that
+// day anybody who manages people may (operator or "Solo ver" only), but never touch that account's Freezer sign-in
+eq('le da Actividad a alguien que no tiene rol (un trabajador de Freezer RTE), pero no le cambia el PIN', [
+  await call(pedro, { action: 'set_act', id: fworker2.emp, act_role: 'op', act_dept: 'RTE' }), (await row(fworker2.emp)).act_role,
+  await call(pedro, { action: 'set_pin', id: fworker2.emp, pin: '373838' }), opens('trab2.fz', '343434'),
+], ['ok', 'op', '403 owner_protected', true])
 const anaPowers = (await row(ana.emp)).act_powers
 eq('no da poderes que él no tiene: ni todos, ni uno de más', [
   await call(pedro, { action: 'set_powers', id: ana.emp, powers: ALL }),
@@ -251,6 +303,166 @@ const keeper2 = await mk({ name: 'Supervisora', username: 'super2.mfo', pin: '48
 eq('pasarlo a "Solo ver" también (como ya era)', [await call(mgr, { action: 'set_act', id: keeper2.emp, act_role: 'viewer' }), (await row(keeper2.emp)).act_powers, (await row(keeper2.emp)).act_shift], ['ok', null, null])
 const keeper3 = await mk({ name: 'Supervisor 3', username: 'super3.mfo', pin: '494949', actRole: 'op', actDept: 'MFO', powers: ['fix'], shift: 2 })
 eq('cambiarle solo el cuarto le deja sus poderes y su turno', [await call(mgr, { action: 'set_act', id: keeper3.emp, act_role: 'op', act_dept: 'RTE' }), (await row(keeper3.emp)).act_powers, (await row(keeper3.emp)).act_shift], ['ok', ['fix'], 2])
+
+section('D1 · Las cuentas de manager y de Oficina solo las maneja el dueño (Jose, 2026-10-18)')
+eq('un manager no crea un manager ni una Oficina, y esas cuentas no existen', [
+  await call(mgr, { action: 'create', name: 'Otro Manager', username: 'otro.mgr', pin: '505050', act_role: 'mgr' }),
+  await call(mgr, { action: 'create', name: 'Otra Oficina', username: 'otra.ofi', pin: '515151', act_role: 'office' }),
+  await idOf('otro.mgr'), await idOf('otra.ofi'), opens('otro.mgr', '505050'),
+], ['403 owner_only', '403 owner_only', null, null, false])
+eq('la Oficina tampoco', [
+  await call(ofi, { action: 'create', name: 'Mili', username: 'mili.mgr', pin: '222121', act_role: 'mgr' }),
+  await call(ofi, { action: 'create', name: 'Ofi Tres', username: 'ofi3.ofi', pin: '525252', act_role: 'office' }),
+  await idOf('mili.mgr'), await idOf('ofi3.ofi'),
+], ['403 owner_only', '403 owner_only', null, null])
+const m2Before = await row(mgr2.emp)
+eq('un manager no le cambia a otro manager el PIN, el nombre, el usuario, el rol, los poderes, ni lo desactiva', [
+  await call(mgr, { action: 'set_pin', id: mgr2.emp, pin: '535353' }),
+  await call(mgr, { action: 'edit', id: mgr2.emp, name: 'Otra' }),
+  await call(mgr, { action: 'edit', id: mgr2.emp, username: 'marta.x' }),
+  await call(mgr, { action: 'set_act', id: mgr2.emp, act_role: 'op', act_dept: 'RTE' }),
+  await call(mgr, { action: 'set_act', id: mgr2.emp, act_role: null }),
+  await call(mgr, { action: 'set_powers', id: mgr2.emp, powers: [] }),
+  await call(mgr, { action: 'set_active', id: mgr2.emp, active: false }),
+], ['403 owner_protected', '403 owner_protected', '403 owner_protected', '403 owner_protected', '403 owner_protected', '403 owner_only', '403 owner_protected'])
+eq('y esa cuenta queda como estaba: entra con su PIN, y con el que intentó ponerle nadie entra', [await row(mgr2.emp), opens('martab.mgr', '242424'), opens('martab.mgr', '535353')], [m2Before, true, false])
+const o2Before = await row(ofi2.emp)
+eq('ni a la Oficina', [
+  await call(mgr, { action: 'set_pin', id: ofi2.emp, pin: '545454' }),
+  await call(mgr, { action: 'edit', id: ofi2.emp, name: 'Otro' }),
+  await call(mgr, { action: 'set_act', id: ofi2.emp, act_role: 'viewer' }),
+  await call(mgr, { action: 'set_powers', id: ofi2.emp, powers: ['fix'] }),
+  await call(mgr, { action: 'set_active', id: ofi2.emp, active: false }),
+], ['403 owner_protected', '403 owner_protected', '403 owner_protected', '403 owner_only', '403 owner_protected'])
+eq('la Oficina no toca a otra Oficina ni a un manager', [
+  await call(ofi, { action: 'set_pin', id: ofi2.emp, pin: '555556' }),
+  await call(ofi, { action: 'set_active', id: ofi2.emp, active: false }),
+  await call(ofi, { action: 'set_powers', id: ofi2.emp, powers: ['depts'] }),
+  await call(ofi, { action: 'edit', id: mgr.emp, name: 'Otro' }),
+  await call(ofi, { action: 'set_pin', id: mgr.emp, pin: '555556' }),
+  await call(ofi, { action: 'set_act', id: mgr.emp, act_role: 'viewer' }),
+], ['403 owner_protected', '403 owner_protected', '403 owner_only', '403 owner_protected', '403 owner_protected', '403 owner_protected'])
+eq('y las dos cuentas quedan como estaban', [await row(ofi2.emp), opens('oscar.ofi', '686868'), opens('mario.mgr', '191919')], [o2Before, true, true])
+eq('no sube a un operador a manager ni a Oficina (ni a un trabajador de Freezer RTE)', [
+  await call(mgr, { action: 'set_act', id: ana.emp, act_role: 'mgr' }),
+  await call(ofi, { action: 'set_act', id: ana.emp, act_role: 'office' }),
+  await call(mgr, { action: 'set_act', id: fworker.emp, act_role: 'mgr' }),
+  (await row(ana.emp)).act_role, (await row(fworker.emp)).act_role,
+], ['403 owner_only', '403 owner_only', '403 owner_only', 'op', 'op'])
+eq('su propio rol, su propio poder y desactivarse, tampoco; su PIN y su nombre, sí', [
+  await call(ofi, { action: 'set_powers', id: ofi.emp, powers: ALL }),
+  await call(ofi, { action: 'set_active', id: ofi.emp, active: false }),
+  await call(mgr, { action: 'set_powers', id: mgr.emp, powers: ALL }),
+  await call(mgr, { action: 'edit', id: mgr.emp, name: 'Mario C' }),
+  await call(mgr, { action: 'set_pin', id: mgr.emp, pin: '191919' }),
+], ['403 owner_only', '400 not_self', '403 owner_only', 'ok', 'ok'])
+
+section('D1 · Un trabajador de Freezer RTE: su rol de Actividad, sus poderes y su turno sí; su PIN, su nombre y desactivarlo, solo el dueño')
+const fwBefore = await row(fworker.emp)
+eq('un manager no le cambia el PIN, el nombre, el usuario, ni lo desactiva', [
+  await call(mgr, { action: 'set_pin', id: fworker.emp, pin: '565656' }),
+  await call(mgr, { action: 'edit', id: fworker.emp, name: 'Otro' }),
+  await call(mgr, { action: 'edit', id: fworker.emp, username: 'trab.x' }),
+  await call(mgr, { action: 'set_active', id: fworker.emp, active: false }),
+], ['403 owner_protected', '403 owner_protected', '403 owner_protected', '403 owner_protected'])
+eq('la Oficina y un operador con "Manejar empleados" tampoco', [
+  await call(ofi, { action: 'set_pin', id: fworker.emp, pin: '565656' }),
+  await call(ofi, { action: 'set_active', id: fworker.emp, active: false }),
+  await call(pedro, { action: 'edit', id: fworker2.emp, name: 'Otro' }),
+  await call(pedro, { action: 'set_active', id: fworker2.emp, active: false }),
+], ['403 owner_protected', '403 owner_protected', '403 owner_protected', '403 owner_protected'])
+eq('su cuenta queda como estaba y entra con su PIN (también en Freezer RTE)', [await row(fworker.emp), opens('trab.fz', '343536'), opens('trab.fz', '565656'), opens('trab2.fz', '343434')], [fwBefore, true, false, true])
+// its powers and its shift are Actividad's alone, not its Freezer sign-in: whoever gives it its role sets them, within
+// what they hold (a review of 2026-10-18 found the first version kept them for the owner: a manager made a crew worker
+// an operator and could not put them on Turno 2)
+const fw2Before = await row(fworker2.emp)
+eq('sus poderes y su turno sí, los que tiene quien se los da', [
+  await call(mgr, { action: 'set_powers', id: fworker.emp, powers: ['fix'], shift: 2 }),
+  (await row(fworker.emp)).act_powers, (await row(fworker.emp)).act_shift,
+  await call(mgr, { action: 'set_powers', id: fworker.emp, powers: ['fix', 'othershift'] }),
+  await call(pedro, { action: 'set_powers', id: fworker2.emp, powers: ['fix'], shift: 1 }),
+  await call(pedro, { action: 'set_powers', id: fworker2.emp, powers: ['del'] }),
+  (await row(fworker2.emp)).act_powers, (await row(fworker2.emp)).act_shift,
+  await call(ofi, { action: 'set_powers', id: fworker.emp, powers: null }),
+  (await row(fworker.emp)).act_powers, (await row(fworker.emp)).act_shift,
+], ['ok', ['fix'], 2, '403 not_manager', 'ok', '403 not_manager', ['fix'], 1, 'ok', null, null])
+eq('y con eso su entrada (PIN, nombre, activa) sigue igual', [{ ...(await row(fworker.emp)), act_powers: fwBefore.act_powers, act_shift: fwBefore.act_shift }, (await row(fworker2.emp)).name, (await row(fworker2.emp)).active, opens('trab.fz', '343536'), opens('trab2.fz', '343434')], [fwBefore, fw2Before.name, true, true, true])
+await db.query('update public.employees set act_powers = null, act_shift = null where id = $1', [fworker2.emp])
+const fwMgr = await mk({ name: 'Trabajadora Manager', username: 'trab3.fz', pin: '575757', role: 'worker', actRole: 'mgr' })
+eq('uno que el dueño hizo manager: ni su rol', [await call(mgr, { action: 'set_act', id: fwMgr.emp, act_role: 'op', act_dept: 'RTE' }), (await row(fwMgr.emp)).act_role], ['403 owner_protected', 'mgr'])
+eq('y en su propia cuenta cambia su PIN y su nombre, como todos', [await call(fwMgr, { action: 'set_pin', id: fwMgr.emp, pin: '585858' }), await call(fwMgr, { action: 'edit', id: fwMgr.emp, name: 'Trabajadora M' }), opens('trab3.fz', '585858')], ['ok', 'ok', true])
+
+section('D1 · Cada quien da solo los poderes que tiene')
+eq('un manager no da "Corregir lo del otro turno" (su rol no lo tiene); la Oficina sí', [
+  await call(mgr, { action: 'set_powers', id: nico.emp, powers: ['othershift'] }), (await row(nico.emp)).act_powers,
+  await call(ofi, { action: 'set_powers', id: nico.emp, powers: ['othershift'] }), (await row(nico.emp)).act_powers,
+], ['403 not_manager', null, 'ok', ['othershift']])
+eq('ni le cambia el PIN a quien lo tiene (entraría con él); la Oficina sí', [await call(mgr, { action: 'set_pin', id: nico.emp, pin: '595959' }), await call(ofi, { action: 'set_pin', id: nico.emp, pin: '606060' }), opens('nico.rte', '606060')], ['403 not_manager', 'ok', true])
+eq('pero se lo puede quitar, o dejarlo y cambiar el turno', [await call(mgr, { action: 'set_powers', id: nico.emp, powers: ['othershift', 'fix'], shift: 2 }), await call(mgr, { action: 'set_powers', id: nico.emp, powers: ['fix'] }), (await row(nico.emp)).act_powers], ['ok', 'ok', ['fix']])
+const mgrP = await mk({ name: 'Manager Metas', username: 'metas.mgr', pin: '616161', actRole: 'mgr', powers: ['people', 'goals'] }) // a manager Jose left with two powers
+eq('un manager con poderes guardados da solo esos', [
+  await call(mgrP, { action: 'set_powers', id: nico.emp, powers: ['fix', 'goals'] }),
+  await call(mgrP, { action: 'set_powers', id: ana.emp, powers: ['fix', 'del', 'orders'] }),
+  (await row(ana.emp)).act_powers,
+], ['ok', '403 not_manager', ['fix', 'del']])
+// a person with no Actividad role holds no power, whatever the row kept (E4): being given a role again by somebody
+// who is not the owner must not hand back a kept power that person does not hold
+const stale = await mk({ name: 'Volvió', username: 'volvio.rte', pin: '626262', powers: ['othershift', 'fix'] })
+const stale2 = await mk({ name: 'Volvió Dos', username: 'volvio2.rte', pin: '636363', powers: ['othershift', 'fix'] })
+eq('a quien vuelve a Actividad, un manager le deja solo los poderes guardados que él tiene; el dueño, todos', [
+  await call(mgr, { action: 'set_act', id: stale.emp, act_role: 'op', act_dept: 'RTE' }), (await row(stale.emp)).act_powers,
+  await call(jose, { action: 'set_act', id: stale2.emp, act_role: 'op', act_dept: 'RTE' }), (await row(stale2.emp)).act_powers,
+], ['ok', ['fix'], 'ok', ['othershift', 'fix']])
+
+section('La pantalla de Empleados ofrece exactamente lo que la función acepta')
+{
+  // the app's own rowRights and rolesGiven, from the bundle npm run check builds (tests/device.ts)
+  const storage = new Map()
+  globalThis.localStorage = { getItem: (k) => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, String(v)), removeItem: (k) => storage.delete(k), key: () => null, length: 0 }
+  globalThis.window ??= { addEventListener() {}, removeEventListener() {}, dispatchEvent() { return true } }
+  const app = await import(pathToFileURL(resolve(here, '../node_modules/.cache/act-check/device.js')).href + '?users')
+  const all = async () => (await db.query('select id, user_id, name, username, role, active, act_role, act_dept, act_powers, act_shift, deleted from public.employees order by name')).rows.filter((e) => !e.deleted)
+  const lookerOf = (e) => ({ id: e.id, admin: e.role === 'admin', powers: app.powersOf({ role: e.act_role, admin: e.role === 'admin', powers: app.cleanPowers(e.act_powers) }) })
+  const lookers = { 'el dueño': jose, 'otra admin de Freezer': fadmin2, 'un manager': mgr, 'un manager con 2 poderes': mgrP, 'la Oficina': ofi, 'un operador con "Manejar empleados"': pedro }
+  const yes = (r) => r === 'ok'
+  for (const [label, who] of Object.entries(lookers)) {
+    const offered = [], hidden = []
+    let refused = 0
+    for (const { id } of await all()) {
+      const rows = await all(), t = rows.find((e) => e.id === id), me = lookerOf(rows.find((e) => e.id === who.emp))
+      const can = app.rowRights(t, me)
+      // each with what the row already has: the answer says whether it may, and nothing changes (but the PIN)
+      const asks = {
+        edit: { action: 'edit', id, name: t.name },
+        pin: t.username ? { action: 'set_pin', id, pin: '646464' } : null, // an account without a user name signs in with its e-mail: no PIN here
+        active: { action: 'set_active', id, active: t.active },
+        role: { action: 'set_act', id, act_role: t.act_role, act_dept: t.act_dept },
+        powers: { action: 'set_powers', id, powers: t.act_powers, shift: t.act_shift },
+      }
+      for (const [what, body] of Object.entries(asks)) {
+        if (!body) { if (can[what]) offered.push(`${what} de ${t.name} (sin usuario)`); continue }
+        const r = await call(who, body)
+        if (can[what] && !yes(r)) offered.push(`${what} de ${t.name}: ${r}`)
+        // what the function takes and the screen does not offer: only powers where they mean nothing or are all there
+        // already (somebody with no Actividad role, one's own row, a Freezer admin's), never a PIN, a name, a role or on/off
+        if (!can[what] && yes(r) && !(what === 'powers' && (!t.act_role || t.id === who.emp || t.role === 'admin'))) hidden.push(`${what} de ${t.name}`)
+        if (!can[what] && !yes(r)) refused++
+      }
+    }
+    eq(`${label}: nada de lo que la pantalla ofrece lo rechaza la función`, offered, [])
+    eq(`${label}: y lo que la pantalla no ofrece, la función lo rechaza`, hidden, [])
+    const admin = lookerOf((await all()).find((e) => e.id === who.emp)).admin
+    // (the check looks for real: somebody who is not the owner has rows they may not touch, and the function said no)
+    if (!admin) eq(`${label}: hay filas que no puede tocar, y la función se lo dijo`, refused > 10, true)
+    // a new account: the roles the dialog offers are the ones the function creates
+    const made = []
+    for (const r of ['op', 'mgr', 'office', 'viewer']) {
+      const u = `nuevo.${r}.${Object.keys(lookers).indexOf(label)}`
+      made.push([r, app.rolesGiven(admin).includes(r), yes(await call(who, { action: 'create', name: 'Nuevo', username: u, pin: '656565', act_role: r, act_dept: 'RTE' }))])
+    }
+    eq(`${label}: los roles que ofrece "Nuevo usuario" son los que la función crea`, made.filter(([, offer, ok]) => offer !== ok), [])
+  }
+}
 
 await db.close()
 console.log(failed.length ? `\n✗ ${failed.length} de ${passed + failed.length} comprobaciones fallaron:\n\n  ${failed.join('\n\n  ')}\n` : `\n✓ ${passed} comprobaciones, todas correctas (la función act-users de verdad, con la base del servidor)\n`)

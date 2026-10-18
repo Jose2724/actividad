@@ -41,7 +41,8 @@ const refusedOwn = new Set<string>()
  * records never reached the server (audit S2). Now it waits on the device, the screen says so, and it goes up as soon
  * as someone who may write it signs in here (someone of that room, a manager). It is not sent again while the same
  * person stays (a refused request every 20 s on a weak WiFi helps nobody): only when the person, their role or their
- * room changes, or every ten minutes (a permission given back on the server). `who` = for whom it was refused.
+ * room changes, or every ten minutes (a permission given back on the server). `who` = for whom it was refused. A row
+ * this person may not send at all waits here too, never sent (see mayGo below, Jose's decision of 2026-10-18).
  */
 const parked = new Map<string, { who: string; at: number }>()
 const PARK_MS = 10 * 60_000
@@ -52,6 +53,14 @@ let whoNow: () => string = () => ''
  * `who`, what tells the person signed in apart (their role and room): a row parked for one person is tried for the next
  */
 export const setOwnRow = (f: (row: Row) => boolean, who?: () => string) => { ownRow = f; if (who) whoNow = who }
+/**
+ * may this row go up from the person signed in now? A row the server would take but not do (a run taken off by
+ * somebody without "Borrar corridas y paros": the server keeps the run, Jose's decision of 2026-10-18) is not sent
+ * at all: it waits, parked like another room's row, for someone who may (see sync.ts, mayGo). Nothing is asked of the
+ * server for it meanwhile
+ */
+let mayGo: (it: Item) => boolean = () => true
+export const setMayGo = (f: (it: Item) => boolean) => { mayGo = f }
 const keyOf = (i: Item) => i.table + '|' + i.key
 /** the keys of `marks` whose row is still queued: a mark left behind by a row that left is never counted */
 const stillQueued = (marks: Set<string> | Map<string, unknown>) => { if (!marks.size) return []; const q = new Set(read().map(keyOf)); return [...marks.keys()].filter((k) => q.has(k)) }
@@ -144,7 +153,8 @@ function tryOf(it: Item) {
 let flushing = false
 /** how many queued rows the server refuses to this session, and how many wait for someone else */
 const marks = () => ({ refused: stillQueued(refusedOwn).length, other: stillQueued(parked).length })
-export type FlushResult = { sent: number; left: number; error?: string; refused?: number; other?: number } // other = rows parked for someone else
+export type FlushResult = { sent: number; left: number; error?: string; refused?: number; other?: number; tookOff?: { table: Table; key: string }[] } // other = rows parked for someone else
+// tookOff = the runs and lines this pass sent taken off: the server may have kept one (see sync.ts, lookBack)
 let after: ((r: FlushResult) => void) | null = null
 /**
  * told how every pass ended, whoever started it (a new record sends itself at once, without anyone waiting for the
@@ -162,6 +172,7 @@ async function pass(): Promise<FlushResult> {
   if (!supabase) return { sent: 0, left: read().length, ...marks() }
   flushing = true
   let sent = 0, error: string | undefined
+  const tookOff: { table: Table; key: string }[] = []
   try {
     const { data: { session }, error: authError } = await supabase.auth.getSession()
     if (!session) return { sent: 0, left: read().length, error: noSignal(authError) ? 'offline' : 'signedOut', ...marks() }
@@ -174,6 +185,8 @@ async function pass(): Promise<FlushResult> {
     while (true) {
       const it = read().find((i) => !waiting.has(i.table) && !skipped.has(keyOf(i)) && !resting(keyOf(i)))
       if (!it) break
+      // a row the person signed in may not send (see mayGo): it waits for someone who may, said apart, unsent
+      if (!mayGo(it)) { const k = keyOf(it); skipped.add(k); refusedOwn.delete(k); parked.set(k, { who: me, at: Date.now() }); emit(); continue }
       // The version about to go up is remembered with the row until the server says it took it. When the answer is
       // lost (the 25 s limit, a WiFi that drops at that moment) the server may have it all the same, and when it
       // comes down it is this device's own past, not another tablet's change (see reconcile in store.ts). Written
@@ -199,9 +212,10 @@ async function pass(): Promise<FlushResult> {
       }
       markSent(it)
       sent++
+      if ((it.table === 'act_runs' || it.table === 'act_lines') && it.row.deleted && !it.base?.deleted) tookOff.push({ table: it.table, key: it.key })
     }
   } catch (e) {
     error = String(e)
   } finally { flushing = false }
-  return { sent, left: read().length, error, ...marks() }
+  return { sent, left: read().length, error, ...marks(), ...(tookOff.length ? { tookOff } : {}) }
 }

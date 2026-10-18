@@ -1,6 +1,6 @@
 // Everything is saved on this device first (localStorage). With a server configured (see supabase.ts) every change is
 // also queued for upload (outbox.ts) and what other devices send arrives through sync.ts.
-import { drop, outbox, push, queued, rebase, type Row, type Table } from './outbox'
+import { drop, justSent, outbox, push, queued, rebase, type Row, type Table } from './outbox'
 import { storageFull } from './storage'
 import { clockNow } from './clock'
 import { lang, tr, trIn } from './i18n'
@@ -493,9 +493,10 @@ const COALESCE_MS = 90_000
  * (keystrokes, a second thought) updates its line instead of adding one; typed back to what it was, the line is
  * withdrawn. Another record never shares a line, even with the same wording.
  */
-function logChange(dept: Dept | null, what: string, before: string, after: string, refTable: string, refKey: string) {
+function logChange(dept: Dept | null, what: string, before: string, after: string, refTable: string, refKey: string, by = user.get()) {
+  // (by = whose change the line tells: the person signed in, or the one who made a change this device kept for them)
   if (before === after) return
-  const now = clockNow(), by = user.get()
+  const now = clockNow()
   const changes = state.changes
   let i = changes.length - 1
   while (i >= 0 && !(changes[i].by === by && changes[i].refTable === refTable && changes[i].refKey === refKey && changes[i].what === what && now - changes[i].at < COALESCE_MS)) i--
@@ -1971,6 +1972,47 @@ const body = (x: Synced) => JSON.stringify({ ...x, updatedAt: 0, syncedAt: 0 })
 /** rows deleted while this page is open, with when: a late echo of an earlier version must not bring one back */
 const gone = new Map<string, number>()
 /**
+ * does this queued version of a run or a line change nothing of the version it started from (what the server had)
+ * but taking it off? Then it waits for someone who may take it off (sync.ts, mayGo; Jose's decision of 2026-10-18)
+ * instead of going up to be kept by the server. A version that also ends the code, or renames the line, is not one:
+ * the server takes all of that and keeps only the run or the line (and the history says so, see sayKept). A run still
+ * running is not held even so (mayGo): held, it ran on for days everywhere but here
+ */
+export function onlyTakesOff(table: Table, row: Row, base: Row): boolean {
+  const k = (table === 'act_runs' ? RUN : table === 'act_lines' ? LINE : null) as Kind<Synced> | null
+  if (!k) return false
+  const b = k.of(base), was = k.of(row)
+  // (a run's `line` is its line's name as it is now, which putRun writes in on every change: the line renamed since the
+  // code started is nobody's change here. Counted, a manager's plain "Borrar corrida" went up under the next person
+  // and was undone; review of 2026-10-18)
+  const a = table === 'act_runs' ? ({ ...was, line: (b as unknown as Run).line } as Synced) : was
+  // (each side as a list of its fields in one order: a version that never had the server's stamp lists it elsewhere)
+  const flat = (x: Synced) => JSON.stringify(Object.entries({ ...x, deleted: false, updatedAt: 0, syncedAt: 0 }).sort(([p], [q]) => (p < q ? -1 : 1)))
+  return !!a.deleted && !b.deleted && flat(a) === flat(b)
+}
+/** what this page already wrote in the history about a run or a line the server kept (once each) */
+const keptSaid = new Set<string>()
+/**
+ * the history says that the server kept a run or a line this device took off: "Se borró la corrida…" (or "Línea
+ * quitada…") is already there, and without this line the run on the screen would contradict it
+ */
+function sayKept(table: Table, x: Synced, by: string) {
+  // (by = who took it off: the author of the version sent, not whoever is signed in now. A manager's deletion that went
+  // up under an operator read as the operator's attempt; review of 2026-10-18)
+  const key = table + '|' + x.id + '|' + x.updatedAt
+  if (keptSaid.has(key)) return
+  keptSaid.add(key)
+  if (table === 'act_runs') {
+    const r = x as unknown as Run
+    logChange(r.dept, 'El servidor no dejó borrar la corrida ' + r.code + ' del ' + r.date + ' (' + r.dept + ', ' + lineNameOf(state, r.lineId, r.line) + ')', '', r.units.length + ' ' + cfgOf(r).plural.toLowerCase() + (r.waste ? ' · waste ' + r.waste + ' lb' : ''), 'act_runs', r.id, by)
+  } else if (table === 'act_lines') {
+    const l = x as unknown as Line
+    logChange(l.dept, 'El servidor no dejó quitar una línea de ' + l.dept, '', l.name, 'act_lines', l.id, by)
+  }
+}
+/** who wrote a queued or sent version of a row (its updated_by), or the person signed in when it does not say */
+function authorOf(row: Row) { return String(row.updated_by ?? '') || user.get() }
+/**
  * A row from the server meets what this device has; returns the row to keep here (null = no change).
  *
  * The server's order of versions is the truth: each version it takes carries its own clock (synced_at), and a version
@@ -1988,7 +2030,17 @@ function reconcile<T extends Synced>(table: Table, cur: T | undefined, row: Row,
   const pend = queued(table, theirs.id)
   const mine = pend ? k.of(pend.row) : cur ? k.of(k.row(cur)) : undefined
   if (theirs.deleted) gone.set(table + '|' + theirs.id, Math.max(theirs.updatedAt, gone.get(table + '|' + theirs.id) ?? 0))
-  if (!mine) return !theirs.deleted && theirs.updatedAt < (gone.get(table + '|' + theirs.id) ?? 0) ? null : theirs
+  // Jose's decision of 2026-10-18 (migrations/018, 9 and 10): a run taken off by somebody without "Borrar corridas y
+  // paros", or a line by somebody the managers' rule does not let, is kept by the server, and the rest of that write is
+  // taken as sent, its stamp included. This device's version of it with deleted=false is that: the run or the line
+  // comes back on the screen, and nothing is sent again (it would only be kept again)
+  const kept = (x: T) => !!x.deleted && !theirs.deleted && x.updatedAt === theirs.updatedAt
+  if (!mine) {
+    // (taken off here and sent a moment ago: the answer came, and this is what the server did with it)
+    const sent = justSent(table, theirs.id)
+    if (sent && kept(k.of(sent.row))) sayKept(table, theirs, authorOf(sent.row))
+    return !theirs.deleted && theirs.updatedAt < (gone.get(table + '|' + theirs.id) ?? 0) ? null : theirs
+  }
   // a version the server took no later than the one this device already holds: an echo of what is known (or of a
   // version since replaced, together with a change of this device not yet echoed back)
   const known = cur?.syncedAt ?? 0
@@ -2008,6 +2060,10 @@ function reconcile<T extends Synced>(table: Table, cur: T | undefined, row: Row,
     return next
   }
   const base = pend.base ? k.of(pend.base) : null
+  // the server kept the very version waiting here (its answer was lost, or the live notice came before it): it leaves
+  // the queue and the run or the line is shown again. Merged as another tablet's change instead, the version taken off
+  // went up once more, to be kept once more
+  if (kept(mine)) { drop(table, theirs.id); sayKept(table, theirs, authorOf(pend.row)); return theirs }
   // A version this device itself sent whose answer never came back (the 25 s limit, a WiFi that dropped at that
   // moment, or the live notice that came before the answer): the server took it all the same. It is this change's
   // own past, not another tablet's change: what was recorded after it stays and goes up, starting now from the
@@ -2026,12 +2082,52 @@ function reconcile<T extends Synced>(table: Table, cur: T | undefined, row: Row,
   if (gb === tb) { drop(table, theirs.id); return theirs }
   if (gb === mb) { if (forked || !base) rebase(table, theirs.id, pend.row, row); return null } // nothing of theirs to take: mine goes up, from the server's version now
   const next = { ...merged, updatedAt: Math.max(clockNow(), mine.updatedAt + 1, theirs.updatedAt + 1) }
-  rebase(table, theirs.id, k.row(next), row) // the server's version is the one this change starts from now
+  // the server's version is the one this change starts from now. Rebuilt, the change is still its author's, not the
+  // person signed in now: a manager's deletion waiting on an operator's tablet (sync.ts, mayGo) while another tablet added
+  // a pallet went up named as the operator's, in the run's updated_by and act_runs_log (review of 2026-10-18)
+  rebase(table, theirs.id, { ...k.row(next), updated_by: authorOf(pend.row) }, row)
   return next
 }
 
 /** one of the rooms this version of the app knows (DEPTS) */
 export function roomKnown(dept: unknown): dept is Dept { return (DEPTS as unknown[]).includes(dept) }
+/**
+ * Jose's decision of 2026-10-18: a room's program (act_plan) and what is set for everybody (act_targets: each shift's
+ * goals, the plant calendar, the operators' line rules) go whole, the last change standing, and are not merged. A
+ * change waiting here to go up (for days, when the server would not take it from whoever signed in after its author:
+ * audit S2) must not write over a change somebody made after it. "After" by the moment each change was made (updated_at,
+ * the shared clock): the rule every screen already uses to choose between two versions of these rows (newer, in
+ * applyRemote). Sent anyway, the server kept the older change while the screens that had the newer one went on showing
+ * it. So when the server's version was made after the one waiting here, the server's stands: this one leaves the
+ * queue, and the history says what was not sent, whose it was, and who changed it after (nothing vanishes without a
+ * word). sync.ts brings the server's version of each one before it goes up (refreshQueued).
+ */
+function keepNewer(table: 'act_plan' | 'act_targets', row: Row, at: number) {
+  const date = String(row.date ?? '').slice(0, 10), dept = row.dept as Dept, code = String(row.code ?? '')
+  const key = table === 'act_targets' ? String(row.dept ?? '') : isDay(date) && roomKnown(dept) && normCode(code) ? planKey(date, dept, code) : ''
+  const pend = key ? queued(table, key) : undefined
+  if (!pend || !(at > (fromIso(pend.row.updated_at) ?? 0))) return
+  drop(table, key)
+  const mine = settingOf(table, pend.row), theirs = settingOf(table, row)
+  logChange(mine.dept, mine.what + ' · no se subió: ' + (String(row.updated_by ?? '') || 'otra persona') + ' lo cambió después', mine.text, theirs.text, table, key, String(pend.row.updated_by ?? '') || user.get())
+}
+/** a program's or a setting's row as the history says it: what it is, its value, and the room its line goes with */
+function settingOf(table: 'act_plan' | 'act_targets', row: Row): { what: string; text: string; dept: Dept | null } {
+  const num = (x: unknown) => (x == null || !(Number(x) > 0) ? '' : String(Number(x)))
+  if (table === 'act_plan') { const dept = row.dept as Dept; return { what: 'Programa ' + String(row.date ?? '').slice(0, 10) + ' · ' + dept + ' · ' + normCode(String(row.code ?? '')), text: num(row.qty), dept: roomKnown(dept) ? dept : null } }
+  const key = String(row.dept ?? '')
+  if (key === OPT_LINES) return { what: 'Operadores y líneas', text: linesText({ add: row.per_hour == null || Number(row.per_hour) !== 0, remove: Number(row.per_shift) === 1, updatedAt: 0 }), dept: null }
+  if (key.startsWith(WEEK_KEY)) { const w = row.per_hour == null ? '' : String(row.per_hour); return { what: 'Turnos de la semana desde el ' + key.slice(WEEK_KEY.length), text: weekOk(w) ? weekText(w) : '', dept: null } }
+  if (key.startsWith(DAY_KEY)) { const n = Number(row.per_hour); return { what: 'Turnos del ' + key.slice(DAY_KEY.length), text: row.per_hour == null ? 'como dice su semana' : dayShiftsText(n === 1 || n === 2 ? n : undefined), dept: null } }
+  if (key.startsWith(SHIFTS_KEY)) { const a = unpackShift(row.per_hour), b = unpackShift(row.per_shift); return { what: 'Horario de turnos desde el ' + key.slice(SHIFTS_KEY.length), text: a && b ? shiftsText({ first: a[0], firstEnd: a[1], second: b[0], secondEnd: b[1] }) : '', dept: null } }
+  // a goal: of a room or of a line, of one shift (key@1, key@2) or from before the goals were by shift
+  const turn = /@([12])$/.exec(key), of = turn ? key.slice(0, -2) : key
+  const line = of.startsWith(LINE_KEY) ? state.lines.find((l) => l.id === of.slice(LINE_KEY.length)) : undefined
+  const room = line ? line.dept : roomKnown(of) ? of : null
+  const name = line ? line.name + ' (' + line.dept + ')' : of.startsWith(LINE_KEY) ? 'de una línea' : of
+  const text = [num(row.per_hour) && num(row.per_hour) + ' por hora', num(row.per_shift) && num(row.per_shift) + (turn ? ' del turno' : ' del día')].filter(Boolean).join(' · ')
+  return { what: 'Meta ' + name + (turn ? ' · Turno ' + turn[1] : ''), text, dept: room ? goalRoom(room) : null }
+}
 /** a row that arrived from the server: see reconcile() for the lines, runs and stops; the tables only the office edits keep the newer row */
 export function applyRemote(table: string, row: Record<string, unknown>) {
   if (!row || (row.id == null && row.code == null && row.dept == null)) return // the notice of a row removed by hand in the database carries nothing
@@ -2042,6 +2138,7 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
   if ((table === 'act_lines' || table === 'act_runs' || table === 'act_stops') && !roomKnown(row.dept)) return
   const at = fromIso(row.updated_at) ?? 0
   const newer = <T extends { updatedAt: number }>(cur: T | undefined) => !cur || at >= cur.updatedAt
+  if (table === 'act_plan' || table === 'act_targets') keepNewer(table, row, at)
   if (table === 'act_lines') {
     const next = reconcile('act_lines', state.lines.find((l) => l.id === row.id), row, LINE)
     if (next) set({ ...state, lines: upsertIn(state.lines, next) })
@@ -2243,6 +2340,65 @@ export function lastPerUnit(s: State, dept: Dept, code: string) {
   const key = normCode(code)
   const last = s.runs.filter((r) => r.dept === dept && normCode(r.code) === key && r.perUnit != null).sort((a, b) => b.startedAt - a.startedAt)[0]
   return last?.perUnit ?? null
+}
+// ---- "¿Seguro?": a quantity typed that is more than twice the usual ----
+/**
+ * A quantity that counts (the pouches of a cart, the cases of a pallet, what a bin holds, the quantity per unit a code
+ * starts with), typed more than twice the usual for that product and room, is asked about before it is saved: a 2400
+ * typed for 240 would count ten carts (Jose, 2026-10-18). The usual is only one the app already knows; with none,
+ * nothing is asked (no figure is made up for it), and nothing is ever written in a box for the person (no guessed data).
+ */
+export function tooMuch(n: number, usual: number | null | undefined): boolean {
+  return usual != null && Number.isFinite(usual) && usual > 0 && Number.isFinite(n) && n > 2 * usual
+}
+/**
+ * The usual quantity per unit of a code in a room, counted the room's own way (`word` '' = carts of pouches in RTE,
+ * pallets of cases in Packing): the products table's (pouches per cart, cases per pallet), else what the last run of
+ * the code counted that way had (what the box proposes when a code starts, see lastPerUnit; a run of bins, or a deleted
+ * one, does not count). null = the app knows none: Kitchen's and Spiral's mezclas, Spiral's pounds and cases, MFO's
+ * platos, copas and pounds, Packing's bins have no column in the table and start with no quantity per unit.
+ */
+export function usualFor(s: State, dept: Dept, code: string, word = ''): number | null {
+  if (word || (dept !== 'RTE' && dept !== 'Packing')) return null
+  const p = productOf(s, code), table = p ? (dept === 'RTE' ? cartPouches(p) : p.casesPerPallet) : 0
+  if (table > 0) return table
+  const key = normCode(code)
+  const last = s.runs.filter((r) => r.dept === dept && !r.deleted && !kindOf(r) && normCode(r.code) === key && r.perUnit != null && r.perUnit > 0).sort((a, b) => b.startedAt - a.startedAt)[0]
+  return last?.perUnit ?? null
+}
+/** the usual quantity of one unit of a run: its own quantity per unit (pouches per cart, cases per pallet), else its code's (usualFor) */
+export function usualOf(s: State, r: Run): number | null {
+  return r.perUnit != null && r.perUnit > 0 ? r.perUnit : usualFor(s, r.dept, r.code, kindOf(r))
+}
+/** one box of a form as "¿Seguro?" sees it: the number it holds now and the usual it is held against */
+export type QtyCheck = { key: string; n: number; usual: number | null | undefined }
+/**
+ * the box to ask about first: more than twice its usual, and not already answered "Sí" with this same number (`sure`:
+ * box → the number confirmed). "Corregir" confirms nothing, so the same number is asked about again on the next save.
+ */
+export function askFirst<T extends QtyCheck>(boxes: T[], sure: Record<string, number>): T | null {
+  return boxes.find((b) => tooMuch(b.n, b.usual) && sure[b.key] !== b.n) ?? null
+}
+/**
+ * The boxes of a correction (Corregir) that "¿Seguro?" looks at: only what was changed against how the form opened, as
+ * applyDraft saves it. The quantity per unit, held against the run's own (or its code's); and each unit whose quantity
+ * or lots changed (a pallet's quantity is the sum of its lots), held against the quantity per unit now in the form.
+ * index = the unit's place in the form (-1 = the quantity per unit); lots = how many lots make the number.
+ */
+export function draftChecks(s: State, r: Run, opened: RunDraft, draft: RunDraft): (QtyCheck & { index: number; lots: number })[] {
+  const cfg = cfgOf(r), num = (t: string) => (t.trim() ? Number(t.trim().replace(',', '.')) : NaN), out: (QtyCheck & { index: number; lots: number })[] = []
+  const perChanged = !!cfg.perUnitLabel && draft.per.trim() !== opened.per.trim()
+  if (perChanged) out.push({ key: 'per', n: num(draft.per), usual: usualOf(s, r), index: -1, lots: 0 })
+  const perNow = cfg.perUnitLabel && num(draft.per) > 0 ? num(draft.per) : usualOf(s, r)
+  if (cfg.qty === 'none') return out
+  const was = new Map(opened.units.map((u) => [u.at, u]))
+  draft.units.forEach((u, index) => {
+    const a = was.get(u.at), lotsChanged = !!a && JSON.stringify(a.lots ?? null) !== JSON.stringify(u.lots ?? null)
+    if (!a || (!lotsChanged && u.qty.trim() === a.qty.trim())) return // added after the form opened, or untouched
+    const parts = lotsChanged ? cleanLots(u.lots) : undefined
+    out.push({ key: 'u' + u.at, n: parts ? parts.reduce((t, l) => t + l.qty, 0) : num(u.qty), usual: perNow, index, lots: parts?.length ?? 0 })
+  })
+  return out
 }
 
 /**

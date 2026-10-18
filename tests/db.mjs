@@ -1,7 +1,9 @@
 // The SQL the server runs, tested on a real Postgres before it reaches Supabase (see pg.mjs): every migration applies
 // on a new database and can be run again, each role reads and writes what it should, and the triggers do what their
 // files say. Made-up people and rows. Run by: npm run check
-import { actMigrations, as, code, runFile, serverDb, person } from './pg.mjs'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { ACT_DIR, actMigrations, as, code, runFile, serverDb, person } from './pg.mjs'
 
 let passed = 0
 const failed = []
@@ -271,7 +273,8 @@ await as(db, ana, (tx) => upsert(tx, 'act_runs', packRun({ units: [unit(A, 40)],
 eq('"se volvió a abrir" el último pallet (fuera, con su marca): se toma', await letters(), ['A:40'])
 await as(db, ana, (tx) => upsert(tx, 'act_runs', packRun({ units: [], extra: null })))
 eq('unas unidades vacías sin marca no borran lo que había', await letters(), ['A:40'])
-await as(db, ana, (tx) => upsert(tx, 'act_runs', packRun({ units: [unit(A, 40)], deleted: true, extra: { removed: [B, C] } })))
+// (by Jose: since 2026-10-18 a run is deleted only by someone holding "Borrar corridas y paros", see 018 part 9)
+await as(db, jose, (tx) => upsert(tx, 'act_runs', packRun({ units: [unit(A, 40)], deleted: true, extra: { removed: [B, C] } })))
 eq('borrar la corrida deja sus unidades como estaban', [await letters(), (await db.query('select deleted from public.act_runs where id = $1', [UR])).rows[0].deleted], [['A:40'], true])
 await db.query(`update public.act_runs set units = '[{"at":"x","qty":1},{"qty":2}]'::jsonb, deleted = false where id = $1`, [UR])
 eq('unidades sin un momento de número: ni error ni nada que agregar', [await code(as(db, ana, (tx) => upsert(tx, 'act_runs', packRun({ units: [unit(A)] })))), await letters()], ['', ['A']])
@@ -289,6 +292,135 @@ const plan = await db.transaction(async (tx) => {
   ]
 })
 eq('las dos preguntas del 016 pueden ir por ellos', plan, [true, true])
+
+// ---- 018 parts 9 and 10 (Jose's decision of 2026-10-18): deleting a run and taking a line off, by the server too ----
+section('018 (Jose, 2026-10-18): una corrida la borra solo quien tiene "Borrar corridas y paros"; de otro, el servidor la deja como estaba')
+// a Freezer RTE admin (the owner's kind of account) with an operator's role and another power saved: holds them all
+const alba = await person(db, { name: 'Alba', actRole: 'op', actDept: 'Packing', role: 'admin' })
+await db.query("update public.employees set act_powers = '{goals}' where name = 'Alba'")
+const DL = uuid(), DR = uuid()
+await as(db, null, async (tx) => { await upsert(tx, 'act_lines', line(DL, 'Packing', 'Línea 70')); await upsert(tx, 'act_lines', line(DR, 'RTE', 'Línea 70')) })
+const delOf = async (id, table = 'act_runs') => (await db.query(`select deleted from public.${table} where id = $1`, [id])).rows[0].deleted
+const finished = (dept, lineId, o = {}) => run(uuid(), dept, lineId, NOW - 20 * H, { ended_at: iso(NOW - 19 * H), units: [unit(NOW - 19.5 * H)], extra: null, ...o })
+/** a run on the server, then `who` deletes it as the app does (the whole row again, marked) or by hand (only the mark): [what the server answered, deleted there] */
+async function deleting(who, dept, lineId, byHand = false) {
+  const r = finished(dept, lineId)
+  await as(db, null, (tx) => upsert(tx, 'act_runs', r))
+  const answer = await code(as(db, who, (tx) => (byHand ? tx.query('update public.act_runs set deleted = true where id = $1', [r.id]) : upsert(tx, 'act_runs', { ...r, deleted: true, updated_at: iso(NOW - H), updated_by: who?.name ?? 'SQL Editor' }))))
+  return [answer, await delOf(r.id)]
+}
+eq('Ana (operadora, sin ese poder) la borra como la app: el servidor no dice que no, y la corrida se queda', await deleting(ana, 'Packing', DL), ['', false])
+eq('ni a mano, con una petición de solo "deleted"', await deleting(ana, 'Packing', DL, true), ['', false])
+eq('un manager a quien se le quitó ese poder (Mara, solo "Corregir"): se queda', await deleting(mara, 'Packing', DL), ['', false])
+eq('la borran quien tiene el poder (Dora), la oficina, Jose, un administrador de Freezer RTE con otro poder guardado (Alba) y el SQL Editor',
+  await each([[dora, 'RTE', DR], [edgar, 'Packing', DL], [jose, 'Packing', DL], [alba, 'Packing', DL], [null, 'Packing', DL]], ([who, d, l]) => deleting(who, d, l)),
+  [['', true], ['', true], ['', true], ['', true], ['', true]])
+const KR = uuid(), kept0 = run(KR, 'Packing', DL, NOW - 18 * H, { extra: null, units: [unit(NOW - 17.5 * H)] }), T = NOW - 17 * H
+await as(db, null, (tx) => upsert(tx, 'act_runs', kept0))
+await as(db, ana, (tx) => upsert(tx, 'act_runs', { ...kept0, deleted: true, ended_at: iso(T), waste: 7, units: [unit(NOW - 17.5 * H), unit(NOW - 17.2 * H)], updated_at: iso(T), updated_by: 'Jose' }))
+const kr = (await db.query('select deleted, ended_at, waste::int as waste, jsonb_array_length(units) as units, updated_at from public.act_runs where id = $1', [KR])).rows[0]
+// (updated_at as the tablet sent it: that is how the tablet takes the server's answer and shows the run again)
+eq('lo demás de esa misma escritura se toma tal cual (el fin, el waste, un pallet más, la hora de la tablet): solo "borrada" no', [kr.deleted, kr.ended_at.toISOString(), kr.waste, kr.units, kr.updated_at.toISOString()], [false, iso(T), 7, 2, iso(T)])
+eq('y esa versión queda en act_runs_log con la cuenta de Ana (y el nombre que mandó)', await lastLog(KR), { table_name: 'act_runs', by_name: 'Jose', uid: ana.id })
+/** a run Jose deleted, that `who` puts back (Recuperarlos, a delete undone), then a tablet that still had it deleted sends its copy: deleted after each step */
+async function restoring(who) {
+  const r = finished('Packing', DL)
+  await as(db, null, (tx) => upsert(tx, 'act_runs', r))
+  await as(db, jose, (tx) => upsert(tx, 'act_runs', { ...r, deleted: true, updated_at: iso(NOW - 3 * H) }))
+  const out = [await delOf(r.id), await code(as(db, who, (tx) => upsert(tx, 'act_runs', { ...r, deleted: false, updated_at: iso(NOW - 2 * H) })))]
+  await as(db, ana, (tx) => upsert(tx, 'act_runs', { ...r, deleted: true, updated_at: iso(NOW - 3 * H) }))
+  return [...out, await delOf(r.id)]
+}
+eq('volver a ponerla lo hace cualquiera que escribe en el cuarto (Ana, Mara), y una copia vieja que aún la tenía borrada no la borra otra vez', [await restoring(ana), await restoring(mara)], [[true, '', false], [true, '', false]])
+const LR = uuid()
+let lr = run(LR, 'Packing', DL, NOW - 16 * H, { extra: null, per_unit: 36 })
+const day = [await code(as(db, ana, (tx) => upsert(tx, 'act_runs', lr)))]
+for (const step of [{ units: [unit(NOW - 15.8 * H)] }, { units: [unit(NOW - 15.8 * H), unit(NOW - 15.6 * H, 30)], waste: 2 }, { code: '0890', lot: '6291' }, { ended_at: iso(NOW - 15 * H) }]) {
+  lr = { ...lr, ...step, updated_at: iso(Date.parse(lr.updated_at) + 60_000) }
+  day.push(await code(as(db, ana, (tx) => upsert(tx, 'act_runs', lr))))
+}
+const lrNow = (await db.query("select code, lot, waste::int as waste, units -> 1 ->> 'qty' as second, ended_at is not null as ended, deleted from public.act_runs where id = $1", [LR])).rows[0]
+eq('lo de cada día de Ana no cambia: empezar, registrar, waste, corregir código y lote, terminar', [day, lrNow], [['', '', '', '', ''], { code: '0890', lot: '6291', waste: 2, second: '30', ended: true, deleted: false }])
+const made = finished('Packing', DL, { deleted: true })
+eq('una corrida que llega ya borrada (hecha y borrada en una tablet antes de subir) se guarda como llega: en el servidor no había nada que dejar', [await code(as(db, ana, (tx) => upsert(tx, 'act_runs', made))), await delOf(made.id)], ['', true])
+const DS = uuid(), SX = uuid()
+await as(db, null, (tx) => upsert(tx, 'act_lines', line(DS, 'Packing', 'Línea 71')))
+await as(db, ana, (tx) => upsert(tx, 'act_stops', stop(SX, 'Packing', DS, NOW - 2 * H)))
+eq('los paros no: Ana quita un Set up que quedó abierto ("No viene otro código: quitarlo", lo que la app hace sola)', [await code(as(db, ana, (tx) => upsert(tx, 'act_stops', stop(SX, 'Packing', DS, NOW - 2 * H, { deleted: true })))), await delOf(SX, 'act_stops')], ['', true])
+
+section('018 (2026-10-18): esa guarda, el Set up del 016 y las unidades que no se pierden, juntos')
+const t1 = t0 + 60 * 60_000, tS = t0 + 30 * 60_000 // (t0: 11:00 AM in the plant, the 016 section)
+const GA = uuid(), GB = uuid(), GU = uuid(), RA = uuid(), RB = uuid(), RU = uuid(), SA = uuid(), SB = uuid()
+await as(db, null, async (tx) => { await upsert(tx, 'act_lines', line(GA, 'Packing', 'Línea 72')); await upsert(tx, 'act_lines', line(GB, 'RTE', 'Línea 72')); await upsert(tx, 'act_lines', line(GU, 'Packing', 'Línea 73')) })
+await as(db, jose, (tx) => upsert(tx, 'act_runs', run(RA, 'Packing', GA, t1, { extra: null })))
+await as(db, ana, (tx) => upsert(tx, 'act_runs', run(RA, 'Packing', GA, t1, { extra: null, deleted: true })))
+await as(db, ana, (tx) => upsert(tx, 'act_stops', stop(SA, 'Packing', GA, tS)))
+const sa = await stopNow(SA)
+eq('la corrida que el servidor dejó sigue corriendo para el 016: un Set up de antes en su línea termina donde ella empezó', [await delOf(RA), sa.ended_at?.toISOString(), sa.updated_by], [false, iso(t1), 'servidor'])
+await as(db, null, (tx) => upsert(tx, 'act_runs', run(RB, 'RTE', GB, t1, { extra: null })))
+await as(db, dora, (tx) => upsert(tx, 'act_runs', run(RB, 'RTE', GB, t1, { extra: null, deleted: true })))
+await as(db, dora, (tx) => upsert(tx, 'act_stops', stop(SB, 'RTE', GB, tS)))
+eq('borrada por quien puede (Dora) ya no corre: un Set up de antes queda abierto', [await delOf(RB), (await stopNow(SB)).ended_at], [true, null])
+await as(db, oscar, (tx) => upsert(tx, 'act_runs', run(RB, 'RTE', GB, t1, { extra: null })))
+const sb = await stopNow(SB)
+eq('puesta de nuevo por alguien sin ese poder (Oscar) corre otra vez, y el 016 cierra ese Set up donde ella empezó', [await delOf(RB), sb.ended_at?.toISOString(), sb.updated_by], [false, iso(t1), 'servidor'])
+await as(db, jose, (tx) => upsert(tx, 'act_runs', run(RU, 'Packing', GU, NOW - H, { extra: null, units: [unit(A), unit(B)] })))
+await as(db, ana, (tx) => upsert(tx, 'act_runs', run(RU, 'Packing', GU, NOW - H, { extra: null, units: [unit(A), unit(C)], deleted: true })))
+eq('una copia vieja de Ana, [A, C] y marcada borrada, sobre [A, B]: la corrida se queda, con las tres unidades en orden', [await delOf(RU), await letters(RU)], [false, ['A', 'B', 'C']])
+
+section('018 (Jose, 2026-10-18): una línea la quitan el manager, la oficina, quien tiene "Corregir", o el operador si la regla lo deja')
+const fede = await person(db, { name: 'Fede', actRole: 'op', actDept: 'Packing' }) // holds "Corregir registros"
+const memo = await person(db, { name: 'Memo', actRole: 'mgr' }) // a manager whose powers were cut down to goals
+await db.query("update public.employees set act_powers = '{fix}' where name = 'Fede'")
+await db.query("update public.employees set act_powers = '{goals}' where name = 'Memo'")
+/** the managers' rule "quitar líneas libres" (Ajustes: act_targets opt:oplines, remove in per_shift) */
+const rule = (remove) => as(db, jose, (tx) => upsert(tx, 'act_targets', { dept: 'opt:oplines', per_hour: 1, per_shift: remove ? 1 : 0, updated_at: iso(NOW), updated_by: 'Jose' }, 'dept'))
+await rule(false)
+let ln = 90
+/** a line of Packing on the server, then `who` takes it off as the app does (the row again, marked): [answer, deleted there, its id] */
+async function takingOff(who) {
+  const l = line(uuid(), 'Packing', 'Línea ' + ++ln)
+  await as(db, null, (tx) => upsert(tx, 'act_lines', l))
+  const answer = await code(as(db, who, (tx) => upsert(tx, 'act_lines', { ...l, deleted: true, updated_at: iso(NOW - H), updated_by: who?.name ?? 'SQL Editor' })))
+  return [answer, await delOf(l.id, 'act_lines'), l.id]
+}
+const keptLine = await takingOff(ana)
+eq('Ana (operadora sin "Corregir", regla apagada) la quita: el servidor no dice que no, y la línea se queda', keptLine.slice(0, 2), ['', false])
+eq('y esa versión queda con su cuenta', await lastLog(keptLine[2]), { table_name: 'act_lines', by_name: 'Ana', uid: ana.id })
+eq('la quitan quien tiene "Corregir" (Fede), un manager sin ese poder (Memo), la oficina y el SQL Editor', (await each([fede, memo, edgar, null], (who) => takingOff(who))).map((x) => x.slice(0, 2)), [['', true], ['', true], ['', true], ['', true]])
+await rule(true)
+eq('con la regla "quitar líneas libres" encendida, Ana la quita', (await takingOff(ana)).slice(0, 2), ['', true])
+await rule(false)
+eq('apagada otra vez, ya no', (await takingOff(ana)).slice(0, 2), ['', false])
+const RN = uuid()
+await as(db, null, (tx) => upsert(tx, 'act_lines', line(RN, 'Packing', 'Línea 120')))
+eq('cambiarle el nombre sigue siendo de todo operador', [await code(as(db, ana, (tx) => upsert(tx, 'act_lines', line(RN, 'Packing', 'Línea 121')))), await nameOf(RN)], ['', 'Línea 121'])
+await as(db, ana, (tx) => upsert(tx, 'act_lines', line(RN, 'Packing', 'Línea 122', { deleted: true })))
+eq('quitarla y renombrarla a la vez: el nombre se toma, la línea se queda', [await nameOf(RN), await delOf(RN, 'act_lines')], ['Línea 122', false])
+const PB = uuid(), PB2 = uuid()
+await as(db, null, (tx) => upsert(tx, 'act_lines', line(PB, 'Packing', 'Línea 130')))
+await as(db, edgar, (tx) => upsert(tx, 'act_lines', line(PB, 'Packing', 'Línea 130', { deleted: true })))
+await as(db, jose, (tx) => upsert(tx, 'act_lines', line(PB2, 'Packing', 'Línea 130'))) // meanwhile a new line with its name
+eq('ponerla de nuevo (Ana, sin poder) se toma, y el 017 le pone "(2)": su nombre ya lo tiene otra', [await code(as(db, ana, (tx) => upsert(tx, 'act_lines', line(PB, 'Packing', 'Línea 130')))), await delOf(PB, 'act_lines'), await nameOf(PB), await nameOf(PB2)], ['', false, 'Línea 130 (2)', 'Línea 130'])
+const keptName = await nameOf(keptLine[2]), twin = uuid()
+await as(db, jose, (tx) => upsert(tx, 'act_lines', line(twin, 'Packing', keptName)))
+eq('la línea que el servidor dejó sigue contando para el 017: otra nueva con su nombre se guarda con "(2)"', await nameOf(twin), keptName + ' (2)')
+eq('y correr el 017 otra vez con esta guarda puesta: sin error, cada una con su nombre', [await code(runFile(db, '017_line_names.sql')), await nameOf(keptLine[2]), await nameOf(twin)], ['', keptName, keptName + ' (2)'])
+
+section('018 corrido dos veces más: cada guarda está una sola vez y hace lo mismo')
+const again018 = [await code(runFile(db, '018_security.sql')), await code(runFile(db, '018_security.sql'))]
+eq('sin error, una vez cada una', [again018, (await db.query("select tgname from pg_trigger where tgname in ('act_runs_keep', 'act_lines_keep') order by 1")).rows.map((r) => r.tgname)], [['', ''], ['act_lines_keep', 'act_runs_keep']])
+eq('y siguen: Ana no borra una corrida ni quita una línea; Dora borra, la oficina quita', [await deleting(ana, 'Packing', DL), (await takingOff(ana)).slice(0, 2), await deleting(dora, 'RTE', DR), (await takingOff(edgar)).slice(0, 2)], [['', false], ['', false], ['', true], ['', true]])
+
+section('018: el archivo toma las tablas en el orden de una escritura de tablet (act_runs, act_stops, act_lines antes que act_runs_log)')
+// Pasted whole, the file is one transaction: each table it locks stays locked to its end. A tablet's write takes its
+// row's table, then act_runs_log (the history triggers). A trigger made on act_runs after act_runs_log is locked would
+// wait for a tablet that waits for the file, and Postgres would cancel one of the two: why 9 and 10 sit before 3
+const text018 = readFileSync(resolve(ACT_DIR, '018_security.sql'), 'utf8').replace(/--[^\n]*/g, '')
+const firstLog = text018.search(/\btable\s+public\.act_runs_log\b/i)
+const before018 = (what) => text018.indexOf(what) >= 0 && text018.indexOf(what) < firstLog
+const floorLocks = [...text018.matchAll(/\bon\s+public\.act_(runs|stops|lines)\b/gi)].map((x) => x.index)
+eq('todo lo que toma act_runs, act_stops o act_lines (las guardas 9 y 10 también) va antes que act_runs_log', [firstLog > 0, floorLocks.length >= 6, floorLocks.filter((i) => i > firstLog).length, before018('create trigger act_runs_keep '), before018('create trigger act_lines_keep ')], [true, true, 0, true, true])
 
 section('Correr otra vez un archivo viejo, solo, no afloja ni cambia ninguna regla')
 // each file says "safe to run again" and Jose pastes them by hand: a rule a later file tightened must stay tight

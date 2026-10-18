@@ -928,24 +928,43 @@ mem.use((m) => {
 // =====================================================================================================================
 section('Empleados: no se dibuja lo que el servidor rechaza')
 calc.use((m) => {
-  const owner = { id: 'o', user_id: 'uo', username: null } // the owner signs in with an e-mail, not a user name
-  const boss = { id: 'b', user_id: 'ub', username: 'jefe.turno' } // another manager
-  const oper = { id: 'p', user_id: 'up', username: 'maria.rte' }
+  const owner = { id: 'o', user_id: 'uo', username: null, role: 'admin', act_role: 'mgr' } // the owner signs in with an e-mail, not a user name
+  const boss = { id: 'b', user_id: 'ub', username: 'jefe.turno', act_role: 'mgr' } // another manager
+  const office = { id: 'f', user_id: 'uf', username: 'olga.ofi', act_role: 'office' }
+  const oper = { id: 'p', user_id: 'up', username: 'maria.rte', act_role: 'op' }
   const noAccount = { id: 'n', user_id: null, username: null }
-  // answers in this order: change the role, change the PIN, turn on / off
-  const can = (row, me, admin = false) => { const r = m.rowRights(row, me, admin); return [r.role, r.pin, r.active].map((x) => (x ? 'sí' : 'no')).join(' ') + (r.locked ? ' protegida' : '') + (r.mine ? ' mía' : '') }
-  eq('otro manager no puede hacer nada con la cuenta del dueño', can(owner, 'b'), 'no no no protegida')
-  eq('el dueño en su propia fila: puede cambiar su rol, no desactivarse', can(owner, 'o', true), 'sí no no mía')
-  eq('un manager en su propia fila: su PIN sí; su rol y desactivarse, no', can(boss, 'b'), 'no sí no mía')
-  eq('con la fila de otro manager o de un operador: todo', [can(boss, 'x'), can(oper, 'b'), can(boss, 'o', true)], ['sí sí sí', 'sí sí sí', 'sí sí sí'])
-  eq('una persona sin cuenta: rol y activar; no hay PIN que cambiar', can(noAccount, 'b'), 'sí no sí')
-  eq('si no se sabe quién mira, la cuenta del dueño sigue protegida', can(owner, ''), 'no no no protegida')
+  // who is looking: their row, whether they are the owner (a Freezer RTE admin), and the powers they hold
+  const looker = (id, role, admin = false, powers = null) => ({ id, admin, powers: m.powersOf({ role, admin, powers: m.cleanPowers(powers) }) })
+  const MGR = looker('b', 'mgr'), OTHER_MGR = looker('x', 'mgr'), OWNER = looker('o', 'mgr', true), OFFICE = looker('f', 'office'), PEDRO = looker('pp', 'op', false, ['people', 'fix'])
+  // answers in this order: change the role, change the PIN, turn on / off, change the name, powers
+  const can = (row, me) => { const r = m.rowRights(row, me); return [r.role, r.pin, r.active, r.edit, r.powers].map((x) => (x ? 'sí' : 'no')).join(' ') + (r.locked ? ' protegida' : '') + (r.mine ? ' mía' : '') }
+  eq('otro manager no puede hacer nada con la cuenta del dueño', can(owner, MGR), 'no no no no no protegida')
+  eq('el dueño en su propia fila: su rol y su nombre; desactivarse, no', can(owner, OWNER), 'sí no no sí no mía')
+  eq('un manager en su propia fila: su PIN y su nombre sí; su rol, sus poderes y desactivarse, no', can(boss, MGR), 'no sí no sí no mía')
+  // until 2026-10-18 a manager could do everything with another manager's row; Jose decided that day that manager and
+  // office accounts are his alone: to anybody else they are as protected as his own
+  eq('con la fila de otro manager o de la Oficina: nada (Jose, 2026-10-18)', [can(boss, OTHER_MGR), can(office, MGR), can(boss, OFFICE), can(office, PEDRO)], ['no no no no no protegida', 'no no no no no protegida', 'no no no no no protegida', 'no no no no no protegida'])
+  eq('la Oficina en su propia fila, como un manager', can(office, OFFICE), 'no sí no sí no mía')
+  eq('con la de un operador: todo', [can(oper, MGR), can(oper, OFFICE), can(oper, PEDRO)], ['sí sí sí sí sí', 'sí sí sí sí sí', 'sí sí sí sí sí'])
+  eq('el dueño, con la de un manager y la de la Oficina: todo', [can(boss, OWNER), can(office, OWNER)], ['sí sí sí sí sí', 'sí sí sí sí sí'])
+  eq('una persona sin cuenta: rol, activar y nombre; no hay PIN que cambiar ni poderes sin rol', can(noAccount, MGR), 'sí no sí sí no')
+  eq('si no se sabe quién mira, la cuenta del dueño sigue protegida', can(owner, looker('', 'mgr')), 'no no no no no protegida')
   // another Freezer RTE admin (signs in with a user name): the owner's alone, as the act-users function says since
   // 2026-10-18 (audit E1: a manager changed that admin's PIN and signed in as them)
   const fzAdmin = { id: 'fa', user_id: 'ufa', username: 'admin.freezer', role: 'admin' }
-  eq('un manager no puede tocar la cuenta de un admin de Freezer RTE', can(fzAdmin, 'b'), 'no no no protegida')
-  eq('el dueño sí, y ese admin en su propia fila lo de siempre', [can(fzAdmin, 'o', true), can(fzAdmin, 'fa', true)], ['sí sí sí', 'sí sí no mía'])
-  eq('una cuenta de Freezer que no es admin sigue como antes', can({ ...fzAdmin, role: 'worker' }, 'b'), 'sí sí sí')
+  eq('un manager no puede tocar la cuenta de un admin de Freezer RTE', can(fzAdmin, MGR), 'no no no no no protegida')
+  eq('el dueño sí (sus poderes ya son todos), y ese admin en su propia fila lo de siempre', [can(fzAdmin, OWNER), can(fzAdmin, looker('fa', null, true))], ['sí sí sí sí no', 'sí sí no sí no mía'])
+  // a Freezer RTE crew account: its Actividad role, powers and shift, yes; its PIN, name and on/off (its Freezer sign-in),
+  // the owner (the lead, 2026-10-18). Its powers and shift are Actividad's alone: a review of that day found the first
+  // version kept them from everybody but the owner, so a manager made a crew worker an operator with no way to set a shift
+  const crew = { ...fzAdmin, id: 'w', role: 'worker', act_role: 'op' }
+  eq('un trabajador de Freezer RTE: un manager le da o le cambia el rol, los poderes y el turno; el dueño todo', [can(crew, MGR), can(crew, PEDRO), can(crew, OWNER), can({ ...crew, act_role: null }, MGR), can({ ...crew, act_role: 'viewer' }, MGR)], ['sí no no no sí', 'sí no no no sí', 'sí sí sí sí sí', 'sí no no no no', 'sí no no no no'])
+  eq('uno que el dueño hizo manager: protegido para los demás', can({ ...crew, act_role: 'mgr' }, MGR), 'no no no no no protegida')
+  // a new PIN hands the account over: nobody but the owner re-PINs one that holds a power they do not hold
+  const lead = { ...oper, id: 'l', act_powers: ['othershift'] }
+  eq('el PIN de un operador con un poder que quien mira no tiene, no; lo demás sí', [can(lead, MGR), can(lead, OFFICE), can(lead, OWNER), can({ ...oper, act_powers: ['del'] }, PEDRO)], ['sí no sí sí sí', 'sí sí sí sí sí', 'sí sí sí sí sí', 'sí no sí sí sí'])
+  eq('los roles que se dan: el dueño todos, los demás operador y "Solo ver"', [m.rowRights(oper, OWNER).roles, m.rowRights(oper, MGR).roles, m.rolesGiven(false), m.rolesGiven(true)], [['op', 'mgr', 'office', 'viewer'], ['op', 'viewer'], ['op', 'viewer'], ['op', 'mgr', 'office', 'viewer']])
+  eq('y los poderes que se pueden marcar, los de quien mira', [m.rowRights(oper, MGR).grant.includes('othershift'), m.rowRights(oper, OFFICE).grant.includes('othershift'), m.rowRights(oper, PEDRO).grant, m.rowRights(oper, OWNER).grant.length], [false, true, ['fix', 'people'], 10])
 })
 
 // =====================================================================================================================
@@ -3152,6 +3171,134 @@ section('Un registro de un cuarto que esta versión no conoce (QC) no deja en bl
     let crashed = ''
     try { m.reportOf(s, DAY, T0) } catch (e) { crashed = String(e) }
     eq('y el reporte sale', crashed, '')
+  })
+}
+
+// =====================================================================================================================
+//  "¿Seguro?" (Jose, 2026-10-18): a quantity typed that is more than twice the usual for that product and room
+// =====================================================================================================================
+section('¿Seguro?: más del doble de lo usual se pregunta antes de guardar; sin lo usual no se pregunta (Jose, 2026-10-18)')
+{
+  // A 2400 typed for 240 counts ten carts. The usual is only one the app already has: the run's own quantity per unit,
+  // the products table's (pouches per cart, cases per pallet), or the last run of the code counted the same way. A room
+  // with none of these (Kitchen, Spiral, MFO, Packing's bins) is never asked: no figure is made up for it.
+  const sq = await device('sure', { user: 'Luis', usual: true })
+  sq.use((m) => {
+    const st = () => m.store.get(), run = (id) => st().runs.find((r) => r.id === id)
+    const lineOf = (dept, name) => { m.addLine(dept, name); return st().lines.find((l) => l.dept === dept && l.name === name) }
+    const started = (line, ...args) => { m.startRun(line, ...args); return m.openRun(st(), line.id) }
+    clock = oct(10, 6, 0)
+    // the office's table: A100 24 crates × 10 pouches, 36 cases a pallet; B200 24 × 6, 40 a pallet
+    m.applyRemote('act_products', productRow('A100', 'Albóndigas', 8, 18, 24, 10, 36))
+    m.applyRemote('act_products', productRow('B200', 'Pimientos', 8, 6, 24, 6, 40))
+    eq('la regla: más del doble pregunta; el doble justo, menos o nada, no; sin lo usual (o con 0), nunca', [m.tooMuch(481, 240), m.tooMuch(480, 240), m.tooMuch(240, 240), m.tooMuch(0, 240), m.tooMuch(72.5, 36), m.tooMuch(72, 36), m.tooMuch(2400, null), m.tooMuch(2400, undefined), m.tooMuch(2400, 0), m.tooMuch(NaN, 240)], [true, false, false, false, true, false, false, false, false, false])
+    // each room's runs, started as the line starts them
+    const rte = started(lineOf('RTE', 'Línea S1'), 'A100', '6283', DAY, 240)
+    const pal = started(lineOf('Packing', 'Línea S1'), 'A100', '6283', DAY, 36)
+    const bins = started(lineOf('Packing', 'Línea S2'), 'B200', '6283', DAY, null, 'platos')
+    const mfo = started(lineOf('MFO', 'Línea S1'), 'A100', '6283', DAY, null, 'platos')
+    const mfoLb = started(lineOf('MFO', 'Línea S2'), 'C300', '6283', DAY, null, 'lb')
+    const spiLb = started(lineOf('Spiral', 'Línea S1'), 'A100', '6283', DAY, null, '', 'lb')
+    const spiMix = started(lineOf('Spiral', 'Línea S2'), 'B200', '6283', DAY, null)
+    const kit = started(lineOf('Kitchen', 'Braiser S1'), 'A100', '6283', DAY, null)
+    eq('lo usual de un carro, de un pallet y de un bin: el de la corrida; los cuartos sin cantidad por unidad no tienen', [rte, pal, bins, mfo, mfoLb, spiLb, spiMix, kit].map((r) => m.usualOf(st(), r)), [240, 36, null, null, null, null, null, null])
+    eq('RTE: 2400 pouches en un carro de 240 pregunta; 480 no', [m.tooMuch(2400, m.usualOf(st(), rte)), m.tooMuch(480, m.usualOf(st(), rte))], [true, false])
+    eq('Packing: un pallet de 80 cajas donde lo usual son 36 pregunta; 72 no', [m.tooMuch(80, m.usualOf(st(), pal)), m.tooMuch(72, m.usualOf(st(), pal))], [true, false])
+    eq('MFO (platos y libras), Spiral (libras y mezclas), Kitchen y los bins de Packing: nada se pregunta, ni con 99999', [mfo, mfoLb, spiLb, spiMix, kit, bins].map((r) => m.tooMuch(99999, m.usualOf(st(), r))), [false, false, false, false, false, false])
+    // a code about to start, or added after the fact: the products table, else the last run of the code counted that way
+    eq('al empezar o al agregar un registro: la tabla de productos (RTE 24 × 10 y 24 × 6, Packing 36 y 40 por pallet; el código como sea que se escriba)', [m.usualFor(st(), 'RTE', 'A100'), m.usualFor(st(), 'RTE', 'B200'), m.usualFor(st(), 'Packing', ' a100 '), m.usualFor(st(), 'Packing', 'B200', '')], [240, 144, 36, 40])
+    const lt = lineOf('RTE', 'Línea S3')
+    m.addRunLater({ dept: 'RTE', lineId: lt.id, code: 'B200', lot: '6283', date: DAY, startedAt: oct(10, 4, 0), endedAt: oct(10, 5, 0), units: [{ qty: 300 }], perUnit: 300 })
+    eq('la tabla manda sobre la última corrida del código (como la cantidad que se propone al empezar)', [m.usualFor(st(), 'RTE', 'B200'), m.lastPerUnit(st(), 'RTE', 'B200')], [144, 144])
+    eq('los bins de Packing, MFO, Spiral y Kitchen no tienen lo usual, aunque el código esté en la tabla', [m.usualFor(st(), 'Packing', 'B200', 'platos'), m.usualFor(st(), 'MFO', 'A100', 'platos'), m.usualFor(st(), 'MFO', 'A100', 'lb'), m.usualFor(st(), 'Spiral', 'A100', 'lb'), m.usualFor(st(), 'Spiral', 'A100', ''), m.usualFor(st(), 'Kitchen', 'A100', '')], [null, null, null, null, null, null])
+    eq('un código que no está en la tabla y nunca corrió: no hay lo usual, no se pregunta', [m.usualFor(st(), 'RTE', 'QQ1'), m.tooMuch(5000, m.usualFor(st(), 'RTE', 'QQ1'))], [null, false])
+    const lr = lineOf('RTE', 'Línea S2')
+    const q1 = m.addRunLater({ dept: 'RTE', lineId: lr.id, code: 'QQ1', lot: '6283', date: DAY, startedAt: oct(10, 4, 0), endedAt: oct(10, 5, 0), units: [{ qty: 180 }], perUnit: 180 })
+    eq('sin tabla: lo que tuvo la última corrida del código (lo que la caja propone al empezar)', [m.usualFor(st(), 'RTE', 'qq1'), m.lastPerUnit(st(), 'RTE', 'QQ1')], [180, 180])
+    m.deleteRun(q1)
+    eq('una corrida borrada no cuenta como lo usual', m.usualFor(st(), 'RTE', 'QQ1'), null)
+    const lp = lineOf('Packing', 'Línea S3')
+    const qb = m.addRunLater({ dept: 'Packing', lineId: lp.id, code: 'QQ2', lot: '6283', date: DAY, startedAt: oct(10, 4, 0), endedAt: oct(10, 5, 0), units: [{ qty: 500 }], perUnit: 500, bin: 'platos' })
+    eq('unos bins de platos no son lo usual de los pallets del código, pero sí de sus propios bins', [m.usualFor(st(), 'Packing', 'QQ2', ''), m.usualOf(st(), run(qb))], [null, 500])
+    const qr = m.addRunLater({ dept: 'RTE', lineId: lr.id, code: 'A100', lot: '6283', date: DAY, startedAt: oct(10, 2, 0), endedAt: oct(10, 3, 0), units: [{ qty: null }], perUnit: null })
+    eq('un registro agregado sin cantidad por carro: lo de la tabla', m.usualOf(st(), run(qr)), 240)
+
+    // one question at a time: the box it asks about carries the number typed, never the usual
+    const boxes = [{ key: 'per', n: 240, usual: 240 }, { key: 'u1', n: 2400, usual: 240 }, { key: 'u2', n: 900, usual: 240 }, { key: 'u3', n: 1e6, usual: null }]
+    const first = m.askFirst(boxes, {})
+    eq('pregunta por el primero de más del doble, con el número escrito y lo usual tal cual', [first?.key, first?.n, first?.usual], ['u1', 2400, 240])
+    eq('"Corregir" no confirma nada: al guardar otra vez con el mismo número, vuelve a preguntar', m.askFirst(boxes, {})?.key, 'u1')
+    eq('"Sí" a uno pasa al siguiente; con los dos dichos, se guarda (lo que no tiene lo usual nunca pregunta)', [m.askFirst(boxes, { u1: 2400 })?.key, m.askFirst(boxes, { u1: 2400, u2: 900 })], ['u2', null])
+    eq('un número cambiado después del "Sí" se pregunta otra vez', m.askFirst(boxes.map((b) => (b.key === 'u1' ? { ...b, n: 2500 } : b)), { u1: 2400, u2: 900 })?.key, 'u1')
+
+    // Corregir: only what was changed in the form is asked about, held against the quantity per unit in the form
+    clock = oct(10, 7, 0); m.unitDone(rte.id, 240)
+    clock = oct(10, 7, 20); m.unitDone(rte.id, 240)
+    clock = oct(10, 7, 40); m.unitDone(rte.id, 120)
+    const opened = m.draftOf(run(rte.id)), at = opened.units.map((u) => u.at)
+    const form = (patch) => ({ ...opened, ...patch, units: opened.units.map((u, i) => ({ ...u, ...(patch.units?.[i] ?? {}) })) })
+    const asked = (d) => m.draftChecks(st(), run(rte.id), opened, d).map((b) => [b.key, b.n, b.usual, b.index])
+    eq('nada cambiado: nada que preguntar', asked(form({})), [])
+    eq('un carro cambiado a 2400: se mira ese, con lo usual de la corrida; los otros no', asked(form({ units: [{ qty: '2400' }] })), [['u' + at[0], 2400, 240, 0]])
+    eq('y es el que se pregunta', m.askFirst(m.draftChecks(st(), run(rte.id), opened, form({ units: [{ qty: '2400' }] })), {})?.n, 2400)
+    eq('los pouches por carro cambiados: se miran contra los de la corrida, y los carros contra los nuevos', asked(form({ per: '600', units: [{}, {}, { qty: '1000' }] })), [['per', 600, 240, -1], ['u' + at[2], 1000, 600, 2]])
+    eq('un carro dejado en blanco no tiene número: no se pregunta', m.askFirst(m.draftChecks(st(), run(rte.id), opened, form({ units: [{ qty: '' }] })), {}), null)
+    const later = { at: oct(10, 7, 50), qty: '9999', ref: '', by: 'Luis' }
+    eq('un carro agregado mientras el formulario estaba abierto (ya se preguntó al agregarlo) no se vuelve a mirar', asked({ ...opened, units: [...opened.units, later] }), [])
+    // what is saved after "Sí" is what was typed: the usual is never put in its place
+    const typed = form({ units: [{ qty: '2400' }] })
+    eq('después del "Sí" se guarda el número escrito, no lo usual', [m.applyDraft(rte.id, opened, typed), run(rte.id).units.map((u) => u.qty)], ['', [2400, 240, 120]])
+    // a pallet whose lots were changed: its number is the sum of its lots
+    clock = oct(10, 8, 0); m.palletDone(pal.id, [{ lot: '6283', qty: 20, tag: '1' }, { lot: '6284', qty: 16, tag: '2' }], '')
+    const po = m.draftOf(run(pal.id)), pat = po.units[0].at
+    const lots = [{ lot: '6283', qty: 50 }, { lot: '6284', qty: 40 }]
+    eq('un pallet con sus lotes cambiados: se mira la suma (90 cajas, lo usual 36), de dos lotes', m.draftChecks(st(), run(pal.id), po, { ...po, units: [{ ...po.units[0], qty: '90', lots }] }).map((b) => [b.key, b.n, b.usual, b.lots]), [['u' + pat, 90, 36, 2]])
+  })
+  // The screens: every box that saves a counted quantity goes through the question, and the question itself only
+  // shows the two numbers, with "Sí" green and "Corregir" grey; "Corregir" just closes it (the box keeps its number)
+  const { readFileSync } = await import('node:fs')
+  const src = (f) => readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../src', f), 'utf8')
+  const app = src('App.tsx'), editors = src('editors.tsx')
+  const body = (text, name) => { const i = text.search(new RegExp('function ' + name + '\\b')); const j = text.slice(i + 1).search(/\n(?:export )?function /); return i < 0 ? '' : text.slice(i, j < 0 ? undefined : i + 1 + j) }
+  const uses = (text, tag) => text.split('\n').filter((l) => l.includes('<' + tag + ' '))
+  eq('cada ventana de cantidad dice lo usual (menos la del waste, que no es una unidad)', [...uses(app, 'QtyDialog'), ...uses(app, 'LotsDialog')].map((l) => l.includes('usual=') || /Waste de/.test(l)), [...uses(app, 'QtyDialog'), ...uses(app, 'LotsDialog')].map(() => true))
+  eq('se pregunta antes de guardar en cada ventana: carro, pallet, lote del pallet, empezar, Corregir, agregar unidad, agregar registro', [body(app, 'QtyDialog'), body(app, 'LotsDialog'), body(app, 'PalletDoneDialog'), body(app, 'LotEndDialog'), body(app, 'PartDialog'), body(app, 'LineCard'), body(editors, 'RunEditor'), body(editors, 'AddUnitDialog'), body(editors, 'AddRunDialog')].map((b) => b.includes('useSure()') && b.includes('sure.check(') && b.includes('{sure.ui}')), [true, true, true, true, true, true, true, true, true])
+  const sureUi = body(app, 'SureDialog'), hook = body(app, 'useSure')
+  eq('la pregunta no tiene ninguna caja que llenar: dice el número escrito y lo usual; "Sí, n" verde y "Corregir" gris', [sureUi.includes('<input'), /className="btn primary"[^>]*>\{tr\('Sí, \{0\}'/.test(sureUi), /className="btn"[^>]*>\{tr\('Corregir'\)/.test(sureUi), sureUi.includes('box.n') && sureUi.includes('box.usual')], [false, true, true, true])
+  eq('"Corregir" solo cierra la pregunta: no toca la caja, y nada queda confirmado', [/onBack=\{\(\) => setAsking\(null\)\}/.test(hook), (hook.match(/sure\.current\[/g) ?? []).length], [true, 1])
+  eq('un "Sí" vale para ese guardar: el "Empezar" de una línea vuelve a preguntar con el código siguiente, y una pregunta que quedó abierta cuando la línea recibió un código se quita', [/sure\.current = \{\}\s*\n\s*save\(\)/.test(hook), /if \(run && sure\.open\) sure\.cancel\(\)/.test(body(app, 'LineCard'))], [true, true])
+}
+
+section('Un cambio del programa o de una meta que espera en la cola no pisa otro hecho después en el servidor (Jose, 2026-10-18)')
+{
+  // The program and what is set for everybody go whole, the last change standing (by the moment each change was made,
+  // as every screen already picks between two versions). A change waiting here that meets a version of the server made
+  // after it leaves the queue, the screen shows the server's, and the history says what was not sent and why
+  const lww = await device('lww', { user: 'Santiago' })
+  lww.use((m) => {
+    const st = () => m.store.get(), at = (ms) => new Date(ms).toISOString()
+    const goal = (k) => { const g = st().turnGoals.find((x) => x.key === k); return g && [g.perHour, g.total] }
+    const waiting = () => m.outbox.items().filter((i) => i.table === 'act_targets' || i.table === 'act_plan').map((i) => i.table + '|' + i.key)
+    const notes = () => st().changes.filter((c) => c.what.includes('no se subió')).map((c) => [c.by, c.what, c.before, c.after])
+    clock = T0 + 60 * M; m.setShiftGoal('RTE', 1, 10, 80)
+    m.applyRemote('act_targets', { dept: 'RTE@1', per_hour: 9, per_shift: 72, updated_at: at(T0 + 59 * M), updated_by: 'Edgar' })
+    eq('una versión del servidor hecha antes que la de aquí: la de aquí sigue en la cola y en la pantalla', [waiting(), goal('RTE@1'), notes()], [['act_targets|RTE@1'], [10, 80], []])
+    m.applyRemote('act_targets', { dept: 'RTE@1', per_hour: 12, per_shift: 96, updated_at: at(T0 + 61 * M), updated_by: 'Edgar' })
+    eq('una hecha después: la de aquí sale de la cola, se ve la del servidor y el historial dice lo que no se subió', [waiting(), goal('RTE@1'), notes()], [[], [12, 96], [['Santiago', 'Meta RTE · Turno 1 · no se subió: Edgar lo cambió después', '10 por hora · 80 del turno', '12 por hora · 96 del turno']]])
+    clock = T0 + 70 * M; m.setPlan(DAY, 'Packing', '0889', 40)
+    m.applyRemote('act_plan', { date: DAY, dept: 'Packing', code: '889', qty: 55, updated_at: at(T0 + 71 * M), updated_by: 'Edgar' })
+    eq('el programa de un cuarto, igual', [waiting(), m.planOf(st(), DAY, 'Packing').map((p) => p.qty), notes().at(-1)], [[], [55], ['Santiago', 'Programa ' + DAY + ' · Packing · 889 · no se subió: Edgar lo cambió después', '40', '55']])
+    clock = T0 + 80 * M; m.setShiftWeek('2026-11-02', '3333311')
+    m.applyRemote('act_targets', { dept: 'shiftweek:2026-11-02', per_hour: 3333333, per_shift: null, updated_at: at(T0 + 81 * M), updated_by: 'Edgar' })
+    eq('el calendario, igual, dicho como lo dice el historial', [waiting(), m.weekOf(st(), '2026-11-02'), notes().at(-1)], [[], '3333333', ['Santiago', 'Turnos de la semana desde el 2026-11-02 · no se subió: Edgar lo cambió después', 'dom 1 y 2, lun 1 y 2, mar 1 y 2, mié 1 y 2, jue 1 y 2, vie solo 1, sáb solo 1', 'Turnos 1 y 2 todos los días']])
+    m.addLine('RTE'); const line = st().lines.at(-1)
+    clock = T0 + 90 * M; m.setLineShiftGoal(line, 2, 5, null)
+    m.applyRemote('act_targets', { dept: 'line:' + line.id + '@2', per_hour: 6, per_shift: null, updated_at: at(T0 + 91 * M), updated_by: 'Edgar' })
+    eq('la meta de una línea, con el nombre de la línea', notes().at(-1), ['Santiago', 'Meta ' + line.name + ' (RTE) · Turno 2 · no se subió: Edgar lo cambió después', '5 por hora', '6 por hora'])
+    const said = notes().length
+    clock = T0 + 100 * M; m.setLineRules({ remove: true })
+    m.applyRemote('act_targets', { dept: 'opt:oplines', per_hour: 1, per_shift: 1, updated_at: at(T0 + 101 * M), updated_by: 'Edgar' })
+    eq('el servidor ya tiene lo mismo, hecho después: sale de la cola y no hay nada que decir', [waiting(), st().lineRules.remove, notes().length], [[], true, said])
   })
 }
 
