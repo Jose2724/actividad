@@ -1100,11 +1100,13 @@ const leftText = (s: State, o: Order) => { if (o.cases == null) return ''; const
 /**
  * The orders Packing fills: the office (or a manager) types them, with or without a PO number, and everybody in the
  * room sees the open ones with what has been packed for each. The pallets are given to them one by one, on the line.
+ * Whoever adds the records nobody made (onAdd) adds an open order's pallets from its row, with "+ Pallets" (Jose,
+ * 2026-10-18: "que también ahí se pueda agregar y que salga la opción de agregar PO en los dos lados").
  */
 type OrderState = 'todo' | 'going' | 'done' | 'open'
 /** the orders are listed ten at a time: the list only grows */
 const ORDERS_PAGE = 10
-function OrdersCard({ s, mgr }: { s: State; mgr: boolean }) {
+function OrdersCard({ s, mgr, onAdd }: { s: State; mgr: boolean; onAdd?: (o: Order) => void }) {
   const [editing, setEditing] = useState<string | null>(null) // an order's id, or 'new'
   const [viewing, setViewing] = useState<string | null>(null) // an order whose pallets are being looked at
   const [showClosed, setShowClosed] = useState(false)
@@ -1133,14 +1135,17 @@ function OrdersCard({ s, mgr }: { s: State; mgr: boolean }) {
   const clear = () => { setQ(''); setFCode(''); setOnly(''); setShown(ORDERS_PAGE) }
   /** what is seen, added up: the foot of the table */
   const sums = (list: ReturnType<typeof rowOf>[]) => ({ asked: list.reduce((t, x) => t + (x.o.cases ?? 0), 0), made: list.reduce((t, x) => t + x.made, 0), left: list.reduce((t, x) => t + Math.max(0, x.left ?? 0), 0), pallets: list.reduce((t, x) => t + x.seq.done.length, 0), need: list.reduce((t, x) => t + (x.seq.need ?? 0), 0), unknown: list.some((x) => x.o.cases == null) })
-  const table = (list: ReturnType<typeof rowOf>[]) => (
+  // "+ Pallets" comes first in its row, as the report's buttons do, and stays in sight while the table slides on a
+  // phone; only an open order has one (the table of the completed ones has no such column)
+  const table = (list: ReturnType<typeof rowOf>[], adds = false) => (
     <div className="twrap">
       <table className="otable">
-        <thead><tr><th>PO</th><th>{tr('Código')}</th><th>{tr('Cliente')}</th><th>{tr('Envío')}</th><th className="num">{tr('Pedidas')}</th><th className="num">{tr('Hechas')}</th><th className="num">{tr('Faltan')}</th><th>{tr('Pallets')}</th><th>{tr('Destino')}</th>{mgr && <th></th>}</tr></thead>
+        <thead><tr>{adds && <th className="oact"></th>}<th>PO</th><th>{tr('Código')}</th><th>{tr('Cliente')}</th><th>{tr('Envío')}</th><th className="num">{tr('Pedidas')}</th><th className="num">{tr('Hechas')}</th><th className="num">{tr('Faltan')}</th><th>{tr('Pallets')}</th><th>{tr('Destino')}</th>{mgr && <th></th>}</tr></thead>
         <tbody>{list.map(({ o, made, left, seq, st }) => {
           const name = productOf(s, o.code)?.name
           return (
             <tr key={o.id} className={'o-' + st}>
+              {adds && <td className="oact">{onAdd && !o.closed && <button type="button" className="btn soft xs" title={tr('Agregar pallets al pedido {0}', orderLabel(o))} aria-label={tr('Agregar pallets al pedido {0}', orderLabel(o))} onClick={() => onAdd(o)}>{tr('+ Pallets')}</button>}</td>}
               <td><button type="button" className="drill" title={tr('Ver sus pallets')} onClick={() => setViewing(o.id)}>{o.po || <i>{tr('sin PO')}</i>}</button></td>
               <td><b className="code">{o.code}</b>{name && <small className="pname">{name}</small>}</td>
               <td>{o.customer || '—'}</td><td>{o.shipBy ? shipText(o.shipBy) : '—'}</td>
@@ -1154,6 +1159,7 @@ function OrdersCard({ s, mgr }: { s: State; mgr: boolean }) {
         })}</tbody>
         {list.length > 1 && (() => { const t = sums(list); return (
           <tfoot><tr>
+            {adds && <td className="oact"></td>}
             <td colSpan={4}>{trx('Total de {0} pedidos', list.length)}{active.length > 0 && <small className="pname">{tr('de lo que se ve')}</small>}</td>
             <td className="num">{fmtN(t.asked)}{t.unknown && <small title={tr('Sin cantidad')}> +?</small>}</td><td className="num"><b>{fmtN(t.made)}</b></td>
             <td className="num">{t.left > 0 ? <span className="ost st-going">{trx('faltan {0}', fmtN(t.left))}</span> : <span className="ost st-done">{tr('✓ completo')}</span>}</td>
@@ -1192,7 +1198,7 @@ function OrdersCard({ s, mgr }: { s: State; mgr: boolean }) {
           )}
         </>
       )}
-      {open.length ? (list.length ? table(list.slice(0, shown)) : <p className="hint">{tr('Ningún pedido abierto coincide con esos filtros.')}{closedHits > 0 && <> {trx('{0} de los marcados completos sí.', closedHits)} <button type="button" className="lnk sm" onClick={() => setShowClosed(true)}>{tr('Verlos')}</button></>}</p>) : <p className="hint">{mgr ? tr('No hay pedidos abiertos. Los que se agreguen aquí los ve Packing al registrar cada pallet de ese código.') : tr('No hay pedidos abiertos.')}</p>}
+      {open.length ? (list.length ? table(list.slice(0, shown), !!onAdd) : <p className="hint">{tr('Ningún pedido abierto coincide con esos filtros.')}{closedHits > 0 && <> {trx('{0} de los marcados completos sí.', closedHits)} <button type="button" className="lnk sm" onClick={() => setShowClosed(true)}>{tr('Verlos')}</button></>}</p>) : <p className="hint">{mgr ? tr('No hay pedidos abiertos. Los que se agreguen aquí los ve Packing al registrar cada pallet de ese código.') : tr('No hay pedidos abiertos.')}</p>}
       {list.length > ORDERS_PAGE && (
         <div className="morebar">
           <span>{trx('Se ven {0} de {1}', Math.min(shown, list.length), list.length)}</span>
@@ -1557,7 +1563,9 @@ function DeptPanel({ s, dept, now, day }: { s: State; dept: Dept; now: number; m
   const [adding, setAdding] = useState(false)
   const [leaving, setLeaving] = useState(false)
   const [editRun, setEditRun] = useState<string | null>(null)
-  const [addingRun, setAddingRun] = useState(false) // a code that ran and nobody recorded, put on its line after the fact
+  // a code that ran and nobody recorded, put on its line after the fact; from Pedidos, also for the order whose
+  // "+ Pallets" was tapped (its id: the window then opens on it)
+  const [addingRun, setAddingRun] = useState<{ po?: string } | null>(null)
   const [editStop, setEditStop] = useState(false)
   const [dupOpen, setDupOpen] = useState<string[] | null>(null) // lines of this room that share a name, being fixed
   const left = openIn(s, dept) // what is still open in the room: what "Terminar turno" would close
@@ -1642,7 +1650,7 @@ function DeptPanel({ s, dept, now, day }: { s: State; dept: Dept; now: number; m
       {adding && <LineNameDialog s={s} dept={dept} onClose={() => setAdding(false)} />}
       {shown === 'done' && (
         <>
-          {can('fix') && !viewOnly && <div className="dp-tools"><button type="button" className="btn soft" onClick={() => setAddingRun(true)}>{tr('+ Agregar un registro que nadie registró')}</button></div>}
+          {can('fix') && !viewOnly && <div className="dp-tools"><button type="button" className="btn soft" onClick={() => setAddingRun({})}>{tr('+ Agregar un registro que nadie registró')}</button></div>}
           <div className="done">
             <h3>{trx('Terminados en el turno {0} en {1}', turn.shift, dept)}<small> · {doneNow.length}</small></h3>
             {doneNow.length ? doneNow.map(doneRow) : <p className="hint">{tr('Todavía nada terminado en este turno.')}</p>}
@@ -1657,9 +1665,16 @@ function DeptPanel({ s, dept, now, day }: { s: State; dept: Dept; now: number; m
       )}
       {/* what the office sets for the room: the day's program and the orders being filled, each in its own tab */}
       {shown === 'plan' && <PlanCard s={s} dept={dept} date={day.date} mgr={can('products')} />}
-      {shown === 'orders' && hasOrders && <OrdersCard s={s} mgr={can('orders')} />}
+      {/* the pallets nobody recorded are added from the orders too, for the same people as from Terminados (Jose,
+          2026-10-18: "también de agregar registro de pallet desde packing tab pedidos"); the order can be chosen in both */}
+      {shown === 'orders' && hasOrders && (
+        <>
+          {can('fix') && !viewOnly && <div className="dp-tools"><button type="button" className="btn soft" onClick={() => setAddingRun({})}>{tr('+ Agregar un registro que nadie registró')}</button></div>}
+          <OrdersCard s={s} mgr={can('orders')} onAdd={can('fix') && !viewOnly ? (o) => setAddingRun({ po: o.id }) : undefined} />
+        </>
+      )}
       {editing && <RunEditor s={s} run={editing} mgr={can('fix')} onClose={() => setEditRun(null)} />}
-      {addingRun && <AddRunDialog s={s} date={day.date} dept={dept} onClose={() => setAddingRun(false)} onAdded={() => setAddingRun(false)} />}
+      {addingRun && <AddRunDialog s={s} date={day.date} dept={dept} order={addingRun.po ? s.orders.find((o) => o.id === addingRun.po) : undefined} onClose={() => setAddingRun(null)} onAdded={() => setAddingRun(null)} />}
       {stopAll && <StopDialog title={tr('Parar todo {0}', dept)} reasons={CFG[dept].quick} onClose={() => setStopAll(false)} onPick={(reason, note) => { startStop(dept, null, reason, note); setStopAll(false) }} />}
     </section>
   )

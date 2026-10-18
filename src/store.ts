@@ -953,6 +953,32 @@ export function laterPalletUnits(s: State, code: string, lot: string, list: Late
   })
   return { units, perUnit: laterPerPallet(s, code, cases) }
 }
+/**
+ * How "Agregar un registro" opens. From an open order of Packing's Pedidos tab, with its "+ Pallets" (Jose, 2026-10-18:
+ * "también de agregar registro de pallet desde packing tab pedidos, que también ahí se pueda agregar y que salga la
+ * opción de agregar PO en los dos lados"): Packing, in pallets, that order's code, and that order in the quick bar's
+ * Pedido, which then also gives it to each pallet "+ Un pallet" adds (one place says where the new pallets go). The
+ * person chose the order by tapping its button, so it is their choice in sight, not a guess: nothing else is set (no
+ * pallets, cases, tags, lot or hours) and all of it can be changed. Without an order, as from Terminados or the
+ * report: the room it was opened in, nothing chosen, and "+ Un pallet" adds a pallet without an order, as always.
+ */
+export type LaterStart = { dept: Dept; kind: string | null; code: string; quickPo: string; oneTakesBar: boolean }
+export function laterStart(dept: Dept | undefined, o?: Order): LaterStart {
+  return o ? { dept: 'Packing', kind: '', code: o.code, quickPo: o.id, oneTakesBar: true } : { dept: dept ?? 'Kitchen', kind: null, code: '', quickPo: '', oneTakesBar: false }
+}
+/** an order is kept on a pallet of that list, or in its quick bar, only while it is one of the code's ('' always fits) */
+export const laterPoFits = (s: State, po: string, code: string) => !po || s.orders.some((o) => o.id === po && normCode(o.code) === normCode(code))
+/**
+ * What goes to the order "Agregar un registro" was opened from, as the window stands: how many pallets of the list
+ * will be saved with it (laterPalletUnits keeps an order only on Packing's pallets of that order's code), and whether
+ * the ones added now go to it too (the quick bar and "+ Un pallet" both give the bar's Pedido). The line under the
+ * title says it. Looking at the bar alone, it said nothing went to the order while pallets on the list carried it, and
+ * someone could add them again (review, 2026-10-18).
+ */
+export function laterToOrder(s: State, po: string, x: { byPallet: boolean; code: string; quickPo: string; list: LaterPalletRow[] }) {
+  const fits = x.byPallet && !!po && laterPoFits(s, po, x.code)
+  return { listed: fits ? x.list.filter((p) => p.po === po).length : 0, next: fits && x.quickPo === po }
+}
 export function moveRun(id: string, lineId: string): boolean {
   const r = run(id), to = state.lines.find((l) => l.id === lineId)
   if (!r || !to || to.dept !== r.dept || lineId === r.lineId) return false

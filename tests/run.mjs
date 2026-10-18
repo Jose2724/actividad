@@ -2620,6 +2620,56 @@ section('Un registro de Packing agregado después: sus pallets uno por uno, con 
     eq('el PO los suma y cada uno queda en el historial con su PO', [m.orderMade(st(), po1), st().changes.filter((c) => c.refKey === lr().id && c.what.includes('Se agregó pallet')).map((c) => c.after)], [144 + 36 + 144, ['48 cajas · 6283: 48 (tag 3101) · Cliente Seis · PO 6001', '48 cajas · 6283: 48 (tag 3102) · Cliente Seis · PO 6001', '48 cajas · 6283: 48 (tag 3103) · Cliente Seis · PO 6001']])
   })
 }
+
+section('Pallets que nadie registró, agregados desde un pedido de la pestaña Pedidos: el registro empieza en ese pedido, y nada más')
+{
+  // Jose, 2026-10-18: "también de agregar registro de pallet desde packing tab pedidos, que también ahí se pueda
+  // agregar y que salga la opción de agregar PO en los dos lados". The window opened from an order's "+ Pallets"
+  // starts on that order (the person tapped it); what it adds is kept as from Terminados, and the order counts it
+  const fo = await device('fromorder', { user: 'Noelia', usual: true })
+  fo.use((m) => {
+    const st = () => m.store.get()
+    m.role.set('office')
+    m.addLine('Packing', 'Línea 1')
+    const p1 = st().lines.find((l) => l.dept === 'Packing')
+    clock = oct(10, 5, 0)
+    const po1 = m.saveOrder(null, { customer: 'Cliente Uno', po: '4471', code: '0900', cases: 144, shipBy: '', dest: '' })
+    const po2 = m.saveOrder(null, { customer: '', po: '4472', code: '900', cases: null, shipBy: '', dest: '' })
+    const other = m.saveOrder(null, { customer: 'Cliente Dos', po: '5501', code: 'E500', cases: 100, shipBy: '', dest: '' })
+    const o1 = st().orders.find((o) => o.id === po1)
+    clock = oct(10, 14, 0)
+    // how the window opens: from the order, Packing in pallets with that order's code and the order in the quick bar
+    // (and on each pallet "+ Un pallet" adds); from Terminados or the report, as it always did
+    const before = JSON.stringify(st()), copy = JSON.stringify(o1)
+    const start = m.laterStart('Packing', o1)
+    eq('desde el pedido: Packing, en pallets, el código del pedido y ese pedido; nada más', start, { dept: 'Packing', kind: '', code: '0900', quickPo: po1, oneTakesBar: true })
+    eq('desde el pedido, abierto en cualquier cuarto, es de Packing', m.laterStart('RTE', o1).dept, 'Packing')
+    eq('sin pedido, como siempre: el cuarto donde se abrió (Kitchen si ninguno), nada escogido, "+ Un pallet" sin pedido', [m.laterStart('Packing'), m.laterStart(undefined)], [{ dept: 'Packing', kind: null, code: '', quickPo: '', oneTakesBar: false }, { dept: 'Kitchen', kind: null, code: '', quickPo: '', oneTakesBar: false }])
+    eq('es puro: lo mismo cada vez, sin tocar lo guardado ni el pedido', [m.laterStart('Packing', o1), JSON.stringify(st()) === before, JSON.stringify(o1) === copy], [start, true, true])
+    // an order stays on the bar or a pallet only while it is one of the code's: another code sends it back to "Sin pedido"
+    eq('el pedido sigue mientras el código es el suyo (0900, 900 y " 0900 " son el mismo); con otro código, o uno que no existe, no', [m.laterPoFits(st(), po1, '0900'), m.laterPoFits(st(), po1, ' 900 '), m.laterPoFits(st(), po2, '0900'), m.laterPoFits(st(), po1, 'E500'), m.laterPoFits(st(), other, '0900'), m.laterPoFits(st(), 'nope', '0900'), m.laterPoFits(st(), '', 'E500')], [true, true, true, false, false, false, true])
+    // what was typed: two of 48 with the quick bar (its Pedido as it opened) and one with "+ Un pallet" (it takes the
+    // bar's order), its cases and tag typed; one moved to the other order of the code on its row
+    const rows = [{ qty: '48', tag: '7001', po: start.quickPo }, { qty: '48', tag: '7002', po: start.quickPo }, { qty: '30', tag: '', po: start.quickPo }, { qty: '40', tag: '7004', po: po2 }]
+    eq('la lista se puede guardar', m.checkLaterPallets(rows).ok, true)
+    // the line under the title says what goes to the order, from the list and from the bar (review, 2026-10-18: with
+    // the bar on "Sin pedido" it said nothing went to it while two pallets on the list carried it, and were saved to it)
+    const at = (x) => m.laterToOrder(st(), po1, { byPallet: true, code: '0900', quickPo: po1, list: [], ...x })
+    eq('lo que va al pedido: lista vacía y la barra en él; la barra en "Sin pedido" con 2 suyos en la lista; la barra en el otro pedido; nada suyo y la barra en otro',
+      [at({}), at({ quickPo: '', list: rows.slice(0, 2) }), at({ quickPo: po2, list: rows }), at({ quickPo: po2, list: rows.slice(3) })],
+      [{ listed: 0, next: true }, { listed: 2, next: false }, { listed: 3, next: false }, { listed: 0, next: false }])
+    eq('con Bins, otro código o sin pedido, nada va a él (aunque la lista lo tenga: no se guarda con él)', [at({ byPallet: false, list: rows }), at({ code: 'E500', list: rows }), m.laterToOrder(st(), '', { byPallet: true, code: '0900', quickPo: '', list: rows })], [{ listed: 0, next: false }, { listed: 0, next: false }, { listed: 0, next: false }])
+    eq('lo que dice que va al pedido es lo que se guarda con él', [at({ list: rows }).listed, m.laterPalletUnits(st(), '0900', '', rows).units.filter((u) => u.po === po1).length, at({ code: ' 900 ', list: rows }).listed], [3, 3, 3])
+    const { units, perUnit } = m.laterPalletUnits(st(), start.code, '6300', rows)
+    const id = m.addRunLater({ dept: start.dept, lineId: p1.id, code: start.code, lot: '6300', date: DAY, startedAt: oct(10, 9, 0), endedAt: oct(10, 9, 40), units, perUnit })
+    const r = st().runs.find((x) => x.id === id)
+    eq('se guarda como desde Terminados: cada pallet con su lote, sus cajas, su tag y su pedido', r.units.map((u) => [u.qty, u.ref, u.lots.map((l) => [l.lot, l.qty, l.tag ?? '']), u.po === po1 ? 1 : u.po === po2 ? 2 : u.po ?? '']), [[48, '7001', [['6300', 48, '7001']], 1], [48, '7002', [['6300', 48, '7002']], 1], [30, '', [['6300', 30, '']], 1], [40, '7004', [['6300', 40, '7004']], 2]])
+    // what the Pedidos tab shows of each order (it reads the same store): made, what it lacks, its pallets
+    const o = (x) => st().orders.find((y) => y.id === x)
+    eq('el pedido queda al día en Pedidos: hechas 126, faltan 18, 3 pallets; el otro pedido del código, el suyo; el de otro código, nada', [m.orderMade(st(), po1), o(po1).cases - m.orderMade(st(), po1), m.orderPallets(st(), po1).done.length, m.orderMade(st(), po2), m.orderPallets(st(), po2).done.length, m.orderMade(st(), other)], [126, 18, 3, 40, 1, 0])
+    eq('en el historial, con quién y los pedidos', st().changes.filter((c) => c.refKey === id).map((c) => [c.by, c.after]), [['Noelia', '4 pallets · 166 cajas · 9:00 AM – 9:40 AM · lote 6300 · Cliente Uno · PO 4471: 3 pallets · PO 4472: 1 pallet']])
+  })
+}
 section('Un código y su lote que siguen al día siguiente: Avance dice lo pendiente, o completado')
 {
   // what Jose confirmed on 2026-10-16: Packing had 100 cases of a code on Wednesday's program and made 60; on Thursday

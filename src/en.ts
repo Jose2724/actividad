@@ -1339,4 +1339,12 @@ export const EN: Record<string, string> = {
   'ej. 6': 'e.g. 6',
   'Escribe cuántas {0} se hicieron: sin eso el registro queda en 0.': 'Type how many {0} were made: without it the record stays at 0.',
   'Escribe cuántos {0} se hicieron: sin eso el registro queda en 0.': 'Type how many {0} were made: without it the record stays at 0.',
+  // pallets nobody recorded, added from an order of the Orders tab (2026-10-18)
+  '+ Pallets': '+ Pallets',
+  'Agregar pallets al pedido {0}': 'Add pallets to order {0}',
+  'Para el pedido {0} · código {1}. Los pallets que agregues van a ese pedido; se puede cambiar en la barra y en cada pallet.': 'For order {0} · code {1}. The pallets you add go to that order; it can be changed in the bar and on each pallet.',
+  'Abierto desde el pedido {0} · código {1}. Así como está ahora, lo que agregues no va a ese pedido.': 'Opened from order {0} · code {1}. As it stands now, what you add does not go to that order.',
+  'Para el pedido {0} · código {1}: {2} de la lista y los que agregues van a ese pedido; se puede cambiar en la barra y en cada pallet.': 'For order {0} · code {1}: {2} on the list and the ones you add go to that order; it can be changed in the bar and on each pallet.',
+  'Para el pedido {0} · código {1}: {2} de la lista va a ese pedido. Los que agregues ahora no, porque la barra no tiene ese pedido.': 'For order {0} · code {1}: {2} on the list goes to that order. The ones you add now do not, because the bar does not have that order.',
+  'Para el pedido {0} · código {1}: {2} de la lista van a ese pedido. Los que agregues ahora no, porque la barra no tiene ese pedido.': 'For order {0} · code {1}: {2} on the list go to that order. The ones you add now do not, because the bar does not have that order.',
 }

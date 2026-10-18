@@ -1259,6 +1259,10 @@ table.bycode tr.trow.rp-dtotal td.red{color:var(--warn)}
 .dlg .lp-quick input.num{width:72px;min-height:44px;text-align:right}
 .lp label{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--muted);min-width:0}
 .lp-quick .lp-po{flex:1 1 220px}
+/* the bar's Pedido is as wide as the room it gets, not as its longest order: "Costco Wholesale · PO 4500012345" set the
+   width of the whole window on a phone, which then slid sideways with "✓ Agregar" half out of the screen (review,
+   2026-10-18); the long name is cut inside the select, and the list opens in full when tapped */
+.lp-quick .lp-po select{width:100%}
 .lp select{min-height:44px;font-size:16px;flex:1;min-width:0;max-width:100%}
 .lp-quick .btn{flex:0 0 auto}
 .lp-rows{display:grid;gap:6px}
@@ -1298,3 +1302,16 @@ table.bycode tr.trow.rp-dtotal td.red{color:var(--warn)}
   .dlg>h3{top:-14px;margin:-14px -14px 0;padding:14px 14px 8px}
   .dlg>.dbtns{bottom:-14px;margin:0 -14px -14px;padding:12px 14px 14px}
 }
+/* Pedidos: "+ Pallets" on each open order (2026-10-18), first in its row as the report's buttons, and kept in sight
+   while the table slides sideways on a phone (so it needs a face of its own: the row's colour, or the card's) */
+.orders .twrap .oact{position:sticky;left:0;z-index:1;width:1%;white-space:nowrap;background:var(--surface);box-shadow:1px 0 0 var(--line)}
+.orders .twrap thead th.oact{z-index:3;box-shadow:0 1px 0 var(--line),1px 0 0 var(--line)}
+.orders table.otable tr.o-done td.oact{background:#f1fbf5}
+.orders table.otable tr.o-going td.oact{background:#fffaf0}
+.orders table.otable tfoot td.oact{background:var(--bg)}
+@media print{.orders .oact{display:none}}
+/* "Agregar un registro" opened from an order: which one, in the soft green of its button; grey when, as it stands,
+   what is added would not go to it */
+.dlg .fromorder{margin:0;padding:8px 12px;border-radius:10px;background:var(--soft);border:1px solid #6fb3aa;color:#0b5a54}
+.dlg .fromorder.off{background:var(--bg);border-color:var(--line);color:var(--muted)}
+.dlg .fromorder b{color:var(--ink)}

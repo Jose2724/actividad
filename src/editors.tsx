@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import { addRunLater, addUnit, applyDraft, BIN_WORDS, binOf, binWord, byLineName, cfgFor, checkLaterPallets, DEPTS, fmtN, kindClass, LATER_MAX, laterPalletUnits, MFO_WORDS, tagTwice, type LaterPalletRow, plainDay, planRows, SPIRAL_UNITS, type Dept, byShip, CFG, cfgOf, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, setUnitOrder, splitStop, store, updateRun, updateStop, type Order, type Run, type State, type Stop, lineLabel } from './store'
+import { addRunLater, addUnit, applyDraft, BIN_WORDS, binOf, binWord, byLineName, cfgFor, checkLaterPallets, DEPTS, fmtN, kindClass, LATER_MAX, laterPalletUnits, laterPoFits, laterStart, laterToOrder, MFO_WORDS, tagTwice, type LaterPalletRow, plainDay, planRows, SPIRAL_UNITS, type Dept, byShip, CFG, cfgOf, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, setUnitOrder, splitStop, store, updateRun, updateStop, type Order, type Run, type State, type Stop, lineLabel } from './store'
 import { clockNow } from './clock'
 import { ConfirmDialog, LotsDialog, useCan } from './App'
 import { tr } from './i18n'
@@ -328,13 +328,17 @@ function StopSplitter({ stop, onBack, onClose }: { stop: Stop; onBack: () => voi
  * Packing's pallets are written one by one in a list, each with its cases, its tag and its order (Jose, 2026-10-18:
  * "que aparezca lo de poner PO cuando estamos agregando registro en packing y también que podamos agregar múltiples
  * pallets más rápido"): see LaterPallets.
+ * Opened from an order of Packing's Pedidos tab (its "+ Pallets"), it starts on that order: see laterStart. Without
+ * one it opens as it always did.
  */
-export function AddRunDialog({ s, date, dept: first, onClose, onAdded }: { s: State; date: string; dept?: Dept; onClose: () => void; onAdded: (id: string) => void }) {
-  const [dept, setDept] = useState<Dept>(first ?? 'Kitchen')
+export function AddRunDialog({ s, date, dept: first, order, onClose, onAdded }: { s: State; date: string; dept?: Dept; order?: Order; onClose: () => void; onAdded: (id: string) => void }) {
+  // how it opens, taken once: an order that changes while the window is open does not reset what is being typed
+  const [start] = useState(() => laterStart(first, order))
+  const [dept, setDept] = useState<Dept>(start.dept)
   const lines = s.lines.filter((l) => l.dept === dept && !l.deleted).sort(byLineName)
   const [linePick, setLinePick] = useState('')
   const line = lines.find((l) => l.id === linePick) ?? lines[0]
-  const [code, setCode] = useState('')
+  const [code, setCode] = useState(start.code)
   const [lot, setLot] = useState('')
   const [day, setDay] = useState(date)
   const [from, setFrom] = useState('')
@@ -351,11 +355,11 @@ export function AddRunDialog({ s, date, dept: first, onClose, onAdded }: { s: St
   // tapped and Pallets again, and LaterPallets then starts anew; a count of its own went back to 0 and gave a new
   // pallet the key of one on the list, so typing in one changed the other and ✕ took both off (seen in review)
   const [pallets, setPallets] = useState<LaterPallet[]>([])
-  const [quickPo, setQuickPo] = useState('')
+  const [quickPo, setQuickPo] = useState(start.quickPo)
   const palletKeys = useRef(0)
   // how the code is counted, chosen with the same coloured buttons as on the line: Packing in pallets or in bins of
   // a word, MFO in bins of platos, copas or pounds, Spiral in mezclas, pounds or cases; the words of the form follow
-  const [kindPick, setKindPick] = useState<string | null>(null)
+  const [kindPick, setKindPick] = useState<string | null>(start.kind)
   const [binText, setBinText] = useState('')
   const kinds: { word: string; label: string; hint: string }[] = dept === 'Packing' ? [{ word: '', label: tr('Pallets'), hint: tr('cajas con su tag') }, { word: 'bin', label: tr('Bins'), hint: tr('platos, copas, pouches…') }]
     : dept === 'MFO' ? MFO_WORDS.map((w) => ({ word: w, label: w === 'lb' ? tr('Libras') : w === 'copas' ? tr('Copas') : tr('Platos'), hint: w === 'lb' ? tr('cada bin se pesa') : w === 'copas' ? tr('cada bin dice cuántas') : tr('cada bin dice cuántos') }))
@@ -389,7 +393,7 @@ export function AddRunDialog({ s, date, dept: first, onClose, onAdded }: { s: St
   // "Sin pedido" (never moved to another order on their own)
   const changeCode = (c: string) => {
     setCode(c)
-    const fits = (po: string) => !po || s.orders.some((o) => o.id === po && normCode(o.code) === normCode(c))
+    const fits = (po: string) => laterPoFits(s, po, c)
     setPallets((list) => (list.every((p) => fits(p.po)) ? list : list.map((p) => (fits(p.po) ? p : { ...p, po: '' }))))
     if (!fits(quickPo)) setQuickPo('')
   }
@@ -407,6 +411,18 @@ export function AddRunDialog({ s, date, dept: first, onClose, onAdded }: { s: St
     <div className="veil" onClick={onClose}>
       <div className="dlg wide" onClick={(e) => e.stopPropagation()}>
         <h3>{trx('Agregar un registro · {0}', dept)}</h3>
+        {/* opened from an order: which one, how many pallets of the list go to it, and whether the ones added now go
+            to it too (they take the quick bar's Pedido: with another order or "Sin pedido" there, another code, the
+            bins or another room, they do not), so nobody believes pallets went, or did not go, to it (see laterToOrder:
+            from the bar alone it said nothing went while pallets on the list carried the order, and they could be
+            added twice) */}
+        {order && (() => {
+          const to = laterToOrder(s, order.id, { byPallet, code, quickPo, list: pallets })
+          const name = <b>{orderLabel(order)}</b>, c = <b className="code">{order.code}</b>, k = <b>{to.listed === 1 ? tr('1 pallet') : tr('{0} pallets', to.listed)}</b>
+          if (to.next) return <p className="fromorder">{to.listed ? trx('Para el pedido {0} · código {1}: {2} de la lista y los que agregues van a ese pedido; se puede cambiar en la barra y en cada pallet.', name, c, k) : trx('Para el pedido {0} · código {1}. Los pallets que agregues van a ese pedido; se puede cambiar en la barra y en cada pallet.', name, c)}</p>
+          if (to.listed) return <p className="fromorder">{to.listed === 1 ? trx('Para el pedido {0} · código {1}: {2} de la lista va a ese pedido. Los que agregues ahora no, porque la barra no tiene ese pedido.', name, c, k) : trx('Para el pedido {0} · código {1}: {2} de la lista van a ese pedido. Los que agregues ahora no, porque la barra no tiene ese pedido.', name, c, k)}</p>
+          return <p className="fromorder off">{trx('Abierto desde el pedido {0} · código {1}. Así como está ahora, lo que agregues no va a ese pedido.', name, c)}</p>
+        })()}
         <p>{tr('Para un código que se hizo y nadie registró. Pon lo que sepas; lo demás se deja en blanco. Queda en el historial con tu nombre.')}</p>
         {/* the list of pallets has a little form of its own (its quick bar), so it sits beside this one, not inside
             it: its Enter adds to the list, and the record is saved only with "✓ Agregar" (tied to this form by its id) */}
@@ -444,7 +460,7 @@ export function AddRunDialog({ s, date, dept: first, onClose, onAdded }: { s: St
           </div>
           {program.length > 0 && <div className="chips">{program.map((c) => <button key={c} type="button" className={'chip sm' + (normCode(code) === normCode(c) ? ' on' : '')} onClick={() => changeCode(c)}>{c}</button>)}</div>}
         </form>
-        {byPallet && <LaterPallets orders={orders} list={pallets} setList={setPallets} nextKey={() => ++palletKeys.current} quickPo={quickPo} setQuickPo={setQuickPo} />}
+        {byPallet && <LaterPallets orders={orders} list={pallets} setList={setPallets} nextKey={() => ++palletKeys.current} quickPo={quickPo} setQuickPo={setQuickPo} oneTakesBar={start.oneTakesBar} />}
         {!byPallet && countMissing && <span className="err">{cfg.saved.endsWith('a') ? tr('Escribe cuántas {0} se hicieron: sin eso el registro queda en 0.', plural) : tr('Escribe cuántos {0} se hicieron: sin eso el registro queda en 0.', plural)}</span>}
         {from && !startOk && <span className="err">{tr('Esa hora cae en otro día de trabajo.')}</span>}
         {to && !endOk && <span className="err">{tr('Termina antes de empezar, o en otro día de trabajo.')}</span>}
@@ -468,8 +484,10 @@ type LaterPallet = LaterPalletRow & { key: number }
  * many cases for an order at once (their tags blank, to be written one by one), "+ Un pallet" adds one blank, and ✕
  * takes one off. The list starts empty and holds only what was typed or chosen: the app fills nothing in on its own
  * (Jose's rule: no guessed data). Under it, what it adds up to, in all and order by order.
+ * Opened from an order (oneTakesBar), "+ Un pallet" gives the order the quick bar's Pedido has, which starts on the
+ * one tapped: that order is in sight, chosen by the person, and stays editable on the pallet's row.
  */
-function LaterPallets({ orders, list, setList, nextKey, quickPo, setQuickPo }: { orders: Order[]; list: LaterPallet[]; setList: (l: LaterPallet[]) => void; nextKey: () => number; quickPo: string; setQuickPo: (po: string) => void }) {
+function LaterPallets({ orders, list, setList, nextKey, quickPo, setQuickPo, oneTakesBar }: { orders: Order[]; list: LaterPallet[]; setList: (l: LaterPallet[]) => void; nextKey: () => number; quickPo: string; setQuickPo: (po: string) => void; oneTakesBar: boolean }) {
   const [many, setMany] = useState('')
   const [each, setEach] = useState('')
   const check = checkLaterPallets(list)
@@ -512,7 +530,7 @@ function LaterPallets({ orders, list, setList, nextKey, quickPo, setQuickPo }: {
           })}
         </div>
       ) : <p className="hint">{tr('Todavía no hay pallets en la lista: agrégalos con la barra de arriba, o de uno en uno.')}</p>}
-      <button type="button" className="btn soft sm lp-one" disabled={list.length >= LATER_MAX} onClick={() => setList([...list, blank('', '')])}>{tr('+ Un pallet')}</button>
+      <button type="button" className="btn soft sm lp-one" disabled={list.length >= LATER_MAX} onClick={() => setList([...list, blank('', oneTakesBar ? poOf(quickPo) : '')])}>{tr('+ Un pallet')}</button>
       {list.length > 0 && (
         <div className="lp-total">
           <b>{sum(list)}</b>
