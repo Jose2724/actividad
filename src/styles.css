@@ -623,8 +623,6 @@ table.pallets th.num,table.pallets td.num{text-align:right;font-variant-numeric:
 /* Avance: the lot chosen, and the room that packs each code (RTE pouches it, MFO puts it in bins) */
 .avlotnote{background:var(--soft);border-radius:10px;padding:8px 12px;margin:0;font-size:14px;line-height:1.45}
 .packroom{display:inline-block;margin-left:6px;font-size:10.5px;font-weight:800;letter-spacing:.04em;border-radius:6px;padding:1px 5px;vertical-align:middle}
-.packroom.rte{background:#fff3df;color:#9a5a00}
-.packroom.mfo{background:#fdecef;color:#9f1239}
 .products select.room{min-height:34px;padding:0 6px;border-radius:8px;border:1.5px solid var(--btn-line);background:var(--surface);font-weight:700}
 /* Empleados: a search and filters on top, one row per person (who, role, department, shift, powers, whether active),
    and everything about a person in one window */
@@ -793,8 +791,6 @@ input[type=time]{min-height:48px;padding:0 12px;border-radius:12px;border:1.5px 
 .route{display:inline-flex;align-items:center;gap:2px;background:var(--bg);border-radius:8px;padding:2px;border:1.5px solid transparent}
 .route.guess{border-color:#b9c6d2;border-style:dashed}
 .route button{border:0;background:none;border-radius:6px;padding:2px 7px;font-size:11px;font-weight:800;letter-spacing:.04em;color:var(--muted);min-height:24px;cursor:pointer}
-.route button.on.rte{background:#fff3df;color:#9a5a00}
-.route button.on.mfo{background:#fdecef;color:#9f1239}
 .route small{color:var(--amber);font-weight:800;padding:0 5px 0 3px;font-size:12px}
 .avstat{display:grid;gap:3px;min-width:118px}
 .avstat.none{color:var(--muted);font-weight:700;font-size:17px}
@@ -1215,3 +1211,38 @@ table.bycode tr.trow.rp-dtotal td.red{color:var(--warn)}
   .rp-filters{border:0;padding:0}
   .rp-scope .btn.rp-on{border:0;background:none;box-shadow:none;padding:0;min-height:0}
 }
+/* ---- each room in its colour beyond the report (2026-10-17): the list of rooms, the room's own screen, Avance ---- */
+.demoji{font-style:normal;margin-right:6px;line-height:1}
+/* the list of rooms: a stripe of the room's colour, its emoji; the room chosen in its tint */
+.side .dept{border-left:5px solid var(--d)}
+.side .dept .dtitle{display:inline-flex;align-items:center}
+.side .dept.on{background:var(--d-tint);border-color:var(--d-edge);border-left-color:var(--d);color:var(--d-ink)}
+/* a room's screen: its name on a band of its tint, the parts of the screen as tabs under it */
+.panel>.phead{background:var(--d-tint);border:1.5px solid var(--d-edge);border-left:6px solid var(--d);border-radius:14px;padding:10px 14px}
+.panel>.phead h2.dhead{color:var(--d-ink);display:inline-flex;align-items:center}
+.dp-tabs .rp-tab{min-height:44px}
+.dp-tools{display:flex;flex-wrap:wrap;gap:8px}
+.done h3 small{color:var(--muted);font-weight:600}
+/* a line's card: its room's emoji beside its name, and a little depth so each card reads as one piece */
+.lemoji{font-style:normal;font-size:.9em;margin-right:6px}
+.line{box-shadow:0 1px 3px rgba(16,24,40,.06)}
+.line.idle{border-style:dashed;border-left-style:solid}
+/* Avance: each room's totals and columns in its colour */
+.made.dtile{background:var(--d);color:#fff}
+.made.dtile label{display:inline-flex;align-items:center;color:#fff;opacity:.95}
+.avtable th.dth{border-top:4px solid var(--d);color:var(--d-ink);white-space:nowrap}
+.packroom{background:var(--d-tint);color:var(--d-ink);border:1px solid var(--d-edge)}
+.route button.on.rte,.route button.on.mfo{background:var(--d);color:#fff}
+/* Avance, easier to read (2026-10-17): what is in view said in words, each code's state, the guide behind a button */
+.avhow{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+.avhow .avview{margin:0;flex:1 1 260px;color:var(--muted)}
+.avhow .avview b{color:var(--ink)}
+.avstages .chip small{margin-left:4px;opacity:.75;font-weight:700}
+.avstages .dotst{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;background:var(--muted)}
+.avstages .st-todo .dotst{background:#8a99a8} .avstages .st-going .dotst{background:#d08a12} .avstages .st-done .dotst{background:var(--ok)}
+.avstages .chip.on .dotst{background:#fff}
+.avstage{display:inline-block;margin-top:4px;border-radius:99px;padding:1px 9px;font-size:12px;font-weight:800;width:max-content}
+.avstage.st-todo{background:#eef2f6;color:#5b6b7a}
+.avstage.st-going{background:#fff1d6;color:var(--amber)}
+.avstage.st-done{background:#d9f2e2;color:var(--ok)}
+.avhelp{margin:0;padding-left:20px;display:grid;gap:8px;line-height:1.4}
