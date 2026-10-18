@@ -102,13 +102,20 @@ alter table public.act_stops enable row level security;
 alter table public.act_products enable row level security;
 alter table public.act_schedule enable row level security;
 
--- everyone with an Actividad role reads every room (the office view needs all of them)
-drop policy if exists act_lines_read on public.act_lines;
-create policy act_lines_read on public.act_lines for select to authenticated using (exists (select 1 from public.act_me()));
-drop policy if exists act_runs_read on public.act_runs;
-create policy act_runs_read on public.act_runs for select to authenticated using (exists (select 1 from public.act_me()));
-drop policy if exists act_stops_read on public.act_stops;
-create policy act_stops_read on public.act_stops for select to authenticated using (exists (select 1 from public.act_me()));
+-- everyone with an Actividad role reads every room (the office view needs all of them). 015 later narrowed the
+-- lines, runs and stops to an operator's own room: these three are created only when they are not there yet, so
+-- running this file again never undoes 015 (2026-10-18: before, it opened every room to every operator again)
+do $$ begin
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'act_lines' and policyname = 'act_lines_read') then
+    create policy act_lines_read on public.act_lines for select to authenticated using (exists (select 1 from public.act_me()));
+  end if;
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'act_runs' and policyname = 'act_runs_read') then
+    create policy act_runs_read on public.act_runs for select to authenticated using (exists (select 1 from public.act_me()));
+  end if;
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'act_stops' and policyname = 'act_stops_read') then
+    create policy act_stops_read on public.act_stops for select to authenticated using (exists (select 1 from public.act_me()));
+  end if;
+end $$;
 drop policy if exists act_products_read on public.act_products;
 create policy act_products_read on public.act_products for select to authenticated using (exists (select 1 from public.act_me()));
 drop policy if exists act_schedule_read on public.act_schedule;
@@ -146,5 +153,8 @@ do $$ begin alter publication supabase_realtime add table public.act_stops; exce
 do $$ begin alter publication supabase_realtime add table public.act_products; exception when duplicate_object then null; end $$;
 do $$ begin alter publication supabase_realtime add table public.act_schedule; exception when duplicate_object then null; end $$;
 
--- the Freezer RTE administrators (Jose) run Actividad as managers
-update public.employees set act_role = 'mgr' where role = 'admin' and act_role is null;
+-- the Freezer RTE administrators (Jose) run Actividad as managers: only the first time, while nobody has a role in
+-- Actividad yet. Run again later, it used to give manager back to an administrator the owner had set to "Sin acceso"
+-- on purpose (review of 2026-10-18)
+update public.employees set act_role = 'mgr' where role = 'admin' and act_role is null
+  and not exists (select 1 from public.employees x where x.act_role is not null);

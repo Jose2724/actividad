@@ -28,9 +28,27 @@ Deno.serve(async (req) => {
     // before the powers migration is applied that column is not there: the roles decide, as they did
     if (!me) me = (await admin.from('employees').select('id, role, active, act_role').eq('user_id', user.id).maybeSingle()).data as Caller | null
     const freezerAdmin = me?.role === 'admin'
+    // only somebody who works in Actividad holds a power there: "Solo ver" and "Sin acceso" hold none, whatever their row
+    // still says (the database's act_has has the same rule). Until 2026-10-18 a person moved to "Sin acceso" kept
+    // "people" here and could still make accounts
+    const working = me?.act_role === 'op' || me?.act_role === 'mgr' || me?.act_role === 'office'
     // who manages people: the owner, whoever was given that power, or (with no powers saved) a manager or the office
-    const people = freezerAdmin || (Array.isArray(me?.act_powers) ? me!.act_powers!.includes('people') : me?.act_role === 'mgr' || me?.act_role === 'office')
+    const people = freezerAdmin || (working && (Array.isArray(me?.act_powers) ? me!.act_powers!.includes('people') : me?.act_role === 'mgr' || me?.act_role === 'office'))
     if (!me || !me.active || !people) return json({ error: 'not_manager' }, 403)
+    // another Freezer RTE admin's account is the owner's to touch, as in Freezer RTE's own admin-users. Until 2026-10-18
+    // a manager could change that admin's PIN here and then sign in as them, in both apps
+    const adminOnly = (t: { role?: string | null }) => !freezerAdmin && t.role === 'admin'
+    // an operator who was given "people" looks after operators and "Solo ver" accounts and hands out only the powers
+    // they hold (what Jose wanted on 2026-10-13: they change operators, never a manager). Managers and the office keep
+    // what they could do; whether they may manage each other is still Jose's to decide
+    const opCaller = !freezerAdmin && me.act_role === 'op'
+    const low = (r: unknown) => r === 'op' || r === 'viewer'
+    const myPowers: string[] = Array.isArray(me.act_powers) ? me.act_powers : []
+    // the powers saved for a person ([] = none saved: an operator's role gives none)
+    const savedPowers = async (id: string): Promise<string[]> => {
+      const { data } = await admin.from('employees').select('act_powers').eq('id', id).maybeSingle()
+      return Array.isArray(data?.act_powers) ? data.act_powers.map(String) : []
+    }
 
     const body = await req.json()
     // 'viewer' looks at everything and writes nothing: the database rules give that role no write at all
@@ -57,6 +75,7 @@ Deno.serve(async (req) => {
       if (!/^[a-z0-9._-]{3,30}$/.test(username)) return json({ error: 'bad_username' }, 400)
       if (!pinOk(body.pin)) return json({ error: 'bad_pin' }, 400)
       if (actRole === 'op' && !actDept) return json({ error: 'bad_dept' }, 400)
+      if (opCaller && !low(actRole)) return json({ error: 'not_manager' }, 403)
       const { data: taken } = await admin.from('employees').select('id').eq('username', username).maybeSingle()
       if (taken) return json({ error: 'username_taken' }, 400)
       const { data, error } = await admin.auth.admin.createUser({ email: `${username}@${DOMAIN}`, password: String(body.pin), email_confirm: true, user_metadata: { name, username } })
@@ -71,13 +90,17 @@ Deno.serve(async (req) => {
     if (body.action === 'set_act') {
       const t = await target()
       if (!t) return json({ error: 'not_found' }, 404)
-      if (await ownerLocked(t)) return json({ error: 'owner_protected' }, 403)
+      if (await ownerLocked(t) || adminOnly(t)) return json({ error: 'owner_protected' }, 403)
       const actRole = body.act_role == null || body.act_role === '' ? null : actRoleOf(body.act_role)
       const actDept = deptOf(body.act_dept)
       if (actRole === 'op' && !actDept) return json({ error: 'bad_dept' }, 400)
-      if (t.id === me.id && actRole !== 'mgr' && !freezerAdmin) return json({ error: 'not_self' }, 400)
-      // a viewer keeps no powers: whatever was saved for the person before is let go
-      const { error } = await admin.from('employees').update({ act_role: actRole, act_dept: actDept, ...(actRole === 'viewer' ? { act_powers: null, act_shift: null } : {}) }).eq('id', t.id)
+      // one's own role, whatever the value, is the owner's to change (the screen never offers it: rowRights). Until
+      // 2026-10-18 this let anyone holding "people" make themselves a manager
+      if (t.id === me.id && !freezerAdmin) return json({ error: 'not_self' }, 400)
+      if (opCaller && (!low(t.act_role) || (actRole !== null && !low(actRole)))) return json({ error: 'not_manager' }, 403)
+      // a viewer, or somebody left without Actividad, keeps no powers: whatever was saved for the person before is let go
+      // (given a role again later, they start from that role's)
+      const { error } = await admin.from('employees').update({ act_role: actRole, act_dept: actDept, ...(actRole === 'viewer' || actRole === null ? { act_powers: null, act_shift: null } : {}) }).eq('id', t.id)
       return error ? json({ error: error.message }, 400) : json({ ok: true })
     }
 
@@ -88,8 +111,14 @@ Deno.serve(async (req) => {
       // a manager's powers (and one's own) are the owner's to change
       if (!freezerAdmin && (t.id === me.id || t.role === 'admin' || t.act_role === 'mgr')) return json({ error: 'owner_only' }, 403)
       if (t.act_role === 'viewer') return json({ error: 'view_only' }, 400)
+      if (opCaller && !low(t.act_role)) return json({ error: 'not_manager' }, 403)
       const asked = Array.isArray(body.powers) ? body.powers.map(String) : null
       const powers = asked ? POWERS.filter((p) => asked.includes(p)) : null // null = the powers of the role
+      // an operator gives nothing they do not hold; what the person had already may stay (only the shift may change)
+      if (opCaller && powers) {
+        const had = await savedPowers(t.id)
+        if (powers.some((p) => !myPowers.includes(p) && !had.includes(p))) return json({ error: 'not_manager' }, 403)
+      }
       const shift = Number(body.shift) === 1 ? 1 : Number(body.shift) === 2 ? 2 : null // null = both shifts
       const { error } = await admin.from('employees').update({ act_powers: powers, act_shift: shift }).eq('id', t.id)
       return error ? json({ error: /act_powers|act_shift|column/i.test(error.message) ? 'no_columns' : error.message }, 400) : json({ ok: true })
@@ -99,9 +128,10 @@ Deno.serve(async (req) => {
     // too): an account made here signs in as username@DOMAIN, so that changes with it. An account that signs in with
     // a real e-mail (the owner's) keeps its sign-in; only the name shown changes.
     if (body.action === 'edit') {
-      const { data: t } = await admin.from('employees').select('id, user_id, name, username').eq('id', String(body.id ?? '')).maybeSingle()
+      const { data: t } = await admin.from('employees').select('id, user_id, name, username, role, act_role').eq('id', String(body.id ?? '')).maybeSingle()
       if (!t) return json({ error: 'not_found' }, 404)
-      if (await ownerLocked(t)) return json({ error: 'owner_protected' }, 403)
+      if (await ownerLocked(t) || adminOnly(t)) return json({ error: 'owner_protected' }, 403)
+      if (opCaller && t.id !== me.id && !low(t.act_role)) return json({ error: 'not_manager' }, 403)
       const patch: { name?: string; username?: string } = {}
       if (body.name != null) {
         const name = String(body.name).trim().replace(/\s+/g, ' ')
@@ -140,7 +170,9 @@ Deno.serve(async (req) => {
     if (body.action === 'set_pin') {
       const t = await target()
       if (!t?.user_id) return json({ error: 'not_found' }, 404)
-      if (await ownerLocked(t)) return json({ error: 'owner_protected' }, 403)
+      if (await ownerLocked(t) || adminOnly(t)) return json({ error: 'owner_protected' }, 403)
+      // a new PIN hands over the account: an operator does not get one that holds a power they do not hold
+      if (opCaller && t.id !== me.id && (!low(t.act_role) || (await savedPowers(t.id)).some((p) => !myPowers.includes(p)))) return json({ error: 'not_manager' }, 403)
       if (!pinOk(body.pin)) return json({ error: 'bad_pin' }, 400)
       const { error } = await admin.auth.admin.updateUserById(t.user_id, { password: String(body.pin) })
       return error ? json({ error: error.message }, 400) : json({ ok: true })
@@ -150,7 +182,8 @@ Deno.serve(async (req) => {
       const t = await target()
       if (!t) return json({ error: 'not_found' }, 404)
       if (t.id === me.id) return json({ error: 'not_self' }, 400)
-      if (await ownerLocked(t)) return json({ error: 'owner_protected' }, 403)
+      if (await ownerLocked(t) || adminOnly(t)) return json({ error: 'owner_protected' }, 403)
+      if (opCaller && !low(t.act_role)) return json({ error: 'not_manager' }, 403)
       const active = !!body.active
       await admin.from('employees').update({ active }).eq('id', t.id)
       if (t.user_id) await admin.auth.admin.updateUserById(t.user_id, { ban_duration: active ? 'none' : '876000h' })

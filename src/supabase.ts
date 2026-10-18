@@ -68,8 +68,14 @@ export async function sessionFetch(input: RequestInfo | URL, init?: RequestInit)
   } catch { return res }
 }
 
-/** null = demo mode: everything stays on the device. With keys, the app shares the Freezer RTE project (tables act_*). */
-export const supabase: SupabaseClient | null = url && key ? createClient(url, key, { auth: { persistSession: true, autoRefreshToken: true }, global: { fetch: sessionFetch } }) : null
+/**
+ * null = demo mode: everything stays on the device. With keys, the app shares the Freezer RTE project (tables act_*).
+ * detectSessionInUrl off: nobody signs in here by a link (no e-mail links, no outside sign-in; PINs are reset by a
+ * manager), and by default the library took a session out of any address it was opened with: a link or a QR sticker
+ * carrying #access_token=… silently put a floor tablet under that account, and what the operators recorded went under
+ * that name (audit 2026-10-17, E6). Sign-in, renewal, "Salir" and the start without signal do not use it.
+ */
+export const supabase: SupabaseClient | null = url && key ? createClient(url, key, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }, global: { fetch: sessionFetch } }) : null
 
 /** the server said the pass is too old, while the device believed it still had time (its clock was moved backwards) */
 export const passExpired = (message: unknown) => /jwt expired|PGRST301|PGRST303|token is expired/i.test(String(message ?? ''))
@@ -135,11 +141,13 @@ export function rememberedMe(): Me | null {
  * What the person looking at Empleados may do to one row: the same rules the server applies (the act-users function),
  * so the screen does not draw a button the server would refuse. The owner's account (the one that signs in with an
  * e-mail instead of a user name) is off limits to everyone else; nobody turns their own account off; and only a
- * Freezer RTE admin may change their own role. A row without a user name has no PIN to change.
+ * Freezer RTE admin may change their own role. A row without a user name has no PIN to change. Another Freezer RTE
+ * admin's account is the owner's alone (the function refuses it to anyone else since 2026-10-18: a manager could change
+ * that admin's PIN and sign in as them, audit E1), so the screen offers nothing on it to anyone else either.
  */
-export function rowRights(row: { id: string; user_id?: string | null; username?: string | null }, meId: string, meAdmin: boolean) {
+export function rowRights(row: { id: string; user_id?: string | null; username?: string | null; role?: string | null }, meId: string, meAdmin: boolean) {
   const mine = row.id === meId
-  const locked = !mine && !!row.user_id && !row.username
+  const locked = !mine && ((!!row.user_id && !row.username) || (!meAdmin && row.role === 'admin'))
   return { mine, locked, role: !locked && (!mine || meAdmin), pin: !locked && !!row.username, active: !locked && !mine }
 }
 

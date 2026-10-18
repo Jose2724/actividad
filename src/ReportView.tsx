@@ -1,12 +1,12 @@
 import { Fragment, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { apartLabel, apartWord, binWord, cameFrom, carriedOver, casesText, CFG, cfgFor, cfgOf, DEPTS, fmtDur, fmtN, fmtTime, inCases, kindClass, lineLabel, lineNameOf, looksLikeTwoLots, madeText, measureName, measureUnit, normCode, noteLabel, orderLabel, orderOfId, plainDay, plainText, productOf, purgesOf, restorePurged, runStats, SETUP, shiftAt, shiftHours, shiftSpan, shiftsOf, stopTime, unitQty, user, whoText, workDay, type Dept, type State } from './store'
+import { apartLabel, apartWord, binWord, cameFrom, carriedOver, casesText, CFG, cfgFor, cfgOf, csvCell, DEPTS, fmtDur, roomKnown, fmtN, fmtTime, inCases, kindClass, lineLabel, lineNameOf, looksLikeTwoLots, madeText, measureName, measureUnit, normCode, noteLabel, orderLabel, orderOfId, plainDay, plainText, productOf, purgesOf, restorePurged, runStats, SETUP, shiftAt, shiftHours, shiftSpan, shiftsOf, stopTime, unitQty, user, whoText, workDay, type Dept, type State } from './store'
 import { avanceRows, mfoText, mfoWord, pending } from './avance'
 import { cellText, loadZip, xDay, xDur, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 import { buildPdf, loadPdf } from './pdf'
 import { homeScreenApple, type Kind } from './send'
 import { filterFile, filterTitle, hitKey, reportOf, runLots, searchReport, spanShifts, unitParts, type Hit, type HitKind, type Report as ReportData, type ReportFilter, type Scope as SearchScope } from './report'
-import { canShift } from './powers'
+import { canShift, writesIn } from './powers'
 import { AddRunDialog, AddUnitDialog, RunEditor, StopEditor } from './editors'
 import { supabase } from './supabase'
 import { fetchPurged } from './sync'
@@ -49,6 +49,8 @@ const PAGE = 50
 
 /** a room as it is shown everywhere in the report: its emoji and its name on its own tint (files keep the plain name) */
 function DeptBadge({ d }: { d: Dept }) {
+  // a room this version does not know (a history line of one a newer version added, such as QC): its name alone, plain
+  if (!roomKnown(d)) return <span className="rp-badge">{String(d)}</span>
   return <span className="rp-badge" style={deptVars(d)}><i aria-hidden="true">{DEPT_LOOK[d].emoji}</i>{d}</span>
 }
 
@@ -272,7 +274,8 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
   }
   const csv = () => download(new File([csvText()], fileName + '.csv', { type: 'text/csv;charset=utf-8' }))
   const csvText = () => {
-    const q = (c: Cell) => '"' + cellText(c).replace(/"/g, '""') + '"'
+    // (a text Excel would take for a formula is guarded, see csvCell; a time keeps its text, a number stays a number)
+    const q = (c: Cell) => csvCell(c != null && typeof c === 'object' ? cellText(c) : c)
     const b = blocks()
     const tag = (title: string, t: Cell[][]) => t.map((r, i): Cell[] => (i === 0 ? ['', title, ...r] : ['', '', ...r]))
     const all: Cell[][] = [...b.resumen, ...(b.porTurno.length > 1 ? [[], ...tag(tr('POR TURNO'), b.porTurno)] : []), [], ...tag(tr('POR CÓDIGO'), b.porCodigo), [], ...tag(tr('POR LOTE'), b.porLote), ...(b.pallets.length > 1 ? [[], ...tag('PALLETS', b.pallets)] : []), [], ...tag('UNIDADES', b.unidades), [], ...tag(tr('PAROS'), b.paros), ...(mgr ? [[], ...tag('CAMBIOS', b.cambios)] : []), ...(b.avance.length > 1 ? [[], ...tag('AVANCE', b.avance)] : [])]
@@ -409,16 +412,21 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
   }
   const pageBar = (key: string, total: number) => <Pager total={total} page={pageNo(key, total)} onPage={(p, el) => turnPage(key, p, el)} />
   // ---- who may correct or add (a viewer never) ----
-  const fix = (shifts: string) => can('fix') && canShift(who, shifts)
+  // only in a room the server lets this person write: an operator who may look at every room corrects and adds only
+  // in their own (the rest was refused, and waited on the tablet for ever; review of 2026-10-18)
+  const fixable = (room: string) => can('fix') && writesIn(who, room)
+  const fix = (shifts: string, room: string) => fixable(room) && canShift(who, shifts)
   const canAdd = can('fix') && day.state === 'here'
+  /** a "+ Agregar" of one room (none = whatever room the box opens on: the person's own, see AddRunDialog) */
+  const addIn = (room?: string) => canAdd && (!room || writesIn(who, room))
   /** the shifts a run or a stop touched ("1", "2" or "1 y 2"): who may correct it */
   const spanOf = (x: { startedAt: number; endedAt: number | null }) => spanShifts(rep.plan, x.startedAt, x.endedAt ?? now)
   const seeBtn = (onSee: () => void) => <button type="button" className="btn xs" onClick={onSee}>{tr('Ver')}</button>
-  const fixBtn = (shifts: string, onFix: () => void) => (fix(shifts)
+  const fixBtn = (shifts: string, room: string, onFix: () => void) => (fix(shifts, room)
     ? <button type="button" className="btn xs soft" aria-label={tr('Corregir')} onClick={onFix}>✎<span className="opt"> {tr('Corregir')}</span></button>
-    : can('fix') ? <small className="rp-lock" title={tr('Lo corrige el turno {0} o quien tenga el permiso "Corregir lo del otro turno".', shifts)}>🔒 {tr('Otro turno')}</small> : null)
+    : fixable(room) ? <small className="rp-lock" title={tr('Lo corrige el turno {0} o quien tenga el permiso "Corregir lo del otro turno".', shifts)}>🔒 {tr('Otro turno')}</small> : null)
   /** the first cell of a record's row: see it, and correct it (or why not) */
-  const acts = (shifts: string, onSee: (() => void) | null, onFix: () => void, rowSpan?: number) => <td className="rp-act" rowSpan={rowSpan}><div className="btns">{onSee && seeBtn(onSee)}{fixBtn(shifts, onFix)}</div></td>
+  const acts = (shifts: string, room: string, onSee: (() => void) | null, onFix: () => void, rowSpan?: number) => <td className="rp-act" rowSpan={rowSpan}><div className="btns">{onSee && seeBtn(onSee)}{fixBtn(shifts, room, onFix)}</div></td>
   // a run that is gone (deleted from its correction) closes its sheet
   useEffect(() => { if (detail && !s.runs.some((r) => r.id === detail.runId)) setDetail(null) }, [detail, s.runs])
   return {
@@ -429,14 +437,14 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
     q, qs, setQ, toks, searching, found, shownN, hitsOf, scopes, applyScope, scopeText, wholeN, searchWholeDay,
     views, v, tabs, setView, pickView, scopeRef, recSub, setRecSub, palSub, setPalSub, cause, setCause, runChip, setRunChip, palF, setPalF, back, go, goBack,
     codesShown, palletsFound, palletsShown, palCount, binsShown, runsFound, runsShown, runIs, unitsShown, stopsFound, stopsShown, stopIs, changes, changesShown,
-    manyRooms, canAdd, fix, spanOf, seeBtn, fixBtn, acts, pageOf, pageBar, withOrders, unitsText, binsN, ofText, cw, reasonsText, lineName, cap, hrs, dash, linesText, shiftCols,
+    manyRooms, canAdd, addIn, fixable, fix, spanOf, seeBtn, fixBtn, acts, pageOf, pageBar, withOrders, unitsText, binsN, ofText, cw, reasonsText, lineName, cap, hrs, dash, linesText, shiftCols,
   }
 }
 type Kit = ReturnType<typeof useReport>
 
 export function Report(props: ReportProps) {
   const k = useReport(props)
-  const { s, now, only, mgr, admin, can, date, pickDate, today, day, rep, rows, dept, lineChosen, purges, recovering, recover, tookText, sending, setSending, preparing, send, pdf, excel, csv, shiftsOpen, setShiftsOpen, wiping, setWiping, notice, setNotice, editRun, setEditRun, runToEdit, stopToEdit, setEditStop, addFor, setAddFor, detail, setDetail, help, setHelp, v, tabs, pickView, setFShift, hrs, setFCode, setFLot, fix } = k
+  const { s, now, only, mgr, admin, can, date, pickDate, today, day, rep, rows, dept, lineChosen, purges, recovering, recover, tookText, sending, setSending, preparing, send, pdf, excel, csv, shiftsOpen, setShiftsOpen, wiping, setWiping, notice, setNotice, editRun, setEditRun, runToEdit, stopToEdit, setEditStop, addFor, setAddFor, detail, setDetail, help, setHelp, v, tabs, pickView, setFShift, hrs, setFCode, setFLot, fix, fixable } = k
   return (
     <section className="report">
       <div className="rhead">
@@ -510,7 +518,7 @@ export function Report(props: ReportProps) {
             : v === 'gen' ? <GeneralView k={k} /> : v === 'code' ? <CodesView k={k} /> : v === 'shift' ? <ShiftsView k={k} /> : v === 'pal' ? <PalletsView k={k} /> : <RecordsView k={k} />}
       </div>
       <p className="hint foot">{supabase ? tr('Todo se guarda en el servidor y se ve en vivo desde la oficina, el teléfono o la PC.') : tr('Demo guardado en este dispositivo. La versión completa manda todo en vivo al manager (oficina, teléfono o PC) y exporta a Excel, PDF y Google Sheets como la Hoja de Freezer RTE.')}</p>
-      {detail && <RunDetail s={s} runId={detail.runId} at={detail.at} now={now} mgr={mgr} fix={fix} canFixAny={can('fix')} onFix={(at) => setEditRun({ id: detail.runId, at })} onFixStop={setEditStop} onCode={(c) => { setFCode(c); setDetail(null) }} onLot={(l) => { setFLot(l); setDetail(null) }} onClose={() => setDetail(null)} />}
+      {detail && <RunDetail s={s} runId={detail.runId} at={detail.at} now={now} mgr={mgr} fix={fix} fixable={fixable} onFix={(at) => setEditRun({ id: detail.runId, at })} onFixStop={setEditStop} onCode={(c) => { setFCode(c); setDetail(null) }} onLot={(l) => { setFLot(l); setDetail(null) }} onClose={() => setDetail(null)} />}
       {runToEdit && <RunEditor s={s} run={runToEdit} mgr={can('fix')} focusAt={editRun?.at} onClose={() => setEditRun(null)} />}
       {addFor && <AddRunDialog s={s} date={date} dept={addFor.dept ?? dept} onClose={() => setAddFor(null)} onAdded={(id) => { setAddFor(null); setDetail({ runId: id }) }} />}
       {stopToEdit && <StopEditor stop={stopToEdit} mgr={can('fix')} onClose={() => setEditStop(null)} />}
@@ -684,7 +692,7 @@ function SearchResults({ k }: { k: Kit }) {
 
 /** one thing the search found, as a card: its room, what it is, its facts, and what opens it */
 function HitCard({ k, h }: { k: Kit; h: Hit }) {
-  const { s, rep, rows, unitRows, stops, changes, toks, now, can, fix, seeBtn, fixBtn, spanOf, setDetail, setEditRun, setEditStop, setQ, go, ofText, cw, lineName } = k
+  const { s, rep, rows, unitRows, stops, changes, toks, now, fix, seeBtn, fixBtn, spanOf, setDetail, setEditRun, setEditStop, setQ, go, ofText, cw, lineName } = k
   const at = (ms: number) => hl(fmtTime(ms), toks)
   const turn = (n: number | string) => tr('Turno {0}', n)
   const by = (name: string) => (name ? trx('registró {0}', hl(name, toks)) : null)
@@ -706,32 +714,32 @@ function HitCard({ k, h }: { k: Kit; h: Hit }) {
       {p.parts.map((x, i) => <span key={i} className="ln">{joined([<>{tr('Lote')} {hl(x.lot, toks)}</>, (x.qty != null ? fmtN(x.qty) : '—') + ' ' + CFG.Packing.qtyUnit, x.tag ? <>{tr('Tag')} {hl(x.tag, toks)}</> : tr('sin tag')])}</span>)}
       <span className="ln">{joined([p.order ? <>{hl(p.order, toks)}{p.of && ' ' + ofText(p.of)}</> : null, hl(lineNameOf(s, p.r.lineId, p.r.line), toks), p.open ? null : at(p.at), turn(p.shift), by(p.by)])}</span>
     </>
-    btns = <>{seeBtn(() => setDetail({ runId: p.r.id, at: unitAt }))}{fixBtn(spanOf(p.r), () => setEditRun({ id: p.r.id, at: unitAt }))}</>
+    btns = <>{seeBtn(() => setDetail({ runId: p.r.id, at: unitAt }))}{fixBtn(spanOf(p.r), p.r.dept, () => setEditRun({ id: p.r.id, at: unitAt }))}</>
   } else if (h.kind === 'bin') {
     const b = rep.bins.find((x) => hitKey.bin(x.r.id, x.n) === h.key)
     if (!b) return null
     title = <>{cfgOf(b.r).unit + ' ' + b.n} · <span className="code">{hl(b.r.code, toks)}</span> · {trx('Lote {0}', hl(b.lot, toks))}</>
     sub = joined([(b.qty != null ? fmtN(b.qty) : '—') + ' ' + binWord(b.word), b.ref ? <>{tr('N° de bin')} {hl(b.ref, toks)}</> : null, hl(lineNameOf(s, b.r.lineId, b.r.line), toks), at(b.at), turn(b.shift), by(b.by)])
-    btns = <>{seeBtn(() => setDetail({ runId: b.r.id, at: b.at }))}{fixBtn(spanOf(b.r), () => setEditRun({ id: b.r.id, at: b.at }))}</>
+    btns = <>{seeBtn(() => setDetail({ runId: b.r.id, at: b.at }))}{fixBtn(spanOf(b.r), b.r.dept, () => setEditRun({ id: b.r.id, at: b.at }))}</>
   } else if (h.kind === 'unit') {
     const x = unitRows.find((y) => hitKey.unit(y.r.id, y.i, y.lot) === h.key)
     if (!x) return null
     const c = cfgOf(x.r)
     title = <>{c.unit + ' ' + (x.i + 1)} · <span className="code">{hl(x.r.code, toks)}</span>{x.lot && <> · {trx('Lote {0}', hl(x.lot, toks))}</>}</>
     sub = joined([x.qty != null ? x.qty.toLocaleString('en-US') + ' ' + c.qtyUnit : null, x.tag ? <>{c.refLabel ? c.refLabel + ' ' : ''}{hl(x.tag, toks)}</> : null, x.order ? hl(x.order, toks) : null, hl(lineNameOf(s, x.r.lineId, x.r.line), toks), at(x.u.at), turn(x.shift), by(x.u.by)])
-    btns = <>{seeBtn(() => setDetail({ runId: x.r.id, at: x.u.at }))}{fixBtn(spanOf(x.r), () => setEditRun({ id: x.r.id, at: x.u.at }))}</>
+    btns = <>{seeBtn(() => setDetail({ runId: x.r.id, at: x.u.at }))}{fixBtn(spanOf(x.r), x.r.dept, () => setEditRun({ id: x.r.id, at: x.u.at }))}</>
   } else if (h.kind === 'run') {
     const x = rows.find((y) => hitKey.run(y.r.id) === h.key)
     if (!x) return null
     title = <><span className="code">{hl(x.r.code, toks)}</span> · {hl(lineNameOf(s, x.r.lineId, x.r.line), toks)}{product(x.r.code)}</>
     sub = joined([x.lots ? <>{tr('Lote')} {hl(x.lots, toks)}</> : null, <>{at(x.r.startedAt)} – {x.r.endedAt ? fmtTime(x.r.endedAt) : tr('en curso')}</>, madeText(x.view, x.qty, true), x.waste ? <span className="red">{'waste ' + x.waste + ' lb'}</span> : null, x.shifts ? turn(x.shifts) : null, by(whoText(x.r))])
-    btns = <>{seeBtn(() => setDetail({ runId: x.r.id }))}{fixBtn(x.shifts, () => setEditRun({ id: x.r.id }))}</>
+    btns = <>{seeBtn(() => setDetail({ runId: x.r.id }))}{fixBtn(x.shifts, x.r.dept, () => setEditRun({ id: x.r.id }))}</>
   } else if (h.kind === 'stop') {
     const x = stops.find((y) => hitKey.stop(y.id) === h.key)
     if (!x) return null
     title = <>{hl(tr(x.reason), toks)} · {hl(lineName(x), toks)}</>
     sub = joined([x.note ? hl(noteLabel(x.note), toks) : null, <>{at(x.startedAt)} – {x.endedAt ? fmtTime(x.endedAt) : tr('en curso')}</>, fmtDur(x.ms), turn(spanOf(x)), by(x.by)])
-    btns = fixBtn(spanOf(x), () => setEditStop(x.id))
+    btns = fixBtn(spanOf(x), x.dept, () => setEditStop(x.id))
   } else {
     const c = changes.find((y) => hitKey.change(y.id) === h.key)
     if (!c) return null
@@ -740,10 +748,10 @@ function HitCard({ k, h }: { k: Kit; h: Hit }) {
     // the record a change was made to, while it is there: a run opens its sheet; a stop, its correction (for whoever may correct)
     const stop = c.refTable === 'act_stops' ? s.stops.find((x) => x.id === c.refKey && !x.deleted) : undefined
     btns = c.refTable === 'act_runs' && s.runs.some((r) => r.id === c.refKey) ? seeBtn(() => setDetail({ runId: c.refKey }))
-      : stop && can('fix') && fix(spanShifts(rep.plan, stop.startedAt, stop.endedAt ?? now)) ? seeBtn(() => setEditStop(stop.id)) : null
+      : stop && fix(spanShifts(rep.plan, stop.startedAt, stop.endedAt ?? now), stop.dept) ? seeBtn(() => setEditStop(stop.id)) : null
   }
   return (
-    <div className="rp-hit" style={h.dept ? deptVars(h.dept) : undefined}>
+    <div className="rp-hit" style={roomKnown(h.dept) ? deptVars(h.dept) : undefined}>
       <div className="rp-hit-main">
         <div className="t">{h.dept && <DeptBadge d={h.dept} />} {title}</div>
         {sub && <div className="sub">{sub}</div>}
@@ -795,7 +803,7 @@ function GeneralView({ k }: { k: Kit }) {
 
 /** one room on General: what it made, big, in its own unit, and every number a way to the records behind it */
 function RoomCard({ k, d }: { k: Kit; d: ReportData['byDept'][number] }) {
-  const { s, rep, go, dept, only, canAdd, setAddFor, unitsText, binsN, shiftCols } = k
+  const { s, rep, go, dept, only, addIn, setAddFor, unitsText, binsN, shiftCols } = k
   const cfg = CFG[d.dept], q = cfg.qty !== 'none', b = rep.byShift.find((x) => x.dept === d.dept)
   // a room that only filled bins (no pallets, no carts): its first kind is its big number, the others are tags
   const first = d.units === 0 && d.bins.length ? d.bins[0] : null
@@ -858,7 +866,7 @@ function RoomCard({ k, d }: { k: Kit; d: ReportData['byDept'][number] }) {
           {!dept && !only && <button type="button" className="btn sm" onClick={() => go('gen', { dept: d.dept })}>{tr('Ver solo {0}', d.dept)}</button>}
           <button type="button" className="btn sm" onClick={toRuns}>{tr('Registros') + ' ›'}</button>
         </div>
-        {canAdd && <button type="button" className="btn sm soft" onClick={() => setAddFor({ dept: d.dept })}>{tr('+ Agregar')}</button>}
+        {addIn(d.dept) && <button type="button" className="btn sm soft" onClick={() => setAddFor({ dept: d.dept })}>{tr('+ Agregar')}</button>}
       </div>
     </article>
   )
@@ -987,9 +995,9 @@ function ShiftsView({ k }: { k: Kit }) {
 
 /** 📦 Pallets: Packing's pallets one by one (each with its lots, cases and tags, its total and its PO), and its bins apart */
 function PalletsView({ k }: { k: Kit }) {
-  const { s, rep, dept, go, searching, palletsFound, palletsShown, palCount, palF, setPalF, binsShown, palSub, setPalSub, canAdd, setAddFor, acts, spanOf, setDetail, setEditRun, pageOf, pageBar, ofText, toks } = k
+  const { s, rep, dept, go, searching, palletsFound, palletsShown, palCount, palF, setPalF, binsShown, palSub, setPalSub, addIn, setAddFor, acts, spanOf, setDetail, setEditRun, pageOf, pageBar, ofText, toks } = k
   if (dept && dept !== 'Packing') return <p className="hint rp-elsewhere">{tr('Los pallets y los bins son de Packing.')} <button type="button" className="btn sm" onClick={() => go('pal', { dept: 'Packing' })}>📦 {tr('Ver solo {0}', 'Packing')}</button></p>
-  if (!rep.pallets.length && !rep.bins.length) return <div className="rp-list"><p className="hint">{tr('Ningún pallet ni bin en lo que estás viendo.')}</p>{canAdd && <p><button type="button" className="btn sm soft" onClick={() => setAddFor({ dept: 'Packing' })}>{tr('+ Agregar registro')}</button></p>}</div>
+  if (!rep.pallets.length && !rep.bins.length) return <div className="rp-list"><p className="hint">{tr('Ningún pallet ni bin en lo que estás viendo.')}</p>{addIn('Packing') && <p><button type="button" className="btn sm soft" onClick={() => setAddFor({ dept: 'Packing' })}>{tr('+ Agregar registro')}</button></p>}</div>
   // the list chosen, or the other one when it has nothing
   const sub: PalSub = palSub === 'pallets' ? (rep.pallets.length ? 'pallets' : 'bins') : rep.bins.length ? 'bins' : 'pallets'
   const subs = [{ label: tr('Pallets'), n: palletsFound.length, open: () => setPalSub('pallets') }, { label: tr('Bins'), n: binsShown.length, open: () => setPalSub('bins') }]
@@ -1003,7 +1011,7 @@ function PalletsView({ k }: { k: Kit }) {
             <button type="button" className={'c-indigo' + (sub === 'bins' ? ' on' : '')} aria-pressed={sub === 'bins'} onClick={() => setPalSub('bins')}>{tr('Bins')}<small>{binsShown.length}</small></button>
           </div>
         ) : <span />}
-        {canAdd && <button type="button" className="btn sm soft" onClick={() => setAddFor({ dept: 'Packing' })}>{tr('+ Agregar registro')}</button>}
+        {addIn('Packing') && <button type="button" className="btn sm soft" onClick={() => setAddFor({ dept: 'Packing' })}>{tr('+ Agregar registro')}</button>}
       </div>
       {lost ? <Nothing k={k} subs={subs.filter((x) => x.label !== (sub === 'pallets' ? tr('Pallets') : tr('Bins')))} /> : sub === 'pallets' ? (
         <>
@@ -1021,7 +1029,7 @@ function PalletsView({ k }: { k: Kit }) {
                   <tbody key={p.r.id + ':' + p.n} className={(p.open ? 'live' : '') + (span > 1 ? ' multi' : '')}>
                     {p.parts.map((x, i) => (
                       <tr key={i}>
-                        {i === 0 && acts(spanOf(p.r), () => setDetail({ runId: p.r.id, at: unitAt }), () => setEditRun({ id: p.r.id, at: unitAt }), span)}
+                        {i === 0 && acts(spanOf(p.r), p.r.dept, () => setDetail({ runId: p.r.id, at: unitAt }), () => setEditRun({ id: p.r.id, at: unitAt }), span)}
                         {i === 0 && <td rowSpan={span}><b>{hl(p.n, toks)}</b>{p.open && <small className="building">{tr('en armado')}</small>}{span > 1 && <small className="manylots">{trx('{0} lotes', span)}</small>}</td>}
                         {i === 0 && <td rowSpan={span}><b className="code">{hl(p.r.code, toks)}</b></td>}
                         <td className={(rep.lot && x.lot === rep.lot ? 'hit' : '') + (span > 1 ? ' part' : '')}>{span > 1 && <small className="lotno">{tr('lote {0} de {1}', i + 1, span)}</small>}{hl(x.lot, toks)}{looksLikeTwoLots(x.lot) && <small className="twolots-mark" title={tr('Parece dos lotes escritos juntos: se separan desde Corregir, con ✎ en el pallet, poniendo las cajas de cada lote.')}>{tr('¿dos lotes juntos?')}</small>}</td>
@@ -1053,7 +1061,7 @@ function PalletsView({ k }: { k: Kit }) {
               <tbody>
                 {pageOf('bins', binsShown).map((b) => (
                   <tr key={b.r.id + ':' + b.n}>
-                    {acts(spanOf(b.r), () => setDetail({ runId: b.r.id, at: b.at }), () => setEditRun({ id: b.r.id, at: b.at }))}
+                    {acts(spanOf(b.r), b.r.dept, () => setDetail({ runId: b.r.id, at: b.at }), () => setEditRun({ id: b.r.id, at: b.at }))}
                     <td><b>{hl(b.n, toks)}</b></td>
                     <td><b className="code">{hl(b.r.code, toks)}</b><small className="binkind">{binWord(b.word)}</small></td>
                     <td className={rep.lot && b.lot === rep.lot ? 'hit' : ''}>{b.lot ? hl(b.lot, toks) : '—'}</td>
@@ -1120,7 +1128,7 @@ function RunsTable({ k }: { k: Kit }) {
             const product = productOf(s, x.r.code)?.name, waste = x.waste ? x.waste + ' lb' : '—', avg = x.timed ? fmtDur(x.st.avg) : '—', set = x.st.setup ? fmtDur(x.st.setup) : '—', why = reasonsText(x) || '—'
             return (
               <tr key={x.r.id} className={x.r.endedAt ? '' : 'live'} style={deptVars(x.r.dept)}>
-                {acts(x.shifts, () => setDetail({ runId: x.r.id }), () => setEditRun({ id: x.r.id }))}
+                {acts(x.shifts, x.r.dept, () => setDetail({ runId: x.r.id }), () => setEditRun({ id: x.r.id }))}
                 {manyRooms && <td className="c-head"><DeptBadge d={x.r.dept} /></td>}
                 <td data-label={tr('Línea')}>{hl(lineNameOf(s, x.r.lineId, x.r.line), toks)}</td>
                 <td data-label={tr('Código')} className={manyRooms ? undefined : 'c-head'}><b>{hl(x.r.code, toks)}</b>{product && <small className="rp-pname">{hl(product, toks)}</small>}</td>
@@ -1156,7 +1164,7 @@ function UnitsTable({ k }: { k: Kit }) {
           <thead><tr><th className="rp-act"></th><th>{tr('Hora')}</th>{!rep.shift && <th>{tr('Turno')}</th>}{manyRooms && <th>{tr('Depto')}</th>}<th>{tr('Línea')}</th><th>{tr('Código')}</th><th>{tr('Lote')}</th><th>#</th><th>{tr('Unidad')}</th><th>{tr('Cantidad')}</th><th>{tr('Tag / bin')}</th>{withOrders && <th>{tr('Pedido')}</th>}<th>{tr('Desde la anterior')}</th><th>{tr('Registró')}</th></tr></thead>
           <tbody>{pageOf('units', unitsShown).map((x) => (
             <tr key={x.r.id + ':' + x.i + ':' + x.lot} style={deptVars(x.r.dept)}>
-              {acts(spanOf(x.r), () => setDetail({ runId: x.r.id, at: x.u.at }), () => setEditRun({ id: x.r.id, at: x.u.at }))}
+              {acts(spanOf(x.r), x.r.dept, () => setDetail({ runId: x.r.id, at: x.u.at }), () => setEditRun({ id: x.r.id, at: x.u.at }))}
               <td data-label={tr('Hora')}>{hl(fmtTime(x.u.at), toks)}</td>{!rep.shift && <td data-label={tr('Turno')}>{x.shift}</td>}
               {manyRooms && <td className="c-head"><DeptBadge d={x.r.dept} /></td>}
               <td data-label={tr('Línea')}>{hl(lineNameOf(s, x.r.lineId, x.r.line), toks)}</td>
@@ -1195,7 +1203,7 @@ function StopsTable({ k }: { k: Kit }) {
             const note = noteLabel(x.note) || '—'
             return (
               <tr key={x.id} className={x.endedAt ? '' : 'live'} style={deptVars(x.dept)}>
-                {can('fix') && <td className="rp-act"><div className="btns">{fixBtn(spanOf(x), () => setEditStop(x.id))}</div></td>}
+                {can('fix') && <td className="rp-act"><div className="btns">{fixBtn(spanOf(x), x.dept, () => setEditStop(x.id))}</div></td>}
                 {manyRooms && <td className="c-head"><DeptBadge d={x.dept} /></td>}
                 <td data-label={tr('Línea')}>{hl(lineName(x), toks)}</td>
                 <td data-label={tr('Razón')} className={manyRooms ? undefined : 'c-head'}><b>{hl(tr(x.reason), toks)}</b></td>
@@ -1232,9 +1240,9 @@ function ChangesView({ k }: { k: Kit }) {
               <thead><tr><th>{tr('Hora')}</th><th>{tr('Quién')}</th><th>{tr('Depto')}</th><th>{tr('Qué')}</th><th>{tr('Antes')}</th><th>{tr('Después')}</th><th className="rp-act"></th></tr></thead>
               <tbody>{pageOf('changes', changesShown).map((c) => {
                 const stop = c.refTable === 'act_stops' ? s.stops.find((x) => x.id === c.refKey && !x.deleted) : undefined
-                const see = c.refTable === 'act_runs' && s.runs.some((r) => r.id === c.refKey) ? () => setDetail({ runId: c.refKey }) : stop && fix(spanShifts(rep.plan, stop.startedAt, stop.endedAt ?? now)) ? () => setEditStop(stop.id) : null
+                const see = c.refTable === 'act_runs' && s.runs.some((r) => r.id === c.refKey) ? () => setDetail({ runId: c.refKey }) : stop && fix(spanShifts(rep.plan, stop.startedAt, stop.endedAt ?? now), stop.dept) ? () => setEditStop(stop.id) : null
                 return (
-                  <tr key={c.id} style={c.dept ? deptVars(c.dept) : undefined}>
+                  <tr key={c.id} style={roomKnown(c.dept) ? deptVars(c.dept) : undefined}>
                     <td data-label={tr('Hora')}>{hl(fmtTime(c.at), toks)}</td><td data-label={tr('Quién')}>{hl(c.by, toks)}</td>
                     <td data-label={tr('Depto')} className={c.dept ? 'c-head' : 'c-none'}>{c.dept ? <DeptBadge d={c.dept} /> : '—'}</td>
                     <td data-label={tr('Qué')}>{hl(c.what, toks)}</td>
@@ -1269,12 +1277,13 @@ const Fact = ({ label, value, cls }: { label: string; value: ReactNode; cls?: st
  * (the correction opens above this sheet and closes back to it, updated), a missing unit is added, or the report is
  * narrowed to its code or its lot. It is read from the store, so a run of another date (one just added) shows too.
  */
-function RunDetail({ s, runId, at, now, mgr, fix, canFixAny, onFix, onFixStop, onCode, onLot, onClose }: { s: State; runId: string; at?: number; now: number; mgr: boolean; fix: (shifts: string) => boolean; canFixAny: boolean; onFix: (at?: number) => void; onFixStop: (id: string) => void; onCode: (c: string) => void; onLot: (l: string) => void; onClose: () => void }) {
+function RunDetail({ s, runId, at, now, mgr, fix, fixable, onFix, onFixStop, onCode, onLot, onClose }: { s: State; runId: string; at?: number; now: number; mgr: boolean; fix: (shifts: string, room: string) => boolean; fixable: (room: string) => boolean; onFix: (at?: number) => void; onFixStop: (id: string) => void; onCode: (c: string) => void; onLot: (l: string) => void; onClose: () => void }) {
   const [adding, setAdding] = useState(false)
   const [focus, setFocus] = useState(at)
   const r = s.runs.find((x) => x.id === runId)
   if (!r) return null
   const st = runStats(s, r, now), plan = shiftsOf(s, r.date), shifts = spanShifts(plan, r.startedAt, r.endedAt ?? now)
+  const canFixAny = fixable(r.dept) // (a run of a room this person does not write shows no correction at all)
   const cfg = cfgOf(r), lots = [...runLots(s, r)].filter(Boolean), product = productOf(s, r.code)?.name
   const reasons = Object.entries(st.reasons).map(([key, v]) => tr(key) + ' ' + fmtDur(v)).join(', ')
   const orders = r.units.some((u) => orderOfId(s, u.po))
@@ -1328,7 +1337,7 @@ function RunDetail({ s, runId, at, now, mgr, fix, canFixAny, onFix, onFixStop, o
                   return (
                     <tr key={x.id} className={x.endedAt ? undefined : 'live'}>
                       <td><b>{tr(x.reason)}</b>{x.note && <small> · {noteLabel(x.note)}</small>}</td><td>{fmtTime(x.startedAt)} – {x.endedAt ? fmtTime(x.endedAt) : tr('en curso')}</td><td>{fmtDur(stopTime(s, x, now))}</td>
-                      {canFixAny && <td>{fix(sh) ? <button type="button" className="btn xs soft" aria-label={tr('Corregir')} onClick={() => onFixStop(x.id)}>✎</button> : <small className="rp-lock">🔒 {tr('Otro turno')}</small>}</td>}
+                      {canFixAny && <td>{fix(sh, x.dept) ? <button type="button" className="btn xs soft" aria-label={tr('Corregir')} onClick={() => onFixStop(x.id)}>✎</button> : <small className="rp-lock">🔒 {tr('Otro turno')}</small>}</td>}
                     </tr>
                   )
                 })}</tbody>
@@ -1354,7 +1363,7 @@ function RunDetail({ s, runId, at, now, mgr, fix, canFixAny, onFix, onFixStop, o
             {lots.length === 1 && <button type="button" className="btn" onClick={() => onLot(lots[0])}>{tr('Ver solo el lote {0}', lots[0])}</button>}
           </div>
           <div className="btns">
-            {fix(shifts) ? (
+            {fix(shifts, r.dept) ? (
               <>
                 <button type="button" className="btn soft" onClick={() => setAdding(true)}>{tr('+ Agregar {0}', cfg.unit.toLowerCase())}</button>
                 <button type="button" className="btn primary" onClick={() => onFix(focus)}>✎ {tr('Corregir')}</button>

@@ -145,7 +145,8 @@ export const kindClass = (dept: Dept, word: string) => (!word || word === 'mezcl
 export const cfgFor = (dept: Dept, word: string): DeptCfg => (word ? cfgOf({ dept, extra: dept === 'Spiral' ? { measure: word as Measure } : { bin: word } }) : CFG[dept])
 /** a bin's word as the screen says it: the offered ones in the screen's language, a typed one as typed */
 const BIN_SHOWN: Record<string, () => string> = { platos: () => tr('platos'), copas: () => tr('copas'), pouches: () => tr('pouches'), lb: () => tr('libras'), cajas: () => tr('cajas') }
-export const binWord = (word: string) => BIN_SHOWN[word]?.() ?? word
+// (only its own words: a word typed as "constructor" or "__proto__" found Object's and blanked the screen, audit 2026-10-17 H2)
+export const binWord = (word: string) => (Object.prototype.hasOwnProperty.call(BIN_SHOWN, word) ? BIN_SHOWN[word]() : word)
 /** a stop with its reason; lineId null = the whole department */
 export type Stop = { id: string; dept: Dept; lineId: string | null; reason: string; note: string; startedAt: number; endedAt: number | null; by: string; updatedAt: number; deleted?: boolean; syncedAt?: number }
 /**
@@ -242,7 +243,21 @@ const SAMPLE_PRODUCTS: Product[] = [
 ]
 
 const KEY = 'act_v1'
-const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2))
+/**
+ * A new id for a line, a run, a stop or a history row: always a real UUID (version 4), because the server's columns
+ * are of that type. A browser without crypto.randomUUID (Chrome before 92, iOS before 15.4, or the app opened over
+ * plain http) used to get a short random text instead: the server refused every row with it (22P02) and nothing that
+ * tablet recorded ever went up (audit 2026-10-17, H5). getRandomValues is in every browser and needs no https.
+ * (A function declaration: load() and fresh() use it, see the note at `let state = load()`)
+ */
+function uid(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID()
+  const b = crypto.getRandomValues(new Uint8Array(16))
+  b[6] = (b[6] & 15) | 64 // version 4
+  b[8] = (b[8] & 63) | 128 // the RFC 4122 variant
+  const h = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('')
+  return h.slice(0, 8) + '-' + h.slice(8, 12) + '-' + h.slice(12, 16) + '-' + h.slice(16, 20) + '-' + h.slice(20)
+}
 const pad = (n: number) => String(n).padStart(2, '0')
 export const dayOf = (ms: number) => { const d = new Date(ms); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) }
 export const today = () => dayOf(clockNow())
@@ -285,12 +300,20 @@ function load(): State {
       const units = (r: Raw['runs'][number]): Unit[] => (r.units ? r.units.map(unitOf) : (r.carts ?? []).map((at) => ({ at, qty: null, ref: '', by: '' })))
       const sample = (code: string) => SAMPLE_PRODUCTS.some((x) => x.code === code)
       const products: Product[] = s.products ? s.products.map((p) => ({ code: p.code ?? '', name: p.name ?? '', pouchesPerCase: p.pouchesPerCase ?? 0, casesPerMix: p.casesPerMix ?? 0, cratesPerCart: (p.cratesPerCart ?? (p.pouchesPerCart ? 12 : 0)) === 12 && sample(p.code ?? '') ? CRATES_PER_CART : p.cratesPerCart ?? (p.pouchesPerCart ? 12 : 0), pouchesPerCrate: p.pouchesPerCrate ?? (p.pouchesPerCart ? Math.round(p.pouchesPerCart / 12) : 0), casesPerPallet: p.casesPerPallet ?? 0, ...((r) => (r ? { room: r } : {}))(packRoomOfText(p.room)), ...((u) => (u ? { spiralUnit: u } : {}))(spiralUnitOfText(p.spiralUnit)), updatedAt: p.updatedAt ?? 0 })) : SAMPLE_PRODUCTS
-      const runFrom = (r: Raw['runs'][number]): Run => ({ id: r.id ?? uid(), dept: (r.dept ?? 'Kitchen') as Dept, lineId: r.lineId ?? '', line: r.line ?? '', code: r.code ?? '', lot: r.lot ?? '', date: r.date ?? today(), startedAt: r.startedAt ?? 0, endedAt: r.endedAt ?? null, units: units(r), perUnit: r.perUnit ?? null, waste: r.waste ?? 0, by: r.by ?? '', updatedAt: r.updatedAt ?? 0, ...((e) => (e ? { extra: e } : {}))(cleanExtra(r.extra)) })
+      // A line, run or stop keeps the server's stamp of the version it holds (syncedAt): it is what tells a late echo
+      // of an older version from news (see reconcile). Lost on every reload until 2026-10-17 (audit S8): after one,
+      // a page of a pull that came late could open again a code just ended. (Written inline: nothing declared below
+      // `let state = load()` may be used in here)
+      // A row of a room this version does not know (one a newer version added, such as QC) is not kept: every screen
+      // looks its room up, and the Reporte went blank on it (audit 2026-10-17). It stays on the server, and a version
+      // that knows the room brings it. (Written inline, as above)
+      const known = (x: { dept?: unknown }) => x.dept == null || (DEPTS as unknown[]).includes(x.dept)
+      const runFrom = (r: Raw['runs'][number]): Run => ({ id: r.id ?? uid(), dept: (r.dept ?? 'Kitchen') as Dept, lineId: r.lineId ?? '', line: r.line ?? '', code: r.code ?? '', lot: r.lot ?? '', date: r.date ?? today(), startedAt: r.startedAt ?? 0, endedAt: r.endedAt ?? null, units: units(r), perUnit: r.perUnit ?? null, waste: r.waste ?? 0, by: r.by ?? '', updatedAt: r.updatedAt ?? 0, ...((e) => (e ? { extra: e } : {}))(cleanExtra(r.extra)), ...(Number(r.syncedAt) > 0 ? { syncedAt: Number(r.syncedAt) } : {}) })
       return {
-        lines: s.lines.map((l) => ({ id: l.id ?? uid(), dept: (l.dept ?? 'Kitchen') as Dept, name: l.name ?? 'Línea 1', updatedAt: l.updatedAt ?? 0 })),
-        stops: s.stops.map((x) => ({ id: x.id ?? uid(), dept: (x.dept ?? 'Kitchen') as Dept, lineId: x.lineId ?? null, reason: x.reason ?? '', note: x.note ?? '', startedAt: x.startedAt ?? 0, endedAt: x.endedAt ?? null, by: x.by ?? '', updatedAt: x.updatedAt ?? 0 })),
-        runs: s.runs.map(runFrom),
-        orderRuns: (s.orderRuns ?? []).map(runFrom),
+        lines: s.lines.filter(known).map((l) => ({ id: l.id ?? uid(), dept: (l.dept ?? 'Kitchen') as Dept, name: l.name ?? 'Línea 1', updatedAt: l.updatedAt ?? 0, ...(Number(l.syncedAt) > 0 ? { syncedAt: Number(l.syncedAt) } : {}) })),
+        stops: s.stops.filter(known).map((x) => ({ id: x.id ?? uid(), dept: (x.dept ?? 'Kitchen') as Dept, lineId: x.lineId ?? null, reason: x.reason ?? '', note: x.note ?? '', startedAt: x.startedAt ?? 0, endedAt: x.endedAt ?? null, by: x.by ?? '', updatedAt: x.updatedAt ?? 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) })),
+        runs: s.runs.filter(known).map(runFrom),
+        orderRuns: (s.orderRuns ?? []).filter(known).map(runFrom),
         products, schedule: tidySchedule(s.schedule ?? {}),
         changes: (s.changes ?? []).filter((c) => (c.at ?? 0) > clockNow() - KEEP_CHANGES_MS).map((c) => ({ id: c.id ?? uid(), at: c.at ?? 0, by: c.by ?? '', dept: (c.dept ?? null) as Dept | null, what: c.what ?? '', before: c.before ?? '', after: c.after ?? '', refTable: c.refTable ?? '', refKey: c.refKey ?? '', updatedAt: c.updatedAt ?? 0 })),
         targets: (s.targets ?? []).filter((t) => DEPTS.includes(t.dept as Dept)).map((t) => ({ dept: t.dept as Dept, perHour: t.perHour ?? null, perShift: t.perShift ?? null, updatedAt: t.updatedAt ?? 0 })),
@@ -391,6 +414,23 @@ export const user = pref('act_user')
 export const myDept = pref('act_dept')
 /** 'op' = supervisor / operator: only their department; 'mgr' = manager / office: every department, Avance and reports */
 export const role = pref('act_role')
+/**
+ * '1' = the person signed in only looks ("Solo ver"): they see every room as a manager does (role 'mgr'), but the
+ * server takes nothing from them. Such a device heals no Set up on its own (the server does, see migrations/016): it
+ * used to try, the server refused, and the office's screen showed the red bar of a session the server does not take
+ * (audit 2026-10-17). Units only it still holds are kept and wait for someone who may send them (see reconcile).
+ * Kept apart from the role, so whatever reads the role (the Tablets tab) reads it as before
+ */
+export const viewOnly = pref('act_view_only')
+/**
+ * may the person signed in write this room's lines, codes, stops and history? The server's own rule
+ * (migrations/001, act_can_write): a manager or the office every room, an operator only their own, somebody who only
+ * looks none. The screens offer nothing more: an operator given "Ver todos los departamentos" (and "Corregir") could
+ * start a code, correct a run or add a record in another room, the server refused it, and since rows are no longer
+ * thrown away it waited on the tablet for ever, or went up under the next manager's session (review of 2026-10-18).
+ * A function: nothing here may be read before the file has been (see load)
+ */
+export function writesRoom(d: string): boolean { return !viewOnly.get() && (role.get() !== 'op' || d === myDept.get()) }
 /** the manager's code for the demo without server (with a server the roles come from the employees table) */
 const mgrPin = pref('act_mgr_pin')
 export const managerPin = { get: () => mgrPin.get() || '1234', set: (v: string) => mgrPin.set(v) }
@@ -404,15 +444,15 @@ const rowOfStop = (x: Stop) => ({ id: x.id, dept: x.dept, line_id: x.lineId, rea
 const rowOfProduct = (p: Product) => ({ code: normCode(p.code), name: p.name, pouches_per_case: p.pouchesPerCase, cases_per_mix: p.casesPerMix, crates_per_cart: p.cratesPerCart, pouches_per_crate: p.pouchesPerCrate, cases_per_pallet: p.casesPerPallet, room: p.room ?? null, spiral_unit: p.spiralUnit ?? null, deleted: !!p.deleted, updated_at: iso(p.updatedAt), updated_by: user.get() })
 const rowOfSchedule = (date: string, code: string, mixes: number) => ({ date, code: normCode(code), mixes, updated_at: iso(clockNow()), updated_by: user.get() })
 const rowOfChange = (c: Change) => ({ id: c.id, at: iso(c.at), by_name: c.by, dept: c.dept, what: c.what, before: c.before, after: c.after, ref_table: c.refTable, ref_key: c.refKey, deleted: !!c.deleted, updated_at: iso(c.updatedAt), updated_by: user.get() })
-const rowOfTarget = (t: Target) => ({ dept: t.dept, per_hour: t.perHour, per_shift: t.perShift, updated_at: iso(t.updatedAt), updated_by: user.get() })
 
 // ---- the mutations: each one saves on the device and queues the row for the server ----
 /** a change is always stamped later than the version it was made from, even when this device's clock runs behind another's */
 const stamp = (was: { updatedAt: number } | undefined) => Math.max(clockNow(), (was?.updatedAt ?? 0) + 1)
 /** what the server last had of a row (nothing for one never sent): it travels with the queued change, see outbox.ts */
 const baseOf = <T extends { updatedAt: number }>(was: T | undefined, row: (x: T) => Row) => (was && was.updatedAt ? row(was) : null)
-const putLine = (l: Line) => {
-  const was = state.lines.find((x) => x.id === l.id)
+/** `before` = the version this change starts from when the device no longer holds it (a line taken off, see restoreLine) */
+const putLine = (l: Line, before?: Line) => {
+  const was = state.lines.find((x) => x.id === l.id) ?? before
   l = { ...l, updatedAt: stamp(was) }; if (l.deleted) gone.set('act_lines|' + l.id, l.updatedAt)
   set({ ...state, lines: upsertIn(state.lines, l) }); push('act_lines', l.id, rowOfLine(l), baseOf(was, rowOfLine))
 }
@@ -561,7 +601,11 @@ export function removedLines(s: State, dept: Dept): { id: string; name: string; 
 export function restoreLine(dept: Dept, id: string): boolean {
   const x = removedLines(state, dept).find((y) => y.id === id)
   if (!x) return false
-  putLine({ id, dept, name: x.name, updatedAt: 0 }); logChange(dept, 'Línea puesta de nuevo en ' + dept, '', x.name, 'act_lines', id)
+  // It starts from the line as it was taken off, as the history knows it: the device holds nothing of a line taken off,
+  // and a change with nothing to start from loses to the server's copy. A pull of everything (the first one after
+  // every new version) brought the line taken off before this went up, and the line was gone again while the history
+  // said it was back (audit 2026-10-17)
+  putLine({ id, dept, name: x.name, updatedAt: 0 }, { id, dept, name: x.name, deleted: true, updatedAt: x.at }); logChange(dept, 'Línea puesta de nuevo en ' + dept, '', x.name, 'act_lines', id)
   return true
 }
 /** the key of the operators' line rules in act_targets (add in per_hour, remove in per_shift: 1 = yes, 0 = no) */
@@ -794,8 +838,9 @@ function healSetup(lineId: string) {
   const r = state.runs.find((x) => x.lineId === lineId && !x.endedAt)
   if (!r) return
   // an operator's device only writes its own room: another room's line is healed by a manager's device or by that
-  // room's own (2026-10-17: MFO's tablet tried to end an RTE set up and the server refused it)
-  if (role.get() === 'op' && r.dept !== myDept.get()) return
+  // room's own (2026-10-17: MFO's tablet tried to end an RTE set up and the server refused it). A device that only
+  // looks writes nothing (the server heals it too, see migrations/016)
+  if ((role.get() === 'op' && r.dept !== myDept.get()) || viewOnly.get()) return
   for (const x of state.stops.filter((y) => y.lineId === lineId && !y.endedAt && y.reason === SETUP && y.startedAt <= r.startedAt)) putStop(r.startedAt - x.startedAt > SETUP_MAX_MS || fromOtherDay(state, x, r.startedAt) ? { ...x, deleted: true } : { ...x, endedAt: r.startedAt })
 }
 /** pounds thrown away, added to what the run already has */
@@ -841,7 +886,12 @@ export function reopenPallet(runId: string, next = ''): boolean {
   const r = run(runId), last = r?.units[r.units.length - 1]
   if (!r || !last || r.endedAt || binOf(r) || r.dept !== 'Packing' || r.extra?.open?.parts.length) return false
   const lots = last.lots?.length ? last.lots : last.qty ? [{ lot: r.lot, qty: last.qty, ...(last.ref ? { tag: last.ref } : {}) }] : []
-  const parts: PalletPart[] = lots.filter((l) => l.qty > 0).map((l) => ({ lot: l.lot, qty: l.qty, tag: l.tag ?? '', at: last.at, by: last.by }))
+  // each lot gets a moment of its own, a few milliseconds apart and ending at the pallet's (so still older than
+  // anything recorded after it): a merge of two versions of this pallet tells its lots apart by their moment. With
+  // one moment for all of them, a manager's correction of one lot replaced the others and a lot was counted twice
+  // (review of 2026-10-18)
+  const kept = lots.filter((l) => l.qty > 0)
+  const parts: PalletPart[] = kept.map((l, k) => ({ lot: l.lot, qty: l.qty, tag: l.tag ?? '', at: last.at - (kept.length - 1 - k), by: last.by }))
   if (!parts.length) return false
   const rest: RunExtra = r.extra ? (({ open: _o, ...x }) => x)(r.extra) : {}
   const lotNow = next.trim().slice(0, 30) || lotNowOf(r)
@@ -873,10 +923,13 @@ export function reopenRun(id: string): boolean {
  * only knew the hour). Returns the new run's id, or '' when nothing was written: the line had another code in those
  * hours (nothing of it is touched), the line is not of that room, or there is no code.
  */
-export type LaterRun = { dept: Dept; lineId: string; code: string; lot?: string; date: string; startedAt: number; endedAt?: number | null; units?: { qty: number | null; ref?: string; lots?: LotPart[] }[]; perUnit?: number | null; waste?: number; bin?: string; measure?: Measure | ''; madeBy?: string }
+export type LaterRun = { dept: Dept; lineId: string; code: string; lot?: string; date: string; startedAt: number; endedAt?: number | null; units?: { qty: number | null; ref?: string; lots?: LotPart[] }[]; perUnit?: number | null; waste?: number | string; bin?: string; measure?: Measure | ''; madeBy?: string }
 export function addRunLater(x: LaterRun): string {
   const line = state.lines.find((l) => l.id === x.lineId && !l.deleted), code = x.code.trim().toUpperCase(), list = x.units ?? []
-  if (!line || line.dept !== x.dept || !code || !Number.isFinite(x.startedAt) || !/^\d{4}-\d{2}-\d{2}$/.test(x.date)) return ''
+  // the waste as typed in the box ("25,5" is 25.5, blank is none); one that is not a number adds nothing (the box says
+  // why, see wasteProblem): it used to be saved as 0 (review of 2026-10-18)
+  const waste = typeof x.waste === 'string' ? (wasteProblem(x.waste) ? NaN : typed(x.waste)) : Number(x.waste) || 0
+  if (!line || line.dept !== x.dept || !code || !Number.isFinite(x.startedAt) || !/^\d{4}-\d{2}-\d{2}$/.test(x.date) || !Number.isFinite(waste)) return ''
   const start = Math.floor(x.startedAt), n = list.length
   const told = x.endedAt != null && Number.isFinite(x.endedAt) && x.endedAt >= start ? Math.floor(x.endedAt) : null
   const end = told ?? start + (n ? (n - 1) * 60_000 : 0)
@@ -886,7 +939,7 @@ export function addRunLater(x: LaterRun): string {
   const by = (x.madeBy ?? '').trim() || user.get()
   const units: Unit[] = list.map((u, i) => { const lots = cleanLots(u.lots), qty = lots ? lots.reduce((t, l) => t + l.qty, 0) : u.qty; return { at: atOf(i), qty: typeof qty === 'number' && Number.isFinite(qty) ? qty : null, ref: (u.ref ?? '').trim(), by, ...(lots ? { lots } : {}) } })
   const extra: RunExtra | undefined = (line.dept === 'Packing' || line.dept === 'MFO') && x.bin?.trim() ? { bin: x.bin.trim().slice(0, 30) } : line.dept === 'Spiral' && x.measure ? { measure: x.measure } : undefined
-  const r: Run = { id: uid(), dept: line.dept, lineId: line.id, line: line.name, code, lot: (x.lot ?? '').trim(), date: x.date, startedAt: start, endedAt: end, units, perUnit: x.perUnit != null && Number.isFinite(x.perUnit) ? x.perUnit : null, waste: Math.round((x.waste ?? 0) * 100) / 100 || 0, by, updatedAt: 0, ...(extra ? { extra } : {}) }
+  const r: Run = { id: uid(), dept: line.dept, lineId: line.id, line: line.name, code, lot: (x.lot ?? '').trim(), date: x.date, startedAt: start, endedAt: end, units, perUnit: x.perUnit != null && Number.isFinite(x.perUnit) ? x.perUnit : null, waste: Math.round(waste * 100) / 100 || 0, by, updatedAt: 0, ...(extra ? { extra } : {}) }
   batch(() => {
     // a set up left open on the line before those hours ends where the code started, as when a code starts on the line
     for (const y of state.stops.filter((z) => z.lineId === line.id && !z.endedAt && z.reason === SETUP && z.startedAt < start)) putStop({ ...y, endedAt: start })
@@ -984,18 +1037,28 @@ export type RunDraft = { code: string; lot: string; date: string; per: string; w
 export const draftOf = (r: Run): RunDraft => ({ code: r.code, lot: r.lot, date: r.date, per: r.perUnit != null ? String(r.perUnit) : '', waste: r.waste ? String(r.waste) : '', units: r.units.map((u) => ({ at: u.at, qty: u.qty != null ? String(u.qty) : '', ref: u.ref, by: u.by, ...(u.lots ? { lots: u.lots } : {}) })) })
 const typed = (t: string) => { const n = Number(t.replace(',', '.')); return Number.isFinite(n) ? n : 0 }
 /**
- * saves a correction on top of what the run is NOW: only what the person changed in the form (against how the form
- * opened) is applied, so a cart tapped on the line while the form was open is kept, not wiped by the form's old list
+ * What is wrong with the waste typed in Corregir ('' = nothing: a number, or blank for none). The box takes digits,
+ * dots and commas, so "25..5" or "1.234.5" could be typed, and they were saved as 0: 25 lb erased without a word
+ * (audit 2026-10-17, H6). A comma is the decimal point, as everywhere in the app ("25,5" is 25.5).
  */
-export function applyDraft(id: string, opened: RunDraft, draft: RunDraft) {
+export const wasteProblem = (t: string) => (Number.isFinite(Number(t.trim().replace(',', '.'))) ? '' : tr('El waste "{0}" no es un número. Escríbelo así: 25.5', t.trim()))
+/**
+ * saves a correction on top of what the run is NOW: only what the person changed in the form (against how the form
+ * opened) is applied, so a cart tapped on the line while the form was open is kept, not wiped by the form's old list.
+ * Returns what is wrong ('' = saved): a waste that is not a number saves nothing at all, and the form says why and
+ * stays open (it used to close as if saved, and the waste typed was lost without a word; review of 2026-10-18)
+ */
+export function applyDraft(id: string, opened: RunDraft, draft: RunDraft): string {
   const r = run(id)
-  if (!r) return
+  if (!r) return ''
   const cfg = cfgOf(r), patch: Parameters<typeof updateRun>[1] = {}
   const changed = (a: string, b: string) => a.trim() !== b.trim()
+  if (cfg.waste && changed(draft.waste, opened.waste) && wasteProblem(draft.waste)) return wasteProblem(draft.waste)
   if (changed(draft.code.toUpperCase(), opened.code.toUpperCase()) && draft.code.trim()) patch.code = draft.code.trim().toUpperCase()
   if (changed(draft.lot, opened.lot)) patch.lot = draft.lot.trim()
   if (draft.date && draft.date !== opened.date) patch.date = draft.date
   if (cfg.perUnitLabel && changed(draft.per, opened.per)) patch.perUnit = draft.per.trim() ? typed(draft.per) : null
+  // (a waste that is not a number was refused above: it used to become 0, see wasteProblem)
   if (cfg.waste && changed(draft.waste, opened.waste)) patch.waste = typed(draft.waste)
   const was = new Map(opened.units.map((u) => [u.at, u])), now = new Map(draft.units.map((u) => [u.at, u]))
   const units = r.units.filter((u) => !(was.has(u.at) && !now.has(u.at))).map((u) => {
@@ -1012,6 +1075,7 @@ export function applyDraft(id: string, opened: RunDraft, draft: RunDraft) {
   })
   if (units.length !== r.units.length || units.some((u, i) => u !== r.units[i])) patch.units = units
   if (Object.keys(patch).length) updateRun(id, patch)
+  return ''
 }
 /** the moment with this clock time ("HH:MM") nearest to `base`: a correction is a small move, also across midnight */
 export function nearDay(base: number, hm: string) {
@@ -1301,7 +1365,9 @@ export const stopTime = (s: State, x: Stop, now: number) => stopSpans(s, x, now)
 export function runInShift(s: State, r: Run, now: number, h: ShiftHours, shift: 1 | 2) {
   const stops = stopsOf(s, r.dept, r.lineId), end = r.endedAt ?? now, away = awayOn(s, r.lineId, r.date, r.startedAt, end, now)
   const mine = shiftPieces(h, r.startedAt, end).filter((x) => x.shift === shift).flatMap((x) => without(x.from, x.to, away))
-  const reasons: Record<string, number> = {}
+  // keyed by the cause as it was typed ("Otra"): an object of nothing, so a cause such as "__proto__" or "constructor"
+  // is a cause like any other, not something of every object (its time went missing, audit 2026-10-17 H2)
+  const reasons: Record<string, number> = Object.create(null)
   let working = 0, down = 0, setup = 0
   for (const w of mine) {
     working += activeBetween(w.from, w.to, stops, now)
@@ -1390,9 +1456,10 @@ export function restorePurged(purgeId: string, rows: { runs: Row[]; stops: Row[]
   // marked at that moment or later (a tablet that was touching a row just then may have left its mark a little after),
   // and already there when it happened: what was deleted on its own before, or recorded afterwards, is not of that purge
   const taken = (x: { deleted?: boolean; updatedAt: number }, began: number) => !!x.deleted && x.updatedAt >= mark.at - PURGE_WINDOW_MS && began <= mark.at
-  const runs = rows.runs.map(runOfRow).filter((r) => taken(r, r.startedAt) && r.date === mark.refKey && !state.runs.some((x) => x.id === r.id))
+  // (a room this version does not know is left as it is on the server, see applyRemote: a version that knows it can bring it back)
+  const runs = rows.runs.map(runOfRow).filter((r) => roomKnown(r.dept) && taken(r, r.startedAt) && r.date === mark.refKey && !state.runs.some((x) => x.id === r.id))
   // (the listing of a day's stops reaches into the days around it; the purge only took the ones that began on that date)
-  const stops = rows.stops.map(stopOfRow).filter((x) => taken(x, x.startedAt) && dayOf(x.startedAt) === mark.refKey && !state.stops.some((y) => y.id === x.id))
+  const stops = rows.stops.map(stopOfRow).filter((x) => roomKnown(x.dept) && taken(x, x.startedAt) && dayOf(x.startedAt) === mark.refKey && !state.stops.some((y) => y.id === x.id))
   const lines = rows.changes.map(changeOfRow).filter((c) => taken(c, c.at) && (c.refTable === 'act_runs' || c.refTable === 'act_stops'))
   batch(() => {
     for (const r of runs) putRun({ ...r, deleted: false, endedAt: r.endedAt ?? Math.max(mark.at, r.startedAt, ...r.units.map((u) => u.at + 1)) })
@@ -1653,7 +1720,6 @@ export const targetOf = (s: State, dept: Dept) => s.targets.find((t) => t.dept =
  * card. It travels in act_targets like the room's, under the key "line:<id>".
  */
 const LINE_KEY = 'line:'
-const rowOfLineTarget = (t: LineTarget) => ({ dept: LINE_KEY + t.lineId, per_hour: t.perHour, per_shift: t.perDay, updated_at: iso(t.updatedAt), updated_by: user.get() })
 export const lineTargetOf = (s: State, lineId: string) => s.lineTargets.find((t) => t.lineId === lineId)
 // ---- the goals of each shift ----
 /**
@@ -1686,19 +1752,26 @@ function putTurnGoal(key: string, perHour: number | null, total: number | null) 
   set({ ...state, turnGoals: [...state.turnGoals.filter((x) => x.key !== key), g] })
   push('act_targets', key, rowOfTurnGoal(g))
 }
+/**
+ * the room a goal's history line is filed under. A goal goes with the power "Poner metas", for any room (migrations/006),
+ * but a history line of a room only that room's people or a manager may write: an operator who set another room's
+ * goal had its two history lines refused, and they waited on the tablet for ever (review of 2026-10-18). Without a
+ * room they go with the same power, and their text still names the room
+ */
+function goalRoom(dept: Dept): Dept | null { return writesRoom(dept) ? dept : null }
 /** a manager's goal for a room in one shift (blank = none); it reaches every tablet of the room and the history */
 export function setShiftGoal(dept: Dept, shift: 1 | 2, perHour: number | null, total: number | null) {
   const old = shiftGoalOf(state, dept, shift), key = dept + '@' + shift
   putTurnGoal(key, perHour, total)
-  logChange(dept, 'Meta ' + dept + ' · Turno ' + shift + ' · por hora', v(old.perHour), v(perHour), 'act_targets', key)
-  logChange(dept, 'Meta ' + dept + ' · Turno ' + shift + ' · del turno', v(old.total), v(total), 'act_targets', key)
+  logChange(goalRoom(dept), 'Meta ' + dept + ' · Turno ' + shift + ' · por hora', v(old.perHour), v(perHour), 'act_targets', key)
+  logChange(goalRoom(dept), 'Meta ' + dept + ' · Turno ' + shift + ' · del turno', v(old.total), v(total), 'act_targets', key)
 }
 /** a manager's goal for one line in one shift (blank = none) */
 export function setLineShiftGoal(line: Line, shift: 1 | 2, perHour: number | null, total: number | null) {
   const old = lineShiftGoalOf(state, line.id, shift), key = LINE_KEY + line.id + '@' + shift
   putTurnGoal(key, perHour, total)
-  logChange(line.dept, 'Meta ' + line.name + ' (' + line.dept + ') · Turno ' + shift + ' · por hora', v(old.perHour), v(perHour), 'act_targets', key)
-  logChange(line.dept, 'Meta ' + line.name + ' (' + line.dept + ') · Turno ' + shift + ' · del turno', v(old.total), v(total), 'act_targets', key)
+  logChange(goalRoom(line.dept), 'Meta ' + line.name + ' (' + line.dept + ') · Turno ' + shift + ' · por hora', v(old.perHour), v(perHour), 'act_targets', key)
+  logChange(goalRoom(line.dept), 'Meta ' + line.name + ' (' + line.dept + ') · Turno ' + shift + ' · del turno', v(old.total), v(total), 'act_targets', key)
 }
 /**
  * what one unit counts for: its own quantity; without one (old records, a blank left in a correction), the run's
@@ -1819,7 +1892,11 @@ const unionRun = (first: Run, second: Run): Run => ({ ...first, units: allUnits(
  * rest is theirs. Waste is an amount people add to, so both additions count.
  */
 function mergeRun(base: Run, mine: Run, theirs: Run): Run {
-  const out = merge3(base, mine, theirs, ['dept', 'lineId', 'line', 'code', 'lot', 'date', 'startedAt', 'endedAt', 'perUnit', 'by', 'deleted', 'extra'])
+  const out = merge3(base, mine, theirs, ['dept', 'lineId', 'line', 'code', 'lot', 'date', 'startedAt', 'endedAt', 'perUnit', 'by', 'deleted'])
+  // what a Packing run carries besides its pallets is merged piece by piece: it used to go whole, so a manager's
+  // correction (a pallet taken off) wiped the lot that had just run out on the pallet being built, its cases, its tag
+  // and the lot packed now, on the server and on every screen (audit 2026-10-17, S7)
+  out.extra = mergeExtra(base.extra, mine.extra, theirs.extra)
   const inBase = new Map(base.units.map((u) => [u.at, u])), inMine = new Map(mine.units.map((u) => [u.at, u])), inTheirs = new Set(theirs.units.map((u) => u.at))
   // what any version took off on purpose stays off, whoever took it
   const dead = tombs(base, mine, theirs)
@@ -1827,9 +1904,57 @@ function mergeRun(base: Run, mine: Run, theirs: Run): Run {
     ...theirs.units.filter((u) => !(inBase.has(u.at) && !inMine.has(u.at))).map((u) => { const m = inMine.get(u.at), b = inBase.get(u.at); return m && b && !same(m, b) ? m : u }),
     ...mine.units.filter((u) => !inBase.has(u.at) && !inTheirs.has(u.at)),
   ].filter((u) => !dead.has(u.at)).sort(byAt)
-  out.extra = withTombs(out.extra, dead)
+  // (in the order a row is read in, see cleanExtra: the same content must read as the same row in reconcile)
+  out.extra = cleanExtra(withTombs(out.extra, dead))
   out.waste = mine.waste !== base.waste ? (theirs.waste !== base.waste ? Math.round((theirs.waste + mine.waste - base.waste) * 100) / 100 : mine.waste) : theirs.waste
   return out
+}
+/**
+ * A run's extra, three ways: the bin word, the lot packed now and the measure are each this device's when it changed
+ * them, the other's otherwise. The units taken off (removed) are joined by mergeRun, as before. The pallet being built
+ * (open): when only one side changed it, that side's stands. When both did and one of them closed it (Pallet completo,
+ * or the end of the code: its lots went into a pallet), the close stands as it was (Jose's rule: the lots it closed
+ * must not be counted again on the next pallet). Otherwise both kept building it: the lots of both are kept.
+ */
+function mergeExtra(base: RunExtra | undefined, mine: RunExtra | undefined, theirs: RunExtra | undefined): RunExtra | undefined {
+  const b = base ?? {}, m = mine ?? {}, out: RunExtra = { ...(theirs ?? {}) }
+  for (const k of ['bin', 'lotNow', 'measure'] as const) {
+    if (same(m[k], b[k])) continue
+    if (m[k] === undefined) delete out[k]
+    else (out as Record<string, unknown>)[k] = m[k]
+  }
+  if (!same(m.open, b.open)) {
+    const closed = (x: RunExtra) => !!b.open && (!x.open || b.open.parts.some((p) => !x.open?.parts.some((q) => q.at === p.at)))
+    if (same(out.open, b.open) || closed(m)) { if (m.open) out.open = m.open; else delete out.open }
+    else if (!closed(out) && m.open && out.open) out.open = mergeOpen(b.open, m.open, out.open)
+    // (the other side closed it: its close stands, see above)
+  }
+  delete out.removed
+  return Object.keys(out).length ? out : undefined
+}
+/**
+ * the lots of a pallet being built, each with what tells it apart: its moment, and its place among the lots that
+ * share that moment. Lots only ever go on at the end or are corrected in place, so that place is the same in every
+ * version that started from the same one. A moment alone is not enough: a pallet reopened by an older version of the
+ * app gave all its lots the moment of the pallet, and a part with no moment reads as 0 (review of 2026-10-18: one lot
+ * replaced the other and was counted twice)
+ */
+function partKeys(parts: PalletPart[]): [string, PalletPart][] {
+  const seen = new Map<number, number>()
+  return parts.map((p) => { const n = seen.get(p.at) ?? 0; seen.set(p.at, n + 1); return [p.at + '#' + n, p] })
+}
+/** the pallet being built, changed on both sides and closed on neither: each lot by its moment (see partKeys), each side's changes kept */
+function mergeOpen(base: RunExtra['open'], mine: NonNullable<RunExtra['open']>, theirs: NonNullable<RunExtra['open']>): NonNullable<RunExtra['open']> {
+  const ofMine = partKeys(mine.parts), ofTheirs = partKeys(theirs.parts)
+  const inBase = new Map(partKeys(base?.parts ?? [])), inMine = new Map(ofMine), inTheirs = new Set(ofTheirs.map(([k]) => k))
+  const parts = [
+    // theirs, without what I took off, with what I corrected
+    ...ofTheirs.filter(([k]) => !(inBase.has(k) && !inMine.has(k))).map(([k, p]) => { const x = inMine.get(k), y = inBase.get(k); return x && y && !same(x, y) ? x : p }),
+    // and what only I added
+    ...ofMine.filter(([k]) => !inBase.has(k) && !inTheirs.has(k)).map(([, p]) => p),
+  ].sort((x, y) => x.at - y.at) // (a stable sort: lots that share a moment keep their order)
+  const po = !same(mine.po, base?.po) ? mine.po : theirs.po
+  return { parts, ...(typeof po === 'string' ? { po } : {}) }
 }
 type Synced = { id: string; updatedAt: number; deleted?: boolean; syncedAt?: number }
 /**
@@ -1872,7 +1997,10 @@ function reconcile<T extends Synced>(table: Table, cur: T | undefined, row: Row,
   if (tb === mb) { if (pend) drop(table, theirs.id); return late ? null : theirs } // the same row (an echo of what was sent)
   if (late) return null
   if (!pend) {
-    // this device changed nothing here: the server's version stands. What the device holds that only adds goes up as its own change
+    // this device changed nothing here: the server's version stands. What the device holds that only adds goes up as
+    // its own change. Also on a device that only looks: the server will not take it from them, so it waits on the
+    // device for someone who may send it (see outbox.ts). Left out there, those units were gone from the device for
+    // good, and they may be the only copy (rows an older version dropped from its queue; review of 2026-10-18)
     const grown = k.grow ? k.grow(theirs, mine) : theirs
     if (body(grown) === tb) return theirs
     const next = { ...grown, updatedAt: Math.max(clockNow(), theirs.updatedAt + 1) }
@@ -1880,6 +2008,16 @@ function reconcile<T extends Synced>(table: Table, cur: T | undefined, row: Row,
     return next
   }
   const base = pend.base ? k.of(pend.base) : null
+  // A version this device itself sent whose answer never came back (the 25 s limit, a WiFi that dropped at that
+  // moment, or the live notice that came before the answer): the server took it all the same. It is this change's
+  // own past, not another tablet's change: what was recorded after it stays and goes up, starting now from the
+  // server's copy of it. Taken for another tablet's version, a stop ended meanwhile came back open, a deleted run came
+  // back and waste counted twice (audit 2026-10-17, S1). Known by its stamp AND its content: a row the server changed
+  // on the way in (a line renamed "(2)", see migrations/017) is the server's, and is merged as such
+  if (pend.tried?.some((t) => { const x = k.of(t); return x.updatedAt === theirs.updatedAt && body(x) === tb })) {
+    if (!base || (theirs.syncedAt ?? 0) > (base.syncedAt ?? 0)) rebase(table, theirs.id, pend.row, row)
+    return null
+  }
   // the server moved past the version this change started from: that one is merged three ways; the version it
   // started from itself (or a later echo of it) has nothing to add, and the change goes up as it is
   const forked = !!base && (theirs.syncedAt && base.syncedAt ? theirs.syncedAt > base.syncedAt : theirs.updatedAt > base.updatedAt || (theirs.updatedAt === base.updatedAt && tb !== body(base)))
@@ -1892,9 +2030,16 @@ function reconcile<T extends Synced>(table: Table, cur: T | undefined, row: Row,
   return next
 }
 
+/** one of the rooms this version of the app knows (DEPTS) */
+export function roomKnown(dept: unknown): dept is Dept { return (DEPTS as unknown[]).includes(dept) }
 /** a row that arrived from the server: see reconcile() for the lines, runs and stops; the tables only the office edits keep the newer row */
 export function applyRemote(table: string, row: Record<string, unknown>) {
   if (!row || (row.id == null && row.code == null && row.dept == null)) return // the notice of a row removed by hand in the database carries nothing
+  // A line, run or stop of a room this version does not know (QC is coming, Jose 2026-10-17): every screen looks its
+  // room up, and the first such row left the Reporte blank on a device not yet on the version that knows it (audit
+  // 2026-10-17). It is left out here and stays on the server untouched; the first pull of a version that knows the
+  // room brings everything again (sync.ts), that row with it
+  if ((table === 'act_lines' || table === 'act_runs' || table === 'act_stops') && !roomKnown(row.dept)) return
   const at = fromIso(row.updated_at) ?? 0
   const newer = <T extends { updatedAt: number }>(cur: T | undefined) => !cur || at >= cur.updatedAt
   if (table === 'act_lines') {
@@ -1982,21 +2127,18 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
     set({ ...state, targets: [...state.targets.filter((x) => x.dept !== dept), t] })
   }
 }
-/** everything this device holds, queued for the server (the pilot's tablets bring their days along) */
+/**
+ * The lines, runs and stops of this device that the server never confirmed (no stamp of its own, syncedAt), queued
+ * for it: the pilot's tablets bring their days along. Until 2026-10-17 it sent everything the device held, with no
+ * version to merge from, and the server keeps no order for products, the program, goals, shift hours or orders: a
+ * device that had not pulled for a while put its old copies of them back over the office's newer ones (audit H4).
+ * What the server has is never sent from here; the rows sent are merged as any change is (reconcile, sync.ts).
+ */
 export function uploadAll() {
   let n = 0
-  for (const l of state.lines) { push('act_lines', l.id, rowOfLine({ ...l, updatedAt: l.updatedAt || clockNow() })); n++ }
-  for (const r of state.runs) { push('act_runs', r.id, rowOfRun({ ...r, updatedAt: r.updatedAt || clockNow() })); n++ }
-  for (const x of state.stops) { push('act_stops', x.id, rowOfStop({ ...x, updatedAt: x.updatedAt || clockNow() })); n++ }
-  for (const p of state.products) if (p.code.trim()) { push('act_products', normCode(p.code), rowOfProduct({ ...p, updatedAt: p.updatedAt || clockNow() })); n++ }
-  for (const [date, codes] of Object.entries(state.schedule)) for (const [code, mixes] of Object.entries(codes)) { push('act_schedule', date + '|' + normCode(code), rowOfSchedule(date, code, mixes)); n++ }
-  for (const c of state.changes) { push('act_changes', c.id, rowOfChange(c)); n++ }
-  for (const t of state.targets) { push('act_targets', t.dept, rowOfTarget(t)); n++ }
-  for (const x of state.shifts) { push('act_targets', SHIFTS_KEY + x.from, rowOfShifts(x)); n++ }
-  for (const t of state.lineTargets) { push('act_targets', LINE_KEY + t.lineId, rowOfLineTarget(t)); n++ }
-  for (const g of state.turnGoals) { push('act_targets', g.key, rowOfTurnGoal(g)); n++ }
-  for (const p of state.plans) { push('act_plan', planKey(p.date, p.dept, p.code), rowOfPlan(p)); n++ }
-  for (const o of state.orders) { push('act_changes', ORDER_ID + o.id, rowOfOrder(o)); n++ }
+  for (const l of state.lines) if (!l.syncedAt) { push('act_lines', l.id, rowOfLine({ ...l, updatedAt: l.updatedAt || clockNow() })); n++ }
+  for (const r of state.runs) if (!r.syncedAt) { push('act_runs', r.id, rowOfRun({ ...r, updatedAt: r.updatedAt || clockNow() })); n++ }
+  for (const x of state.stops) if (!x.syncedAt) { push('act_stops', x.id, rowOfStop({ ...x, updatedAt: x.updatedAt || clockNow() })); n++ }
   return n
 }
 /** "71.4", "71,4", "1.234,5" or "1,234.5" → a number (0 for a blank or something that is not one) */
@@ -2030,6 +2172,9 @@ export function parseProductsCsv(text: string): Product[] {
     else cell += ch
   }
   if (cell || row.length) { row.push(cell); rows.push(row) }
+  // the ' that guards a text from Excel (see csvCell) is not part of it: one before = + - @ is taken off, so the
+  // app's own file (or one the office saved again in Excel) reads back as it was; a ' before anything else stays
+  for (const r of rows) for (let k = 0; k < r.length; k++) r[k] = r[k].replace(/^'(?=[=+\-@\t\r])/, '')
   const head = (rows.shift() ?? []).map((h) => h.trim().toLowerCase())
   const find = (...keys: string[]) => head.findIndex((h) => keys.some((k) => h.includes(k)))
   const cCode = find('código', 'codigo', 'code'), cName = find('producto rte', 'producto', 'r-t-e', 'item', 'name')
@@ -2045,8 +2190,20 @@ export function parseProductsCsv(text: string): Product[] {
   }
   return out
 }
+/**
+ * One cell of a CSV the office opens in Excel. A text that begins with = + - @ (or a tab or a line break) is read by
+ * Excel as a formula: a stop typed under "Otra", a lot, a tag or a product name such as =HYPERLINK(...) would run
+ * when the file is opened (audit 2026-10-17, H1). Such a text gets a ' in front, Excel's own mark for "this is text".
+ * Numbers go as they are (-5 is a number, not a formula). The app takes that ' off again when it reads its own
+ * products CSV back (parseProductsCsv), so a code or a name comes back exactly as it was.
+ */
+export function csvCell(v: string | number | null | undefined): string {
+  let t = v == null ? '' : String(v)
+  if (typeof v === 'string' && /^[=+\-@\t\r]/.test(t)) t = "'" + t
+  return '"' + t.replace(/"/g, '""') + '"'
+}
 export function productsCsv(products: Product[]) {
-  const q = (v: string | number) => '"' + String(v).replace(/"/g, '""') + '"'
+  const q = csvCell
   const head = ['Código', 'Producto', 'Pouches por caja', 'Cajas por mezcla (yield)', 'Cajas por pallet', 'Guacales por carro', 'Pouches por guacal', 'Lo empaca', 'Spiral cuenta en']
   return '﻿' + [head, ...products.map((p) => [p.code, p.name, p.pouchesPerCase, p.casesPerMix, p.casesPerPallet, p.cratesPerCart, p.pouchesPerCrate, p.room ?? '', p.spiralUnit ?? ''])].map((r) => r.map(q).join(',')).join('\r\n')
 }
@@ -2123,7 +2280,7 @@ export function runStats(s: State, r: Run, now: number) {
   const unitTimes = r.units.map((u, i) => worked(i ? r.units[i - 1].at : r.startedAt, u.at))
   const avg = unitTimes.length ? unitTimes.reduce((a, b) => a + b, 0) / unitTimes.length : 0
   const qty = runQty(s, r)
-  const reasons: Record<string, number> = {}
+  const reasons: Record<string, number> = Object.create(null) // (keyed by typed causes: see runInShift)
   for (const p of pieces) if (p.reason !== SETUP) reasons[p.reason] = (reasons[p.reason] ?? 0) + (p.to - p.from)
   return { working, down, setup, unitTimes, avg, qty, reasons, total: end - r.startedAt }
 }

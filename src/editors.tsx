@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { addRunLater, addUnit, applyDraft, BIN_WORDS, binOf, binWord, byLineName, cfgFor, DEPTS, kindClass, MFO_WORDS, plainDay, planRows, SPIRAL_UNITS, type Dept, byShip, CFG, cfgOf, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, setUnitOrder, splitStop, store, updateRun, updateStop, type Run, type State, type Stop, lineLabel } from './store'
+import { addRunLater, addUnit, applyDraft, wasteProblem, BIN_WORDS, binOf, binWord, byLineName, cfgFor, DEPTS, kindClass, MFO_WORDS, plainDay, planRows, SPIRAL_UNITS, type Dept, byShip, CFG, cfgOf, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, setUnitOrder, splitStop, store, updateRun, updateStop, type Run, type State, type Stop, lineLabel } from './store'
 import { clockNow } from './clock'
-import { ConfirmDialog, LotsDialog, useCan } from './App'
+import { ConfirmDialog, LotsDialog, useCan, useWho } from './App'
+import { writesIn } from './powers'
 import { tr } from './i18n'
 import { trx } from './trx'
 
@@ -43,8 +44,13 @@ export function RunEditor({ s, run, mgr, focusAt, onClose }: { s: State; run: Ru
   const [lineId, setLineId] = useState(run.lineId)
   const [problem, setProblem] = useState('')
   const save = () => {
+    // a waste that is not a number ("25..5") is said here and nothing is saved, before the run is moved to another line:
+    // the box used to close as if it had been saved, and the waste typed was lost without a word (review of 2026-10-18)
+    const bad = cfg.waste ? wasteProblem(waste) : ''
+    if (bad) { setProblem(bad); return }
     if (lineId !== run.lineId && !moveRun(run.id, lineId)) { setProblem(tr('No se pudo pasar a esa línea: a esa hora tenía otro código, o ahora mismo está parada o en Set up.')); return }
-    applyDraft(run.id, opened, { code, lot, date, per, waste, units })
+    const why = applyDraft(run.id, opened, { code, lot, date, per, waste, units })
+    if (why) { setProblem(why); return }
     onClose()
   }
   return (
@@ -64,7 +70,7 @@ export function RunEditor({ s, run, mgr, focusAt, onClose }: { s: State; run: Ru
             </label>
           )}
           {cfg.perUnitLabel && <label>{cfg.perUnitLabel} <input value={per} onChange={(e) => setPer(e.target.value.replace(/\D/g, ''))} inputMode="numeric" autoComplete="off" /></label>}
-          {cfg.waste && <label>{tr('Waste (lb)')}{' '}<input value={waste} onChange={(e) => setWaste(e.target.value.replace(/[^\d.,]/g, ''))} inputMode="decimal" autoComplete="off" /></label>}
+          {cfg.waste && <label>{tr('Waste (lb)')}{' '}<input value={waste} onChange={(e) => { setWaste(e.target.value.replace(/[^\d.,]/g, '')); setProblem('') }} inputMode="decimal" autoComplete="off" /></label>}
         </div>
         {units.length > 0 && (
           <div className="twrap">
@@ -294,7 +300,9 @@ function StopSplitter({ stop, onBack, onClose }: { stop: Stop; onBack: () => voi
  * its units spread over its hours, and the history says who added it (see addRunLater).
  */
 export function AddRunDialog({ s, date, dept: first, onClose, onAdded }: { s: State; date: string; dept?: Dept; onClose: () => void; onAdded: (id: string) => void }) {
-  const [dept, setDept] = useState<Dept>(first ?? 'Kitchen')
+  // only the rooms the server takes this person's records in: an operator, their own (review of 2026-10-18)
+  const who = useWho(), rooms = DEPTS.filter((d) => writesIn(who, d)), pick = first ?? 'Kitchen'
+  const [dept, setDept] = useState<Dept>(rooms.includes(pick) ? pick : rooms[0] ?? pick)
   const lines = s.lines.filter((l) => l.dept === dept && !l.deleted).sort(byLineName)
   const [linePick, setLinePick] = useState('')
   const line = lines.find((l) => l.id === linePick) ?? lines[0]
@@ -331,13 +339,15 @@ export function AddRunDialog({ s, date, dept: first, onClose, onAdded }: { s: St
   const endOk = endAt == null || (endAt >= startAt && plainDay(s, endAt) === day)
   const n = count.trim() ? Number(count) : 0
   const per = each.trim() ? Number(each.replace(',', '.')) : null
-  const ok = !!line && !!code.trim() && !!day && startOk && endOk && Number.isInteger(n) && n >= 0 && n <= 500 && (per == null || (Number.isFinite(per) && per >= 0))
+  // a waste that is not a number ("25..5") is said, and "✓ Agregar" waits for it: it used to be saved as 0 (review of 2026-10-18)
+  const wasteBad = cfg.waste ? wasteProblem(waste) : ''
+  const ok = !!line && !!code.trim() && !!day && startOk && endOk && Number.isInteger(n) && n >= 0 && n <= 500 && (per == null || (Number.isFinite(per) && per >= 0)) && !wasteBad
   const program = planRows(s, day, dept).filter((r) => r.planned > 0).map((r) => r.code)
   const save = () => {
     if (!ok || !line) return
     const refList = refs.split(/[,;\s]+/).map((t) => t.trim()).filter(Boolean)
     const units = Array.from({ length: n }, (_, i) => ({ qty: cfg.qty === 'none' ? null : per, ref: refList[i] ?? '' }))
-    const id = addRunLater({ dept, lineId: line.id, code, lot, date: day, startedAt: startAt, endedAt: endAt, units, perUnit: cfg.perUnitLabel && per != null ? per : null, waste: cfg.waste && waste.trim() ? Number(waste.replace(',', '.')) || 0 : 0, bin: dept === 'Spiral' ? '' : word, measure: dept === 'Spiral' && (word === 'lb' || word === 'cajas') ? word : '', madeBy })
+    const id = addRunLater({ dept, lineId: line.id, code, lot, date: day, startedAt: startAt, endedAt: endAt, units, perUnit: cfg.perUnitLabel && per != null ? per : null, waste: cfg.waste ? waste : 0, bin: dept === 'Spiral' ? '' : word, measure: dept === 'Spiral' && (word === 'lb' || word === 'cajas') ? word : '', madeBy })
     if (!id) { setProblem(tr('A esas horas la línea tenía otro código. Cambia la línea o las horas.')); return }
     onAdded(id)
   }
@@ -348,7 +358,7 @@ export function AddRunDialog({ s, date, dept: first, onClose, onAdded }: { s: St
         <p>{tr('Para un código que se hizo y nadie registró. Pon lo que sepas; lo demás se deja en blanco. Queda en el historial con tu nombre.')}</p>
         <form className="qform" onSubmit={(e) => { e.preventDefault(); save() }}>
           <div className="egrid">
-            <label>{tr('Departamento')}{' '}<select value={dept} onChange={(e) => { setDept(e.target.value as Dept); setLinePick(''); setKindPick(null); setBinText(''); setProblem('') }}>{DEPTS.map((d) => <option key={d} value={d}>{d}</option>)}</select></label>
+            <label>{tr('Departamento')}{' '}<select value={dept} onChange={(e) => { setDept(e.target.value as Dept); setLinePick(''); setKindPick(null); setBinText(''); setProblem('') }}>{rooms.map((d) => <option key={d} value={d}>{d}</option>)}</select></label>
             <label>{cfg.lineWord}{' '}<select value={line?.id ?? ''} onChange={(e) => { setLinePick(e.target.value); setProblem('') }}>{lines.map((l) => <option key={l.id} value={l.id}>{lineLabel(l.name)}</option>)}</select></label>
           </div>
           {kinds.length > 0 && (
@@ -381,6 +391,7 @@ export function AddRunDialog({ s, date, dept: first, onClose, onAdded }: { s: St
           {program.length > 0 && <div className="chips">{program.map((c) => <button key={c} type="button" className={'chip sm' + (normCode(code) === normCode(c) ? ' on' : '')} onClick={() => setCode(c)}>{c}</button>)}</div>}
           {from && !startOk && <span className="err">{tr('Esa hora cae en otro día de trabajo.')}</span>}
           {to && !endOk && <span className="err">{tr('Termina antes de empezar, o en otro día de trabajo.')}</span>}
+          {wasteBad && <span className="err">{wasteBad}</span>}
           {problem && <span className="err">{problem}</span>}
           <div className="dbtns">
             <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>

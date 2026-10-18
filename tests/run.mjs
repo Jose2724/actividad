@@ -532,7 +532,7 @@ section('Qué hace la cola con cada respuesta del servidor')
 calc.use((m) => {
   eq('tabla o columna que falta: los registros esperan', ['42P01', 'PGRST205', 'PGRST204', '42703'].map((c) => m.verdict(c, '')), ['notReady', 'notReady', 'notReady', 'notReady'])
   eq('tabla sin permisos todavía: esperan', m.verdict('42501', 'permission denied for table act_x'), 'notReady')
-  eq('fila de otro departamento: se descarta (nunca la va a aceptar)', m.verdict('42501', 'new row violates row-level security policy for table "act_lines"'), 'refused')
+  eq('fila que el servidor no acepta de quien entró (de otro cuarto, o una sesión que ya no vale): nunca se tira, espera a quien pueda subirla', m.verdict('42501', 'new row violates row-level security policy for table "act_lines"'), 'refused')
   eq('fila mal formada: se queda en la cola y las demás siguen', m.verdict('23502', 'null value'), 'bad')
   eq('sesión vencida o sin señal: se reintenta, nunca se descarta', ['PGRST301', '', '500'].map((c) => m.verdict(c, 'JWT expired')), ['later', 'later', 'later'])
 })
@@ -614,9 +614,12 @@ small.use((m) => {
   const id = m.store.get().runs.at(-1).id
   eq('sin espacio ni para dos días: aviso en pantalla', m.storageFull.get(), true)
   eq('lo que se registra sigue en pantalla y en la cola de envío mientras la app esté abierta', [!!m.store.get().runs.find((r) => r.id === id), m.outbox.items().some((i) => i.key === id)], [true, true])
+  // what is only in memory would be lost by a reload: a new version does not come in by itself (audit 2026-10-17, S9)
+  eq('con la memoria llena, una versión nueva no recarga la app sola aunque nadie toque nada', m.quietToReload(clock, clock - 61_000, false, false), false)
   quota.delete('small')
   m.unitDone(id, 240)
   eq('al haber espacio otra vez: se guarda todo y el aviso se quita', [m.storageFull.get(), JSON.parse(localStorage.getItem('act_v1')).runs.find((r) => r.id === id).units.length, JSON.parse(localStorage.getItem('act_outbox')).some((i) => i.key === id)], [false, 1, true])
+  eq('y la versión nueva ya puede entrar', m.quietToReload(clock, clock - 61_000, false, false), true)
 })
 
 section('Bajar del servidor por páginas, sin saltarse filas')
@@ -896,6 +899,14 @@ calc.use((m) => {
   eq('el aparato dice que no hay red aunque la app todavía no lo notó', [ask('online', 0, false).title, /No salgas/.test(ask('connecting', 4, false).text)], ['¿Salir sin señal?', true])
   eq('sesión cerrada con registros: que vuelva a entrar para que suban', [/la sesión se cerró/.test(ask('signedOut', 2).text), ask('signedOut', 2).yes, ask('signedOut', 2).danger], [true, 'Salir', false])
   eq('en el demo pregunta por cambiar de usuario, haya lo que haya', [ask('local', 0).title, ask('local', 0).yes, ask('local', 5, false).title, ask('local', 5, false).danger], ['¿Cambiar de usuario?', 'Cambiar', '¿Cambiar de usuario?', false])
+  // 2026-10-17: what waits is only what the server will not take from this session (refused, or another room's, see
+  // outbox.ts). Waiting for "Sincronizado" would be for ever, and leaving loses nothing: "Entrar de nuevo" on the red
+  // bar asks this same question, and it must not send the person back to wait
+  const held = (pending, refused, other, state = 'online') => m.leaveAsk({ state, pending, refused, other }, true)
+  eq('lo que espera es solo lo que el servidor no acepta de esta sesión: salir no pierde nada, y no dice que espere', [held(2, 2, 0).title, held(2, 2, 0).danger, held(2, 2, 0).yes, /Hay 2 registros/.test(held(2, 2, 0).text), /no los acepta/.test(held(2, 2, 0).text), /Sincronizado/.test(held(2, 2, 0).text)], ['Todavía hay registros sin subir', false, 'Salir', true, true, false])
+  eq('igual con registros de otro cuarto que esperan a alguien de ese cuarto, y en singular', [held(1, 0, 1).danger, /Hay 1 registro/.test(held(1, 0, 1).text), /no lo acepta/.test(held(1, 0, 1).text), held(3, 1, 2).danger], [false, true, true, false])
+  eq('si además hay algo que sí puede subir, sigue pidiendo que espere', [held(3, 1, 1).danger, /Sincronizado/.test(held(3, 1, 1).text)], [true, true])
+  eq('sin señal sigue diciendo que no salga', [held(2, 2, 0, 'offline').danger, /No salgas/.test(held(2, 2, 0, 'offline').text)], [true, true])
 })
 section('El usuario queda escrito para la próxima vez; el PIN no lo guarda la app')
 const mem = await device('mem')
@@ -929,6 +940,12 @@ calc.use((m) => {
   eq('con la fila de otro manager o de un operador: todo', [can(boss, 'x'), can(oper, 'b'), can(boss, 'o', true)], ['sí sí sí', 'sí sí sí', 'sí sí sí'])
   eq('una persona sin cuenta: rol y activar; no hay PIN que cambiar', can(noAccount, 'b'), 'sí no sí')
   eq('si no se sabe quién mira, la cuenta del dueño sigue protegida', can(owner, ''), 'no no no protegida')
+  // another Freezer RTE admin (signs in with a user name): the owner's alone, as the act-users function says since
+  // 2026-10-18 (audit E1: a manager changed that admin's PIN and signed in as them)
+  const fzAdmin = { id: 'fa', user_id: 'ufa', username: 'admin.freezer', role: 'admin' }
+  eq('un manager no puede tocar la cuenta de un admin de Freezer RTE', can(fzAdmin, 'b'), 'no no no protegida')
+  eq('el dueño sí, y ese admin en su propia fila lo de siempre', [can(fzAdmin, 'o', true), can(fzAdmin, 'fa', true)], ['sí sí sí', 'sí sí no mía'])
+  eq('una cuenta de Freezer que no es admin sigue como antes', can({ ...fzAdmin, role: 'worker' }, 'b'), 'sí sí sí')
 })
 
 // =====================================================================================================================
@@ -2317,6 +2334,7 @@ calc.use((m) => {
   const t = 10_000_000
   eq('un minuto sin tocar, sin ventana abierta y sin escribir: se recarga', m.quietToReload(t, t - 61_000, false, false), true)
   eq('tocado hace poco, una ventana abierta o alguien escribiendo: espera', [m.quietToReload(t, t - 30_000, false, false), m.quietToReload(t, t - 61_000, true, false), m.quietToReload(t, t - 61_000, false, true)], [false, false, false])
+  eq('con la memoria del aparato llena no se recarga nunca; con espacio, sí (auditoría 2026-10-17, S9)', [m.quietToReload(t, t - 61_000, false, false, true), m.quietToReload(t, t - 61_000, false, false, false)], [false, true])
 })
 
 section('La tablet de un operador no escribe nada de otro cuarto')
@@ -2334,6 +2352,53 @@ section('La tablet de un operador no escribe nada de otro cuarto')
     m.role.set('mgr')
     m.applyRemote('act_runs', { id: 'r-rte', dept: 'RTE', line_id: 'RTE1', line: 'Línea 1', code: '0889', lot: '6290', date: '2026-10-17', started_at: new Date(at).toISOString(), ended_at: null, units: [{ at: at + 60_000, qty: 240, ref: '', by: 'Alma' }], per_unit: 240, waste: 0, by_name: 'Alma', deleted: false, updated_at: new Date(at + 60_000).toISOString(), synced_at: new Date(at + 61_000).toISOString() })
     eq('un manager sí cierra ese Set up donde empezó el código, y lo manda', [st().stops.find((x) => x.id === 'su-rte').endedAt, m.outbox.items().map((i) => i.table)], [at, ['act_stops']])
+  })
+}
+
+section('Un operador que puede mirar todos los cuartos escribe solo en el suyo, como dice el servidor (revisión 2026-10-18)')
+{
+  // "Ver todos los departamentos" let an operator start codes, correct runs and add records in other rooms; the server
+  // refused them (act_can_write), and since refused rows are no longer thrown away they waited on the tablet for ever,
+  // or went up under the next manager's session. The screens now ask the server's own rule
+  calc.use((m) => {
+    const op = { role: 'op', dept: 'Packing', powers: ['depts', 'fix', 'goals'] }
+    eq('las pantallas: el manager y la oficina en todos los cuartos, un operador solo en el suyo, quien solo mira en ninguno', [m.writesIn({ role: 'mgr' }, 'RTE'), m.writesIn({ role: 'office' }, 'MFO'), m.writesIn(op, 'Packing'), m.writesIn(op, 'RTE'), m.writesIn({ role: 'viewer' }, 'RTE'), m.writesIn({ role: 'op' }, '')], [true, true, true, false, false, false])
+  })
+  const og = await device('og', { user: 'Olga', usual: true })
+  og.use((m) => {
+    m.role.set('op'); m.myDept.set('Packing')
+    eq('la tablet dice lo mismo', [m.writesRoom('Packing'), m.writesRoom('RTE')], [true, false])
+    m.setShiftGoal('RTE', 1, 10, 80); m.setShiftGoal('Packing', 1, 12, 90)
+    const log = () => m.outbox.items().filter((i) => i.table === 'act_changes').map((i) => [i.row.what, i.row.dept])
+    // the goal goes with the power "Poner metas", for any room; the history line of another room had its room and was
+    // refused to her: without a room it goes with that same power (tests/stack.mjs sees the server take it)
+    eq('una meta de otro cuarto: la meta se guarda, y su historial va sin cuarto; la de su cuarto, con su cuarto', [m.outbox.items().filter((i) => i.table === 'act_targets').map((i) => i.key).sort(), log()], [['Packing@1', 'RTE@1'], [['Meta RTE · Turno 1 · por hora', null], ['Meta RTE · Turno 1 · del turno', null], ['Meta Packing · Turno 1 · por hora', 'Packing'], ['Meta Packing · Turno 1 · del turno', 'Packing']]])
+    m.role.set('mgr'); m.myDept.set('')
+    m.setShiftGoal('RTE', 2, 5, 40)
+    eq('un manager la guarda con su cuarto', log().slice(-2), [['Meta RTE · Turno 2 · por hora', 'RTE'], ['Meta RTE · Turno 2 · del turno', 'RTE']])
+  })
+}
+
+section('Un aparato de "Solo ver" no cierra un Set up por su cuenta, y no pierde lo que solo él tiene (auditoría 2026-10-17)')
+{
+  // Somebody who only looks enters as a manager for what they see (role 'mgr'), and the server takes nothing from
+  // them. Their device used to write on its own all the same: hearing a code start it ended the Set up left open on
+  // that line. The server refused it, and the office's screen showed the red bar of a session the server does not take
+  const ver = await device('ver', { user: 'Vera', usual: true })
+  ver.use((m) => {
+    const st = () => m.store.get()
+    m.role.set('mgr'); localStorage.setItem('act_view_only', '1') // what App.tsx keeps for a viewer
+    const at = oct(17, 9, 0), t = (ms) => new Date(ms).toISOString()
+    m.applyRemote('act_stops', { id: 'su-v', dept: 'RTE', line_id: 'RTE1', reason: 'Set up', note: '', started_at: t(at - 600_000), ended_at: null, by_name: 'Alma', deleted: false, updated_at: t(at - 600_000), synced_at: t(at - 599_000) })
+    m.applyRemote('act_runs', { id: 'r-v', dept: 'RTE', line_id: 'RTE1', line: 'Línea 1', code: '0889', lot: '6290', date: '2026-10-17', started_at: t(at), ended_at: null, units: [{ at: at + 60_000, qty: 240, ref: '1', by: 'Alma' }, { at: at + 120_000, qty: 240, ref: '2', by: 'Alma' }], per_unit: 240, waste: 0, by_name: 'Alma', deleted: false, updated_at: t(at + 120_000), synced_at: t(at + 121_000) })
+    eq('oye el código y el Set up abierto de su línea, y no manda nada: el servidor lo cierra solo', [st().stops.find((x) => x.id === 'su-v').endedAt, m.outbox.size()], [null, 0])
+    // A version of the run without one of the units, and no mark that it was taken off on purpose: this device may hold
+    // the only copy of that unit (a row an older version dropped from its queue). It is kept, and waits on the device
+    // for someone who may send it (review of 2026-10-18: it used to be dropped from the device for good). The server
+    // will not take it from a viewer, so outbox.ts keeps it for someone else (tests/stack.mjs, S2 case d)
+    m.applyRemote('act_runs', { id: 'r-v', dept: 'RTE', line_id: 'RTE1', line: 'Línea 1', code: '0889', lot: '6290', date: '2026-10-17', started_at: t(at), ended_at: null, units: [{ at: at + 60_000, qty: 240, ref: '1', by: 'Alma' }], per_unit: 240, waste: 0, by_name: 'Alma', deleted: false, updated_at: t(at + 180_000), synced_at: t(at + 181_000) })
+    eq('una corrida que llega con una unidad menos y sin marca de quitada: el aparato la conserva y la deja esperando, sin el Set up', [st().runs.find((r) => r.id === 'r-v').units.map((u) => u.ref), m.outbox.items().map((i) => [i.table, i.row.units?.map((u) => u.ref)])], [['1', '2'], [['act_runs', ['1', '2']]]])
+    localStorage.setItem('act_view_only', '')
   })
 }
 
@@ -2780,6 +2845,313 @@ section('Buscar en el reporte')
     eq('cada pallet se encuentra por su tag, con la misma llave que usa la tabla', rep.pallets.map((p) => find(p.parts[0].tag).keys.has(m.hitKey.pallet(p.r.id, p.n))), rep.pallets.map(() => true))
     eq('los cambios del día también, para quien los ve', m.searchReport(st(), rep, 'Pedido nuevo', st().changes, clock).hits.map((h) => h.kind), ['change'])
     eq('los lotes de una corrida: los de sus unidades', [...m.runLots(st(), pr())].sort(), ['6283', '6284'])
+  })
+}
+
+section('Al volver a abrir, cada línea, corrida y paro recuerda el sello del servidor: un aviso atrasado no vuelve a abrir lo terminado (auditoría 2026-10-17, S8)')
+{
+  // The stamp the server gives each version (synced_at) is what tells a late echo of an older version from news. It
+  // was saved on the device but not read back: after any reload (a new version, the language, a reload by hand) a
+  // page of a pull that came late could open again a code the tablet had just ended, and send it open to the server
+  const again = async (name, tag) => { on = name; const m = await import(bundle + '?' + name + '-' + tag); return { name, use: (fn) => { on = name; return fn(m) } } }
+  clock = T0 + 600 * M
+  let rl = await device('rl', { user: 'Nino' })
+  const v1 = { ...runRow({ id: 'R8', lineId: 'L8', line: 'Línea 8', startedAt: clock - 60 * M, units: [unit(clock - 50 * M, 240)], perUnit: 240, updatedAt: clock - 50 * M }), synced_at: iso(clock - 50 * M + 500) }
+  const l1 = { id: 'L8', dept: 'RTE', name: 'Línea 8', deleted: false, updated_at: iso(clock - 90 * M), updated_by: 'x', synced_at: iso(clock - 90 * M + 500) }
+  const s1 = { ...stopRow({ id: 'S8', lineId: 'L8', startedAt: clock - 40 * M, reason: 'Break' }), synced_at: iso(clock - 40 * M + 500) }
+  rl.use((m) => { m.applyRemote('act_lines', l1); m.applyRemote('act_runs', v1); m.applyRemote('act_stops', s1) })
+  rl = await again('rl', 'reabierta')
+  const held = (m) => { const s = m.store.get(); return [s.lines.find((l) => l.id === 'L8')?.syncedAt, s.runs.find((r) => r.id === 'R8')?.syncedAt, s.stops.find((x) => x.id === 'S8')?.syncedAt] }
+  eq('al volver a abrir, la línea, la corrida y el paro tienen el sello que tenían', rl.use(held), [Date.parse(l1.synced_at), Date.parse(v1.synced_at), Date.parse(s1.synced_at)])
+  // the tablet ends the stop, records a unit, ends the code and renames the line; the server takes it all
+  clock += M
+  rl.use((m) => { m.endStop('S8'); m.unitDone('R8', 240); m.endRun('R8'); m.renameLine('L8', 'Línea 9') })
+  for (let it = first(rl); it; it = first(rl)) rl.use((m) => m.markSent(it))
+  // a page of a pull asked before all that arrives now, with the versions the server had then
+  rl.use((m) => { m.applyRemote('act_runs', v1); m.applyRemote('act_stops', s1); m.applyRemote('act_lines', l1) })
+  eq('el código sigue terminado con sus dos unidades, el paro terminado, la línea con su nombre nuevo, y no se manda nada', rl.use((m) => { const s = m.store.get(), r = s.runs.find((x) => x.id === 'R8'); return [!!r.endedAt, r.units.length, !!s.stops.find((x) => x.id === 'S8').endedAt, s.lines.find((l) => l.id === 'L8').name, m.outbox.size()] }), [true, 2, true, 'Línea 9', 0])
+  // and an old copy saved without stamps (earlier versions) still opens, simply without them
+  const old = await device('rl-old', { seed: { lines: [{ id: 'L1', dept: 'RTE', name: 'Línea 1', updatedAt: 1, syncedAt: 'x' }], runs: [{ id: 'R1', dept: 'RTE', lineId: 'L1', code: 'A100', startedAt: T0, units: [], updatedAt: 2 }], stops: [{ id: 'S1', dept: 'RTE', lineId: 'L1', startedAt: T0, updatedAt: 3, syncedAt: -5 }] } })
+  eq('lo guardado sin sello, o con uno que no es un sello, se lee sin él', old.use(held).map((x) => x ?? null).concat(old.use((m) => [m.store.get().lines.length, m.store.get().runs.length, m.store.get().stops.length])), [null, null, null, 1, 1, 1])
+}
+
+section('Una línea puesta de nuevo sin señal no se vuelve a quitar con la bajada de todo (auditoría 2026-10-17)')
+{
+  // A line taken off and put back while the tablet could not send: the first pull after a new version brings
+  // everything again, the line as it was taken off among it, before the tablet sends. The line was gone again, and
+  // the history said it was back
+  const rs = await device('rs', { user: 'Jose' })
+  clock = T0 + 700 * M
+  rs.use((m) => m.addLine('RTE', 'Línea R')); send(rs, [rs])
+  const lid = rs.use((m) => m.store.get().lines.find((l) => l.name === 'Línea R').id)
+  clock += M; rs.use((m) => m.removeLine(lid)); send(rs, [rs])
+  clock += M
+  eq('sin señal se pone de nuevo', rs.use((m) => m.restoreLine('RTE', lid)), true)
+  rs.use((m) => m.applyRemote('act_lines', server.get('act_lines|' + lid)))
+  eq('la bajada trae la línea quitada: sigue puesta en la tablet y su cambio sigue en la cola', rs.use((m) => [m.store.get().lines.some((l) => l.id === lid), m.outbox.items().filter((i) => i.key === lid).map((i) => i.row.deleted)]), [true, [false]])
+  send(rs, [rs])
+  eq('y llega al servidor puesta otra vez', [server.get('act_lines|' + lid).deleted, rs.use((m) => m.store.get().lines.find((l) => l.id === lid)?.name), rs.use((m) => m.outbox.size())], [false, 'Línea R', 0])
+  // taken off again and put back again, while another tablet had already put it back under another name: it stays
+  // back, with the name the other tablet gave it (what each one changed is kept)
+  clock += M; rs.use((m) => m.removeLine(lid)); send(rs, [rs])
+  clock += M; rs.use((m) => m.restoreLine('RTE', lid))
+  const other = { ...server.get('act_lines|' + lid), name: 'Línea R2', deleted: false, updated_at: iso(clock + 1000) }
+  land({ table: 'act_lines', key: lid, row: other })
+  rs.use((m) => m.applyRemote('act_lines', server.get('act_lines|' + lid)))
+  send(rs, [rs])
+  eq('si otra tablet ya la puso con otro nombre, queda puesta con ese nombre', [server.get('act_lines|' + lid).deleted, server.get('act_lines|' + lid).name, rs.use((m) => m.store.get().lines.find((l) => l.id === lid)?.name)], [false, 'Línea R2', 'Línea R2'])
+}
+
+// =====================================================================================================================
+//  The audit of 2026-10-17: files for Excel, texts typed by hand, ids, typed numbers, set ups counted twice, the
+//  pallet being built, "Subir al servidor", and a room this version does not know yet
+// =====================================================================================================================
+section('Un CSV que se abre en Excel no lleva fórmulas: un texto que empieza con = + - @ va como texto (auditoría 2026-10-17, H1)')
+calc.use((m) => {
+  eq('una celda de texto que Excel tomaría por fórmula lleva delante el apóstrofo ("es texto" para Excel)', [m.csvCell('=1+1'), m.csvCell('+Pollo'), m.csvCell('-5B'), m.csvCell('@x'), m.csvCell('=HYPERLINK("http://x","ver")')], ['"\'=1+1"', '"\'+Pollo"', '"\'-5B"', '"\'@x"', '"\'=HYPERLINK(""http://x"",""ver"")"'])
+  eq('un número, negativo o no, va como número; un texto normal, tal cual', [m.csvCell(-5), m.csvCell(12.5), m.csvCell('Break'), m.csvCell(''), m.csvCell(null), m.csvCell("O'Brien")], ['"-5"', '"12.5"', '"Break"', '""', '""', '"O\'Brien"'])
+  const p = (code, name) => ({ code, name, pouchesPerCase: 6, casesPerMix: 10, cratesPerCart: 24, pouchesPerCrate: 6, casesPerPallet: 40, updatedAt: 0 })
+  const csv = m.productsCsv([p('A100', '=X'), p('-5B', '+Y'), p('C300', "'Comilla")]), rows = csv.split('\r\n')
+  eq('en la tabla de productos, cada celda así va guardada', [rows[1].split(',')[1], rows[2].split(',')[0], rows[2].split(',')[1]], ['"\'=X"', '"\'-5B"', '"\'+Y"'])
+  eq('y la app la vuelve a leer exactamente como era', m.parseProductsCsv(csv).map((x) => [x.code, x.name]), [['A100', '=X'], ['-5B', '+Y'], ['C300', "'Comilla"]])
+  eq('un archivo que la oficina volvió a guardar con el apóstrofo se lee sin él; delante de otra cosa se queda', m.parseProductsCsv('Código;Producto\r\n"\'=Z";\'=W\r\nD400;\'Pollo').map((x) => [x.code, x.name]), [['=Z', '=W'], ['D400', "'Pollo"]])
+})
+
+section('Una causa escrita a mano como "__proto__" o "constructor" no deja la pantalla en blanco ni pierde su tiempo (auditoría 2026-10-17, H2)')
+{
+  on = 'en1'; localStorage.setItem('act_lang', 'en')
+  const en1 = await device('en1', { seed: { lines: [{ id: 'LP', dept: 'RTE', name: 'Línea 1', updatedAt: 1 }], runs: [], stops: [], products: [], schedule: {}, changes: [], targets: [], shifts: [NO_GAP] } })
+  en1.use((m) => {
+    eq('la app está en inglés', m.lang, 'en')
+    const words = ['__proto__', 'constructor', 'toString', 'hasOwnProperty', 'valueOf']
+    eq('una palabra que no es un texto de la app sale tal cual, nunca algo de JavaScript', words.map((k) => m.tr(k)), words)
+    eq('lo que sí está en inglés sigue traducido', [m.tr('Problema mecánico'), m.tr('Se ven {0} de {1}', 1, 2)], ['Mechanical issue', 'Showing 1 of 2'])
+    eq('lo que lleva un bin, escrito a mano, tampoco', [m.binWord('__proto__'), m.binWord('constructor'), m.binWord('platos')], ['__proto__', 'constructor', m.tr('platos')])
+    m.applyRemote('act_runs', runRow({ id: 'rP', lineId: 'LP', startedAt: T0 - 120 * M, endedAt: T0 - 60 * M }))
+    m.applyRemote('act_stops', stopRow({ id: 'sP1', lineId: 'LP', reason: '__proto__', startedAt: T0 - 110 * M, endedAt: T0 - 80 * M }))
+    m.applyRemote('act_stops', stopRow({ id: 'sP2', lineId: 'LP', reason: 'constructor', startedAt: T0 - 75 * M, endedAt: T0 - 65 * M }))
+    const s = m.store.get(), r = s.runs.find((x) => x.id === 'rP'), st = m.runStats(s, r, T0)
+    eq('las dos causas cuentan su tiempo, como números', [st.down / M, Object.entries(st.reasons).map(([k, v]) => [k, typeof v, v / M])], [40, [['__proto__', 'number', 30], ['constructor', 'number', 10]]])
+    eq('también en el turno', Object.entries(m.runInShift(s, r, T0, m.shiftsOf(s, DAY), 1).reasons).map(([k, v]) => [k, v / M]), [['__proto__', 30], ['constructor', 10]])
+    eq('y en el reporte, en "Parado por causa"', m.reportOf(s, DAY, T0).reasons.map((x) => [x.reason, x.ms / M]), [['__proto__', 30], ['constructor', 10]])
+  })
+}
+
+section('Un aparato sin crypto.randomUUID (navegador viejo, o la app abierta por http) hace ids que el servidor acepta (auditoría 2026-10-17, H5)')
+{
+  const real = globalThis.crypto
+  const uuid4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+  const old = await device('oldtab')
+  Object.defineProperty(globalThis, 'crypto', { configurable: true, writable: true, value: { getRandomValues: (a) => real.getRandomValues(a) } })
+  try {
+    const ids = old.use((m) => {
+      m.addLine('RTE', 'Línea V')
+      const line = m.store.get().lines.find((l) => l.name === 'Línea V')
+      m.startRun(line, 'A100', '6283', DAY, 240)
+      m.startStop('RTE', line.id, 'Break', '')
+      const s = m.store.get()
+      return [line.id, s.runs.at(-1).id, s.stops.at(-1).id, ...s.changes.map((c) => c.id)]
+    })
+    eq('la línea, la corrida, el paro y el historial llevan un UUID v4 de verdad', ids.map((x) => uuid4.test(x)), ids.map(() => true))
+    eq('cada uno distinto', new Set(ids).size, ids.length)
+  } finally { Object.defineProperty(globalThis, 'crypto', { configurable: true, writable: true, value: real }) }
+}
+
+section('Corregir: un waste que no es un número no se guarda como 0 (auditoría 2026-10-17, H6)')
+{
+  const kw = await device('kw')
+  kw.use((m) => {
+    m.applyRemote('act_runs', runRow({ id: 'rW', dept: 'Kitchen', line: 'Braiser 1', startedAt: T0 - 60 * M, endedAt: T0 - 10 * M, waste: 25 }))
+    const run = () => m.store.get().runs.find((r) => r.id === 'rW')
+    const fix = (w) => { const o = m.draftOf(run()); m.applyDraft('rW', o, { ...o, waste: w }); return run().waste }
+    eq('"25..5", "1.234.5" o una coma sola no son números: el waste se queda en 25', [fix('25..5'), fix('1.234.5'), fix(',')], [25, 25, 25])
+    eq('la caja lo puede decir; un número, o nada, está bien', [m.wasteProblem('25..5') !== '', m.wasteProblem('25,5'), m.wasteProblem(''), m.wasteProblem(' 7 ')], [true, '', '', ''])
+    eq('la coma sigue siendo el punto decimal, y vacío es nada', [fix('25,5'), fix('1,250'), fix('')], [25.5, 1.25, 0])
+    // review of 2026-10-18: the form closed as if saved, and the rest of what was corrected went in without its waste
+    m.applyRemote('act_runs', runRow({ id: 'rW2', dept: 'Kitchen', lineId: 'K9', line: 'Braiser 9', code: 'C100', startedAt: T0 - 60 * M, endedAt: T0 - 10 * M, waste: 25 }))
+    const o = m.draftOf(m.store.get().runs.find((r) => r.id === 'rW2'))
+    const why = m.applyDraft('rW2', o, { ...o, code: 'c200', waste: '25..5' })
+    const r2 = m.store.get().runs.find((r) => r.id === 'rW2')
+    eq('Corregir con un waste que no es un número: dice por qué y no guarda nada (ni el código), para que se escriba bien', [why !== '', r2.code, r2.waste], [true, 'C100', 25])
+    eq('escrito bien, guarda todo y no dice nada', [m.applyDraft('rW2', o, { ...o, code: 'c200', waste: '25,5' }), m.store.get().runs.find((r) => r.id === 'rW2').code, m.store.get().runs.find((r) => r.id === 'rW2').waste], ['', 'C200', 25.5])
+    // "Agregar un registro que nadie registró": the waste goes as typed, and one that is not a number adds nothing
+    m.addLine('Kitchen', 'Braiser 7')
+    const k7 = m.store.get().lines.find((l) => l.name === 'Braiser 7')
+    const later = (waste, h) => m.addRunLater({ dept: 'Kitchen', lineId: k7.id, code: 'C300', date: DAY, startedAt: new Date(2026, 9, 10, h, 0, 0).getTime(), endedAt: new Date(2026, 9, 10, h, 30, 0).getTime(), units: [{ qty: null }], waste })
+    const n0 = m.store.get().runs.length
+    eq('agregado después con waste "25..5": no se agrega (antes quedaba con 0 lb)', [later('25..5', 8), m.store.get().runs.length], ['', n0])
+    const ok1 = later('2,5', 9), ok2 = later('', 10)
+    eq('con "2,5" o sin waste, se agrega con 2.5 y con 0', [m.store.get().runs.find((r) => r.id === ok1)?.waste, m.store.get().runs.find((r) => r.id === ok2)?.waste], [2.5, 0])
+  })
+}
+
+section('Reporte: dos Set up abiertos a la vez en una línea cuentan su tiempo una vez (auditoría 2026-10-17, H7)')
+{
+  const su = await device('su')
+  su.use((m) => {
+    const at = (h, mi = 0) => new Date(2026, 9, 10, h, mi, 0).getTime()
+    // line LS: two tablets both put it in set up from 10:00 (the next code closed both at 10:30); and the same stop twice
+    m.applyRemote('act_runs', runRow({ id: 'rS1', lineId: 'LS', startedAt: at(8), endedAt: at(10), units: [unit(at(9, 30), 240)] }))
+    m.applyRemote('act_runs', runRow({ id: 'rS2', lineId: 'LS', startedAt: at(10, 30), endedAt: at(11, 30), units: [unit(at(11), 240)] }))
+    for (const id of ['su1', 'su2']) m.applyRemote('act_stops', stopRow({ id, lineId: 'LS', reason: 'Set up', startedAt: at(10), endedAt: at(10, 30) }))
+    for (const id of ['pm1', 'pm2']) m.applyRemote('act_stops', stopRow({ id, lineId: 'LS', reason: 'Problema mecánico', startedAt: at(9), endedAt: at(9, 20) }))
+    const rep = m.reportOf(m.store.get(), DAY, T0)
+    eq('el Set up del día, el del cuarto y el de cada turno: 30 minutos, no 60', [rep.setup / M, rep.byDept[0].setup / M, rep.byShift[0].day.setup / M, rep.byShift[0].first.setup / M], [30, 30, 30, 30])
+    eq('la lista de paros sigue con los cuatro registros, y "Parado" sigue en 20 minutos', [rep.stops.length, rep.down / M], [4, 20])
+    // line LT, the same hours: its two set ups do not touch each other, and another line's time is its own
+    m.applyRemote('act_runs', runRow({ id: 'rT1', lineId: 'LT', line: 'Línea 2', startedAt: at(8), endedAt: at(10), units: [unit(at(9), 240)] }))
+    m.applyRemote('act_runs', runRow({ id: 'rT2', lineId: 'LT', line: 'Línea 2', startedAt: at(10, 30), endedAt: at(11, 30), units: [unit(at(11), 240)] }))
+    m.applyRemote('act_stops', stopRow({ id: 'st1', lineId: 'LT', reason: 'Set up', startedAt: at(10), endedAt: at(10, 10) }))
+    m.applyRemote('act_stops', stopRow({ id: 'st2', lineId: 'LT', reason: 'Set up', startedAt: at(10, 20), endedAt: at(10, 30) }))
+    eq('dos set ups que no se tocan se suman, y los de otra línea a la misma hora también: 30 + 20', m.reportOf(m.store.get(), DAY, T0).setup / M, 50)
+  })
+}
+
+section('Packing: lo que la línea pone en el pallet que arma no se pierde cuando un manager corrige otra cosa de la corrida (auditoría 2026-10-17, S7)')
+{
+  const pk = await device('pk', { user: 'Lina' }), pm = await device('pm', { user: 'Santiago' })
+  const both = [pk, pm]
+  const runOf = (d, id) => d.use((m) => m.store.get().runs.find((r) => r.id === id))
+  const view = (r) => r && { pallets: r.units.map((u) => u.ref), open: (r.extra?.open?.parts ?? []).map((p) => [p.lot, p.qty, p.tag]), lotNow: r.extra?.lotNow ?? '', removed: r.extra?.removed ?? [], ended: !!(r.endedAt ?? r.ended_at) }
+  const onServer = (id) => server.get('act_runs|' + id)
+  /** a new code on a new Packing line of the line's tablet, known to both devices */
+  const newPacking = (line, code, lot) => {
+    clock += M
+    pk.use((m) => { m.addLine('Packing', line); m.startRun(m.store.get().lines.find((l) => l.name === line), code, lot, DAY, 60) })
+    return pk.use((m) => m.store.get().runs.at(-1).id)
+  }
+  /** the manager's change goes up after the server's newer row of that run reached the manager (as a pull, or the refresh before sending, brings it) */
+  const managerSends = (id) => { pm.use((m) => m.applyRemote('act_runs', onServer(id))); send(pm, both) }
+  const everywhere = (what, id, want) => {
+    eq(what + ' · servidor', view(onServer(id)), want)
+    eq(what + ' · la línea y el manager, sin nada pendiente', [view(runOf(pk, id)), view(runOf(pm, id)), pk.use((m) => m.outbox.size()), pm.use((m) => m.outbox.size())], [want, want, 0, 0])
+  }
+  clock = T0 + 900 * M
+  {
+    // the line: lot 6283 ran out on the pallet being built (20 cases, tag X) and 6284 goes on, unheard by the manager,
+    // who takes pallet 2 off (recorded twice) from the version before
+    const id = newPacking('Línea P', 'P100', '6283')
+    clock += M; pk.use((m) => m.unitDone(id, 60, 'T1'))
+    clock += M; pk.use((m) => m.unitDone(id, 60, 'T2'))
+    send(pk, both)
+    const t2 = runOf(pm, id).units[1].at
+    clock += M; pk.use((m) => m.palletLotEnds(id, 20, 'X', '6284')); send(pk, [pk])
+    clock += M; pm.use((m) => m.updateRun(id, { units: runOf(pm, id).units.filter((u) => u.at !== t2) }))
+    managerSends(id)
+    everywhere('el pallet quitado sigue quitado, y el lote que se acabó (sus cajas y su tag) y el lote de ahora siguen', id, { pallets: ['T1'], open: [['6283', 20, 'X']], lotNow: '6284', removed: [t2], ended: false })
+  }
+  {
+    // the line ends the code (what was on the pallet being built becomes its last pallet) while the manager, who has
+    // not heard it, takes pallet 1 off: the ended run carries no pallet "being built" any more
+    const id = newPacking('Línea S', 'P200', '6290')
+    clock += M; pk.use((m) => m.unitDone(id, 60, 'T1'))
+    clock += M; pk.use((m) => m.palletLotEnds(id, 20, 'X', '6291'))
+    send(pk, both)
+    const t1 = runOf(pm, id).units[0].at
+    clock += M; pk.use((m) => m.endRun(id)); send(pk, [pk])
+    clock += M; pm.use((m) => m.updateRun(id, { units: runOf(pm, id).units.filter((u) => u.at !== t1) }))
+    managerSends(id)
+    everywhere('el código terminado: su último pallet es el que se armaba, y no queda otro abierto que se contaría dos veces', id, { pallets: ['X'], open: [], lotNow: '6291', removed: [t1], ended: true })
+  }
+  {
+    // both build the same pallet: the line adds a lot while the manager writes the tag of the one before; both stay
+    const id = newPacking('Línea Q', 'P300', '6300')
+    clock += M; pk.use((m) => m.palletLotEnds(id, 10, '', '6301')); send(pk, both)
+    clock += M; pk.use((m) => m.palletLotEnds(id, 15, 'B', '6302')); send(pk, [pk])
+    clock += M; pm.use((m) => m.palletPartFix(id, 0, { tag: 'A' }))
+    managerSends(id)
+    everywhere('los dos arman el mismo pallet: el tag que puso el manager y el lote que agregó la línea quedan', id, { pallets: [], open: [['6300', 10, 'A'], ['6301', 15, 'B']], lotNow: '6302', removed: [], ended: false })
+  }
+  {
+    // the line closes the pallet (Pallet completo) while the manager corrects one of its lots: the close stands (Jose's
+    // rule), and what it closed is not left on the next pallet to be counted again
+    const id = newPacking('Línea R', 'P400', '6400')
+    clock += M; pk.use((m) => m.palletLotEnds(id, 10, 'A', '6401'))
+    clock += M; pk.use((m) => m.palletLotEnds(id, 15, 'B', '6402')); send(pk, both)
+    clock += M; pk.use((m) => m.palletDone(id, [{ lot: '6400', qty: 10, tag: 'A' }, { lot: '6401', qty: 15, tag: 'B' }, { lot: '6402', qty: 5, tag: 'C' }], '')); send(pk, [pk])
+    clock += M; eq('(el manager corrige un lote del pallet que todavía ve abierto)', pm.use((m) => m.palletPartFix(id, 1, { qty: 16 })), true)
+    managerSends(id)
+    everywhere('un pallet cerrado en la línea mientras el manager corregía uno de sus lotes: queda cerrado, y nada de él sigue abierto', id, { pallets: ['A, B, C'], open: [], lotNow: '6402', removed: [], ended: false })
+    eq('y el pallet lleva sus tres lotes, 30 cajas', onServer(id).units.map((u) => [u.qty, u.lots.map((l) => l.lot)]), [[30, ['6400', '6401', '6402']]])
+  }
+  {
+    // review of 2026-10-18: a pallet of two lots is reopened ("Pallet completo" tapped too early); the line puts the
+    // next lot on it while the manager, who has not heard it, writes the tag of the second lot. Every lot of the
+    // reopened pallet had the pallet's moment, so the manager's lot replaced the first one: lot 6500 was gone and
+    // 6501 was counted twice, on the server and on every screen
+    const id = newPacking('Línea Z', 'P900', '6500')
+    clock += M; pk.use((m) => m.palletLotEnds(id, 10, 'A', '6501'))
+    clock += M; pk.use((m) => m.palletDone(id, [{ lot: '6500', qty: 10, tag: 'A' }, { lot: '6501', qty: 20, tag: 'B' }], ''))
+    const pallet = runOf(pk, id).units[0].at
+    clock += M; eq('(el último pallet se vuelve a abrir)', pk.use((m) => m.reopenPallet(id, '6502')), true)
+    send(pk, both)
+    const ats = runOf(pm, id).extra.open.parts.map((p) => p.at)
+    eq('cada lote del pallet que se volvió a abrir tiene su propio momento, el último el del pallet', [new Set(ats).size, ats.at(-1), ats.every((t) => t <= pallet)], [2, pallet, true])
+    clock += M; pk.use((m) => m.palletLotEnds(id, 5, 'C', '6503')); send(pk, [pk])
+    clock += M; pm.use((m) => m.palletPartFix(id, 1, { tag: 'B2' }))
+    managerSends(id)
+    everywhere('pallet vuelto a abrir: el tag del manager y el lote de la línea quedan, y ningún lote se pierde ni se cuenta dos veces', id, { pallets: [], open: [['6500', 10, 'A'], ['6501', 20, 'B2'], ['6502', 5, 'C']], lotNow: '6503', removed: [pallet], ended: false })
+  }
+  {
+    // the same, with a pallet an older version of the app reopened on the floor: its two lots share one moment
+    const id = newPacking('Línea Y', 'P950', '6510')
+    send(pk, both)
+    const shared = clock - 30_000, live = { ...onServer(id), extra: { lotNow: '6512', open: { parts: [{ lot: '6510', qty: 20, tag: 'A', at: shared, by: 'Lina' }, { lot: '6511', qty: 16, tag: 'B', at: shared, by: 'Lina' }], po: '' } }, updated_at: iso(clock), synced_at: iso(landed += 1000) }
+    server.set('act_runs|' + id, live)
+    for (const d of both) d.use((m) => m.applyRemote('act_runs', live))
+    clock += M; pk.use((m) => m.palletLotEnds(id, 5, 'C', '6513')); send(pk, [pk])
+    clock += M; pm.use((m) => m.palletPartFix(id, 1, { qty: 18 }))
+    managerSends(id)
+    everywhere('lotes que comparten un momento: la corrección del manager va a su lote, y los otros dos siguen como estaban', id, { pallets: [], open: [['6510', 20, 'A'], ['6511', 18, 'B'], ['6512', 5, 'C']], lotNow: '6513', removed: [], ended: false })
+  }
+}
+
+section('"Subir al servidor": solo lo que el servidor nunca recibió de este aparato (auditoría 2026-10-17, H4)')
+{
+  const run = (id, more = {}) => ({ id, dept: 'RTE', lineId: 'LU1', line: 'Línea 1', code: 'A100', lot: '6283', date: DAY, startedAt: T0 - 60 * M, endedAt: T0 - 30 * M, units: [], perUnit: 240, waste: 0, by: 'Ana', updatedAt: T0 - 30 * M, ...more })
+  const stop = (id, more = {}) => ({ id, dept: 'RTE', lineId: 'LU1', reason: 'Break', note: '', startedAt: T0 - 50 * M, endedAt: T0 - 45 * M, by: 'Ana', updatedAt: T0 - 45 * M, ...more })
+  const up = await device('up', { seed: {
+    lines: [{ id: 'LU1', dept: 'RTE', name: 'Línea 1', updatedAt: 0 }, { id: 'LU2', dept: 'RTE', name: 'Línea 2', updatedAt: T0 - 9 * M, syncedAt: T0 - 9 * M }],
+    runs: [run('rU1'), run('rU2', { syncedAt: T0 - 29 * M })],
+    stops: [stop('sU1'), stop('sU2', { syncedAt: T0 - 44 * M })],
+    products: [{ code: 'A100', name: 'Pollo', pouchesPerCase: 6, casesPerMix: 10, cratesPerCart: 24, pouchesPerCrate: 6, casesPerPallet: 40, updatedAt: T0 - 99 * M }],
+    schedule: { [DAY]: { A100: 3 } },
+    changes: [{ id: 'cU', at: T0 - 10 * M, by: 'Ana', dept: 'RTE', what: 'algo', before: '', after: '', refTable: 'act_runs', refKey: 'rU1', updatedAt: T0 - 10 * M }],
+    targets: [{ dept: 'RTE', perHour: 5, perShift: 40, updatedAt: T0 - 9 * M }],
+    shifts: [NO_GAP], lineTargets: [{ lineId: 'LU1', perHour: 2, perDay: 9, updatedAt: T0 }], turnGoals: [{ key: 'RTE@1', perHour: 5, total: 40, updatedAt: T0 }],
+    plans: [{ date: DAY, dept: 'RTE', code: 'A100', qty: 3, updatedAt: T0 }],
+    orders: [{ id: 'o1', customer: 'Cliente', po: '77', code: 'A100', cases: 10, shipBy: '', dest: '', closed: false, createdAt: T0, by: 'Ana', updatedAt: T0 }],
+  } })
+  up.use((m) => {
+    const n = m.uploadAll()
+    eq('van la línea, la corrida y el paro que el servidor no tiene; nada de lo que ya tiene, ni productos, programa, metas, horarios, historial o pedidos', [n, m.outbox.items().map((i) => i.table + '|' + i.key).sort()], [3, ['act_lines|LU1', 'act_runs|rU1', 'act_stops|sU1']])
+  })
+}
+
+section('Un registro de un cuarto que esta versión no conoce (QC) no deja en blanco el reporte ni ninguna pantalla (auditoría 2026-10-17)')
+{
+  const qc = await device('qc', { user: 'Oficina' })
+  qc.use((m) => {
+    m.applyRemote('act_lines', { id: 'LQ', dept: 'QC', name: 'Mesa 1', deleted: false, updated_at: iso(T0), synced_at: iso(T0 + 1) })
+    m.applyRemote('act_runs', runRow({ id: 'rQ', dept: 'QC', lineId: 'LQ', line: 'Mesa 1', startedAt: T0 - 60 * M, endedAt: T0 - 30 * M, units: [unit(T0 - 50 * M, 12)] }))
+    m.applyRemote('act_stops', stopRow({ id: 'sQ', dept: 'QC', lineId: 'LQ', startedAt: T0 - 45 * M, endedAt: T0 - 40 * M }))
+    m.applyRemote('act_changes', { id: 'cQ', at: iso(T0 - 20 * M), by_name: 'Oficina', dept: 'QC', what: 'Algo de QC', before: '', after: 'x', ref_table: 'act_runs', ref_key: 'rQ', deleted: false, updated_at: iso(T0 - 20 * M) })
+    m.applyRemote('act_runs', runRow({ id: 'rK', startedAt: T0 - 60 * M, endedAt: T0 - 30 * M, units: [unit(T0 - 50 * M, 240)] }))
+    const s = m.store.get()
+    eq('la línea, la corrida y el paro de QC se quedan en el servidor; lo de los cuartos conocidos llega como siempre', [s.lines.some((l) => l.id === 'LQ'), s.runs.map((r) => r.id), s.stops.some((x) => x.id === 'sQ'), m.outbox.size()], [false, ['rK'], false, 0])
+    eq('el historial se guarda tal cual, con su cuarto', s.changes.find((c) => c.id === 'cQ')?.dept, 'QC')
+    let crashed = ''
+    try { const rep = m.reportOf(s, DAY, T0); m.searchReport(s, rep, 'QC', s.changes, T0); for (const d of m.DEPTS) m.deptToday(s, d, DAY, T0) } catch (e) { crashed = String(e) }
+    eq('el reporte, su búsqueda y cada cuarto salen', crashed, '')
+  })
+  // a copy kept on the device with rows of such a room (written by a version that knew it): read without them
+  const qc2 = await device('qc2', { seed: { lines: [{ id: 'LQ2', dept: 'QC', name: 'Mesa', updatedAt: 1 }, { id: 'LK2', dept: 'RTE', name: 'Línea 1', updatedAt: 1 }], runs: [{ id: 'rQ2', dept: 'QC', lineId: 'LQ2', line: 'Mesa', code: 'Q1', lot: '1', date: DAY, startedAt: T0 - 60 * M, endedAt: null, units: [], perUnit: null, waste: 0, by: 'x', updatedAt: 1 }, { id: 'rK2', dept: 'RTE', lineId: 'LK2', line: 'Línea 1', code: 'A100', lot: '1', date: DAY, startedAt: T0 - 60 * M, endedAt: null, units: [], perUnit: 240, waste: 0, by: 'x', updatedAt: 1 }], stops: [{ id: 'sQ2', dept: 'QC', lineId: 'LQ2', reason: 'Break', note: '', startedAt: T0 - 10 * M, endedAt: null, by: 'x', updatedAt: 1 }], products: [], schedule: {}, changes: [], targets: [], shifts: [NO_GAP] } })
+  qc2.use((m) => {
+    const s = m.store.get()
+    eq('al volver a abrir: solo lo de los cuartos que conoce', [s.lines.map((l) => l.id), s.runs.map((r) => r.id), s.stops.length], [['LK2'], ['rK2'], 0])
+    let crashed = ''
+    try { m.reportOf(s, DAY, T0) } catch (e) { crashed = String(e) }
+    eq('y el reporte sale', crashed, '')
   })
 }
 

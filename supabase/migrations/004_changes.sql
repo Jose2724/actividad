@@ -17,12 +17,19 @@ create table if not exists public.act_changes (
   synced_at timestamptz not null default now()
 );
 alter table public.act_changes enable row level security;
-drop policy if exists act_changes_read on public.act_changes;
-create policy act_changes_read on public.act_changes for select to authenticated using (exists (select 1 from public.act_me()));
-drop policy if exists act_changes_insert on public.act_changes;
-create policy act_changes_insert on public.act_changes for insert to authenticated with check (public.act_can_write(dept));
-drop policy if exists act_changes_update on public.act_changes;
-create policy act_changes_update on public.act_changes for update to authenticated using (public.act_can_write(dept)) with check (public.act_can_write(dept));
+-- 015 and 018 later tightened these three rules: they are created only when they are not there yet, so running this
+-- file again never undoes those (2026-10-18)
+do $$ begin
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'act_changes' and policyname = 'act_changes_read') then
+    create policy act_changes_read on public.act_changes for select to authenticated using (exists (select 1 from public.act_me()));
+  end if;
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'act_changes' and policyname = 'act_changes_insert') then
+    create policy act_changes_insert on public.act_changes for insert to authenticated with check (public.act_can_write(dept));
+  end if;
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'act_changes' and policyname = 'act_changes_update') then
+    create policy act_changes_update on public.act_changes for update to authenticated using (public.act_can_write(dept)) with check (public.act_can_write(dept));
+  end if;
+end $$;
 grant select, insert, update on table public.act_changes to authenticated;
 
 drop trigger if exists act_changes_touch on public.act_changes;

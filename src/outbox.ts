@@ -5,7 +5,8 @@ import { tr } from './i18n'
 /**
  * Every change is saved on the device first and queued here; the queue is sent whenever there is signal. One entry
  * per row (a later change to the same row replaces the earlier one), so a weak WiFi never duplicates anything.
- * Nothing leaves the queue unless the server took it or will never take it from this person (a row of another room).
+ * Nothing leaves the queue unless the server took it, or already has everything it wanted. A row the server will not
+ * take from the person signed in now (another room's) waits on the device for someone who may send it.
  */
 export type Table = 'act_lines' | 'act_runs' | 'act_stops' | 'act_products' | 'act_schedule' | 'act_changes' | 'act_targets' | 'act_plan'
 export type Row = Record<string, unknown>
@@ -13,7 +14,9 @@ export type Row = Record<string, unknown>
  * a queued change: the row as it should be on the server and, for rows another device may also be changing, what the
  * server had when this device started changing it (so what the other device did can be merged in, not overwritten)
  */
-export type Item = { table: Table; key: string; row: Row; base?: Row | null; at?: number } // at = when it was first queued
+export type Item = { table: Table; key: string; row: Row; base?: Row | null; at?: number; tried?: Row[] } // at = when it was first queued
+// tried = the last versions of this row sent without an answer yet: the server may hold any of them (see pass and
+// reconcile in store.ts). Items saved by older versions have none and behave as before
 const KEY = 'act_outbox'
 
 /** the queue when it could not be written to the device (its storage was full): kept in memory, so it still goes up while the app stays open */
@@ -31,16 +34,39 @@ const listeners = new Set<() => void>()
  * row is never dropped: it waits, and the screen says so until someone signs in again (see sync.ts, App.tsx).
  */
 const refusedOwn = new Set<string>()
+/**
+ * Rows the server refuses to the person signed in now that are not theirs to write: another room's, recorded on this
+ * tablet by someone else (an operator who left with rows still waiting, a manager's corrections of several rooms), or
+ * before a manager moved this person to another room. Until 2026-10-17 such a row was thrown away at once, and real
+ * records never reached the server (audit S2). Now it waits on the device, the screen says so, and it goes up as soon
+ * as someone who may write it signs in here (someone of that room, a manager). It is not sent again while the same
+ * person stays (a refused request every 20 s on a weak WiFi helps nobody): only when the person, their role or their
+ * room changes, or every ten minutes (a permission given back on the server). `who` = for whom it was refused.
+ */
+const parked = new Map<string, { who: string; at: number }>()
+const PARK_MS = 10 * 60_000
 let ownRow: (row: Row) => boolean = () => true
-/** says which rows are this device's own to write (sync.ts: the person's room, or every room for a manager) */
-export const setOwnRow = (f: (row: Row) => boolean) => { ownRow = f }
+let whoNow: () => string = () => ''
+/**
+ * says which rows are this device's own to write (sync.ts: the person's room, or every room for a manager) and, with
+ * `who`, what tells the person signed in apart (their role and room): a row parked for one person is tried for the next
+ */
+export const setOwnRow = (f: (row: Row) => boolean, who?: () => string) => { ownRow = f; if (who) whoNow = who }
+const keyOf = (i: Item) => i.table + '|' + i.key
+/** the keys of `marks` whose row is still queued: a mark left behind by a row that left is never counted */
+const stillQueued = (marks: Set<string> | Map<string, unknown>) => { if (!marks.size) return []; const q = new Set(read().map(keyOf)); return [...marks.keys()].filter((k) => q.has(k)) }
 export const outbox = {
   size: () => read().length,
   items: () => read(),
-  /** when the oldest row still waiting was queued (0 = nothing waits) */
-  oldest: () => read().reduce((t, i) => (i.at && (!t || i.at < t) ? i.at : t), 0),
+  /**
+   * when the oldest row still waiting was queued (0 = nothing waits); `own` = only the rows the person signed in may
+   * send, not the ones parked for someone else (the screen says those apart)
+   */
+  oldest: (own = false) => read().reduce((t, i) => (i.at && (!t || i.at < t) && !(own && parked.has(keyOf(i))) ? i.at : t), 0),
   /** the rows of this device's own that the server refuses */
-  refused: () => [...refusedOwn],
+  refused: () => stillQueued(refusedOwn),
+  /** the rows waiting for someone else to sign in here (see parked) */
+  otherRoom: (): Item[] => (parked.size ? read().filter((i) => parked.has(keyOf(i))) : []),
   /** tries again to write a queue that is only in memory (the device has made room) */
   resave() { if (unsaved) write(unsaved) },
   subscribe(l: () => void) { listeners.add(l); return () => { listeners.delete(l) } },
@@ -48,23 +74,35 @@ export const outbox = {
 const emit = () => listeners.forEach((l) => l())
 const is = (table: Table, key: string) => (i: Item) => i.table === table && i.key === key
 
-/** queues a row; `base` (what the server last had) is kept from the first change still waiting */
+/** queues a row; `base` (what the server last had), when it was first queued and what was already tried are kept from the change still waiting */
 export function push(table: Table, key: string, row: Row, base?: Row | null) {
   if (!supabase) return
   const items = read(), prev = items.find(is(table, key))
-  write([...items.filter((i) => !is(table, key)(i)), { table, key, row, base: prev ? prev.base : base, at: prev?.at ?? Date.now() }]); emit()
+  write([...items.filter((i) => !is(table, key)(i)), { table, key, row, base: prev ? prev.base : base, at: prev?.at ?? Date.now(), ...(prev?.tried ? { tried: prev.tried } : {}) }]); emit()
   void flush()
 }
 /** the change of this row still waiting to go up, if any */
 export const queued = (table: Table, key: string) => (supabase ? read().find(is(table, key)) : undefined)
-/** what is queued for this row now starts from `base`, the version the server just showed */
+/**
+ * what is queued for this row now starts from `base`, the version the server just showed. It keeps when it was first
+ * queued: a row the server keeps refusing still says how long it has waited (the red bar, the Tablets tab), however
+ * often another tablet changes it meanwhile (audit 2026-10-17, S6); and the versions already tried (see pass)
+ */
 export function rebase(table: Table, key: string, row: Row, base: Row) {
   if (!supabase) return
-  write([...read().filter((i) => !is(table, key)(i)), { table, key, row, base }]); emit()
+  const items = read(), prev = items.find(is(table, key))
+  write([...items.filter((i) => !is(table, key)(i)), { table, key, row, base, at: prev?.at ?? Date.now(), ...(prev?.tried ? { tried: prev.tried } : {}) }])
+  forget(table, key) // a new version: nobody has refused it yet (if the server still does, the pass says so again)
+  emit()
   void flush()
 }
 /** the server already has everything this queued change wanted */
-export function drop(table: Table, key: string) { write(read().filter((i) => !is(table, key)(i))); emit() }
+export function drop(table: Table, key: string) { write(read().filter((i) => !is(table, key)(i))); forget(table, key); emit() }
+/**
+ * what the server said of a row that leaves the queue or changes is forgotten with it: a refusal kept after its row
+ * had left kept the red bar and "Entrar de nuevo" up with nothing waiting, until the page was reloaded (audit 2026-10-17)
+ */
+function forget(table: Table, key: string) { refusedOwn.delete(table + '|' + key); parked.delete(table + '|' + key) }
 
 /** rows that went up in the last minute, with the version they started from: a late row from another device can still be merged properly */
 const recent = new Map<string, { base: Row | null | undefined; row: Row; at: number }>()
@@ -73,8 +111,9 @@ export const justSent = (table: Table, key: string) => { const r = recent.get(ta
 export function markSent(it: Item) {
   if (recent.size > 300) for (const [k, r] of recent) if (Date.now() - r.at > 60_000) recent.delete(k)
   recent.set(it.table + '|' + it.key, { base: it.base, row: it.row, at: Date.now() })
-  write(read().flatMap((i) => (!is(it.table, it.key)(i) ? [i] : JSON.stringify(i.row) === JSON.stringify(it.row) ? [] : [{ ...i, base: it.row }])))
-  refusedOwn.delete(it.table + '|' + it.key)
+  // (the versions tried before are behind it now: what the server took is the base of what comes next)
+  write(read().flatMap((i) => (!is(it.table, it.key)(i) ? [i] : JSON.stringify(i.row) === JSON.stringify(it.row) ? [] : [{ ...i, base: it.row, tried: undefined }])))
+  forget(it.table, it.key)
   emit()
 }
 
@@ -92,8 +131,20 @@ export function verdict(code: string, message: string): 'notReady' | 'refused' |
   return 'later' // no signal, an expired session, a server hiccup: tried again later
 }
 
+/**
+ * remembers that this version of the row is going up (see pass). Only for the rows that are merged when they come
+ * down (lines, runs, stops); only the last three, since each one is a whole row, and they leave with the server's answer
+ */
+function tryOf(it: Item) {
+  if (it.table !== 'act_lines' && it.table !== 'act_runs' && it.table !== 'act_stops') return
+  const was = JSON.stringify(it.row)
+  write(read().map((i) => (is(it.table, it.key)(i) ? { ...i, tried: [...(i.tried ?? []).filter((t) => JSON.stringify(t) !== was), it.row].slice(-3) } : i)))
+}
+
 let flushing = false
-export type FlushResult = { sent: number; left: number; error?: string; refused?: number }
+/** how many queued rows the server refuses to this session, and how many wait for someone else */
+const marks = () => ({ refused: stillQueued(refusedOwn).length, other: stillQueued(parked).length })
+export type FlushResult = { sent: number; left: number; error?: string; refused?: number; other?: number } // other = rows parked for someone else
 let after: ((r: FlushResult) => void) | null = null
 /**
  * told how every pass ended, whoever started it (a new record sends itself at once, without anyone waiting for the
@@ -102,38 +153,48 @@ let after: ((r: FlushResult) => void) | null = null
 export const afterFlush = (f: (r: FlushResult) => void) => { after = f }
 /** sends what is queued, oldest first; a failure of the connection stops the pass (it is retried later) */
 export async function flush(): Promise<FlushResult> {
-  if (!supabase || flushing) return { sent: 0, left: read().length, refused: refusedOwn.size }
+  if (!supabase || flushing) return { sent: 0, left: read().length, ...marks() }
   const r = await pass()
   try { after?.(r) } catch { /* what the dot says is not worth a failed pass */ }
   return r
 }
 async function pass(): Promise<FlushResult> {
-  if (!supabase) return { sent: 0, left: read().length, refused: refusedOwn.size }
+  if (!supabase) return { sent: 0, left: read().length, ...marks() }
   flushing = true
   let sent = 0, error: string | undefined
   try {
     const { data: { session }, error: authError } = await supabase.auth.getSession()
-    if (!session) return { sent: 0, left: read().length, error: noSignal(authError) ? 'offline' : 'signedOut', refused: refusedOwn.size }
+    if (!session) return { sent: 0, left: read().length, error: noSignal(authError) ? 'offline' : 'signedOut', ...marks() }
     const held = before && read().length ? await before() : null
     const waiting = new Set<string>(Array.isArray(held) ? (held as string[]) : []) // tables the server does not have ready yet, or whose rows must wait for the next pass
     const skipped = new Set<string>() // rows the database rejects as they are: they stay queued, the rest goes on
+    // who is signed in now: a row parked for this same person is not sent again until that changes, or for a while
+    const me = session.user.id + '|' + whoNow()
+    const resting = (k: string) => { const p = parked.get(k); return !!p && p.who === me && Date.now() - p.at < PARK_MS }
     while (true) {
-      const it = read().find((i) => !waiting.has(i.table) && !skipped.has(i.table + '|' + i.key))
+      const it = read().find((i) => !waiting.has(i.table) && !skipped.has(keyOf(i)) && !resting(keyOf(i)))
       if (!it) break
+      // The version about to go up is remembered with the row until the server says it took it. When the answer is
+      // lost (the 25 s limit, a WiFi that drops at that moment) the server may have it all the same, and when it
+      // comes down it is this device's own past, not another tablet's change (see reconcile in store.ts). Written
+      // before sending, so a reload in the middle of the request is covered too (audit 2026-10-17, S1)
+      tryOf(it)
       const { error: e } = await supabase.from(it.table).upsert(it.row, { onConflict: it.table === 'act_schedule' ? 'date,code' : it.table === 'act_plan' ? 'date,dept,code' : it.table === 'act_products' ? 'code' : it.table === 'act_targets' ? 'dept' : 'id' })
       if (e) {
-        error = (e.code ? e.code + ' ' : '') + e.message + (e.details ? ' · ' + e.details : '') + ' [' + it.table + ']'
         console.warn('actividad sync', it.table, e)
-        const v = verdict(String(e.code ?? ''), e.message ?? '')
+        const v = verdict(String(e.code ?? ''), e.message ?? ''), k = keyOf(it)
         if (v === 'notReady') { waiting.add(it.table); error = tr('Falta ejecutar en Supabase el SQL de {0}', it.table); continue }
         if (v === 'refused') {
+          skipped.add(k)
           // a row of this device's own that the server refuses: the person signed in is no longer who the server
-          // thinks. It waits (nothing recorded is lost) and the screen says so; a row of another room is dropped
-          if (ownRow(it.row)) { refusedOwn.add(it.table + '|' + it.key); skipped.add(it.table + '|' + it.key); error = tr('El servidor no acepta lo que registra esta sesión: sin permiso para {0}', String(it.row.dept ?? it.table)); continue }
-          // a row of another room (a device should never send one; a manager's would have been taken): dropped, and no error for the pass
-          drop(it.table, it.key); console.warn('actividad sync', 'fila de otro cuarto descartada', it.table, it.key); continue
+          // thinks. It waits (nothing recorded is lost) and the screen says so
+          if (ownRow(it.row)) { parked.delete(k); refusedOwn.add(k); error = tr('El servidor no acepta lo que registra esta sesión: sin permiso para {0}', String(it.row.dept ?? it.table)); continue }
+          // a row that is not this person's to write (another room's): it waits for someone who may send it, and the
+          // screen says so apart. No error of this session (see parked)
+          refusedOwn.delete(k); parked.set(k, { who: me, at: Date.now() }); emit(); continue
         }
-        if (v === 'bad') { skipped.add(it.table + '|' + it.key); continue }
+        error = (e.code ? e.code + ' ' : '') + e.message + (e.details ? ' · ' + e.details : '') + ' [' + it.table + ']'
+        if (v === 'bad') { skipped.add(k); continue }
         break
       }
       markSent(it)
@@ -142,5 +203,5 @@ async function pass(): Promise<FlushResult> {
   } catch (e) {
     error = String(e)
   } finally { flushing = false }
-  return { sent, left: read().length, error, refused: refusedOwn.size }
+  return { sent, left: read().length, error, ...marks() }
 }

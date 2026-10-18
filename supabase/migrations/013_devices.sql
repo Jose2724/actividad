@@ -25,8 +25,13 @@ create table if not exists public.act_devices (
 );
 alter table public.act_devices enable row level security;
 -- every signed-in person writes the row of the device they are on; the managers and the office read them all
-drop policy if exists act_devices_read on public.act_devices;
-create policy act_devices_read on public.act_devices for select to authenticated using (public.act_is_mgr());
+-- (014 later let every signed-in person read it, which an operator's tablet needs to write over its own row: created
+-- only when it is not there yet, so running this file again never silences the operators' tablets, 2026-10-18)
+do $$ begin
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'act_devices' and policyname = 'act_devices_read') then
+    create policy act_devices_read on public.act_devices for select to authenticated using (public.act_is_mgr());
+  end if;
+end $$;
 drop policy if exists act_devices_insert on public.act_devices;
 create policy act_devices_insert on public.act_devices for insert to authenticated with check (exists (select 1 from public.act_me()));
 drop policy if exists act_devices_update on public.act_devices;

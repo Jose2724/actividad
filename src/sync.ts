@@ -1,7 +1,7 @@
 import { noSignal, passExpired, renewSession, supabase } from './supabase'
 import { startClock } from './clock'
 import { afterFlush, beforeFlush, flush, outbox, setOwnRow, type Row, type Table } from './outbox'
-import { applyRemote, awayDay, batch, closeDay, firstKeptDay, myDept, openDay, prune, role, sameName, shareLocalLines, store, type Dept } from './store'
+import { applyRemote, awayDay, batch, closeDay, DEPTS, firstKeptDay, myDept, openDay, prune, role, sameName, shareLocalLines, store, viewOnly, type Dept } from './store'
 import { tr } from './i18n'
 import { BUILD } from './update'
 
@@ -9,21 +9,37 @@ import { BUILD } from './update'
  * Keeps this device and the server in step: what is queued goes up (outbox), what other tablets and the office
  * changed comes down (a pull of everything newer than the last one, plus live updates while the screen is open).
  */
-export type SyncStatus = { state: 'local' | 'signedOut' | 'connecting' | 'online' | 'offline'; pending: number; lastSync: number; lastError: string; since: number; refused: number; pulled: boolean }
-// since = when the oldest row still waiting was queued; refused = rows of this device's own the server refuses (see outbox.ts);
-// pulled = this device has brought the server's rows since the app was opened (what it holds is the plant's, not an old copy)
+export type SyncStatus = { state: 'local' | 'signedOut' | 'connecting' | 'online' | 'offline'; pending: number; lastSync: number; lastError: string; since: number; refused: number; other: number; otherRooms: string[]; pulled: boolean }
+// pending = every row still waiting; since = when the oldest of them that this person may send was queued; refused =
+// rows of this device's own the server refuses; other / otherRooms = rows waiting for someone else to sign in here
+// (another room's, see outbox.ts) and their rooms; pulled = this device has brought the server's rows since the app
+// was opened (what it holds is the plant's, not an old copy)
 /** a device that has gone this long without bringing the server's rows may show an old picture of the day: the screens say so */
 export const STALE_MS = 10 * 60_000
 // the hour of the last pull is kept on the device: when the app opens again it knows how old its copy is
 const LAST_PULL = 'act_last_pull'
 const lastPull = () => { try { return Number(localStorage.getItem(LAST_PULL)) || 0 } catch { return 0 } }
-let status: SyncStatus = { state: supabase ? 'connecting' : 'local', pending: outbox.size(), lastSync: supabase ? lastPull() : 0, lastError: '', since: outbox.oldest(), refused: 0, pulled: !supabase }
+let status: SyncStatus = { state: supabase ? 'connecting' : 'local', pending: outbox.size(), lastSync: supabase ? lastPull() : 0, lastError: '', since: outbox.oldest(true), refused: 0, other: 0, otherRooms: [], pulled: !supabase }
 const subs = new Set<() => void>()
 const setStatus = (patch: Partial<SyncStatus>) => { status = { ...status, ...patch }; subs.forEach((f) => f()) }
 export const syncStore = { get: () => status, subscribe: (f: () => void) => { subs.add(f); return () => { subs.delete(f) } } }
-outbox.subscribe(() => setStatus({ pending: outbox.size(), since: outbox.oldest(), refused: outbox.refused().length }))
-// an operator writes the rows of their room; a manager or the office, of every room; rows without a room are the office's
-setOwnRow((row) => role.get() !== 'op' || !row.dept || String(row.dept) === myDept.get())
+/** the rows waiting for someone else (see outbox.ts) and the rooms they are of, as the screen says them */
+const others = () => { const rows = outbox.otherRoom(); return { other: rows.length, otherRooms: [...new Set(rows.map((i) => String(i.row.dept ?? '')).filter((d) => (DEPTS as string[]).includes(d)))].sort() } }
+outbox.subscribe(() => setStatus({ pending: outbox.size(), since: outbox.oldest(true), refused: outbox.refused().length, ...others() }))
+/**
+ * Which rows are this person's own to write: an operator's, those of their room; a manager's or the office's, every
+ * room's. A row with no room (the start of the day, products) and an operator's own settings (the plant calendar, the
+ * goals: kept by key, not by room) count as their own too: when the server refuses one, it waits with the red bar
+ * instead of passing for another room's (an operator given the calendar lost the week they set, audit 2026-10-17 R2).
+ * A device of somebody who only looks ("Solo ver") writes nothing of its own: anything waiting on it is somebody
+ * else's. What is not the person's own waits for someone who may send it (see outbox.ts).
+ */
+setOwnRow((row) => {
+  if (viewOnly.get()) return false
+  if (role.get() !== 'op') return true
+  const dept = String(row.dept ?? '')
+  return !dept || dept === myDept.get() || !(DEPTS as string[]).includes(dept)
+}, () => role.get() + ':' + myDept.get() + (viewOnly.get() ? ':ver' : ''))
 /** the page is asked to check with the server who is signed in (a session it no longer takes): at most once every two minutes */
 let askedWho = 0
 const askWho = () => { if (Date.now() - askedWho < 120_000) return; askedWho = Date.now(); try { window.dispatchEvent(new Event('act-verify')) } catch { /* no window */ } }
@@ -33,12 +49,16 @@ const askWho = () => { if (Date.now() - askedWho < 120_000) return; askedWho = D
  * what leaving costs right now: records still on their way to the server, or no signal to come back in with.
  * `online` = what the device itself says about its network (the app may not have noticed yet).
  */
-export function leaveAsk(st: Pick<SyncStatus, 'state' | 'pending'>, online = true): { title: string; text: string; yes: string; danger: boolean } {
+export function leaveAsk(st: Pick<SyncStatus, 'state' | 'pending'> & Partial<Pick<SyncStatus, 'refused' | 'other'>>, online = true): { title: string; text: string; yes: string; danger: boolean } {
   if (st.state === 'local') return { title: tr('¿Cambiar de usuario?'), text: tr('Vuelves a la pantalla de entrada. Lo registrado se queda guardado en este aparato y lo que está corriendo sigue contando.'), yes: tr('Cambiar'), danger: false }
   const offline = st.state === 'offline' || !online
   const n = st.pending
   const waiting = n === 1 ? tr('Hay 1 registro que no ha llegado al servidor') : tr('Hay {0} registros que no han llegado al servidor', n)
   if (n > 0 && st.state === 'signedOut') return { title: tr('Todavía hay registros sin subir'), text: tr('{0} porque la sesión se cerró. Para que suban, vuelve a entrar en este aparato con tu usuario.', waiting), yes: tr('Salir'), danger: false }
+  // Everything waiting is what the server will not take from this session (refused, or another room's): waiting for
+  // "Sincronizado" would be waiting for ever, and leaving loses nothing (it stays here and goes up when someone who may
+  // send it signs in). "Entrar de nuevo" on the red bar asks this same question (2026-10-17)
+  if (n > 0 && !offline && (st.refused ?? 0) + (st.other ?? 0) >= n) return { title: tr('Todavía hay registros sin subir'), text: n === 1 ? tr('{0}: con esta sesión el servidor no lo acepta. Se queda guardado en este aparato y sube cuando entre aquí alguien que pueda subirlo. Si es tuyo, vuelve a entrar con tu usuario; si sigue, avisa al manager.', waiting) : tr('{0}: con esta sesión el servidor no los acepta. Se quedan guardados en este aparato y suben cuando entre aquí alguien que pueda subirlos. Si son tuyos, vuelve a entrar con tu usuario; si sigue, avisa al manager.', waiting), yes: tr('Salir'), danger: false }
   if (n > 0) return { title: tr('Todavía hay registros sin subir'), text: waiting + (offline ? ' ' + tr('y ahora no hay señal. No salgas hasta que vuelva la señal y arriba diga "Sincronizado".') : tr('. Espera a que arriba diga "Sincronizado" y sal después.')), yes: tr('Salir de todos modos'), danger: true }
   if (offline) return { title: tr('¿Salir sin señal?'), text: tr('Ahora no hay señal. Si sales, no vas a poder entrar otra vez hasta que vuelva el WiFi, y mientras tanto no se puede registrar nada en este aparato.'), yes: tr('Salir de todos modos'), danger: true }
   return { title: tr('¿Salir de Actividad?'), text: tr('Para volver a entrar hay que poner el usuario y el PIN. Lo que está corriendo sigue contando.'), yes: tr('Salir'), danger: false }
@@ -46,13 +66,31 @@ export function leaveAsk(st: Pick<SyncStatus, 'state' | 'pending'>, online = tru
 
 const TABLES: Table[] = ['act_lines', 'act_runs', 'act_stops', 'act_products', 'act_schedule', 'act_changes', 'act_targets', 'act_plan']
 const SINCE = 'act_since2' // the cursor is the server's synced_at (see migrations/003), not the tablets' clocks
-const PULLED_WITH = 'act_pulled_with' // the version of the app that last pulled everything: a new one pulls everything again
+const PULLED_WITH = 'act_pulled_with' // the version of the app and whose rows last pulled everything: either one new pulls everything again
 const pulledWith = () => { try { return localStorage.getItem(PULLED_WITH) || '' } catch { return '' } }
+/**
+ * Whose rows the cursor stands for: an operator's device brings only their room (see scoped), every other one the
+ * whole plant. When it changes on a device (a manager or the office signs in on an operator's tablet, an operator of
+ * another room, a manager moves the operator), the rows of the rooms it did not bring before are older than the cursor
+ * and a pull of what changed since would never bring them: lines that looked free while they ran a code, and "Set up
+ * en todas las líneas" wrote a false Set up on one (audit 2026-10-17, S3). So it brings everything once, as after a new version
+ */
+const pulledFor = () => (BUILD || 'dev') + '|' + (role.get() === 'op' ? 'op:' + myDept.get() : 'all')
 const since = () => { try { return localStorage.getItem(SINCE) || '' } catch { return '' } }
 const setSince = (v: string) => { try { localStorage.setItem(SINCE, v) } catch { /* full */ } }
 
 /** a few seconds of overlap on every pull: a row committed a moment before the last one seen is never skipped (applying a row twice changes nothing) */
 const OVERLAP_MS = 10_000
+/**
+ * How long the pull that set the cursor took (ms), and so how much further back the next one reaches. The eight
+ * tables are read one after the other, and the cursor is the newest row of any of them: a row saved in a table already
+ * read, while a later one was still being read, is older than that cursor. A pull takes a second or two, but a weak
+ * WiFi (each failed read is tried again after 1, 2 and 4 s) or the full pull after a new version can take a minute;
+ * a code ended meanwhile then stayed open on that tablet with "Sincronizado" (audit 2026-10-17, S5). A duration, not
+ * an hour of the tablet's clock, which may be off. Kept apart from the cursor, so an older version still reads that
+ */
+const SPAN = 'act_since_span'
+const span = () => { try { return Math.max(0, Number(localStorage.getItem(SPAN)) || 0) } catch { return 0 } }
 /**
  * the request never got an answer: no network, or a network that does not reach the server (a WiFi without internet).
  * Each browser says it its own way. For the app that is "no connection", whatever the device says about its WiFi.
@@ -182,13 +220,16 @@ async function pullNow(): Promise<boolean> {
     const { data: { session }, error: authError } = await supabase.auth.getSession()
     if (!session) { setStatus({ state: noSignal(authError) ? 'offline' : 'signedOut' }); return false }
     // A device brings everything again, as on its first day, instead of only what changed since: when it has no lines
-    // (the lines are shared and never all gone: it lost its copy), and once after every new version of the app. On
-    // 2026-10-17 a version that could not read what was saved left devices with a few recent rows and "Sincronizado":
-    // a device that kept a cursor had no way back on its own
-    const cursor = store.get().lines.length && (!BUILD || pulledWith() === BUILD) ? since() : ''
-    const from = cursor ? iso(Date.parse(cursor) - OVERLAP_MS) : ''
+    // (the lines are shared and never all gone: it lost its copy), once after every new version of the app, and when
+    // whose rows it brings changes (see pulledFor). On 2026-10-17 a version that could not read what was saved left
+    // devices with a few recent rows and "Sincronizado": a device that kept a cursor had no way back on its own.
+    // (Whose rows: as they are when the pull starts, so a sign-in in the middle makes the next pull a whole one)
+    const scope = pulledFor()
+    const cursor = store.get().lines.length && pulledWith() === scope ? since() : ''
+    const from = cursor ? iso(Date.parse(cursor) - OVERLAP_MS - span()) : ''
     const first: Partial<Record<Table, (q: Q) => Q>> = cursor ? {} : firstPull(firstKeptDay())
     let newest = cursor
+    const began = performance.now(), beganAt = Date.now()
     for (const t of TABLES) {
       const narrow = (q: Q) => { const x = first[t] ? first[t]!(q) : q; return from ? x.gt('synced_at', from) : x }
       const error = await pages(listing(t, narrow), (rows) => batch(() => {
@@ -197,8 +238,10 @@ async function pullNow(): Promise<boolean> {
       if (error && missing(error.code)) continue
       if (error) { setStatus(failed(error.message)); return false }
     }
-    if (newest) setSince(newest)
-    if (BUILD) try { localStorage.setItem(PULLED_WITH, BUILD) } catch { /* private */ }
+    // (the longer of the two watches: a tablet that sleeps in the middle of a pull may stop its stopwatch, and a clock
+    // moved forward only makes the next pull read a little more again)
+    if (newest) { setSince(newest); try { localStorage.setItem(SPAN, String(Math.round(Math.max(performance.now() - began, Date.now() - beganAt)))) } catch { /* full */ } }
+    try { localStorage.setItem(PULLED_WITH, scope) } catch { /* private */ }
     await bringOrderRuns()
     prune() // the days this device no longer keeps (also when the date changes while the app stays open)
     const at = Date.now()
@@ -244,26 +287,38 @@ export async function loadDay(date: string): Promise<boolean> {
   } catch { closeDay(date); return false }
 }
 /**
- * Before a device sends a run it changed, it brings down the server's version of that run and merges the two (see
- * reconcile and mergeRun): a pallet another tablet recorded a moment ago, which this device had not received yet, is
- * never written over. A run is one row with all its units, so a stale row would erase what others added. (A device
- * away for over a minute brings down everything first, so that its other rows are merged too.) A failure here changes
- * nothing: the row goes as queued and the next pull merges.
+ * Before a device sends a run, a stop or a line it changed, it brings down the server's version of that row and merges
+ * the two (see reconcile): a pallet another tablet recorded a moment ago, which this device had not received yet, is
+ * never written over; nor a stop a manager deleted or gave another cause, or a line renamed (a stop or a line went up
+ * as this device last saw it, and brought those back: audit 2026-10-17, S4). Each row goes up whole, so a stale one
+ * erases what others did. (A device away for over a minute brings down everything first, so its other rows are merged
+ * too.) Runs first: hearing a code start can end a Set up, which queues a stop. A stop or a line with no version of
+ * the server to start from is not asked for: merged with nothing in common, the server's copy would stand and the
+ * change of this device would be lost. A hundred ids per question, so a tablet back after a long time offline asks
+ * short ones. Returns the tables whose rows must wait for the next pass: the runs, when the server could not say what
+ * it has of them (sent blind, a run would write over the pallets of others). A stop or a line goes as queued then
  */
-async function refreshQueuedRuns(): Promise<boolean> {
-  if (!supabase) return true
-  const ids = [...new Set(outbox.items().filter((i) => i.table === 'act_runs').map((i) => String(i.row.id ?? '')).filter(Boolean))]
-  if (!ids.length) return true
-  try {
-    const { data, error } = await supabase.from('act_runs').select('*').in('id', ids)
-    if (error || !Array.isArray(data)) return false
-    batch(() => { for (const row of data as Row[]) applyRemote('act_runs', row) })
-    return true
-  } catch { return false }
+const REFRESHED: Table[] = ['act_runs', 'act_stops', 'act_lines']
+async function refreshQueued(): Promise<Table[]> {
+  if (!supabase) return []
+  const held: Table[] = []
+  for (const t of REFRESHED) {
+    const ids = [...new Set(outbox.items().filter((i) => i.table === t && (t === 'act_runs' || !!i.base)).map((i) => String(i.row.id ?? '')).filter(Boolean))]
+    for (let k = 0; k < ids.length; k += 100) {
+      try {
+        const { data, error } = await supabase.from(t).select('*').in('id', ids.slice(k, k + 100))
+        if (error || !Array.isArray(data)) throw error
+        batch(() => { for (const row of data as Row[]) applyRemote(t, row) })
+      } catch {
+        if (t === 'act_runs') held.push(t)
+        break
+      }
+    }
+  }
+  return held
 }
-// a run is not sent without having brought the server's version of it first: sent blind, it would write its whole row
-// over what other tablets recorded meanwhile. The runs wait for the next pass; everything else goes
-beforeFlush(async () => { if (Date.now() - status.lastSync > 75_000) await pullAll(); return (await refreshQueuedRuns()) ? [] : ['act_runs'] })
+// a row is not sent without having brought the server's version of it first (see refreshQueued)
+beforeFlush(async () => { if (Date.now() - status.lastSync > 75_000) await pullAll(); return refreshQueued() })
 /** down first, then up: what is queued is merged with what the server has before it is sent */
 export const syncNow = async () => { await pullAll(); await flushNow() }
 
@@ -273,7 +328,7 @@ export const syncNow = async () => { await pullAll(); await flushNow() }
  * "Sincronizado" on its own, also with the WiFi off.)
  */
 afterFlush((r) => {
-  const more = { pending: r.left, since: outbox.oldest(), refused: r.refused ?? 0 }
+  const more = { pending: r.left, since: outbox.oldest(true), refused: r.refused ?? 0, ...others() }
   if (r.error === 'signedOut') { setStatus({ ...more, state: 'signedOut', lastError: '' }); askWho() }
   else if (r.error === 'offline') setStatus({ ...more, state: 'offline', lastError: '' })
   else if (r.error) { setStatus({ ...more, ...failed(r.error) }); if (r.refused) askWho() }

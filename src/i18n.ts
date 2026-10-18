@@ -21,8 +21,13 @@ export function saveLang(l: Lang) { try { localStorage.setItem(KEY, l) } catch {
 /** the locale for dates: "lunes, 12 de octubre" or "Monday, October 12" */
 export const locale = lang === 'en' ? 'en-US' : 'es'
 
-/** the text of a key in the language in use, before its pieces are put in */
-export const phrase = (key: string, l: Lang = lang): string => (l === 'en' ? EN[key] ?? key : key)
+/**
+ * the text of a key in the language in use, before its pieces are put in. Only en.ts's own texts: a cause typed under
+ * "Otra" is shown through here too, and one typed as "__proto__" or "constructor" found what every object has and
+ * left the screen blank in English (audit 2026-10-17, H2). (hasOwnProperty.call, not Object.hasOwn: older tablet
+ * browsers lack that one)
+ */
+export const phrase = (key: string, l: Lang = lang): string => (l === 'en' && Object.prototype.hasOwnProperty.call(EN, key) ? EN[key] ?? key : key)
 /** a text of the screen: tr('Se ven {0} de {1}', shown, total). {0}, {1}… are the pieces, in the order they are given */
 export function tr(key: string, ...pieces: unknown[]): string {
   const out = phrase(key)

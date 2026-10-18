@@ -26,7 +26,9 @@ const test = (row, col, op, value) => {
 const clockServer = { ahead: 0, mode: 'ok', asked: [] }
 const net = { down: false } // true = no request gets an answer at all, as on a WiFi without internet
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-globalThis.fetch = async (input, init) => {
+let busy = 0 // requests the stand-in is answering right now
+globalThis.fetch = async (input, init) => { busy++; try { return await answer(input, init) } finally { busy-- } }
+async function answer(input, init) {
   if (net.down) throw new TypeError('fetch failed')
   const url = new URL(typeof input === 'string' ? input : input.url)
   if (init?.method === 'HEAD') {
@@ -79,6 +81,13 @@ const m = await import(pathToFileURL(resolve(dirname(fileURLToPath(import.meta.u
 let passed = 0
 const failed = []
 const eq = (what, got, want) => { if (JSON.stringify(got) === JSON.stringify(want)) passed++; else failed.push(`${what}\n      salió    ${JSON.stringify(got)}\n      esperado ${JSON.stringify(want)}`) }
+/**
+ * Sends what is waiting, as the next pass would. A record already sends by itself the moment it is made (outbox.ts),
+ * and flushNow() returns at once while that pass is still on its way: so the server is first let finish answering
+ * (no request for 40 ms). Without this wait, the checks after a record looked before the pass ended, and failed
+ * (unseen: the summary below did not count them, audit 2026-10-17)
+ */
+async function settle() { for (let calm = 0, i = 0; calm < 4 && i < 1000; i++) { await sleep(10); calm = busy ? 0 : calm + 1 } return m.flushNow() }
 
 // ---- the plant has been using the app for 60 days: 100 runs a day, 1,200 products ----
 const DAYMS = 86_400_000, now = Date.now()
@@ -247,16 +256,19 @@ console.log('· Lo que otra tablet agregó a una corrida no se pierde cuando est
   m.startRun(line, 'A700', '6289', m.workDay(m.store.get()).date, 36)
   const id = m.store.get().runs.find((r) => r.code === 'A700').id, srv = () => db.act_runs.find((r) => r.id === id), local = () => m.store.get().runs.find((r) => r.id === id)
   m.unitDone(id, 36, '1')
-  await m.flushNow()
+  await settle()
   eq('la corrida subió con su primer pallet', srv()?.units.map((u) => u.ref), ['1'])
   // another tablet records pallet 2 on the server; this one has not heard of it
-  const at2 = Date.now() + 1
+  // (stamped after this tablet's own version: the stand-in never tells the tablet the server's stamp, so the two are
+  // told apart by updated_at, and the tablet's is set by its clock corrected with the server's, which can read a few
+  // hundred ms ahead of this machine's; with Date.now() + 1 the other tablet's pallet looked older now and then)
+  const at2 = Math.max(Date.now(), local().updatedAt) + 1
   db.act_runs = db.act_runs.map((r) => (r.id === id ? { ...r, units: [...r.units, { at: at2, qty: 36, ref: '2', by: 'Otra' }], updated_at: new Date(at2).toISOString(), synced_at: new Date(at2 + 1).toISOString() } : r))
   await sleep(5)
   // this tablet records pallet 3 with its old picture of the run, and sends it
   m.unitDone(id, 36, '3')
   eq('antes de mandar, esta tablet solo conoce dos pallets', local().units.map((u) => u.ref), ['1', '3'])
-  await m.flushNow()
+  await settle()
   eq('al mandar, trae antes la versión del servidor y las junta: los tres pallets quedan en el servidor y en la tablet', [srv().units.map((u) => u.ref).sort(), local().units.map((u) => u.ref).sort(), m.outbox.size()], [['1', '2', '3'], ['1', '2', '3'], 0])
   console.log('· Una unidad que se quita en Corregir se queda quitada cuando la corrida sube')
   // what Jose and the office saw on 2026-10-16, in every room: a cart (a pallet, a mezcla) taken off a run with
@@ -266,34 +278,34 @@ console.log('· Lo que otra tablet agregó a una corrida no se pierde cuando est
   // the row, so that not even an older picture of the run from another tablet brings it back.
   m.updateRun(id, { units: local().units.filter((u) => u.ref !== '2') })
   eq('en la tablet el pallet 2 ya no está, y la corrida recuerda que se quitó', [local().units.map((u) => u.ref), local().extra?.removed?.length], [['1', '3'], 1])
-  await m.flushNow()
+  await settle()
   eq('al mandar sigue sin estar, en el servidor y en la tablet, y nada queda en cola', [srv().units.map((u) => u.ref), local().units.map((u) => u.ref), m.outbox.size()], [['1', '3'], ['1', '3'], 0])
   // a late echo of the old version (realtime slow, or a tablet that was offline with its old picture of the run)
   m.applyRemote('act_runs', { ...srv(), units: [...srv().units, { at: at2, qty: 36, ref: '2', by: 'Otra' }], extra: null, updated_at: new Date(at2).toISOString() })
   eq('un eco tardío de la versión vieja tampoco lo trae de vuelta', local().units.map((u) => u.ref), ['1', '3'])
-  await m.flushNow()
+  await settle()
   eq('y el servidor sigue sin él', [srv().units.map((u) => u.ref), m.outbox.size()], [['1', '3'], 0])
   // a run is never sent blind: when the server cannot say what it has of it, the run waits for the next pass
   m.unitDone(id, 36, '4')
   db.failRefresh = true
-  await m.flushNow()
+  await settle()
   eq('sin poder traer la versión del servidor, la corrida espera en la cola y el servidor no cambia', [m.outbox.size(), srv().units.map((u) => u.ref)], [1, ['1', '3']])
   db.failRefresh = false
-  await m.flushNow()
+  await settle()
   eq('a la siguiente pasada sube, junta con lo del servidor', [m.outbox.size(), srv().units.map((u) => u.ref)], [0, ['1', '3', '4']])
   // the server refuses a row of this device's own (the person signed in is no longer who it thinks): nothing is
   // dropped, the screen knows, and it goes up as soon as the server takes it again
   db.refuse = 'act_runs'
   m.unitDone(id, 36, '5')
-  await m.flushNow()
+  await settle()
   eq('un registro propio que el servidor rechaza no se descarta: espera, y la pantalla lo sabe', [m.outbox.size(), m.outbox.refused().length, m.syncStore.get().refused, m.syncStore.get().since > 0, /sin permiso/.test(m.syncStore.get().lastError)], [1, 1, 1, true, true])
   db.refuse = ''
-  await m.flushNow()
+  await settle()
   eq('cuando el servidor lo vuelve a aceptar, sube y la alerta se quita', [m.outbox.size(), m.syncStore.get().refused, srv().units.map((u) => u.ref)], [0, 0, ['1', '3', '4', '5']])
   // the device tells the server how it is (tab Tablets): who is on it, its build, what has not gone up, its clock
   eq('sin la tabla de tablets (su SQL sin correr) el aviso no insiste ni estorba', await m.sayHello('e-1'), false)
   db.act_devices = []
-  m.unitDone(id, 36, '6'); db.refuse = 'act_runs'; await m.flushNow(); db.refuse = ''
+  m.unitDone(id, 36, '6'); db.refuse = 'act_runs'; await settle(); db.refuse = ''
   const word = m.deviceWord('e-1')
   eq('lo que el aparato dice de sí: quién, qué tiene sin subir y desde cuándo, qué dijo el servidor, cómo va su reloj', [word.id === m.deviceId(), word.user_id, word.pending, !!word.oldest_at, /sin permiso/.test(word.error), ['fine', 'rough', 'own'].includes(word.clock), word.build === ''], [true, 'e-1', 1, true, true, true, true])
   eq('el aparato queda en el servidor con su palabra', [await m.sayHello('e-1'), db.act_devices.length, db.act_devices[0].pending, db.act_devices[0].id === m.deviceId()], [true, 1, 1, true])
@@ -303,8 +315,10 @@ console.log('· Lo que otra tablet agregó a una corrida no se pierde cuando est
   eq('si el servidor rechaza el aviso, el aparato lo dice y no se calla', [await m.sayHello('e-1'), /42501/.test(m.helloState().error)], [false, true])
   db.refuse = ''
   eq('al siguiente aviso vuelve a intentar y pasa', [await m.sayHello('e-1'), m.helloState().error], [true, ''])
-  await m.flushNow()
+  await settle()
 }
 
+console.log('')
+if (failed.length) { console.log(failed.length + ' FALLARON de ' + (passed + failed.length) + ':\n'); for (const f of failed) console.log('  ✗ ' + f + '\n'); process.exit(1) }
 console.log('✓ ' + passed + ' comprobaciones, todas correctas')
 process.exit(0)

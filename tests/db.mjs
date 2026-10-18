@@ -101,6 +101,225 @@ await as(db, ana, (tx) => upsert(tx, 'act_stops', stop(st2, 'Packing', PL4, t0 -
 await as(db, ana, (tx) => upsert(tx, 'act_runs', run(uuid(), 'Packing', PL4, t0)))
 eq('uno de hace más de seis horas no era un Set up: se quita', (await stopNow(st2)).deleted, true)
 
+// ---- 018 (the security review of 2026-10-17/18): what it closes, and that nothing the app sends today is refused ----
+// a refused write stays stuck in a tablet's queue, so first every write today's app makes, by every role and power
+// (src/store.ts: logChange/putChange refs, the order and day ids, every act_targets key), must still be taken
+const empId = async (name) => (await db.query('select id::text from public.employees where name = $1', [name])).rows[0].id
+const chg = (id, dept, ref, key, o = {}) => ({ id, at: iso(NOW), by_name: 'prueba', dept, what: 'prueba', before: '', after: '', ref_table: ref, ref_key: key, deleted: false, updated_at: iso(NOW), updated_by: 'prueba', ...o })
+const device = (id, name, userId, o = {}) => ({ id, name, user_id: userId, role: 'op', dept: 'Packing', build: 'b', pending: 0, error: '', updated_at: iso(NOW), updated_by: name, ...o })
+/** the write as the app sends it, then the same row again changed (a coalesced history line, a cancel, a delete mark) */
+const twice = async (who, table, row, key = 'id', patch = {}) => (await code(as(db, who, (tx) => upsert(tx, table, row, key)))) + '|' + (await code(as(db, who, (tx) => upsert(tx, table, { ...row, ...patch }, key))))
+/** one after the other (one request at a time, as the server takes them) */
+const each = async (list, f) => { const out = []; for (const x of list) out.push(await f(x)); return out }
+/** a statement that is always undone afterwards (a TRUNCATE that went through must not empty the copy): its SQLSTATE, or 'tomado' */
+async function undone(who, sql, params = []) {
+  try { await db.transaction(async (tx) => { await tx.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify(who.claims)]); await tx.exec('set local role authenticated'); await tx.query(sql, params); throw Object.assign(new Error('deshacer'), { undo: true }) }) } catch (e) { return e?.undo ? 'tomado' : String(e?.code ?? e?.message ?? e) }
+}
+const gina = await person(db, { name: 'Gina', actRole: 'op', actDept: 'Packing' }) // shifts
+const olga = await person(db, { name: 'Olga', actRole: 'op', actDept: 'Packing' }) // goals
+const dora = await person(db, { name: 'Dora', actRole: 'op', actDept: 'RTE' }) // day, del
+const oscar = await person(db, { name: 'Oscar', actRole: 'op', actDept: 'RTE' }) // orders
+const pia = await person(db, { name: 'Pia', actRole: 'op', actDept: 'RTE' }) // products
+const mara = await person(db, { name: 'Mara', actRole: 'mgr' }) // a manager whose powers were cut down to "fix"
+const frank = await person(db, { name: 'Frank', actRole: null }) // a Freezer RTE worker, no Actividad role
+for (const [name, powers] of [['Gina', '{shifts}'], ['Olga', '{goals}'], ['Dora', '{day,del}'], ['Oscar', '{orders}'], ['Pia', '{products}'], ['Mara', '{fix}']]) await db.query('update public.employees set act_powers = $1 where name = $2', [powers, name])
+
+section('018: cada persona sigue escribiendo todo lo que la app escribe hoy (nada se rechaza)')
+const today = {}
+let k = 0
+// an operator in her own room, no powers: the history of what she does, her lines, runs, stops, and her tablet's word
+for (const ref of ['act_runs', 'act_stops', 'act_lines', 'act_shift_end', 'act_plan', 'act_targets']) today['Ana, historia de su cuarto ' + ref] = await twice(ana, 'act_changes', chg(uuid(), 'Packing', ref, 'k'), 'id', { after: 'luego', deleted: true })
+today['Ana agrega y renombra una línea'] = await twice(ana, 'act_lines', line(uuid(), 'Packing', 'Línea 20'), 'id', { name: 'Línea 21' })
+const anaLine = uuid()
+today['Ana quita una línea y la pone de nuevo'] = await twice(ana, 'act_lines', line(anaLine, 'Packing', 'Línea 22', { deleted: true }), 'id', { deleted: false })
+today['Ana empieza un código, registra y termina'] = await twice(ana, 'act_runs', run(uuid(), 'Packing', P1, NOW - 9 * H, { extra: null }), 'id', { units: [{ at: NOW - 8 * H, qty: 36, ref: '', by: 'Ana' }], ended_at: iso(NOW - 7 * H) })
+today['Ana abre un paro y lo quita (lo que arregla la app sola)'] = await twice(ana, 'act_stops', stop(uuid(), 'Packing', P1, NOW - 6 * H, { reason: 'Mecánico' }), 'id', { deleted: true })
+today['la tablet de Ana dice cómo está'] = await twice(ana, 'act_devices', device('d-ana', 'Ana', await empId('Ana')), 'id', { pending: 2 })
+today['la tablet de "Solo ver" dice cómo está'] = await twice(mike, 'act_devices', device('d-mike', 'Mike', await empId('Mike'), { role: 'mgr', dept: '' }), 'id', { pending: 0 })
+// the manager (the owner), the office, and a manager whose powers were taken down to one: everything, every room
+for (const [nm, who] of [['Jose', jose], ['Edgar (oficina)', edgar], ['Mara (manager solo con fix)', mara]]) {
+  k++
+  const date = '2026-11-' + String(k).padStart(2, '0')
+  today[nm + ': empieza el día y lo cancela'] = await twice(who, 'act_changes', chg('day:' + date, null, 'act_days', date), 'id', { deleted: true })
+  today[nm + ': marca de registros borrados'] = await twice(who, 'act_changes', chg(uuid(), null, 'act_days:purge', date), 'id', { deleted: true })
+  today[nm + ': marca de registros recuperados'] = await twice(who, 'act_changes', chg(uuid(), null, 'act_days:restore', 'x'), 'id', { after: 'b' })
+  today[nm + ': un pedido y lo borra'] = await twice(who, 'act_changes', chg('po:o' + k, null, 'act_orders', 'o' + k), 'id', { deleted: true })
+  for (const ref of ['act_orders_log', 'act_products', 'act_schedule', 'act_targets']) today[nm + ': historia sin cuarto ' + ref] = await twice(who, 'act_changes', chg(uuid(), null, ref, 'k'), 'id', { after: 'b' })
+  for (const d of ['Packing', 'Kitchen']) for (const ref of ['act_runs', 'act_plan', 'act_targets']) today[nm + ': historia de ' + d + ' ' + ref + ' (y borrarla, como el borrado de un día)'] = await twice(who, 'act_changes', chg(uuid(), d, ref, 'k'), 'id', { deleted: true })
+  for (const key of ['shifts:' + date, 'shiftweek:' + date, 'shiftday:' + date, 'opt:oplines', 'Packing@1', 'line:' + K1 + '@2', 'line:' + K1, 'Kitchen']) today[nm + ': act_targets ' + key.replace(date, '<fecha>')] = await twice(who, 'act_targets', target(key), 'dept', { per_hour: 2 })
+  today[nm + ': programa de Kitchen'] = await twice(who, 'act_plan', { date, dept: 'Kitchen', code: '0889', qty: 3, updated_at: iso(NOW), updated_by: nm }, 'date,dept,code', { qty: 4 })
+  today[nm + ': un producto'] = await twice(who, 'act_products', { code: 'T' + k, name: 'prueba', updated_at: iso(NOW), updated_by: nm }, 'code', { name: 'otro' })
+  today[nm + ': mezclas del día'] = await twice(who, 'act_schedule', { date, code: '0889', mixes: 2, updated_at: iso(NOW), updated_by: nm }, 'date,code', { mixes: 3 })
+  today[nm + ': una línea de Kitchen'] = await twice(who, 'act_lines', line(uuid(), 'Kitchen', 'Braiser ' + (10 + k)), 'id', { deleted: true })
+}
+// operators holding a power: what that power's screens write
+today['Dora (day): empieza el día y lo cancela'] = await twice(dora, 'act_changes', chg('day:2026-12-01', null, 'act_days', '2026-12-01'), 'id', { deleted: true })
+today['Dora (del): borra una corrida de su cuarto'] = await twice(dora, 'act_runs', run(uuid(), 'RTE', R1, NOW - 5 * H, { ended_at: iso(NOW - 4 * H) }), 'id', { deleted: true })
+today['Oscar (orders): un pedido y lo borra'] = await twice(oscar, 'act_changes', chg('po:q1', null, 'act_orders', 'q1'), 'id', { deleted: true })
+today['Oscar (orders): la historia del pedido'] = await twice(oscar, 'act_changes', chg(uuid(), null, 'act_orders_log', 'q1'), 'id', { after: 'b' })
+for (const ref of ['act_products', 'act_schedule']) today['Pia (products): historia ' + ref] = await twice(pia, 'act_changes', chg(uuid(), null, ref, 'k'), 'id', { after: 'b' })
+today['Pia (products): un producto'] = await twice(pia, 'act_products', { code: 'P1', name: 'prueba', updated_at: iso(NOW), updated_by: 'Pia' }, 'code', { name: 'otro' })
+today['Pia (products): mezclas del día'] = await twice(pia, 'act_schedule', { date: '2026-12-02', code: '0889', mixes: 2, updated_at: iso(NOW), updated_by: 'Pia' }, 'date,code', { mixes: 3 })
+today['Pia (products): el programa de su cuarto'] = await twice(pia, 'act_plan', { date: '2026-12-02', dept: 'RTE', code: '0889', qty: 3, updated_at: iso(NOW), updated_by: 'Pia' }, 'date,dept,code', { qty: 4 })
+today['Pia (products): la historia del programa de su cuarto'] = await twice(pia, 'act_changes', chg(uuid(), 'RTE', 'act_plan', 'k'), 'id', { after: 'b' })
+for (const key of ['shifts:2026-12-03', 'shiftweek:2026-12-03', 'shiftday:2026-12-04']) today['Gina (shifts): act_targets ' + key] = await twice(gina, 'act_targets', target(key), 'dept', { per_hour: 3 })
+today['Gina (shifts): la historia del calendario'] = await twice(gina, 'act_changes', chg(uuid(), null, 'act_targets', 'shiftweek:2026-12-03'), 'id', { after: 'b' })
+for (const key of ['Packing@2', 'line:' + P1 + '@1', 'line:' + P1, 'Packing']) today['Olga (goals): act_targets ' + key.replace(P1, '<línea>')] = await twice(olga, 'act_targets', target(key), 'dept', { per_hour: 4 })
+today['Olga (goals): la historia de la meta de su cuarto'] = await twice(olga, 'act_changes', chg(uuid(), 'Packing', 'act_targets', 'Packing@2'), 'id', { after: 'b' })
+// (the goal of another room: the app files its history without a room, see goalRoom in store.ts, 2026-10-18)
+today['Olga (goals): la meta de otro cuarto y su historia, sin cuarto'] = (await twice(olga, 'act_targets', target('RTE@1'), 'dept', { per_hour: 5 })) + '|' + (await twice(olga, 'act_changes', chg(uuid(), null, 'act_targets', 'RTE@1'), 'id', { after: 'b' }))
+eq(Object.keys(today).length + ' escrituras de hoy, por cada papel y poder: ninguna se rechaza', Object.entries(today).filter(([, got]) => got.replace(/\|/g, '') !== ''), [])
+
+section('018: una fila de un cuarto no se hace pasar por una marca de la planta (el día, un borrado, un pedido)')
+const mine = uuid()
+await as(db, ana, (tx) => upsert(tx, 'act_changes', chg(mine, 'Packing', 'act_runs', 'r')))
+const patch = (who, set) => code(as(db, who, (tx) => tx.query(`update public.act_changes set ${set} where id = $1`, [mine])))
+eq('Ana no convierte una fila de su cuarto en "Día empezado", en un pedido ni en historia sin cuarto', [
+  await patch(ana, "dept = null, ref_table = 'act_days', ref_key = '2026-10-19'"),
+  await patch(ana, "dept = null, ref_table = 'act_orders', id = 'po:falso1'"),
+  await patch(ana, "dept = null, ref_table = 'act_products'"),
+  await patch(ana, "ref_table = 'act_days'"),
+  await patch(olga, "dept = null, ref_table = 'act_days'"), // a power of her own (goals) is not the day's
+], ['42501', '42501', '42501', '42501', '42501'])
+eq('ni por la vía de guardar la fila otra vez (upsert)', await code(as(db, ana, (tx) => upsert(tx, 'act_changes', chg(mine, null, 'act_days', '2026-10-19')))), '42501')
+eq('ni escribe filas de su cuarto con las marcas de la planta', await each(['act_days', 'act_days:purge', 'act_days:restore', 'act_orders', 'act_orders_log'], (ref) => code(as(db, ana, (tx) => upsert(tx, 'act_changes', chg(uuid(), 'Packing', ref, '2026-10-19'))))), ['42501', '42501', '42501', '42501', '42501'])
+eq('ni con el nombre de una (day:…, po:…)', [await code(as(db, ana, (tx) => upsert(tx, 'act_changes', chg('day:2026-10-30', 'Packing', 'act_runs', 'x')))), await code(as(db, ana, (tx) => upsert(tx, 'act_changes', chg('po:falso2', 'Packing', 'act_runs', 'x'))))], ['42501', '42501'])
+eq('su fila sigue como era, y en el servidor no hay ninguna marca con cuarto', [(await db.query('select dept, ref_table from public.act_changes where id = $1', [mine])).rows[0], (await db.query("select count(*)::int as n from public.act_changes where dept is not null and (ref_table in ('act_days', 'act_days:purge', 'act_days:restore', 'act_orders', 'act_orders_log') or id like 'day:%' or id like 'po:%')")).rows[0].n], [{ dept: 'Packing', ref_table: 'act_runs' }, 0])
+
+section('018: el nombre de una marca de la planta (day:…, po:…) va solo con esa marca, también en una fila sin cuarto')
+// review of 2026-10-18: with a power of her own (goals) Olga could take a day's id for a row without a room; Dora's start
+// of that day ("Empezar el día") then landed on it and was refused, and that day's start never reached the other tablets
+eq('Olga no pone el nombre del inicio de un día ni de un pedido a una fila suya', [
+  await code(as(db, olga, (tx) => upsert(tx, 'act_changes', chg('day:2026-12-20', null, 'act_targets', 'Packing@1')))),
+  await code(as(db, olga, (tx) => upsert(tx, 'act_changes', chg('po:x9', null, 'act_targets', 'Packing@1')))),
+  await code(as(db, oscar, (tx) => upsert(tx, 'act_changes', chg('po:x10', null, 'act_orders_log', 'x10')))),
+], ['42501', '42501', '42501'])
+const olgas = uuid()
+await as(db, olga, (tx) => upsert(tx, 'act_changes', chg(olgas, null, 'act_targets', 'Packing@1')))
+eq('ni se lo cambia después', await code(as(db, olga, (tx) => tx.query("update public.act_changes set id = 'day:2026-12-21' where id = $1", [olgas]))), '42501')
+eq('así Dora empieza esos días como siempre, y un manager también', [await code(as(db, dora, (tx) => upsert(tx, 'act_changes', chg('day:2026-12-20', null, 'act_days', '2026-12-20')))), await code(as(db, jose, (tx) => upsert(tx, 'act_changes', chg('day:2026-12-21', null, 'act_days', '2026-12-21'))))], ['', ''])
+eq('en el servidor no hay ninguna fila con el nombre de una marca que no sea esa marca', (await db.query("select count(*)::int as n from public.act_changes where (id like 'day:%' and ref_table <> 'act_days') or (id like 'po:%' and ref_table <> 'act_orders')")).rows[0].n, 0)
+
+section('018: el calendario va con el poder de los turnos; las reglas de las líneas, solo el manager y la oficina')
+eq('quien tiene "turnos" guarda la semana y los días aparte (antes se rechazaban y se perdían)', await each(['shifts:2026-12-10', 'shiftweek:2026-12-10', 'shiftday:2026-12-11'], (key) => code(as(db, gina, (tx) => upsert(tx, 'act_targets', target(key), 'dept')))), ['', '', ''])
+eq('quien tiene solo "metas" no toca el calendario ni las reglas de las líneas', await each(['shifts:2026-12-12', 'shiftweek:2026-12-12', 'shiftday:2026-12-13', 'opt:oplines'], (key) => code(as(db, olga, (tx) => upsert(tx, 'act_targets', target(key), 'dept')))), ['42501', '42501', '42501', '42501'])
+eq('y sí sus metas; quien tiene solo "turnos" no pone metas', [await code(as(db, olga, (tx) => upsert(tx, 'act_targets', target('Packing@1'), 'dept'))), await code(as(db, olga, (tx) => upsert(tx, 'act_targets', target('line:' + P1 + '@2'), 'dept'))), await code(as(db, gina, (tx) => upsert(tx, 'act_targets', target('Packing@1'), 'dept')))], ['', '', '42501'])
+
+section('018: la historia sin cuarto (pedidos, días, productos) la lee solo quien tiene un papel en Actividad')
+await as(db, jose, (tx) => upsert(tx, 'act_changes', chg('po:cliente', null, 'act_orders', 'cliente', { after: '{"customer":"Cliente","po":"123"}' })))
+const sees = (who) => as(db, who, async (tx) => (await tx.query("select count(*)::int as n from public.act_changes where id = 'po:cliente'")).rows[0].n)
+eq('una cuenta de Freezer RTE sin papel en Actividad no la lee', await sees(frank), 0)
+eq('el operador, "Solo ver", la oficina y el manager sí', [await sees(ana), await sees(mike), await sees(edgar), await sees(jose)], [1, 1, 1, 1])
+eq('y cada operador sigue leyendo la historia de su cuarto y no la de otro', await as(db, ana, async (tx) => { const r = (await tx.query("select count(*) filter (where dept = 'Packing')::int as mine, count(*) filter (where dept is not null and dept <> 'Packing')::int as other from public.act_changes")).rows[0]; return [r.mine > 0, r.other] }), [true, 0])
+
+section('018: nadie borra ni vacía una tabla de Actividad desde la app')
+// every act_ table there is (a new one must be added to 018's list, or this says so), as Supabase leaves new tables:
+// ALL to anon and authenticated (pg.mjs gives the copy the same default)
+const actTables = "from pg_class c join pg_namespace s on s.oid = c.relnamespace where s.nspname = 'public' and c.relkind in ('r', 'p') and c.relname like 'act\\_%'"
+const tableCount = (await db.query('select count(*)::int as n ' + actTables)).rows[0].n
+const canErase = (await db.query(`select c.relname ${actTables} and exists (select 1 from unnest(array['anon', 'authenticated']::name[]) g, unnest(array['DELETE', 'TRUNCATE']) p where has_table_privilege(g, c.oid, p)) order by 1`)).rows.map((r) => r.relname)
+eq('ninguna de las ' + tableCount + ' tablas act_ deja DELETE ni TRUNCATE a anon ni a authenticated', canErase, [])
+eq('(Supabase las da a toda tabla nueva: la copia del servidor también)', (await db.query("select has_table_privilege('authenticated', 'public.act_runs', 'REFERENCES') as r")).rows[0].r, true)
+eq('un operador que lo intenta: rechazado (antes TRUNCATE las vaciaba aun con las reglas por fila)', [await undone(ana, 'truncate public.act_runs'), await undone(ana, 'delete from public.act_runs')], ['42501', '42501'])
+eq('lo demás sigue: escribir en Actividad, y borrar empleados en Freezer RTE', (await db.query("select has_table_privilege('authenticated', 'public.act_runs', 'INSERT') as i, has_table_privilege('authenticated', 'public.act_runs', 'UPDATE') as u, has_table_privilege('authenticated', 'public.employees', 'DELETE') as e")).rows[0], { i: true, u: true, e: true })
+
+section('018: cada aparato dice quién está en él según el servidor, no según lo que manda')
+const hello = (who, row) => code(as(db, who, (tx) => upsert(tx, 'act_devices', row)))
+const deviceNow = async (id) => (await db.query('select name, user_id, updated_by, pending from public.act_devices where id = $1', [id])).rows[0]
+eq('el manager dice su palabra como siempre', [await hello(jose, device('d-1', 'Jose', await empId('Jose'), { pending: 3 })), await deviceNow('d-1')], ['', { name: 'Jose', user_id: await empId('Jose'), updated_by: 'Jose', pending: 3 }])
+eq('Noelia escribe sobre ese aparato diciendo ser Ana: queda su nombre y su id', [await hello(noe, device('d-1', 'Ana', await empId('Ana'))), await deviceNow('d-1')], ['', { name: 'Noelia', user_id: await empId('Noelia'), updated_by: 'Noelia', pending: 0 }])
+eq('Ana entra en esa misma tablet: el aparato pasa a ser de Ana', [await hello(ana, device('d-1', 'Ana', await empId('Ana'))), (await deviceNow('d-1')).name], ['', 'Ana'])
+eq('una tablet que recordaba a la persona sin su id: el servidor lo pone', [await hello(ana, device('d-2', 'Ana', '')), (await deviceNow('d-2')).user_id], ['', await empId('Ana')])
+await db.query("update public.act_devices set name = 'a mano' where id = 'd-2'")
+eq('desde el SQL Editor queda lo que se escribe', (await deviceNow('d-2')).name, 'a mano')
+
+section('018: el servidor anota quién mandó cada versión (act_runs_log.uid)')
+// (the uid read through to_jsonb: without 018's column the check says so instead of stopping the whole file)
+const lastLog = async (id) => (await db.query("select table_name, by_name, to_jsonb(l) ->> 'uid' as uid from public.act_runs_log l where row_id = $1 order by n desc limit 1", [id])).rows[0]
+const RL = uuid(), LL = uuid()
+await as(db, jose, (tx) => upsert(tx, 'act_runs', run(RL, 'Packing', P1, NOW - 12 * H, { ended_at: iso(NOW - 11 * H), updated_by: 'Jose' })))
+await as(db, ana, (tx) => upsert(tx, 'act_runs', run(RL, 'Packing', P1, NOW - 12 * H, { ended_at: iso(NOW - 11 * H), waste: 3, updated_by: 'Jose' })))
+eq('Ana cambia una corrida firmando como Jose: el registro dice "Jose" y la cuenta de Ana', await lastLog(RL), { table_name: 'act_runs', by_name: 'Jose', uid: ana.id })
+await db.query('update public.act_runs set waste = 4 where id = $1', [RL])
+eq('un cambio desde el SQL Editor: sin cuenta, sin error', (await lastLog(RL)).uid, null)
+await runFile(db, '011_runs_history.sql')
+await as(db, ana, (tx) => upsert(tx, 'act_runs', run(RL, 'Packing', P1, NOW - 12 * H, { ended_at: iso(NOW - 11 * H), waste: 5, updated_by: 'Ana' })))
+eq('correr el 011 otra vez no lo quita', (await lastLog(RL)).uid, ana.id)
+await as(db, jose, (tx) => upsert(tx, 'act_lines', line(LL, 'Packing', 'Línea 40')))
+await as(db, ana, (tx) => upsert(tx, 'act_lines', line(LL, 'Packing', 'Línea 41', { updated_by: 'Jose' })))
+eq('las líneas también: un cambio de nombre queda con la versión de antes y la cuenta de quien lo mandó', [await lastLog(LL), (await db.query("select was ->> 'name' as name from public.act_runs_log where row_id = $1 order by n desc limit 1", [LL])).rows[0]?.name], [{ table_name: 'act_lines', by_name: 'Jose', uid: ana.id }, 'Línea 40'])
+const SU = uuid()
+await as(db, ana, (tx) => upsert(tx, 'act_stops', stop(SU, 'Packing', LL, NOW - 30 * 60_000)))
+await as(db, ana, (tx) => upsert(tx, 'act_runs', run(uuid(), 'Packing', LL, NOW - 10 * 60_000)))
+eq('el Set up que cierra el servidor (016) queda como "servidor", pedido por la cuenta de Ana', await lastLog(SU), { table_name: 'act_stops', by_name: 'servidor', uid: ana.id })
+
+section('018: una unidad que el servidor tenía no se pierde por una copia vieja de otra tablet')
+const UL = uuid(), UR = uuid(), A = NOW - 50 * 60_000, B = NOW - 40 * 60_000, C = NOW - 30 * 60_000
+const unit = (at, qty = 36) => ({ at, qty, ref: '', by: 'prueba' })
+const packRun = (o) => run(UR, 'Packing', UL, NOW - H, { extra: null, ...o })
+const letters = async (id = UR) => (await db.query('select units from public.act_runs where id = $1', [id])).rows[0].units.map((x) => (x.at === A ? 'A' : x.at === B ? 'B' : x.at === C ? 'C' : String(x.at)) + (x.qty !== 36 ? ':' + x.qty : ''))
+await as(db, jose, (tx) => upsert(tx, 'act_lines', line(UL, 'Packing', 'Línea 50')))
+await as(db, jose, (tx) => upsert(tx, 'act_runs', packRun({ units: [unit(A)] })))
+await as(db, jose, (tx) => upsert(tx, 'act_runs', packRun({ units: [unit(A), unit(B)] })))
+await as(db, ana, (tx) => upsert(tx, 'act_runs', packRun({ units: [unit(A), unit(C)] }))) // a tablet that had not seen B
+eq('una copia vieja [A, C] sobre [A, B]: el servidor se queda con las tres, en orden', await letters(), ['A', 'B', 'C'])
+await as(db, jose, (tx) => upsert(tx, 'act_runs', packRun({ units: [unit(A), unit(C)], extra: { removed: [B] } })))
+eq('Corregir quita B con su marca: B se queda fuera', await letters(), ['A', 'C'])
+await as(db, ana, (tx) => upsert(tx, 'act_runs', packRun({ units: [unit(A, 40), unit(C)], extra: { removed: [B] } })))
+eq('una corrección de A (el mismo momento): se toma', await letters(), ['A:40', 'C'])
+await as(db, ana, (tx) => upsert(tx, 'act_runs', packRun({ units: [unit(A, 40)], extra: { removed: [B, C], lotNow: '6291', open: { parts: [{ lot: '6290', qty: 36, tag: '', at: C, by: 'prueba' }], po: '' } } })))
+eq('"se volvió a abrir" el último pallet (fuera, con su marca): se toma', await letters(), ['A:40'])
+await as(db, ana, (tx) => upsert(tx, 'act_runs', packRun({ units: [], extra: null })))
+eq('unas unidades vacías sin marca no borran lo que había', await letters(), ['A:40'])
+await as(db, ana, (tx) => upsert(tx, 'act_runs', packRun({ units: [unit(A, 40)], deleted: true, extra: { removed: [B, C] } })))
+eq('borrar la corrida deja sus unidades como estaban', [await letters(), (await db.query('select deleted from public.act_runs where id = $1', [UR])).rows[0].deleted], [['A:40'], true])
+await db.query(`update public.act_runs set units = '[{"at":"x","qty":1},{"qty":2}]'::jsonb, deleted = false where id = $1`, [UR])
+eq('unidades sin un momento de número: ni error ni nada que agregar', [await code(as(db, ana, (tx) => upsert(tx, 'act_runs', packRun({ units: [unit(A)] })))), await letters()], ['', ['A']])
+const UN = uuid()
+eq('una corrida nueva se guarda como llega', [await code(as(db, ana, (tx) => upsert(tx, 'act_runs', run(UN, 'Packing', UL, NOW - 3 * H, { units: [unit(C), unit(A)], ended_at: iso(NOW - 2 * H) })))), await letters(UN)], ['', ['C', 'A']])
+
+section('018: lo abierto de una línea se busca por índice (el 016 en cada toque)')
+eq('los dos índices están', (await db.query("select indexname from pg_indexes where schemaname = 'public' and indexname in ('act_stops_open_line', 'act_runs_open_line') order by 1")).rows.map((r) => r.indexname), ['act_runs_open_line', 'act_stops_open_line'])
+const plan = await db.transaction(async (tx) => {
+  await tx.exec('set local enable_seqscan = off')
+  const of = async (q) => (await tx.query('explain ' + q)).rows.map((r) => r['QUERY PLAN']).join(' ')
+  return [
+    /act_stops_open_line/.test(await of(`update public.act_stops s set ended_at = now() where s.line_id = '${UL}' and s.dept = 'Packing' and s.reason = 'Set up' and s.ended_at is null and coalesce(s.deleted, false) = false and s.started_at <= now()`)),
+    /act_runs_open_line/.test(await of(`select r.started_at from public.act_runs r where r.line_id = '${UL}' and r.dept = 'Packing' and r.ended_at is null and coalesce(r.deleted, false) = false and r.started_at >= now() order by r.started_at limit 1`)),
+  ]
+})
+eq('las dos preguntas del 016 pueden ir por ellos', plan, [true, true])
+
+section('Correr otra vez un archivo viejo, solo, no afloja ni cambia ninguna regla')
+// each file says "safe to run again" and Jose pastes them by hand: a rule a later file tightened must stay tight
+const rules = async () => new Map((await db.query(`
+  select 'policy ' || tablename || '.' || policyname as k, cmd || ' ' || roles::text || ' USING ' || coalesce(qual, '') || ' CHECK ' || coalesce(with_check, '') as v from pg_policies where schemaname = 'public' and tablename like 'act\\_%'
+  union all select 'grant ' || table_name || ' ' || grantee || ' ' || privilege_type, '' from information_schema.role_table_grants where table_schema = 'public' and table_name like 'act\\_%' and grantee in ('anon', 'authenticated')
+  union all select 'function ' || p.oid::regprocedure::text, pg_get_functiondef(p.oid) from pg_proc p join pg_namespace s on s.oid = p.pronamespace where s.nspname = 'public' and p.proname like 'act\\_%'
+  union all select 'trigger ' || c.relname || '.' || t.tgname, pg_get_triggerdef(t.oid) from pg_trigger t join pg_class c on c.oid = t.tgrelid join pg_namespace s on s.oid = c.relnamespace where s.nspname = 'public' and c.relname like 'act\\_%' and not t.tgisinternal
+  union all select 'default ' || table_name || '.' || column_name, coalesce(column_default, '') from information_schema.columns where table_schema = 'public' and table_name like 'act\\_%'
+  union all select 'index ' || indexname, indexdef from pg_indexes where schemaname = 'public' and tablename like 'act\\_%'`)).rows.map((r) => [r.k, r.v]))
+const before = await rules()
+// and nothing of the people: an administrator of Freezer RTE the owner set to "Sin acceso" stays so (001 gave them
+// manager back on every run until 2026-10-18)
+const adela = await person(db, { name: 'Adela', actRole: null, role: 'admin' })
+const staff = async () => (await db.query('select user_id::text, act_role, act_dept, act_powers, act_shift from public.employees order by user_id')).rows
+const people0 = await staff()
+const loosened = []
+for (const f of actMigrations()) {
+  await runFile(db, f)
+  const now = await rules(), d = []
+  for (const [key, v] of now) if (before.get(key) !== v) d.push(key + (before.has(key) ? ' cambió' : ' apareció'))
+  for (const key of before.keys()) if (!now.has(key)) d.push(key + ' desapareció')
+  if (d.length) { loosened.push(f + ': ' + d.join('; ')); for (const g of actMigrations()) await runFile(db, g) } // back to the real state
+}
+eq('cada archivo, corrido solo después de todos, deja las reglas como estaban', loosened, [])
+eq('y a la gente como estaba (un administrador de Freezer RTE en "Sin acceso" sigue así)', [await staff(), (await db.query('select act_role from public.employees where user_id = $1', [adela.id])).rows[0].act_role], [people0, null])
+await runFile(db, '001_actividad.sql')
+eq('después de correr el 001 otra vez, un operador de Packing sigue sin leer RTE', await count(ana, 'act_runs').then((rows) => rows.map(([d]) => d)), ['Packing'])
+await runFile(db, '013_devices.sql')
+eq('y después del 013, la tablet de un operador sigue escribiendo su palabra', await hello(ana, device('d-ana', 'Ana', await empId('Ana'), { pending: 5 })), '')
+
 await db.close()
 console.log(failed.length ? `\n✗ ${failed.length} de ${passed + failed.length} comprobaciones fallaron:\n\n  ${failed.join('\n\n  ')}\n` : `\n✓ ${passed} comprobaciones, todas correctas (Postgres de verdad, con las migraciones del servidor)\n`)
 process.exit(failed.length ? 1 : 0)

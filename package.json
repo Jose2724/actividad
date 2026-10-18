@@ -9,7 +9,7 @@
     "build:vercel": "tsc -p tsconfig.json && vite build",
     "build:localtest": "tsc -p tsconfig.json && vite build --mode localtest --outDir dist-localtest",
     "preview": "vite preview",
-    "check": "vite build --ssr tests/device.ts --outDir node_modules/.cache/act-check --mode test --logLevel warn && node tests/run.mjs && node tests/server.mjs && node tests/db.mjs && node tests/stack.mjs && node tests/session.mjs && node tests/offline.mjs && node tests/i18n.mjs && vite build --ssr tests/device.ts --outDir node_modules/.cache/act-check-demo --mode demo --logLevel warn && node tests/demo.mjs"
+    "check": "vite build --ssr tests/device.ts --outDir node_modules/.cache/act-check --mode test --logLevel warn && node tests/run.mjs && node tests/server.mjs && node tests/db.mjs && node tests/users.mjs && node tests/stack.mjs && node tests/session.mjs && node tests/offline.mjs && node tests/i18n.mjs && vite build --ssr tests/device.ts --outDir node_modules/.cache/act-check-demo --mode demo --logLevel warn && node tests/demo.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.3",

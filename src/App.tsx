@@ -1,20 +1,20 @@
-import { createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { Component, createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
 import { addLine, addWaste, awayDay, cameFrom, carriedOver, dayAfter, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderOfId, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay } from './store'
 import { avanceLots, avanceRange, avanceRows, datesBetween, lotAcrossDays, lotRows, lotsKnown, mfoList, mfoText, mfoWord, n1, pending, type AvancePart, type AvanceRow, type MfoMade } from './avance'
 import { loadZip, type Cell } from './xlsx'
 
-import { fmtN, looksLikeTwoLots, plainText, whoText } from './store'
+import { fmtN, looksLikeTwoLots, plainText, viewOnly, whoText } from './store'
 import { loadPdf } from './pdf'
 import { sharePick, shareProblem, type Kind } from './send'
 import { spanShifts, unitParts } from './report'
-import { canDo, canShift, type Power, type Who } from './powers'
+import { canDo, canShift, writesIn, type Power, type Who } from './powers'
 import { AddRunDialog, RunEditor, StopEditor } from './editors'
 import { fetchMe, finishSignOut, loginEmail, rememberedMe, rememberedUser, rememberMe, rememberUser, signedOut, signOutHere, supabase, type Me } from './supabase'
 import { checkLineName, leaveAsk, loadDay, STALE_MS, startSync, syncStore, syncNow, unreachable } from './sync'
 import { storageFull } from './storage'
 import { clockNow, clockOffText, clockState, otherZone, startClock, syncClock } from './clock'
-import { BUILD, keepView, reloadNow, updateStore, updateText, viewKept } from './update'
+import { BUILD, keepView, reloadHeld, reloadNow, updateStore, updateText, viewKept } from './update'
 import { startHello } from './devices'
 import { keepAwake } from './awake'
 import { Settings, type SettingsKey } from './Settings'
@@ -82,14 +82,42 @@ function QrDialog({ onClose }: { onClose: () => void }) {
 /** a link that opens the QR code (on the entry screens, and for the manager beside their name) */
 /** the app in the other language: the choice is of this device, it is kept, and the app loads again in it */
 export function LangSwitch() {
-  const pick = (l: 'es' | 'en') => { if (l !== lang) { saveLang(l); location.reload() } }
+  // with the device's storage full the app is not reloaded (what is only in memory would be lost, see update.ts): it says so
+  const [held, setHeld] = useState(false)
+  const pick = (l: 'es' | 'en') => { if (l === lang) return; if (reloadHeld()) { setHeld(true); return } saveLang(l); location.reload() }
   return (
     <span className="langsw" role="group" aria-label="Idioma / Language">
       <span className="globe" aria-hidden="true">🌐</span>
       <button type="button" className={lang === 'es' ? 'on' : ''} aria-pressed={lang === 'es'} title="Español" onClick={() => pick('es')}>ES</button>
       <button type="button" className={lang === 'en' ? 'on' : ''} aria-pressed={lang === 'en'} title="English" onClick={() => pick('en')}>EN</button>
+      {held && <NoticeDialog title={tr('Ahora no se puede cambiar el idioma')} text={HELD_TEXT()} onClose={() => setHeld(false)} />}
     </span>
   )
+}
+/** why the app is not reloaded now (the language, "Recargar"): said where the reload was asked */
+const HELD_TEXT = () => tr('La memoria de este aparato está llena: cambiar el idioma o recargar vuelve a abrir la app, y lo que no se ha podido guardar aquí se perdería. Avisa al manager y no cierres la app hasta que diga "Sincronizado".')
+/**
+ * A screen that fails to draw shows this instead of leaving the tablet blank (before 2026-10-17 one bad record took
+ * the whole app down with it, and a reload brought the same blank page back, audit H2). The bar on top, the tabs and
+ * "Salir" stay; another tab or room draws again. What was recorded is on the device and in its queue: nothing of it
+ * is touched here, and "Recargar" is not offered while the storage is full (see update.ts).
+ */
+class ViewGuard extends Component<{ reset: string; children: ReactNode }, { failed: boolean }> {
+  state = { failed: false }
+  static getDerivedStateFromError() { return { failed: true } }
+  componentDidCatch(e: unknown) { console.error('Actividad: una pantalla no se pudo mostrar', e) }
+  componentDidUpdate(prev: { reset: string }) { if (prev.reset !== this.props.reset && this.state.failed) this.setState({ failed: false }) }
+  render() {
+    if (!this.state.failed) return this.props.children
+    const held = reloadHeld()
+    return (
+      <div className="gate">
+        <h2>{tr('Esta pantalla no se pudo mostrar')}</h2>
+        <p>{tr('Lo registrado está guardado en este aparato y no se pierde.')}</p>
+        {held ? <p className="err">{HELD_TEXT()}</p> : <><button type="button" className="btn primary" onClick={() => { reloadNow() }}>{tr('Recargar')}</button><p className="hint">{tr('Si vuelve a pasar después de recargar, avisa al manager.')}</p></>}
+      </div>
+    )
+  }
 }
 export function QrLink({ label }: { label: string }) {
   const [open, setOpen] = useState(false)
@@ -255,7 +283,8 @@ function ServerApp() {
     return () => { clearTimeout(slow); clearInterval(t); window.removeEventListener('online', again); document.removeEventListener('visibilitychange', seen); window.removeEventListener('act-verify', again) }
   }, [verify])
   useEffect(() => {
-    if (me && me !== 'none' && me !== 'loading') { user.set(me.name); role.set(me.role === 'op' ? 'op' : 'mgr'); myDept.set(me.dept); startSync(); startHello(me.id) }
+    // (somebody who only looks is a manager for what they see, and writes nothing: see viewOnly in store.ts)
+    if (me && me !== 'none' && me !== 'loading') { user.set(me.name); role.set(me.role === 'op' ? 'op' : 'mgr'); viewOnly.set(me.role === 'viewer' ? '1' : ''); myDept.set(me.dept); startSync(); startHello(me.id) }
   }, [me])
   const out = async () => { leaving.current = true; rememberMe(null); user.set(''); confirmed.current = 0; setErr(''); setMe(null); await signOutHere() }
   /** the PIN was accepted: the server is asked who that is */
@@ -265,7 +294,7 @@ function ServerApp() {
   if (me === 'none') return <NoRole onOut={out} onRetry={verify} />
   const home = isDept(me.dept) ? me.dept : DEPTS[0]
   if (me.role === 'op' && !isDept(me.dept)) return <NoRole onOut={out} onRetry={verify} text={tr('Tu usuario está en Actividad pero sin departamento. Pide al manager que te asigne uno.')} />
-  return <WhoCtx.Provider value={{ role: me.role, admin: !!me.admin, powers: me.powers ?? null, shift: me.shift ?? 0 }}><Main name={me.name} home={home} mgr={me.role !== 'op'} admin={!!me.admin} wholeDay={!!me.admin || me.role === 'office' || me.role === 'viewer'} meId={me.id} onLogout={() => void out()} /></WhoCtx.Provider>
+  return <WhoCtx.Provider value={{ role: me.role, admin: !!me.admin, powers: me.powers ?? null, shift: me.shift ?? 0, dept: me.dept }}><Main name={me.name} home={home} mgr={me.role !== 'op'} admin={!!me.admin} wholeDay={!!me.admin || me.role === 'office' || me.role === 'viewer'} meId={me.id} onLogout={() => void out()} /></WhoCtx.Provider>
 }
 
 /**
@@ -377,7 +406,7 @@ function DemoApp() {
   if (!(mgr || isDept(dept)) || !name) {
     return <Gate dept={isDept(dept) ? dept : null} mgr={mgr} onDept={(d) => { myDept.set(d); role.set('op'); setDept(d); setWho('op') }} onManager={() => { role.set('mgr'); myDept.set(''); setWho('mgr'); setDept('') }} onName={(n) => { user.set(n); setName(n) }} onBack={out} />
   }
-  return <WhoCtx.Provider value={{ role: mgr ? 'mgr' : 'op', admin: mgr }}><Main name={name} home={isDept(dept) ? dept : DEPTS[0]} mgr={mgr} admin={mgr} onLogout={out} /></WhoCtx.Provider>
+  return <WhoCtx.Provider value={{ role: mgr ? 'mgr' : 'op', admin: mgr, dept }}><Main name={name} home={isDept(dept) ? dept : DEPTS[0]} mgr={mgr} admin={mgr} onLogout={out} /></WhoCtx.Provider>
 }
 
 /** entering: a supervisor or operator picks their department (and sees only that); the manager enters with a code and sees every room */
@@ -428,7 +457,7 @@ export const useCan = () => { const w = useContext(WhoCtx); return (p: Power) =>
 function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: string; home: Dept; mgr: boolean; admin: boolean; wholeDay?: boolean; meId?: string; onLogout: () => void }) {
   const s = useSyncExternalStore(store.subscribe, store.get)
   const now = useNow()
-  const can = useCan(), viewOnly = useViewOnly()
+  const can = useCan(), viewOnly = useViewOnly(), who = useWho()
   const day = workDay(s, now)
   // the room and the tab come back after the reload a new version brings (see update.ts)
   const kept = viewKept<{ dept?: string; tab?: string; sec?: string }>()
@@ -460,18 +489,28 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
   // what was recorded here and has not reached the server: said loud after five minutes, or at once when the server no
   // longer takes this session (an account closed, a PIN changed, the person is not of this room). Nothing is lost: it
   // waits on the device and goes up as soon as someone the server accepts signs in (what the floor lived on 2026-10-16:
-  // a whole shift of mezclas "that never got recorded")
-  const stuckMs = sync.pending > 0 && sync.since ? now - sync.since : 0
+  // a whole shift of mezclas "that never got recorded"). The rows waiting for someone else (another room's, see
+  // outbox.ts) are said apart: signing in again as the same person does not send them
+  const mine = sync.state === 'signedOut' ? sync.pending : sync.pending - sync.other
+  const stuckMs = mine > 0 && sync.since ? now - sync.since : 0
   const unsent = !!supabase && (sync.state === 'signedOut' || sync.refused > 0 || stuckMs > 5 * 60_000)
   const mustSignIn = sync.state === 'signedOut' || sync.refused > 0
+  const others = !!supabase && sync.other > 0 && sync.state !== 'signedOut'
+  const rooms = sync.otherRooms.join(', ')
+  const othersText = rooms
+    ? sync.other === 1 ? tr('⚠ 1 registro de {0} espera en este aparato a alguien que pueda subirlo: sube solo en cuanto entre aquí alguien de su cuarto o un manager. No se pierde.', rooms) : tr('⚠ {0} registros de {1} esperan en este aparato a alguien que pueda subirlos: suben solos en cuanto entre aquí alguien de su cuarto o un manager. No se pierden.', sync.other, rooms)
+    : sync.other === 1 ? tr('⚠ 1 registro espera en este aparato a alguien que pueda subirlo: sube solo en cuanto entre aquí un manager. No se pierde.') : tr('⚠ {0} registros esperan en este aparato a alguien que pueda subirlos: suben solos en cuanto entre aquí un manager. No se pierden.', sync.other)
   const unsentWhy = sync.state === 'signedOut' ? tr('este aparato ya no tiene sesión en el servidor') : sync.refused > 0 ? tr('el servidor no acepta lo que registra esta sesión ({0})', name) : sync.lastError || (sync.state === 'offline' ? tr('sin señal') : tr('sin alcanzar el servidor'))
   return (
     <div className="app">
       {away ? <div className="zonebar">{tr('⚠ Este aparato está puesto en otra zona horaria que la planta: las horas y la fecha saldrán corridas. En los ajustes del aparato, activa la zona horaria automática.')}</div>
         : off && <div className="zonebar">{trx('⚠ El reloj de este aparato está {0}. La app usa la hora correcta, la del servidor. Para arreglarlo, activa la hora automática en los ajustes del aparato.', off)}</div>}
       {clockUnset && clk && <div className="stalebar top"><span>{trx('⚠ Este aparato no ha podido ajustar su reloj con el del servidor ({0}). Si su hora está mal, los tiempos de las mezclas y del turno salen corridos aquí, y las horas que registre también. Compara la hora de arriba con un teléfono.', clk.savedAt ? tr('usa la medida de hace {0}', agoText(now - clk.savedAt)) : tr('usa su propio reloj'))}</span><button type="button" className="btn sm" onClick={() => void syncClock()}>{tr('Reintentar')}</button></div>}
-      {upd.ready && <div className="updatebar"><span>{updateText()}</span><button type="button" className="btn sm" onClick={reloadNow}>{tr('Actualizar')}</button></div>}
-      {unsent && <div className="stalebar top unsent"><span>{trx('⚠ {0} sin subir desde hace {1}: {2}. Se guardan en este aparato y suben en cuanto se pueda.', sync.pending === 1 ? tr('1 registro') : tr('{0} registros', sync.pending), agoText(Math.max(60_000, stuckMs)), unsentWhy)}{mustSignIn && ' ' + tr('Sal y entra de nuevo con tu usuario; si sigue, avisa al manager.')}</span>{mustSignIn ? <button type="button" className="btn sm" onClick={() => void onLogout()}>{tr('Entrar de nuevo')}</button> : <button type="button" className="btn sm" onClick={() => window.dispatchEvent(new Event('act-resync'))}>{tr('Reintentar')}</button>}</div>}
+      {/* with the storage full the new version waits for room: a reload now would lose what is only in memory (update.ts) */}
+      {upd.ready && <div className="updatebar"><span>{updateText(full)}</span>{!full && <button type="button" className="btn sm" onClick={() => { reloadNow() }}>{tr('Actualizar')}</button>}</div>}
+      {/* "Entrar de nuevo" asks first, as "Salir" does, while something waits to go up (2026-10-17) */}
+      {unsent && <div className="stalebar top unsent"><span>{trx('⚠ {0} sin subir desde hace {1}: {2}. Se guardan en este aparato y suben en cuanto se pueda.', mine === 1 ? tr('1 registro') : tr('{0} registros', mine), agoText(Math.max(60_000, stuckMs)), unsentWhy)}{mustSignIn && ' ' + tr('Sal y entra de nuevo con tu usuario; si sigue, avisa al manager.')}</span>{mustSignIn ? <button type="button" className="btn sm" onClick={() => (sync.pending > 0 ? setLeaving(true) : onLogout())}>{tr('Entrar de nuevo')}</button> : <button type="button" className="btn sm" onClick={() => window.dispatchEvent(new Event('act-resync'))}>{tr('Reintentar')}</button>}</div>}
+      {others && <div className="stalebar top"><span>{othersText}</span></div>}
       {full && <div className="fullbar">{trx('⚠ La memoria de este aparato está llena y lo nuevo no se está guardando aquí. {0}', supabase ? tr('Lo que ya subió al servidor está a salvo. Avisa al manager y no cierres la app hasta que diga "Sincronizado".') : tr('Manda el reporte del día y avisa al manager antes de cerrar la app: hay que hacer espacio con "Reiniciar registros".'))}</div>}
       {stale && <div className="stalebar top"><span>{sync.lastSync ? trx('⚠ Este aparato muestra lo de las {0}: lleva {1} sin bajar del servidor ({2}). Si en otra tablet cambió algo, aquí todavía no se ve.', fmtTime(sync.lastSync), agoText(staleMs), why) : trx('⚠ Este aparato no ha bajado nada del servidor todavía ({0}).', why)}</span><button type="button" className="btn sm" onClick={() => window.dispatchEvent(new Event('act-resync'))}>{tr('Reintentar')}</button></div>}
       <header className="top">
@@ -485,6 +524,8 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
         <div className="me"><SyncDot /> <span className="who">{name}</span><span className="where">{viewOnly ? tr('Solo ver') : mgr ? tr('Manager') : home}</span> {mgr && <QrLink label="QR" />}<LangSwitch /><button type="button" className="lnk" onClick={() => setLeaving(true)}>{supabase ? tr('Salir') : tr('Cambiar')}</button></div>
       </header>
       {leaving && <LeaveDialog onYes={() => { setLeaving(false); onLogout() }} onNo={() => setLeaving(false)} />}
+      {/* a view that fails to draw says so, and the rest of the app stays (see ViewGuard) */}
+      <ViewGuard reset={tab + '|' + dept}>
       {tab === 'act' ? (
         <>
         <DayBar s={s} now={now} day={day} mgr={can('day')} calendar={can('shifts')} />
@@ -512,10 +553,15 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
               {setupAll && <ConfirmDialog title={tr('¿Poner en Set up todas las líneas libres?')} text={DEPTS.filter((d) => free.some((l) => l.dept === d)).map((d) => d + ': ' + free.filter((l) => l.dept === d).map((l) => lineLabel(l.name)).join(', ')).join(' · ') + '. ' + (now - setupFrom > 60_000 ? tr('El Set up cuenta desde las {0}, el inicio del turno.', fmtTime(setupFrom)) : tr('El Set up cuenta desde ahora.')) + ' ' + tr('Cuenta cuando empiece el código de cada línea; con nadie trabajando no cuenta. Las líneas que ya tienen código o Set up siguen como están.')} yes={tr('⏱ Empezar Set up')} onYes={() => { startSetupAll(); setSetupAll(false) }} onNo={() => setSetupAll(false)} />}
             </aside>
           )}
-          <DeptPanel key={dept} s={s} dept={can('depts') ? dept : home} now={now} mgr={mgr} day={day} />
+          {/* an operator who may look at every room writes only their own (the server refuses the rest): another room is
+              shown as to somebody who only looks, with nothing to tap that would never reach the server (review of 2026-10-18) */}
+          <WhoCtx.Provider value={writesIn(who, can('depts') ? dept : home) ? who : { ...who, role: 'viewer' }}>
+            <DeptPanel key={dept} s={s} dept={can('depts') ? dept : home} now={now} mgr={mgr} day={day} />
+          </WhoCtx.Provider>
         </div>
         </>
       ) : tab === 'av' && (can('products') || viewOnly) ? <Avance s={s} /> : tab === 'set' ? <Settings s={s} now={now} day={day} name={name} home={home} mgr={mgr} admin={admin} viewOnly={viewOnly} meId={meId ?? ''} section={sec} onSection={setSec} onLeave={() => setLeaving(true)} /> : <Report s={s} now={now} only={can('depts') ? undefined : home} mgr={can('depts')} admin={admin} wholeDay={!!wholeDay} />}
+      </ViewGuard>
     </div>
   )
 }

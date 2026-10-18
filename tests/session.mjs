@@ -25,7 +25,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const H = 3600
 
 // ---- the stand-in sign-in server ----
-const server = { n: 0, passes: new Map(), renewals: 0, renewal: 'ok', retryAfter: '', logouts: [], logout: 'ok', held: [], rejected: 0, rest: 0 }
+const server = { n: 0, passes: new Map(), renewals: 0, renewal: 'ok', retryAfter: '', logouts: [], logout: 'ok', held: [], rejected: 0, rest: 0, userAsks: [] }
 const json = (status, body, headers = {}) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...headers } })
 const issue = (email) => {
   const n = ++server.n, access_token = 'pase.' + n + '.x'
@@ -49,6 +49,12 @@ globalThis.fetch = async (input, init = {}) => {
     if (server.logout === 'hang') await new Promise((r) => server.held.push(r))
     return new Response(null, { status: 204 })
   }
+  if (url.pathname.endsWith('/auth/v1/user')) {
+    // whose pass this is: the library asks it only for a session it found in the page's address
+    const pass = (h.get('authorization') || '').replace(/^Bearer /, '')
+    server.userAsks.push(pass)
+    return server.passes.has(pass) ? json(200, { id: 'u2', aud: 'authenticated', email: 'otra.persona@freezer.example.com' }) : json(401, { code: 401, error_code: 'bad_jwt', msg: 'invalid JWT' })
+  }
   if (url.pathname.includes('/rest/v1/')) {
     if (init.method === 'HEAD') return new Response(null, { status: 200, headers: { Date: new Date(Math.floor(trueNow() / 1000) * 1000).toUTCString() } })
     server.rest++
@@ -60,7 +66,8 @@ globalThis.fetch = async (input, init = {}) => {
   return json(404, {})
 }
 
-const m = await import(pathToFileURL(resolve(dirname(fileURLToPath(import.meta.url)), '../node_modules/.cache/act-check/device.js')).href)
+const bundle = pathToFileURL(resolve(dirname(fileURLToPath(import.meta.url)), '../node_modules/.cache/act-check/device.js')).href
+const m = await import(bundle)
 m.supabase.auth.stopAutoRefresh() // every renewal in here is one the test asked for: the counts are exact
 
 const KEY = 'sb-127-auth-token'
@@ -227,6 +234,26 @@ await m.pullAll()
   m.patience.ms = 25_000
   await m.syncNow()
   eq('y cuando la red vuelve a responder, sube y queda sincronizado', [m.outbox.size(), m.syncStore.get().state], [0, 'online'])
+}
+
+console.log('· Un enlace que trae la sesión de otra cuenta no cambia quién está en la tablet (auditoría 2026-10-17, E6)')
+{
+  await fresh()
+  eq('entra la persona de la tablet', await enter('tablet.rte@freezer.example.com'), 'dentro')
+  const mine = stored().access_token
+  // someone gets the tablet to open the app's address with another account's session in it (a link, a QR sticker):
+  // the app starts again on that address (a second copy of it, as a page that opens anew)
+  const other = issue('otra.persona@freezer.example.com')
+  window.location = new URL('http://localhost/#access_token=' + other.access_token + '&refresh_token=' + other.refresh_token + '&expires_in=3600&token_type=bearer')
+  server.userAsks = []
+  const warn = console.warn; console.warn = () => {} // (the library warns about a second copy of itself in one page)
+  const again = await import(bundle + '?e6')
+  const { data } = await again.supabase.auth.getSession()
+  again.supabase.auth.stopAutoRefresh()
+  console.warn = warn
+  eq('la app abre con la sesión que la tablet ya tenía; la del enlace no se toma', [data.session?.access_token === mine, stored()?.access_token === mine], [true, true])
+  eq('y ni siquiera se le pregunta al servidor de quién es', server.userAsks.length, 0)
+  window.location = new URL('http://localhost/')
 }
 
 console.log('· Lo que guarda el aparato')

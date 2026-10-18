@@ -92,8 +92,26 @@ export function reportOf(s: State, date: string, now: number, f: ReportFilter = 
   // a stop is of a shift when it counts time in it (one that counts none at all, of the shift it started in)
   const touches = (x: (typeof s.stops)[number], k: 1 | 2) => inShift(x, k) > 0 || (inShift(x, 0) === 0 && shiftAt(plan, x.startedAt) === k)
   const stops = (shift ? ofRuns.filter((x) => touches(x, shift)) : ofRuns).map((x) => ({ ...x, ms: inShift(x, shift) }))
-  // the time the lines spent between one code and the next
-  const setupOf = (k: 0 | 1 | 2, dept?: Dept) => ofRuns.filter((x) => x.reason === SETUP && (!dept || x.dept === dept)).reduce((t, x) => t + inShift(x, k), 0)
+  // The time the lines spent between one code and the next. Two set ups open at once on one line (two tablets that had
+  // not yet seen each other's, both later closed by the next code) are one stretch of time, not two: the minutes of a
+  // line are counted once, as "Parado" counts them (stoppedPieces). The Paros list keeps both records (audit
+  // 2026-10-17, H7: the day's Set up came out doubled)
+  const setupOf = (k: 0 | 1 | 2, dept?: Dept) => {
+    const byLine = new Map<string, { from: number; to: number }[]>()
+    for (const x of ofRuns) {
+      if (x.reason !== SETUP || (dept && x.dept !== dept)) continue
+      const pieces = stopSpans(s, x, now).flatMap((p) => (!k ? [p] : shiftPieces(plan, p.from, p.to).filter((q) => q.shift === k)))
+      const key = x.dept + '|' + (x.lineId ?? '*'), list = byLine.get(key) ?? []
+      list.push(...pieces.map((p) => ({ from: p.from, to: p.to })))
+      byLine.set(key, list)
+    }
+    let total = 0
+    for (const list of byLine.values()) {
+      let end = -Infinity
+      for (const p of list.sort((a, b) => a.from - b.from)) { const from = Math.max(p.from, end); if (p.to > from) total += p.to - from; end = Math.max(end, p.to) }
+    }
+    return total
+  }
   // the same code on several lines of a room, added up (with what each shift made of it, when the report is the whole day's)
   const each = shift ? null : ([rowsOf(1), rowsOf(2)] as const)
   const codeKey = (r: Run) => r.dept + '|' + normCode(r.code) + (kindOf(r) ? '|bin|' + kindOf(r) : '')

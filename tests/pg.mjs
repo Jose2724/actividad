@@ -15,12 +15,19 @@ export const ACT_DIR = resolve(here, '../supabase/migrations')
 // it, the columns of employees that Actividad uses are made here the same way
 const FREEZER_DIR = resolve(here, '../../freezer-control/supabase')
 
-/** what Supabase gives every project before its own SQL: roles, the auth schema the policies call, the realtime publication */
+/**
+ * what Supabase gives every project before its own SQL: roles, their default privileges (every new table, function
+ * and sequence of public is granted ALL to anon, authenticated and service_role, so what a migration does NOT revoke
+ * is open, TRUNCATE included: see 018), the auth schema the policies call, the realtime publication
+ */
 const SUPABASE = `
 create role anon nologin noinherit;
 create role authenticated nologin noinherit;
 create role service_role nologin noinherit bypassrls;
 grant usage on schema public to anon, authenticated, service_role;
+alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
+alter default privileges in schema public grant all on functions to anon, authenticated, service_role;
+alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
 create schema if not exists auth;
 create table if not exists auth.users (id uuid primary key, email text, created_at timestamptz not null default now());
 create or replace function auth.uid() returns uuid language sql stable as $$ select nullif(nullif(current_setting('request.jwt.claims', true), '')::json ->> 'sub', '')::uuid $$;
