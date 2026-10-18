@@ -1,5 +1,6 @@
-import { apartOf, binOf, binWord, CFG, cfgOf, DEPTS, fmtTime, kindOf, lineLabel, lineNameOf, normCode, noteLabel, orderLabel, orderOfId, orderPallets, palletPo, plainDay, plainText, runInShift, runStats, SETUP, shiftAt, shiftPieces, shiftsOf, stopSpans, unitQty, waitsForCode, whoText, type Change, type Dept, type Run, type ShiftHours, type State, type Unit } from './store'
+import { apartOf, binOf, binWord, CFG, cfgOf, DEPTS, fmtDur, fmtTime, kindOf, lineLabel, lineNameOf, normCode, noteLabel, noteOf, orderLabel, orderOfId, orderPallets, palletPo, plainDay, plainText, runInShift, runStats, SETUP, shiftAt, shiftPieces, shiftsOf, stopSpans, unitQty, waitsForCode, whoText, type Change, type Dept, type Run, type ShiftHours, type State, type Unit } from './store'
 import { clockNow } from './clock'
+import { xDay, xDur, xTime, type Cell } from './xlsx'
 import { phrase, tr } from './i18n'
 
 /**
@@ -19,6 +20,13 @@ export function unitParts(s: State, r: Run, u: Unit): { lot: string; qty: number
 }
 /** every lot a run has touched: on its units, and while it runs, on the pallet being built and the lot being packed now */
 export const runLots = (s: State, r: Run) => new Set([...(r.units.length ? r.units.flatMap((u) => unitParts(s, r, u).map((p) => p.lot)) : [r.lot]), ...(r.endedAt ? [] : [...(r.extra?.open?.parts.map((p) => p.lot) ?? []), ...(r.extra?.lotNow ? [r.extra.lotNow] : [])])])
+/**
+ * The lot a pallet added from an order's pallets window starts with (AddUnitDialog with startPo): the run's lot only
+ * when it is the one lot the run has touched, a fact; a run that went through two lots (a lot ran out, or the line
+ * moved on to the next while it runs) starts with none, to be typed: its first lot is not the one the pallet carried
+ * any more than the last (review, 2026-10-18; Jose's rule: the app puts in nothing the person did not type)
+ */
+export const unitStartLot = (s: State, r: Run) => { const lots = [...runLots(s, r)].filter(Boolean); return lots.length === 1 ? lots[0] : '' }
 const round2 = (x: number) => Math.round(x * 100) / 100
 /** one lot of a code in the report: how many units carry it, how much, and what each shift made of it (the whole day's report) */
 export type LotLine = { lot: string; units: number; qty: number; byShift: [number, number] | null }
@@ -179,6 +187,18 @@ export function reportOf(s: State, date: string, now: number, f: ReportFilter = 
   const distinct = new Set(rows.map((x) => normCode(x.r.code))).size, lines = new Set(rows.map((x) => x.r.lineId)).size
   return { runs, rows, unitRows, pallets, bins, stops, byCode, byShift, byDept, reasons, distinct, lines, working: rows.reduce((t, x) => t + x.st.working, 0), down: rows.reduce((t, x) => t + x.st.down, 0), setup: setupOf(shift), codes, lots, code, lot, shift, plan, filtered, line, lineChoices }
 }
+/**
+ * The Excel's (and the CSV's) first sheet, Resumen: one line per run of the report in view, typed (numbers, times,
+ * spans) so Excel can sort and add them, and the run's comment in the last column, as it was typed (Jose, 2026-10-18:
+ * comments on the records; last, so the columns the office already reads keep their places). It is made here and not
+ * in the report's screen so that the checks read the very lines the file gets.
+ */
+export function runsSheet(s: State, rep: Report): Cell[][] {
+  const T = (ms: number) => xTime(ms, fmtTime(ms)), D = (ms: number) => xDur(ms, fmtDur(ms))
+  const reasons = (x: Report['rows'][number]) => Object.entries(x.st.reasons).map(([k, v]) => tr(k) + ' ' + fmtDur(v)).join(', ')
+  return [[tr('Departamento'), tr('Línea'), tr('Código'), tr('Lote'), tr('Fecha'), tr('Inicio'), tr('Fin'), tr('Unidad'), tr('Hechas'), tr('Cantidad'), tr('Unidad de cantidad'), tr('Tags / bins'), tr('Waste (lb)'), tr('Tiempo trabajando'), tr('Promedio por unidad'), tr('Tiempo parado'), 'Set up', tr('Razones de paro'), tr('Registró'), tr('Turno'), tr('Comentario')],
+    ...rep.rows.map((x): Cell[] => [x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.lots, xDay(x.r.date), T(x.r.startedAt), x.r.endedAt ? T(x.r.endedAt) : tr('en curso'), cfgOf(x.r).unit, x.units, CFG[x.r.dept].qty !== 'none' ? x.qty : '', CFG[x.r.dept].qty !== 'none' ? cfgOf(x.r).qtyUnit : '', x.view.units.map((u) => u.ref).filter(Boolean).join(', '), x.waste || '', D(x.st.working), x.timed ? D(x.st.avg) : '', D(x.st.down), x.st.setup ? D(x.st.setup) : '', reasons(x), whoText(x.r), rep.shift ? String(rep.shift) : x.shifts, noteOf(x.r)])]
+}
 /** the words a filtered report carries in its title and in the name of its files */
 export const filterTitle = (code: string, lot: string, shift: 0 | 1 | 2 = 0, line = '') => (shift ? ' ' + tr('· Turno {0}', shift) : '') + (line ? ' · ' + line : '') + (code ? ' ' + tr('· código {0}', code) : '') + (lot ? ' ' + tr('· lote {0}', lot) : '')
 export const filterFile = (code: string, lot: string, shift: 0 | 1 | 2 = 0, line = '') => { const clean = (t: string) => t.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, ''); return (shift ? '-turno' + shift : '') + (line ? '-' + clean(line) : '') + (code ? '-cod-' + clean(code) : '') + (lot ? '-lote-' + clean(lot) : '') }
@@ -240,7 +260,8 @@ export function searchReport(s: State, rep: Report, q: string, changes: Change[]
     .map((b): Hit => ({ kind: 'bin', key: hitKey.bin(b.r.id, b.n), dept: b.r.dept, at: b.at, runId: b.r.id, unitAt: b.at })).sort(byAt)
   const units = rep.unitRows.filter((x) => fits([String(x.i + 1), x.r.code, product(x.r.code), x.lot, x.tag, x.order, line(x.r), x.u.by, fmtTime(x.u.at), ...shiftWords(x.shift), cfgOf(x.r).unit, x.r.dept], [x.r.code]))
     .map((x): Hit => ({ kind: 'unit', key: hitKey.unit(x.r.id, x.i, x.lot), dept: x.r.dept, at: x.u.at, runId: x.r.id, unitAt: x.u.at })).sort(byAt)
-  const runs = rep.rows.filter((x) => fits([x.r.code, product(x.r.code), x.lots, line(x.r), whoText(x.r), fmtTime(x.r.startedAt), ...Object.keys(x.st.reasons).flatMap((k) => [k, phrase(k, 'en')]), ...shiftWords(x.shifts), x.r.dept], [x.r.code]))
+  // (a run is found by its comment too: Jose, 2026-10-18)
+  const runs = rep.rows.filter((x) => fits([x.r.code, product(x.r.code), x.lots, line(x.r), whoText(x.r), fmtTime(x.r.startedAt), ...Object.keys(x.st.reasons).flatMap((k) => [k, phrase(k, 'en')]), ...shiftWords(x.shifts), x.r.dept, noteOf(x.r)], [x.r.code]))
     .map((x): Hit => ({ kind: 'run', key: hitKey.run(x.r.id), dept: x.r.dept, at: x.r.startedAt, runId: x.r.id })).sort(byAt)
   const stops = rep.stops.filter((x) => fits([x.reason, phrase(x.reason, 'en'), noteLabel(x.note), x.note, x.lineId === null ? tr('Todo {0}', x.dept) : lineOf(x.lineId), x.by, fmtTime(x.startedAt), ...shiftWords(spanShifts(rep.plan, x.startedAt, x.endedAt ?? now)), x.dept]))
     .map((x): Hit => ({ kind: 'stop', key: hitKey.stop(x.id), dept: x.dept, at: x.startedAt, stopId: x.id })).sort(byAt)

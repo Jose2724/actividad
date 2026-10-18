@@ -2704,6 +2704,260 @@ section('Un registro de Packing agregado después: sus pallets uno por uno, con 
     eq('el PO los suma y cada uno queda en el historial con su PO', [m.orderMade(st(), po1), st().changes.filter((c) => c.refKey === lr().id && c.what.includes('Se agregó pallet')).map((c) => c.after)], [144 + 36 + 144, ['48 cajas · 6283: 48 (tag 3101) · Cliente Seis · PO 6001', '48 cajas · 6283: 48 (tag 3102) · Cliente Seis · PO 6001', '48 cajas · 6283: 48 (tag 3103) · Cliente Seis · PO 6001']])
   })
 }
+
+section('Pallets que nadie registró, agregados desde un pedido de la pestaña Pedidos: el registro empieza en ese pedido, y nada más')
+{
+  // Jose, 2026-10-18: "también de agregar registro de pallet desde packing tab pedidos, que también ahí se pueda
+  // agregar y que salga la opción de agregar PO en los dos lados". The window opened from an order's "+ Pallets"
+  // starts on that order (the person tapped it); what it adds is kept as from Terminados, and the order counts it
+  const fo = await device('fromorder', { user: 'Noelia', usual: true })
+  fo.use((m) => {
+    const st = () => m.store.get()
+    m.role.set('office')
+    m.addLine('Packing', 'Línea 1')
+    const p1 = st().lines.find((l) => l.dept === 'Packing')
+    clock = oct(10, 5, 0)
+    const po1 = m.saveOrder(null, { customer: 'Cliente Uno', po: '4471', code: '0900', cases: 144, shipBy: '', dest: '' })
+    const po2 = m.saveOrder(null, { customer: '', po: '4472', code: '900', cases: null, shipBy: '', dest: '' })
+    const other = m.saveOrder(null, { customer: 'Cliente Dos', po: '5501', code: 'E500', cases: 100, shipBy: '', dest: '' })
+    const o1 = st().orders.find((o) => o.id === po1)
+    clock = oct(10, 14, 0)
+    // how the window opens: from the order, Packing in pallets with that order's code and the order in the quick bar
+    // (and on each pallet "+ Un pallet" adds); from Terminados or the report, as it always did
+    const before = JSON.stringify(st()), copy = JSON.stringify(o1)
+    const start = m.laterStart('Packing', o1)
+    eq('desde el pedido: Packing, en pallets, el código del pedido y ese pedido; nada más', start, { dept: 'Packing', kind: '', code: '0900', quickPo: po1, oneTakesBar: true })
+    eq('desde el pedido, abierto en cualquier cuarto, es de Packing', m.laterStart('RTE', o1).dept, 'Packing')
+    eq('sin pedido, como siempre: el cuarto donde se abrió (Kitchen si ninguno), nada escogido, "+ Un pallet" sin pedido', [m.laterStart('Packing'), m.laterStart(undefined)], [{ dept: 'Packing', kind: null, code: '', quickPo: '', oneTakesBar: false }, { dept: 'Kitchen', kind: null, code: '', quickPo: '', oneTakesBar: false }])
+    eq('es puro: lo mismo cada vez, sin tocar lo guardado ni el pedido', [m.laterStart('Packing', o1), JSON.stringify(st()) === before, JSON.stringify(o1) === copy], [start, true, true])
+    // an order stays on the bar or a pallet only while it is one of the code's: another code sends it back to "Sin pedido"
+    eq('el pedido sigue mientras el código es el suyo (0900, 900 y " 0900 " son el mismo); con otro código, o uno que no existe, no', [m.laterPoFits(st(), po1, '0900'), m.laterPoFits(st(), po1, ' 900 '), m.laterPoFits(st(), po2, '0900'), m.laterPoFits(st(), po1, 'E500'), m.laterPoFits(st(), other, '0900'), m.laterPoFits(st(), 'nope', '0900'), m.laterPoFits(st(), '', 'E500')], [true, true, true, false, false, false, true])
+    // what was typed: two of 48 with the quick bar (its Pedido as it opened) and one with "+ Un pallet" (it takes the
+    // bar's order), its cases and tag typed; one moved to the other order of the code on its row
+    const rows = [{ qty: '48', tag: '7001', po: start.quickPo }, { qty: '48', tag: '7002', po: start.quickPo }, { qty: '30', tag: '', po: start.quickPo }, { qty: '40', tag: '7004', po: po2 }]
+    eq('la lista se puede guardar', m.checkLaterPallets(rows).ok, true)
+    // the line under the title says what goes to the order, from the list and from the bar (review, 2026-10-18: with
+    // the bar on "Sin pedido" it said nothing went to it while two pallets on the list carried it, and were saved to it)
+    const at = (x) => m.laterToOrder(st(), po1, { byPallet: true, code: '0900', quickPo: po1, list: [], ...x })
+    eq('lo que va al pedido: lista vacía y la barra en él; la barra en "Sin pedido" con 2 suyos en la lista; la barra en el otro pedido; nada suyo y la barra en otro',
+      [at({}), at({ quickPo: '', list: rows.slice(0, 2) }), at({ quickPo: po2, list: rows }), at({ quickPo: po2, list: rows.slice(3) })],
+      [{ listed: 0, next: true }, { listed: 2, next: false }, { listed: 3, next: false }, { listed: 0, next: false }])
+    eq('con Bins, otro código o sin pedido, nada va a él (aunque la lista lo tenga: no se guarda con él)', [at({ byPallet: false, list: rows }), at({ code: 'E500', list: rows }), m.laterToOrder(st(), '', { byPallet: true, code: '0900', quickPo: '', list: rows })], [{ listed: 0, next: false }, { listed: 0, next: false }, { listed: 0, next: false }])
+    eq('lo que dice que va al pedido es lo que se guarda con él', [at({ list: rows }).listed, m.laterPalletUnits(st(), '0900', '', rows).units.filter((u) => u.po === po1).length, at({ code: ' 900 ', list: rows }).listed], [3, 3, 3])
+    const { units, perUnit } = m.laterPalletUnits(st(), start.code, '6300', rows)
+    const id = m.addRunLater({ dept: start.dept, lineId: p1.id, code: start.code, lot: '6300', date: DAY, startedAt: oct(10, 9, 0), endedAt: oct(10, 9, 40), units, perUnit })
+    const r = st().runs.find((x) => x.id === id)
+    eq('se guarda como desde Terminados: cada pallet con su lote, sus cajas, su tag y su pedido', r.units.map((u) => [u.qty, u.ref, u.lots.map((l) => [l.lot, l.qty, l.tag ?? '']), u.po === po1 ? 1 : u.po === po2 ? 2 : u.po ?? '']), [[48, '7001', [['6300', 48, '7001']], 1], [48, '7002', [['6300', 48, '7002']], 1], [30, '', [['6300', 30, '']], 1], [40, '7004', [['6300', 40, '7004']], 2]])
+    // what the Pedidos tab shows of each order (it reads the same store): made, what it lacks, its pallets
+    const o = (x) => st().orders.find((y) => y.id === x)
+    eq('el pedido queda al día en Pedidos: hechas 126, faltan 18, 3 pallets; el otro pedido del código, el suyo; el de otro código, nada', [m.orderMade(st(), po1), o(po1).cases - m.orderMade(st(), po1), m.orderPallets(st(), po1).done.length, m.orderMade(st(), po2), m.orderPallets(st(), po2).done.length, m.orderMade(st(), other)], [126, 18, 3, 40, 1, 0])
+    eq('en el historial, con quién y los pedidos', st().changes.filter((c) => c.refKey === id).map((c) => [c.by, c.after]), [['Noelia', '4 pallets · 166 cajas · 9:00 AM – 9:40 AM · lote 6300 · Cliente Uno · PO 4471: 3 pallets · PO 4472: 1 pallet']])
+  })
+}
+section('Un pallet agregado desde la ventana de los pallets de un PO: a una corrida ya registrada de su código, o un registro nuevo')
+{
+  // Jose, 2026-10-18: "que cuando esté viendo los pedidos y los PO pueda también agregarle otro pallet". The window
+  // offers the runs of the order's code this device holds (Packing's pallets: not its bins, not deleted, not another
+  // room or code), the newest first; the pallet added to one starts on that order, lands on it and counts
+  const fw = await device('powindow', { user: 'Noelia', usual: true })
+  fw.use((m) => {
+    const st = () => m.store.get(), runOf = (id) => st().runs.find((r) => r.id === id)
+    m.role.set('office')
+    const lineOf = (dept, name) => { m.addLine(dept, name); return st().lines.find((l) => l.dept === dept && l.name === name) }
+    const p1 = lineOf('Packing', 'Línea 1'), p2 = lineOf('Packing', 'Línea 2'), r1 = lineOf('RTE', 'Línea 1')
+    clock = oct(10, 5, 0)
+    const po = m.saveOrder(null, { customer: 'Cliente Ocho', po: '8801', code: '0950', cases: 144, shipBy: '', dest: '' })
+    const other = m.saveOrder(null, { customer: 'Cliente Ocho', po: '8802', code: '950', cases: null, shipBy: '', dest: '' })
+    const elsewhere = m.saveOrder(null, { customer: '', po: '8803', code: 'F100', cases: 50, shipBy: '', dest: '' })
+    const o = () => st().orders.find((x) => x.id === po)
+    // a run of twenty days ago that gave a pallet to the other order: kept apart for it, no longer among this device's runs
+    const long = oct(10, 5, 0) - 20 * 86_400_000
+    m.applyRemote('act_runs', runRow({ id: 'old-0950', dept: 'Packing', lineId: p1.id, code: '0950', date: m.dayOf(long), startedAt: long, endedAt: long + 3_600_000, units: [{ at: long + 600_000, qty: 36, ref: '4001', by: 'Luis', po: other }], perUnit: 36 }))
+    m.prune()
+    eq('la vieja queda aparte para su pedido, fuera de las corridas del aparato', [st().runs.some((r) => r.id === 'old-0950'), st().orderRuns.map((r) => r.id)], [false, ['old-0950']])
+    clock = oct(10, 12, 0)
+    const pal = (tag, order) => ({ qty: 36, ref: tag, lots: [{ lot: '6280', qty: 36, tag }], ...(order ? { po: order } : {}) })
+    const early = m.addRunLater({ dept: 'Packing', lineId: p1.id, code: '0950', lot: '6280', date: '2026-10-07', startedAt: oct(7, 9, 0), endedAt: oct(7, 10, 0), units: [pal('5001', po), pal('5002')], perUnit: 36 })
+    const today = m.addRunLater({ dept: 'Packing', lineId: p2.id, code: '950', lot: '6283', date: DAY, startedAt: oct(10, 6, 0), endedAt: oct(10, 7, 0), units: [pal('5003')], perUnit: 36 })
+    const bins = m.addRunLater({ dept: 'Packing', lineId: p1.id, code: '0950', date: DAY, startedAt: oct(10, 8, 0), endedAt: oct(10, 8, 30), units: [{ qty: 40, ref: '1' }], bin: 'pouches' })
+    const gone = m.addRunLater({ dept: 'Packing', lineId: p2.id, code: '0950', date: '2026-10-09', startedAt: oct(9, 9, 0), endedAt: oct(9, 10, 0), units: [pal('5004')], perUnit: 36 })
+    m.deleteRun(gone)
+    const code2 = m.addRunLater({ dept: 'Packing', lineId: p1.id, code: 'F100', date: DAY, startedAt: oct(10, 10, 0), endedAt: oct(10, 11, 0), units: [pal('5005')], perUnit: 36 })
+    const rte = m.addRunLater({ dept: 'RTE', lineId: r1.id, code: '0950', date: DAY, startedAt: oct(10, 9, 0), endedAt: oct(10, 10, 0), units: [{ qty: 240 }], perUnit: 240 })
+    clock = oct(10, 13, 0); m.startRun(p1, '0950', '6283', DAY, 36)
+    const going = st().runs.find((r) => r.lineId === p1.id && !r.endedAt)?.id
+    clock = oct(10, 14, 0)
+    eq('todas se guardaron', [early, today, bins, gone, code2, rte, going].every(Boolean), true)
+    const before = JSON.stringify(st())
+    const list = m.orderAddRuns(st(), o())
+    eq('las corridas del código del pedido en este aparato, la más nueva primero (la que corre también), con sus pallets y los de este PO; no los bins, ni la borrada, ni otro código, ni otro cuarto, ni la vieja guardada aparte', list.map((x) => [x.r.id, x.r.endedAt === null, x.pallets, x.toOrder]), [[going, true, 0, 0], [today, false, 1, 0], [early, false, 2, 1]])
+    eq('es puro: no toca lo guardado; el otro pedido del mismo código ("950") da las mismas corridas, con lo suyo', [JSON.stringify(st()) === before, m.orderAddRuns(st(), st().orders.find((x) => x.id === other)).map((x) => [x.r.id, x.toOrder])], [true, [[going, 0], [today, 0], [early, 0]]])
+    eq('un código sin corridas de pallets en este aparato: ninguna (solo un registro nuevo); el de F100, la suya', [m.orderAddRuns(st(), { id: 'x', code: 'Z999' }), m.orderAddRuns(st(), st().orders.find((x) => x.id === elsewhere)).map((x) => x.r.id)], [[], [code2]])
+    // "Agregar pallet" starts on the order only when it is one its Pedido offers: an order of the run's code, on a run that fills orders
+    eq('el Pedido empieza en ese pedido; nunca en uno de otro código, en una corrida de bins o de otro cuarto, en uno que no existe, ni sin pedido', [m.unitStartPo(st(), runOf(today), po), m.unitStartPo(st(), runOf(today), other), m.unitStartPo(st(), runOf(today), elsewhere), m.unitStartPo(st(), runOf(bins), po), m.unitStartPo(st(), runOf(rte), po), m.unitStartPo(st(), runOf(today), 'nope'), m.unitStartPo(st(), runOf(today)), m.unitStartPo(st(), runOf(today), '')], [po, other, '', '', '', '', '', ''])
+    // and its lot starts as the run's only when the run has touched no other lot (unitStartLot): a fact, never a guess
+    eq('el lote empieza en el único lote que la corrida tiene (en la que corre, el suyo)', [m.unitStartLot(st(), runOf(early)), m.unitStartLot(st(), runOf(going))], ['6280', '6283'])
+    // the run of today, chosen in the window: a pallet found with its tag at 6:30, and with "Agregar y otro" one more at
+    // 6:45, both with the order the window started on (it stays for the next one, as it was chosen)
+    const start = m.unitStartPo(st(), list[1].r, po)
+    const a1 = m.addUnit(today, { at: m.nearDay(runOf(today).startedAt, '06:30'), qty: null, lots: [{ lot: '6283', qty: 36, tag: '5101' }], po: start })
+    const a2 = m.addUnit(today, { at: m.nearDay(runOf(today).startedAt, '06:45'), qty: null, lots: [{ lot: '6283', qty: 30, tag: '5102' }], po: start })
+    eq('los dos quedan en la corrida a su hora, con sus cajas, su tag y ese pedido', [a1, a2, runOf(today).units.map((u) => [u.at, u.qty, u.ref, u.po === po])], [oct(10, 6, 30), oct(10, 6, 45), [[oct(10, 6, 30), 36, '5101', true], [oct(10, 6, 45), 30, '5102', true], [oct(10, 7, 0), 36, '5003', false]]])
+    eq('el pedido los cuenta: hechas 102, faltan 42, 3 pallets (el de otro día también); el otro pedido del código sigue con el suyo', [m.orderMade(st(), po), o().cases - m.orderMade(st(), po), m.orderPallets(st(), po).done, m.orderMade(st(), other), m.orderPallets(st(), other).done.length], [102, 42, [oct(7, 9, 30), oct(10, 6, 30), oct(10, 6, 45)], 36, 1])
+    // what the PO window lists (it reads the same store): the pallets of the order, the two new ones among them
+    eq('la ventana del PO los muestra al momento, con su corrida y su hora', m.orderRunsOf(st(), po).flatMap((r) => r.units.filter((u) => u.po === po).map((u) => [r.id === today ? 'hoy' : r.id === early ? 'antes' : r.id, u.at])).sort((x, y) => x[1] - y[1]), [['antes', oct(7, 9, 30)], ['hoy', oct(10, 6, 30)], ['hoy', oct(10, 6, 45)]])
+    eq('y la lista para escoger corrida ya dice 3 pallets, 2 de este PO', m.orderAddRuns(st(), o()).map((x) => [x.r.id, x.pallets, x.toOrder])[1], [today, 3, 2])
+    eq('con dos lotes en sus pallets (6283 y 6280), la lista dice los dos y el lote del pallet siguiente empieza vacío, para escribirlo', [[...m.runLots(st(), runOf(today))].sort(), m.unitStartLot(st(), runOf(today))], [['6280', '6283'], ''])
+    eq('en el historial, con quién y el pedido', st().changes.filter((c) => c.refKey === today && c.what.includes('Se agregó pallet')).map((c) => [c.by, c.what.split(' · ').pop(), c.after]), [['Noelia', 'Se agregó pallet 1 (6:30 AM)', '36 cajas · 6283: 36 (tag 5101) · Cliente Ocho · PO 8801'], ['Noelia', 'Se agregó pallet 2 (6:45 AM)', '30 cajas · 6283: 30 (tag 5102) · Cliente Ocho · PO 8801']])
+    // on the run still running: the pallet goes in, and the pallet being built on the line is not touched
+    const open = JSON.stringify(runOf(going).extra ?? null)
+    m.addUnit(going, { at: m.nearDay(runOf(going).startedAt, '13:20'), qty: null, lots: [{ lot: '6283', qty: 36, tag: '5201' }], po: m.unitStartPo(st(), runOf(going), po) })
+    eq('en la que corre también: el pedido lo cuenta, y lo que la línea arma sigue igual', [m.orderMade(st(), po), runOf(going).endedAt, JSON.stringify(runOf(going).extra ?? null) === open], [138, null, true])
+    // and it goes up as it is: what another tablet gets is the same pallets, with their order, on the same runs
+    const up = (id) => m.outbox.items().find((i) => i.table === 'act_runs' && i.key === id)?.row.units.map((u) => [u.ref, u.po === po])
+    eq('sube al servidor cada corrida con sus pallets y su pedido', [up(today), up(going)], [[['5101', true], ['5102', true], ['5003', false]], [['5201', true]]])
+    // the line goes on to its next lot while the code runs (review, 2026-10-18): its first lot is no longer the pallet's
+    m.setLotNow(going, '6290')
+    eq('la que corre pasó al lote 6290: la lista dice los dos, y el lote del pallet ya no empieza en el primero', [[...m.runLots(st(), runOf(going))], m.unitStartLot(st(), runOf(going))], [['6283', '6290'], ''])
+  })
+}
+section('Un comentario en un registro agregado después: se guarda, se ve, se busca, va al Excel y se corrige en Corregir')
+{
+  // Jose, 2026-10-18, on a photo of "Agregar un registro · Packing": "Puedes también poner aquí una casilla para poner
+  // comentarios por favor". The comment is kept in the run's extra (act_runs.extra, a jsonb column the server already
+  // has), written only by a person: when the record is added, or in Corregir
+  const nt = await device('nota', { user: 'Noelia', usual: true })
+  const said = 'Se hizo en la línea 1: la 2 estaba parada'
+  const ids = nt.use((m) => {
+    const st = () => m.store.get(), runOf = (id) => st().runs.find((r) => r.id === id)
+    m.role.set('office')
+    m.addLine('Packing', 'Línea 1'); m.addLine('MFO', 'Línea 1'); m.addLine('RTE', 'Línea 1')
+    const line = (dept) => st().lines.find((l) => l.dept === dept)
+    clock = oct(10, 14, 0)
+    const pal = (tag) => ({ qty: 36, ref: tag, lots: [{ lot: '6283', qty: 36, tag }] })
+    // typed on two lines and with spaces around it: kept on one line, as it reads
+    const id = m.addRunLater({ dept: 'Packing', lineId: line('Packing').id, code: 'A100', lot: '6283', date: DAY, startedAt: oct(10, 9, 0), endedAt: oct(10, 10, 0), units: [pal('7001'), pal('7002')], perUnit: 36, note: '  Se hizo en la línea 1:\n  la 2 estaba parada  ' })
+    const r = runOf(id)
+    eq('el comentario queda en la corrida, en una línea y sin espacios de más; sus pallets siguen siendo pallets que llenan pedidos', [r.extra, m.noteOf(r), !!m.cfgOf(r).orders, r.units.map((u) => u.ref)], [{ note: said }, said, true, ['7001', '7002']])
+    eq('y en la línea del historial de quien lo agregó', st().changes.filter((c) => c.refKey === id).map((c) => [c.by, c.what.split(' · ').pop(), c.after]), [['Noelia', 'Se agregó después', m.madeText(r, m.runQty(st(), r)) + ' · 9:00 AM – 10:00 AM · lote 6283 · Comentario: ' + said]])
+    // blank, or only spaces: no comment at all (the app puts nothing in)
+    const none = m.addRunLater({ dept: 'RTE', lineId: line('RTE').id, code: 'B200', date: DAY, startedAt: oct(10, 9, 0), endedAt: oct(10, 10, 0), units: [{ qty: 240 }], note: '   ' })
+    eq('en blanco: la corrida no lleva comentario, ni su historial', ['extra' in runOf(none), m.noteOf(runOf(none)), st().changes.find((c) => c.refKey === none).after.includes('Comentario')], [false, '', false])
+    // MFO's bins of platos with a comment: both are kept; one longer than the box takes is cut where the box cuts
+    const mf = m.addRunLater({ dept: 'MFO', lineId: line('MFO').id, code: 'M100', date: DAY, startedAt: oct(10, 11, 0), endedAt: oct(10, 11, 30), units: [{ qty: 30, ref: '1' }], bin: 'platos', note: 'x'.repeat(400) })
+    eq('con los bins: los dos quedan; de más de 300 caracteres quedan 300', [m.binOf(runOf(mf)), m.noteOf(runOf(mf)).length, m.NOTE_MAX], ['platos', 300, 300])
+    eq('sube al servidor con la corrida', m.outbox.items().find((i) => i.table === 'act_runs' && i.key === id).row.extra, { note: said })
+    // the report: the run's line, the Excel's Resumen (its last column) and the search
+    const rep = m.reportOf(st(), DAY, clock)
+    eq('el reporte lo trae en la corrida', rep.rows.filter((x) => x.r.id === id).map((x) => m.noteOf(x.r)), [said])
+    const sheet = m.runsSheet(st(), rep)
+    eq('el Excel (Resumen): la columna Comentario, la última, con el comentario tal cual; sin comentario, vacía', [sheet[0].length, sheet[0].at(-1), sheet.slice(1).map((row) => [row[2], row.length, row.at(-1)])], [21, 'Comentario', [['A100', 21, said], ['B200', 21, ''], ['M100', 21, 'x'.repeat(300)]]])
+    const found = (q) => m.searchReport(st(), rep, q).hits.filter((h) => h.kind === 'run').map((h) => h.runId)
+    eq('la búsqueda encuentra la corrida por su comentario (sin acentos ni mayúsculas, palabra por palabra)', [found('estaba parada'), found('LINEA 1 PARADA'), found('parada B200')], [[id], [id], []])
+    // Corregir: it opens with the comment, which is corrected like the rest and has its line in the history
+    const opened = m.draftOf(runOf(id))
+    eq('Corregir abre con el comentario', opened.note, said)
+    clock = oct(10, 14, 5)
+    m.applyDraft(id, opened, { ...opened, note: 'Tags 7001 & 7002 <revisar>' })
+    const lines = () => st().changes.filter((c) => c.refKey === id && c.what.endsWith(' · Comentario')).map((c) => [c.by, c.what, c.before, c.after])
+    eq('se corrige: queda el nuevo, y el historial dice antes → después', [m.noteOf(runOf(id)), lines()], ['Tags 7001 & 7002 <revisar>', [['Noelia', 'Corrida A100 del ' + DAY + ' (Packing, Línea 1) · Comentario', said, 'Tags 7001 & 7002 <revisar>']]])
+    eq('y va a otra tablet', m.outbox.items().find((i) => i.table === 'act_runs' && i.key === id).row.extra, { note: 'Tags 7001 & 7002 <revisar>' })
+    clock = oct(10, 14, 6)
+    const o2 = m.draftOf(runOf(id)); m.applyDraft(id, o2, { ...o2, lot: '6284' })
+    const { note: _n, ...bare } = m.draftOf(runOf(id)); m.applyDraft(id, bare, { ...bare, lot: '6285' })
+    m.addUnit(id, { at: oct(10, 9, 50), qty: null, lots: [{ lot: '6283', qty: 30, tag: '7003' }] })
+    eq('corregir otra cosa (también desde un formulario sin el comentario) o agregar un pallet no lo toca', [runOf(id).lot, runOf(id).units.length, m.noteOf(runOf(id)), lines().length], ['6285', 3, 'Tags 7001 & 7002 <revisar>', 1])
+    // a run without a comment: saving Corregir with the box empty adds nothing; typing one adds it
+    const n0 = m.draftOf(runOf(none)); m.applyDraft(none, n0, { ...n0, note: '  ' })
+    eq('sin comentario y la casilla vacía: nada cambia', ['extra' in runOf(none), m.outbox.items().filter((i) => i.key === none).length], [false, 1])
+    const n1 = m.draftOf(runOf(none)); m.applyDraft(none, n1, { ...n1, note: 'Agregado por la oficina' })
+    eq('escrito en Corregir, queda', m.noteOf(runOf(none)), 'Agregado por la oficina')
+    return { id, none, mf, sheet: m.runsSheet(st(), m.reportOf(st(), DAY, clock)) }
+  })
+  // the Excel file itself: the comment is an inline text of the Resumen sheet, with its signs written as XML wants them
+  const z = await nt.use(async (m) => m.loadZip())
+  const bytes = await nt.use(async (m) => m.xlsxBytes([{ name: 'Resumen', rows: ids.sheet }]))
+  const xml = z.strFromU8(z.unzipSync(bytes)['xl/worksheets/sheet1.xml'])
+  eq('en el archivo de Excel: el encabezado y el comentario, como texto, con & y < bien escritos', [xml.includes('<t xml:space="preserve">Comentario</t>'), xml.includes('<t xml:space="preserve">Tags 7001 &amp; 7002 &lt;revisar&gt;</t>'), xml.includes('<t xml:space="preserve">Agregado por la oficina</t>')], [true, true, true])
+  nt.use((m) => {
+    const st = () => m.store.get(), runOf = (id) => st().runs.find((r) => r.id === id)
+    // cleared in Corregir (a minute and a half later: its own line in the history). The run keeps the key, empty
+    clock = oct(10, 14, 10)
+    const o = m.draftOf(runOf(ids.id)); m.applyDraft(ids.id, o, { ...o, note: '' })
+    eq('borrado en Corregir: la corrida queda sin comentario (la marca vacía se guarda), y el historial lo dice', [runOf(ids.id).extra, m.noteOf(runOf(ids.id)), st().changes.filter((c) => c.refKey === ids.id && c.what.endsWith(' · Comentario')).map((c) => [c.before, c.after])], [{ note: '' }, '', [[said, 'Tags 7001 & 7002 <revisar>'], ['Tags 7001 & 7002 <revisar>', '']]])
+    eq('y ya no se encuentra por él, ni sale en el Excel', [m.searchReport(st(), m.reportOf(st(), DAY, clock), 'revisar').hits.filter((h) => h.kind === 'run').length, m.runsSheet(st(), m.reportOf(st(), DAY, clock))[1].at(-1)], [0, ''])
+  })
+  // the app opened again (a reload, an update): every comment is read back, the cleared one as cleared
+  const stored = nt.use(() => JSON.parse(localStorage.getItem('act_v1')))
+  const again = await device('nota-otra-vez', { seed: stored, user: 'Noelia' })
+  again.use((m) => {
+    const r = (id) => m.store.get().runs.find((x) => x.id === id)
+    eq('al volver a abrir la app, los comentarios siguen (el borrado, como borrado)', [r(ids.id).extra, m.noteOf(r(ids.none)), m.noteOf(r(ids.mf)), m.binOf(r(ids.mf))], [{ note: '' }, 'Agregado por la oficina', 'x'.repeat(300), 'platos'])
+  })
+}
+section('El comentario no se pierde cuando otra tablet cambia la misma corrida, ni con una versión de la app de antes')
+{
+  // Two tablets change the same run from the same version: the office writes a comment in Corregir while the line's
+  // tablet, without signal, puts a lot on the pallet it builds. The comment merges on its own, apart from the rest of
+  // the extra: each one's change is kept, whichever reaches the server first
+  const line = await device('nota-linea', { user: 'Lucía' }), office = await device('nota-oficina', { user: 'Jose' })
+  const both = [line, office]
+  const settle2 = () => { for (let n = 0; n < 20; n++) { if (!both.some((d) => first(d))) return; for (const d of both) send(d, both) } throw new Error('las dos tablets no terminan de ponerse de acuerdo') }
+  const runAt = (d, id) => d.use((m) => m.store.get().runs.find((r) => r.id === id))
+  const look = (r) => ({ note: r.extra?.note, open: r.extra?.open?.parts.map((p) => [p.lot, p.qty, p.tag]) ?? [], lotNow: r.extra?.lotNow ?? '', pallets: r.units.map((u) => u.ref), lot: r.lot })
+  const agree = (what, id, want) => {
+    eq(what + ' · línea', look(runAt(line, id)), want)
+    eq(what + ' · oficina', look(runAt(office, id)), want)
+    const sv = server.get('act_runs|' + id)
+    eq(what + ' · servidor', look({ extra: sv.extra ?? undefined, units: sv.units, lot: sv.lot }), want)
+    eq(what + ' · nada pendiente', both.map((d) => d.use((m) => m.outbox.size())), [0, 0])
+  }
+  const fix = (d, id, patch) => d.use((m) => { const o = m.draftOf(m.store.get().runs.find((r) => r.id === id)); m.applyDraft(id, o, { ...o, ...patch }) })
+  const hearServer = (d, id) => d.use((m) => m.applyRemote('act_runs', server.get('act_runs|' + id)))
+  clock = oct(10, 6, 0)
+  line.use((m) => { m.addLine('Packing', 'Línea 1'); m.startRun(m.store.get().lines[0], 'A100', '6283', DAY, 36) })
+  const id = line.use((m) => m.store.get().runs[0].id)
+  clock = oct(10, 6, 30); line.use((m) => m.palletDone(id, [{ lot: '6283', qty: 36, tag: '3100' }], ''))
+  settle2()
+  // the office's version reaches the server first; the line comes back, merges its change into it and sends it
+  clock = oct(10, 7, 0); fix(office, id, { note: 'Pallet 1 sin film' })
+  clock = oct(10, 7, 5); line.use((m) => m.palletLotEnds(id, 20, '3101', '6284'))
+  send(office, [office])
+  hearServer(line, id); settle2()
+  agree('el comentario de la oficina y el lote del pallet que arma la línea quedan los dos', id, { note: 'Pallet 1 sin film', open: [['6283', 20, '3101']], lotNow: '6284', pallets: ['3100'], lot: '6283' })
+  // the other order: the line's version first; the office merges its comment into it
+  clock = oct(10, 8, 0); line.use((m) => m.palletDone(id, [{ lot: '6283', qty: 20, tag: '3101' }, { lot: '6284', qty: 16, tag: '3102' }], '')); settle2()
+  clock = oct(10, 8, 10); line.use((m) => m.palletLotEnds(id, 12, '3103', '6285'))
+  clock = oct(10, 8, 12); fix(office, id, { note: 'Pallet 1 sin film; pallet 2 revisado' })
+  send(line, [line])
+  hearServer(office, id); settle2()
+  agree('al revés también: el lote nuevo de la línea y el comentario corregido', id, { note: 'Pallet 1 sin film; pallet 2 revisado', open: [['6284', 12, '3103']], lotNow: '6285', pallets: ['3100', '3101, 3102'], lot: '6283' })
+  clock = oct(10, 9, 0); line.use((m) => m.endRun(id, false)); settle2()
+  const note = 'Pallet 1 sin film; pallet 2 revisado'
+  // A tablet still on the build of before comments (until it updates by itself, a few minutes) adds a pallet in
+  // Corregir: it writes the run as it knows it, without the comment (those builds drop what they do not know)
+  const oldWrite = (at, tag) => {
+    const was = server.get('act_runs|' + id), { note: _gone, ...known } = was.extra ?? {}
+    const row = { ...was, units: [...was.units, { at, qty: 36, ref: tag, by: 'Tablet vieja', lots: [{ lot: '6285', qty: 36, tag }] }].sort((a, b) => a.at - b.at), extra: Object.keys(known).length ? known : null, updated_at: iso(clock), updated_by: 'Tablet vieja' }
+    land({ table: 'act_runs', key: id, row })
+  }
+  clock = oct(10, 9, 30); fix(office, id, { lot: '6290' }) // the office corrects the lot, without signal yet
+  oldWrite(oct(10, 8, 50), '3104')
+  hearServer(line, id)
+  eq('la tablet de la línea, que no cambió nada, toma la versión del servidor tal cual y no escribe nada', [look(runAt(line, id)).note, look(runAt(line, id)).pallets.length, line.use((m) => m.outbox.size())], [undefined, 4, 0])
+  hearServer(office, id); settle2()
+  agree('la oficina, que tenía un cambio suyo, lo junta con esa versión: el comentario vuelve, y quedan el pallet de la tablet vieja y su lote', id, { note, open: [], lotNow: '6285', pallets: ['3100', '3101, 3102', '3104', '3103'], lot: '6290' })
+  // a comment cleared on purpose is not brought back by a merge
+  clock = oct(10, 10, 0); line.use((m) => m.addUnit(id, { at: oct(10, 8, 55), qty: null, lots: [{ lot: '6285', qty: 10, tag: '3105' }] }))
+  clock = oct(10, 10, 1); fix(office, id, { note: '' }); send(office, [office])
+  hearServer(line, id); settle2()
+  agree('borrado en una, con otro cambio en la otra: queda borrado, y el pallet también queda', id, { note: '', open: [], lotNow: '6285', pallets: ['3100', '3101, 3102', '3104', '3105', '3103'], lot: '6290' })
+  // What is left: an old build's write that NO tablet with this build merges (nobody had a change of that run waiting)
+  // leaves the run without it everywhere. The history still says it, word for word
+  clock = oct(10, 12, 0); fix(office, id, { note }); settle2()
+  clock = oct(10, 12, 30); oldWrite(oct(10, 8, 58), '3106'); hearServer(line, id); hearServer(office, id); settle2()
+  eq('una escritura de la versión de antes que nadie junta: la corrida queda sin comentario, pero el historial lo guarda', [look(runAt(office, id)).note, look(runAt(line, id)).note, server.get('act_runs|' + id).extra?.note, office.use((m) => m.store.get().changes.filter((c) => !c.deleted && c.refKey === id && c.what.endsWith(' · Comentario')).map((c) => c.after).at(-1))], [undefined, undefined, undefined, note])
+}
 section('Un código y su lote que siguen al día siguiente: Avance dice lo pendiente, o completado')
 {
   // what Jose confirmed on 2026-10-16: Packing had 100 cases of a code on Wednesday's program and made 60; on Thursday

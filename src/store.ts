@@ -74,10 +74,15 @@ export type Run = { id: string; dept: Dept; lineId: string; line: string; code: 
  *    ran out, or later), and the order it goes to (po: '' = they said none; absent = not said, and the app proposes
  *    one, see palletPo). Every pallet of an order carries the same PO: the next pallet keeps it while the order
  *    still lacks cases.
+ *  - note: a comment on the record, typed by whoever added it after the fact or corrected it (Jose, 2026-10-18, on
+ *    "Agregar un registro · Packing": "Puedes también poner aquí una casilla para poner comentarios por favor").
+ *    Only a person writes it, when the record is added or in Corregir; the app never fills it in. '' = it had one
+ *    and it was cleared: the key stays, so a merge tells a comment taken off on purpose from a version written by a
+ *    build of before comments, which drops what it does not know (see cleanExtra in those builds, and mergeNote).
  * It travels in act_runs.extra (supabase/migrations/008_run_extra.sql).
  */
 export type PalletPart = { lot: string; qty: number; tag: string; at: number; by: string }
-export type RunExtra = { bin?: string; lotNow?: string; open?: { parts: PalletPart[]; po?: string }; measure?: Measure; removed?: number[] }
+export type RunExtra = { bin?: string; lotNow?: string; open?: { parts: PalletPart[]; po?: string }; measure?: Measure; removed?: number[]; note?: string }
 // removed = the moments of the units taken off this run on purpose (a cart recorded twice): kept on the row, so that no
 // merge, on any device, brings one back (see updateRun, mergeRun)
 /**
@@ -99,6 +104,15 @@ const cleanPart = (x: unknown): PalletPart | null => {
   const p = (x ?? {}) as Partial<PalletPart>, lot = String(p.lot ?? '').trim(), qty = Number(p.qty)
   return lot && Number.isFinite(qty) && qty > 0 ? { lot, qty, tag: String(p.tag ?? '').trim().slice(0, 30), at: Number(p.at) || 0, by: String(p.by ?? '') } : null
 }
+/** the longest comment a record keeps (its box takes no more) */
+export const NOTE_MAX = 300
+/**
+ * a comment as it is kept: on one line (a line break or a run of spaces is one space: it is shown in a row, a cell
+ * of the Excel and a line of the history) and without spaces at its ends; never longer than NOTE_MAX
+ */
+export const cleanNote = (t: unknown) => (typeof t === 'string' ? t.replace(/\s+/g, ' ').trim().slice(0, NOTE_MAX) : '')
+/** a run's comment, to show and to search ('' = none) */
+export const noteOf = (r: Pick<Run, 'extra'>) => r.extra?.note ?? ''
 /** what arrives in a run's extra, kept only as far as it makes sense (undefined = nothing) */
 export function cleanExtra(x: unknown): RunExtra | undefined {
   if (!x || typeof x !== 'object') return undefined
@@ -112,6 +126,15 @@ export function cleanExtra(x: unknown): RunExtra | undefined {
     const parts = Array.isArray(o.parts) ? o.parts.map(cleanPart).filter((p): p is PalletPart => !!p) : []
     if (parts.length || typeof o.po === 'string') out.open = { parts, ...(typeof o.po === 'string' ? { po: o.po } : {}) }
   }
+  // the comment, also when it is '' (cleared on purpose: see RunExtra); always last, as withNote puts it, so the
+  // same run read from the server and from this device is written the same
+  if (typeof e.note === 'string') out.note = cleanNote(e.note)
+  return Object.keys(out).length ? out : undefined
+}
+/** the extra with this comment in it (undefined = without the key, as a run that never had one) */
+function withNote(extra: RunExtra | undefined, note: string | undefined): RunExtra | undefined {
+  const { note: _was, ...rest } = extra ?? {}
+  const out: RunExtra = note === undefined ? rest : { ...rest, note }
   return Object.keys(out).length ? out : undefined
 }
 /** the word for what a run's bins hold ('' = a Packing run that makes pallets, an MFO run of before that counted cases, another room) */
@@ -929,7 +952,7 @@ export function reopenRun(id: string): boolean {
  * report, Avance, the orders and what they lack, a PO's pallets and the search count them like any other. An order
  * this device does not know, or one given to something that does not fill orders (a bin), is dropped: never invented.
  */
-export type LaterRun = { dept: Dept; lineId: string; code: string; lot?: string; date: string; startedAt: number; endedAt?: number | null; units?: { qty: number | null; ref?: string; lots?: LotPart[]; po?: string }[]; perUnit?: number | null; waste?: number | string; bin?: string; measure?: Measure | ''; madeBy?: string }
+export type LaterRun = { dept: Dept; lineId: string; code: string; lot?: string; date: string; startedAt: number; endedAt?: number | null; units?: { qty: number | null; ref?: string; lots?: LotPart[]; po?: string }[]; perUnit?: number | null; waste?: number | string; bin?: string; measure?: Measure | ''; madeBy?: string; note?: string }
 export function addRunLater(x: LaterRun): string {
   const line = state.lines.find((l) => l.id === x.lineId && !l.deleted), code = x.code.trim().toUpperCase(), list = x.units ?? []
   // the waste as typed in the box ("25,5" is 25.5, blank is none); one that is not a number adds nothing (the box says
@@ -943,9 +966,12 @@ export function addRunLater(x: LaterRun): string {
   const atOf = (i: number) => (told == null ? start + i * 60_000 : end - start >= n * 1000 ? start + Math.round(((i + 1) * (end - start)) / n) : start + i)
   if (state.runs.some((r) => !r.deleted && r.lineId === line.id && r.startedAt < end && (r.endedAt ?? Infinity) > start)) return ''
   const by = (x.madeBy ?? '').trim() || user.get()
-  const extra: RunExtra | undefined = (line.dept === 'Packing' || line.dept === 'MFO') && x.bin?.trim() ? { bin: x.bin.trim().slice(0, 30) } : line.dept === 'Spiral' && x.measure ? { measure: x.measure } : undefined
+  const kind: RunExtra | undefined = (line.dept === 'Packing' || line.dept === 'MFO') && x.bin?.trim() ? { bin: x.bin.trim().slice(0, 30) } : line.dept === 'Spiral' && x.measure ? { measure: x.measure } : undefined
+  // the comment typed in the window (Jose, 2026-10-18: "una casilla para poner comentarios"), only when there is one
+  const note = cleanNote(x.note)
+  const extra: RunExtra | undefined = note ? { ...kind, note } : kind
   // only what fills orders carries one (Packing's pallets, not its bins), and only an order this device knows
-  const fills = !!cfgOf({ dept: line.dept, extra }).orders
+  const fills = !!cfgOf({ dept: line.dept, extra: kind }).orders
   const units: Unit[] = list.map((u, i) => {
     const lots = cleanLots(u.lots), qty = lots ? lots.reduce((t, l) => t + l.qty, 0) : u.qty
     // its number as on the line: the one typed, else the tags of its lots (a pallet's tags are its number, see palletUnit)
@@ -961,7 +987,8 @@ export function addRunLater(x: LaterRun): string {
   })
   // the orders its pallets went to, named as addUnit names one: "Cliente Seis · PO 6001: 2 pallets"
   const given = [...units.reduce((m, u) => (u.po ? m.set(u.po, (m.get(u.po) ?? 0) + 1) : m), new Map<string, number>())].map(([id, k]) => { const o = orderOfId(state, id); return o ? ' · ' + orderLabelKept(o) + ': ' + k + (k === 1 ? ' pallet' : ' pallets') : '' }).join('')
-  logChange(r.dept, 'Corrida ' + code + ' del ' + r.date + ' (' + r.dept + ', ' + lineNameOf(state, r.lineId, r.line) + ') · Se agregó después', '', madeText(r, runQty(state, r)) + ' · ' + fmtTime(start) + ' – ' + fmtTime(end) + (r.lot ? ' · lote ' + r.lot : '') + given, 'act_runs', r.id)
+  // the comment is in the history too, as it was typed: the record says it, and so does the line of who added it
+  logChange(r.dept, 'Corrida ' + code + ' del ' + r.date + ' (' + r.dept + ', ' + lineNameOf(state, r.lineId, r.line) + ') · Se agregó después', '', madeText(r, runQty(state, r)) + ' · ' + fmtTime(start) + ' – ' + fmtTime(end) + (r.lot ? ' · lote ' + r.lot : '') + given + (note ? ' · Comentario: ' + note : ''), 'act_runs', r.id)
   return r.id
 }
 /**
@@ -1007,6 +1034,53 @@ export function laterPalletUnits(s: State, code: string, lot: string, list: Late
   })
   return { units, perUnit: laterPerPallet(s, code, cases) }
 }
+/**
+ * How "Agregar un registro" opens. From an open order of Packing's Pedidos tab, with its "+ Pallets" (Jose, 2026-10-18:
+ * "también de agregar registro de pallet desde packing tab pedidos, que también ahí se pueda agregar y que salga la
+ * opción de agregar PO en los dos lados"): Packing, in pallets, that order's code, and that order in the quick bar's
+ * Pedido, which then also gives it to each pallet "+ Un pallet" adds (one place says where the new pallets go). The
+ * person chose the order by tapping its button, so it is their choice in sight, not a guess: nothing else is set (no
+ * pallets, cases, tags, lot or hours) and all of it can be changed. Without an order, as from Terminados or the
+ * report: the room it was opened in, nothing chosen, and "+ Un pallet" adds a pallet without an order, as always.
+ */
+export type LaterStart = { dept: Dept; kind: string | null; code: string; quickPo: string; oneTakesBar: boolean }
+export function laterStart(dept: Dept | undefined, o?: Order): LaterStart {
+  return o ? { dept: 'Packing', kind: '', code: o.code, quickPo: o.id, oneTakesBar: true } : { dept: dept ?? 'Kitchen', kind: null, code: '', quickPo: '', oneTakesBar: false }
+}
+/** an order is kept on a pallet of that list, or in its quick bar, only while it is one of the code's ('' always fits) */
+export const laterPoFits = (s: State, po: string, code: string) => !po || s.orders.some((o) => o.id === po && normCode(o.code) === normCode(code))
+/**
+ * What goes to the order "Agregar un registro" was opened from, as the window stands: how many pallets of the list
+ * will be saved with it (laterPalletUnits keeps an order only on Packing's pallets of that order's code), and whether
+ * the ones added now go to it too (the quick bar and "+ Un pallet" both give the bar's Pedido). The line under the
+ * title says it. Looking at the bar alone, it said nothing went to the order while pallets on the list carried it, and
+ * someone could add them again (review, 2026-10-18).
+ */
+export function laterToOrder(s: State, po: string, x: { byPallet: boolean; code: string; quickPo: string; list: LaterPalletRow[] }) {
+  const fits = x.byPallet && !!po && laterPoFits(s, po, x.code)
+  return { listed: fits ? x.list.filter((p) => p.po === po).length : 0, next: fits && x.quickPo === po }
+}
+/**
+ * The runs a pallet nobody recorded can be put on from an order's pallets window, with "+ Agregar pallet a este PO"
+ * (Jose, 2026-10-18: "que cuando esté viendo los pedidos y los PO pueda también agregarle otro pallet"): the runs of
+ * the order's code this device holds that fill orders (Packing's pallets, never its bins), not deleted, the newest
+ * first, each with how many pallets it has and how many of them went to this order, so the person tells them apart
+ * by what they see (day, line, lot, hours). The older runs kept apart for an order (orderRuns) are not on this
+ * device to be corrected: they are left out. None = only a new record can be added.
+ */
+export type OrderAddRun = { r: Run; pallets: number; toOrder: number }
+export function orderAddRuns(s: State, o: Pick<Order, 'id' | 'code'>): OrderAddRun[] {
+  const key = normCode(o.code)
+  return s.runs.filter((r) => !r.deleted && !!cfgOf(r).orders && normCode(r.code) === key)
+    .sort((a, b) => b.startedAt - a.startedAt)
+    .map((r) => ({ r, pallets: r.units.length, toOrder: r.units.filter((u) => u.po === o.id).length }))
+}
+/**
+ * The order "Agregar pallet" starts on, in its Pedido (opened from an order's pallets window: that order, which the
+ * person tapped and sees chosen there, and can change): only when it is one the window offers, an order of the run's
+ * code on a run that fills orders. Otherwise none, as it always opened (no order is ever guessed).
+ */
+export const unitStartPo = (s: State, r: Pick<Run, 'dept' | 'extra' | 'code'>, po?: string) => (po && cfgOf(r).orders && s.orders.some((o) => o.id === po && normCode(o.code) === normCode(r.code)) ? po : '')
 export function moveRun(id: string, lineId: string): boolean {
   const r = run(id), to = state.lines.find((l) => l.id === lineId)
   if (!r || !to || to.dept !== r.dept || lineId === r.lineId) return false
@@ -1023,12 +1097,16 @@ export function moveRun(id: string, lineId: string): boolean {
 }
 /** corrections: a wrong code, lot, quantity, tag or stop is fixed in place */
 /** a correction from the editor: saved, and every field that differs goes to the history */
-export function updateRun(id: string, patch: Partial<Pick<Run, 'code' | 'lot' | 'date' | 'perUnit' | 'waste' | 'endedAt' | 'units'>>) {
+export function updateRun(id: string, patch: Partial<Pick<Run, 'code' | 'lot' | 'date' | 'perUnit' | 'waste' | 'endedAt' | 'units'>> & { note?: string }) {
   const r = run(id)
   if (!r) return
+  // the comment, corrected in Corregir (it lives in the run's extra, not beside its fields): cleared, it stays as ''
+  // (see RunExtra); one that was never there is not added empty
+  const { note: typed, ...fields } = patch, said = typed === undefined ? undefined : cleanNote(typed)
+  const noted = said !== undefined && said !== noteOf(r) ? { ...r, extra: withNote(r.extra, said) } : r
   // a unit taken off stays off: its moment is kept on the row, so that no merge with another version brings it back
-  const gone = patch.units ? r.units.filter((u) => !patch.units!.some((x) => x.at === u.at)).map((u) => u.at) : []
-  const n = gone.length ? withRemoved({ ...r, ...patch }, gone) : { ...r, ...patch }
+  const gone = fields.units ? r.units.filter((u) => !fields.units!.some((x) => x.at === u.at)).map((u) => u.at) : []
+  const n = gone.length ? withRemoved({ ...noted, ...fields }, gone) : { ...noted, ...fields }
   putRun(n)
   // reopened: the code goes on, so what started counting when it "ended" was not a set up
   if (patch.endedAt === null && r.endedAt) for (const x of state.stops.filter((y) => y.lineId === r.lineId && !y.endedAt && y.startedAt >= (r.endedAt ?? 0))) putStop({ ...x, deleted: true })
@@ -1036,6 +1114,7 @@ export function updateRun(id: string, patch: Partial<Pick<Run, 'code' | 'lot' | 
   const log = (what: string, a: string, b: string) => logChange(r.dept, pre + what, a, b, 'act_runs', r.id)
   log('Código', r.code, n.code); log('Lote', r.lot, n.lot); log('Fecha', r.date, n.date)
   log(cfg.perUnitLabel || 'Por unidad', v(r.perUnit), v(n.perUnit)); log('Waste lb', v(r.waste), v(n.waste)); log('Fin', endText(r.endedAt), endText(n.endedAt))
+  log('Comentario', noteOf(r), noteOf(n))
   r.units.forEach((u, i) => {
     const w = n.units.find((x) => x.at === u.at)
     if (!w) log('Se quitó ' + cfg.unit.toLowerCase() + ' ' + (i + 1) + ' (' + fmtTime(u.at) + ')', [u.qty != null ? u.qty + ' ' + cfg.qtyUnit : '', u.ref].filter(Boolean).join(' · ') || '1', '')
@@ -1092,8 +1171,8 @@ export function splitStop(id: string, at: number, reason: string, note = ''): st
 }
 export function deleteStop(id: string) { const x = stop(id); if (x) { putStop({ ...x, deleted: true }); logChange(x.dept, 'Se borró el paro ' + x.dept + ' ' + dayOf(x.startedAt) + ' ' + fmtTime(x.startedAt) + ' (' + stopLine(x) + ')', x.reason + (x.note ? ' · ' + x.note : '') + ' · ' + fmtTime(x.startedAt) + '–' + endText(x.endedAt), '', 'act_stops', x.id) } }
 /** the form of a correction, as the text the person sees and types */
-export type RunDraft = { code: string; lot: string; date: string; per: string; waste: string; units: { at: number; qty: string; ref: string; by: string; lots?: LotPart[] }[] }
-export const draftOf = (r: Run): RunDraft => ({ code: r.code, lot: r.lot, date: r.date, per: r.perUnit != null ? String(r.perUnit) : '', waste: r.waste ? String(r.waste) : '', units: r.units.map((u) => ({ at: u.at, qty: u.qty != null ? String(u.qty) : '', ref: u.ref, by: u.by, ...(u.lots ? { lots: u.lots } : {}) })) })
+export type RunDraft = { code: string; lot: string; date: string; per: string; waste: string; units: { at: number; qty: string; ref: string; by: string; lots?: LotPart[] }[]; note?: string }
+export const draftOf = (r: Run): RunDraft => ({ code: r.code, lot: r.lot, date: r.date, per: r.perUnit != null ? String(r.perUnit) : '', waste: r.waste ? String(r.waste) : '', units: r.units.map((u) => ({ at: u.at, qty: u.qty != null ? String(u.qty) : '', ref: u.ref, by: u.by, ...(u.lots ? { lots: u.lots } : {}) })), note: noteOf(r) })
 const typed = (t: string) => { const n = Number(t.replace(',', '.')); return Number.isFinite(n) ? n : 0 }
 /**
  * What is wrong with the waste typed in Corregir ('' = nothing: a number, or blank for none). The box takes digits,
@@ -1119,6 +1198,8 @@ export function applyDraft(id: string, opened: RunDraft, draft: RunDraft): strin
   if (cfg.perUnitLabel && changed(draft.per, opened.per)) patch.perUnit = draft.per.trim() ? typed(draft.per) : null
   // (a waste that is not a number was refused above: it used to become 0, see wasteProblem)
   if (cfg.waste && changed(draft.waste, opened.waste)) patch.waste = typed(draft.waste)
+  // the comment (a form without it leaves it as it is)
+  if (draft.note !== undefined && cleanNote(draft.note) !== cleanNote(opened.note ?? '')) patch.note = draft.note
   const was = new Map(opened.units.map((u) => [u.at, u])), now = new Map(draft.units.map((u) => [u.at, u]))
   const units = r.units.filter((u) => !(was.has(u.at) && !now.has(u.at))).map((u) => {
     const a = was.get(u.at), b = now.get(u.at)
@@ -1946,6 +2027,18 @@ const withRemoved = (r: Run, ats: number[]): Run => { const dead = new Set([...(
 const allUnits = (first: Run, second: Run) => { const have = new Set(first.units.map((u) => u.at)), dead = tombs(first, second); return [...first.units, ...second.units.filter((u) => !have.has(u.at))].filter((u) => !dead.has(u.at)).sort(byAt) }
 const unionRun = (first: Run, second: Run): Run => ({ ...first, units: allUnits(first, second), extra: withTombs(first.extra, tombs(first, second)) })
 /**
+ * A run's comment when two versions of it meet (Jose, 2026-10-18: comments on the records). It is merged on its own,
+ * apart from the rest of the extra: a comment corrected on one device and the pallet being built on the line's tablet
+ * are both kept, and neither makes the other's change lose. A version that has no comment key at all was written by
+ * a build of before comments, which drops what it does not know: it says nothing about the comment, so the one that
+ * was there stays (this build never writes a run without the key once it had one: a cleared comment is '').
+ */
+function mergeNote(base: string | undefined, mine: string | undefined, theirs: string | undefined) {
+  if (mine !== undefined && mine !== base) return mine // this device typed or cleared it
+  if (theirs !== undefined) return theirs // the other one's, changed or not
+  return base ?? mine // nobody who knows comments changed it: as it was
+}
+/**
  * two devices changed the same run from the same version: each one's changes are kept. Units are matched by their
  * moment: the ones I added are added, the one I removed stays removed, the one I corrected keeps my correction; the
  * rest is theirs. Waste is an amount people add to, so both additions count.
@@ -1963,8 +2056,9 @@ function mergeRun(base: Run, mine: Run, theirs: Run): Run {
     ...theirs.units.filter((u) => !(inBase.has(u.at) && !inMine.has(u.at))).map((u) => { const m = inMine.get(u.at), b = inBase.get(u.at); return m && b && !same(m, b) ? m : u }),
     ...mine.units.filter((u) => !inBase.has(u.at) && !inTheirs.has(u.at)),
   ].filter((u) => !dead.has(u.at)).sort(byAt)
-  // (in the order a row is read in, see cleanExtra: the same content must read as the same row in reconcile)
-  out.extra = cleanExtra(withTombs(out.extra, dead))
+  // (in the order a row is read in, see cleanExtra: the same content must read as the same row in reconcile). The
+  // comment merges on its own (mergeNote): mergeExtra goes key by key for the rest
+  out.extra = cleanExtra(withNote(withTombs(out.extra, dead), mergeNote(base.extra?.note, mine.extra?.note, theirs.extra?.note)))
   out.waste = mine.waste !== base.waste ? (theirs.waste !== base.waste ? Math.round((theirs.waste + mine.waste - base.waste) * 100) / 100 : mine.waste) : theirs.waste
   return out
 }
@@ -2025,7 +2119,9 @@ type Synced = { id: string; updatedAt: number; deleted?: boolean; syncedAt?: num
 type Kind<T> = { of: (r: Row) => T; row: (x: T) => Row; merge: (base: T, mine: T, theirs: T) => T; keep: (mine: T, theirs: T) => T; grow?: (theirs: T, mine: T) => T }
 const LINE: Kind<Line> = { of: lineOfRow, row: rowOfLine, merge: (b, m, t) => merge3(b, m, t, ['dept', 'name', 'deleted']), keep: (_m, t) => t }
 const STOP: Kind<Stop> = { of: stopOfRow, row: rowOfStop, merge: (b, m, t) => merge3(b, m, t, ['dept', 'lineId', 'reason', 'note', 'startedAt', 'endedAt', 'by', 'deleted']), keep: (_m, t) => t }
-const RUN: Kind<Run> = { of: runOfRow, row: rowOfRun, merge: mergeRun, keep: (m, t) => unionRun(t, m), grow: (t, m) => unionRun(t, m) }
+// (keep: a comment this device holds stays when the server's version says nothing of comments, see mergeNote; grow
+// leaves the comment as the server has it: a device that did not change the run never writes it back)
+const RUN: Kind<Run> = { of: runOfRow, row: rowOfRun, merge: mergeRun, keep: (m, t) => { const u = unionRun(t, m); return { ...u, extra: withNote(u.extra, t.extra?.note ?? m.extra?.note) } }, grow: (t, m) => unionRun(t, m) }
 const body = (x: Synced) => JSON.stringify({ ...x, updatedAt: 0, syncedAt: 0 })
 /** rows deleted while this page is open, with when: a late echo of an earlier version must not bring one back */
 const gone = new Map<string, number>()

@@ -1,11 +1,11 @@
 import { Fragment, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { apartLabel, apartWord, binWord, cameFrom, carriedOver, casesText, CFG, cfgFor, cfgOf, csvCell, DEPTS, fmtDur, roomKnown, fmtN, fmtTime, inCases, kindClass, lineLabel, lineNameOf, looksLikeTwoLots, madeText, measureName, measureUnit, normCode, noteLabel, orderLabel, orderOfId, plainDay, plainText, productOf, purgesOf, restorePurged, runStats, SETUP, shiftAt, shiftHours, shiftSpan, shiftsOf, stopTime, unitQty, user, whoText, workDay, type Dept, type State } from './store'
+import { apartLabel, apartWord, binWord, cameFrom, carriedOver, casesText, CFG, cfgFor, cfgOf, csvCell, DEPTS, fmtDur, roomKnown, fmtN, fmtTime, inCases, kindClass, lineLabel, lineNameOf, looksLikeTwoLots, madeText, measureName, measureUnit, normCode, noteLabel, noteOf, orderLabel, orderOfId, plainDay, plainText, productOf, purgesOf, restorePurged, runStats, SETUP, shiftAt, shiftHours, shiftSpan, shiftsOf, stopTime, unitQty, user, whoText, workDay, type Dept, type State } from './store'
 import { avanceRows, mfoText, mfoWord, pending } from './avance'
-import { cellText, loadZip, xDay, xDur, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
+import { cellText, loadZip, xDur, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 import { buildPdf, loadPdf } from './pdf'
 import { homeScreenApple, type Kind } from './send'
-import { filterFile, filterTitle, hitKey, reportOf, runLots, searchReport, spanShifts, unitParts, type Hit, type HitKind, type Report as ReportData, type ReportFilter, type Scope as SearchScope } from './report'
+import { filterFile, filterTitle, hitKey, reportOf, runLots, runsSheet, searchReport, spanShifts, unitParts, type Hit, type HitKind, type Report as ReportData, type ReportFilter, type Scope as SearchScope } from './report'
 import { canShift, writesIn } from './powers'
 import { AddRunDialog, AddUnitDialog, RunEditor, StopEditor } from './editors'
 import { supabase } from './supabase'
@@ -232,8 +232,8 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
   const shiftCols = ([1, 2] as const).filter((k) => !rep.plan.only || rep.plan.only === k)
   const blocks = () => {
     const T = (ms: number) => xTime(ms, fmtTime(ms)), D = (ms: number) => xDur(ms, fmtDur(ms))
-    const resumen: Cell[][] = [[tr('Departamento'), tr('Línea'), tr('Código'), tr('Lote'), tr('Fecha'), tr('Inicio'), tr('Fin'), tr('Unidad'), tr('Hechas'), tr('Cantidad'), tr('Unidad de cantidad'), tr('Tags / bins'), tr('Waste (lb)'), tr('Tiempo trabajando'), tr('Promedio por unidad'), tr('Tiempo parado'), 'Set up', tr('Razones de paro'), tr('Registró'), tr('Turno')],
-      ...rows.map((x): Cell[] => [x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.lots, xDay(x.r.date), T(x.r.startedAt), x.r.endedAt ? T(x.r.endedAt) : tr('en curso'), cfgOf(x.r).unit, x.units, CFG[x.r.dept].qty !== 'none' ? x.qty : '', CFG[x.r.dept].qty !== 'none' ? cfgOf(x.r).qtyUnit : '', x.view.units.map((u) => u.ref).filter(Boolean).join(', '), x.waste || '', D(x.st.working), x.timed ? D(x.st.avg) : '', D(x.st.down), x.st.setup ? D(x.st.setup) : '', reasonsText(x), whoText(x.r), rep.shift ? String(rep.shift) : x.shifts])]
+    // the runs, one per line, with their comments: made in report.ts (runsSheet), where the checks read them too
+    const resumen = runsSheet(s, rep)
     const boxes = (c: (typeof byCode)[number]) => (!c.bin && CFG[c.dept].qtyUnit === 'pouches' ? inCases(s, c.code, c.qty) : null)
     const porCodigo: Cell[][] = [[tr('Departamento'), tr('Código'), tr('Unidad'), tr('Hechas'), tr('Cantidad'), tr('Unidad de cantidad'), tr('Waste (lb)'), tr('Líneas'), tr('Cajas completas'), tr('Pouches sueltos'), ...(rep.shift ? [] : shiftCols.map((k) => tr('Turno {0}', k)))],
       ...byCode.map((c): Cell[] => [c.dept, c.code, cw(c).unit, c.units, CFG[c.dept].qty !== 'none' ? c.qty : '', CFG[c.dept].qty !== 'none' ? cw(c).qtyUnit : '', c.waste || '', c.lines.join(', '), boxes(c)?.cases ?? '', boxes(c)?.loose ?? '', ...(c.byShift ? shiftCols.map((k) => (c.byShift as [number, number])[k - 1]) : [])])]
@@ -732,7 +732,7 @@ function HitCard({ k, h }: { k: Kit; h: Hit }) {
     const x = rows.find((y) => hitKey.run(y.r.id) === h.key)
     if (!x) return null
     title = <><span className="code">{hl(x.r.code, toks)}</span> · {hl(lineNameOf(s, x.r.lineId, x.r.line), toks)}{product(x.r.code)}</>
-    sub = joined([x.lots ? <>{tr('Lote')} {hl(x.lots, toks)}</> : null, <>{at(x.r.startedAt)} – {x.r.endedAt ? fmtTime(x.r.endedAt) : tr('en curso')}</>, madeText(x.view, x.qty, true), x.waste ? <span className="red">{'waste ' + x.waste + ' lb'}</span> : null, x.shifts ? turn(x.shifts) : null, by(whoText(x.r))])
+    sub = joined([x.lots ? <>{tr('Lote')} {hl(x.lots, toks)}</> : null, <>{at(x.r.startedAt)} – {x.r.endedAt ? fmtTime(x.r.endedAt) : tr('en curso')}</>, madeText(x.view, x.qty, true), x.waste ? <span className="red">{'waste ' + x.waste + ' lb'}</span> : null, x.shifts ? turn(x.shifts) : null, by(whoText(x.r)), noteOf(x.r) ? <>💬 {hl(noteOf(x.r), toks)}</> : null])
     btns = <>{seeBtn(() => setDetail({ runId: x.r.id }))}{fixBtn(x.shifts, x.r.dept, () => setEditRun({ id: x.r.id }))}</>
   } else if (h.kind === 'stop') {
     const x = stops.find((y) => hitKey.stop(y.id) === h.key)
@@ -1118,12 +1118,14 @@ function QuickChips<T extends string>({ items, on, onPick }: { items: { key: T; 
 function RunsTable({ k }: { k: Kit }) {
   const { s, rep, runsFound, runsShown, runIs, runChip, setRunChip, manyRooms, acts, setDetail, setEditRun, pageOf, pageBar, reasonsText, toks } = k
   const c = (x: '' | 'live' | 'waste') => runsFound.filter((y) => runIs(y, x)).length
+  // the comments of the records (Jose, 2026-10-18): a column of their own, last, while a run in view has one
+  const notes = runsShown.some((x) => !!noteOf(x.r))
   return (
     <>
       <QuickChips items={[{ key: '' as const, label: tr('Todas'), n: c('') }, { key: 'live' as const, label: tr('En curso'), n: c('live') }, { key: 'waste' as const, label: tr('Con waste'), n: c('waste') }]} on={runChip} onPick={setRunChip} />
       {!runsShown.length ? <p className="hint">{tr('Nada registrado con estos filtros.')}</p> : <div className="twrap rp-cardlist">
         <table>
-          <thead><tr><th className="rp-act"></th>{manyRooms && <th>{tr('Depto')}</th>}<th>{tr('Línea')}</th><th>{tr('Código')}</th><th>{tr('Lote')}</th>{!rep.shift && <th>{tr('Turno')}</th>}<th>{tr('Inicio')}</th><th>{tr('Fin')}</th><th>{tr('Hecho')}</th><th>Waste</th><th>{tr('Trabajando')}</th><th>{tr('Prom./unidad')}</th><th>{tr('Parado')}</th><th>Set up</th><th>{tr('Razones')}</th><th>{tr('Registró')}</th></tr></thead>
+          <thead><tr><th className="rp-act"></th>{manyRooms && <th>{tr('Depto')}</th>}<th>{tr('Línea')}</th><th>{tr('Código')}</th><th>{tr('Lote')}</th>{!rep.shift && <th>{tr('Turno')}</th>}<th>{tr('Inicio')}</th><th>{tr('Fin')}</th><th>{tr('Hecho')}</th><th>Waste</th><th>{tr('Trabajando')}</th><th>{tr('Prom./unidad')}</th><th>{tr('Parado')}</th><th>Set up</th><th>{tr('Razones')}</th><th>{tr('Registró')}</th>{notes && <th>{tr('Comentario')}</th>}</tr></thead>
           <tbody>{pageOf('runs', runsShown).map((x) => {
             const product = productOf(s, x.r.code)?.name, waste = x.waste ? x.waste + ' lb' : '—', avg = x.timed ? fmtDur(x.st.avg) : '—', set = x.st.setup ? fmtDur(x.st.setup) : '—', why = reasonsText(x) || '—'
             return (
@@ -1144,6 +1146,7 @@ function RunsTable({ k }: { k: Kit }) {
                 <td data-label="Set up" className={(x.st.setup ? 'amber' : '') + (none(set) ? ' c-none' : '')}>{set}</td>
                 <td data-label={tr('Razones')} className={none(why)}>{why === '—' ? why : hl(why, toks)}</td>
                 <td data-label={tr('Registró')}>{hl(whoText(x.r), toks)}</td>
+                {notes && <td data-label={tr('Comentario')} className={'rp-note' + (noteOf(x.r) ? '' : ' c-none')}>{noteOf(x.r) ? hl(noteOf(x.r), toks) : '—'}</td>}
               </tr>
             )
           })}</tbody>
@@ -1306,6 +1309,8 @@ function RunDetail({ s, runId, at, now, mgr, fix, fixable, onFix, onFixStop, onC
           <Fact label="Set up" value={st.setup ? fmtDur(st.setup) : '—'} cls={st.setup ? 'amber' : undefined} />
           {reasons && <Fact label={tr('Razones')} value={reasons} />}
           <Fact label={tr('Registró')} value={whoText(r) || '—'} />
+          {/* its comment, the whole width (Jose, 2026-10-18: comments on the records) */}
+          {noteOf(r) && <div className="setfact rp-dnote"><label>{tr('Comentario')}</label><span>{noteOf(r)}</span></div>}
         </div>
         {r.units.length > 0 && (
           <div className="twrap">

@@ -1,15 +1,15 @@
 import { Component, createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
-import { addLine, addWaste, awayDay, cameFrom, carriedOver, dayAfter, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderOfId, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay } from './store'
+import { addLine, addWaste, awayDay, cameFrom, carriedOver, dayAfter, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, noteOf, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderAddRuns, orderOfId, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay } from './store'
 import { avanceLots, avanceRange, avanceRows, datesBetween, lotAcrossDays, lotRows, lotsKnown, mfoList, mfoText, mfoWord, n1, pending, type AvancePart, type AvanceRow, type MfoMade } from './avance'
 import { loadZip, type Cell } from './xlsx'
 
 import { fmtN, looksLikeTwoLots, plainText, viewOnly, whoText, askFirst, usualFor, usualOf, type QtyCheck } from './store'
 import { loadPdf } from './pdf'
 import { sharePick, shareProblem, type Kind } from './send'
-import { spanShifts, unitParts } from './report'
+import { runLots, spanShifts, unitParts } from './report'
 import { canDo, canShift, keepsPin, writesIn, type Power, type Who } from './powers'
-import { AddRunDialog, RunEditor, StopEditor } from './editors'
+import { AddRunDialog, AddUnitDialog, RunEditor, StopEditor } from './editors'
 import { fetchMe, finishSignOut, loginEmail, rememberedMe, rememberedUser, rememberMe, rememberUser, signedOut, signOutHere, supabase, type Me } from './supabase'
 import { checkLineName, leaveAsk, loadDay, STALE_MS, startSync, syncStore, syncNow, unreachable } from './sync'
 import { storageFull } from './storage'
@@ -1152,11 +1152,13 @@ const leftText = (s: State, o: Order) => { if (o.cases == null) return ''; const
 /**
  * The orders Packing fills: the office (or a manager) types them, with or without a PO number, and everybody in the
  * room sees the open ones with what has been packed for each. The pallets are given to them one by one, on the line.
+ * Whoever adds the records nobody made (onAdd) adds an open order's pallets from its row, with "+ Pallets" (Jose,
+ * 2026-10-18: "que también ahí se pueda agregar y que salga la opción de agregar PO en los dos lados").
  */
 type OrderState = 'todo' | 'going' | 'done' | 'open'
 /** the orders are listed ten at a time: the list only grows */
 const ORDERS_PAGE = 10
-function OrdersCard({ s, mgr }: { s: State; mgr: boolean }) {
+function OrdersCard({ s, mgr, onAdd }: { s: State; mgr: boolean; onAdd?: (o: Order) => void }) {
   const [editing, setEditing] = useState<string | null>(null) // an order's id, or 'new'
   const [viewing, setViewing] = useState<string | null>(null) // an order whose pallets are being looked at
   const [showClosed, setShowClosed] = useState(false)
@@ -1185,14 +1187,17 @@ function OrdersCard({ s, mgr }: { s: State; mgr: boolean }) {
   const clear = () => { setQ(''); setFCode(''); setOnly(''); setShown(ORDERS_PAGE) }
   /** what is seen, added up: the foot of the table */
   const sums = (list: ReturnType<typeof rowOf>[]) => ({ asked: list.reduce((t, x) => t + (x.o.cases ?? 0), 0), made: list.reduce((t, x) => t + x.made, 0), left: list.reduce((t, x) => t + Math.max(0, x.left ?? 0), 0), pallets: list.reduce((t, x) => t + x.seq.done.length, 0), need: list.reduce((t, x) => t + (x.seq.need ?? 0), 0), unknown: list.some((x) => x.o.cases == null) })
-  const table = (list: ReturnType<typeof rowOf>[]) => (
+  // "+ Pallets" comes first in its row, as the report's buttons do, and stays in sight while the table slides on a
+  // phone; only an open order has one (the table of the completed ones has no such column)
+  const table = (list: ReturnType<typeof rowOf>[], adds = false) => (
     <div className="twrap">
       <table className="otable">
-        <thead><tr><th>PO</th><th>{tr('Código')}</th><th>{tr('Cliente')}</th><th>{tr('Envío')}</th><th className="num">{tr('Pedidas')}</th><th className="num">{tr('Hechas')}</th><th className="num">{tr('Faltan')}</th><th>{tr('Pallets')}</th><th>{tr('Destino')}</th>{mgr && <th></th>}</tr></thead>
+        <thead><tr>{adds && <th className="oact"></th>}<th>PO</th><th>{tr('Código')}</th><th>{tr('Cliente')}</th><th>{tr('Envío')}</th><th className="num">{tr('Pedidas')}</th><th className="num">{tr('Hechas')}</th><th className="num">{tr('Faltan')}</th><th>{tr('Pallets')}</th><th>{tr('Destino')}</th>{mgr && <th></th>}</tr></thead>
         <tbody>{list.map(({ o, made, left, seq, st }) => {
           const name = productOf(s, o.code)?.name
           return (
             <tr key={o.id} className={'o-' + st}>
+              {adds && <td className="oact">{onAdd && !o.closed && <button type="button" className="btn soft xs" title={tr('Agregar pallets al pedido {0}', orderLabel(o))} aria-label={tr('Agregar pallets al pedido {0}', orderLabel(o))} onClick={() => onAdd(o)}>{tr('+ Pallets')}</button>}</td>}
               <td><button type="button" className="drill" title={tr('Ver sus pallets')} onClick={() => setViewing(o.id)}>{o.po || <i>{tr('sin PO')}</i>}</button></td>
               <td><b className="code">{o.code}</b>{name && <small className="pname">{name}</small>}</td>
               <td>{o.customer || '—'}</td><td>{o.shipBy ? shipText(o.shipBy) : '—'}</td>
@@ -1206,6 +1211,7 @@ function OrdersCard({ s, mgr }: { s: State; mgr: boolean }) {
         })}</tbody>
         {list.length > 1 && (() => { const t = sums(list); return (
           <tfoot><tr>
+            {adds && <td className="oact"></td>}
             <td colSpan={4}>{trx('Total de {0} pedidos', list.length)}{active.length > 0 && <small className="pname">{tr('de lo que se ve')}</small>}</td>
             <td className="num">{fmtN(t.asked)}{t.unknown && <small title={tr('Sin cantidad')}> +?</small>}</td><td className="num"><b>{fmtN(t.made)}</b></td>
             <td className="num">{t.left > 0 ? <span className="ost st-going">{trx('faltan {0}', fmtN(t.left))}</span> : <span className="ost st-done">{tr('✓ completo')}</span>}</td>
@@ -1244,7 +1250,7 @@ function OrdersCard({ s, mgr }: { s: State; mgr: boolean }) {
           )}
         </>
       )}
-      {open.length ? (list.length ? table(list.slice(0, shown)) : <p className="hint">{tr('Ningún pedido abierto coincide con esos filtros.')}{closedHits > 0 && <> {trx('{0} de los marcados completos sí.', closedHits)} <button type="button" className="lnk sm" onClick={() => setShowClosed(true)}>{tr('Verlos')}</button></>}</p>) : <p className="hint">{mgr ? tr('No hay pedidos abiertos. Los que se agreguen aquí los ve Packing al registrar cada pallet de ese código.') : tr('No hay pedidos abiertos.')}</p>}
+      {open.length ? (list.length ? table(list.slice(0, shown), !!onAdd) : <p className="hint">{tr('Ningún pedido abierto coincide con esos filtros.')}{closedHits > 0 && <> {trx('{0} de los marcados completos sí.', closedHits)} <button type="button" className="lnk sm" onClick={() => setShowClosed(true)}>{tr('Verlos')}</button></>}</p>) : <p className="hint">{mgr ? tr('No hay pedidos abiertos. Los que se agreguen aquí los ve Packing al registrar cada pallet de ese código.') : tr('No hay pedidos abiertos.')}</p>}
       {list.length > ORDERS_PAGE && (
         <div className="morebar">
           <span>{trx('Se ven {0} de {1}', Math.min(shown, list.length), list.length)}</span>
@@ -1257,7 +1263,8 @@ function OrdersCard({ s, mgr }: { s: State; mgr: boolean }) {
       {closed.length > 0 && <button type="button" className="lnk" onClick={() => setShowClosed(!showClosed)}>{trx('{0} los marcados completos ({1})', showClosed ? tr('Ocultar') : tr('Ver'), closed.length)}</button>}
       {showClosed && closed.length > 0 && table(closed.filter(hits).map(rowOf))}
       {editing && <OrderDialog key={editing} s={s} order={s.orders.find((o) => o.id === editing)} onClose={() => setEditing(null)} />}
-      {order && <OrderPalletsDialog s={s} order={order} onClose={() => setViewing(null)} />}
+      {/* an open order's pallets window adds pallets too, for the same people who see "+ Pallets" (onAdd) */}
+      {order && <OrderPalletsDialog s={s} order={order} onAdd={onAdd && !order.closed ? () => onAdd(order) : undefined} onClose={() => setViewing(null)} />}
     </div>
   )
 }
@@ -1266,10 +1273,19 @@ function OrdersCard({ s, mgr }: { s: State; mgr: boolean }) {
  * Everything packed for an order, pallet by pallet: the day, the line, each lot with its cases and its tag, the
  * total, the hour and who. A manager corrects the run from here. The pallets of days this device no longer holds are
  * there too (they come from the server for every open order): seen, but corrected from that day's report.
+ * Whoever adds the records nobody made (onAdd: the same people who see "+ Pallets" on the open orders) adds a pallet
+ * to the order from here too (Jose, 2026-10-18: "que cuando esté viendo los pedidos y los PO pueda también agregarle
+ * otro pallet"), with "+ Agregar pallet a este PO": on a run of its code already recorded (AddUnitDialog, its Pedido
+ * on this order) or as a new record ("Agregar un registro" on this order, see OrderAddChooser). This window reads the
+ * same store, so what is added is in its list and its numbers at once; the pallets added from here are marked.
  */
-function OrderPalletsDialog({ s, order, onClose }: { s: State; order: Order; onClose: () => void }) {
+function OrderPalletsDialog({ s, order, onAdd, onClose }: { s: State; order: Order; onAdd?: () => void; onClose: () => void }) {
   const can = useCan()
   const [editRun, setEditRun] = useState<string | null>(null)
+  // adding a pallet: {} = choosing where it goes, { run } = adding it to that run
+  const [adding, setAdding] = useState<{ run?: string } | null>(null)
+  const [added, setAdded] = useState<string[]>([]) // the pallets added from here ("run:moment"), marked in the list
+  const addTo = adding?.run ? s.runs.find((r) => r.id === adding.run && !r.deleted) : undefined
   const list = orderRunsOf(s, order.id).flatMap((r) => r.units.filter((u) => u.po === order.id).map((u) => ({ r, u, parts: unitParts(s, r, u), here: s.runs.some((x) => x.id === r.id) }))).sort((a, b) => a.u.at - b.u.at)
   const made = orderMade(s, order.id), seq = orderPallets(s, order.id), left = order.cases != null ? order.cases - made : null
   const run = editRun ? s.runs.find((r) => r.id === editRun) : undefined
@@ -1288,10 +1304,11 @@ function OrderPalletsDialog({ s, order, onClose }: { s: State; order: Order; onC
               <thead><tr><th>#</th><th>{tr('Fecha')}</th><th>{tr('Línea')}</th><th>{tr('Lote')}</th><th className="num">{tr('Cajas')}</th><th>{tr('Tag')}</th><th className="num">{tr('Total')}</th><th>{tr('Hora')}</th><th>{tr('Por')}</th><th></th></tr></thead>
               {list.map((x, k) => {
                 const parts = x.parts.length ? x.parts : [{ lot: x.r.lot, qty: x.u.qty, tag: x.u.ref }], span = parts.length
+                const fresh = added.includes(x.r.id + ':' + x.u.at)
                 return (
                   <tbody key={x.r.id + ':' + x.u.at}>
                     {parts.map((p, i) => (
-                      <tr key={i}>
+                      <tr key={i} className={fresh ? 'rp-focus' : undefined}>
                         {i === 0 && <td rowSpan={span}><b>{k + 1}</b>{seq.need ? <small className="ofn">/{seq.need}</small> : null}</td>}
                         {i === 0 && <td rowSpan={span}>{shortDay(x.r.date)}</td>}
                         {i === 0 && <td rowSpan={span}>{lineNameOf(s, x.r.lineId, x.r.line)}</td>}
@@ -1309,8 +1326,71 @@ function OrderPalletsDialog({ s, order, onClose }: { s: State; order: Order; onC
           </div>
         )}
         {list.some((x) => !x.here) && <p className="hint">{tr('Los pallets de días que este aparato ya no guarda se traen del servidor: se ven aquí y se corrigen abriendo ese día en el Reporte.')}</p>}
-        <div className="dbtns"><button type="button" className="btn" onClick={onClose}>{tr('Cerrar')}</button></div>
+        {onAdd ? (
+          <div className="dbtns spread">
+            <button type="button" className="btn soft" onClick={() => setAdding({})}>{tr('+ Agregar pallet a este PO')}</button>
+            <button type="button" className="btn" onClick={onClose}>{tr('Cerrar')}</button>
+          </div>
+        ) : <div className="dbtns"><button type="button" className="btn" onClick={onClose}>{tr('Cerrar')}</button></div>}
         {run && <RunEditor s={s} run={run} mgr={can('fix')} onClose={() => setEditRun(null)} />}
+        {onAdd && adding && !adding.run && <OrderAddChooser s={s} order={order} onPick={(id) => setAdding({ run: id })} onNew={() => { setAdding(null); onAdd() }} onClose={() => setAdding(null)} />}
+        {/* the pallet's hour has to fall inside the run's (AddUnitDialog's rule); "Agregar y otro" keeps it open */}
+        {addTo && <AddUnitDialog s={s} run={addTo} startPo={order.id} onClose={() => setAdding(null)} onAdded={(at, more) => { setAdded((l) => [...l, addTo.id + ':' + at]); if (!more) setAdding(null) }} />}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Where a pallet added from an order's pallets window goes (Jose, 2026-10-18): on a run of the order's code already
+ * recorded on this device, the newest first, each with its day, line, lot, hours and pallets (the pallet's hour has to
+ * fall inside the run's hours, so they are in sight); or on a new record, "Agregar un registro" on this order. Only
+ * the runs this person may correct are offered: the other shift's, without the power for it, are counted and left
+ * out, as the report leaves out their "Corregir". With none to offer, only a new record, and the window says why.
+ * "+ Un registro nuevo" is in the window's footer, beside Cancelar, said in one line above the runs: with six runs
+ * and more of the code (the usual, a code runs most days) it was under them, below the screen of a phone and of a
+ * tablet lying down, and nothing said it was there (review, 2026-10-18). Each run shows every lot it has touched: one
+ * still running may be on its next lot by now, and its first alone said otherwise.
+ */
+const CHOOSER_PAGE = 6
+function OrderAddChooser({ s, order, onPick, onNew, onClose }: { s: State; order: Order; onPick: (runId: string) => void; onNew: () => void; onClose: () => void }) {
+  const who = useWho()
+  const [shown, setShown] = useState(CHOOSER_PAGE)
+  const now = clockNow(), runs = orderAddRuns(s, order)
+  const may = runs.filter((x) => canShift(who, spanShifts(shiftsOf(s, x.r.date), x.r.startedAt, x.r.endedAt ?? now)))
+  const others = runs.length - may.length
+  const code = <b className="code">{order.code}</b>
+  return (
+    <div className="veil" onClick={onClose}>
+      <div className="dlg" onClick={(e) => e.stopPropagation()}>
+        <h3>{tr('Agregar pallet a este PO')}</h3>
+        <p className="fromorder">{trx('Para el pedido {0} · código {1}.', <b>{orderLabel(order)}</b>, code)}</p>
+        {may.length > 0 && <p className="hint">{tr('Dos maneras: en una de estas corridas, ya registradas, o con el botón "Un registro nuevo", abajo, para un código que se hizo y nadie registró (se abre "Agregar un registro" con este pedido).')}</p>}
+        <div className="addto">
+          <h4>{tr('A un código ya registrado')}</h4>
+          {may.length > 0 ? (
+            <>
+              <p className="hint">{trx('Las corridas del código {0} en este aparato, la más nueva primero. La hora del pallet tiene que caer dentro de las horas de la corrida.', code)}</p>
+              <div className="addruns">
+                {may.slice(0, shown).map(({ r, pallets, toOrder }) => {
+                  const lots = [...runLots(s, r)].filter(Boolean)
+                  return (
+                    <button key={r.id} type="button" className="btn" onClick={() => onPick(r.id)}>
+                      <span><b>{shortDay(r.date)}</b> · {lineNameOf(s, r.lineId, r.line)} · {lots.length > 1 ? tr('lotes {0}', lots.join(', ')) : tr('lote {0}', lots[0] || '—')}</span>
+                      <small>{fmtTime(r.startedAt)} – {r.endedAt ? fmtTime(r.endedAt) : tr('corriendo')} · {pallets === 1 ? tr('1 pallet') : tr('{0} pallets', pallets)}{toOrder > 0 ? ' · ' + tr('{0} de este PO', toOrder) : ''}</small>
+                    </button>
+                  )
+                })}
+              </div>
+              {may.length > shown && <button type="button" className="btn sm" onClick={() => setShown(may.length)}>{tr('Ver las {0} corridas', may.length)}</button>}
+            </>
+          ) : <p className="hint">{runs.length ? trx('Ninguna corrida del código {0} en este aparato es de tu turno: el pallet se agrega como un registro nuevo.', code) : trx('Este aparato no tiene ninguna corrida del código {0}: el pallet se agrega como un registro nuevo.', code)}</p>}
+          {others > 0 && may.length > 0 && <p className="hint">{others === 1 ? tr('1 corrida del otro turno no se ofrece: corregirla es de ese turno.') : tr('{0} corridas del otro turno no se ofrecen: corregirlas es de ese turno.', others)}</p>}
+        </div>
+        <div className="dbtns spread">
+          <button type="button" className="btn soft" onClick={onNew}>{tr('+ Un registro nuevo')}</button>
+          <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
+        </div>
       </div>
     </div>
   )
@@ -1609,7 +1689,9 @@ function DeptPanel({ s, dept, now, day }: { s: State; dept: Dept; now: number; m
   const [adding, setAdding] = useState(false)
   const [leaving, setLeaving] = useState(false)
   const [editRun, setEditRun] = useState<string | null>(null)
-  const [addingRun, setAddingRun] = useState(false) // a code that ran and nobody recorded, put on its line after the fact
+  // a code that ran and nobody recorded, put on its line after the fact; from Pedidos, also for the order whose
+  // "+ Pallets" was tapped (its id: the window then opens on it)
+  const [addingRun, setAddingRun] = useState<{ po?: string } | null>(null)
   const [editStop, setEditStop] = useState(false)
   const [dupOpen, setDupOpen] = useState<string[] | null>(null) // lines of this room that share a name, being fixed
   const left = openIn(s, dept) // what is still open in the room: what "Terminar turno" would close
@@ -1624,6 +1706,8 @@ function DeptPanel({ s, dept, now, day }: { s: State; dept: Dept; now: number; m
     return (
       <div key={r.id} className="donerow">
         {trx('{0} · lote {1} · {2} · {3} – {4} · {5} · trabajando {6} · parado {7}{8} · {9}', <b className="code">{r.code}</b>, r.lot, lineNameOf(s, r.lineId, r.line), fmtTime(r.startedAt), fmtTime(r.endedAt ?? now), <b>{madeText(r, st.qty)}</b>, <b>{fmtDur(st.working)}</b>, <b className={st.down ? 'red' : ''}>{fmtDur(st.down)}</b>, r.waste > 0 && <> {' '}{trx('· waste {0}', <b className="red">{r.waste} lb</b>)}</>, whoText(r))}{mine.carried && (r.endedAt ?? 0) > turn.since && <> {' '}{trx('· de eso, en este turno: {0}', <b>{unitsText(r.dept, mine.units, mine.qty)}</b>)}</>} {can('fix') && canShift(who, spanShifts(shiftsOf(s, r.date), r.startedAt, r.endedAt ?? now)) && <button type="button" className="lnk" onClick={() => setEditRun(r.id)}>{tr('Corregir')}</button>}
+        {/* its comment, under the rest and small (Jose, 2026-10-18: comments on the records) */}
+        {noteOf(r) && <div className="rnote">💬 {noteOf(r)}</div>}
       </div>
     )
   }
@@ -1694,7 +1778,7 @@ function DeptPanel({ s, dept, now, day }: { s: State; dept: Dept; now: number; m
       {adding && <LineNameDialog s={s} dept={dept} onClose={() => setAdding(false)} />}
       {shown === 'done' && (
         <>
-          {can('fix') && !viewOnly && <div className="dp-tools"><button type="button" className="btn soft" onClick={() => setAddingRun(true)}>{tr('+ Agregar un registro que nadie registró')}</button></div>}
+          {can('fix') && !viewOnly && <div className="dp-tools"><button type="button" className="btn soft" onClick={() => setAddingRun({})}>{tr('+ Agregar un registro que nadie registró')}</button></div>}
           <div className="done">
             <h3>{trx('Terminados en el turno {0} en {1}', turn.shift, dept)}<small> · {doneNow.length}</small></h3>
             {doneNow.length ? doneNow.map(doneRow) : <p className="hint">{tr('Todavía nada terminado en este turno.')}</p>}
@@ -1709,9 +1793,16 @@ function DeptPanel({ s, dept, now, day }: { s: State; dept: Dept; now: number; m
       )}
       {/* what the office sets for the room: the day's program and the orders being filled, each in its own tab */}
       {shown === 'plan' && <PlanCard s={s} dept={dept} date={day.date} mgr={can('products')} />}
-      {shown === 'orders' && hasOrders && <OrdersCard s={s} mgr={can('orders')} />}
+      {/* the pallets nobody recorded are added from the orders too, for the same people as from Terminados (Jose,
+          2026-10-18: "también de agregar registro de pallet desde packing tab pedidos"); the order can be chosen in both */}
+      {shown === 'orders' && hasOrders && (
+        <>
+          {can('fix') && !viewOnly && <div className="dp-tools"><button type="button" className="btn soft" onClick={() => setAddingRun({})}>{tr('+ Agregar un registro que nadie registró')}</button></div>}
+          <OrdersCard s={s} mgr={can('orders')} onAdd={can('fix') && !viewOnly ? (o) => setAddingRun({ po: o.id }) : undefined} />
+        </>
+      )}
       {editing && <RunEditor s={s} run={editing} mgr={can('fix')} onClose={() => setEditRun(null)} />}
-      {addingRun && <AddRunDialog s={s} date={day.date} dept={dept} onClose={() => setAddingRun(false)} onAdded={() => setAddingRun(false)} />}
+      {addingRun && <AddRunDialog s={s} date={day.date} dept={dept} order={addingRun.po ? s.orders.find((o) => o.id === addingRun.po) : undefined} onClose={() => setAddingRun(null)} onAdded={() => setAddingRun(null)} />}
       {stopAll && <StopDialog title={tr('Parar todo {0}', dept)} reasons={CFG[dept].quick} onClose={() => setStopAll(false)} onPick={(reason, note) => { startStop(dept, null, reason, note); setStopAll(false) }} />}
     </section>
   )
