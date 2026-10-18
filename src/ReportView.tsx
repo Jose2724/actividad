@@ -285,7 +285,7 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
   const clear = () => { setFCode(''); setFLot(''); setFShift(0); setFDept(''); setFLine('') }
   const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
   /** a shift's hours in two pieces that never break inside: "6:00 AM" and "a 3:00 PM" */
-  const hrs = (k: 1 | 2) => { const [from, to] = shiftSpan(rep.plan, k); return <><span>{from}</span> <span>{tr('a {0}', to)}</span></> }
+  const hrs = (k: 1 | 2) => { if (rep.plan.only) return <span>{tr('todo el día')}</span>; const [from, to] = shiftSpan(rep.plan, k); return <><span>{from}</span> <span>{tr('a {0}', to)}</span></> }
   const dash = (v: number) => (v ? fmtN(v) : '—')
   /** what a time that adds up the lines is the sum of: "suma de 3 líneas" */
   const linesText = (n: number) => (n === 1 ? tr('una línea') : tr('suma de {0} líneas', n))

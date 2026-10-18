@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore } from 'react'
-import { byLineName, CFG, dayShiftsText, DEPTS, lineLabel, lotFor, managerPin, nightText, openRun, removedLines, removeLine, reset, resetRecords, restoreLine, setDayShifts, setLineRules, shiftGoalOf, shiftHours, shiftsOf, turnOf, uploadAll, weekOf, type Dept, type Line, type State, type WorkDay } from './store'
+import { byLineName, CFG, dayShiftsText, DEPTS, lineLabel, lotFor, managerPin, nightText, openRun, removedLines, removeLine, reset, resetRecords, restoreLine, setDayShifts, setLineRules, shiftGoalOf, shiftHours, shiftSpan, shiftsOf, turnOf, uploadAll, weekOf, type Dept, type Line, type State, type WorkDay } from './store'
 import { ConfirmDialog, LangSwitch, LineNameDialog, longDate, NoticeDialog, Products, QrLink, ShiftsDialog, StartDayDialog, TargetDialog, useCan } from './App'
 import { Employees } from './Employees'
 import { Devices } from './DevicesView'
@@ -74,8 +74,8 @@ function ShiftsSettings({ s, day }: { s: State; day: WorkDay }) {
         <div className="sethead"><h3>{tr('Horario de los turnos')}</h3><button type="button" className="btn primary" onClick={() => setEditing(true)}>{tr('✎ Cambiar horario y semana')}</button></div>
         <p className="hint">{tr('Cada registro cuenta para el turno en cuyas horas se hizo; el corte es la mitad del rato entre un turno y el otro. Cada versión vale desde una fecha: los días anteriores se leen con el horario que tenían.')}</p>
         <div className="setfacts">
-          <Fact label={tr('Turno 1')} value={shiftHours(plan, 1)} />
-          <Fact label={tr('Turno 2')} value={shiftHours(plan, 2)} />
+          <Fact label={tr('Turno 1')} value={tr('{0} a {1}', ...shiftSpan(plan, 1))} />
+          <Fact label={tr('Turno 2')} value={tr('{0} a {1}', ...shiftSpan(plan, 2))} />
           <Fact label={tr('Corte de la noche')} value={nightText(s, day.date)} note={tr('ahí empieza el día de trabajo')} />
           <Fact label={tr('Vale desde')} value={plan.from ? longDate(plan.from) : tr('siempre')} />
         </div>

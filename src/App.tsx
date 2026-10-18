@@ -504,6 +504,10 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
                   </button>
                 )
               })}
+              {/* Quality Control is coming (Jose, 2026-10-17): in sight with its lock, not yet a room anybody can open */}
+              <div className="dept soon" aria-disabled="true" title={tr('Próximamente')}>
+                <span className="dname"><span className="dtitle"><i className="demoji" aria-hidden="true">🔒</i>QC</span><small className="soonnote">{tr('Quality Control · próximamente')}</small></span>
+              </div>
               {free.length > 0 && <button type="button" className="btn sm setupbtn setupall" onClick={() => setSetupAll(true)}>{tr('⏱ Set up en todas las líneas')}<small>{free.length === 1 ? tr('1 línea libre') : tr('{0} líneas libres', free.length)}</small></button>}
               {setupAll && <ConfirmDialog title={tr('¿Poner en Set up todas las líneas libres?')} text={DEPTS.filter((d) => free.some((l) => l.dept === d)).map((d) => d + ': ' + free.filter((l) => l.dept === d).map((l) => lineLabel(l.name)).join(', ')).join(' · ') + '. ' + (now - setupFrom > 60_000 ? tr('El Set up cuenta desde las {0}, el inicio del turno.', fmtTime(setupFrom)) : tr('El Set up cuenta desde ahora.')) + ' ' + tr('Cuenta cuando empiece el código de cada línea; con nadie trabajando no cuenta. Las líneas que ya tienen código o Set up siguen como están.')} yes={tr('⏱ Empezar Set up')} onYes={() => { startSetupAll(); setSetupAll(false) }} onNo={() => setSetupAll(false)} />}
             </aside>

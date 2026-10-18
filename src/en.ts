@@ -1123,7 +1123,7 @@ export const EN: Record<string, string> = {
   'Solo turno 2': 'Only shift 2',
   'Los dos': 'Both',
   'un solo turno': 'one shift only',
-  'Turno {0}: {1}   ·   el único del día': "Shift {0}: {1}   ·   the day's only one",
+  'Turno {0}   ·   el único del día': "Shift {0}   ·   the day's only one",
   // Ajustes (2026-10-17)
   'Ajustes': 'Settings',
   'Turnos y calendario': 'Shifts and calendar',
@@ -1307,4 +1307,8 @@ export const EN: Record<string, string> = {
   '"programa · faltan" es lo que falta del programa del día.': '"program · left" is what the day\'s program still lacks.',
   'El estado de cada código: Sin empezar (nada registrado), En proceso (falta algo), Terminado (las mezclas del programa están hechas y lo que dan ya está empacado).': 'Each code\'s state: Not started (nothing recorded), In progress (something is missing), Finished (the program\'s mezclas are made and what they give is packed).',
   'Toca ▸ junto al código para verlo por lote y por turno.': 'Tap ▸ beside the code to see it by lot and by shift.',
+  // a day of one shift, and the room that is coming (2026-10-17)
+  'todo el día': 'all day',
+  'Próximamente': 'Coming soon',
+  'Quality Control · próximamente': 'Quality Control · coming soon',
 }

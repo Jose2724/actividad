@@ -1134,7 +1134,7 @@ export const minuteText = (m: number) => fmtTime(new Date(2000, 0, 1, Math.floor
 /** "6:00 AM a 3:00 PM": the hours of one shift */
 /** when a shift starts and when it ends, as two texts: "6:00 AM", "3:00 PM" */
 export const shiftSpan = (h: ShiftHours, shift: 1 | 2): [string, string] => (shift === 1 ? [clockText(h.first), clockText(h.firstEnd)] : [clockText(h.second), clockText(h.secondEnd)])
-export const shiftHours = (h: ShiftHours, shift: 1 | 2) => tr('{0} a {1}', ...shiftSpan(h, shift))
+export const shiftHours = (h: ShiftHours, shift: 1 | 2) => (h.only ? tr('todo el día') : tr('{0} a {1}', ...shiftSpan(h, shift)))
 export const shiftsText = (h: ShiftHours) => 'Turno 1 de ' + shiftSpan(h, 1).join(' a ') + ' · Turno 2 de ' + shiftSpan(h, 2).join(' a ')
 /** the manager sets the hours of the shifts from a date on (the same date again replaces what was set for it) */
 export function setShifts(from: string, h: ShiftHours): boolean {
@@ -1236,10 +1236,12 @@ function without(a: number, b: number, out: Span[]): Span[] {
 }
 /**
  * The stretches around [a, b) in which no shift is on, by the hours set: between the first shift and the second, and
- * between the second and the next first.
+ * between the second and the next first. A day of work with one shift has no hand-over in it: only the night is
+ * between shifts (2026-10-18, a Sunday of the second shift working from the morning: the half hour at 3:00 PM was not a
+ * time when nobody was there)
  */
 function gapsNear(h: ShiftHours, a: number, b: number) {
-  const f = mins(h.first), len1 = ahead(f, mins(h.firstEnd)), gap1 = ahead(mins(h.firstEnd), mins(h.second)), len2 = ahead(mins(h.second), mins(h.secondEnd)), gap2 = ahead(mins(h.secondEnd), f)
+  const f = mins(h.first), len1 = ahead(f, mins(h.firstEnd)), gap1 = h.only ? 0 : ahead(mins(h.firstEnd), mins(h.second)), len2 = ahead(mins(h.second), mins(h.secondEnd)), gap2 = ahead(mins(h.secondEnd), f)
   const d = new Date(a)
   d.setHours(0, 0, 0, 0)
   const out: Span[] = []
@@ -1742,7 +1744,8 @@ export function deptToday(s: State, dept: Dept, date: string, now: number, lineI
   // The shift in course has its own pace, so a good morning does not hide a slow afternoon. Its clock starts with its
   // first code; a line that came running from the other shift counts from the hour this one starts.
   const plan = shiftsOf(s, date), shift = shiftAt(plan, now), since = lastCut(plan, now)
-  const opens = Math.min(now, since + ahead(clockMin(since), mins(shift === 1 ? plan.first : plan.second)) * 60_000)
+  // (the only shift of a day of one shift starts in the morning, like the first one does: Jose, 2026-10-17)
+  const opens = Math.min(now, since + ahead(clockMin(since), mins(shift === 1 || plan.only ? plan.first : plan.second)) * 60_000)
   const one = (r: Run, u: Unit) => (cfg.qty === 'none' ? 1 : unitQty(s, r, u))
   const made = (k: 1 | 2) => runs.reduce((t, r) => t + r.units.filter((u) => shiftAt(plan, u.at) === k).reduce((a, u) => a + one(r, u), 0), 0)
   // The shift in course is all that its people made in its hours, on every line: also on a code that came running from

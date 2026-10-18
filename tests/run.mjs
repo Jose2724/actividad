@@ -1680,6 +1680,40 @@ section('Calendario de planta: días de un solo turno (la semana, y un día apar
     eq('lo que llega sin sentido no entra', [(m.applyRemote('act_targets', { dept: 'shiftweek:2026-12-01', per_hour: 4444444, per_shift: null, updated_at: new Date(oct(17, 17, 2)).toISOString() }), st().shiftWeeks.some((x) => x.from === '2026-12-01')), (m.applyRemote('act_targets', { dept: 'shiftday:2026-12-01', per_hour: 7, per_shift: null, updated_at: new Date(oct(17, 17, 2)).toISOString() }), st().dayShifts.some((x) => x.date === '2026-12-01'))], [false, false])
   })
 }
+section('Un día de un solo turno que trabaja desde la mañana: todo es de ese turno, y el tiempo no se corta a las 3')
+{
+  // Jose, 2026-10-17: on Sunday the second shift works from 6 AM to 6 PM or more, and all of it is the second shift's,
+  // "incluso los tiempos"
+  const sun = await device('sun', { user: 'Jose', usual: true })
+  sun.use((m) => {
+    const st = () => m.store.get(), SUN = '2026-10-18'
+    clock = oct(17, 22, 0); m.setDayShifts(SUN, 2)
+    m.addLine('RTE', 'Línea 1'); const l = st().lines.find((x) => x.dept === 'RTE')
+    clock = oct(18, 6, 0); m.startRun(l, 'A100', '6291', SUN, 240)
+    const id = st().runs.at(-1).id
+    clock = oct(18, 14, 50); m.unitDone(id, 240) // then nothing recorded from 2:50 to 4:00 PM: a long cart
+    clock = oct(18, 16, 0); m.unitDone(id, 240)
+    clock = oct(18, 18, 0); m.endRun(id, false)
+    const r = st().runs.find((x) => x.id === id), stt = m.runStats(st(), r, clock)
+    eq('las doce horas cuentan trabajando: la media hora de las 3 no se aparta en un día de un solo turno', Math.round(stt.working / 60_000), 12 * 60)
+    const rep = m.reportOf(st(), SUN, clock, { only: 'RTE' })
+    eq('el reporte: todo del turno 2, nada del 1', [rep.byShift[0].second.qty, rep.byShift[0].first.qty, rep.plan.only], [480, 0, 2])
+    eq('y las horas del turno se dicen "todo el día"', m.shiftHours(rep.plan, 2), 'todo el día')
+    const td = m.deptToday(st(), 'RTE', SUN, oct(18, 10, 0))
+    eq('a las 10 AM la tarjeta del cuarto es del turno 2', td.shift, 2)
+  })
+  // a normal day keeps its hand-over: the half hour between shifts with nothing recorded is still set aside
+  const nor = await device('nor', { user: 'Jose', usual: true })
+  nor.use((m) => {
+    const st = () => m.store.get()
+    m.addLine('RTE', 'Línea 1'); const l = st().lines.find((x) => x.dept === 'RTE')
+    clock = oct(14, 13, 0); m.startRun(l, 'A100', '6287', '2026-10-14', 240)
+    const id = st().runs.at(-1).id
+    clock = oct(14, 14, 50); m.unitDone(id, 240)
+    clock = oct(14, 16, 0); m.unitDone(id, 240); m.endRun(id, false)
+    eq('un día normal sigue apartando la media hora entre turnos sin registros', Math.round(m.runStats(st(), st().runs.find((x) => x.id === id), clock).working / 60_000), 180 - 30)
+  })
+}
 section('Poderes y turno de cada persona')
 calc.use((m) => {
   const keys = m.POWERS.map((p) => p.key)
