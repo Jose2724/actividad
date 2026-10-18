@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import { addRunLater, addUnit, applyDraft, BIN_WORDS, binOf, binWord, byLineName, cfgFor, checkLaterPallets, DEPTS, fmtN, kindClass, LATER_MAX, laterPalletUnits, laterPoFits, laterStart, laterToOrder, MFO_WORDS, tagTwice, type LaterPalletRow, plainDay, planRows, SPIRAL_UNITS, type Dept, byShip, CFG, cfgOf, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, setUnitOrder, splitStop, store, updateRun, updateStop, type Order, type Run, type State, type Stop, lineLabel } from './store'
+import { addRunLater, addUnit, applyDraft, BIN_WORDS, NOTE_MAX, binOf, binWord, byLineName, cfgFor, checkLaterPallets, DEPTS, fmtN, kindClass, LATER_MAX, laterPalletUnits, laterPoFits, laterStart, laterToOrder, MFO_WORDS, tagTwice, unitStartPo, type LaterPalletRow, plainDay, planRows, SPIRAL_UNITS, type Dept, byShip, CFG, cfgOf, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, setUnitOrder, splitStop, store, updateRun, updateStop, type Order, type Run, type State, type Stop, lineLabel } from './store'
 import { clockNow } from './clock'
+import { unitStartLot } from './report'
 import { ConfirmDialog, LotsDialog, useCan } from './App'
 import { tr } from './i18n'
 import { trx } from './trx'
@@ -29,6 +30,7 @@ export function RunEditor({ s, run, mgr, focusAt, onClose }: { s: State; run: Ru
   const [per, setPer] = useState(opened.per)
   const [waste, setWaste] = useState(opened.waste)
   const [units, setUnits] = useState(opened.units)
+  const [note, setNote] = useState(opened.note ?? '')
   const [dropping, setDropping] = useState(false)
   const [adding, setAdding] = useState(false) // a unit that was never recorded, added now
   const [lotsOf, setLotsOf] = useState<number | null>(null)
@@ -44,7 +46,7 @@ export function RunEditor({ s, run, mgr, focusAt, onClose }: { s: State; run: Ru
   const [problem, setProblem] = useState('')
   const save = () => {
     if (lineId !== run.lineId && !moveRun(run.id, lineId)) { setProblem(tr('No se pudo pasar a esa línea: a esa hora tenía otro código, o ahora mismo está parada o en Set up.')); return }
-    applyDraft(run.id, opened, { code, lot, date, per, waste, units })
+    applyDraft(run.id, opened, { code, lot, date, per, waste, units, note })
     onClose()
   }
   return (
@@ -87,6 +89,9 @@ export function RunEditor({ s, run, mgr, focusAt, onClose }: { s: State; run: Ru
             </table>
           </div>
         )}
+        {/* the record's comment, as it was typed when it was added (or none): corrected or cleared here like the rest,
+            with its line in the history (Jose, 2026-10-18) */}
+        <NoteBox value={note} onChange={setNote} />
         <p className="hint">{tr('Quita con ✕ una unidad tocada de más. Los cambios quedan al tocar Guardar.')}{later > 0 && ' ' + tr('Mientras corregías se {0}', (later === 1 ? tr('registró 1 {0} más: se conserva.', cfg.unit.toLowerCase()) : tr('registraron {0} {1} más: se conservan.', later, cfg.plural.toLowerCase())))}</p>
         {can('del') && <p className="hint">{tr('Si la línea no estaba trabajando y se tocó por error, "Borrar corrida" la saca del reporte. Todo cambio queda en el historial con tu nombre.')}</p>}
         {problem && <span className="err">{problem}</span>}
@@ -127,8 +132,12 @@ export function RunEditor({ s, run, mgr, focusAt, onClose }: { s: State; run: Ru
  * added until something is typed or chosen again: a mezcla has nothing of its own to type, so its window stayed as it
  * was and a second tap (or a bouncing finger) added it twice at the same hour (seen in review); the next one asks
  * for another hour, or what it carries.
+ * Opened from an order's pallets window (startPo: Jose, 2026-10-18, "que cuando esté viendo los pedidos y los PO pueda
+ * también agregarle otro pallet"), its Pedido starts on that order, in sight and changeable (see unitStartPo), and its
+ * lot is the run's only when the run has had no other (see unitStartLot); without it, the window opens exactly as it
+ * always did.
  */
-export function AddUnitDialog({ s, run, onClose, onAdded }: { s: State; run: Run; onClose: () => void; onAdded: (at: number, more?: boolean) => void }) {
+export function AddUnitDialog({ s, run, startPo, onClose, onAdded }: { s: State; run: Run; startPo?: string; onClose: () => void; onAdded: (at: number, more?: boolean) => void }) {
   const cfg = cfgOf(run), word = cfg.unit.toLowerCase(), tags = !!cfg.lots, fem = cfg.saved.endsWith('a')
   const [added, setAdded] = useState(0) // how many went on the run from this window, with "Agregar y otro"
   // held: one was just added with "Agregar y otro", and nothing has been typed or chosen since. The ref answers at
@@ -141,9 +150,12 @@ export function AddUnitDialog({ s, run, onClose, onAdded }: { s: State; run: Run
   const [hm, setHm] = useState('')
   const [qty, setQty] = useState('')
   const [ref, setRef] = useState('')
-  const [rows, setRows] = useState([{ lot: run.lot, qty: '', tag: '' }])
-  const [po, setPo] = useState('')
+  // its first lot: the run's, as always; opened from an order's pallets window, only when the run has touched no other
+  // (see unitStartLot): the chooser offers runs still running, whose line may be on its next lot by now
+  const [rows, setRows] = useState(() => [{ lot: startPo === undefined ? run.lot : unitStartLot(s, run), qty: '', tag: '' }])
   const orders = cfg.orders ? s.orders.filter((o) => normCode(o.code) === normCode(run.code)).sort(byShip) : []
+  // taken once, as it opened: "Agregar y otro" keeps the order they have chosen by then, as always
+  const [po, setPo] = useState(() => unitStartPo(s, run, startPo))
   const end = run.endedAt ?? clockNow()
   // the hour is one of the run's day (a run that goes past midnight: the nearest to its start)
   const at = hm ? nearDay(run.startedAt, hm) : NaN
@@ -348,6 +360,7 @@ export function AddRunDialog({ s, date, dept: first, order, onClose, onAdded }: 
   const [refs, setRefs] = useState('')
   const [waste, setWaste] = useState('')
   const [madeBy, setMadeBy] = useState('')
+  const [note, setNote] = useState('')
   const [problem, setProblem] = useState('')
   const formId = useId()
   // Packing's pallets one by one, and the order its quick bar gives to the ones it adds (see LaterPallets). Their
@@ -403,7 +416,7 @@ export function AddRunDialog({ s, date, dept: first, order, onClose, onAdded }: 
     // the pallets, each as the line keeps one (see laterPalletUnits); the other units, as many as they said
     const { units, perUnit } = byPallet ? laterPalletUnits(s, code, lot, pallets)
       : { units: Array.from({ length: n }, (_, i) => ({ qty: cfg.qty === 'none' ? null : per, ref: refList[i] ?? '' })), perUnit: cfg.perUnitLabel && per != null ? per : null }
-    const id = addRunLater({ dept, lineId: line.id, code, lot, date: day, startedAt: startAt, endedAt: endAt, units, perUnit, waste: cfg.waste && waste.trim() ? Number(waste.replace(',', '.')) || 0 : 0, bin: dept === 'Spiral' ? '' : word, measure: dept === 'Spiral' && (word === 'lb' || word === 'cajas') ? word : '', madeBy })
+    const id = addRunLater({ dept, lineId: line.id, code, lot, date: day, startedAt: startAt, endedAt: endAt, units, perUnit, waste: cfg.waste && waste.trim() ? Number(waste.replace(',', '.')) || 0 : 0, bin: dept === 'Spiral' ? '' : word, measure: dept === 'Spiral' && (word === 'lb' || word === 'cajas') ? word : '', madeBy, note })
     if (!id) { setProblem(tr('A esas horas la línea tenía otro código. Cambia la línea o las horas.')); return }
     onAdded(id)
   }
@@ -461,6 +474,9 @@ export function AddRunDialog({ s, date, dept: first, order, onClose, onAdded }: 
           {program.length > 0 && <div className="chips">{program.map((c) => <button key={c} type="button" className={'chip sm' + (normCode(code) === normCode(c) ? ' on' : '')} onClick={() => changeCode(c)}>{c}</button>)}</div>}
         </form>
         {byPallet && <LaterPallets orders={orders} list={pallets} setList={setPallets} nextKey={() => ++palletKeys.current} quickPo={quickPo} setQuickPo={setQuickPo} oneTakesBar={start.oneTakesBar} />}
+        {/* a comment on the record, in every room (Jose, 2026-10-18, on this window: "Puedes también poner aquí una
+            casilla para poner comentarios por favor"): typed or left blank, never filled in by the app */}
+        <NoteBox value={note} onChange={setNote} />
         {!byPallet && countMissing && <span className="err">{cfg.saved.endsWith('a') ? tr('Escribe cuántas {0} se hicieron: sin eso el registro queda en 0.', plural) : tr('Escribe cuántos {0} se hicieron: sin eso el registro queda en 0.', plural)}</span>}
         {from && !startOk && <span className="err">{tr('Esa hora cae en otro día de trabajo.')}</span>}
         {to && !endOk && <span className="err">{tr('Termina antes de empezar, o en otro día de trabajo.')}</span>}
@@ -471,6 +487,23 @@ export function AddRunDialog({ s, date, dept: first, order, onClose, onAdded }: 
         </div>
       </div>
     </div>
+  )
+}
+
+/**
+ * The comment of a record (Jose, 2026-10-18, on "Agregar un registro · Packing": "Puedes también poner aquí una casilla
+ * para poner comentarios por favor"): a box of two lines, in "Agregar un registro" (every room) and in Corregir, of
+ * up to NOTE_MAX characters, with how many are left when few are. What is typed is kept as typed (on one line and
+ * without spaces at its ends: see cleanNote); left blank, the record has none. The app never writes in it.
+ */
+function NoteBox({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const left = NOTE_MAX - value.length
+  return (
+    <label className="notebox">
+      <span>{tr('Comentario')} <small>{tr('(opcional)')}</small></span>
+      <textarea rows={2} maxLength={NOTE_MAX} value={value} onChange={(e) => onChange(e.target.value)} />
+      {left <= 50 && <small className="left">{left === 1 ? tr('Queda 1 carácter') : tr('Quedan {0} caracteres', left)}</small>}
+    </label>
   )
 }
 

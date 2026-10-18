@@ -315,7 +315,11 @@ tr.live td{background:#f1fbf5}
 .orderstrip{display:flex;flex-wrap:wrap;gap:2px 14px;font-size:14px;color:var(--muted);background:var(--bg);border-radius:10px;padding:8px 12px}
 .orderstrip b{color:var(--ink)}
 .orderstrip .next b:first-child{color:var(--accent)}
-.qform select{min-height:44px;font-size:16px;max-width:100%}
+/* a window's selects are as wide as their box, not as their longest option: "Agregar pallet"'s Pedido with an order of
+   a long name ("Distribuidora Internacional de Alimentos del Norte · PO …") made the whole window wider than a phone,
+   which slid sideways with "✓ Agregar pallet" out of the screen (review, 2026-10-18; the same as the bar's Pedido in
+   "Agregar un registro", below); the long name is cut inside the select, and the list opens in full when tapped */
+.qform select{min-height:44px;font-size:16px;max-width:100%;width:100%}
 /* ending the shift in a room: what is about to be closed */
 .leavelist{margin:0;padding-left:18px;display:grid;gap:4px}
 .leavelist i{color:var(--muted)}
@@ -1315,3 +1319,22 @@ table.bycode tr.trow.rp-dtotal td.red{color:var(--warn)}
 .dlg .fromorder{margin:0;padding:8px 12px;border-radius:10px;background:var(--soft);border:1px solid #6fb3aa;color:#0b5a54}
 .dlg .fromorder.off{background:var(--bg);border-color:var(--line);color:var(--muted)}
 .dlg .fromorder b{color:var(--ink)}
+/* an order's pallets window: "+ Agregar pallet a este PO" (2026-10-18) asks where it goes. Each run of the code is a
+   whole button with its day, line and lot on top and its hours and pallets under them, so it is told apart at a look */
+.addto{display:grid;gap:8px}
+.addto h4{margin:0;font-size:16px;color:var(--ink)}
+.addto>.btn{justify-self:start}
+.addruns{display:grid;gap:8px}
+.addruns .btn{min-height:56px;display:grid;gap:2px;justify-items:start;text-align:left;white-space:normal;line-height:1.3;padding:8px 14px}
+.addruns .btn small{font-size:13.5px;font-weight:500}
+@media (max-width:480px){.addto>.btn{justify-self:stretch}}
+/* a record's comment (Jose, 2026-10-18: "una casilla para poner comentarios"): its box in "Agregar un registro" and
+   in Corregir, two lines with the face of the other boxes; and where the record is shown, small, under the rest */
+.notebox{display:grid;gap:4px;font-size:13px;font-weight:600;color:var(--muted)}
+.notebox textarea{width:100%;min-height:68px;padding:10px 12px;border-radius:12px;border:1.5px solid var(--line);background:var(--surface);font-size:17px;line-height:1.35;resize:vertical;font-weight:400;color:var(--ink)}
+.notebox .left{font-weight:600}
+.donerow .rnote{margin-top:4px;font-size:13px;color:var(--muted);overflow-wrap:anywhere}
+.report td.rp-note{white-space:normal;min-width:180px;max-width:320px;overflow-wrap:anywhere}
+.rp-detail .setfact.rp-dnote{grid-column:1/-1}
+.rp-detail .setfact.rp-dnote span{font-size:15px;color:var(--ink);overflow-wrap:anywhere}
+@media (max-width:720px){.rp-cardlist td.rp-note{grid-column:1/-1;max-width:none;min-width:0}}
