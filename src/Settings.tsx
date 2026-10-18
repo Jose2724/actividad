@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore } from 'react'
-import { byLineName, CFG, dayShiftsText, DEPTS, lineLabel, lotFor, nightText, openRun, removedLines, removeLine, restoreLine, setDayShifts, setLineRules, shiftGoalOf, shiftHours, shiftsOf, turnOf, weekOf, type Dept, type Line, type State, type WorkDay } from './store'
+import { byLineName, CFG, dayShiftsText, DEPTS, lineLabel, lotFor, managerPin, nightText, openRun, removedLines, removeLine, reset, resetRecords, restoreLine, setDayShifts, setLineRules, shiftGoalOf, shiftHours, shiftsOf, turnOf, uploadAll, weekOf, type Dept, type Line, type State, type WorkDay } from './store'
 import { ConfirmDialog, LangSwitch, LineNameDialog, longDate, NoticeDialog, Products, QrLink, ShiftsDialog, StartDayDialog, TargetDialog, useCan } from './App'
 import { Employees } from './Employees'
 import { Devices } from './DevicesView'
@@ -216,16 +216,59 @@ function GoalsSettings({ s, now, day }: { s: State; now: number; day: WorkDay })
 function DeviceSettings({ now, name, home, mgr, viewOnly, onLeave }: { now: number; name: string; home: Dept; mgr: boolean; viewOnly: boolean; onLeave: () => void }) {
   const sync = useSyncExternalStore(syncStore.subscribe, syncStore.get)
   const off = supabase ? clockOffText() : '', clk = supabase ? clockState() : null
+  // the tools of the device itself (they were at the bottom of the Reporte, which is about the day only since
+  // 2026-10-17): for whoever sees every room, never for somebody who only looks
+  const tools = useCan()('depts') && !viewOnly
+  return (
+    <>
+      <div className="setcard">
+        <div className="sethead"><h3>{tr('Este aparato')}</h3></div>
+        <div className="setfacts">
+          <Fact label={tr('Quién')} value={name} note={viewOnly ? tr('Solo ver') : mgr ? tr('Manager') : home} />
+          <Fact label={tr('Versión')} value={BUILD || '—'} />
+          {supabase && <Fact label={tr('Última bajada del servidor')} value={sync.lastSync ? fmtTime(sync.lastSync) : '—'} note={sync.pending > 0 ? tr('{0} sin subir', String(sync.pending)) : tr('todo subido')} />}
+          {supabase && <Fact label={tr('Reloj')} value={off ? off : clk && clk.measured ? tr('ajustado con el servidor') : tr('el suyo, sin ajustar')} note={new Date(now).toLocaleTimeString()} />}
+        </div>
+        <div className="btns"><LangSwitch />{mgr && <QrLink label={tr('Abrir en otro aparato')} />}<button type="button" className="btn" onClick={onLeave}>{tr('Salir')}</button></div>
+      </div>
+      {tools && <DeviceTools />}
+    </>
+  )
+}
+
+/** cleaning this device and bringing everything back from the server, or sending up what it holds; in the demo, its own resets and the manager's code */
+function DeviceTools() {
+  const [resetting, setResetting] = useState(false)
+  const [clearing, setClearing] = useState(false)
+  const [pinOpen, setPinOpen] = useState(false)
+  const [newPin, setNewPin] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const [notice, setNotice] = useState<{ title: string; text?: string } | null>(null)
   return (
     <div className="setcard">
-      <div className="sethead"><h3>{tr('Este aparato')}</h3></div>
-      <div className="setfacts">
-        <Fact label={tr('Quién')} value={name} note={viewOnly ? tr('Solo ver') : mgr ? tr('Manager') : home} />
-        <Fact label={tr('Versión')} value={BUILD || '—'} />
-        {supabase && <Fact label={tr('Última bajada del servidor')} value={sync.lastSync ? fmtTime(sync.lastSync) : '—'} note={sync.pending > 0 ? tr('{0} sin subir', String(sync.pending)) : tr('todo subido')} />}
-        {supabase && <Fact label={tr('Reloj')} value={off ? off : clk && clk.measured ? tr('ajustado con el servidor') : tr('el suyo, sin ajustar')} note={new Date(now).toLocaleTimeString()} />}
+      <div className="sethead"><h3>{tr('Herramientas de este aparato')}</h3></div>
+      <div className="btns">
+        {supabase && <button type="button" className="btn" onClick={() => setUploading(true)}>{tr('Subir al servidor los registros de este aparato')}</button>}
+        {!supabase && <button type="button" className="btn stopbtn" onClick={() => setClearing(true)}>{tr('Reiniciar registros (conserva productos y líneas)')}</button>}
+        <button type="button" className="btn stopbtn" onClick={() => setResetting(true)}>{supabase ? tr('Limpiar este aparato y volver a bajar del servidor') : tr('Borrar todo')}</button>
+        {!supabase && <button type="button" className="btn" onClick={() => { setNewPin(''); setPinOpen(true) }}>{tr('Cambiar código de manager')}</button>}
       </div>
-      <div className="btns"><LangSwitch />{mgr && <QrLink label={tr('Abrir en otro aparato')} />}<button type="button" className="btn" onClick={onLeave}>{tr('Salir')}</button></div>
+      {uploading && <ConfirmDialog title={tr('¿Subir al servidor todo lo que tiene este aparato?')} text={tr('Corridas, paros, líneas, productos y programado de este aparato se mandan al servidor (lo que ya estaba allá se conserva si es más nuevo). Útil una sola vez por tablet, para traer los días del piloto.')} yes={tr('Subir')} onYes={() => { const n = uploadAll(); setUploading(false); setNotice({ title: tr('{0} registros en cola', n), text: tr('Se envían en cuanto hay señal. El punto junto a tu nombre dice "Sincronizado" cuando terminó.') }) }} onNo={() => setUploading(false)} />}
+      {notice && <NoticeDialog title={notice.title} text={notice.text} onClose={() => setNotice(null)} />}
+      {pinOpen && (
+        <div className="veil" onClick={() => setPinOpen(false)}>
+          <div className="dlg" onClick={(e) => e.stopPropagation()}>
+            <h3>{tr('Código de manager')}</h3>
+            <p>{tr('Con este código se entra como manager en este dispositivo (ve todos los departamentos, el Avance y puede borrar datos).')}</p>
+            <form className="qform" onSubmit={(e) => { e.preventDefault(); if (newPin.trim().length >= 4) { managerPin.set(newPin.trim()); setPinOpen(false) } }}>
+              <label>{tr('Nuevo código (mínimo 4)')}{' '}<input autoFocus inputMode="numeric" value={newPin} onChange={(e) => setNewPin(e.target.value)} autoComplete="off" /></label>
+              <div className="dbtns"><button type="button" className="btn" onClick={() => setPinOpen(false)}>{tr('Cancelar')}</button><button type="submit" className="btn primary" disabled={newPin.trim().length < 4}>{tr('Guardar')}</button></div>
+            </form>
+          </div>
+        </div>
+      )}
+      {clearing && <ConfirmDialog title={tr('¿Reiniciar los registros?')} text={tr('Se borran las corridas, los paros y lo programado de todos los días. La tabla de productos y las líneas se quedan. No se puede deshacer.')} yes={tr('Reiniciar')} danger onYes={() => { resetRecords(); setClearing(false) }} onNo={() => setClearing(false)} />}
+      {resetting && <ConfirmDialog title={supabase ? tr('¿Limpiar este aparato?') : tr('¿Borrar todos los datos de este dispositivo?')} text={supabase ? tr('Se vacía lo guardado en este aparato y se vuelve a bajar todo del servidor. Lo que esté en el servidor no se toca; lo que este aparato no haya subido todavía se pierde.') : tr('Se borran las líneas, los registros, los paros, lo programado y la tabla de productos. No se puede deshacer.')} yes={supabase ? tr('Limpiar y bajar') : tr('Borrar todo')} danger onYes={() => { reset(); setResetting(false) }} onNo={() => setResetting(false)} />}
     </div>
   )
 }

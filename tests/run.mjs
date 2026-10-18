@@ -2700,6 +2700,55 @@ section('Reporte: lo hecho por departamento, por código y lote, y por causa de 
   eq('el horario que pone el manager llega a la tablet', [tab.use((m) => hrs(m.shiftsOf(m.store.get(), '2027-01-02'))), tab.use((m) => hrs(m.shiftsOf(m.store.get(), DAY))), all.map((d) => d.use((m) => m.outbox.size()))], [['07:00', '15:00', '15:30', '23:30'], hrs(NO_GAP), [0, 0]])
 }
 
+section('Buscar en el reporte')
+{
+  // one Packing run of A100 with twelve pallets (the second with two lots, each with its tag, for a PO), and an RTE run
+  // of 0100, lot 6123, recorded by Ana: a cart in each shift and a mechanical stop with a note. No pallet is recorded at
+  // a minute 12, so "12" can only be pallet 12 (or a unit 12).
+  const bus = await device('bus', { user: 'Nino' })
+  bus.use((m) => {
+    const st = () => m.store.get()
+    clock = T0
+    m.addLine('Packing', 'Línea 1')
+    const pack = st().lines.find((l) => l.dept === 'Packing')
+    m.startRun(pack, 'A100', '6283', DAY, 36)
+    const pr = () => st().runs.find((r) => r.code === 'A100')
+    const po = m.saveOrder(null, { customer: 'Cliente A', po: '4500011', code: 'A100', cases: 72, shipBy: '2026-10-15', dest: '' })
+    clock = T0 + 1 * M; m.unitDone(pr().id, 36, '1749')
+    clock = T0 + 2 * M; m.unitDone(pr().id, 0, '', [{ lot: '6283', qty: 20, tag: '1750' }, { lot: '6284', qty: 16, tag: '1751' }], po)
+    for (let n = 3; n <= 12; n++) { clock = T0 + (n === 12 ? 13 : n) * M; m.unitDone(pr().id, 36, String(2000 + n)) }
+    m.user.set('Ana')
+    clock = T0 + 3 * M; m.addLine('RTE', 'Línea 2')
+    const rte = st().lines.find((l) => l.dept === 'RTE')
+    m.startRun(rte, '0100', '6123', DAY, 240)
+    const rr = () => st().runs.find((r) => r.code === '0100')
+    clock = T0 + 5 * M; m.unitDone(rr().id, 240) // 3:05 PM, the first shift
+    clock = T0 + 20 * M; m.startStop('RTE', rte.id, 'Problema mecánico', 'banda floja')
+    clock = T0 + 25 * M; m.endStop(st().stops.find((x) => !x.endedAt).id)
+    clock = T0 + 30 * M; m.unitDone(rr().id, 240) // 3:30 PM, the second shift
+    clock = T0 + 40 * M
+    const rep = m.reportOf(st(), DAY, clock), pid = pr().id, rid = rr().id
+    const find = (q, r = rep) => m.searchReport(st(), r, q, [], clock)
+    const of = (q, kind, r) => find(q, r).hits.filter((h) => h.kind === kind).map((h) => h.key)
+    eq('el tag del segundo lote de un pallet encuentra ese pallet, y la unidad de ese lote (no la del otro lote)', [of('1751', 'pallet'), find('1751').keys.has(m.hitKey.unit(pid, 1, '6284')), find('1751').keys.has(m.hitKey.unit(pid, 1, '6283'))], [[m.hitKey.pallet(pid, 2)], true, false])
+    eq('"12" es el pallet 12, nunca el lote 6123 ni el tag 1749', [of('12', 'pallet'), of('12', 'run'), find('12').hits.some((h) => h.kind === 'unit' && h.runId === rid)], [[m.hitKey.pallet(pid, 12)], [], false])
+    eq('un número corto es una palabra entera: "61" no encuentra el lote 6123, "612" sí', [find('61').hits.length, of('612', 'run'), of('612', 'unit').length], [0, [m.hitKey.run(rid)], 2])
+    eq('la causa se encuentra sin acentos, en mayúsculas y en inglés; y por su detalle', ['mecanico', 'MECÁNICO', 'mechanical', 'banda'].map((q) => of(q, 'stop').length), [1, 1, 1, 1])
+    eq('cada palabra tiene que estar: "A100 6284" trae solo lo que lleva las dos', [find('A100 6284').hits.map((h) => h.kind), of('A100 6284', 'pallet'), find('A100 9999').hits.length], [['code', 'pallet', 'unit', 'run'], [m.hitKey.pallet(pid, 2)], 0])
+    eq('el PO encuentra sus pallets', of('4500011', 'pallet'), [m.hitKey.pallet(pid, 2)])
+    eq('el nombre de quien registró encuentra sus unidades y su corrida', [of('ana', 'unit').length, of('ana', 'run'), find('ana').hits.some((h) => h.runId === pid)], [2, [m.hitKey.run(rid)], false])
+    const one = m.reportOf(st(), DAY, clock, { shift: 1 })
+    eq('con el turno 1 no se encuentra el carro del turno 2; con el día completo, sí', [of('3:30', 'unit', one).length, of('3:30', 'unit').length], [0, 1])
+    const scopes = (q, r = rep) => find(q, r).scopes
+    eq('"0100" y "100" ofrecen ver solo el código 0100; un lote exacto, ese lote; el nombre de una línea, esa línea; un departamento, ese', [scopes('0100'), scopes('100'), scopes('6283'), scopes('línea 2'), scopes('RTE Línea 2'), scopes('packing')], [[{ kind: 'code', value: '0100' }], [{ kind: 'code', value: '0100' }], [{ kind: 'lot', value: '6283' }], [{ kind: 'line', value: rte.id }], [{ kind: 'line', value: rte.id }], [{ kind: 'dept', value: 'Packing' }]])
+    eq('no se ofrece lo que ya es el filtro', [scopes('100', m.reportOf(st(), DAY, clock, { code: '0100' })), scopes('6283', m.reportOf(st(), DAY, clock, { lot: '6283' }))], [[], []])
+    eq('una búsqueda vacía no trae nada', [find('').hits, find('').keys.size, find('').scopes, find('   ').hits, find('   ').keys.size, find('   ').scopes], [[], 0, [], [], 0, []])
+    eq('cada pallet se encuentra por su tag, con la misma llave que usa la tabla', rep.pallets.map((p) => find(p.parts[0].tag).keys.has(m.hitKey.pallet(p.r.id, p.n))), rep.pallets.map(() => true))
+    eq('los cambios del día también, para quien los ve', m.searchReport(st(), rep, 'Pedido nuevo', st().changes, clock).hits.map((h) => h.kind), ['change'])
+    eq('los lotes de una corrida: los de sus unidades', [...m.runLots(st(), pr())].sort(), ['6283', '6284'])
+  })
+}
+
 // =====================================================================================================================
 console.log('')
 if (failed.length) { console.log(failed.length + ' FALLARON de ' + (passed + failed.length) + ':\n'); for (const f of failed) console.log('  ✗ ' + f + '\n'); process.exit(1) }

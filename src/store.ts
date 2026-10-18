@@ -2162,3 +2162,10 @@ export function fmtDur(ms: number) {
   return (h ? h + ':' : '') + pad(m) + ':' + pad(x)
 }
 export const fmtTime = (ms: number) => new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+// (the next three are shared by the screens and the report's search, so a number, a lot and a word read the same everywhere)
+/** "1,250": a count with a comma in the thousands */
+export const fmtN = (x: number) => Math.round(x).toLocaleString('en-US')
+/** "6168-6216", "6168/6216": two lots typed as one; a pallet with two lots is recorded lot by lot, each with its cases */
+export const looksLikeTwoLots = (lot: string) => /^\s*\d{3,5}\s*[-/,+]\s*\d{3,5}\s*$/.test(lot)
+/** without accents or capitals: what is typed in a search matches what was written */
+export const plainText = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()

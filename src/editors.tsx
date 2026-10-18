@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { addRunLater, addUnit, applyDraft, BIN_WORDS, binOf, binWord, byLineName, cfgFor, DEPTS, kindClass, MFO_WORDS, plainDay, planRows, SPIRAL_UNITS, type Dept, byShip, CFG, cfgOf, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, setUnitOrder, splitStop, store, updateRun, updateStop, type Run, type State, type Stop, lineLabel } from './store'
 import { clockNow } from './clock'
 import { ConfirmDialog, LotsDialog, useCan } from './App'
@@ -14,8 +14,11 @@ const hm = (ms: number) => { const d = new Date(ms); return String(d.getHours())
  * line's card is passed to the right one; one tapped on a line that was not working is dropped. A code finished too
  * early can be reopened.
  */
-export function RunEditor({ s, run, mgr, onClose }: { s: State; run: Run; mgr: boolean; onClose: () => void }) {
+export function RunEditor({ s, run, mgr, focusAt, onClose }: { s: State; run: Run; mgr: boolean; focusAt?: number; onClose: () => void }) {
   const can = useCan()
+  // opened from a unit of the report (a pallet, a cart): that unit is marked and brought into view inside the box
+  const focusRow = useRef<HTMLTableRowElement>(null)
+  useEffect(() => { focusRow.current?.scrollIntoView({ block: 'nearest' }) }, []) // (braces: in new browsers scrollIntoView returns a promise, which an effect must not return)
   // a Packing line that filled bins is corrected in a bin's words; a pallet carries a tag for each of its lots
   const cfg = cfgOf(run), tagsInLots = !!cfg.lots
   // how the form opened: saving applies only what was changed since, on top of what the run is by then
@@ -68,7 +71,7 @@ export function RunEditor({ s, run, mgr, onClose }: { s: State; run: Run; mgr: b
             <table>
               <thead><tr><th>#</th><th>{tr('Hora')}</th>{cfg.qty !== 'none' && <th>{cfg.qtyUnit}</th>}{cfg.lots && <th>{tr('Lotes y tags')}</th>}{cfg.refLabel && !tagsInLots && <th>{cfg.refLabel}</th>}{withOrders && <th>{tr('Pedido')}</th>}<th>{tr('Por')}</th><th></th></tr></thead>
               <tbody>{units.map((u, i) => (
-                <tr key={u.at + ':' + i}>
+                <tr key={u.at + ':' + i} ref={focusAt != null && u.at === focusAt ? focusRow : undefined} className={focusAt != null && u.at === focusAt ? 'rp-focus' : undefined}>
                   <td>{i + 1}</td><td>{fmtTime(u.at)}</td>
                   {cfg.qty !== 'none' && <td><input className="num" inputMode="numeric" value={u.qty} disabled={!!u.lots?.length} title={u.lots?.length ? tr('Es la suma de sus lotes') : ''} onChange={(e) => setUnits(units.map((x, k) => (k === i ? { ...x, qty: e.target.value.replace(/\D/g, '') } : x)))} /></td>}
                   {cfg.lots && <td>{u.lots?.length ? lotsText(u.lots) : <small>{(lot || '—') + (u.ref ? ' (tag ' + u.ref + ')' : '')}</small>} <button type="button" className="lnk" title={tr('Cambiar los lotes y los tags de esta unidad')} onClick={() => setLotsOf(i)}>✎</button></td>}

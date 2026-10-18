@@ -1,5 +1,6 @@
-import { apartOf, binOf, CFG, DEPTS, kindOf, lineNameOf, normCode, orderLabel, orderOfId, orderPallets, palletPo, plainDay, runInShift, runStats, SETUP, shiftAt, shiftPieces, shiftsOf, stopSpans, unitQty, waitsForCode, type Dept, type Run, type ShiftHours, type State, type Unit } from './store'
-import { tr } from './i18n'
+import { apartOf, binOf, binWord, CFG, cfgOf, DEPTS, fmtTime, kindOf, lineNameOf, normCode, noteLabel, orderLabel, orderOfId, orderPallets, palletPo, plainDay, plainText, productOf, runInShift, runStats, SETUP, shiftAt, shiftPieces, shiftsOf, stopSpans, unitQty, waitsForCode, whoText, type Change, type Dept, type Run, type ShiftHours, type State, type Unit } from './store'
+import { clockNow } from './clock'
+import { phrase, tr } from './i18n'
 
 /**
  * The day's report, as the tables on screen and in every file made from them (Excel, CSV, PDF): one place decides
@@ -17,7 +18,7 @@ export function unitParts(s: State, r: Run, u: Unit): { lot: string; qty: number
   return [{ lot: r.lot, qty: CFG[r.dept].qty === 'none' ? null : unitQty(s, r, u), tag: u.ref }]
 }
 /** every lot a run has touched: on its units, and while it runs, on the pallet being built and the lot being packed now */
-const runLots = (s: State, r: Run) => new Set([...(r.units.length ? r.units.flatMap((u) => unitParts(s, r, u).map((p) => p.lot)) : [r.lot]), ...(r.endedAt ? [] : [...(r.extra?.open?.parts.map((p) => p.lot) ?? []), ...(r.extra?.lotNow ? [r.extra.lotNow] : [])])])
+export const runLots = (s: State, r: Run) => new Set([...(r.units.length ? r.units.flatMap((u) => unitParts(s, r, u).map((p) => p.lot)) : [r.lot]), ...(r.endedAt ? [] : [...(r.extra?.open?.parts.map((p) => p.lot) ?? []), ...(r.extra?.lotNow ? [r.extra.lotNow] : [])])])
 const round2 = (x: number) => Math.round(x * 100) / 100
 /** one lot of a code in the report: how many units carry it, how much, and what each shift made of it (the whole day's report) */
 export type LotLine = { lot: string; units: number; qty: number; byShift: [number, number] | null }
@@ -163,3 +164,72 @@ export function reportOf(s: State, date: string, now: number, f: ReportFilter = 
 /** the words a filtered report carries in its title and in the name of its files */
 export const filterTitle = (code: string, lot: string, shift: 0 | 1 | 2 = 0, line = '') => (shift ? ' ' + tr('· Turno {0}', shift) : '') + (line ? ' · ' + line : '') + (code ? ' ' + tr('· código {0}', code) : '') + (lot ? ' ' + tr('· lote {0}', lot) : '')
 export const filterFile = (code: string, lot: string, shift: 0 | 1 | 2 = 0, line = '') => { const clean = (t: string) => t.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, ''); return (shift ? '-turno' + shift : '') + (line ? '-' + clean(line) : '') + (code ? '-cod-' + clean(code) : '') + (lot ? '-lote-' + clean(lot) : '') }
+
+// ---- the report's search (2026-10-17: "un search bar para buscar algo en específico", one box for every room) ----
+export type Report = ReturnType<typeof reportOf>
+export type HitKind = 'code' | 'pallet' | 'bin' | 'unit' | 'run' | 'stop' | 'change'
+/** one record the search found: what it is, its key in the tables, its room, its moment and what opens it */
+export type Hit = { kind: HitKind; key: string; dept: Dept | null; at: number; runId?: string; unitAt?: number; stopId?: string; changeId?: string }
+/** a whole query that names something the filters can hold: offered as a real filter, so the files follow it */
+export type Scope = { kind: 'code' | 'lot' | 'line' | 'dept'; value: string }
+/** the keys the report's tables and its search share, so a table keeps exactly the rows the search found */
+export const hitKey = {
+  code: (dept: Dept, code: string, bin: string) => 'code:' + dept + '|' + normCode(code) + '|' + bin,
+  pallet: (runId: string, n: number) => 'pallet:' + runId + ':' + n,
+  bin: (runId: string, n: number) => 'bin:' + runId + ':' + n,
+  unit: (runId: string, i: number, lot: string) => 'unit:' + runId + ':' + i + ':' + lot,
+  run: (id: string) => 'run:' + id,
+  stop: (id: string) => 'stop:' + id,
+  change: (id: string) => 'change:' + id,
+}
+/** the words of a text, without accents or capitals: "Línea 12" → ["linea", "12"] */
+const wordsOf = (t: string) => plainText(t).split(/[^a-z0-9]+/).filter(Boolean)
+/** "Turno 1", or "Turno 1" and "Turno 2" for something that touched both ("1 y 2") */
+const shiftWords = (shifts: string | number) => [...String(shifts).matchAll(/[12]/g)].map((m) => tr('Turno {0}', m[0]))
+
+/**
+ * What the report in view holds that answers the query: every word typed must be in the record (in any field), so
+ * "A100 6284" finds what carries both. A number of one or two digits is read as a whole word ("12" is pallet 12 or a
+ * time at 12, never lot 6123), and a code typed with or without its zeros is the same code. Accents and capitals do
+ * not matter, and a stop's cause is found in Spanish and in English on any device (the causes are data in Spanish).
+ * The files never follow the search: only the filters, which a scope sets for real.
+ */
+export function searchReport(s: State, rep: Report, q: string, changes: Change[] = [], now: number = clockNow()): { hits: Hit[]; keys: Set<string>; scopes: Scope[] } {
+  const toks = plainText(q).split(/\s+/).filter(Boolean)
+  if (!toks.length) return { hits: [], keys: new Set(), scopes: [] }
+  const fits = (fields: unknown[], codes: string[] = []) => {
+    const texts = fields.map((f) => plainText(String(f ?? ''))).filter(Boolean)
+    return toks.every((t) => codes.some((c) => normCode(c) === normCode(t)) || (/^\d{1,2}$/.test(t) ? texts.some((x) => x.split(/[^a-z0-9]+/).includes(t)) : texts.some((x) => x.includes(t))))
+  }
+  const product = (code: string) => productOf(s, code)?.name ?? ''
+  const line = (r: Run) => lineNameOf(s, r.lineId, r.line)
+  const byAt = (a: Hit, b: Hit) => a.at - b.at
+  const codes = rep.byCode.filter((c) => fits([c.code, product(c.code), c.dept, ...c.lots.map((l) => l.lot), ...c.lines], [c.code]))
+    .map((c): Hit => ({ kind: 'code', key: hitKey.code(c.dept, c.code, c.bin), dept: c.dept, at: 0 }))
+  const pallets = rep.pallets.filter((p) => fits([String(p.n), p.r.code, product(p.r.code), ...p.parts.flatMap((x) => [x.lot, x.tag]), p.order, line(p.r), p.by, p.open ? '' : fmtTime(p.at), ...shiftWords(p.shift), p.r.dept], [p.r.code]))
+    .map((p): Hit => ({ kind: 'pallet', key: hitKey.pallet(p.r.id, p.n), dept: p.r.dept, at: p.at, runId: p.r.id, unitAt: p.open ? undefined : p.at })).sort(byAt)
+  const bins = rep.bins.filter((b) => fits([String(b.n), b.r.code, product(b.r.code), b.lot, b.ref, binWord(b.word), line(b.r), b.by, fmtTime(b.at), ...shiftWords(b.shift), b.r.dept], [b.r.code]))
+    .map((b): Hit => ({ kind: 'bin', key: hitKey.bin(b.r.id, b.n), dept: b.r.dept, at: b.at, runId: b.r.id, unitAt: b.at })).sort(byAt)
+  const units = rep.unitRows.filter((x) => fits([String(x.i + 1), x.r.code, product(x.r.code), x.lot, x.tag, x.order, line(x.r), x.u.by, fmtTime(x.u.at), ...shiftWords(x.shift), cfgOf(x.r).unit, x.r.dept], [x.r.code]))
+    .map((x): Hit => ({ kind: 'unit', key: hitKey.unit(x.r.id, x.i, x.lot), dept: x.r.dept, at: x.u.at, runId: x.r.id, unitAt: x.u.at })).sort(byAt)
+  const runs = rep.rows.filter((x) => fits([x.r.code, product(x.r.code), x.lots, line(x.r), whoText(x.r), fmtTime(x.r.startedAt), ...Object.keys(x.st.reasons).flatMap((k) => [k, phrase(k, 'en')]), ...shiftWords(x.shifts), x.r.dept], [x.r.code]))
+    .map((x): Hit => ({ kind: 'run', key: hitKey.run(x.r.id), dept: x.r.dept, at: x.r.startedAt, runId: x.r.id })).sort(byAt)
+  const stops = rep.stops.filter((x) => fits([x.reason, phrase(x.reason, 'en'), noteLabel(x.note), x.note, x.lineId === null ? tr('Todo {0}', x.dept) : lineNameOf(s, x.lineId), x.by, fmtTime(x.startedAt), ...shiftWords(spanShifts(rep.plan, x.startedAt, x.endedAt ?? now)), x.dept]))
+    .map((x): Hit => ({ kind: 'stop', key: hitKey.stop(x.id), dept: x.dept, at: x.startedAt, stopId: x.id })).sort(byAt)
+  const done = changes.filter((c) => fits([c.what, c.by, c.before, c.after, c.dept, fmtTime(c.at)]))
+    .map((c): Hit => ({ kind: 'change', key: hitKey.change(c.id), dept: c.dept, at: c.at, changeId: c.id })).sort(byAt)
+  const hits = [...codes, ...pallets, ...bins, ...units, ...runs, ...stops, ...done]
+  // the whole query, when it names a code, a lot, a line or a room of the day that is not the filter already
+  const whole = q.trim(), said = wordsOf(whole).join(' ')
+  const code = rep.codes.find((c) => normCode(c) === normCode(whole))
+  const lot = rep.lots.find((l) => l === whole)
+  const ln = rep.lineChoices.find((l) => wordsOf(l.name).join(' ') === said || wordsOf(l.dept + ' ' + l.name).join(' ') === said)
+  const room = DEPTS.find((d) => plainText(d) === plainText(whole))
+  const scopes: Scope[] = [
+    ...(code && normCode(code) !== normCode(rep.code) ? [{ kind: 'code' as const, value: code }] : []),
+    ...(lot && lot !== rep.lot ? [{ kind: 'lot' as const, value: lot }] : []),
+    ...(ln && ln.id !== rep.line ? [{ kind: 'line' as const, value: ln.id }] : []),
+    ...(room && !(rep.byDept.length === 1 && rep.byDept[0].dept === room) ? [{ kind: 'dept' as const, value: room }] : []),
+  ].slice(0, 3)
+  return { hits, keys: new Set(hits.map((h) => h.key)), scopes }
+}
