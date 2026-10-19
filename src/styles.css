@@ -550,8 +550,12 @@ table.shiftgrid tr.sep td{background:var(--bg);color:var(--muted);font-size:11px
 .plan td.planbar .bar{display:inline-block;width:calc(100% - 44px);height:10px;margin:0 6px 0 0;vertical-align:middle}
 .plan td.planbar small{color:var(--muted);font-variant-numeric:tabular-nums}
 .planrows{display:grid;gap:6px}
-.planrow{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:8px}
+/* code, quantity, and the lot (2026-10-19: offered as the day's, free to change or clear) */
+.planrow{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) minmax(0,.9fr);gap:8px}
 .planrow.head{font-size:12px;color:var(--muted);font-weight:700}
+.plan th.plot,.plan td.plot{font-family:ui-monospace,Menlo,Consolas,monospace;white-space:nowrap}
+/* the lot under the code: for the phone only (the media query below shows it and hides the column) */
+.plan .plotsm{display:none;font-family:ui-monospace,Menlo,Consolas,monospace}
 .hint.red{color:var(--warn)}
 /* on a free line: the pending codes of the program, to start one with a tap */
 .todo{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
@@ -559,10 +563,18 @@ table.shiftgrid tr.sep td{background:var(--bg);color:var(--muted);font-size:11px
 .todo small{color:var(--muted);font-size:12.5px;font-weight:700}
 .chip.sm{min-height:36px;padding:0 10px;font-size:13.5px;font-weight:500}
 .chip.sm b{font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:800}
-/* on a phone the program keeps what matters (the code, what was set, what is made, what is left): each shift's part and the bar are for wider screens */
+/* on a phone the program keeps what matters (the code, what was set, what is made, what is left): each shift's part and
+   the bar are for wider screens, and the lot column goes under the code (with the column, HECHO and PENDIENTE fell out
+   of the card's frame at 375 px: review of 2026-10-19) */
 @media (max-width:600px){
   .plan{padding:12px}
-  .plan .turn,.plan .planbar{display:none}
+  .plan .turn,.plan .planbar,.plan .plot{display:none}
+  .plan .plotsm{display:block}
+  /* the product's name may wrap and the headers lose their letter-spacing, so the four columns fit in a 375 px frame
+     (a name like "Beef stew · bin 5 lb" kept on one line pushed PENDIENTE out of it) */
+  .plan th{letter-spacing:0}
+  .plan td .pname{white-space:normal}
+  .plan td .plotsm{white-space:nowrap}
   .plan th,.plan td{padding:6px 5px}
   .plan table{font-size:14px}
 }
@@ -672,8 +684,14 @@ table.pallets th.num,table.pallets td.num{text-align:right;font-variant-numeric:
   .emp > .btn,.emp > .nobtn{grid-area:btn}
 }
 /* Spiral: each code of its program in its own unit (mezclas, lb, cajas), typed with it */
-.planrow.spiral{grid-template-columns:minmax(0,1.1fr) minmax(0,.8fr) minmax(0,.9fr)}
+.planrow.spiral{grid-template-columns:minmax(0,1.1fr) minmax(0,.8fr) minmax(0,.9fr) minmax(0,.8fr)}
 .planrow.spiral select{min-height:46px;padding:0 8px;border-radius:12px;border:1.5px solid var(--btn-line);background:var(--surface);font-size:15px;font-weight:600}
+/* on a phone Spiral's four boxes do not fit in one line (the Unidad select was 75 px wide and "mezclas" read "mezcl",
+   review of 2026-10-19): each row wraps, code and quantity above, unit and lot under them, the labels the same way */
+@media (max-width:600px){
+  .planrow.spiral{grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);row-gap:4px}
+  .planrow.spiral + .planrow.spiral{margin-top:6px}
+}
 .plan small.punit{color:var(--muted);font-weight:600;font-size:12px}
 /* the shift's clock paused: codes left running with nothing recorded for over an hour after the shift's hour */
 .tc-clock.paused{background:#fff7e6}
@@ -917,6 +935,11 @@ table.avmini tbody tr:last-child td{border-bottom:0}
 .made.fl-tile-short{background:#fff1d6;color:#7a4700}.made.fl-tile-over{background:var(--red-soft);color:#9b1f19}
 .flhow{margin:0;padding-left:18px;font-size:13px;color:var(--muted);max-width:520px;display:grid;gap:3px}.flhow b{color:var(--ink)}
 .flujo .pill.run{font-size:11px;padding:2px 8px}
+/* PROD's second line (2026-10-19): what Spiral weighed in pounds or counted in cases, in Spiral's own ink so it reads
+   as that room's fact beside the mezclas (never a case count); alone, in the big face, for a code Spiral only weighs */
+.fltable td.fl-prod small.fl-spiral{color:var(--d-ink);font-weight:700}
+/* the lot's program under a room's cell ("prog. 80 mezclas", 2026-10-19): office data beside the floor's count, quieter than it */
+.fltable td.slim small.fl-prog{color:#4a5a6a;font-weight:600;font-style:italic}
 /* CONSUMO (2026-10-19): the two inventory columns at the right, tinted as a group (a blue-grey apart from the
    projection's green-grey: a group, not a meaning). A number that IS inventory (something left unpacked, cases without
    a PO) in ink; a 0 in grey, so the office reads the column for what there is. The tiles and the lot band's pieces
@@ -932,6 +955,7 @@ table.avmini tbody tr:last-child td{border-bottom:0}
    row (review of 2026-10-19); on a phone two per row still fit (2 × 150 + 8 < 343) */
 .flujo .heads{grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr))}
 .fltable tr.fl-lot small.fl-lotinv{color:#1b3a57}
+.fltable tr.fl-lot small.fl-lotprog{color:#4a5a6a;font-style:italic}
 .flinv .chip.on{background:#1b3a57;border-color:#1b3a57}
 @media (max-width:720px){
   .fltable{min-width:0}

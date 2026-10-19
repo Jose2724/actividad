@@ -2029,7 +2029,44 @@ section('El programa de cada cuarto: lo que se registra se descuenta solo')
     m.applyRemote('act_plan', { date: '2026-08-01', dept: 'RTE', code: 'OLD1', qty: 5, updated_at: iso(oct(1, 0, 0)) })
     const before = st().plans.some((p) => p.date === '2026-08-01'); m.prune()
     eq('el programa de un día que el aparato ya no guarda se suelta con ese día', [before, st().plans.some((p) => p.date === '2026-08-01'), st().plans.some((p) => p.date === DAY)], [true, false, true])
+    // ---- the program's lot (Jose, 2026-10-19: "que por defecto salga el lote del día, y que sea opcional") ----
+    const plan = (dept, code) => st().plans.find((p) => p.date === DAY && p.dept === dept && m.normCode(p.code) === m.normCode(code))
+    const sentRow = (dept, code) => m.outbox.items().find((i) => i.table === 'act_plan' && i.key === DAY + '|' + dept + '|' + m.normCode(code))?.row
+    const lines = () => st().changes.filter((c) => c.refTable === 'act_plan' && c.dept === 'Spiral').map((c) => [c.what, c.before, c.after])
+    clock = oct(10, 6, 0); m.setPlan(DAY, 'Spiral', '0889', 3, ' 6291 ')
+    eq('un programa con lote: se guarda recortado, sube en la fila y el historial lo nombra', [plan('Spiral', '889').lot, sentRow('Spiral', '889').lot, lines(), m.planRows(st(), DAY, 'Spiral').map((r) => [r.code, r.lot])], ['6291', '6291', [['Programa 2026-10-10 · Spiral · 889 · lote 6291', '', '3']], [['0889', '6291']]])
+    eq('los de antes, sin lote, llevan la columna vacía y suben igual (el servidor los toma en cuanto el 019 esté corrido)', [plan('RTE', '100').lot, sentRow('RTE', '100').lot, m.planRows(st(), DAY, 'RTE').map((r) => r.lot)], ['', '', ['', '']])
+    clock = oct(10, 6, 1); m.setPlan(DAY, 'Spiral', '0889', 3, '6292')
+    eq('la misma cantidad con otro lote es un cambio: el renglón nombra el lote de ahora y "antes" dice el que tenía', [plan('Spiral', '889').lot, sentRow('Spiral', '889').lot, lines().at(-1)], ['6292', '6292', ['Programa 2026-10-10 · Spiral · 889 · lote 6292', '3 · lote 6291', '3']])
+    clock = oct(10, 6, 2); m.setPlan(DAY, 'Spiral', '0889', 3, '6292'); m.setPlan(DAY, 'Spiral', '0889', 3, '')
+    eq('repetir lo mismo no escribe nada; quitarle el lote lo deja como programa del día', [lines().length, plan('Spiral', '889').lot, lines().at(-1)], [3, '', ['Programa 2026-10-10 · Spiral · 889', '3 · lote 6292', '3']])
+    clock = oct(10, 6, 3); m.setPlan(DAY, 'Spiral', 'L1', 2, 'x'.repeat(40))
+    eq('un lote muy largo se recorta', plan('Spiral', 'L1').lot, 'x'.repeat(m.PLAN_LOT_MAX))
+    // from the server: a row with its lot, and one from before 019 (no column at all)
+    m.applyRemote('act_plan', { date: DAY, dept: 'MFO', code: 'M5', qty: 50, lot: '6291', updated_at: iso(oct(10, 6, 4)) })
+    m.applyRemote('act_plan', { date: DAY, dept: 'MFO', code: 'M6', qty: 60, updated_at: iso(oct(10, 6, 4)) })
+    eq('del servidor: el lote llega; una fila sin la columna (antes del 019) se lee sin lote', [plan('MFO', 'M5').lot, plan('MFO', 'M6').lot], ['6291', ''])
+    // a code taken off keeps its lot; put back with another lot, "before" says nothing (it had no quantity): the line
+    // used to read " · lote 6292" alone (review of 2026-10-19)
+    const kl = () => st().changes.filter((c) => c.refTable === 'act_plan' && c.dept === 'Kitchen' && c.what.includes('A100')).map((c) => [c.what, c.before, c.after])
+    // (two minutes apart: the same line retyped within 90 s folds into one, and typed back it is withdrawn: logChange)
+    clock = oct(10, 6, 5); m.setPlan(DAY, 'Kitchen', 'A100', 8, '6292')
+    clock = oct(10, 6, 7); m.setPlan(DAY, 'Kitchen', 'A100', 0, '6292')
+    clock = oct(10, 6, 9); m.setPlan(DAY, 'Kitchen', 'A100', 5, '')
+    eq('quitado y vuelto a poner con otro lote: "antes" queda en blanco, no " · lote 6292" suelto', kl(), [['Programa 2026-10-10 · Kitchen · A100 · lote 6292', '', '8'], ['Programa 2026-10-10 · Kitchen · A100 · lote 6292', '8', ''], ['Programa 2026-10-10 · Kitchen · A100', '', '5']])
+    // a code typed with its quantity blank (the dialog fills the day's lot into every row) makes no row: nothing was
+    // programmed, nothing goes up (review of 2026-10-19); one that had a quantity is still taken off, its lot kept
+    const counts = () => [st().plans.length, m.outbox.items().filter((i) => i.table === 'act_plan').length, st().changes.filter((c) => c.refTable === 'act_plan').length]
+    const b0 = counts()
+    clock = oct(10, 6, 11); m.setPlan(DAY, 'RTE', 'Z9', 0, '6292'); m.setPlan(DAY, 'RTE', 'Z9', 0, '')
+    eq('un código sin cantidad, con el lote del día prellenado, no hace fila, no sube y no deja renglón', [counts(), plan('RTE', 'Z9')], [b0, undefined])
+    clock = oct(10, 6, 13); m.setPlan(DAY, 'RTE', 'Z9', 4, '6292'); clock = oct(10, 6, 15); m.setPlan(DAY, 'RTE', 'Z9', 0, '6292'); clock = oct(10, 6, 17); m.setPlan(DAY, 'RTE', 'Z9', 0, '6299')
+    eq('quitar uno que tenía cantidad sí pasa (y deja su lote); volver a quitarlo con otro lote no escribe nada', [plan('RTE', 'Z9').qty, plan('RTE', 'Z9').lot, counts()[2] - b0[2]], [0, '6292', 2])
   })
+  // the lot is a stored field (2026-10-19): read back on every reload (the rule of 2026-10-17: a new stored field
+  // gets its reload check), and a copy saved before it reads ''
+  const plt = await device('plan-lote', { seed: { lines: [], runs: [], stops: [], products: [], schedule: {}, changes: [], targets: [], shifts: [NO_GAP], plans: [{ date: DAY, dept: 'Kitchen', code: '0889', qty: 3, lot: ' 6291 ', updatedAt: T0 }, { date: DAY, dept: 'RTE', code: 'A100', qty: 500, updatedAt: T0 }] } })
+  eq('al volver a abrir, cada programa tiene su lote (recortado) y el guardado antes del lote se lee sin él', plt.use((m) => m.store.get().plans.map((p) => [p.dept, p.code, p.qty, p.lot])), [['Kitchen', '0889', 3, '6291'], ['RTE', 'A100', 500, '']])
   // from the office's PC to the room's tablet, and back
   const DP = '2026-10-21'
   clock = oct(21, 5, 0); mgr.use((m) => { m.addLine('RTE', 'Línea 19'); m.setPlan(DP, 'RTE', 'P100', 960) }); settle()
@@ -2707,7 +2744,7 @@ section('Flujo de datos: cada lote en todos sus días, con lo que registró cada
     const a = row('6222', '2286')
     eq('2286 / 6222: la fila de la hoja, con sus mismos números', [a.route, a.routeSaid, a.mixes, a.mixRoom, a.pouches, a.cases, a.pallets, a.yieldCs, a.perCase, a.segun, a.diffRte, a.diffMfo, a.diffPacking, a.projected, a.projectedFrom, a.diffProjected, a.palletsProjected, a.state, a.running, a.missing], ['RTE', true, 80, 'Kitchen', 3487, 442, 10, 5.5, 8, 435.88, 49, null, 6.13, 440, 'mixes', 2, 8.8, 'over', true, []])
     eq('… y lo que hizo cada día (el lote siguió al día siguiente)', a.days.map((d) => [d.date, d.mixes, d.pouches, d.cases]), [[D8, 60, 3487, 442], [D9, 20, 0, 0]])
-    eq('los bins de Packing y las libras de Spiral no entran: ni cajas ni mezclas', [a.otherMfo, a.mfo], [false, []])
+    eq('los bins de Packing no entran; las libras de Spiral no son cajas ni mezclas, pero se dicen aparte (2026-10-19)', [a.otherMfo, a.mfo, a.mixes, a.mixRoom, a.spiralApart], [false, [], 80, 'Kitchen', [{ word: 'lb', qty: 1500 }]])
     const b = row('6223', '2286')
     eq('2286 / 6223: las 20 cajas del pallet de dos lotes, que RTE nunca reportó de ese lote: cajas de más', [b.cases, b.pallets, b.pouches, b.mixes, b.segun, b.diffRte, b.diffPacking, b.projected, b.state, b.running], [20, 1, 0, 0, 0, 160, 20, null, 'over', true])
     const c = row('6222', '4419')
@@ -2737,8 +2774,8 @@ section('Flujo de datos: cada lote en todos sus días, con lo que registró cada
     eq('con un cuarto escogido, el total del lote es de las filas que quedan', flt({ route: 'MFO' }).find((l) => l.lot === '6222').sum.cases, 242)
     // the Excel: the office's columns, flat, one row per lot × code
     const sheet = m.flujoSheet(lots)
-    eq('la hoja de Excel: las columnas de la oficina, plana, el lote en cada fila, y las de CONSUMO al final', [sheet[0].length, sheet[0][2], sheet[0][15], sheet[0][25], sheet[0].at(-1), sheet.length], [34, 'COD', 'SEGÚN RTE (CS)', 'Falta en Productos', 'PALLETS EN PEDIDOS', 1 + lots.reduce((t, l) => t + l.rows.length, 0)])
-    eq('la fila 2286 / 6222', sheet.find((r) => r[0] === '6222' && r[2] === '2286'), ['6222', D8 + ', ' + D9, '2286', 'Pollo con arroz', 'RTE', 5.5, 8, 80, 'Kitchen', 3487, 49, '', '', '', '', 435.88, 442, 10, 6.13, 440, 'mezclas × yield', 2, 8.8, '6.13 cs de más', 'sí', '', 79.25, 0.75, 'pouches', 3536, 0, 0, 442, 0])
+    eq('la hoja de Excel: las columnas de la oficina, plana, el lote en cada fila, las de CONSUMO después, las de Spiral y las del programa al final', [sheet[0].length, sheet[0][2], sheet[0][15], sheet[0][25], sheet[0][33], sheet[0][35], sheet[0].at(-1), sheet.length], [38, 'COD', 'SEGÚN RTE (CS)', 'Falta en Productos', 'PALLETS EN PEDIDOS', 'SPIRAL EN', 'PROG. CUARTO', 1 + lots.reduce((t, l) => t + l.rows.length, 0)])
+    eq('la fila 2286 / 6222', sheet.find((r) => r[0] === '6222' && r[2] === '2286'), ['6222', D8 + ', ' + D9, '2286', 'Pollo con arroz', 'RTE', 5.5, 8, 80, 'Kitchen', 3487, 49, '', '', '', '', 435.88, 442, 10, 6.13, 440, 'mezclas × yield', 2, 8.8, '6.13 cs de más', 'sí', '', 79.25, 0.75, 'pouches', 3536, 0, 0, 442, 0, 1500, 'lb', '', ''])
     eq('la fila 4419 / 6222: RTE en blanco (lo empaca MFO), MFO en platos', sheet.find((r) => r[0] === '6222' && r[2] === '4419').slice(9, 16), ['', '', 1506, 'platos', '', -54, 251])
     eq('la fila 4433 / 6225: las libras aparte, nunca en cajas, y MFO en blanco (no 0: sí registró)', sheet.find((r) => r[0] === '6225' && r[2] === '4433').slice(11, 16), ['', '', '240 lb', '', ''])
     eq('la fila 4419 / 6228: la palabra que cuenta y la otra aparte, sin sumarlas', sheet.find((r) => r[0] === '6228' && r[2] === '4419').slice(11, 16), [600, 'platos', '60 copas', 0, 100])
@@ -2767,12 +2804,87 @@ section('Flujo de datos: cada lote en todos sus días, con lo que registró cada
     eq('los totales de las tiles sobre todo lo que se ve: pouches, platos (20 + 251 + 54) y copas aparte; 1,322 cajas sin pedido en 9 códigos, 92 en pedidos en 3 pallets', [all.left, all.casesFree, all.freeRows, all.casesOnPo, all.palletsOnPo], [[{ word: 'pouches', qty: 0, rows: 0 }, { word: 'platos', qty: 325, rows: 3 }, { word: 'copas', qty: 60, rows: 1 }], 1322, 9, 92, 3])
     eq('el chip "Con inventario": fuera los códigos sin nada sin empacar ni cajas sin pedido', m.flujoFilter(after, { q: '', lot: '', route: '', state: '', inv: true }).flatMap((l) => l.rows.map((r) => l.lot + '/' + r.code)), ['6229/4419', '6228/4419', '6227/E9', '6226/4419', '6225/4433', '6224/4433', '6223/2286', '6223/4419', '6222/2286', '6222/4419'])
     const sheet2 = m.flujoSheet(after)
-    eq('el Excel: las columnas de CONSUMO, y la fila 2286 / 6222 con su PO', [sheet2[0].slice(26), sheet2.find((r) => r[0] === '6222' && r[2] === '2286').slice(26)], [['CONSUMO: MEZCLAS USADAS', 'MEZCLAS QUE QUEDAN', 'UNIDAD', 'UNIDADES USADAS EN CAJAS', 'UNIDADES QUE QUEDAN', 'CAJAS EN PEDIDOS', 'CAJAS SIN PEDIDO', 'PALLETS EN PEDIDOS'], [79.25, 5.75, 'pouches', 4112, 0, 72, 442, 2]])
-    eq('… la fila 4419 / 6222 en platos (sin yield: mezclas en blanco), y la de 4433 / 6225 (libras) en blanco menos las cajas', [sheet2.find((r) => r[0] === '6222' && r[2] === '4419').slice(26), sheet2.find((r) => r[0] === '6225' && r[2] === '4433').slice(26)], [['', '', 'platos', 1452, 54, 0, 242, 0], ['', '', '', '', '', 0, 30, 0]])
-    eq('la leyenda explica cada columna de CONSUMO', m.flujoLegend('x').map((r) => r[0]).slice(-10, -1), ['CONSUMO', 'CONSUMO: MEZCLAS USADAS', 'MEZCLAS QUE QUEDAN', 'UNIDAD', 'UNIDADES USADAS EN CAJAS', 'UNIDADES QUE QUEDAN', 'CAJAS EN PEDIDOS', 'CAJAS SIN PEDIDO', 'PALLETS EN PEDIDOS'])
+    eq('el Excel: las columnas de CONSUMO, y la fila 2286 / 6222 con su PO', [sheet2[0].slice(26, 34), sheet2.find((r) => r[0] === '6222' && r[2] === '2286').slice(26, 34)], [['CONSUMO: MEZCLAS USADAS', 'MEZCLAS QUE QUEDAN', 'UNIDAD', 'UNIDADES USADAS EN CAJAS', 'UNIDADES QUE QUEDAN', 'CAJAS EN PEDIDOS', 'CAJAS SIN PEDIDO', 'PALLETS EN PEDIDOS'], [79.25, 5.75, 'pouches', 4112, 0, 72, 442, 2]])
+    eq('… la fila 4419 / 6222 en platos (sin yield: mezclas en blanco), y la de 4433 / 6225 (libras) en blanco menos las cajas', [sheet2.find((r) => r[0] === '6222' && r[2] === '4419').slice(26, 34), sheet2.find((r) => r[0] === '6225' && r[2] === '4433').slice(26, 34)], [['', '', 'platos', 1452, 54, 0, 242, 0], ['', '', '', '', '', 0, 30, 0]])
+    eq('la leyenda explica cada columna de CONSUMO', m.flujoLegend('x').map((r) => r[0]).slice(-14, -5),['CONSUMO', 'CONSUMO: MEZCLAS USADAS', 'MEZCLAS QUE QUEDAN', 'UNIDAD', 'UNIDADES USADAS EN CAJAS', 'UNIDADES QUE QUEDAN', 'CAJAS EN PEDIDOS', 'CAJAS SIN PEDIDO', 'PALLETS EN PEDIDOS'])
     const cx = (r, k) => m.flujoConsumo(r).find((x) => x.key === k)?.text
     eq('el consumo en palabras, con los números reales', [cx(x, 'mixes'), cx(x, 'units'), cx(x, 'cases'), cx(x, 'pallets')], ['85 hechas · usadas 3,487 pouches ÷ (5.5 yield × 8 por caja) = 79.25 · quedan 5.75', '3,487 pouches hechos · usados en cajas 514 cs × 8 por caja = 4,112 · quedan 0 · Packing empacó más de lo que reportó RTE', '514 hechas · 72 en pedidos (2 pallets) · 442 sin pedido', '12 hechos · 2 en pedidos'])
     eq('y para MFO: en platos; sin yield no hay mezclas usadas; en libras no hay unidades ni mezclas', [cx(z, 'mixes'), cx(z, 'units'), cx(rowA('6225', '4433'), 'units'), cx(rowA('6225', '4433'), 'mixes')], ['0 hechas · usadas: nada que calcular (Falta en Productos: yield)', '1,506 platos hechos · usados en cajas 242 cs × 6 por caja = 1,452 · quedan 54', 'MFO lo registró en libras: no se pasa a cajas', '2 hechas · usadas: nada que calcular (MFO lo registró en libras: no se pasa a cajas)'])
+    // ---- SPIRAL and the runs just started (Jose, 2026-10-19 morning, from the floor: "Spiral está trabajando y no
+    // sale en Flujo ese código"). Avance's two rules hid them here: a Spiral run weighing its mezclas in pounds (or
+    // counting them in cases) makes no mezclas, and a run with no unit yet counts nothing ----
+    m.mergeProducts([{ code: 'S1', name: 'Sopa de res', pouchesPerCase: 6, casesPerMix: 10, cratesPerCart: 24, pouchesPerCrate: 10, casesPerPallet: 50, spiralUnit: 'lb', updatedAt: 0 }])
+    // S1 / 6230: Spiral only weighed it (400 + 350 lb), nothing else of the lot anywhere; S2 (not in Productos) counted in cases
+    run(spiral, 'S1', '6230', D9, null, [[400], [350]], { measure: 'lb' })
+    run(spiral, 'S2', '6230', D9, null, [[40], [40]], { measure: 'cajas' })
+    const sp = m.flujoLots(st(), D9, D9), spLot = sp.find((l) => l.lot === '6230')
+    const s1 = spLot.rows.find((r) => r.code === 'S1'), s2 = spLot.rows.find((r) => r.code === 'S2')
+    eq('un código que Spiral solo pesó en libras tiene su fila: 750 lb aparte, 0 mezclas, Spiral como cuarto, sin empacar, y nada se pasa a cajas', [spLot.days, s1.mixes, s1.mixRoom, s1.spiralApart, s1.hasAny, s1.state, s1.projected, s1.segun, s1.running, s1.missing, s1.days.map((d) => [d.date, d.mixes, d.spiral, d.spiralApart])], [[D9], 0, 'Spiral', [{ word: 'lb', qty: 750 }], true, 'unpacked', null, 0, false, [], [[D9, 0, 0, [{ word: 'lb', qty: 750 }]]]])
+    eq('uno contado en cajas, que no está en Productos, también sale y lo dice', [s2.spiralApart, s2.inTable, s2.missing, s2.name, s2.state], [[{ word: 'cajas', qty: 80 }], false, ['product'], '', 'unpacked'])
+    eq('el lote que solo Spiral tocó está en la lista de lotes y entre los conocidos', [sp.map((l) => l.lot).includes('6230'), m.lotsKnown(st()).includes('6230')], [true, true])
+    eq('cómo se calculó: lo de Spiral aparte, en palabras, y sin mezclas no hay PROD que explicar', [ex(s1, 'spiral'), ex(a, 'spiral'), ex(s1, 'prod')], ['Spiral registró 750 lb de este lote: no se pasa a cajas; el yield es por mezcla', 'Spiral registró 1,500 lb de este lote: no se pasa a cajas; el yield es por mezcla', undefined])
+    eq('Avance no cambia: lo que Spiral cuenta aparte sigue aparte en su vista del lote', m.lotRows(st(), '6230').length, 0)
+    // the same code in both measures in one lot (a Spiral line in pounds, another day in cases): both said, never added
+    run(spiral, 'S1', '6230', D9, null, [[20]], { measure: 'cajas' })
+    // a Spiral run just started on lot 6231 with no mezcla yet, and a Kitchen run just started on 6230: each gives its
+    // lot a row of its code in zeros, "en curso", and the lot is on the list from its first minute
+    const openSp = run(spiral, 'S3', '6231', D9, null, [], { open: true })
+    const openK = run(kitchen, 'S1', '6230', D9, null, [], { open: true })
+    const sp2 = m.flujoLots(st(), D9, D9), l6231 = sp2.find((l) => l.lot === '6231'), s3 = l6231.rows[0], s1k = sp2.find((l) => l.lot === '6230').rows.find((r) => r.code === 'S1')
+    eq('una corrida recién empezada, sin nada registrado: su lote está en la lista y su código tiene fila en ceros, en curso', [sp2.map((l) => l.lot).slice(0, 3), l6231.days, l6231.rows.map((r) => r.code), s3.hasAny, s3.running, s3.openIn, s3.state, s3.mixes, s3.cases, s3.spiralApart, s3.missing, s3.days.map((d) => d.date), ex(s3, 'open'), m.lotsKnown(st()).slice(0, 2)], [['6231', '6230', '6229'], [D9], ['S3'], false, true, ['Spiral'], 'none', 0, 0, [], ['product'], [D9], 'acaba de empezar en Spiral: todavía no hay nada registrado de este lote', ['6231', '6230']])
+    eq('con registros y una corrida abierta: "en curso" dice en qué cuarto; las dos medidas de Spiral, libras primero, sin sumarlas', [s1k.running, s1k.openIn, ex(s1k, 'open'), s1k.spiralApart, s1k.mixes, s1k.mixRoom], [true, ['Kitchen'], 'sigue corriendo en Kitchen: estos números todavía cambian', [{ word: 'lb', qty: 750 }, { word: 'cajas', qty: 20 }], 0, 'Spiral'])
+    const sheet3 = m.flujoSheet(sp2), r3 = (lot, code) => sheet3.find((r) => r[0] === lot && r[2] === code)
+    eq('el Excel: SPIRAL APARTE y SPIRAL EN tras las de CONSUMO; con las dos medidas, en texto y sin unidad; la fila recién empezada en ceros, "sí" en curso', [sheet3[0].slice(-4, -2), r3('6230', 'S1').slice(-4, -2), r3('6230', 'S2').slice(-4, -2), r3('6222', '2286').slice(-4, -2), [...r3('6231', 'S3').slice(7, 8), ...r3('6231', 'S3').slice(23, 26), ...r3('6231', 'S3').slice(-4, -2)]], [['SPIRAL APARTE', 'SPIRAL EN'], ['750 lb · 20 cajas', ''], [80, 'cajas'], [1500, 'lb'], [0, 'Sin registros', 'sí', 'no está en Productos', '', '']])
+    eq('la leyenda explica las dos columnas de Spiral', m.flujoLegend('x').slice(-5, -3).map((r) => r[0]), ['SPIRAL APARTE', 'SPIRAL EN'])
+    // a Packing run just started whose pallet, half built, moved on to the next lot: both lots are on the list, each
+    // with the code's row in zeros and running (nothing counts until the pallet is marked done)
+    const openP = run(p2, 'S1', '6232', D9, 50, [], { open: true }); tick(); m.palletLotEnds(openP, 10, '30', '6233')
+    const sp4 = m.flujoLots(st(), D9, D9)
+    eq('un pallet a medio armar que pasó al lote siguiente: los dos lotes en la lista, con la fila de su código en ceros y en curso (Packing)', [['6232', '6233'].map((l) => (({ cases, pallets, running, openIn, state }) => [cases, pallets, running, openIn, state])(sp4.find((x) => x.lot === l).rows.find((r) => r.code === 'S1'))), ['6233', '6232'].every((l, i) => m.lotsKnown(st())[i] === l)], [[[0, 0, true, ['Packing'], 'none'], [0, 0, true, ['Packing'], 'none']], true])
+    // ended with nothing recorded: the row and its lot go (nothing of them was ever counted); a lot with records stays
+    m.endRun(openSp, false); m.endRun(openK, false)
+    const sp5 = m.flujoLots(st(), D9, D9)
+    eq('terminada sin registrar nada: la fila y el lote se van; el otro lote se queda con lo suyo, ya sin "en curso"', [sp5.some((l) => l.lot === '6231'), (({ running, openIn, spiralApart }) => [running, openIn, spiralApart])(sp5.find((l) => l.lot === '6230').rows.find((r) => r.code === 'S1'))], [false, [false, [], [{ word: 'lb', qty: 750 }, { word: 'cajas', qty: 20 }]]])
+    // ---- THE LOT'S PROGRAM (Jose, 2026-10-19: a room's program may name its lot): what the office programmed of a
+    // code for a lot, in any room and on any day, against what the lot has of it; a program without a lot is the
+    // day's and is attributed to no lot; a lot only programmed is listed with its codes in zeros ----
+    m.setPlan(D9, 'Kitchen', '2286', 80, '6222'); m.setPlan(D9, 'RTE', '2286', 3500, '6222'); m.setPlan(D9, 'Packing', '2286', 500, '6222'); m.setPlan(D9, 'MFO', '4419', 1500, '6222')
+    m.setPlan(D8, 'Kitchen', 'S1', 5, '6230'); m.setPlan(D9, 'Kitchen', 'S1', 10, '6230'); m.setPlan(D9, 'Spiral', 'S1', 1000, '6230')
+    m.setPlan(D8, 'Kitchen', '4433', 7) // no lot: the day's program, Avance's
+    m.setPlan(D9, 'Kitchen', 'P9', 4, '6240') // a lot nobody has started
+    const pg = m.flujoLots(st(), D8, D9), pRow = (lot, code) => pg.find((l) => l.lot === lot).rows.find((r) => r.code === code)
+    const progOf = (r) => r.prog.map((p) => [p.dept, p.word, p.qty, p.made, p.left])
+    eq('2286 / 6222: el programa de cada cuarto contra lo hecho del lote en su palabra (85 mezclas: completo con 5 de más; 3,487 de 3,500 pouches; 514 de 500 cajas)', progOf(pRow('6222', '2286')), [['Kitchen', 'mezclas', 80, 85, -5], ['RTE', 'pouches', 3500, 3487, 13], ['Packing', 'cajas', 500, 514, -14]])
+    eq('4419 / 6222: MFO en platos; 4433 / 6224: su programa no tiene lote y no se le atribuye', [progOf(pRow('6222', '4419')), progOf(pRow('6224', '4433'))], [[['MFO', 'platos', 1500, 1506, -6]], []])
+    eq('S1 / 6230: los dos días del programa de Kitchen suman (15; Kitchen no hizo ninguna); Spiral en libras, como cuenta el código (750 de 1,000)', progOf(pRow('6230', 'S1')), [['Kitchen', 'mezclas', 15, 0, 15], ['Spiral', 'lb', 1000, 750, 250]])
+    const p9 = pg.find((l) => l.lot === '6240')
+    eq('un lote solo programado está en la lista, primero, con su código en ceros: "Sin registros", sin días, con lo programado; y no cuenta como lote registrado', [pg.map((l) => l.lot).slice(0, 2), p9.days, p9.rows.map((r) => [r.code, r.state, r.hasAny, r.running, r.mixes, r.days]), progOf(p9.rows[0]), p9.sum.prog, m.lotsKnown(st()).includes('6240')], [['6240', '6233'], [], [['P9', 'none', false, false, 0, []]], [['Kitchen', 'mezclas', 4, 0, 4]], [{ dept: 'Kitchen', word: 'mezclas', qty: 4 }], false])
+    eq('el programa se atribuye al lote en cualquier día: mirando solo el 8, el 6222 trae el programa escrito el 9; el lote solo programado el 9 no está', [pRow('6222', '2286').prog.length, m.flujoLots(st(), D8, D8).find((l) => l.lot === '6222').rows.find((r) => r.code === '2286').prog.length, m.flujoLots(st(), D8, D8).some((l) => l.lot === '6240')], [3, 3, false])
+    const ex2 = (r) => m.flujoExplain(r).find((x) => x.key === 'program')?.text
+    eq('cómo se calculó: el programa del lote, cuarto por cuarto, en palabras; la banda del lote, cada palabra una vez', [ex2(pRow('6222', '2286')), ex2(pRow('6230', 'S1')), ex2(pRow('6224', '4433')), m.progSumText(pg.find((l) => l.lot === '6222').sum.prog), m.progSumText(pRow('6230', 'S1').prog), pRow('6222', '2286').prog.map((p) => m.progText(p))], ['80 mezclas (Kitchen) · hechas 85 · completo (+5); 3,500 pouches (RTE) · hechos 3,487 · faltan 13; 500 cajas (Packing) · hechas 514 · completo (+14)', '15 mezclas (Kitchen) · hechas 0 · faltan 15; 1,000 lb (Spiral) · hechas 750 · faltan 250', undefined, '80 mezclas · 3,500 pouches · 1,500 platos · 500 cajas', '15 mezclas · 1,000 lb Spiral', ['prog. 80 mezclas', 'prog. 3,500 pouches', 'prog. 500 cajas']])
+    const sheet4 = m.flujoSheet(pg), r4 = (lot, code) => sheet4.find((r) => r[0] === lot && r[2] === code)
+    eq('el Excel: PROGRAMADO y PROG. CUARTO al final; con un cuarto, número y cuarto con su unidad; con varios, en texto; sin programa, en blanco', [sheet4[0].slice(-2), r4('6222', '4419').slice(-2), r4('6230', 'S1').slice(-2), r4('6222', '2286').slice(-2), r4('6224', '4433').slice(-2), [...r4('6240', 'P9').slice(0, 3), ...r4('6240', 'P9').slice(-2)]], [['PROGRAMADO', 'PROG. CUARTO'], [1500, 'MFO · platos'], ['15 mezclas Kitchen · 1,000 lb Spiral', ''], ['80 mezclas Kitchen · 3,500 pouches RTE · 500 cajas Packing', ''], ['', ''], ['6240', '', 'P9', 4, 'Kitchen · mezclas']])
+    eq('la leyenda explica las dos columnas del programa', m.flujoLegend('x').slice(-3, -1).map((r) => r[0]), ['PROGRAMADO', 'PROG. CUARTO'])
+    eq('Avance no cambia: el programa del día sigue siendo del día, con o sin lote', m.planRows(st(), D9, 'Kitchen').filter((r) => r.planned > 0).map((r) => [r.code, r.planned, r.lot]), [['2286', 80, '6222'], ['P9', 4, '6240'], ['S1', 10, '6230']])
+    // ---- the program's word, read as the PlanCard reads it (review of 2026-10-19): an MFO program for a code MFO
+    // weighs in pounds is in pounds (Flujo said "0 of 300 platos" while the PlanCard said "240 of 300 lb"); with no
+    // bin of the lot yet, the word of the code's newest bin on the device; a Spiral program for a code Productos does
+    // not say how Spiral counts goes in what Spiral registered of the lot; and the band never adds Kitchen's and
+    // Spiral's mezclas programs into one figure ----
+    m.setPlan(D9, 'MFO', '4433', 300, '6225')
+    m.setPlan(D8, 'MFO', '4433', 100, '6241') // a lot with no bin of 4433 yet: its newest bin on this device is in pounds
+    m.mergeProducts([{ code: 'N7', name: 'Sin unidad de Spiral', pouchesPerCase: 6, casesPerMix: 10, cratesPerCart: 24, pouchesPerCrate: 10, casesPerPallet: 50, updatedAt: 0 }])
+    run(spiral, 'N7', '6250', D9, null, [[400], [350]], { measure: 'lb' })
+    m.setPlan(D9, 'Spiral', 'N7', 1000, '6250')
+    m.setPlan(D9, 'Spiral', 'P9', 4, '6240')
+    const pg2 = m.flujoLots(st(), D8, D9), pRow2 = (lot, code) => pg2.find((l) => l.lot === lot).rows.find((r) => r.code === code)
+    eq('4433 / 6225: MFO lo pesó en libras y su programa se lee en libras, como en la tarjeta del programa (240 de 300 lb); la banda nombra a MFO', [progOf(pRow2('6225', '4433')), ex2(pRow2('6225', '4433')), m.progSumText(pRow2('6225', '4433').prog), m.flujoSheet([pg2.find((l) => l.lot === '6225')]).find((r) => r[2] === '4433').slice(-2), m.planRows(st(), D9, 'MFO').filter((r) => r.code === '4433').map((r) => [r.unit, r.planned, r.done, r.left])], [[['MFO', 'lb', 300, 240, 60]], '300 lb (MFO) · hechas 240 · faltan 60', '300 lb MFO', [300, 'MFO · lb'], [['lb', 300, 240, 60]]])
+    eq('4433 / 6241: sin bins del lote todavía, la palabra del último bin del código en el aparato (lb)', [progOf(pRow2('6241', '4433')), pRow2('6241', '4433').state], [[['MFO', 'lb', 100, 0, 100]], 'none'])
+    eq('4419 / 6222 sigue en platos; 2286 / 6222 y S1 / 6230 como antes', [progOf(pRow2('6222', '4419')), progOf(pRow2('6222', '2286')), progOf(pRow2('6230', 'S1'))], [[['MFO', 'platos', 1500, 1506, -6]], [['Kitchen', 'mezclas', 80, 85, -5], ['RTE', 'pouches', 3500, 3487, 13], ['Packing', 'cajas', 500, 514, -14]], [['Kitchen', 'mezclas', 15, 0, 15], ['Spiral', 'lb', 1000, 750, 250]]])
+    eq('N7 / 6250: Productos no dice en qué cuenta Spiral el código; el programa va en lo que Spiral registró del lote (lb), como lo lee la tarjeta', [progOf(pRow2('6250', 'N7')), m.planRows(st(), D9, 'Spiral').filter((r) => r.code === 'N7').map((r) => [r.unit, r.planned, r.done])], [[['Spiral', 'lb', 1000, 750, 250]], [['lb', 1000, 750]]])
+    const l40 = pg2.find((l) => l.lot === '6240')
+    eq('P9 / 6240 programado en Kitchen y en Spiral: la banda nombra cada cuarto y no los suma (unas mismas mezclas no son "8")', [l40.sum.prog, m.progSumText(l40.sum.prog), progOf(l40.rows[0]), m.flujoSheet([l40])[1].slice(-2), m.progSumText(pg2.find((l) => l.lot === '6222').sum.prog)], [[{ dept: 'Kitchen', word: 'mezclas', qty: 4 }, { dept: 'Spiral', word: 'mezclas', qty: 4 }], '4 mezclas Kitchen · 4 mezclas Spiral', [['Kitchen', 'mezclas', 4, 0, 4], ['Spiral', 'mezclas', 4, 0, 4]], ['4 mezclas Kitchen · 4 mezclas Spiral', ''], '80 mezclas · 3,500 pouches · 1,500 platos · 500 cajas'])
+    eq('bajo PROD, con los dos cuartos programados, cada renglón nombra el suyo', l40.rows[0].prog.map((p) => m.progText(p, true)), ['prog. 4 mezclas Kitchen', 'prog. 4 mezclas Spiral'])
     return { sheet }
   })
   const z = await fl.use(async (m) => m.loadZip())
@@ -3868,6 +3980,10 @@ section('Un cambio del programa o de una meta que espera en la cola no pisa otro
     clock = T0 + 70 * M; m.setPlan(DAY, 'Packing', '0889', 40)
     m.applyRemote('act_plan', { date: DAY, dept: 'Packing', code: '889', qty: 55, updated_at: at(T0 + 71 * M), updated_by: 'Edgar' })
     eq('el programa de un cuarto, igual', [waiting(), m.planOf(st(), DAY, 'Packing').map((p) => p.qty), notes().at(-1)], [[], [55], ['Santiago', 'Programa ' + DAY + ' · Packing · 889 · no se subió: Edgar lo cambió después', '40', '55']])
+    // the program's lot (2026-10-19): the same quantity with another lot is a change; when the server's names another lot, the line says it
+    clock = T0 + 72 * M; m.setPlan(DAY, 'Packing', '0889', 55, '6283')
+    m.applyRemote('act_plan', { date: DAY, dept: 'Packing', code: '889', qty: 55, lot: '6284', updated_at: at(T0 + 73 * M), updated_by: 'Edgar' })
+    eq('con lotes distintos, el historial nombra el de aquí y dice el del servidor', [waiting(), m.planOf(st(), DAY, 'Packing').map((p) => p.lot), notes().at(-1)], [[], ['6284'], ['Santiago', 'Programa ' + DAY + ' · Packing · 889 · lote 6283 · no se subió: Edgar lo cambió después', '55', '55 · lote 6284']])
     clock = T0 + 80 * M; m.setShiftWeek('2026-11-02', '3333311')
     m.applyRemote('act_targets', { dept: 'shiftweek:2026-11-02', per_hour: 3333333, per_shift: null, updated_at: at(T0 + 81 * M), updated_by: 'Edgar' })
     eq('el calendario, igual, dicho como lo dice el historial', [waiting(), m.weekOf(st(), '2026-11-02'), notes().at(-1)], [[], '3333333', ['Santiago', 'Turnos de la semana desde el 2026-11-02 · no se subió: Edgar lo cambió después', 'dom 1 y 2, lun 1 y 2, mar 1 y 2, mié 1 y 2, jue 1 y 2, vie solo 1, sáb solo 1', 'Turnos 1 y 2 todos los días']])

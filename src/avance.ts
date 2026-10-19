@@ -1,5 +1,5 @@
 import { apartOf, apartWord, binOf, normCode, productOf, shiftAt, shiftsOf, unitQty, type PackRoom, type Product, type Run, type State, type Unit } from './store'
-import { unitParts } from './report'
+import { runLots, unitParts } from './report'
 
 /**
  * The day's progress per product, with the same arithmetic as the office's AVANCE sheet and its daily summary:
@@ -210,12 +210,18 @@ export function lotRows(s: State, lot: string): AvanceRow[] {
     }
   })
 }
-/** every lot on the device's runs, the newest first: to look at one that is not of the date in view */
+/**
+ * every lot on the device's runs, the newest first: to look at one that is not of the date in view. A run still open
+ * also gives the lot it packs now and the one on the pallet being built (runLots), with nothing of it counted yet:
+ * the office looks for the lot being worked on (2026-10-19; for an ended run, runLots is its units' lots, or its own)
+ */
 export function lotsKnown(s: State): string[] {
   const out = new Set<string>()
-  for (const r of s.runs) for (const l of r.units.length ? r.units.flatMap((u) => unitParts(s, r, u).map((p) => p.lot)) : [r.lot]) if (l) out.add(l)
-  return [...out].sort((a, b) => (Number(b) || 0) - (Number(a) || 0) || b.localeCompare(a))
+  for (const r of s.runs) for (const l of runLots(s, r)) if (l) out.add(l)
+  return [...out].sort(lotOrder)
 }
+/** the newest lot first: by number when the lots are numbers (the plant's Julian lots), else by text (Flujo lists its lots so too) */
+export const lotOrder = (a: string, b: string) => (Number(b) || 0) - (Number(a) || 0) || b.localeCompare(a)
 /** the days from one date to another, both included; a range upside down is turned around; at most 92 days */
 export function datesBetween(from: string, to: string): string[] {
   const [a, b] = from <= to ? [from, to] : [to, from]

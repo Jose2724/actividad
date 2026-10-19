@@ -1,6 +1,6 @@
 import { Component, createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
-import { addLine, addWaste, awayDay, cameFrom, carriedOver, dayAfter, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, noteOf, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderAddRuns, orderOfId, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay } from './store'
+import { addLine, addWaste, awayDay, cameFrom, carriedOver, dayAfter, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, noteOf, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderAddRuns, orderOfId, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, PLAN_LOT_MAX, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay } from './store'
 import { avanceLots, avanceRange, avanceRows, datesBetween, lotAcrossDays, lotRows, lotsKnown, mfoList, mfoText, mfoWord, n1, pending, type AvancePart, type AvanceRow, type MfoMade } from './avance'
 import { loadZip, type Cell } from './xlsx'
 
@@ -1603,12 +1603,15 @@ function PlanCard({ s, dept, date, mgr }: { s: State; dept: Dept; date: string; 
       {planned.length ? (
         <div className="twrap">
           <table>
-            <thead><tr><th>{tr('Código')}</th><th className="num">{tr('Programado')}</th><th className="num turn">{tr('Turno 1')}</th><th className="num turn">{tr('Turno 2')}</th><th className="num">{tr('Hecho')}</th><th className="num">{tr('Pendiente')}</th><th className="planbar"></th></tr></thead>
+            <thead><tr><th>{tr('Código')}</th><th className="plot">{tr('Lote')}</th><th className="num">{tr('Programado')}</th><th className="num turn">{tr('Turno 1')}</th><th className="num turn">{tr('Turno 2')}</th><th className="num">{tr('Hecho')}</th><th className="num">{tr('Pendiente')}</th><th className="planbar"></th></tr></thead>
             <tbody>{planned.map((r) => {
               const pct = Math.max(0, Math.min(100, Math.floor((r.done / r.planned) * 100)))
               return (
                 <tr key={r.code}>
-                  <td><b className="code">{r.code}</b>{r.name && <small className="pname">{r.name}</small>}{r.other.length > 0 && <small className="pname">{tr('también {0}', r.other.map((o) => fmtN(o.n) + ' ' + o.word).join(' · '))}</small>}{r.running && <span className="pill run">● {r.lines.map(lineLabel).join(', ')}</span>}</td>
+                  {/* (on a phone the LOTE column is hidden and the lot goes here, under the code: with the column, HECHO and PENDIENTE fell out of the frame at 375 px, review of 2026-10-19) */}
+                  <td><b className="code">{r.code}</b>{r.name && <small className="pname">{r.name}</small>}{r.lot && <small className="pname plotsm">{tr('lote {0}', r.lot)}</small>}{r.other.length > 0 && <small className="pname">{tr('también {0}', r.other.map((o) => fmtN(o.n) + ' ' + o.word).join(' · '))}</small>}{r.running && <span className="pill run">● {r.lines.map(lineLabel).join(', ')}</span>}</td>
+                  {/* the lot the program names (2026-10-19), blank when the office left it out */}
+                  <td className="plot">{r.lot}</td>
                   <td className="num">{fmtN(r.planned)}{byCode && <small className="punit"> {r.unit}</small>}</td><td className="num turn">{fmtN(r.byShift[0])}</td><td className="num turn">{fmtN(r.byShift[1])}</td><td className="num"><b>{fmtN(r.done)}</b></td>
                   <td className={'num ' + (r.left <= 0 ? 'ok' : 'left')}>{r.left > 0 ? fmtN(r.left) : tr('✓ completo') + (r.left < 0 ? ' (+' + fmtN(-r.left) + ')' : '')}</td>
                   <td className="planbar"><div className="bar"><i className={pct >= 100 ? 'ok' : 'pend'} style={{ width: pct + '%' }} /></div><small>{pct}%</small></td>
@@ -1625,24 +1628,26 @@ function PlanCard({ s, dept, date, mgr }: { s: State; dept: Dept; date: string; 
 }
 
 /**
- * The office types a room's program for a day: each code and how much of it, in the room's own quantity. A code left
- * without a quantity is taken off. Nothing is saved until "Guardar".
+ * The office types a room's program for a day: each code and how much of it, in the room's own quantity, and the lot
+ * it is for (Jose, 2026-10-19: "que por defecto salga el lote del día, y que sea opcional": a new row comes with the
+ * lot of the day being programmed, lotFor; the office may change it or clear it, and a blank lot is a day's program
+ * as before). A code left without a quantity is taken off. Nothing is saved until "Guardar".
  */
 function PlanDialog({ s, dept, today, unit, onClose }: { s: State; dept: Dept; today: string; unit: string; onClose: () => void }) {
-  type Line = { code: string; qty: string; unit: SpiralUnit }
-  const blank = (): Line => ({ code: '', qty: '', unit: 'mezclas' })
-  const draftOf = (date: string): Line[] => [...planOf(s, date, dept).sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true })).map((p) => ({ code: productOf(s, p.code)?.code ?? p.code, qty: String(p.qty), unit: productOf(s, p.code)?.spiralUnit ?? 'mezclas' })), blank()]
+  type Line = { code: string; qty: string; unit: SpiralUnit; lot: string }
+  const blank = (d: string): Line => ({ code: '', qty: '', unit: 'mezclas', lot: lotFor(d) })
+  const draftOf = (date: string): Line[] => [...planOf(s, date, dept).sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true })).map((p) => ({ code: productOf(s, p.code)?.code ?? p.code, qty: String(p.qty), unit: productOf(s, p.code)?.spiralUnit ?? 'mezclas', lot: p.lot })), blank(date)]
   const [date, setDate] = useState(today)
   const [lines, setLines] = useState<Line[]>(() => draftOf(today))
   const pickDate = (d: string) => { if (d) { setDate(d); setLines(draftOf(d)) } }
   // (in Spiral a code the products table knows brings how it is counted)
-  const change = (i: number, patch: Partial<Line>) => setLines((cur) => { const next = cur.map((l, k) => (k === i ? { ...l, ...patch, ...(patch.code != null && productOf(s, patch.code)?.spiralUnit ? { unit: productOf(s, patch.code)!.spiralUnit! } : {}) } : l)); return next[next.length - 1].code.trim() ? [...next, blank()] : next })
+  const change = (i: number, patch: Partial<Line>) => setLines((cur) => { const next = cur.map((l, k) => (k === i ? { ...l, ...patch, ...(patch.code != null && productOf(s, patch.code)?.spiralUnit ? { unit: productOf(s, patch.code)!.spiralUnit! } : {}) } : l)); return next[next.length - 1].code.trim() ? [...next, blank(date)] : next })
   const twice = lines.map((l) => normCode(l.code)).filter((k, i, all) => k && all.indexOf(k) !== i)
   const save = () => {
     const typed = new Map(lines.filter((l) => normCode(l.code)).map((l) => [normCode(l.code), l]))
-    // a code that was on the program and is not typed any more is taken off; the rest are set to what was typed
-    for (const p of planOf(s, date, dept)) if (!typed.has(normCode(p.code))) setPlan(date, dept, p.code, 0)
-    for (const l of typed.values()) { setPlan(date, dept, l.code, numOf(l.qty)); if (dept === 'Spiral') setSpiralUnit(l.code, l.unit) }
+    // a code that was on the program and is not typed any more is taken off (its lot as it was); the rest are set to what was typed
+    for (const p of planOf(s, date, dept)) if (!typed.has(normCode(p.code))) setPlan(date, dept, p.code, 0, p.lot)
+    for (const l of typed.values()) { setPlan(date, dept, l.code, numOf(l.qty), l.lot); if (dept === 'Spiral') setSpiralUnit(l.code, l.unit) }
     onClose()
   }
   const listId = 'plan-codes-' + dept
@@ -1650,16 +1655,18 @@ function PlanDialog({ s, dept, today, unit, onClose }: { s: State; dept: Dept; t
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
         <h3>{trx('Programa de {0}', dept)}</h3>
-        <p>{trx('Los códigos que {0} tiene que hacer ese día y cuánto de cada uno, en {1}. Lo ven todas sus tablets, y cada vez que registran uno de esos códigos se descuenta solo. Para quitar un código, deja su cantidad en blanco.', dept, unit)}</p>
+        <p>{trx('Los códigos que {0} tiene que hacer ese día y cuánto de cada uno, en {1}. Lo ven todas sus tablets, y cada vez que registran uno de esos códigos se descuenta solo. Para quitar un código, deja su cantidad en blanco.', dept, unit)} {tr('El lote es opcional: sale el del día y se puede cambiar o dejar en blanco. Con lote, "Flujo de datos" compara lo programado con lo hecho de ese lote.')}</p>
         <form className="qform" onSubmit={(e) => { e.preventDefault(); if (!twice.length) save() }}>
           <label>{tr('Día')}{' '}<input type="date" value={date} onChange={(e) => pickDate(e.target.value)} /></label>
           <div className="planrows">
-            <div className={'planrow head' + (dept === 'Spiral' ? ' spiral' : '')}><span>{tr('Código')}</span><span>{dept === 'Spiral' || dept === 'MFO' ? tr('Cantidad') : trx('Cantidad ({0})', unit)}</span>{dept === 'Spiral' && <span>{tr('Unidad')}</span>}</div>
+            <div className={'planrow head' + (dept === 'Spiral' ? ' spiral' : '')}><span>{tr('Código')}</span><span>{dept === 'Spiral' || dept === 'MFO' ? tr('Cantidad') : trx('Cantidad ({0})', unit)}</span>{dept === 'Spiral' && <span>{tr('Unidad')}</span>}<span>{tr('Lote')}</span></div>
             {lines.map((l, i) => (
               <div key={i} className={'planrow' + (dept === 'Spiral' ? ' spiral' : '')}>
                 <input list={listId} value={l.code} placeholder={tr('ej. 0100')} autoComplete="off" aria-label={tr('Código')} onChange={(e) => change(i, { code: e.target.value })} />
                 <input value={l.qty} inputMode="decimal" placeholder="0" autoComplete="off" aria-label={tr('Cantidad ({0})', unit)} onChange={(e) => change(i, { qty: e.target.value.replace(/[^\d.,]/g, '') })} />
                 {dept === 'Spiral' && <select value={l.unit} aria-label={tr('Unidad')} onChange={(e) => change(i, { unit: e.target.value as SpiralUnit })}>{SPIRAL_UNITS.map((u) => <option key={u} value={u}>{measureUnit(u)}</option>)}</select>}
+                {/* the lot, offered as the day's (lotFor) and free to change or clear: the only box the app fills in for the person (Jose, 2026-10-19) */}
+                <input value={l.lot} inputMode="numeric" maxLength={PLAN_LOT_MAX} placeholder={tr('sin lote')} autoComplete="off" aria-label={tr('Lote')} onChange={(e) => change(i, { lot: e.target.value })} />
               </div>
             ))}
             <datalist id={listId}>{s.products.map((p) => <option key={p.code} value={p.code}>{p.name}</option>)}</datalist>

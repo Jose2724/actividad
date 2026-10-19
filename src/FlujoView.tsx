@@ -6,7 +6,7 @@ import { loadDay } from './sync'
 import { loadZip, xlsxNow, XLSX_TYPE, type Sheet } from './xlsx'
 import { DEPT_LOOK, deptVars } from './look'
 import { addDays, download, MISSING, NoticeDialog, Products, shortDay, useViewOnly } from './App'
-import { diffText, diffWord, FLUJO_STATES, flujoConsumo, flujoExplain, flujoFile, flujoFilter, flujoHasInventory, flujoLeftMain, flujoLegend, flujoLots, flujoSheet, flujoStateLabel, flujoStateText, flujoSum, missingText, n2, unitWordText, type FlujoLeft, type FlujoLot, type FlujoRow, type FlujoState } from './flujo'
+import { diffText, diffWord, FLUJO_STATES, flujoConsumo, flujoExplain, flujoFile, flujoFilter, flujoHasInventory, flujoLeftMain, flujoLegend, flujoLots, flujoSheet, flujoStateLabel, flujoStateText, flujoSum, missingText, n2, progSumText, progText, spiralApartText, unitWordText, type FlujoLeft, type FlujoLot, type FlujoRow, type FlujoState, type SpiralApart } from './flujo'
 import { tr } from './i18n'
 import { trx } from './trx'
 
@@ -64,8 +64,9 @@ export const Flujo = memo(function Flujo({ s, today, onLot }: { s: State; today:
   const [a, b] = from <= to ? [from, to] : [to, from]
   const span = datesBetween(from, to)
   const preset = (n: number) => from === addDays(today, -(n - 1)) && to === today
-  // (s.orders is a dependency since 2026-10-19: "cajas en pedidos" counts the pallets whose PO the orders still know)
-  const lots = useMemo(() => flujoLots(s, from, to), [s.runs, s.products, s.orders, from, to]) // eslint-disable-line react-hooks/exhaustive-deps
+  // (s.orders is a dependency since 2026-10-19: "cajas en pedidos" counts the pallets whose PO the orders still know;
+  // s.plans too: a program may name its lot, and the lot's rows say what was programmed. Neither moves on the clock)
+  const lots = useMemo(() => flujoLots(s, from, to), [s.runs, s.products, s.orders, s.plans, from, to]) // eslint-disable-line react-hooks/exhaustive-deps
   // what the chips count: the route chips over everything of the lot and the search; the state chips over the route
   // chosen; the chip "Con inventario" over the route and the state chosen
   const base = flujoFilter(lots, { q, lot, route: '', state: '' })
@@ -110,7 +111,8 @@ export const Flujo = memo(function Flujo({ s, today, onLot }: { s: State; today:
     } catch (e) { console.warn('actividad flujo', e); setNotice({ title: tr('No se pudo {0}', tr('hacer el Excel')), text: MISSING }) }
   }
   // ---- the lot's band: its pieces apart (the "·" between them is drawn by the style, never left alone at a line's end) ----
-  const daysOf = (days: string[]) => shortDay(days[0]) + (days.length > 1 ? ' ' + tr('(y {0})', days.slice(1).map(shortDay).join(', ')) : '')
+  // (a lot only programmed, 2026-10-19, has no worked day yet: said, instead of an invalid date)
+  const daysOf = (days: string[]) => (days.length ? shortDay(days[0]) + (days.length > 1 ? ' ' + tr('(y {0})', days.slice(1).map(shortDay).join(', ')) : '') : tr('nada registrado todavía'))
   const statesOf = (l: FlujoLot) => [l.sum.states.ok ? tr('{0} cuadran', l.sum.states.ok) : '', l.sum.states.short ? tr('{0} faltan', l.sum.states.short) : '', l.sum.states.over ? tr('{0} de más', l.sum.states.over) : '', l.sum.states.unpacked ? tr('{0} sin empacar', l.sum.states.unpacked) : '', l.sum.states.nocompare ? tr('{0} sin comparar', l.sum.states.nocompare) : ''].filter(Boolean)
   const roomTh = (d: Dept, text: ReactNode, cls = '') => <th className={'dth ' + cls} style={deptVars(d)}><i className="demoji" aria-hidden="true">{DEPT_LOOK[d].emoji}</i>{text}</th>
   return (
@@ -228,6 +230,8 @@ export const Flujo = memo(function Flujo({ s, today, onLot }: { s: State; today:
                       <small>{fmtN(l.sum.cases)} {tr('cajas')}</small>
                       <small>{l.sum.pallets} pallets</small>
                       {l.sum.projected != null && <small>{tr('proyectado {0} cs', n2(l.sum.projected))}</small>}
+                      {/* the lot's program (2026-10-19): what the office programmed for this lot, each room's word once */}
+                      {l.sum.prog.length > 0 && <small className="fl-lotprog">{tr('programado {0}', progSumText(l.sum.prog))}</small>}
                       {statesOf(l).map((t) => <small key={t} className="fl-lotstates">{t}</small>)}
                       {/* the lot's inventory (2026-10-19): each word on its own, and the cases without a PO (with those in POs beside them when there are any) */}
                       {l.sum.left.filter((x) => x.qty > 0).map((x) => <small key={x.word} className="fl-lotinv">{tr('{0} por empacar', leftText(x))}</small>)}
@@ -255,8 +259,14 @@ const difCell = (kind: 'room' | 'cases', v: number | null, unit: string, cls: st
   return <td className={'slim dif ' + cls + ' ' + d.cls} data-label={label} title={title}>{v == null ? '—' : <><b>{n2(Math.abs(v))}</b><small>{diffWord(kind, v, unit)}</small></>}</td>
 }
 const offCell = (cls: string, label: string, title: string) => <td className={'slim off ' + cls} data-label={label} title={title}>—</td>
+/**
+ * "prog. 80 mezclas" under a room's cell: the lot's program of the code in that room (2026-10-19); the fold has it against
+ * what was made. With two rooms under one cell (PROD: Kitchen and Spiral both programmed) each line names its room
+ */
+const progOf = (r: FlujoRow, depts: Dept[], title: string) => { const list = r.prog.filter((p) => depts.includes(p.dept)); return list.map((p) => <small key={p.dept} className="fl-prog" title={title}>{progText(p, list.length > 1)}</small>) }
 const miniHead = () => <thead><tr><th>{tr('Día')}</th><th>{tr('Mezclas')}</th><th>Spiral</th><th>Pouches</th><th>{tr('Cajas')}</th><th>MFO</th><th>Pallets</th></tr></thead>
-const miniRow = (key: string, label: ReactNode, x: AvancePart) => <tr key={key}><td>{label}</td><td>{x.mixes || '—'}</td><td>{x.spiral || '—'}</td><td>{x.pouches ? fmtN(x.pouches) : '—'}</td><td>{x.cases ? fmtN(x.cases) : '—'}</td><td>{mfoText(x.mfo) || '—'}</td><td>{x.pallets || '—'}</td></tr>
+// (the Spiral column: its mezclas, and beside them what it weighed or counted apart that day, "1,200 lb": 2026-10-19)
+const miniRow = (key: string, label: ReactNode, x: AvancePart & { spiralApart?: SpiralApart[] }) => <tr key={key}><td>{label}</td><td>{x.mixes || '—'}</td><td>{[x.spiral ? String(x.spiral) : '', spiralApartText(x.spiralApart ?? [])].filter(Boolean).join(' · ') || '—'}</td><td>{x.pouches ? fmtN(x.pouches) : '—'}</td><td>{x.cases ? fmtN(x.cases) : '—'}</td><td>{mfoText(x.mfo) || '—'}</td><td>{x.pallets || '—'}</td></tr>
 const notesOf = (r: FlujoRow) => [
   ...(r.inTable && r.missing.length ? [missingText(r.missing)] : []),
   ...(r.mfoOnlyLb ? [tr('MFO lo registró en libras: no se pasa a cajas')] : []),
@@ -283,7 +293,7 @@ const FlujoRowView = memo(function FlujoRowView({ r, rowKey, isOpen, onToggle, o
             <button type="button" className="avfold" aria-expanded={isOpen} aria-label={tr('Ver cómo se calculó')} onClick={() => onToggle(rowKey)}>{isOpen ? '▾' : '▸'}</button>
             <button type="button" className="drill code" title={tr('Ver este lote en Avance, en todos sus días')} onClick={() => onLot(r.lot)}>{r.code}</button>
             <small className={'packroom ' + r.route.toLowerCase()} style={deptVars(r.route)} title={r.routeSaid ? tr('Lo dice la tabla de Productos.') : tr('La app lo supone por lo que ha registrado cada cuarto. Se fija en Avance.')}>{DEPT_LOOK[r.route].emoji} {r.route}{r.routeSaid ? '' : ' ?'}</small>
-            {r.running && <span className="pill run">{tr('en curso')}</span>}
+            {r.running && <span className="pill run" title={titleOf('open')}>{tr('en curso')}</span>}
           </div>
           <small className="pname">{r.name || <i className="red">{tr('no está en Productos')}</i>}</small>
           <span className={'avstage flst st-' + r.state}>{flujoStateText(r.state, r.diffPacking)}</span>
@@ -291,17 +301,24 @@ const FlujoRowView = memo(function FlujoRowView({ r, rowKey, isOpen, onToggle, o
         </td>
         <td className="slim fl-yield" data-label={tr('Yield')} title={tr('Cajas por mezcla, de la tabla de Productos (YIEL)')}>{n2(r.yieldCs)}</td>
         <td className="slim fl-percase" data-label={tr('Pouch × cs')} title={tr('Unidades por caja, de la tabla de Productos (POUCH X CS)')}>{n2(r.perCase)}{!rte && word && r.mfoWordUsed !== 'cajas' && <small>{word}</small>}</td>
-        <td className="slim fl-prod" data-label={lab('Kitchen', tr('PROD'))} title={titleOf('prod')}>{r.mixes ? <><b>{r.mixes}</b><small>{r.mixRoom}</small></> : '—'}</td>
+        {/* PROD: the mezclas with their room; under them what Spiral weighed or counted apart ("1,200 lb Spiral": a fact
+            of the lot, never cases nor mezclas; alone when there is no mezcla, so a code Spiral only weighs has its cell: 2026-10-19) */}
+        {/* under each room's cell, what the office programmed of the code for this lot in that room ("prog. 80 mezclas", 2026-10-19) */}
+        <td className="slim fl-prod" data-label={lab('Kitchen', tr('PROD'))} title={titleOf('prod') || titleOf('spiral') || titleOf('program')}>
+          {r.mixes ? <><b>{r.mixes}</b><small>{r.mixRoom}</small></> : r.spiralApart.length ? <b>{spiralApartText(r.spiralApart)}</b> : '—'}
+          {r.spiralApart.length > 0 && <small className="fl-spiral" style={deptVars('Spiral')}>{r.mixes ? spiralApartText(r.spiralApart) + ' ' : ''}Spiral</small>}
+          {progOf(r, ['Kitchen', 'Spiral'], titleOf('program'))}
+        </td>
         {rte
-          ? <td className="slim fl-room" data-label={lab('RTE', 'RTE')} title={r.pouches ? tr('{0} pouches registrados por RTE', fmtN(r.pouches)) : tr('RTE no ha registrado nada de este lote')}>{r.pouches ? fmtN(r.pouches) : '—'}</td>
+          ? <td className="slim fl-room" data-label={lab('RTE', 'RTE')} title={r.pouches ? tr('{0} pouches registrados por RTE', fmtN(r.pouches)) : tr('RTE no ha registrado nada de este lote')}>{r.pouches ? fmtN(r.pouches) : '—'}{progOf(r, ['RTE'], titleOf('program'))}</td>
           : offCell('fl-room', lab('RTE', 'RTE'), tr('Lo empaca MFO: RTE no entra en la cuenta'))}
         {rte ? difCell('room', r.diffRte, 'pouches', 'fl-difroom', lab('RTE', tr('Dif. RTE')), titleOf('diffRoom') || titleOf('segun')) : offCell('fl-difroom', lab('RTE', tr('Dif. RTE')), tr('Lo empaca MFO: RTE no entra en la cuenta'))}
         {!rte
-          ? <td className="slim fl-room" data-label={lab('MFO', 'MFO')} title={r.mfo.length ? mfoText(r.mfo) : tr('MFO no ha registrado nada de este lote')}>{first ? <>{fmtN(first.qty)} {word}{rest.length > 0 && <small>{tr('y {0}', mfoText(rest))}</small>}</> : r.mfo.length ? <>{mfoText(r.mfo)}</> : '—'}</td>
+          ? <td className="slim fl-room" data-label={lab('MFO', 'MFO')} title={r.mfo.length ? mfoText(r.mfo) : tr('MFO no ha registrado nada de este lote')}>{first ? <>{fmtN(first.qty)} {word}{rest.length > 0 && <small>{tr('y {0}', mfoText(rest))}</small>}</> : r.mfo.length ? <>{mfoText(r.mfo)}</> : '—'}{progOf(r, ['MFO'], titleOf('program'))}</td>
           : offCell('fl-room', lab('MFO', 'MFO'), tr('Lo empaca RTE: MFO no entra en la cuenta'))}
         {!rte ? difCell('room', r.diffMfo, word || mfoWord('cajas'), 'fl-difroom', lab('MFO', tr('Dif. MFO')), r.mfoOnlyLb ? lbTitle : titleOf('diffRoom') || titleOf('segun')) : offCell('fl-difroom', lab('MFO', tr('Dif. MFO')), tr('Lo empaca RTE: MFO no entra en la cuenta'))}
         <td className="slim fl-segun" data-label={lab('Packing', tr('Según cuarto (cs)'))} title={titleOf('segun')}>{r.segun == null || (r.segun === 0 && r.cases === 0) ? '—' : <>{n2(r.segun)}<small>{tr('según {0}', r.route)}</small></>}</td>
-        <td className="slim fl-pack" data-label={lab('Packing', tr('Packing'))} title={tr('Cajas en pallets que llevan este lote')}><b>{fmtN(r.cases)}</b><small>{r.pallets} pallets</small></td>
+        <td className="slim fl-pack" data-label={lab('Packing', tr('Packing'))} title={tr('Cajas en pallets que llevan este lote')}><b>{fmtN(r.cases)}</b><small>{r.pallets} pallets</small>{progOf(r, ['Packing'], titleOf('program'))}</td>
         {difCell('cases', r.diffPacking, 'cs', 'fl-difpack', lab('Packing', tr('Dif. Packing')), titleOf('diffPacking'))}
         <td className="slim fl-proj" data-label={tr('CS proyectado')} title={titleOf('proj')}>{n2(r.projected)}{r.projected != null && <small>{r.projectedFrom === 'mfo' ? tr('de MFO') : tr('mezclas × yield')}</small>}{r.palletsProjected != null && <small>{n2(r.palletsProjected)} pallets</small>}</td>
         {difCell('cases', r.diffProjected, 'cs', 'fl-difproj', tr('Dif. de proyectado'), titleOf('diffProj') || titleOf('proj'))}
@@ -353,6 +370,8 @@ function FlujoHelp({ onClose }: { onClose: () => void }) {
           <li>{tr('El estado se calcula con los números: Sin empacar (hay registros y ninguna caja), Faltan N cs, N cs de más, Cuadra, o Sin comparar (falta un dato en Productos, o MFO solo registró libras). El estado del ERP no está aquí: se calcula con los números. La condición (refrigerado) tampoco está en la tabla de Productos.')}</li>
           <li>{tr('Consumo: lo que el lote gastó y lo que queda, con los mismos números (nadie lo escribe), para reportar qué hay y qué falta por ordenar. Mezclas usadas = lo que reportó el cuarto que empaca, en cajas, ÷ yield; quedan = hechas − usadas. Queda en inventario lo hecho y todavía por empacar (pouches de RTE, o platos y copas de MFO, menos las cajas de Packing × unidades por caja; nunca menos de 0) y las cajas empacadas que no van en ningún pedido (un pallet con PO cuenta como en pedido, esté el pedido completo o no). Los pouches se suman con pouches, nunca con platos. El chip "Con inventario" deja solo los códigos con algo de eso. ("Sin empacar", el estado, es otra cosa: un código con registros y ninguna caja.)')}</li>
           <li>{tr('Un pallet con dos lotes da a cada lote sus cajas y cuenta como pallet de los dos. Lo que se registra mientras un código sigue corriendo ya cuenta ("en curso"); el pallet que se está armando cuenta cuando se marca listo. Un código que comparte mezcla con otro sale en dos filas por ahora.')}</li>
+          <li>{tr('Lo que Spiral pesa en libras o cuenta en cajas ("Spiral cuenta en", en la tabla de Productos) sale en PROD debajo de las mezclas, tal cual: no se pasa a cajas ni cuenta como mezclas, porque el yield es por mezcla. Un código que acaba de empezar en cualquier cuarto ya tiene su fila, en ceros y "en curso", y su lote ya está en la lista.')}</li>
+          <li>{tr('El programa de un cuarto puede llevar su lote (al programar, sale el lote del día y se puede cambiar o dejar en blanco). Lo programado de un código para un lote sale debajo de la celda de ese cuarto ("prog. 80 mezclas"), en la banda del lote y en el Excel, y al abrir la fila se compara con lo hecho de ese lote. Un código programado para un lote que nadie ha empezado ya tiene su fila, en ceros. Un programa sin lote es del día, como lo muestra Avance, y aquí no se cuenta.')}</li>
           <li>{tr('Toca ▸ junto al código para ver cómo se calculó cada número y lo hecho por día. Toca el código, o "Ver en Avance", para abrir ese lote en Avance en todos sus días. El Excel sale con las fechas, el lote y los chips que tengas puestos (no con la búsqueda) y trae una hoja Leyenda con los signos de la hoja de la oficina.')}</li>
         </ul>
         <div className="dbtns"><button type="button" className="btn primary" onClick={onClose}>{tr('Entendido')}</button></div>

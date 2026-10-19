@@ -196,7 +196,10 @@ async function pass(): Promise<FlushResult> {
       if (e) {
         console.warn('actividad sync', it.table, e)
         const v = verdict(String(e.code ?? ''), e.message ?? ''), k = keyOf(it)
-        if (v === 'notReady') { waiting.add(it.table); error = tr('Falta ejecutar en Supabase el SQL de {0}', it.table); continue }
+        // (a program with its lot column while 019 has not been run: the server says the column is missing, PGRST204 /
+        // 42703; named by its file so Jose knows what to paste, 2026-10-19. Every program waits until then, with or
+        // without a lot typed: the row always carries the column)
+        if (v === 'notReady') { waiting.add(it.table); error = it.table === 'act_plan' && ['PGRST204', '42703'].includes(String(e.code ?? '')) ? tr('Falta ejecutar en Supabase el SQL 019 (el lote del programa): el programa espera') : tr('Falta ejecutar en Supabase el SQL de {0}', it.table); continue }
         if (v === 'refused') {
           skipped.add(k)
           // a row of this device's own that the server refuses: the person signed in is no longer who the server

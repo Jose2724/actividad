@@ -233,8 +233,15 @@ export type TurnGoal = { key: string; perHour: number | null; total: number | nu
  * pouches, cajas). The office types it, as it types the SCHEDULE of its AVANCE sheet and the #BATCH of each room's
  * sheet; every tablet of the room sees it, and what the room registers of that code is taken off it by itself.
  * A code set to 0 is off the program.
+ * lot (Jose, 2026-10-19, from the floor: "cuando se vaya a hacer una programación para cualquier cuarto tenga una
+ * opción también de poner el lote, que por defecto salga el lote del día, y que sea opcional"): which lot the code is
+ * programmed for. The dialog offers the day's lot (lotFor) and the office may change it or leave it blank: '' = no
+ * lot, a day's program as before. With a lot, "Flujo de datos" adds the program up per lot and says what is left.
+ * (The only figure the app ever prefills that the person would otherwise type: office data, not a floor record.)
  */
-export type Plan = { date: string; dept: Dept; code: string; qty: number; updatedAt: number }
+export type Plan = { date: string; dept: Dept; code: string; qty: number; lot: string; updatedAt: number }
+/** a lot as typed on a program: trimmed, at most this long (declared above load(): it is read there) */
+export const PLAN_LOT_MAX = 30
 export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Product[]; schedule: Schedule; changes: Change[]; targets: Target[]; shifts: ShiftPlan[]; shiftWeeks: ShiftWeek[]; dayShifts: DayShifts[]; lineRules: LineRules; lineTargets: LineTarget[]; orders: Order[]; turnGoals: TurnGoal[]; plans: Plan[]
   /**
    * runs the device no longer keeps (older than its days) that hold pallets given to an order still open: an order's
@@ -361,7 +368,8 @@ function load(): State {
         lineRules: { add: s.lineRules?.add !== false, remove: s.lineRules?.remove === true, updatedAt: Number(s.lineRules?.updatedAt) || 0 },
         lineTargets: (s.lineTargets ?? []).filter((t) => !!t && !!t.lineId && !isTurnKey(String(t.lineId))).map((t) => ({ lineId: String(t.lineId), perHour: t.perHour ?? null, perDay: t.perDay ?? null, updatedAt: t.updatedAt ?? 0 })),
         orders: (s.orders ?? []).map((o) => (o ? orderOf(String(o.id ?? ''), o, String(o.by ?? ''), o.updatedAt ?? 0) : null)).filter((o): o is Order => !!o),
-        plans: (s.plans ?? []).filter((p) => !!p && isDay(String(p.date ?? '')) && DEPTS.includes(p.dept as Dept) && !!normCode(String(p.code ?? ''))).map((p) => ({ date: String(p.date), dept: p.dept as Dept, code: String(p.code).trim().toUpperCase(), qty: Number(p.qty) > 0 ? Number(p.qty) : 0, updatedAt: p.updatedAt ?? 0 })),
+        // (lot since 2026-10-19: a program saved before it reads ''. Written inline, as above: nothing below load())
+        plans: (s.plans ?? []).filter((p) => !!p && isDay(String(p.date ?? '')) && DEPTS.includes(p.dept as Dept) && !!normCode(String(p.code ?? ''))).map((p) => ({ date: String(p.date), dept: p.dept as Dept, code: String(p.code).trim().toUpperCase(), qty: Number(p.qty) > 0 ? Number(p.qty) : 0, lot: String(p.lot ?? '').trim().slice(0, PLAN_LOT_MAX), updatedAt: p.updatedAt ?? 0 })),
         turnGoals: (s.turnGoals ?? []).filter((g) => !!g && isTurnKey(String(g.key ?? ''))).map((g) => ({ key: String(g.key), perHour: g.perHour ?? null, total: g.total ?? null, updatedAt: g.updatedAt ?? 0 })),
       }
     }
@@ -1793,20 +1801,38 @@ export function setSchedule(date: string, code: string, n: number) {
 // ---- the program of each room ----
 /** (a function: pruned() uses it while this file is still being read) */
 function planKey(date: string, dept: Dept, code: string) { return date + '|' + dept + '|' + normCode(code) }
-const rowOfPlan = (p: Plan) => ({ date: p.date, dept: p.dept, code: normCode(p.code), qty: p.qty, updated_at: iso(p.updatedAt), updated_by: user.get() })
+/** the lot of a program as it is kept and sent: trimmed, at most PLAN_LOT_MAX; '' = none (a row from before 019 has no column: it reads '') */
+export const planLot = (x: unknown) => String(x ?? '').trim().slice(0, PLAN_LOT_MAX)
+/** " · lote 6291" after a program's name in the history ('' without a lot) */
+const lotNote = (lot: string) => (lot ? ' · lote ' + lot : '')
+// (the lot goes up always, '' when none: until Jose runs 019 the server answers that the column is missing and the
+// row waits in the queue, said on the screen; see outbox.ts)
+const rowOfPlan = (p: Plan) => ({ date: p.date, dept: p.dept, code: normCode(p.code), qty: p.qty, lot: planLot(p.lot), updated_at: iso(p.updatedAt), updated_by: user.get() })
 /** what a room has on its program for a day */
 export const planOf = (s: State, date: string, dept: Dept) => s.plans.filter((p) => p.date === date && p.dept === dept && p.qty > 0)
-/** the office sets how much of a code a room has to make on a day (nothing = the code is taken off its program) */
-export function setPlan(date: string, dept: Dept, code: string, qty: number) {
+/**
+ * the office sets how much of a code a room has to make on a day (nothing = the code is taken off its program), and
+ * for which lot (Jose, 2026-10-19; '' = no lot). The same quantity with another lot is a change too: Flujo counts the
+ * program under its lot
+ */
+export function setPlan(date: string, dept: Dept, code: string, qty: number, lot = '') {
   const key = normCode(code)
   if (!key || !isDay(date) || !DEPTS.includes(dept)) return
   const n = Number.isFinite(qty) && qty > 0 ? Math.round(qty * 100) / 100 : 0
+  const l = planLot(lot)
   const old = state.plans.find((p) => p.date === date && p.dept === dept && normCode(p.code) === key)
-  if ((old?.qty ?? 0) === n) return
-  const p: Plan = { date, dept, code: code.trim().toUpperCase(), qty: n, updatedAt: stamp(old) }
+  // a code with nothing programmed stays off the program: the dialog fills the day's lot into every row, so a code
+  // typed with its quantity blank came with a lot and used to make a row of 0 with it, sent to the server and saying
+  // nothing (review of 2026-10-19). Taking a code off (a quantity it had → 0) still goes through, its lot as it was
+  if (n === 0 && !(old && old.qty > 0)) return
+  if ((old?.qty ?? 0) === n && (old?.lot ?? '') === l) return
+  const p: Plan = { date, dept, code: code.trim().toUpperCase(), qty: n, lot: l, updatedAt: stamp(old) }
   set({ ...state, plans: [...state.plans.filter((x) => x !== old), p] })
   push('act_plan', planKey(date, dept, key), rowOfPlan(p))
-  logChange(dept, 'Programa ' + date + ' · ' + dept + ' · ' + key, v(old?.qty), v(n), 'act_plan', planKey(date, dept, key))
+  // the line names the lot it is for now; "before" is the quantity it had, with the lot it had when that changed, and
+  // nothing at all when it had no quantity (a code taken off keeps its lot: alone it read " · lote 6292", review of 2026-10-19)
+  const was = v(old?.qty)
+  logChange(dept, 'Programa ' + date + ' · ' + dept + ' · ' + key + lotNote(l), was && old && old.lot && old.lot !== l ? was + lotNote(old.lot) : was, v(n), 'act_plan', planKey(date, dept, key))
 }
 /**
  * One code of a room's day against its program: what was set, what the room has registered of it (in all, and by
@@ -1818,7 +1844,14 @@ export function setPlan(date: string, dept: Dept, code: string, qty: number) {
  * unit = the word of the quantity: the room's, or in Spiral and MFO each code's (mezclas, lb, cajas; platos, copas,
  * lb); kind = that word as the runs carry it ('' = the room's own); other = what was registered of the code in another word
  */
-export type PlanRow = { code: string; name: string; planned: number; done: number; byShift: [number, number]; left: number; running: boolean; lines: string[]; unit: string; kind: string; other: { word: string; n: number }[] }
+/**
+ * the word a code's MFO bins hold, as the newest bin of it among `runs` says ('' = platos; 'copas', 'lb'; 'cajas' when
+ * a bin was typed so); undefined when none of them has a bin. MFO's program is read in this word (planRows), and so is
+ * the lot's program in Flujo when the lot has no bin of the code yet (review of 2026-10-19: both must say the same)
+ */
+export const mfoBinWord = (runs: Run[], code: string): string | undefined => { const key = normCode(code); return runs.filter((r) => r.dept === 'MFO' && normCode(r.code) === key && !!binOf(r)).sort((a, b) => b.startedAt - a.startedAt).map(apartOf)[0] }
+/** lot = the lot the program names ('' when none, 2026-10-19) */
+export type PlanRow = { code: string; name: string; planned: number; done: number; byShift: [number, number]; left: number; running: boolean; lines: string[]; unit: string; kind: string; other: { word: string; n: number }[]; lot: string }
 export function planRows(s: State, date: string, dept: Dept): PlanRow[] {
   const cfg = CFG[dept], hours = shiftsOf(s, date)
   const all = s.runs.filter((r) => r.dept === dept && r.date === date), plan = planOf(s, date, dept)
@@ -1829,7 +1862,7 @@ export function planRows(s: State, date: string, dept: Dept): PlanRow[] {
     // Spiral: the code's measure is the products table's; or else the one its mezclas were started with today. MFO:
     // what the code's bins hold (platos, copas, pounds): as today's bins of it say, else as it was counted last on this
     // device, else platos
-    const mfoKind = () => { const said = (list: Run[]) => list.filter((r) => !!binOf(r)).sort((a, b) => b.startedAt - a.startedAt).map(apartOf)[0]; return said(ofCode) ?? said(s.runs.filter((r) => r.dept === 'MFO' && normCode(r.code) === key)) ?? '' }
+    const mfoKind = () => mfoBinWord(ofCode, key) ?? mfoBinWord(s.runs, key) ?? ''
     const measure: string = dept === 'MFO' ? mfoKind() : dept !== 'Spiral' ? '' : product?.spiralUnit ? (product.spiralUnit === 'mezclas' ? '' : product.spiralUnit) : (ofCode.map(measureOf).find(Boolean) ?? '')
     // what counts for the program: the runs in the code's measure (bins, and mezclas in another measure, stay apart)
     const mine = ofCode.filter((r) => apartOf(r) === measure)
@@ -1838,7 +1871,7 @@ export function planRows(s: State, date: string, dept: Dept): PlanRow[] {
     const done = made(0), planned = set?.qty ?? 0, open = mine.filter((r) => !r.endedAt)
     const wordOf = (w: string) => (dept === 'Spiral' ? measureUnit(w) : w ? apartWord(dept, w) : roomUnit)
     const other = [...ofCode.filter((r) => apartOf(r) !== measure && (dept === 'Spiral' || dept === 'MFO' || !!apartOf(r))).reduce((m, r) => { const w = apartOf(r), n = w || cfg.qty !== 'none' ? runQty(s, r) : r.units.length; return m.set(w, (m.get(w) ?? 0) + n) }, new Map<string, number>())].filter(([, n]) => n > 0).map(([word, n]) => ({ word: wordOf(word), n }))
-    return { code: product?.code ?? set?.code ?? mine[0]?.code ?? ofCode[0]?.code ?? key, name: product?.name ?? '', planned, done, byShift: [made(1), made(2)], left: planned ? Math.round((planned - done) * 100) / 100 : 0, running: open.length > 0, unit: measure ? wordOf(measure) : roomUnit, kind: measure, other, lines: [...new Set(open.map((r) => lineNameOf(s, r.lineId, r.line)))] }
+    return { code: product?.code ?? set?.code ?? mine[0]?.code ?? ofCode[0]?.code ?? key, name: product?.name ?? '', planned, done, byShift: [made(1), made(2)], left: planned ? Math.round((planned - done) * 100) / 100 : 0, running: open.length > 0, unit: measure ? wordOf(measure) : roomUnit, kind: measure, other, lines: [...new Set(open.map((r) => lineNameOf(s, r.lineId, r.line)))], lot: set?.lot ?? '' }
   }).sort((a, b) => Number(b.planned > 0) - Number(a.planned > 0) || a.code.localeCompare(b.code, undefined, { numeric: true }))
 }
 // ---- a code and its lot that go on into the next day ----
@@ -2317,12 +2350,14 @@ function keepNewer(table: 'act_plan' | 'act_targets', row: Row, at: number) {
   if (!pend || !(at > (fromIso(pend.row.updated_at) ?? 0))) return
   drop(table, key)
   const mine = settingOf(table, pend.row), theirs = settingOf(table, row)
-  logChange(mine.dept, mine.what + ' · no se subió: ' + (String(row.updated_by ?? '') || 'otra persona') + ' lo cambió después', mine.text, theirs.text, table, key, String(pend.row.updated_by ?? '') || user.get())
+  // (a program: the line is named with the lot the version here had; when the server's names another, it is said)
+  const theirLot = table === 'act_plan' && planLot(row.lot) !== planLot(pend.row.lot) ? lotNote(planLot(row.lot) || '—') : ''
+  logChange(mine.dept, mine.what + ' · no se subió: ' + (String(row.updated_by ?? '') || 'otra persona') + ' lo cambió después', mine.text, theirs.text + theirLot, table, key, String(pend.row.updated_by ?? '') || user.get())
 }
 /** a program's or a setting's row as the history says it: what it is, its value, and the room its line goes with */
 function settingOf(table: 'act_plan' | 'act_targets', row: Row): { what: string; text: string; dept: Dept | null } {
   const num = (x: unknown) => (x == null || !(Number(x) > 0) ? '' : String(Number(x)))
-  if (table === 'act_plan') { const dept = row.dept as Dept; return { what: 'Programa ' + String(row.date ?? '').slice(0, 10) + ' · ' + dept + ' · ' + normCode(String(row.code ?? '')), text: num(row.qty), dept: roomKnown(dept) ? dept : null } }
+  if (table === 'act_plan') { const dept = row.dept as Dept; return { what: 'Programa ' + String(row.date ?? '').slice(0, 10) + ' · ' + dept + ' · ' + normCode(String(row.code ?? '')) + lotNote(planLot(row.lot)), text: num(row.qty), dept: roomKnown(dept) ? dept : null } }
   const key = String(row.dept ?? '')
   if (key === OPT_LINES) return { what: 'Operadores y líneas', text: linesText({ add: row.per_hour == null || Number(row.per_hour) !== 0, remove: Number(row.per_shift) === 1, updatedAt: 0 }), dept: null }
   if (key.startsWith(WEEK_KEY)) { const w = row.per_hour == null ? '' : String(row.per_hour); return { what: 'Turnos de la semana desde el ' + key.slice(WEEK_KEY.length), text: weekOk(w) ? weekText(w) : '', dept: null } }
@@ -2362,7 +2397,8 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
     if (!isDay(date) || !DEPTS.includes(dept) || !key || queued('act_plan', planKey(date, dept, key))) return // what was typed here is newer and on its way
     const cur = state.plans.find((p) => p.date === date && p.dept === dept && normCode(p.code) === key)
     if (!newer(cur)) return
-    set({ ...state, plans: [...state.plans.filter((p) => p !== cur), { date, dept, code: cur?.code ?? key, qty: Number(row.qty) > 0 ? Number(row.qty) : 0, updatedAt: at }] })
+    // (lot: '' from a server where 019 has not run yet, or a program typed without one)
+    set({ ...state, plans: [...state.plans.filter((p) => p !== cur), { date, dept, code: cur?.code ?? key, qty: Number(row.qty) > 0 ? Number(row.qty) : 0, lot: planLot(row.lot), updatedAt: at }] })
   } else if (table === 'act_products') {
     const code = String(row.code ?? ''), key = normCode(code)
     const i = state.products.findIndex((p) => normCode(p.code) === key)

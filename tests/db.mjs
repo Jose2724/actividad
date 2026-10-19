@@ -422,6 +422,19 @@ const before018 = (what) => text018.indexOf(what) >= 0 && text018.indexOf(what) 
 const floorLocks = [...text018.matchAll(/\bon\s+public\.act_(runs|stops|lines)\b/gi)].map((x) => x.index)
 eq('todo lo que toma act_runs, act_stops o act_lines (las guardas 9 y 10 también) va antes que act_runs_log', [firstLog > 0, floorLocks.length >= 6, floorLocks.filter((i) => i > firstLog).length, before018('create trigger act_runs_keep '), before018('create trigger act_lines_keep ')], [true, true, 0, true, true])
 
+// ---- 019 (Jose, 2026-10-19): a room's program may name its lot, optional ----
+section('019: el programa de un cuarto lleva su lote, opcional (Jose, 2026-10-19)')
+{
+  const lotOf = async (date, dept, code) => (await db.query('select lot from public.act_plan where date = $1 and dept = $2 and code = $3', [date, dept, code])).rows[0]?.lot ?? null
+  const planRow = (date, dept, code, qty, more = {}) => ({ date, dept, code, qty, updated_at: iso(NOW), updated_by: 'prueba', ...more })
+  const colLot = async () => (await db.query("select column_default, is_nullable from information_schema.columns where table_schema = 'public' and table_name = 'act_plan' and column_name = 'lot'")).rows.map((r) => [r.column_default, r.is_nullable])
+  eq('el 019 corre dos veces más sin error y deja la columna como la pone: texto, nunca nula, vacía por omisión', [await code(runFile(db, '019_plan_lot.sql')), await code(runFile(db, '019_plan_lot.sql')), await colLot()], ['', '', [["''::text", 'NO']]])
+  eq('el manager sube un programa con su lote, como lo manda la app, y el servidor lo guarda', [await code(as(db, jose, (tx) => upsert(tx, 'act_plan', planRow('2026-12-05', 'Spiral', '889', 3, { lot: '6339' }), 'date,dept,code'))), await lotOf('2026-12-05', 'Spiral', '889')], ['', '6339'])
+  eq('la oficina también, con el lote en blanco (programa del día); un operador sin el poder, no', [await code(as(db, edgar, (tx) => upsert(tx, 'act_plan', planRow('2026-12-05', 'RTE', '889', 1000, { lot: '' }), 'date,dept,code'))), await lotOf('2026-12-05', 'RTE', '889'), await code(as(db, ana, (tx) => upsert(tx, 'act_plan', planRow('2026-12-05', 'Packing', '889', 10, { lot: '6339' }), 'date,dept,code')))], ['', '', '42501'])
+  eq('una fila escrita sin la columna (una versión de antes del lote) se lee con el lote vacío', [await code(as(db, jose, (tx) => upsert(tx, 'act_plan', planRow('2026-12-06', 'Kitchen', '889', 4), 'date,dept,code'))), await lotOf('2026-12-06', 'Kitchen', '889')], ['', ''])
+  eq('cambiar el lote de un programa que ya estaba es una versión más, y la fila sigue siendo una (día, cuarto, código)', [await code(as(db, jose, (tx) => upsert(tx, 'act_plan', planRow('2026-12-05', 'Spiral', '889', 3, { lot: '6340' }), 'date,dept,code'))), await lotOf('2026-12-05', 'Spiral', '889'), (await db.query("select count(*)::int as n from public.act_plan where date = '2026-12-05' and dept = 'Spiral'")).rows[0].n], ['', '6340', 1])
+}
+
 section('Correr otra vez un archivo viejo, solo, no afloja ni cambia ninguna regla')
 // each file says "safe to run again" and Jose pastes them by hand: a rule a later file tightened must stay tight
 const rules = async () => new Map((await db.query(`

@@ -4,7 +4,7 @@
 // Run by: npm run check
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import { resolve, dirname } from 'node:path'
-import { as, person, serverDb } from './pg.mjs'
+import { as, person, runFile, serverDb } from './pg.mjs'
 import { restOver } from './pgrest.mjs'
 
 let passed = 0
@@ -564,6 +564,18 @@ section('Un cambio del programa o de una meta que esperó en la tablet no pisa o
   await sql(edgar, "insert into public.act_plan (date, dept, code, qty, updated_at, updated_by) values ($1, 'RTE', '100', 650, now(), 'Edgar') on conflict (date, dept, code) do update set qty = excluded.qty, updated_at = excluded.updated_at, updated_by = excluded.updated_by", [day])
   signedInAs(jose, 'mgr', ''); await m.syncNow(); await sent()
   eq('entra el manager: queda el 650 de la oficina, y el historial dice que el 500 no se subió', [await planSrv(), m.planOf(st(), day, 'RTE').map((p) => [p.code, p.qty]), m.outbox.size(), await notSent(day + '|RTE|100')], [[650, 'Edgar'], [['0100', 650]], 0, [['Jose', 'Programa ' + day + ' · RTE · 100 · no se subió: Edgar lo cambió después', '500', '650']]])
+  // the program's lot (Jose, 2026-10-19) goes up in the same row and the server keeps it (019); a row the office
+  // wrote without the column came down with the lot empty
+  eq('lo que bajó sin lote se lee vacío', m.planOf(st(), day, 'RTE').map((p) => p.lot), [''])
+  m.setPlan(day, 'RTE', '0100', 650, '6300'); await m.syncNow(); await sent()
+  eq('el lote del programa sube con la fila y el servidor lo guarda (019)', [(await sql(null, "select lot, qty from public.act_plan where date = $1 and dept = 'RTE' and code = '100'", [day])).rows.map((r) => [r.lot, Number(r.qty)]), m.outbox.size()], [[['6300', 650]], 0])
+  // until Jose runs 019 the server has no lot column: the program waits in the queue (nothing is lost) and the screen
+  // names the SQL that is missing; once 019 is run, it goes up on the next pass with its lot
+  await sql(null, 'alter table public.act_plan drop column lot')
+  m.setPlan(day, 'RTE', '0100', 700, '6300'); await m.flushNow(); await quiet()
+  eq('sin la columna del 019 el programa espera en la cola y la pantalla dice qué SQL falta', [waiting('act_plan'), m.syncStore.get().lastError, await planSrv()], [[day + '|RTE|100'], 'Falta ejecutar en Supabase el SQL 019 (el lote del programa): el programa espera', [650, 'Jose']])
+  await runFile(db, '019_plan_lot.sql'); await m.flushNow(); await sent()
+  eq('corrido el 019, sube en la vuelta siguiente con su lote', [(await sql(null, "select lot, qty from public.act_plan where date = $1 and dept = 'RTE' and code = '100'", [day])).rows.map((r) => [r.lot, Number(r.qty)]), m.outbox.size(), m.syncStore.get().lastError], [[['6300', 700]], 0, ''])
   // the tablet is Ana's again for what follows
   signedInAs(ana, 'op', 'Packing'); await m.pullAll()
 }

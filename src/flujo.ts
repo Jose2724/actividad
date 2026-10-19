@@ -1,5 +1,5 @@
-import { apartOf, fmtN, normCode, orderOfId, plainText, productOf, type PackRoom, type Product, type State } from './store'
-import { avanceLots, datesBetween, lotAcrossDays, lotsKnown, mfoList, mfoText, mfoWord, packRoomOf, type LotDay, type MfoMade } from './avance'
+import { apartOf, DEPTS, fmtN, measureOf, measureUnit, mfoBinWord, normCode, orderOfId, plainText, planLot, productOf, unitQty, type Dept, type Measure, type PackRoom, type Product, type State } from './store'
+import { avanceLots, datesBetween, lotAcrossDays, lotOrder, mfoList, mfoText, mfoWord, packRoomOf, type AvancePart, type LotDay, type MfoMade } from './avance'
 import { runLots, unitParts } from './report'
 import type { Cell } from './xlsx'
 import { tr } from './i18n'
@@ -29,6 +29,22 @@ import { tr } from './i18n'
  * is left. Jose chose what "queda en inventario" means: the pouches (or MFO's platos/copas) made and not yet put in
  * cases, and the cases packed on pallets that carry no PO (whether the PO is closed does not matter).
  *
+ * SPIRAL and the runs just started (Jose, 2026-10-19 morning, from the floor: "en la nueva pestaña Flujo creo que
+ * falta poner Spiral; Spiral está trabajando y no sale en Flujo ese código con el que están trabajando"): two of
+ * Avance's rules hid Spiral here. A Spiral run weighing its mezclas in pounds or counting them in cases is "counted
+ * apart" and makes no mezclas of a product, so lotAcrossDays leaves it out and a code Spiral only weighs had no row;
+ * and a run still open with no unit yet counts nothing, so its lot and code had no row until the first mezcla. Both
+ * are gathered here (flujoCodes), Avance's own numbers untouched: Spiral's pounds or cases are said as they are
+ * (never turned into cases: the yield is per mezcla) and a run just started gives its lot a row in zeros, "en curso".
+ *
+ * THE LOT'S PROGRAM (Jose, 2026-10-19 morning, from the floor: a room's program may now name its lot, see
+ * store.ts Plan.lot): what the office programmed of a code FOR THIS LOT, in any room and on any day, is added up here
+ * and set against what the lot has of it (flujoProgram, FlujoProg): "prog. 80 mezclas" under PROD, the same under
+ * RTE, MFO and Packing for their programs, a line of the fold, the lot's band and two columns of the Excel. A code
+ * programmed for a lot that nobody has started yet has its row too, in zeros: the clerk's sheet is of pending work
+ * orders, and a programmed lot is one. A program without a lot stays a day's program (Avance's business) and is
+ * attributed to no lot.
+ *
  * Pure: no React, no DOM, nothing of App (so the checks read the very numbers the screen and the Excel get).
  */
 
@@ -49,9 +65,18 @@ export type FlujoState = 'none' | 'unpacked' | 'nocompare' | 'short' | 'over' | 
 /** the order of the chips: what needs a look first */
 export const FLUJO_STATES: FlujoState[] = ['short', 'over', 'ok', 'unpacked', 'nocompare', 'none']
 export type FlujoMissing = 'product' | 'yield' | 'perCase' | 'perPallet'
+/**
+ * what Spiral registered of a code APART from its mezclas: each mezcla weighed in pounds or counted in cases (the
+ * products table's "Spiral cuenta en", or the measure the run was started with: run.extra.measure). Said as it is,
+ * never turned into cases nor counted as mezclas: the yield is per mezcla (Jose, 2026-10-19)
+ */
+export type SpiralApart = { word: Measure; qty: number }
+/** what one day made of a lot (LotDay), with what Spiral weighed or counted apart that day */
+export type FlujoDay = LotDay & { spiralApart: SpiralApart[] }
 /** the raw numbers of one code in one lot, in the sheet's words; null = blank in Productos (not known, never 0) */
 export type FlujoIn = {
   route: PackRoom; inTable: boolean
+  spiralApart?: SpiralApart[]  // what Spiral weighed or counted apart (lb, cajas): only says the row has something; no column is computed from it (optional: the checks feed flujoCalc the sheet's numbers alone)
   yieldCs: number | null      // YIEL = casesPerMix
   perCase: number | null      // POUCH X CS = pouchesPerCase (an MFO code: platos/copas per case)
   perPallet: number | null    // casesPerPallet
@@ -103,7 +128,8 @@ export function flujoCalc(x: FlujoIn): FlujoCalc {
   const rte = x.route === 'RTE'
   const k = x.perCase && x.perCase > 0 ? x.perCase : null
   const countable = x.mfoUnits > 0 || x.mfoCases > 0
-  const hasAny = x.mixes > 0 || x.pouches > 0 || x.mfoUnits > 0 || x.mfoCases > 0 || x.mfoLb > 0 || x.cases > 0 || x.pallets > 0
+  // (what Spiral weighed or counted apart is a record of the lot too: the row exists and is not "Sin registros")
+  const hasAny = x.mixes > 0 || x.pouches > 0 || x.mfoUnits > 0 || x.mfoCases > 0 || x.mfoLb > 0 || x.cases > 0 || x.pallets > 0 || (x.spiralApart ?? []).some((a) => a.qty > 0)
   // SEGÚN RTE (CS): what the room that packs the code reported, in cases. RTE's pouches ÷ pouches per case; MFO's
   // platos/copas ÷ units per case, plus the bins of before that already counted cases. MFO in pounds only: no case
   // arithmetic (Jose, 2026-10-17: nothing of MFO is turned into cases). MFO with nothing registered: zero reported,
@@ -169,24 +195,37 @@ export function flujoCalc(x: FlujoIn): FlujoCalc {
   return { segun, diffRte, diffMfo, diffPacking, projected, projectedFrom, diffProjected, palletsProjected, state, missing, mfoOnlyLb, hasAny, mixesUsed, mixesLeft, madeOver, unitsMade, unitsUsed, unitsLeft, packedOver, casesFree }
 }
 
+/**
+ * what the office programmed of a code for THIS lot in one room (2026-10-19), against what the lot has of it: word =
+ * the room's quantity as data ('mezclas'; in Spiral 'lb' or 'cajas' when Productos says Spiral counts the code so;
+ * 'pouches'; MFO's word; 'cajas' in Packing), made = what the lot's rows count of it in that word, left = qty − made
+ * (negative = more than programmed, the PlanCard's "+"). Two decimals, as the quantities typed
+ */
+export type FlujoProg = { dept: Dept; word: string; qty: number; made: number; left: number }
 export type FlujoRow = FlujoIn & FlujoCalc & {
   lot: string; code: string; product: Product | undefined; name: string
   routeSaid: boolean                 // false = packRoomOf guessed it ("?")
   mixRoom: 'Kitchen' | 'Spiral'
-  days: LotDay[]                     // what each day made of it (lotAcrossDays), sorted
+  days: FlujoDay[]                   // what each day made of it (lotAcrossDays, plus Spiral's apart measures), sorted
   mfo: MfoMade[]                     // word by word, the usual first (for display)
   mfoWordUsed: string                // the countable word MFO used ('' when none): platos, copas, or cajas for bins of before
-  running: boolean                   // a run of this code touching the lot is still open
+  spiralApart: SpiralApart[]         // what Spiral weighed (lb) or counted (cajas) of this lot apart from its mezclas, lb first ([] = nothing)
+  running: boolean                   // a run of this code touching the lot is still open (openIn says where)
+  openIn: Dept[]                     // the rooms where such a run is still open ([] when none)
+  prog: FlujoProg[]                  // the lot's program of this code, room by room in DEPTS order ([] = none named this lot)
   otherRte: boolean                  // MFO route but RTE registered pouches of this lot (shown as a note, never computed)
   otherMfo: boolean                  // RTE route but MFO registered something of this lot
   unitWord: string                   // the word unitsMade/Used/Left count in: 'pouches', or MFO's word ('' when they are null)
 }
 /** what is left unpacked under one word (pouches, platos, copas…) over some rows, and in how many of them there is some */
 export type FlujoLeft = { word: string; qty: number; rows: number }
+/** what was programmed for the lot under one room's word, over some rows (the band: "programado 80 mezclas · 440 cajas") */
+export type FlujoProgSum = { dept: Dept; word: string; qty: number }
 export type FlujoSum = {
   codes: number; cases: number; pallets: number; projected: number | null; states: Record<FlujoState, number>; shortCs: number; overCs: number
   left: FlujoLeft[]           // CONSUMO: unpacked, word by word (a word is never added to another: pouches apart from platos apart from copas)
   casesFree: number; freeRows: number; casesOnPo: number; palletsOnPo: number
+  prog: FlujoProgSum[]        // the lot's program (2026-10-19), room and word by room and word, DEPTS order ([] = none)
 }
 export type FlujoLot = { lot: string; days: string[]; rows: FlujoRow[]; sum: FlujoSum }
 
@@ -219,8 +258,88 @@ export function flujoOnPo(s: State, lot: string): Map<string, { cases: number; p
   }
   return out
 }
-/** one row from one code of lotAcrossDays(s, lot); `onPo` = flujoOnPo(s, lot) when the caller has it (flujoLot does, once per lot) */
-export function flujoRow(s: State, lot: string, c: ReturnType<typeof lotAcrossDays>['codes'][number], onPo?: Map<string, { cases: number; pallets: number }>): FlujoRow {
+/**
+ * a lot's entry of one code: lotAcrossDays' (mezclas, pouches, cases, MFO, pallets, day by day) plus what Flujo needs
+ * and Avance's day view does not (see flujoCodes). kitchen = Kitchen's own mezclas of the lot (mixes is the mix room's:
+ * when Spiral made more of the code, Kitchen's count is only here, for Kitchen's program); prog = what the office
+ * programmed of the code for this lot, room by room
+ */
+export type FlujoCode = { code: string; mixRoom: 'Kitchen' | 'Spiral'; days: FlujoDay[]; spiralApart: SpiralApart[]; openIn: Dept[]; kitchen: number; prog: { dept: Dept; qty: number }[] } & AvancePart
+const zeroPart = (): AvancePart => ({ mixes: 0, spiral: 0, pouches: 0, cases: 0, mfo: {}, pallets: 0 })
+/**
+ * what the office programmed for one lot (2026-10-19): per code (normCode) and room, the quantities of every program
+ * that names this lot, on any day (a lot runs into the next day, and the office may program it on the day before),
+ * added up. Only programs with a lot: one without stays a day's program, attributed to no lot. The spelling of the
+ * code is the products table's, else the program's
+ */
+export function flujoProgram(s: State, lot: string): Map<string, { code: string; prog: { dept: Dept; qty: number }[] }> {
+  const out = new Map<string, { code: string; prog: { dept: Dept; qty: number }[] }>()
+  if (!lot) return out
+  for (const p of s.plans) {
+    if (!(p.qty > 0) || planLot(p.lot) !== lot) continue
+    const key = normCode(p.code)
+    let c = out.get(key)
+    if (!c) { c = { code: productOf(s, key)?.code ?? p.code, prog: [] }; out.set(key, c) }
+    const x = c.prog.find((q) => q.dept === p.dept)
+    if (x) x.qty = Math.round((x.qty + p.qty) * 100) / 100; else c.prog.push({ dept: p.dept, qty: p.qty })
+  }
+  for (const c of out.values()) c.prog.sort((a, b) => DEPTS.indexOf(a.dept) - DEPTS.indexOf(b.dept))
+  return out
+}
+/** "1,200 lb", "80 cajas", or "1,200 lb · 80 cajas" when Spiral used both measures in one lot (both said, never added) */
+export const spiralApartText = (l: SpiralApart[]) => l.map((a) => fmtN(a.qty) + ' ' + measureUnit(a.word)).join(' · ')
+const addApart = (l: SpiralApart[], word: Measure, qty: number) => { const x = l.find((a) => a.word === word); if (x) x.qty += qty; else l.push({ word, qty }) }
+const APART_ORDER: Measure[] = ['lb', 'cajas']
+/**
+ * The codes of a lot as Flujo lists them (Jose, 2026-10-19, from the floor: "Spiral está trabajando y no sale en Flujo
+ * ese código con el que están trabajando"). lotAcrossDays gives what each room counted of the lot with Avance's two
+ * rules, which left Spiral out here: (1) a Spiral run weighing its mezclas in pounds or counting them in cases is
+ * "counted apart" and makes no mezclas (apartOf), so a code Spiral only weighs had no row at all: here its pounds (or
+ * cases) are gathered per lot and per day as spiralApart, said as they are, never turned into cases; (2) a run still
+ * open with no unit yet counts nothing, so its lot and code had no row until the first mezcla, cart or pallet: here
+ * every run still open gives each lot it touches (runLots: its own lot, the one it packs now, the pallet being built)
+ * a row of its code, in zeros, "en curso", so the office sees the code is on from its first minute. Avance's own
+ * numbers are not touched: lotAcrossDays is used as it is.
+ */
+export function flujoCodes(s: State, lot: string): FlujoCode[] {
+  const byKey = new Map<string, FlujoCode>()
+  for (const c of lotAcrossDays(s, lot).codes) byKey.set(normCode(c.code), { ...c, days: c.days.map((d) => ({ ...d, spiralApart: [] })), spiralApart: [], openIn: [], kitchen: 0, prog: [] })
+  const entry = (code: string, dept: Dept) => {
+    const key = normCode(code)
+    let c = byKey.get(key)
+    if (!c) { c = { code: productOf(s, key)?.code ?? code, mixRoom: dept === 'Spiral' ? 'Spiral' : 'Kitchen', days: [], spiralApart: [], openIn: [], kitchen: 0, prog: [], ...zeroPart() }; byKey.set(key, c) }
+    return c
+  }
+  const dayOf = (c: FlujoCode, date: string) => { let d = c.days.find((x) => x.date === date); if (!d) { d = { date, ...zeroPart(), spiralApart: [] }; c.days.push(d) } return d }
+  for (const r of s.runs) {
+    // Spiral apart: the lot of each mezcla from unitParts (the run's lot, or the lots written on the unit, each with
+    // its share), its figure from the unit itself when the part has none (unitParts says null for Spiral: CFG.Spiral
+    // counts mezclas, not quantities; the pounds or cases typed are the unit's own)
+    const m = measureOf(r)
+    if (m) for (const u of r.units) for (const p of unitParts(s, r, u)) {
+      if (p.lot !== lot) continue
+      const c = entry(r.code, r.dept), q = p.qty ?? unitQty(s, r, u)
+      addApart(c.spiralApart, m, q); addApart(dayOf(c, r.date).spiralApart, m, q)
+    }
+    // Kitchen's own mezclas of the lot (as lotAcrossDays counts them), kept apart from the mix room's for Kitchen's program
+    if (r.dept === 'Kitchen' && !apartOf(r)) for (const u of r.units) for (const p of unitParts(s, r, u)) if (p.lot === lot) entry(r.code, r.dept).kitchen++
+    if (!r.endedAt && runLots(s, r).has(lot)) { const c = entry(r.code, r.dept); if (!c.openIn.includes(r.dept)) c.openIn.push(r.dept); dayOf(c, r.date) }
+  }
+  // the lot's program (2026-10-19): a code programmed for this lot has its row even before anybody starts it
+  for (const [key, p] of flujoProgram(s, lot)) { const c = byKey.get(key) ?? entry(p.code, p.prog[0].dept); c.prog = p.prog }
+  const tidy = (l: SpiralApart[]) => l.filter((a) => a.qty > 0).map((a) => ({ ...a, qty: Math.round(a.qty * 100) / 100 })).sort((a, b) => APART_ORDER.indexOf(a.word) - APART_ORDER.indexOf(b.word))
+  return [...byKey.values()].map((c) => ({
+    ...c,
+    // a code with no mezcla that Spiral weighed: Spiral is the room making it (lotAcrossDays says Kitchen at 0 to 0)
+    mixRoom: !c.mixes && c.spiralApart.some((a) => a.qty > 0) ? 'Spiral' as const : c.mixRoom,
+    spiralApart: tidy(c.spiralApart),
+    days: c.days.map((d) => ({ ...d, spiralApart: tidy(d.spiralApart) })).sort((a, b) => a.date.localeCompare(b.date)),
+    // the rooms in their usual order (the explain and the badge name them), not in the order the runs were met
+    openIn: [...c.openIn].sort((a, b) => DEPTS.indexOf(a) - DEPTS.indexOf(b)),
+  })).sort((a, b) => a.code.localeCompare(b.code))
+}
+/** one row from one code of flujoCodes(s, lot); `onPo` = flujoOnPo(s, lot) when the caller has it (flujoLot does, once per lot) */
+export function flujoRow(s: State, lot: string, c: FlujoCode, onPo?: Map<string, { cases: number; pallets: number }>): FlujoRow {
   const product = productOf(s, c.code)
   const { room: route, said: routeSaid } = packRoomOf(s, c.code)
   // Productos stores a blank as 0 (numOf): a 0 here is "not known"
@@ -235,12 +354,24 @@ export function flujoRow(s: State, lot: string, c: ReturnType<typeof lotAcrossDa
   const mfoWordUsed = used ? used.word : mfoCases > 0 ? 'cajas' : ''
   const key = normCode(c.code)
   const po = (onPo ?? flujoOnPo(s, lot)).get(key) ?? { cases: 0, pallets: 0 }
-  const input: FlujoIn = { route, inTable: !!product, yieldCs, perCase, perPallet, mixes: c.mixes, pouches: c.pouches, mfoUnits, mfoCases, mfoLb, cases: c.cases, pallets: c.pallets, casesOnPo: po.cases, palletsOnPo: po.pallets }
+  const input: FlujoIn = { route, inTable: !!product, yieldCs, perCase, perPallet, mixes: c.mixes, pouches: c.pouches, mfoUnits, mfoCases, mfoLb, cases: c.cases, pallets: c.pallets, casesOnPo: po.cases, palletsOnPo: po.pallets, spiralApart: c.spiralApart }
   const calc = flujoCalc(input)
+  // The lot's program, room by room, against what the lot has of the code in that room's word (2026-10-19), read as
+  // the PlanCard reads it (planRows) so both say the same figure (review of 2026-10-19). Kitchen: its own mezclas.
+  // Spiral: its mezclas, or its pounds / cases when Productos says Spiral counts the code so (the program is typed in
+  // that unit); with nothing said in Productos, what Spiral registered of the lot apart, else mezclas. RTE: pouches.
+  // MFO: the word its bins of the lot hold, pounds included (a code MFO weighs has its program in pounds: "240 of 300
+  // lb", never "0 of 300 platos"); with no bin of the lot yet, the word of the code's newest bin on this device, else
+  // platos. Packing: cases on pallets
+  const spiralWord: string = product?.spiralUnit ? product.spiralUnit : c.spiralApart[0]?.word ?? 'mezclas'
+  const mfoWordProg = mfoWordUsed || (mfoLb > 0 ? 'lb' : mfoBinWord(s.runs, c.code) || 'platos')
+  const madeOf = (dept: Dept, word: string) => (dept === 'Kitchen' ? c.kitchen : dept === 'Spiral' ? (word === 'mezclas' ? c.spiral : c.spiralApart.find((a) => a.word === word)?.qty ?? 0) : dept === 'RTE' ? c.pouches : dept === 'MFO' ? c.mfo[word] ?? 0 : c.cases)
+  const prog: FlujoProg[] = c.prog.map((p) => { const word = p.dept === 'Spiral' ? spiralWord : p.dept === 'RTE' ? 'pouches' : p.dept === 'MFO' ? mfoWordProg : p.dept === 'Packing' ? 'cajas' : 'mezclas'; const made = madeOf(p.dept, word); return { dept: p.dept, word, qty: p.qty, made: r2(made), left: r2(p.qty - made) } })
   return {
     ...input, ...calc,
-    lot, code: c.code, product, name: product?.name ?? '', routeSaid, mixRoom: c.mixRoom, days: c.days, mfo, mfoWordUsed,
-    running: s.runs.some((r) => !r.endedAt && normCode(r.code) === key && runLots(s, r).has(lot)),
+    lot, code: c.code, product, name: product?.name ?? '', routeSaid, mixRoom: c.mixRoom, days: c.days, mfo, mfoWordUsed, spiralApart: c.spiralApart, openIn: c.openIn, prog,
+    // a run of this code still open on a lot it touches (flujoCodes gathered them once per lot, over runLots)
+    running: c.openIn.length > 0,
     otherRte: route === 'MFO' && c.pouches > 0,
     otherMfo: route === 'RTE' && mfo.length > 0,
     unitWord: calc.unitsMade == null ? '' : route === 'RTE' ? 'pouches' : mfoWordUsed,
@@ -261,6 +392,14 @@ export function flujoSum(rows: FlujoRow[]): FlujoSum {
     if (!x) { x = { word: r.unitWord, qty: 0, rows: 0 }; left.set(r.unitWord, x) }
     x.qty = r2(x.qty + r.unitsLeft); if (r.unitsLeft > 0) x.rows++
   }
+  // the lot's program (2026-10-19), added only between rows of the same room and word (Kitchen's mezclas with Kitchen's)
+  const prog = new Map<string, FlujoProgSum>()
+  for (const r of rows) for (const p of r.prog) {
+    const k = p.dept + '|' + p.word
+    let x = prog.get(k)
+    if (!x) { x = { dept: p.dept, word: p.word, qty: 0 }; prog.set(k, x) }
+    x.qty = r2(x.qty + p.qty)
+  }
   return {
     codes: rows.length,
     cases: rows.reduce((t, r) => t + r.cases, 0), pallets: rows.reduce((t, r) => t + r.pallets, 0),
@@ -271,7 +410,34 @@ export function flujoSum(rows: FlujoRow[]): FlujoSum {
     left: [...left.values()].sort((a, b) => unitRank(a.word) - unitRank(b.word) || a.word.localeCompare(b.word)),
     casesFree: rows.reduce((t, r) => t + r.casesFree, 0), freeRows: rows.filter((r) => r.casesFree > 0).length,
     casesOnPo: rows.reduce((t, r) => t + r.casesOnPo, 0), palletsOnPo: rows.reduce((t, r) => t + r.palletsOnPo, 0),
+    prog: [...prog.values()].sort((a, b) => DEPTS.indexOf(a.dept) - DEPTS.indexOf(b.dept) || a.word.localeCompare(b.word)),
   }
+}
+/** the word of a program as the screen says it: mezclas / lb / cajas (Kitchen, Spiral, Packing), pouches, MFO's word */
+export const progWord = (p: Pick<FlujoProg, 'dept' | 'word'>) => (p.dept === 'RTE' ? tr('pouches') : p.dept === 'MFO' ? mfoWord(p.word) : measureUnit(p.word))
+/**
+ * "prog. 80 mezclas": the small line under a room's cell; `named` adds the room ("prog. 80 mezclas Kitchen"), for the PROD cell
+ * when Kitchen and Spiral both have the code programmed for the lot (two lines reading the same said nothing, 2026-10-19)
+ */
+export const progText = (p: FlujoProg, named = false) => tr('prog. {0} {1}', fmtN(p.qty), progWord(p) + (named ? ' ' + p.dept : ''))
+/**
+ * "80 mezclas · 3,500 pouches · 1,500 lb Spiral · 440 cajas": the lot's program for the band, each room's figure in
+ * its word (the list is already one entry per room and word: flujoSum). Nothing is added across rooms: Kitchen's and
+ * Spiral's mezclas are the same mezclas passing from one room to the other, and PROD counts one room's (review of
+ * 2026-10-19: 80 programmed in Kitchen and 80 in Spiral read "programado 160 mezclas" against a PROD of 60). A figure
+ * is named with its room when its word is not the room's own (Spiral's pounds or cases, MFO in pounds or in cases)
+ * or when another room in the band has the same word ("80 mezclas Kitchen · 80 mezclas Spiral"); otherwise plain
+ */
+export function progSumText(list: FlujoProgSum[]): string {
+  const own = (p: FlujoProgSum) => p.dept === 'RTE' || p.dept === 'Packing' || (p.word === 'mezclas' ? p.dept === 'Kitchen' || p.dept === 'Spiral' : p.dept === 'MFO' && p.word !== 'lb' && p.word !== 'cajas')
+  const named = (p: FlujoProgSum) => !own(p) || list.some((q) => q.dept !== p.dept && q.word === p.word)
+  return list.filter((p) => p.qty > 0).map((p) => fmtN(p.qty) + ' ' + progWord(p) + (named(p) ? ' ' + p.dept : '')).join(' · ')
+}
+/** "80 mezclas (Kitchen) · hechas 60 · faltan 20": one program of a lot against what the lot has (the fold) */
+export function progLine(p: FlujoProg): string {
+  const m = p.word === 'pouches' || p.word === 'platos' // (hechos / hechas: the word's gender)
+  const rest = p.left > 0 ? tr('faltan {0}', n2(p.left)) : p.left < 0 ? tr('completo (+{0})', n2(-p.left)) : tr('completo')
+  return fmtN(p.qty) + ' ' + progWord(p) + ' (' + p.dept + ') · ' + (m ? tr('hechos {0}', n2(p.made)) : tr('hechas {0}', n2(p.made))) + ' · ' + rest
 }
 /** a row "with inventory" (the chip "Con inventario"): something made and not packed, or cases without a PO */
 export const flujoHasInventory = (r: Pick<FlujoRow, 'unitsLeft' | 'casesFree'>) => (r.unitsLeft ?? 0) > 0 || r.casesFree > 0
@@ -290,17 +456,27 @@ export function flujoLeftMain(left: FlujoLeft[]): { main: FlujoLeft; rest: Flujo
  * and a lot of the first day in view began the day before); null when nothing of it was counted
  */
 export function flujoLot(s: State, lot: string): FlujoLot | null {
-  const a = lotAcrossDays(s, lot)
   const onPo = flujoOnPo(s, lot)
-  const rows = a.codes.map((c) => flujoRow(s, lot, c, onPo)).filter((r) => r.hasAny).sort((p, q) => p.code.localeCompare(q.code, undefined, { numeric: true }))
+  // a row with nothing counted yet stays while a run of it is open, or while the office has it programmed for this
+  // lot: the office sees the code is on, or still to start (2026-10-19)
+  const rows = flujoCodes(s, lot).map((c) => flujoRow(s, lot, c, onPo)).filter((r) => r.hasAny || r.running || r.prog.length > 0).sort((p, q) => p.code.localeCompare(q.code, undefined, { numeric: true }))
   if (!rows.length) return null
   const days = [...new Set(rows.flatMap((r) => r.days.map((d) => d.date)))].sort()
   return { lot, days, rows, sum: flujoSum(rows) }
 }
-/** the lots touched between two dates (both included; turned around if reversed), each over ALL its days, the newest lot first (lotsKnown's order) */
+/**
+ * the lots touched between two dates (both included; turned around if reversed), each over ALL its days, the newest
+ * lot first (lotsKnown's order). A lot a run still open is on (runLots: its own lot, the one it packs now, the pallet
+ * being built) counts as touched on the run's day even with nothing registered of it yet (2026-10-19): the lot of a
+ * run just started is in the list from its first minute, as its row is. So does a lot the office programmed on one of
+ * those days (a program may name its lot, 2026-10-19): the lot is listed with its codes to make before anybody starts
+ */
 export function flujoLots(s: State, from: string, to: string): FlujoLot[] {
-  const touched = new Set(datesBetween(from, to).flatMap((d) => avanceLots(s, d)))
-  return lotsKnown(s).filter((l) => touched.has(l)).map((l) => flujoLot(s, l)).filter((l): l is FlujoLot => !!l)
+  const dates = datesBetween(from, to), inRange = new Set(dates)
+  const touched = new Set(dates.flatMap((d) => avanceLots(s, d)))
+  for (const r of s.runs) if (!r.endedAt && inRange.has(r.date)) for (const l of runLots(s, r)) if (l) touched.add(l)
+  for (const p of s.plans) if (p.qty > 0 && inRange.has(p.date) && planLot(p.lot)) touched.add(planLot(p.lot))
+  return [...touched].sort(lotOrder).map((l) => flujoLot(s, l)).filter((l): l is FlujoLot => !!l)
 }
 
 /** `inv`: only the rows with inventory (the chip "Con inventario", 2026-10-19: something unpacked or cases without a PO) */
@@ -370,10 +546,17 @@ export function flujoExplain(r: FlujoRow, fmtDay: (date: string) => string = (d)
   const out: { key: string; label: string; text: string }[] = []
   const word = r.mfoWordUsed ? mfoWord(r.mfoWordUsed) : ''
   const rte = r.route === 'RTE'
+  // a run still open (2026-10-19): said first, in the rooms' own names (plant words, kept as data), because every
+  // number under it still changes; a run just started says so instead of leaving "Sin registros" unexplained
+  if (r.running) out.push({ key: 'open', label: tr('En curso'), text: r.hasAny ? tr('sigue corriendo en {0}: estos números todavía cambian', r.openIn.join(', ')) : tr('acaba de empezar en {0}: todavía no hay nada registrado de este lote', r.openIn.join(', ')) })
   if (r.mixes > 0) {
     const days = r.days.filter((d) => d.mixes > 0)
     out.push({ key: 'prod', label: tr('Mezclas (PROD)'), text: days.length === 1 ? tr('{0} registradas por {1} el {2}', r.mixes, r.mixRoom, fmtDay(days[0].date)) : tr('{0} registradas por {1}: {2}', r.mixes, r.mixRoom, days.map((d) => fmtDay(d.date) + ': ' + d.mixes).join(' · ')) })
   }
+  // Spiral's pounds or cases (2026-10-19): a fact of the lot, said beside the mezclas and used in no formula
+  if (r.spiralApart.length) out.push({ key: 'spiral', label: tr('Spiral aparte'), text: tr('Spiral registró {0} de este lote: no se pasa a cajas; el yield es por mezcla', spiralApartText(r.spiralApart)) })
+  // the lot's program (2026-10-19): each room's, against what the lot has of the code in that room's word
+  if (r.prog.length) out.push({ key: 'program', label: tr('Programa del lote'), text: r.prog.map(progLine).join('; ') })
   if (rte) {
     if (r.perCase == null) out.push({ key: 'segun', label: tr('Según RTE (cs)'), text: tr('nada que comparar: {0}', missingText(['perCase'])) })
     else {
@@ -441,14 +624,22 @@ const cell = (v: number | null | undefined): Cell => (v == null ? '' : r2(v))
  * them up); a blank in Productos and the other route's cells go blank, as on the screen. MFO's cell goes blank, not
  * 0, when MFO registered only pounds (they are under "MFO además": a 0 read as "MFO registered nothing", review of
  * 2026-10-18). The CONSUMO columns come last (2026-10-19): one pair of UNIDADES columns for both routes, with the
- * word they count in under UNIDAD (pouches, platos, copas), so the office adds pouches to pouches and never to platos
+ * word they count in under UNIDAD (pouches, platos, copas), so the office adds pouches to pouches and never to platos.
+ * Then (2026-10-19), SPIRAL APARTE with its SPIRAL EN: what Spiral weighed or counted apart, a number with its
+ * word (blank where Spiral weighed nothing: a 0 would read "Spiral registered nothing", as MFO's); with both measures
+ * in one lot, in text with each word, never added. Last of all (2026-10-19 too), PROGRAMADO with its PROG. CUARTO:
+ * what the office programmed of the code for this lot, a number with the room and its word ("Kitchen · mezclas");
+ * programmed in more than one room, in text with each room's figure, the room blank (as Spiral's two measures); blank
+ * where nothing names the lot
  */
 export function flujoSheet(lots: FlujoLot[]): Cell[][] {
   const head: Cell[] = [tr('Lote'), tr('Fechas del lote'), tr('COD'), tr('Producto'), tr('Lo empaca'), tr('YIEL'), tr('POUCH X CS'), tr('PROD'), tr('Cuarto de las mezclas'), tr('RTE'), tr('DIFERENCIAS / RTE'), tr('MFO'), tr('MFO en'), tr('MFO además'), tr('DIFERENCIAS / MFO'), tr('SEGÚN RTE (CS)'), tr('PACKING'), tr('Pallets'), tr('DIFERENCIAS / PACKING'), tr('CS PROYECTADO'), tr('Proyectado desde'), tr('Diferencia de proyectado'), tr('Pallets proyectados'), tr('ESTADO'), tr('En curso'), tr('Falta en Productos'),
-    tr('CONSUMO: MEZCLAS USADAS'), tr('MEZCLAS QUE QUEDAN'), tr('UNIDAD'), tr('UNIDADES USADAS EN CAJAS'), tr('UNIDADES QUE QUEDAN'), tr('CAJAS EN PEDIDOS'), tr('CAJAS SIN PEDIDO'), tr('PALLETS EN PEDIDOS')]
+    tr('CONSUMO: MEZCLAS USADAS'), tr('MEZCLAS QUE QUEDAN'), tr('UNIDAD'), tr('UNIDADES USADAS EN CAJAS'), tr('UNIDADES QUE QUEDAN'), tr('CAJAS EN PEDIDOS'), tr('CAJAS SIN PEDIDO'), tr('PALLETS EN PEDIDOS'),
+    tr('SPIRAL APARTE'), tr('SPIRAL EN'), tr('PROGRAMADO'), tr('PROG. CUARTO')]
   return [head, ...lots.flatMap((l) => l.rows.map((r): Cell[] => {
     const rte = r.route === 'RTE'
     const rest = r.mfo.filter((m) => m.word !== r.mfoWordUsed)
+    const apart = r.spiralApart, prog = r.prog
     return [
       l.lot, daysText(r.days), r.code, r.name, r.route + (r.routeSaid ? '' : ' ?'), cell(r.yieldCs), cell(r.perCase), r.mixes, r.mixes > 0 ? r.mixRoom : '',
       rte ? r.pouches : '', rte ? cell(r.diffRte) : '',
@@ -456,6 +647,8 @@ export function flujoSheet(lots: FlujoLot[]): Cell[][] {
       cell(r.segun), r.cases, r.pallets, cell(r.diffPacking), cell(r.projected), r.projectedFrom === 'mfo' ? tr('MFO') : r.projectedFrom === 'mixes' ? tr('mezclas × yield') : '', cell(r.diffProjected), cell(r.palletsProjected),
       flujoStateText(r.state, r.diffPacking), r.running ? tr('sí') : '', missingWords(r.missing),
       cell(r.mixesUsed), cell(r.mixesLeft), unitWordText(r.unitWord), cell(r.unitsUsed), cell(r.unitsLeft), r.casesOnPo, r.casesFree, r.palletsOnPo,
+      apart.length === 1 ? apart[0].qty : apart.length ? spiralApartText(apart) : '', apart.length === 1 ? measureUnit(apart[0].word) : '',
+      prog.length === 1 ? prog[0].qty : prog.length ? prog.map((p) => fmtN(p.qty) + ' ' + progWord(p) + ' ' + p.dept).join(' · ') : '', prog.length === 1 ? prog[0].dept + ' · ' + progWord(prog[0]) : '',
     ]
   }))]
 }
@@ -479,7 +672,7 @@ export function flujoLegend(viewing: string): Cell[][] {
     [tr('Diferencia de proyectado'), tr('PACKING − CS PROYECTADO (la hoja lo deja en blanco; aquí se calcula).')],
     [tr('Pallets proyectados'), tr('CS PROYECTADO ÷ cajas por pallet.')],
     [tr('ESTADO'), tr('Calculado con los números: Sin registros, Sin empacar, Faltan N cs, N cs de más, Cuadra, Sin comparar. El ESTADO del ERP no está en la app.')],
-    [tr('En curso'), tr('"sí" cuando un código del lote sigue corriendo en alguna línea: sus números todavía cambian.')],
+    [tr('En curso'), tr('"sí" cuando un código del lote sigue corriendo en alguna línea: sus números todavía cambian. Una corrida recién empezada ya tiene su fila, en ceros.')],
     [tr('Falta en Productos'), tr('Lo que la tabla de Productos no tiene de ese código y hace falta para calcular: la celda sale en blanco, nunca en 0.')],
     [tr('CONSUMO'), tr('Lo que el lote gastó y lo que queda, con los mismos números (nadie lo escribe). Queda en inventario lo hecho y todavía por empacar y las cajas que no van en ningún pedido.')],
     [tr('CONSUMO: MEZCLAS USADAS'), tr('SEGÚN RTE (CS) ÷ YIEL: las mezclas que dan lo que reportó el cuarto que empaca (RTE ÷ (YIEL × POUCH X CS), o lo de MFO ÷ (YIEL × unidades por caja)). En blanco sin YIEL o sin nada en cajas.')],
@@ -490,6 +683,10 @@ export function flujoLegend(viewing: string): Cell[][] {
     [tr('CAJAS EN PEDIDOS'), tr('De PACKING, las cajas en pallets que llevan un PO (un pallet con dos lotes da a cada lote sus cajas). Da igual si el pedido ya se marcó completo.')],
     [tr('CAJAS SIN PEDIDO'), tr('PACKING − CAJAS EN PEDIDOS: cajas empacadas que no van en ningún pedido.')],
     [tr('PALLETS EN PEDIDOS'), tr('De los pallets que llevan el lote, los que llevan un PO.')],
+    [tr('SPIRAL APARTE'), tr('Lo que Spiral registró del lote pesando cada mezcla en libras o contándola en cajas ("Spiral cuenta en", en Productos): tal cual, no se pasa a cajas ni cuenta como mezclas, porque el yield es por mezcla. En blanco si Spiral no pesó nada del lote; con las dos medidas en un lote, las dos en texto, sin sumarlas.')],
+    [tr('SPIRAL EN'), tr('En qué lo registró Spiral: lb o cajas.')],
+    [tr('PROGRAMADO'), tr('Lo que la oficina programó de ese código para ese lote (el programa de un cuarto puede llevar su lote desde 2026-10-19), sumando todos los días que lo nombran, en la unidad del cuarto: mezclas en Kitchen y Spiral (o lb / cajas si Spiral cuenta así el código), pouches en RTE, lo que llenan los bins en MFO, cajas en Packing. En blanco si ningún programa nombra el lote; programado en más de un cuarto, cada cifra con su cuarto, en texto. Un programa sin lote es del día (Avance) y no se cuenta aquí.')],
+    [tr('PROG. CUARTO'), tr('El cuarto que lo tiene programado y su unidad ("Kitchen · mezclas"). En blanco con más de un cuarto.')],
     [tr('Generado'), viewing],
   ]
 }
