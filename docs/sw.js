@@ -8,6 +8,8 @@ self.addEventListener('install', (e) => {
   // the page plus the files it names, so the app opens offline right after the first visit
   e.waitUntil(caches.open(CACHE).then(async (c) => {
     const res = await fetch(BASE, { cache: 'no-cache' })
+    // an error page is not the app: the install fails, and the worker before (with its good copy) stays
+    if (!res.ok) throw new Error('shell ' + res.status)
     await c.put(BASE, res.clone())
     const html = await res.text()
     const files = [...new Set([...html.matchAll(/(?:src|href)="([^"]+)"/g)].map((m) => m[1]).filter((u) => u.startsWith(BASE) && !u.endsWith('sw.js')))]
@@ -23,7 +25,11 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(req.url)
   if (url.origin !== location.origin || !url.pathname.startsWith(BASE)) return
   if (req.mode === 'navigate') {
-    e.respondWith(fetch(req).then((res) => { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(BASE, copy)); return res }).catch(() => caches.match(BASE)))
+    // Only the app's own page, as it came back whole, is kept as the copy that opens without WiFi. Any page opened on
+    // this site used to replace it: a mistyped link's 404, version.json opened by hand, a server error; and the next
+    // start without signal showed that instead of the app (audit 2026-10-17, H3)
+    const shell = url.pathname === BASE || url.pathname === BASE + 'index.html'
+    e.respondWith(fetch(req).then((res) => { if (shell && res.ok && res.type === 'basic') { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(BASE, copy)) } return res }).catch(() => caches.match(BASE)))
     return
   }
   const keep = (res) => { if (res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(req, copy)) } return res }
