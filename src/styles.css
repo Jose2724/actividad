@@ -875,8 +875,11 @@ table.avmini tbody tr:last-child td{border-bottom:0}
    made and not packed, red = over / packed more than reported, green = squares); the rooms keep their colours on the
    headers, badges, tiles and the phone's captions, never on a number. Word + number always together ---- */
 .fltable{min-width:0}
-/* thirteen columns on one screen: the headers may wrap, the cells breathe a little less than Avance's */
-.av2 .fltable th,.av2 .fltable th.dth{white-space:normal;line-height:1.15;min-width:64px}
+/* fifteen columns on one 1280 px screen (CONSUMO added two, review of 2026-10-19): the headers may wrap and breathe 6 px
+   at the sides instead of 10, the cells a little less than Avance's, and an MFO count wraps its word under the number
+   when its column is tight ("1,506" / "platos": the widest cell by 40 px). Measured with the demo seed: 1,164 of 1,216 px */
+.av2 .fltable th,.av2 .fltable th.dth{white-space:normal;line-height:1.15;min-width:64px;padding:8px 6px}
+.av2 .fltable td.fl-room{white-space:normal}
 .fltable th small{display:block;font-size:10px;letter-spacing:.04em;font-weight:600;text-transform:none}
 .fltable td{padding:8px}
 .av2 .fltable td.avcode{min-width:190px}
@@ -898,7 +901,7 @@ table.avmini tbody tr:last-child td{border-bottom:0}
 .fltable tr.fl-lot td{background:var(--bg);border-top:2px solid var(--line);padding:8px 12px;white-space:normal;font-weight:600}
 /* the band's text sticks, not its cell (a cell as wide as the table cannot stick: "Lote 6290" scrolled off first, review
    of 2026-10-18); its pieces are flex items with "·" drawn before each one, so a wrapped line never ends in a lone dot */
-.fltable tr.fl-lot td>div{position:sticky;left:12px;width:max-content;max-width:calc(100vw - 80px);display:flex;flex-wrap:wrap;gap:2px 0;align-items:baseline} /* (narrower than the frame by its padding and scrollbar: a wider band has no room to stick and scrolls off) */
+.fltable tr.fl-lot td>div{position:sticky;left:12px;width:max-content;max-width:calc(100vw - 104px);display:flex;flex-wrap:wrap;gap:2px 0;align-items:baseline} /* (narrower than the frame by its gutters, its scrollbar and the cell's 24 px of padding: a band that reaches the cell's edge forces the whole table 8 px past the frame, which the longer band with the inventory pieces did at 100vw − 80px, review of 2026-10-19; and a wider band has no room to stick and scrolls off) */
 .fltable tr.fl-lot td>div>*+*::before{content:'·';color:var(--muted);margin:0 .45em}
 .fltable tr.fl-lot b{font-size:17px}.fltable tr.fl-lot small{color:var(--muted);font-weight:600}
 .fltable tr.fl-lot .drill{font-weight:700}
@@ -914,6 +917,22 @@ table.avmini tbody tr:last-child td{border-bottom:0}
 .made.fl-tile-short{background:#fff1d6;color:#7a4700}.made.fl-tile-over{background:var(--red-soft);color:#9b1f19}
 .flhow{margin:0;padding-left:18px;font-size:13px;color:var(--muted);max-width:520px;display:grid;gap:3px}.flhow b{color:var(--ink)}
 .flujo .pill.run{font-size:11px;padding:2px 8px}
+/* CONSUMO (2026-10-19): the two inventory columns at the right, tinted as a group (a blue-grey apart from the
+   projection's green-grey: a group, not a meaning). A number that IS inventory (something left unpacked, cases without
+   a PO) in ink; a 0 in grey, so the office reads the column for what there is. The tiles and the lot band's pieces
+   wear the same blue-grey */
+.fltable th.fl-cons,.fltable td.fl-cons{background:#eef2f7}
+.fltable tr.avopen td.fl-cons{background:#e1e8f0}
+.fltable th.fl-cons small:first-child{color:#1b3a57;letter-spacing:.08em;text-transform:uppercase;font-size:9.5px}
+.fltable td.fl-cons b{display:block;font-variant-numeric:tabular-nums;color:var(--muted)}
+.fltable td.fl-cons.fl-inv b{color:#1b3a57;font-size:17px}
+.fltable td.fl-cons small{display:block;font-size:11px;font-weight:600}
+.made.fl-tile-inv{background:#dfe8f2;color:#1b3a57}
+/* six tiles (two of them inventory) share one row down to 1024 px: at Avance's 165 px the sixth sat alone on a second
+   row (review of 2026-10-19); on a phone two per row still fit (2 × 150 + 8 < 343) */
+.flujo .heads{grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr))}
+.fltable tr.fl-lot small.fl-lotinv{color:#1b3a57}
+.flinv .chip.on{background:#1b3a57;border-color:#1b3a57}
 @media (max-width:720px){
   .fltable{min-width:0}
   .fltable td.off{display:none}                                   /* the other room's cell says nothing: not even listed */
@@ -923,9 +942,10 @@ table.avmini tbody tr:last-child td{border-bottom:0}
   .fltable tr.fl-lot td>div>*+*::before{content:none}
   .fltable td.avcode{position:static;box-shadow:none}
   /* the clerk's cells first: Packing, its difference, the mezclas, then the route's room */
-  .fltable td.fl-pack{order:1}.fltable td.fl-difpack{order:2}.fltable td.fl-prod{order:3}.fltable td.fl-room{order:4}.fltable td.fl-difroom{order:5}.fltable td.fl-segun{order:6}.fltable td.fl-proj{order:7}.fltable td.fl-difproj{order:8}.fltable td.fl-yield{order:9}.fltable td.fl-percase{order:10}
+  .fltable td.fl-pack{order:1}.fltable td.fl-difpack{order:2}.fltable td.fl-prod{order:3}.fltable td.fl-room{order:4}.fltable td.fl-difroom{order:5}.fltable td.fl-segun{order:6}.fltable td.fl-proj{order:7}.fltable td.fl-difproj{order:8}.fltable td.fl-cons{order:9}.fltable td.fl-yield{order:10}.fltable td.fl-percase{order:11}
   .fltable td.dif b{font-size:16px}
-  .fltable td.fl-proj,.fltable td.fl-difproj{background:none}
+  .fltable td.fl-proj,.fltable td.fl-difproj,.fltable td.fl-cons{background:none}
+  .fltable td.fl-cons b{font-size:16px}
   .fltable td.slim small{white-space:normal;margin-left:0;max-width:none}
   .tabs.five button{font-size:14.5px;padding:8px 6px}  /* five tabs on one row (managers and the office); operators' three keep their size */
 }

@@ -2544,7 +2544,7 @@ calc.use((m) => {
   // Jose, 2026-10-18 evening, with the office clerk's "WO PENDIENTES" sheet: "otra tab que se llame Flujo de Datos, que
   // va calculando qué le toca a cada departamento según el yield y lo que esos departamentos ya tienen". Every row
   // below is a row of that sheet, with the numbers its own cells show; the last ones are cases the sheet has no row for
-  const calcOf = (route, yieldCs, perCase, perPallet, mixes, pouches, mfoUnits, mfoCases, mfoLb, cases, inTable = true) => m.flujoCalc({ route, inTable, yieldCs, perCase, perPallet, mixes, pouches, mfoUnits, mfoCases, mfoLb, cases, pallets: cases ? 1 : 0 })
+  const calcOf = (route, yieldCs, perCase, perPallet, mixes, pouches, mfoUnits, mfoCases, mfoLb, cases, inTable = true, casesOnPo = 0, palletsOnPo = 0) => m.flujoCalc({ route, inTable, yieldCs, perCase, perPallet, mixes, pouches, mfoUnits, mfoCases, mfoLb, cases, pallets: cases ? 1 : 0, casesOnPo, palletsOnPo })
   const out = (c) => [c.segun, c.diffRte, c.diffMfo, c.diffPacking, c.projected, c.projectedFrom, c.diffProjected, c.state]
   const row = (what, args, want) => eq(what, out(calcOf(...args)), want)
   row('2286 · LOTE 6222: 3487 ÷ 8 = 435.88, 442 × 8 − 3487 = 49, 442 − 435.875 = 6.13, 80 × 5.5 = 440', ['RTE', 5.5, 8, 36, 80, 3487, 0, 0, 0, 442], [435.88, 49, null, 6.13, 440, 'mixes', 2, 'over'])
@@ -2597,6 +2597,31 @@ calc.use((m) => {
   eq('las diferencias en palabras, con los signos de la hoja', [m.diffText('cases', -0.33, 'cs').text, m.diffText('cases', -9, 'cs').text, m.diffText('cases', 6.13, 'cs').text, m.diffText('room', -1376, 'pouches').text, m.diffText('room', 49, 'pouches').text, m.diffText('room', -54, 'platos').text, m.diffText('room', null, 'platos').text], ['✓ cuadra', 'faltan 9 cs', '6.13 cs de más', 'sobran 1,376 pouches', 'faltan 49 pouches', 'sobran 54 platos', '—'])
   eq('el estado en palabras', [m.flujoStateText('short', -9), m.flujoStateText('over', 6.13), m.flujoStateText('ok', 0), m.flujoStateText('unpacked', null), m.flujoStateText('nocompare', null), m.flujoStateText('none', null)], ['Faltan 9 cs', '6.13 cs de más', '✓ Cuadra', 'Sin empacar', 'Sin comparar', 'Sin registros'])
   eq('el nombre del archivo', [m.flujoFile('2026-10-05', '2026-10-18', { lot: '6222', route: 'MFO', state: 'short' }), m.flujoFile('2026-10-18', '2026-10-05', { lot: '', route: '', state: '' })], ['actividad-flujo-2026-10-05-a-2026-10-18-lote-6222-mfo-faltan', 'actividad-flujo-2026-10-05-a-2026-10-18'])
+  // ---- CONSUMO (Jose, 2026-10-19 ~03:00: "eso hay que reportarlo para que sepan qué hay y qué no hay en el inventario,
+  // para saber qué y cuánto ordenar"): what the lot used up and what is left, from the same numbers. Jose's choice:
+  // what is left in inventory = made and not yet put in cases, and cases packed on pallets without a PO ----
+  const cons = (c) => [c.mixesUsed, c.mixesLeft, c.madeOver, c.unitsMade, c.unitsUsed, c.unitsLeft, c.packedOver, c.casesFree]
+  eq('2286 / 6222 con 2 pallets (72 cs) en un PO: 3487 ÷ (5.5 × 8) = 79.25 mezclas usadas, quedan 0.75; 442 × 8 = 3,536 > 3,487 pouches: quedan 0 y Packing empacó de más; 72 en pedidos, 370 sin pedido', cons(calcOf('RTE', 5.5, 8, 36, 80, 3487, 0, 0, 0, 442, true, 72, 2)), [79.25, 0.75, false, 3487, 3536, 0, true, 370])
+  eq('4433 / 6224 en platos, 150 cs en pedidos: 1658 ÷ (129 × 6) = 2.14 mezclas usadas, quedan 0.86; 273 × 6 = 1,638 platos usados, quedan 20; 123 cajas sin pedido', cons(calcOf('MFO', 129, 6, 50, 3, 0, 1658, 0, 0, 273, true, 150, 3)), [2.14, 0.86, false, 1658, 1638, 20, false, 123])
+  eq('MFO solo en libras: nada en mezclas ni en unidades (nunca 0); las cajas sí', cons(calcOf('MFO', 20, 6, 40, 2, 0, 0, 0, 240, 30)), [null, null, false, null, null, null, false, 30])
+  eq('sin yield en Productos: nada en mezclas; los pouches igual se calculan', cons(calcOf('RTE', null, 8, 36, 10, 800, 0, 0, 0, 100)), [null, null, false, 800, 800, 0, false, 100])
+  eq('sin pouches por caja: ni mezclas usadas ni pouches usados; los hechos sí', cons(calcOf('RTE', 5, null, 36, 10, 800, 0, 0, 0, 40)), [null, null, false, 800, null, null, false, 40])
+  eq('RTE hizo más de lo que dan las mezclas (500 ÷ 40 = 12.5 > 10): quedan 0 y se dice; nada empacado: quedan los 500 pouches', cons(calcOf('RTE', 5, 8, null, 10, 500, 0, 0, 0, 0)), [12.5, 0, true, 500, 0, 500, false, 0])
+  eq('MFO sin registrar nada y Packing ya empacó: 0 mezclas usadas (quedan las 3), sin unidades que contar, 100 cajas sin pedido', cons(calcOf('MFO', 129, 6, 40, 3, 0, 0, 0, 0, 100)), [0, 3, false, null, null, null, false, 100])
+  eq('bins de antes solos: las mezclas por Según MFO ÷ yield (30 ÷ 25 = 1.2); sin unidades (ya eran cajas)', cons(calcOf('MFO', 25, 6, null, 2, 0, 0, 30, 0, 25)), [1.2, 0.8, false, null, null, null, false, 25])
+  eq('bins de antes y de ahora: los usados en unidades son las cajas aparte de los bins de antes ((20 − 10) × 6 = 60)', cons(calcOf('MFO', 25, 6, null, 2, 0, 60, 10, 0, 20)), [0.8, 1.2, false, 60, 60, 0, false, 20])
+  eq('nada registrado: ceros, nunca de más', cons(calcOf('RTE', 5, 8, null, 0, 0, 0, 0, 0, 0)), [0, 0, false, 0, 0, 0, false, 0])
+  eq('el nombre del archivo con el chip "Con inventario"', m.flujoFile('2026-10-05', '2026-10-18', { lot: '', route: 'RTE', state: '', inv: true }), 'actividad-flujo-2026-10-05-a-2026-10-18-rte-inventario')
+  // the tile "En inventario · por empacar": the big number is the first word with something left, never "0 pouches" over
+  // "54 platos" in the small print (review of 2026-10-19, with the MFO chip on)
+  const L = (word, qty, rows) => ({ word, qty, rows })
+  eq('la tile: el primer renglón con algo va en grande y los demás en chico; pouches en 0 solo cuando no queda nada', [
+    m.flujoLeftMain([L('pouches', 0, 0), L('platos', 54, 1)]), m.flujoLeftMain([L('pouches', 0, 0), L('platos', 325, 3), L('copas', 60, 1)]),
+    m.flujoLeftMain([L('pouches', 120, 2), L('platos', 54, 1), L('copas', 0, 0)]), m.flujoLeftMain([L('pouches', 0, 0)]), m.flujoLeftMain([]),
+  ], [
+    { main: L('platos', 54, 1), rest: [] }, { main: L('platos', 325, 3), rest: [L('copas', 60, 1)] },
+    { main: L('pouches', 120, 2), rest: [L('platos', 54, 1)] }, { main: L('pouches', 0, 0), rest: [] }, { main: L('pouches', 0, 0), rest: [] },
+  ])
 })
 section('Flujo de datos: cada lote en todos sus días, con lo que registró cada cuarto')
 {
@@ -2628,7 +2653,7 @@ section('Flujo de datos: cada lote en todos sus días, con lo que registró cada
       if (!open) { tick(); m.endRun(id, false) }
       return id
     }
-    const pallet = (lots) => (id) => m.palletDone(id, lots, '')
+    const pallet = (lots, po = '') => (id) => m.palletDone(id, lots, po)
     const many = (n, u) => Array.from({ length: n }, () => u)
     // Kitchen: 60 mezclas of 2286 / 6222 on the 8th and 20 more on the 9th (the lot ran into the next day)
     run(kitchen, '2286', '6222', D8, null, many(60, [null]))
@@ -2712,13 +2737,13 @@ section('Flujo de datos: cada lote en todos sus días, con lo que registró cada
     eq('con un cuarto escogido, el total del lote es de las filas que quedan', flt({ route: 'MFO' }).find((l) => l.lot === '6222').sum.cases, 242)
     // the Excel: the office's columns, flat, one row per lot × code
     const sheet = m.flujoSheet(lots)
-    eq('la hoja de Excel: las columnas de la oficina, plana, el lote en cada fila', [sheet[0].length, sheet[0][2], sheet[0][15], sheet[0].at(-1), sheet.length], [26, 'COD', 'SEGÚN RTE (CS)', 'Falta en Productos', 1 + lots.reduce((t, l) => t + l.rows.length, 0)])
-    eq('la fila 2286 / 6222', sheet.find((r) => r[0] === '6222' && r[2] === '2286'), ['6222', D8 + ', ' + D9, '2286', 'Pollo con arroz', 'RTE', 5.5, 8, 80, 'Kitchen', 3487, 49, '', '', '', '', 435.88, 442, 10, 6.13, 440, 'mezclas × yield', 2, 8.8, '6.13 cs de más', 'sí', ''])
+    eq('la hoja de Excel: las columnas de la oficina, plana, el lote en cada fila, y las de CONSUMO al final', [sheet[0].length, sheet[0][2], sheet[0][15], sheet[0][25], sheet[0].at(-1), sheet.length], [34, 'COD', 'SEGÚN RTE (CS)', 'Falta en Productos', 'PALLETS EN PEDIDOS', 1 + lots.reduce((t, l) => t + l.rows.length, 0)])
+    eq('la fila 2286 / 6222', sheet.find((r) => r[0] === '6222' && r[2] === '2286'), ['6222', D8 + ', ' + D9, '2286', 'Pollo con arroz', 'RTE', 5.5, 8, 80, 'Kitchen', 3487, 49, '', '', '', '', 435.88, 442, 10, 6.13, 440, 'mezclas × yield', 2, 8.8, '6.13 cs de más', 'sí', '', 79.25, 0.75, 'pouches', 3536, 0, 0, 442, 0])
     eq('la fila 4419 / 6222: RTE en blanco (lo empaca MFO), MFO en platos', sheet.find((r) => r[0] === '6222' && r[2] === '4419').slice(9, 16), ['', '', 1506, 'platos', '', -54, 251])
     eq('la fila 4433 / 6225: las libras aparte, nunca en cajas, y MFO en blanco (no 0: sí registró)', sheet.find((r) => r[0] === '6225' && r[2] === '4433').slice(11, 16), ['', '', '240 lb', '', ''])
     eq('la fila 4419 / 6228: la palabra que cuenta y la otra aparte, sin sumarlas', sheet.find((r) => r[0] === '6228' && r[2] === '4419').slice(11, 16), [600, 'platos', '60 copas', 0, 100])
     eq('la fila 4419 / 6226: los bins de antes, en cajas', sheet.find((r) => r[0] === '6226' && r[2] === '4419').slice(11, 16), [30, 'cajas', '', -5, 30])
-    eq('una fila sin yield lo dice en su columna', sheet.find((r) => r[0] === '6227' && r[2] === 'E9').at(-1), 'yield')
+    eq('una fila sin yield lo dice en su columna', sheet.find((r) => r[0] === '6227' && r[2] === 'E9')[25], 'yield')
     eq('la leyenda', [m.flujoLegend('x')[0], m.flujoLegend('x').at(-1)], [['Columna', 'Qué es'], ['Generado', 'x']])
     const ex = (r, k) => m.flujoExplain(r).find((x) => x.key === k)?.text
     eq('cómo se calculó, en palabras con los números reales', [ex(a, 'segun'), ex(a, 'proj'), ex(a, 'diffRoom'), ex(a, 'diffPacking'), ex(a, 'pallets')], ['3,487 pouches ÷ 8 por caja = 435.88', '80 mezclas × 5.5 yield = 440', '442 cs × 8 − 3,487 pouches = 49 (faltan 49 pouches)', '442 − 435.88 = 6.13 (6.13 cs de más)', '10 hechos · proyectados 440 ÷ 50 por pallet = 8.8'])
@@ -2727,6 +2752,27 @@ section('Flujo de datos: cada lote en todos sus días, con lo que registró cada
     eq('las mezclas por día, con las fechas como las escriba la pantalla', [ex(a, 'prod'), ex(e, 'prod'), m.flujoExplain(a, (d) => 'día ' + d.slice(-2)).find((x) => x.key === 'prod').text], ['80 registradas por Kitchen: 2026-10-08: 60 · 2026-10-09: 20', '3 registradas por Kitchen el 2026-10-09', '80 registradas por Kitchen: día 08: 60 · día 09: 20'])
     m.deleteRun(p4419)
     eq('borrada la corrida de Packing de 4419 / 6223: sus cajas se van de la fila', (({ cases, pallets, state }) => [cases, pallets, state])(m.flujoLots(st(), D8, D9).find((l) => l.lot === '6223').rows.find((r) => r.code === '4419')), [0, 0, 'unpacked'])
+    // ---- CONSUMO (2026-10-19): a PO on two pallets of 2286, one of them with two lots: each lot gets its own cases in
+    // the PO, and the pallet counts "en pedido" for both ----
+    const po = m.saveOrder(null, { customer: 'Cliente', po: '4471', code: '2286', cases: 100, shipBy: '', dest: '' })
+    run(p2, '2286', '6222', D9, 36, [pallet([{ lot: '6222', qty: 36, tag: '20' }], po), pallet([{ lot: '6222', qty: 36, tag: '21' }, { lot: '6223', qty: 20, tag: '22' }], po)])
+    const after = m.flujoLots(st(), D8, D9), rowA = (lot, code) => after.find((l) => l.lot === lot).rows.find((r) => r.code === code)
+    const x = rowA('6222', '2286'), y = rowA('6223', '2286'), z = rowA('6222', '4419')
+    eq('2286 / 6222: 514 cajas, 72 en el PO en 2 pallets, 442 sin pedido; 85 mezclas − 79.25 usadas = 5.75; 514 × 8 = 4,112 > 3,487 pouches: quedan 0 y Packing empacó de más', [x.cases, x.pallets, x.casesOnPo, x.palletsOnPo, x.casesFree, x.mixes, x.mixesUsed, x.mixesLeft, x.unitWord, x.unitsMade, x.unitsUsed, x.unitsLeft, x.packedOver], [514, 12, 72, 2, 442, 85, 79.25, 5.75, 'pouches', 3487, 4112, 0, true])
+    eq('2286 / 6223: del pallet de dos lotes, sus 20 cajas en el PO; las otras 20 (del pallet sin PO) sin pedido', [y.cases, y.pallets, y.casesOnPo, y.palletsOnPo, y.casesFree], [40, 2, 20, 1, 20])
+    eq('4419 / 6222 (MFO, en platos): 1,506 hechos, 242 × 6 = 1,452 usados, quedan 54 platos; sin PO, 242 sin pedido', [z.unitWord, z.unitsMade, z.unitsUsed, z.unitsLeft, z.casesOnPo, z.casesFree, z.mixesUsed], ['platos', 1506, 1452, 54, 0, 242, null])
+    const sx = after.find((l) => l.lot === '6222').sum
+    eq('el total del lote 6222: lo sin empacar palabra por palabra (pouches aparte de platos), cajas sin pedido y en pedidos', [sx.left, sx.casesFree, sx.freeRows, sx.casesOnPo, sx.palletsOnPo], [[{ word: 'pouches', qty: 0, rows: 0 }, { word: 'platos', qty: 54, rows: 1 }], 684, 2, 72, 2])
+    const all = m.flujoSum(after.flatMap((l) => l.rows))
+    eq('los totales de las tiles sobre todo lo que se ve: pouches, platos (20 + 251 + 54) y copas aparte; 1,322 cajas sin pedido en 9 códigos, 92 en pedidos en 3 pallets', [all.left, all.casesFree, all.freeRows, all.casesOnPo, all.palletsOnPo], [[{ word: 'pouches', qty: 0, rows: 0 }, { word: 'platos', qty: 325, rows: 3 }, { word: 'copas', qty: 60, rows: 1 }], 1322, 9, 92, 3])
+    eq('el chip "Con inventario": fuera los códigos sin nada sin empacar ni cajas sin pedido', m.flujoFilter(after, { q: '', lot: '', route: '', state: '', inv: true }).flatMap((l) => l.rows.map((r) => l.lot + '/' + r.code)), ['6229/4419', '6228/4419', '6227/E9', '6226/4419', '6225/4433', '6224/4433', '6223/2286', '6223/4419', '6222/2286', '6222/4419'])
+    const sheet2 = m.flujoSheet(after)
+    eq('el Excel: las columnas de CONSUMO, y la fila 2286 / 6222 con su PO', [sheet2[0].slice(26), sheet2.find((r) => r[0] === '6222' && r[2] === '2286').slice(26)], [['CONSUMO: MEZCLAS USADAS', 'MEZCLAS QUE QUEDAN', 'UNIDAD', 'UNIDADES USADAS EN CAJAS', 'UNIDADES QUE QUEDAN', 'CAJAS EN PEDIDOS', 'CAJAS SIN PEDIDO', 'PALLETS EN PEDIDOS'], [79.25, 5.75, 'pouches', 4112, 0, 72, 442, 2]])
+    eq('… la fila 4419 / 6222 en platos (sin yield: mezclas en blanco), y la de 4433 / 6225 (libras) en blanco menos las cajas', [sheet2.find((r) => r[0] === '6222' && r[2] === '4419').slice(26), sheet2.find((r) => r[0] === '6225' && r[2] === '4433').slice(26)], [['', '', 'platos', 1452, 54, 0, 242, 0], ['', '', '', '', '', 0, 30, 0]])
+    eq('la leyenda explica cada columna de CONSUMO', m.flujoLegend('x').map((r) => r[0]).slice(-10, -1), ['CONSUMO', 'CONSUMO: MEZCLAS USADAS', 'MEZCLAS QUE QUEDAN', 'UNIDAD', 'UNIDADES USADAS EN CAJAS', 'UNIDADES QUE QUEDAN', 'CAJAS EN PEDIDOS', 'CAJAS SIN PEDIDO', 'PALLETS EN PEDIDOS'])
+    const cx = (r, k) => m.flujoConsumo(r).find((x) => x.key === k)?.text
+    eq('el consumo en palabras, con los números reales', [cx(x, 'mixes'), cx(x, 'units'), cx(x, 'cases'), cx(x, 'pallets')], ['85 hechas · usadas 3,487 pouches ÷ (5.5 yield × 8 por caja) = 79.25 · quedan 5.75', '3,487 pouches hechos · usados en cajas 514 cs × 8 por caja = 4,112 · quedan 0 · Packing empacó más de lo que reportó RTE', '514 hechas · 72 en pedidos (2 pallets) · 442 sin pedido', '12 hechos · 2 en pedidos'])
+    eq('y para MFO: en platos; sin yield no hay mezclas usadas; en libras no hay unidades ni mezclas', [cx(z, 'mixes'), cx(z, 'units'), cx(rowA('6225', '4433'), 'units'), cx(rowA('6225', '4433'), 'mixes')], ['0 hechas · usadas: nada que calcular (Falta en Productos: yield)', '1,506 platos hechos · usados en cajas 242 cs × 6 por caja = 1,452 · quedan 54', 'MFO lo registró en libras: no se pasa a cajas', '2 hechas · usadas: nada que calcular (MFO lo registró en libras: no se pasa a cajas)'])
     return { sheet }
   })
   const z = await fl.use(async (m) => m.loadZip())

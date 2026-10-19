@@ -1,6 +1,6 @@
-import { fmtN, normCode, plainText, productOf, type PackRoom, type Product, type State } from './store'
+import { apartOf, fmtN, normCode, orderOfId, plainText, productOf, type PackRoom, type Product, type State } from './store'
 import { avanceLots, datesBetween, lotAcrossDays, lotsKnown, mfoList, mfoText, mfoWord, packRoomOf, type LotDay, type MfoMade } from './avance'
-import { runLots } from './report'
+import { runLots, unitParts } from './report'
 import type { Cell } from './xlsx'
 import { tr } from './i18n'
 
@@ -17,11 +17,17 @@ import { tr } from './i18n'
  * bueno": Avance is a DAY's progress against its program, per code; this is the clerk's reconciliation per LOT between
  * one room and the next, so he closes work orders without typing the four counts by hand.
  *
- * ESTADO and consumo are typed in his sheet after closing the WO in the ERP, and "condición" (refrigerado) is not in
- * the products table: none of the three is app data, so ESTADO is computed from the numbers and the other two are left
- * out (the help says so). Every formula below was verified from the sheet's own numbers (row 2286 / LOTE 6222:
- * 3487 ÷ 8 = 435.88, 442 × 8 − 3487 = 49, 80 × 5.5 = 440, 442 − 435.875 = 6.13; row 4433 / LOTE 6224: 1658 ÷ 6 = 276.33
- * preferred over 3 × 129 = 387).
+ * ESTADO is typed in his sheet after closing the WO in the ERP, and "condición" (refrigerado) is not in the products
+ * table: neither is app data, so ESTADO is computed from the numbers and the condition is left out (the help says so).
+ * Every formula below was verified from the sheet's own numbers (row 2286 / LOTE 6222: 3487 ÷ 8 = 435.88,
+ * 442 × 8 − 3487 = 49, 80 × 5.5 = 440, 442 − 435.875 = 6.13; row 4433 / LOTE 6224: 1658 ÷ 6 = 276.33 preferred over
+ * 3 × 129 = 387).
+ *
+ * CONSUMO (Jose, 2026-10-19 ~03:00: "es bueno que nos dé el consumo porque eso hay que reportarlo para que sepan qué
+ * hay y qué no hay en el inventario, para saber qué y cuánto ordenar"): the sheet's consumo column is typed after the
+ * ERP; here it is computed from the same numbers, typed by nobody: what each lot used up (mezclas, pouches) and what
+ * is left. Jose chose what "queda en inventario" means: the pouches (or MFO's platos/copas) made and not yet put in
+ * cases, and the cases packed on pallets that carry no PO (whether the PO is closed does not matter).
  *
  * Pure: no React, no DOM, nothing of App (so the checks read the very numbers the screen and the Excel get).
  */
@@ -56,6 +62,8 @@ export type FlujoIn = {
   mfoLb: number               // MFO's pounds: shown, never turned into cases
   cases: number               // PACKING = cases on pallets that carry the lot
   pallets: number             // pallets that carry the lot
+  casesOnPo: number           // of PACKING, the cases on pallets that carry a PO (flujoOnPo: the same per-lot parts)
+  palletsOnPo: number         // of those pallets, the ones with a PO
 }
 export type FlujoCalc = {
   segun: number | null        // SEGÚN RTE (CS): what the room before Packing reported, in cases (RTE ÷ perCase; on the MFO route MFO ÷ perCase + cajas)
@@ -67,6 +75,15 @@ export type FlujoCalc = {
   diffProjected: number | null   // Diferencia de proyectado = PACKING − projected (blank in the sheet; computed here)
   palletsProjected: number | null // projected ÷ perPallet
   state: FlujoState; missing: FlujoMissing[]; mfoOnlyLb: boolean; hasAny: boolean
+  // ---- CONSUMO (2026-10-19): what the lot used up and what is left, from the same numbers ----
+  mixesUsed: number | null    // mezclas usadas según yield = what the pack room reported, in cases (segun) ÷ YIEL: RTE ÷ (YIEL × POUCH X CS)
+  mixesLeft: number | null    // max(0, PROD − usadas), two decimals
+  madeOver: boolean           // the pack room reported more than the mezclas give (usadas > hechas; the DIF columns say it too)
+  unitsMade: number | null    // pouches (RTE route) or MFO's platos/copas; null on the MFO route with nothing countable (pounds, bins of before, nothing)
+  unitsUsed: number | null    // PACKING × POUCH X CS (on the MFO route the cases beyond its bins of before, which were cases already)
+  unitsLeft: number | null    // max(0, hechos − usados): made and not yet put in cases
+  packedOver: boolean         // Packing packed more than the room reported (usados > hechos; DIF. RTE/MFO "faltan")
+  casesFree: number           // PACKING − casesOnPo: cases packed that no PO has ("cajas sin pedido", Jose's inventory)
 }
 
 /**
@@ -127,7 +144,29 @@ export function flujoCalc(x: FlujoIn): FlujoCalc {
     if (k == null && (rte ? x.pouches > 0 || x.cases > 0 : x.mfoUnits > 0)) missing.push('perCase')
     if (x.perPallet == null && projected != null) missing.push('perPallet')
   }
-  return { segun, diffRte, diffMfo, diffPacking, projected, projectedFrom, diffProjected, palletsProjected, state, missing, mfoOnlyLb, hasAny }
+  // ---- CONSUMO (Jose, 2026-10-19: "para que sepan qué hay y qué no hay en el inventario, para saber qué y cuánto
+  // ordenar"). Mezclas usadas = what the pack room reported, in cases (segunRaw, unrounded) ÷ yield: on the RTE route
+  // pouches ÷ (yield × pouches per case); on the MFO route its units ÷ (yield × units per case) plus the bins of
+  // before, which were cases. Null when yield is blank or there is nothing in cases to divide (pouches per case blank,
+  // MFO only in pounds). Quedan never goes below 0: a pack room that reported more than the mezclas give is already
+  // the DIF columns' business; madeOver lets the explain say it
+  const mixesUsedRaw = x.yieldCs && segunRaw != null ? segunRaw / x.yieldCs : null
+  const mixesUsed = mixesUsedRaw == null ? null : r2(mixesUsedRaw)
+  const mixesLeft = mixesUsedRaw == null ? null : r2(Math.max(0, x.mixes - mixesUsedRaw))
+  const madeOver = mixesUsedRaw != null && mixesUsedRaw > x.mixes + 1e-9
+  // Pouches (RTE) or MFO's units: made by the pack room, used by Packing (cases × units per case; on the MFO route the
+  // cases beyond its bins of before, which already were cases: the same reading as diffMfo), left = made − used, never
+  // below 0 (Packing packing more than reported is DIF's "faltan"; packedOver lets the explain say it). On the MFO
+  // route only in a countable word: pounds are never units, bins of before were cases, and nothing registered has no
+  // word to count in
+  const unitsMade = rte ? x.pouches : x.mfoUnits > 0 ? x.mfoUnits : null
+  const unitsUsedRaw = unitsMade != null && k ? Math.max(0, x.cases - (rte ? 0 : x.mfoCases)) * k : null
+  const unitsUsed = unitsUsedRaw == null ? null : r2(unitsUsedRaw)
+  const unitsLeft = unitsMade == null || unitsUsedRaw == null ? null : r2(Math.max(0, unitsMade - unitsUsedRaw))
+  const packedOver = unitsMade != null && unitsUsedRaw != null && unitsUsedRaw > unitsMade
+  // the cases no PO has: Jose's "cajas sin pedido" (a closed PO still has its cases: they are not inventory)
+  const casesFree = Math.max(0, x.cases - x.casesOnPo)
+  return { segun, diffRte, diffMfo, diffPacking, projected, projectedFrom, diffProjected, palletsProjected, state, missing, mfoOnlyLb, hasAny, mixesUsed, mixesLeft, madeOver, unitsMade, unitsUsed, unitsLeft, packedOver, casesFree }
 }
 
 export type FlujoRow = FlujoIn & FlujoCalc & {
@@ -140,12 +179,48 @@ export type FlujoRow = FlujoIn & FlujoCalc & {
   running: boolean                   // a run of this code touching the lot is still open
   otherRte: boolean                  // MFO route but RTE registered pouches of this lot (shown as a note, never computed)
   otherMfo: boolean                  // RTE route but MFO registered something of this lot
+  unitWord: string                   // the word unitsMade/Used/Left count in: 'pouches', or MFO's word ('' when they are null)
 }
-export type FlujoSum = { codes: number; cases: number; pallets: number; projected: number | null; states: Record<FlujoState, number>; shortCs: number; overCs: number }
+/** what is left unpacked under one word (pouches, platos, copas…) over some rows, and in how many of them there is some */
+export type FlujoLeft = { word: string; qty: number; rows: number }
+export type FlujoSum = {
+  codes: number; cases: number; pallets: number; projected: number | null; states: Record<FlujoState, number>; shortCs: number; overCs: number
+  left: FlujoLeft[]           // CONSUMO: unpacked, word by word (a word is never added to another: pouches apart from platos apart from copas)
+  casesFree: number; freeRows: number; casesOnPo: number; palletsOnPo: number
+}
 export type FlujoLot = { lot: string; days: string[]; rows: FlujoRow[]; sum: FlujoSum }
 
-/** one row from one code of lotAcrossDays(s, lot) */
-export function flujoRow(s: State, lot: string, c: ReturnType<typeof lotAcrossDays>['codes'][number]): FlujoRow {
+/** the order the unit words are said in: the plant's pouches first, then MFO's usual words, then any typed one */
+const UNIT_ORDER = ['pouches', 'platos', 'copas']
+const unitRank = (w: string) => { const i = UNIT_ORDER.indexOf(w); return i < 0 ? UNIT_ORDER.length : i }
+/** the word on the screen and in the Excel: the plant's "pouches" as it is, MFO's words as MFO writes them */
+export const unitWordText = (w: string) => (w === 'pouches' ? tr('pouches') : w ? mfoWord(w) : '')
+/**
+ * CONSUMO's "cajas en pedidos": per code of a lot, the cases Packing put on pallets that carry a PO (one orderOfId
+ * still knows: a PO written by mistake and taken away leaves its pallets without one), and those pallets. The same
+ * parts PACKING counts (lotAcrossDays: a Packing line filling bins makes no cases; a pallet with two lots gives each
+ * lot its own cases and counts as a pallet of both). Whether the PO is closed does not matter (Jose, 2026-10-19: the
+ * inventory is the cases without a PO). Once per lot: every code of it at one pass over the runs
+ */
+export function flujoOnPo(s: State, lot: string): Map<string, { cases: number; pallets: number }> {
+  const out = new Map<string, { cases: number; pallets: number }>()
+  for (const r of s.runs) {
+    if (r.dept !== 'Packing' || apartOf(r)) continue
+    for (const u of r.units) {
+      if (!orderOfId(s, u.po)) continue
+      for (const p of unitParts(s, r, u)) {
+        if (p.lot !== lot) continue
+        const key = normCode(r.code)
+        let x = out.get(key)
+        if (!x) { x = { cases: 0, pallets: 0 }; out.set(key, x) }
+        x.cases += p.qty ?? 0; x.pallets++
+      }
+    }
+  }
+  return out
+}
+/** one row from one code of lotAcrossDays(s, lot); `onPo` = flujoOnPo(s, lot) when the caller has it (flujoLot does, once per lot) */
+export function flujoRow(s: State, lot: string, c: ReturnType<typeof lotAcrossDays>['codes'][number], onPo?: Map<string, { cases: number; pallets: number }>): FlujoRow {
   const product = productOf(s, c.code)
   const { room: route, said: routeSaid } = packRoomOf(s, c.code)
   // Productos stores a blank as 0 (numOf): a 0 here is "not known"
@@ -159,19 +234,33 @@ export function flujoRow(s: State, lot: string, c: ReturnType<typeof lotAcrossDa
   const mfoUnits = used?.qty ?? 0
   const mfoWordUsed = used ? used.word : mfoCases > 0 ? 'cajas' : ''
   const key = normCode(c.code)
-  const input: FlujoIn = { route, inTable: !!product, yieldCs, perCase, perPallet, mixes: c.mixes, pouches: c.pouches, mfoUnits, mfoCases, mfoLb, cases: c.cases, pallets: c.pallets }
+  const po = (onPo ?? flujoOnPo(s, lot)).get(key) ?? { cases: 0, pallets: 0 }
+  const input: FlujoIn = { route, inTable: !!product, yieldCs, perCase, perPallet, mixes: c.mixes, pouches: c.pouches, mfoUnits, mfoCases, mfoLb, cases: c.cases, pallets: c.pallets, casesOnPo: po.cases, palletsOnPo: po.pallets }
+  const calc = flujoCalc(input)
   return {
-    ...input, ...flujoCalc(input),
+    ...input, ...calc,
     lot, code: c.code, product, name: product?.name ?? '', routeSaid, mixRoom: c.mixRoom, days: c.days, mfo, mfoWordUsed,
     running: s.runs.some((r) => !r.endedAt && normCode(r.code) === key && runLots(s, r).has(lot)),
     otherRte: route === 'MFO' && c.pouches > 0,
     otherMfo: route === 'RTE' && mfo.length > 0,
+    unitWord: calc.unitsMade == null ? '' : route === 'RTE' ? 'pouches' : mfoWordUsed,
   }
 }
-/** the totals of a lot's rows in view: cases and pallets add up; projected only when some row knows it (Avance's sumOr) */
+/**
+ * the totals of a lot's rows in view: cases and pallets add up; projected only when some row knows it (Avance's sumOr).
+ * CONSUMO: what is left unpacked is added only between rows of the same word (pouches apart from platos apart from
+ * copas: Jose, 2026-10-19), each word with the rows that have some; the cases without a PO and with one add up
+ */
 export function flujoSum(rows: FlujoRow[]): FlujoSum {
   const states = { none: 0, unpacked: 0, nocompare: 0, short: 0, over: 0, ok: 0 } as Record<FlujoState, number>
   for (const r of rows) states[r.state]++
+  const left = new Map<string, FlujoLeft>()
+  for (const r of rows) {
+    if (r.unitsLeft == null || !r.unitWord) continue
+    let x = left.get(r.unitWord)
+    if (!x) { x = { word: r.unitWord, qty: 0, rows: 0 }; left.set(r.unitWord, x) }
+    x.qty = r2(x.qty + r.unitsLeft); if (r.unitsLeft > 0) x.rows++
+  }
   return {
     codes: rows.length,
     cases: rows.reduce((t, r) => t + r.cases, 0), pallets: rows.reduce((t, r) => t + r.pallets, 0),
@@ -179,7 +268,22 @@ export function flujoSum(rows: FlujoRow[]): FlujoSum {
     states,
     shortCs: r2(rows.filter((r) => r.state === 'short').reduce((t, r) => t - (r.diffPacking ?? 0), 0)),
     overCs: r2(rows.filter((r) => r.state === 'over').reduce((t, r) => t + (r.diffPacking ?? 0), 0)),
+    left: [...left.values()].sort((a, b) => unitRank(a.word) - unitRank(b.word) || a.word.localeCompare(b.word)),
+    casesFree: rows.reduce((t, r) => t + r.casesFree, 0), freeRows: rows.filter((r) => r.casesFree > 0).length,
+    casesOnPo: rows.reduce((t, r) => t + r.casesOnPo, 0), palletsOnPo: rows.reduce((t, r) => t + r.palletsOnPo, 0),
   }
+}
+/** a row "with inventory" (the chip "Con inventario"): something made and not packed, or cases without a PO */
+export const flujoHasInventory = (r: Pick<FlujoRow, 'unitsLeft' | 'casesFree'>) => (r.unitsLeft ?? 0) > 0 || r.casesFree > 0
+/**
+ * the tile "En inventario · por empacar": its big number is the first word in view that has something left (sum.left
+ * is in UNIT_ORDER: pouches, then MFO's words), and the other words with some go in its small line. Pouches with 0 only
+ * when nothing is left in any word: with the MFO chip on, the office read "0 pouches" big and the real inventory,
+ * "54 platos", in the small print (review of 2026-10-19)
+ */
+export function flujoLeftMain(left: FlujoLeft[]): { main: FlujoLeft; rest: FlujoLeft[] } {
+  const main = left.find((x) => x.qty > 0) ?? left.find((x) => x.word === 'pouches') ?? { word: 'pouches', qty: 0, rows: 0 }
+  return { main, rest: left.filter((x) => x !== main && x.qty > 0) }
 }
 /**
  * one lot over ALL the days this device holds (also days outside the range in view: the office wants a lot's total,
@@ -187,7 +291,8 @@ export function flujoSum(rows: FlujoRow[]): FlujoSum {
  */
 export function flujoLot(s: State, lot: string): FlujoLot | null {
   const a = lotAcrossDays(s, lot)
-  const rows = a.codes.map((c) => flujoRow(s, lot, c)).filter((r) => r.hasAny).sort((p, q) => p.code.localeCompare(q.code, undefined, { numeric: true }))
+  const onPo = flujoOnPo(s, lot)
+  const rows = a.codes.map((c) => flujoRow(s, lot, c, onPo)).filter((r) => r.hasAny).sort((p, q) => p.code.localeCompare(q.code, undefined, { numeric: true }))
   if (!rows.length) return null
   const days = [...new Set(rows.flatMap((r) => r.days.map((d) => d.date)))].sort()
   return { lot, days, rows, sum: flujoSum(rows) }
@@ -198,7 +303,8 @@ export function flujoLots(s: State, from: string, to: string): FlujoLot[] {
   return lotsKnown(s).filter((l) => touched.has(l)).map((l) => flujoLot(s, l)).filter((l): l is FlujoLot => !!l)
 }
 
-export type FlujoFilter = { q: string; lot: string; route: PackRoom | ''; state: FlujoState | '' }
+/** `inv`: only the rows with inventory (the chip "Con inventario", 2026-10-19: something unpacked or cases without a PO) */
+export type FlujoFilter = { q: string; lot: string; route: PackRoom | ''; state: FlujoState | ''; inv?: boolean }
 /** every word typed must match the code (plainText, or normCode equality for a numeric word), the product name or the lot */
 export function flujoMatch(r: FlujoRow, q: string): boolean {
   const toks = plainText(q).split(/\s+/).filter(Boolean)
@@ -214,7 +320,7 @@ export function flujoFilter(lots: FlujoLot[], f: FlujoFilter, search = true): Fl
   const out: FlujoLot[] = []
   for (const l of lots) {
     if (f.lot && l.lot !== f.lot) continue
-    const rows = l.rows.filter((r) => (!f.route || r.route === f.route) && (!f.state || r.state === f.state) && (!search || flujoMatch(r, f.q)))
+    const rows = l.rows.filter((r) => (!f.route || r.route === f.route) && (!f.state || r.state === f.state) && (!f.inv || flujoHasInventory(r)) && (!search || flujoMatch(r, f.q)))
     if (!rows.length) continue
     out.push(rows.length === l.rows.length ? l : { ...l, rows, sum: flujoSum(rows) })
   }
@@ -292,6 +398,37 @@ export function flujoExplain(r: FlujoRow, fmtDay: (date: string) => string = (d)
   if (r.pallets > 0 || r.palletsProjected != null) out.push({ key: 'pallets', label: 'Pallets', text: r.palletsProjected != null ? tr('{0} hechos · proyectados {1} ÷ {2} por pallet = {3}', r.pallets, n2(r.projected), n2(r.perPallet), n2(r.palletsProjected)) : tr('{0} hechos', r.pallets) })
   return out
 }
+/**
+ * CONSUMO of one row with its real numbers, line by line (the fold's "Consumo" block, and the title of its two cells):
+ * mezclas hechas / usadas / quedan, pouches (or MFO's units) hechos / usados / quedan, cajas hechas / en pedidos /
+ * sin pedido, pallets hechos / en pedidos. A number that cannot be computed says why (Jose, 2026-10-19: nothing here
+ * is typed, so every number must say where it came from)
+ */
+export function flujoConsumo(r: FlujoRow): { key: string; label: string; text: string }[] {
+  const out: { key: string; label: string; text: string }[] = []
+  const rte = r.route === 'RTE', word = unitWordText(r.unitWord)
+  const why = (m: FlujoMissing) => (!r.inTable ? missingText(['product']) : r.mfoOnlyLb ? tr('MFO lo registró en libras: no se pasa a cajas') : missingText([m]))
+  // mezclas: usadas = what the pack room reported, in cases, ÷ yield. Said with the room's own count when it is one
+  // count (pouches, or MFO's units alone); with the bins of before beside the units, by way of Según MFO (cs)
+  if (r.mixesUsed == null) out.push({ key: 'mixes', label: tr('Mezclas'), text: tr('{0} hechas · usadas: nada que calcular ({1})', r.mixes, r.yieldCs == null ? why('yield') : why('perCase')) })
+  else {
+    const how = rte ? tr('{0} pouches ÷ ({1} yield × {2} por caja) = {3}', fmtN(r.pouches), n2(r.yieldCs), n2(r.perCase), n2(r.mixesUsed))
+      : r.mfoUnits > 0 && !r.mfoCases ? tr('{0} {1} ÷ ({2} yield × {3} por caja) = {4}', fmtN(r.mfoUnits), word, n2(r.yieldCs), n2(r.perCase), n2(r.mixesUsed))
+      : tr('{0} cs según MFO ÷ {1} yield = {2}', n2(r.segun), n2(r.yieldCs), n2(r.mixesUsed))
+    out.push({ key: 'mixes', label: tr('Mezclas'), text: tr('{0} hechas · usadas {1} · quedan {2}', r.mixes, how, n2(r.mixesLeft)) + (r.madeOver ? ' · ' + tr('{0} hizo más de lo que dan las mezclas', r.route) : '') })
+  }
+  // pouches / units: hechos by the pack room, usados by Packing (cases × units per case), quedan
+  const label = rte ? tr('Pouches') : tr('Unidades')
+  if (r.unitsMade == null) out.push({ key: 'units', label, text: r.mfoOnlyLb ? tr('MFO lo registró en libras: no se pasa a cajas') : r.mfoCases > 0 ? tr('bins de antes de 2026-10-17, que ya contaban cajas: ver Cajas') : tr('MFO no ha registrado nada de este lote') })
+  else if (r.unitsUsed == null) out.push({ key: 'units', label, text: tr('{0} {1} hechos · usados: nada que calcular ({2})', fmtN(r.unitsMade), word, why('perCase')) })
+  else {
+    const cs = !rte && r.mfoCases > 0 ? '(' + fmtN(r.cases) + ' − ' + fmtN(r.mfoCases) + ' ' + tr('cajas de antes') + ')' : fmtN(r.cases)
+    out.push({ key: 'units', label, text: tr('{0} {1} hechos · usados en cajas {2} cs × {3} por caja = {4} · quedan {5}', fmtN(r.unitsMade), word, cs, n2(r.perCase), n2(r.unitsUsed), n2(r.unitsLeft)) + (r.packedOver ? ' · ' + tr('Packing empacó más de lo que reportó {0}', r.route) : '') })
+  }
+  out.push({ key: 'cases', label: tr('Cajas'), text: r.cases > 0 ? tr('{0} hechas · {1} en pedidos ({2}) · {3} sin pedido', fmtN(r.cases), fmtN(r.casesOnPo), r.palletsOnPo === 1 ? tr('1 pallet') : tr('{0} pallets', r.palletsOnPo), fmtN(r.casesFree)) : tr('ninguna empacada todavía') })
+  if (r.pallets > 0) out.push({ key: 'pallets', label: 'Pallets', text: tr('{0} hechos · {1} en pedidos', r.pallets, r.palletsOnPo) })
+  return out
+}
 
 /** the days of a lot as the sheet writes them: ISO, joined */
 const daysText = (days: LotDay[]) => days.map((d) => d.date).join(', ')
@@ -303,10 +440,12 @@ const cell = (v: number | null | undefined): Cell => (v == null ? '' : r2(v))
  * signs go in the Leyenda sheet (flujoLegend) instead of in the headers. Made numbers go as 0 when 0 (the office adds
  * them up); a blank in Productos and the other route's cells go blank, as on the screen. MFO's cell goes blank, not
  * 0, when MFO registered only pounds (they are under "MFO además": a 0 read as "MFO registered nothing", review of
- * 2026-10-18)
+ * 2026-10-18). The CONSUMO columns come last (2026-10-19): one pair of UNIDADES columns for both routes, with the
+ * word they count in under UNIDAD (pouches, platos, copas), so the office adds pouches to pouches and never to platos
  */
 export function flujoSheet(lots: FlujoLot[]): Cell[][] {
-  const head: Cell[] = [tr('Lote'), tr('Fechas del lote'), tr('COD'), tr('Producto'), tr('Lo empaca'), tr('YIEL'), tr('POUCH X CS'), tr('PROD'), tr('Cuarto de las mezclas'), tr('RTE'), tr('DIFERENCIAS / RTE'), tr('MFO'), tr('MFO en'), tr('MFO además'), tr('DIFERENCIAS / MFO'), tr('SEGÚN RTE (CS)'), tr('PACKING'), tr('Pallets'), tr('DIFERENCIAS / PACKING'), tr('CS PROYECTADO'), tr('Proyectado desde'), tr('Diferencia de proyectado'), tr('Pallets proyectados'), tr('ESTADO'), tr('En curso'), tr('Falta en Productos')]
+  const head: Cell[] = [tr('Lote'), tr('Fechas del lote'), tr('COD'), tr('Producto'), tr('Lo empaca'), tr('YIEL'), tr('POUCH X CS'), tr('PROD'), tr('Cuarto de las mezclas'), tr('RTE'), tr('DIFERENCIAS / RTE'), tr('MFO'), tr('MFO en'), tr('MFO además'), tr('DIFERENCIAS / MFO'), tr('SEGÚN RTE (CS)'), tr('PACKING'), tr('Pallets'), tr('DIFERENCIAS / PACKING'), tr('CS PROYECTADO'), tr('Proyectado desde'), tr('Diferencia de proyectado'), tr('Pallets proyectados'), tr('ESTADO'), tr('En curso'), tr('Falta en Productos'),
+    tr('CONSUMO: MEZCLAS USADAS'), tr('MEZCLAS QUE QUEDAN'), tr('UNIDAD'), tr('UNIDADES USADAS EN CAJAS'), tr('UNIDADES QUE QUEDAN'), tr('CAJAS EN PEDIDOS'), tr('CAJAS SIN PEDIDO'), tr('PALLETS EN PEDIDOS')]
   return [head, ...lots.flatMap((l) => l.rows.map((r): Cell[] => {
     const rte = r.route === 'RTE'
     const rest = r.mfo.filter((m) => m.word !== r.mfoWordUsed)
@@ -316,6 +455,7 @@ export function flujoSheet(lots: FlujoLot[]): Cell[][] {
       !rte ? (r.mfoUnits > 0 ? r.mfoUnits : r.mfoCases > 0 ? r.mfoCases : r.mfoLb > 0 ? '' : 0) : '', !rte && r.mfoWordUsed ? mfoWord(r.mfoWordUsed) : '', !rte && rest.length ? mfoText(rest) : '', !rte ? cell(r.diffMfo) : '',
       cell(r.segun), r.cases, r.pallets, cell(r.diffPacking), cell(r.projected), r.projectedFrom === 'mfo' ? tr('MFO') : r.projectedFrom === 'mixes' ? tr('mezclas × yield') : '', cell(r.diffProjected), cell(r.palletsProjected),
       flujoStateText(r.state, r.diffPacking), r.running ? tr('sí') : '', missingWords(r.missing),
+      cell(r.mixesUsed), cell(r.mixesLeft), unitWordText(r.unitWord), cell(r.unitsUsed), cell(r.unitsLeft), r.casesOnPo, r.casesFree, r.palletsOnPo,
     ]
   }))]
 }
@@ -338,16 +478,25 @@ export function flujoLegend(viewing: string): Cell[][] {
     [tr('CS PROYECTADO'), tr('PROD × YIEL. Si lo empaca MFO y MFO ya registró, lo de MFO ÷ unidades por caja (como en la hoja de la oficina).')],
     [tr('Diferencia de proyectado'), tr('PACKING − CS PROYECTADO (la hoja lo deja en blanco; aquí se calcula).')],
     [tr('Pallets proyectados'), tr('CS PROYECTADO ÷ cajas por pallet.')],
-    [tr('ESTADO'), tr('Calculado con los números: Sin registros, Sin empacar, Faltan N cs, N cs de más, Cuadra, Sin comparar. El ESTADO y el consumo del ERP no están en la app.')],
+    [tr('ESTADO'), tr('Calculado con los números: Sin registros, Sin empacar, Faltan N cs, N cs de más, Cuadra, Sin comparar. El ESTADO del ERP no está en la app.')],
     [tr('En curso'), tr('"sí" cuando un código del lote sigue corriendo en alguna línea: sus números todavía cambian.')],
     [tr('Falta en Productos'), tr('Lo que la tabla de Productos no tiene de ese código y hace falta para calcular: la celda sale en blanco, nunca en 0.')],
+    [tr('CONSUMO'), tr('Lo que el lote gastó y lo que queda, con los mismos números (nadie lo escribe). Queda en inventario lo hecho y todavía por empacar y las cajas que no van en ningún pedido.')],
+    [tr('CONSUMO: MEZCLAS USADAS'), tr('SEGÚN RTE (CS) ÷ YIEL: las mezclas que dan lo que reportó el cuarto que empaca (RTE ÷ (YIEL × POUCH X CS), o lo de MFO ÷ (YIEL × unidades por caja)). En blanco sin YIEL o sin nada en cajas.')],
+    [tr('MEZCLAS QUE QUEDAN'), tr('PROD − MEZCLAS USADAS, nunca menos de 0 (si el cuarto hizo más de lo que dan las mezclas, lo dicen las DIFERENCIAS).')],
+    [tr('UNIDAD'), tr('En qué se cuentan las dos columnas que siguen: pouches (RTE) o lo que llenan los bins de MFO (platos, copas). Se suman pouches con pouches, nunca con platos.')],
+    [tr('UNIDADES USADAS EN CAJAS'), tr('PACKING × POUCH X CS: lo que Packing metió en cajas (en MFO, las cajas aparte de los bins de antes de 2026-10-17, que ya eran cajas).')],
+    [tr('UNIDADES QUE QUEDAN'), tr('RTE (o MFO) − UNIDADES USADAS EN CAJAS, nunca menos de 0: hecho y todavía por empacar. En blanco si MFO solo registró libras o nada.')],
+    [tr('CAJAS EN PEDIDOS'), tr('De PACKING, las cajas en pallets que llevan un PO (un pallet con dos lotes da a cada lote sus cajas). Da igual si el pedido ya se marcó completo.')],
+    [tr('CAJAS SIN PEDIDO'), tr('PACKING − CAJAS EN PEDIDOS: cajas empacadas que no van en ningún pedido.')],
+    [tr('PALLETS EN PEDIDOS'), tr('De los pallets que llevan el lote, los que llevan un PO.')],
     [tr('Generado'), viewing],
   ]
 }
-/** 'actividad-flujo-2026-10-05-a-2026-10-18[-lote-6222][-rte|-mfo][-faltan|-demas|-cuadra|-sinempacar|-sincomparar]' (ASCII only, as filterFile) */
+/** 'actividad-flujo-2026-10-05-a-2026-10-18[-lote-6222][-rte|-mfo][-faltan|-demas|-cuadra|-sinempacar|-sincomparar][-inventario]' (ASCII only, as filterFile) */
 export function flujoFile(from: string, to: string, f: Omit<FlujoFilter, 'q'>): string {
   const clean = (t: string) => t.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '')
   const state = f.state === 'short' ? 'faltan' : f.state === 'over' ? 'demas' : f.state === 'ok' ? 'cuadra' : f.state === 'unpacked' ? 'sinempacar' : f.state === 'nocompare' ? 'sincomparar' : f.state === 'none' ? 'sinregistros' : ''
   const [a, b] = from <= to ? [from, to] : [to, from]
-  return 'actividad-flujo-' + a + '-a-' + b + (f.lot ? '-lote-' + clean(f.lot) : '') + (f.route ? '-' + f.route.toLowerCase() : '') + (state ? '-' + state : '')
+  return 'actividad-flujo-' + a + '-a-' + b + (f.lot ? '-lote-' + clean(f.lot) : '') + (f.route ? '-' + f.route.toLowerCase() : '') + (state ? '-' + state : '') + (f.inv ? '-inventario' : '')
 }

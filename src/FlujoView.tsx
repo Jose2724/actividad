@@ -6,7 +6,7 @@ import { loadDay } from './sync'
 import { loadZip, xlsxNow, XLSX_TYPE, type Sheet } from './xlsx'
 import { DEPT_LOOK, deptVars } from './look'
 import { addDays, download, MISSING, NoticeDialog, Products, shortDay, useViewOnly } from './App'
-import { diffText, diffWord, FLUJO_STATES, flujoExplain, flujoFile, flujoFilter, flujoLegend, flujoLots, flujoSheet, flujoStateLabel, flujoStateText, flujoSum, missingText, n2, type FlujoLot, type FlujoRow, type FlujoState } from './flujo'
+import { diffText, diffWord, FLUJO_STATES, flujoConsumo, flujoExplain, flujoFile, flujoFilter, flujoHasInventory, flujoLeftMain, flujoLegend, flujoLots, flujoSheet, flujoStateLabel, flujoStateText, flujoSum, missingText, n2, unitWordText, type FlujoLeft, type FlujoLot, type FlujoRow, type FlujoState } from './flujo'
 import { tr } from './i18n'
 import { trx } from './trx'
 
@@ -23,9 +23,14 @@ import { trx } from './trx'
  * days of the day it was first opened (review of 2026-10-18: a lot of today was not listed); dates typed by hand are
  * absolute and stay. The files follow the filters and never the search, as the report's files do (the "rf-foot" line
  * says so). No tfoot: different products do not add up; the tiles carry the case totals of what is in view.
+ *
+ * CONSUMO (Jose, 2026-10-19: "eso hay que reportarlo para que sepan qué hay y qué no hay en el inventario, para saber
+ * qué y cuánto ordenar"): two more columns at the right (what is left unpacked, the cases without a PO), two tiles
+ * "En inventario" over what is in view, a "Consumo" block in the fold with the whole detail, and the chip "Con
+ * inventario". All of it from the same numbers: nobody types the consumo either.
  */
-let kept = { today: '', from: '', to: '', days: KEEP_DAYS, byHand: false, lot: '', q: '', route: '' as PackRoom | '', state: '' as FlujoState | '' }
-const COLS = 13
+let kept = { today: '', from: '', to: '', days: KEEP_DAYS, byHand: false, lot: '', q: '', route: '' as PackRoom | '', state: '' as FlujoState | '', inv: false }
+const COLS = 15
 
 /**
  * A memo: Main draws itself every second for its clock and this tab shows no clock; drawing ~200 rows took 100-140 ms
@@ -47,7 +52,8 @@ export const Flujo = memo(function Flujo({ s, today, onLot }: { s: State; today:
   const [q, setQ] = useState(kept.q)
   const [route, setRoute] = useState<PackRoom | ''>(kept.route)
   const [state, setState] = useState<FlujoState | ''>(kept.state)
-  useEffect(() => { kept = { today, from, to, days, byHand, lot, q, route, state } }, [today, from, to, days, byHand, lot, q, route, state])
+  const [inv, setInv] = useState(kept.inv)
+  useEffect(() => { kept = { today, from, to, days, byHand, lot, q, route, state, inv } }, [today, from, to, days, byHand, lot, q, route, state, inv])
   // a preset moves with the day while the tab stays open (the office PC left on it overnight)
   useEffect(() => { if (!byHand) { const r = spanOf(days); setFrom(r.from); setTo(r.to) } }, [today]) // eslint-disable-line react-hooks/exhaustive-deps
   const pick = (n: number) => { setDays(n); setByHand(false); const r = spanOf(n); setFrom(r.from); setTo(r.to) }
@@ -58,28 +64,40 @@ export const Flujo = memo(function Flujo({ s, today, onLot }: { s: State; today:
   const [a, b] = from <= to ? [from, to] : [to, from]
   const span = datesBetween(from, to)
   const preset = (n: number) => from === addDays(today, -(n - 1)) && to === today
-  const lots = useMemo(() => flujoLots(s, from, to), [s.runs, s.products, from, to]) // eslint-disable-line react-hooks/exhaustive-deps
-  // what the chips count: the route chips over everything of the lot and the search; the state chips over the route chosen
+  // (s.orders is a dependency since 2026-10-19: "cajas en pedidos" counts the pallets whose PO the orders still know)
+  const lots = useMemo(() => flujoLots(s, from, to), [s.runs, s.products, s.orders, from, to]) // eslint-disable-line react-hooks/exhaustive-deps
+  // what the chips count: the route chips over everything of the lot and the search; the state chips over the route
+  // chosen; the chip "Con inventario" over the route and the state chosen
   const base = flujoFilter(lots, { q, lot, route: '', state: '' })
   const found = flujoFilter(lots, { q, lot, route, state: '' })
-  const shown = flujoFilter(lots, { q, lot, route, state })
-  const forFiles = flujoFilter(lots, { q, lot, route, state }, false)
+  const staged = flujoFilter(lots, { q, lot, route, state })
+  const shown = inv ? flujoFilter(lots, { q, lot, route, state, inv }) : staged
+  const forFiles = flujoFilter(lots, { q, lot, route, state, inv }, false)
   const rows = shown.flatMap((l) => l.rows), baseRows = base.flatMap((l) => l.rows), foundRows = found.flatMap((l) => l.rows)
   const routeN = (k: PackRoom) => baseRows.filter((r) => r.route === k).length
   const stateN = (k: FlujoState) => foundRows.filter((r) => r.state === k).length
+  const invN = staged.reduce((t, l) => t + l.rows.filter(flujoHasInventory).length, 0)
   const sum = flujoSum(rows)
+  // the inventory tiles: big, the first word in view with something left (pouches before MFO's words; "0 pouches" only
+  // when nothing is left in any word: review of 2026-10-19), the other words small; and in how many codes and lots
+  const { main: leftMain, rest: leftRest } = flujoLeftMain(sum.left)
+  const leftRows = sum.left.reduce((t, x) => t + x.rows, 0)
+  const lotsWith = (has: (r: FlujoRow) => boolean) => shown.filter((l) => l.rows.some(has)).length
+  const unpackedLots = lotsWith((r) => (r.unitsLeft ?? 0) > 0), freeLots = lotsWith((r) => r.casesFree > 0)
+  const leftText = (x: FlujoLeft) => fmtN(x.qty) + ' ' + unitWordText(x.word)
+  const inText = (codes: number, inLots: number) => (codes === 1 ? tr('1 código') : tr('{0} códigos', codes)) + ' · ' + (inLots === 1 ? tr('1 lote') : tr('{0} lotes', inLots))
   // the lot of the first day in view may have started the day before, and the lot of the last day runs into the day
   // after: both are brought from the server with the range (a lot is counted whole, over every day the device holds)
   useEffect(() => { for (const d of [dayBefore(a), ...span, dayAfter(b)]) if (awayDay(d)) void loadDay(d) }, [from, to]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { void loadZip().catch(() => undefined) }, []) // the Excel's zip library, ahead of the tap
   const away = span.filter((d) => awayDay(d)).length
-  const filtering = !!(lot || q.trim() || route || state)
-  const clear = () => { setLot(''); setQ(''); setRoute(''); setState('') }
+  const filtering = !!(lot || q.trim() || route || state || inv)
+  const clear = () => { setLot(''); setQ(''); setRoute(''); setState(''); setInv(false) }
   const toggle = useCallback((k: string) => setOpen((o) => ({ ...o, [k]: !o[k] })), [])
   const lotList = lots.map((l) => l.lot)
   const viewingOf = (list: FlujoLot[], withQ: boolean) => {
     const n = list.reduce((t, l) => t + l.rows.length, 0)
-    return [tr('del {0} al {1}', shortDay(a), shortDay(b)), lot ? tr('lote {0}', lot) : tr('todos los lotes'), route || tr('RTE y MFO'), state ? flujoStateLabel(state) : '', withQ && q.trim() ? '«' + q.trim() + '»' : '', list.length === 1 ? tr('1 lote') : tr('{0} lotes', list.length), n === 1 ? tr('1 código') : tr('{0} códigos', n)].filter(Boolean).join(' · ')
+    return [tr('del {0} al {1}', shortDay(a), shortDay(b)), lot ? tr('lote {0}', lot) : tr('todos los lotes'), route || tr('RTE y MFO'), state ? flujoStateLabel(state) : '', inv ? tr('con inventario') : '', withQ && q.trim() ? '«' + q.trim() + '»' : '', list.length === 1 ? tr('1 lote') : tr('{0} lotes', list.length), n === 1 ? tr('1 código') : tr('{0} códigos', n)].filter(Boolean).join(' · ')
   }
   const viewing = viewingOf(shown, true)
   // ---- the Excel: the sheet's columns, flat, with a Leyenda for the signs; what the filters hold (never the search) ----
@@ -88,7 +106,7 @@ export const Flujo = memo(function Flujo({ s, today, onLot }: { s: State; today:
     try {
       const bytes = xlsxNow(sheets()) ?? (await loadZip(), xlsxNow(sheets()))
       if (!bytes) throw new Error('xlsx')
-      download(new File([bytes], flujoFile(a, b, { lot, route, state }) + '.xlsx', { type: XLSX_TYPE }))
+      download(new File([bytes], flujoFile(a, b, { lot, route, state, inv }) + '.xlsx', { type: XLSX_TYPE }))
     } catch (e) { console.warn('actividad flujo', e); setNotice({ title: tr('No se pudo {0}', tr('hacer el Excel')), text: MISSING }) }
   }
   // ---- the lot's band: its pieces apart (the "·" between them is drawn by the style, never left alone at a line's end) ----
@@ -141,6 +159,18 @@ export const Flujo = memo(function Flujo({ s, today, onLot }: { s: State; today:
             <div className="made dtile" style={deptVars('Packing')}><label><i className="demoji" aria-hidden="true">{DEPT_LOOK.Packing.emoji}</i>{tr('Cajas empacadas')}</label><b>{fmtN(sum.cases)}</b><small>{sum.pallets} pallets</small></div>
             <div className="made fl-tile-short"><label>{tr('Faltan cs')}</label><b>{sum.states.short}</b><small>{tr('{0} cs en total', n2(sum.shortCs))}</small></div>
             <div className="made fl-tile-over"><label>{tr('cs de más')}</label><b>{sum.states.over}</b><small>{tr('{0} cs en total', n2(sum.overCs))}</small></div>
+            {/* EN INVENTARIO (Jose, 2026-10-19): what is left to pack, word by word (pouches never added to platos), and the cases no PO has.
+                "por empacar", never "sin empacar": that is the STATE of a code with records and no case at all (chip, badge, band), another thing */}
+            <div className="made fl-tile-inv" title={tr('Hecho por el cuarto que empaca y todavía sin meter en cajas, de lo que estás viendo')}>
+              <label>{tr('En inventario · por empacar')}</label>
+              <b>{fmtN(leftMain.qty)} <span>{unitWordText(leftMain.word)}</span></b>
+              <small>{[...leftRest.map(leftText), unpackedLots ? inText(leftRows, unpackedLots) : tr('nada por empacar')].join(' · ')}</small>
+            </div>
+            <div className="made fl-tile-inv" title={tr('Cajas empacadas que no van en ningún pedido, de lo que estás viendo')}>
+              <label>{tr('En inventario · cajas sin pedido')}</label>
+              <b>{fmtN(sum.casesFree)} <span>{tr('cs')}</span></b>
+              <small>{[tr('{0} cs en pedidos', fmtN(sum.casesOnPo)), freeLots ? inText(sum.freeRows, freeLots) : ''].filter(Boolean).join(' · ')}</small>
+            </div>
           </div>
           <div className="avhow">
             <p className="avview">{trx('Viendo: {0}', <b>{viewing}</b>)}</p>
@@ -158,6 +188,10 @@ export const Flujo = memo(function Flujo({ s, today, onLot }: { s: State; today:
                   <i className="dotst" aria-hidden="true" />{flujoStateLabel(k)} <small>{stateN(k)}</small>
                 </button>
               ))}
+            </div>
+            {/* one more chip, on its own: a row with inventory can be in any state (a "cuadra" row still has cases without a PO) */}
+            <div className="chips avstages flinv" role="group" aria-label={tr('Inventario')}>
+              <button type="button" className={'chip' + (inv ? ' on' : '')} aria-pressed={inv} title={tr('Solo los códigos con algo por empacar o con cajas sin pedido')} onClick={() => setInv(!inv)}>📦 {tr('Con inventario')} <small>{invN}</small></button>
             </div>
             <button type="button" className="btn sm" onClick={() => setHelp(true)}>{tr('ⓘ Cómo leer Flujo')}</button>
           </div>
@@ -181,6 +215,9 @@ export const Flujo = memo(function Flujo({ s, today, onLot }: { s: State; today:
                   {roomTh('Packing', tr('Dif. Packing'))}
                   <th className="fl-proj">{tr('CS proyectado')}</th>
                   <th className="fl-proj">{tr('Dif. de proyectado')}</th>
+                  {/* (short words that wrap under the small CONSUMO caption: fifteen columns must fit a 1280 px screen, review of 2026-10-19) */}
+                  <th className="fl-cons"><small>{tr('Consumo')}</small>{tr('Quedan')}<small>{tr('por empacar')}</small></th>
+                  <th className="fl-cons"><small>{tr('Consumo')}</small>{tr('Cajas')}<small>{tr('sin pedido')}</small></th>
                 </tr></thead>
                 <tbody>{shown.map((l) => (
                   <Fragment key={l.lot}>
@@ -192,6 +229,9 @@ export const Flujo = memo(function Flujo({ s, today, onLot }: { s: State; today:
                       <small>{l.sum.pallets} pallets</small>
                       {l.sum.projected != null && <small>{tr('proyectado {0} cs', n2(l.sum.projected))}</small>}
                       {statesOf(l).map((t) => <small key={t} className="fl-lotstates">{t}</small>)}
+                      {/* the lot's inventory (2026-10-19): each word on its own, and the cases without a PO (with those in POs beside them when there are any) */}
+                      {l.sum.left.filter((x) => x.qty > 0).map((x) => <small key={x.word} className="fl-lotinv">{tr('{0} por empacar', leftText(x))}</small>)}
+                      <small className="fl-lotinv">{tr('{0} cs sin pedido', fmtN(l.sum.casesFree))}{l.sum.casesOnPo > 0 && ' · ' + tr('{0} en pedidos', fmtN(l.sum.casesOnPo))}</small>
                       <span><button type="button" className="drill" onClick={() => onLot(l.lot)}>{tr('Ver en Avance')}</button></span>
                     </div></td></tr>
                     {l.rows.map((r) => { const key = l.lot + '|' + r.code; return <FlujoRowView key={key} r={r} rowKey={key} isOpen={!!open[key]} onToggle={toggle} onLot={onLot} /> })}
@@ -231,6 +271,7 @@ const notesOf = (r: FlujoRow) => [
 const FlujoRowView = memo(function FlujoRowView({ r, rowKey, isOpen, onToggle, onLot }: { r: FlujoRow; rowKey: string; isOpen: boolean; onToggle: (key: string) => void; onLot: (lot: string) => void }) {
   const rte = r.route === 'RTE'
   const ex = flujoExplain(r, shortDay), titleOf = (k: string) => ex.find((x) => x.key === k)?.text ?? ''
+  const cons = flujoConsumo(r), consOf = (k: string) => cons.find((x) => x.key === k)?.text ?? ''
   const word = r.mfoWordUsed ? mfoWord(r.mfoWordUsed) : ''
   const first = r.mfo.find((m) => m.word === r.mfoWordUsed), rest = r.mfo.filter((m) => m.word !== r.mfoWordUsed)
   const lbTitle = tr('MFO lo registró en libras: no se pasa a cajas')
@@ -264,6 +305,9 @@ const FlujoRowView = memo(function FlujoRowView({ r, rowKey, isOpen, onToggle, o
         {difCell('cases', r.diffPacking, 'cs', 'fl-difpack', lab('Packing', tr('Dif. Packing')), titleOf('diffPacking'))}
         <td className="slim fl-proj" data-label={tr('CS proyectado')} title={titleOf('proj')}>{n2(r.projected)}{r.projected != null && <small>{r.projectedFrom === 'mfo' ? tr('de MFO') : tr('mezclas × yield')}</small>}{r.palletsProjected != null && <small>{n2(r.palletsProjected)} pallets</small>}</td>
         {difCell('cases', r.diffProjected, 'cs', 'fl-difproj', tr('Dif. de proyectado'), titleOf('diffProj') || titleOf('proj'))}
+        {/* CONSUMO (2026-10-19): what is left unpacked, in the room's word, and the cases no PO has; the arithmetic as the title */}
+        <td className={'slim fl-cons' + ((r.unitsLeft ?? 0) > 0 ? ' fl-inv' : '')} data-label={tr('Quedan por empacar')} title={consOf('units')}>{r.unitsLeft == null ? '—' : <><b>{fmtN(r.unitsLeft)}</b><small>{unitWordText(r.unitWord)}</small></>}</td>
+        <td className={'slim fl-cons' + (r.casesFree > 0 ? ' fl-inv' : '')} data-label={tr('Cajas sin pedido')} title={consOf('cases')}><b>{fmtN(r.casesFree)}</b><small>{tr('{0} en pedidos', fmtN(r.casesOnPo))}</small></td>
       </tr>
       {isOpen && (
         <tr className="avdetail"><td colSpan={COLS}>
@@ -271,6 +315,10 @@ const FlujoRowView = memo(function FlujoRowView({ r, rowKey, isOpen, onToggle, o
             <div className="avd-block">
               <h4>{tr('Cómo se calculó')}</h4>
               <ul className="flhow">{ex.map((x) => <li key={x.key}><b>{x.label}</b> {x.text}</li>)}</ul>
+            </div>
+            <div className="avd-block">
+              <h4>{tr('Consumo')}</h4>
+              <ul className="flhow">{cons.map((x) => <li key={x.key}><b>{x.label}</b> {x.text}</li>)}</ul>
             </div>
             <div className="avd-block">
               <h4>{tr('Por día')}</h4>
@@ -302,7 +350,8 @@ function FlujoHelp({ onClose }: { onClose: () => void }) {
           <li>{tr('Según cuarto (cs) = pouches de RTE ÷ pouches por caja (o lo de MFO ÷ unidades por caja). Dif. RTE = cajas de Packing × pouches por caja − pouches de RTE: "sobran" es lo hecho que todavía no se empacó; "faltan" es que Packing empacó más de lo que RTE reportó. Dif. MFO, igual, en lo que llenan sus bins.')}</li>
           <li>{tr('Dif. Packing = cajas de Packing − Según cuarto: "faltan" en ámbar, "de más" en rojo, "cuadra" en verde cuando la diferencia es de media caja o menos.')}</li>
           <li>{tr('CS proyectado = mezclas × yield. En un código de MFO que ya registró, se prefiere lo de MFO ÷ unidades por caja, como en la hoja de la oficina. Dif. de proyectado = Packing − proyectado. Pallets proyectados = proyectado ÷ cajas por pallet.')}</li>
-          <li>{tr('El estado se calcula con los números: Sin empacar (hay registros y ninguna caja), Faltan N cs, N cs de más, Cuadra, o Sin comparar (falta un dato en Productos, o MFO solo registró libras). Estado y consumo del ERP no están aquí: se calcula el estado con los números. La condición (refrigerado) tampoco está en la tabla de Productos.')}</li>
+          <li>{tr('El estado se calcula con los números: Sin empacar (hay registros y ninguna caja), Faltan N cs, N cs de más, Cuadra, o Sin comparar (falta un dato en Productos, o MFO solo registró libras). El estado del ERP no está aquí: se calcula con los números. La condición (refrigerado) tampoco está en la tabla de Productos.')}</li>
+          <li>{tr('Consumo: lo que el lote gastó y lo que queda, con los mismos números (nadie lo escribe), para reportar qué hay y qué falta por ordenar. Mezclas usadas = lo que reportó el cuarto que empaca, en cajas, ÷ yield; quedan = hechas − usadas. Queda en inventario lo hecho y todavía por empacar (pouches de RTE, o platos y copas de MFO, menos las cajas de Packing × unidades por caja; nunca menos de 0) y las cajas empacadas que no van en ningún pedido (un pallet con PO cuenta como en pedido, esté el pedido completo o no). Los pouches se suman con pouches, nunca con platos. El chip "Con inventario" deja solo los códigos con algo de eso. ("Sin empacar", el estado, es otra cosa: un código con registros y ninguna caja.)')}</li>
           <li>{tr('Un pallet con dos lotes da a cada lote sus cajas y cuenta como pallet de los dos. Lo que se registra mientras un código sigue corriendo ya cuenta ("en curso"); el pallet que se está armando cuenta cuando se marca listo. Un código que comparte mezcla con otro sale en dos filas por ahora.')}</li>
           <li>{tr('Toca ▸ junto al código para ver cómo se calculó cada número y lo hecho por día. Toca el código, o "Ver en Avance", para abrir ese lote en Avance en todos sus días. El Excel sale con las fechas, el lote y los chips que tengas puestos (no con la búsqueda) y trae una hoja Leyenda con los signos de la hoja de la oficina.')}</li>
         </ul>
