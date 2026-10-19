@@ -1,12 +1,18 @@
-import { Fragment, memo, useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, memo, useCallback, useEffect, useId, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { awayDay, dayAfter, dayBefore, fmtN, KEEP_DAYS, type Dept, type PackRoom, type State } from './store'
+import { awayDay, cfgOf, dayAfter, dayBefore, fmtN, fmtTime, KEEP_DAYS, lineNameOf, shiftsOf, unitsText, type Dept, type PackRoom, type State } from './store'
 import { datesBetween, mfoText, mfoWord, type AvancePart } from './avance'
 import { loadDay } from './sync'
 import { loadZip, xlsxNow, XLSX_TYPE, type Sheet } from './xlsx'
 import { DEPT_LOOK, deptVars } from './look'
-import { addDays, download, MISSING, NoticeDialog, Products, shortDay, useViewOnly } from './App'
-import { diffText, diffWord, FLUJO_STATES, flujoConsumo, flujoExplain, flujoFile, flujoFilter, flujoHasInventory, flujoLeftMain, flujoLegend, flujoLots, flujoSheet, flujoStateLabel, flujoStateText, flujoSum, missingText, n2, progSumText, progText, spiralApartText, unitWordText, type FlujoLeft, type FlujoLot, type FlujoRow, type FlujoState, type SpiralApart } from './flujo'
+import { addDays, download, MISSING, NoticeDialog, Products, shortDay, useCan, useViewOnly } from './App'
+import { clockNow } from './clock'
+import { spanShifts } from './report'
+import { RunEditor, StopEditor } from './editors'
+// (a cycle: FlujoView → ReportView → App → FlujoView. Harmless, as editors.tsx's and Settings.tsx's imports of App are:
+// nothing of ReportView is used at this module's top level, only inside components drawn long after every module loaded)
+import { DeptBadge, RunDetail, useFixers } from './ReportView'
+import { diffText, diffWord, FLUJO_STATES, flujoConsumo, flujoExplain, flujoFile, flujoFilter, flujoHasInventory, flujoHecho, flujoLeftMain, flujoLegend, flujoLots, flujoProgLines, flujoRecords, flujoSheet, flujoSheetRow, flujoStateLabel, flujoStateText, flujoSum, missingText, n2, progLine, progSumText, progText, spiralApartText, unitWordText, type FlujoLeft, type FlujoLot, type FlujoRow, type FlujoRun, type FlujoState, type SpiralApart } from './flujo'
 import { tr } from './i18n'
 import { trx } from './trx'
 
@@ -17,6 +23,14 @@ import { trx } from './trx'
  * program, code by code; this is the clerk's reconciliation per lot between one room and the next, with the sheet's
  * own columns and signs, so he closes work orders without typing the four counts. Nobody types here.
  *
+ * COMPACT TABLE + DETAIL WINDOW (Jose, 2026-10-19, from the floor: "sería bueno que si le damos click a algo podamos
+ * ver más detalles sin tener que verlo todo en una pantalla, que puede ser confuso"): the table shows six columns per
+ * code (Código, Programado, Hecho, Packing, Dif. Packing, Estado) and tapping a row opens its window (FlujoDetail) with
+ * the sheet's whole row and its signs, how each number was worked out, the consumo, the lot's program, each day, and
+ * every record of the code touching the lot with its pallets, each a tap from the report's own sheet and correction.
+ * The fold ▸ of before is gone (the window replaces it). "Ver todas las columnas" puts the sheet's fifteen columns back
+ * for the office to compare with its Excel.
+ *
  * The filters live at module level (not in sessionStorage): tapping a code opens that lot in Avance, and coming back
  * to this tab finds the same range, lot, chips and search. The range follows the day: a preset (7 / 14 / 30 días) is
  * "back from today", so a device left open on this tab (the office PC) wakes up on the new day's days and not on the
@@ -25,17 +39,17 @@ import { trx } from './trx'
  * says so). No tfoot: different products do not add up; the tiles carry the case totals of what is in view.
  *
  * CONSUMO (Jose, 2026-10-19: "eso hay que reportarlo para que sepan qué hay y qué no hay en el inventario, para saber
- * qué y cuánto ordenar"): two more columns at the right (what is left unpacked, the cases without a PO), two tiles
- * "En inventario" over what is in view, a "Consumo" block in the fold with the whole detail, and the chip "Con
- * inventario". All of it from the same numbers: nobody types the consumo either.
+ * qué y cuánto ordenar"): two more columns at the right of the full table (what is left unpacked, the cases without a
+ * PO), two tiles "En inventario" over what is in view, a "Consumo" block in the window with the whole detail, and the
+ * chip "Con inventario". All of it from the same numbers: nobody types the consumo either.
  */
-let kept = { today: '', from: '', to: '', days: KEEP_DAYS, byHand: false, lot: '', q: '', route: '' as PackRoom | '', state: '' as FlujoState | '', inv: false }
-const COLS = 15
+let kept = { today: '', from: '', to: '', days: KEEP_DAYS, byHand: false, lot: '', q: '', route: '' as PackRoom | '', state: '' as FlujoState | '', inv: false, full: false }
 
 /**
  * A memo: Main draws itself every second for its clock and this tab shows no clock; drawing ~200 rows took 100-140 ms
  * each second on a PC and several times more on a tablet (review of 2026-10-18). Each row is a memo too (FlujoRowView):
- * a keystroke in the search box draws the list again, not every row's arithmetic in words.
+ * a keystroke in the search box draws the list again, not every row's arithmetic in words. The detail window reads
+ * its row from the same memoised lots and is mounted only while open, so the clock never draws it either.
  */
 export const Flujo = memo(function Flujo({ s, today, onLot }: { s: State; today: string; onLot: (lot: string) => void }) {
   const viewOnly = useViewOnly()
@@ -53,13 +67,18 @@ export const Flujo = memo(function Flujo({ s, today, onLot }: { s: State; today:
   const [route, setRoute] = useState<PackRoom | ''>(kept.route)
   const [state, setState] = useState<FlujoState | ''>(kept.state)
   const [inv, setInv] = useState(kept.inv)
-  useEffect(() => { kept = { today, from, to, days, byHand, lot, q, route, state, inv } }, [today, from, to, days, byHand, lot, q, route, state, inv])
+  // "Ver todas las columnas" (2026-10-19): kept like the other filters, so an office PC that chose the sheet's layout keeps it
+  const [full, setFull] = useState(kept.full)
+  useEffect(() => { kept = { today, from, to, days, byHand, lot, q, route, state, inv, full } }, [today, from, to, days, byHand, lot, q, route, state, inv, full])
   // a preset moves with the day while the tab stays open (the office PC left on it overnight)
   useEffect(() => { if (!byHand) { const r = spanOf(days); setFrom(r.from); setTo(r.to) } }, [today]) // eslint-disable-line react-hooks/exhaustive-deps
   const pick = (n: number) => { setDays(n); setByHand(false); const r = spanOf(n); setFrom(r.from); setTo(r.to) }
   const [editing, setEditing] = useState(false)
   const [help, setHelp] = useState(false)
-  const [open, setOpen] = useState<Record<string, boolean>>({})
+  // the detail window (Jose, 2026-10-19): which lot × code is open. Not in `kept`: coming back to the tab must not
+  // reopen a window
+  const [detail, setDetail] = useState<{ lot: string; code: string } | null>(null)
+  const openRow = useCallback((lot: string, code: string) => setDetail({ lot, code }), [])
   const [notice, setNotice] = useState<{ title: string; text?: string } | null>(null)
   const [a, b] = from <= to ? [from, to] : [to, from]
   const span = datesBetween(from, to)
@@ -94,8 +113,12 @@ export const Flujo = memo(function Flujo({ s, today, onLot }: { s: State; today:
   const away = span.filter((d) => awayDay(d)).length
   const filtering = !!(lot || q.trim() || route || state || inv)
   const clear = () => { setLot(''); setQ(''); setRoute(''); setState(''); setInv(false) }
-  const toggle = useCallback((k: string) => setOpen((o) => ({ ...o, [k]: !o[k] })), [])
   const lotList = lots.map((l) => l.lot)
+  const cols = full ? 15 : 6
+  // the window's row, from the UNFILTERED memo (a chip tapped while it is open does not close it); a row that left the
+  // range closes its window (RunDetail's own rule for a run that is gone)
+  const detailRow = detail ? lots.find((l) => l.lot === detail.lot)?.rows.find((r) => r.code === detail.code) : undefined
+  useEffect(() => { if (detail && !detailRow) setDetail(null) }, [detail, detailRow])
   const viewingOf = (list: FlujoLot[], withQ: boolean) => {
     const n = list.reduce((t, l) => t + l.rows.length, 0)
     return [tr('del {0} al {1}', shortDay(a), shortDay(b)), lot ? tr('lote {0}', lot) : tr('todos los lotes'), route || tr('RTE y MFO'), state ? flujoStateLabel(state) : '', inv ? tr('con inventario') : '', withQ && q.trim() ? '«' + q.trim() + '»' : '', list.length === 1 ? tr('1 lote') : tr('{0} lotes', list.length), n === 1 ? tr('1 código') : tr('{0} códigos', n)].filter(Boolean).join(' · ')
@@ -195,6 +218,11 @@ export const Flujo = memo(function Flujo({ s, today, onLot }: { s: State; today:
             <div className="chips avstages flinv" role="group" aria-label={tr('Inventario')}>
               <button type="button" className={'chip' + (inv ? ' on' : '')} aria-pressed={inv} title={tr('Solo los códigos con algo por empacar o con cajas sin pedido')} onClick={() => setInv(!inv)}>📦 {tr('Con inventario')} <small>{invN}</small></button>
             </div>
+            {/* the office compares the tab with its Excel: the sheet's own fifteen columns, one chip away (Jose, 2026-10-19: the
+                compact table is the default because "verlo todo en una pantalla … puede ser confuso") */}
+            <div className="chips avstages flcols" role="group" aria-label={tr('Columnas')}>
+              <button type="button" className={'chip' + (full ? ' on' : '')} aria-pressed={full} title={tr('La tabla con todas las columnas de la hoja de la oficina, para compararla con el Excel')} onClick={() => setFull(!full)}>⊞ {tr('Ver todas las columnas')}</button>
+            </div>
             <button type="button" className="btn sm" onClick={() => setHelp(true)}>{tr('ⓘ Cómo leer Flujo')}</button>
           </div>
           {help && <FlujoHelp onClose={() => setHelp(false)} />}
@@ -202,28 +230,41 @@ export const Flujo = memo(function Flujo({ s, today, onLot }: { s: State; today:
             <p className="hint">{q.trim() ? trx('Ningún código coincide con "{0}".', q.trim()) : tr('Ningún código está así.')} <button type="button" className="lnk sm" onClick={clear}>{tr('Ver todo')}</button></p>
           ) : (
             <div className="twrap">
-              <table className="avtable fltable">
+              <table className={'avtable fltable' + (full ? '' : ' fl-compact')}>
                 <thead><tr>
                   <th>{tr('Código')}</th>
-                  <th>{tr('Yield')}<small>{tr('cs / mezcla')}</small></th>
-                  <th>{tr('Pouch × cs')}</th>
-                  {roomTh('Kitchen', <>{tr('PROD')}<small>{tr('mezclas')}</small></>)}
-                  {roomTh('RTE', <>RTE<small>{tr('pouches')}</small></>)}
-                  {roomTh('RTE', tr('Dif. RTE'))}
-                  {roomTh('MFO', 'MFO')}
-                  {roomTh('MFO', tr('Dif. MFO'))}
-                  {roomTh('Packing', tr('Según cuarto (cs)'))}
-                  {roomTh('Packing', <>{tr('Packing')}<small>{tr('cs')}</small></>)}
-                  {roomTh('Packing', tr('Dif. Packing'))}
-                  <th className="fl-proj">{tr('CS proyectado')}</th>
-                  <th className="fl-proj">{tr('Dif. de proyectado')}</th>
-                  {/* (short words that wrap under the small CONSUMO caption: fifteen columns must fit a 1280 px screen, review of 2026-10-19) */}
-                  <th className="fl-cons"><small>{tr('Consumo')}</small>{tr('Quedan')}<small>{tr('por empacar')}</small></th>
-                  <th className="fl-cons"><small>{tr('Consumo')}</small>{tr('Cajas')}<small>{tr('sin pedido')}</small></th>
+                  {full ? (
+                    <>
+                      <th>{tr('Yield')}<small>{tr('cs / mezcla')}</small></th>
+                      <th>{tr('Pouch × cs')}</th>
+                      {roomTh('Kitchen', <>{tr('PROD')}<small>{tr('mezclas')}</small></>)}
+                      {roomTh('RTE', <>RTE<small>{tr('pouches')}</small></>)}
+                      {roomTh('RTE', tr('Dif. RTE'))}
+                      {roomTh('MFO', 'MFO')}
+                      {roomTh('MFO', tr('Dif. MFO'))}
+                      {roomTh('Packing', tr('Según cuarto (cs)'))}
+                      {roomTh('Packing', <>{tr('Packing')}<small>{tr('cs')}</small></>)}
+                      {roomTh('Packing', tr('Dif. Packing'))}
+                      <th className="fl-proj">{tr('CS proyectado')}</th>
+                      <th className="fl-proj">{tr('Dif. de proyectado')}</th>
+                      {/* (short words that wrap under the small CONSUMO caption: fifteen columns must fit a 1280 px screen, review of 2026-10-19) */}
+                      <th className="fl-cons"><small>{tr('Consumo')}</small>{tr('Quedan')}<small>{tr('por empacar')}</small></th>
+                      <th className="fl-cons"><small>{tr('Consumo')}</small>{tr('Cajas')}<small>{tr('sin pedido')}</small></th>
+                    </>
+                  ) : (
+                    <>
+                      {/* the six columns (Jose, 2026-10-19): what was programmed, what the pack room made, what Packing boxed, the difference, the state */}
+                      <th className="fl-progcol">{tr('Programado')}<small>{tr('del lote')}</small></th>
+                      <th className="fl-hecho">{tr('Hecho')}<small>{tr('por RTE o MFO')}</small></th>
+                      {roomTh('Packing', <>{tr('Packing')}<small>{tr('cs')}</small></>)}
+                      {roomTh('Packing', tr('Dif. Packing'))}
+                      <th className="fl-state">{tr('Estado')}</th>
+                    </>
+                  )}
                 </tr></thead>
                 <tbody>{shown.map((l) => (
                   <Fragment key={l.lot}>
-                    <tr className="fl-lot"><td colSpan={COLS}><div>
+                    <tr className="fl-lot"><td colSpan={cols}><div>
                       <b>{trx('Lote {0}', l.lot)}</b>
                       <span>{daysOf(l.days)}</span>
                       <span>{l.rows.length === 1 ? tr('1 código') : tr('{0} códigos', l.rows.length)}</span>
@@ -238,7 +279,7 @@ export const Flujo = memo(function Flujo({ s, today, onLot }: { s: State; today:
                       <small className="fl-lotinv">{tr('{0} cs sin pedido', fmtN(l.sum.casesFree))}{l.sum.casesOnPo > 0 && ' · ' + tr('{0} en pedidos', fmtN(l.sum.casesOnPo))}</small>
                       <span><button type="button" className="drill" onClick={() => onLot(l.lot)}>{tr('Ver en Avance')}</button></span>
                     </div></td></tr>
-                    {l.rows.map((r) => { const key = l.lot + '|' + r.code; return <FlujoRowView key={key} r={r} rowKey={key} isOpen={!!open[key]} onToggle={toggle} onLot={onLot} /> })}
+                    {l.rows.map((r) => <FlujoRowView key={l.lot + '|' + r.code} r={r} full={full} onOpen={openRow} />)}
                   </Fragment>
                 ))}</tbody>
               </table>
@@ -246,6 +287,7 @@ export const Flujo = memo(function Flujo({ s, today, onLot }: { s: State; today:
           )}
         </>
       )}
+      {detailRow && <FlujoDetail s={s} r={detailRow} onLot={onLot} onSearch={setQ} onPickLot={setLot} onClose={() => setDetail(null)} />}
       {notice && <NoticeDialog title={notice.title} text={notice.text} onClose={() => setNotice(null)} />}
     </section>
   )
@@ -260,7 +302,7 @@ const difCell = (kind: 'room' | 'cases', v: number | null, unit: string, cls: st
 }
 const offCell = (cls: string, label: string, title: string) => <td className={'slim off ' + cls} data-label={label} title={title}>—</td>
 /**
- * "prog. 80 mezclas" under a room's cell: the lot's program of the code in that room (2026-10-19); the fold has it against
+ * "prog. 80 mezclas" under a room's cell: the lot's program of the code in that room (2026-10-19); the window has it against
  * what was made. With two rooms under one cell (PROD: Kitchen and Spiral both programmed) each line names its room
  */
 const progOf = (r: FlujoRow, depts: Dept[], title: string) => { const list = r.prog.filter((p) => depts.includes(p.dept)); return list.map((p) => <small key={p.dept} className="fl-prog" title={title}>{progText(p, list.length > 1)}</small>) }
@@ -273,85 +315,218 @@ const notesOf = (r: FlujoRow) => [
   ...(r.otherRte ? [tr('RTE registró {0} pouches de un código que empaca MFO', fmtN(r.pouches))] : []),
   ...(r.otherMfo ? [tr('MFO registró {0} de un código que empaca RTE', mfoText(r.mfo))] : []),
 ]
+/** the route badge of a row, as the table and the window show it: the room's colour, a "?" when the app supposed it */
+const routeBadge = (r: FlujoRow) => <small className={'packroom ' + r.route.toLowerCase()} style={deptVars(r.route)} title={r.routeSaid ? tr('Lo dice la tabla de Productos.') : tr('La app lo supone por lo que ha registrado cada cuarto. Se fija en Avance.')}>{DEPT_LOOK[r.route].emoji} {r.route}{r.routeSaid ? '' : ' ?'}</small>
 
 /**
- * one code of one lot: its cells, and its fold when open. A memo: drawn again only when its row (a new picture of the
- * runs), its fold or a callback changes, not on each keystroke of the search box
+ * one code of one lot: its six cells (or the sheet's fifteen with "Ver todas las columnas"). The whole row is a tap to
+ * its detail window (Jose, 2026-10-19), the code being the visible link and the keyboard's way in. A memo: drawn again
+ * only when its row (a new picture of the runs) or the view changes, not on each keystroke of the search box
  */
-const FlujoRowView = memo(function FlujoRowView({ r, rowKey, isOpen, onToggle, onLot }: { r: FlujoRow; rowKey: string; isOpen: boolean; onToggle: (key: string) => void; onLot: (lot: string) => void }) {
+const FlujoRowView = memo(function FlujoRowView({ r, full, onOpen }: { r: FlujoRow; full: boolean; onOpen: (lot: string, code: string) => void }) {
   const rte = r.route === 'RTE'
   const ex = flujoExplain(r, shortDay), titleOf = (k: string) => ex.find((x) => x.key === k)?.text ?? ''
   const cons = flujoConsumo(r), consOf = (k: string) => cons.find((x) => x.key === k)?.text ?? ''
   const word = r.mfoWordUsed ? mfoWord(r.mfoWordUsed) : ''
   const first = r.mfo.find((m) => m.word === r.mfoWordUsed), rest = r.mfo.filter((m) => m.word !== r.mfoWordUsed)
   const lbTitle = tr('MFO lo registró en libras: no se pasa a cajas')
+  // the compact HECHO cell: what the pack room made, with its word, and the mezclas small under it ("80 mezclas · 1,200 lb Spiral")
+  const h = flujoHecho(r), pl = flujoProgLines(r.prog)
+  const mixLine = [r.mixes ? r.mixes + ' ' + tr('mezclas') : '', r.spiralApart.length ? spiralApartText(r.spiralApart) + ' Spiral' : ''].filter(Boolean).join(' · ')
   return (
-    <Fragment>
-      <tr className={isOpen ? 'avopen' : ''}>
-        <td className="avcode" data-label={tr('Código')}>
-          <div className="avc-top">
-            <button type="button" className="avfold" aria-expanded={isOpen} aria-label={tr('Ver cómo se calculó')} onClick={() => onToggle(rowKey)}>{isOpen ? '▾' : '▸'}</button>
-            <button type="button" className="drill code" title={tr('Ver este lote en Avance, en todos sus días')} onClick={() => onLot(r.lot)}>{r.code}</button>
-            <small className={'packroom ' + r.route.toLowerCase()} style={deptVars(r.route)} title={r.routeSaid ? tr('Lo dice la tabla de Productos.') : tr('La app lo supone por lo que ha registrado cada cuarto. Se fija en Avance.')}>{DEPT_LOOK[r.route].emoji} {r.route}{r.routeSaid ? '' : ' ?'}</small>
-            {r.running && <span className="pill run" title={titleOf('open')}>{tr('en curso')}</span>}
-          </div>
-          <small className="pname">{r.name || <i className="red">{tr('no está en Productos')}</i>}</small>
-          <span className={'avstage flst st-' + r.state}>{flujoStateText(r.state, r.diffPacking)}</span>
-          {notesOf(r).map((t, i) => <small key={i} className="carry amber">{t}</small>)}
-        </td>
-        <td className="slim fl-yield" data-label={tr('Yield')} title={tr('Cajas por mezcla, de la tabla de Productos (YIEL)')}>{n2(r.yieldCs)}</td>
-        <td className="slim fl-percase" data-label={tr('Pouch × cs')} title={tr('Unidades por caja, de la tabla de Productos (POUCH X CS)')}>{n2(r.perCase)}{!rte && word && r.mfoWordUsed !== 'cajas' && <small>{word}</small>}</td>
-        {/* PROD: the mezclas with their room; under them what Spiral weighed or counted apart ("1,200 lb Spiral": a fact
-            of the lot, never cases nor mezclas; alone when there is no mezcla, so a code Spiral only weighs has its cell: 2026-10-19) */}
-        {/* under each room's cell, what the office programmed of the code for this lot in that room ("prog. 80 mezclas", 2026-10-19) */}
-        <td className="slim fl-prod" data-label={lab('Kitchen', tr('PROD'))} title={titleOf('prod') || titleOf('spiral') || titleOf('program')}>
-          {r.mixes ? <><b>{r.mixes}</b><small>{r.mixRoom}</small></> : r.spiralApart.length ? <b>{spiralApartText(r.spiralApart)}</b> : '—'}
-          {r.spiralApart.length > 0 && <small className="fl-spiral" style={deptVars('Spiral')}>{r.mixes ? spiralApartText(r.spiralApart) + ' ' : ''}Spiral</small>}
-          {progOf(r, ['Kitchen', 'Spiral'], titleOf('program'))}
-        </td>
-        {rte
-          ? <td className="slim fl-room" data-label={lab('RTE', 'RTE')} title={r.pouches ? tr('{0} pouches registrados por RTE', fmtN(r.pouches)) : tr('RTE no ha registrado nada de este lote')}>{r.pouches ? fmtN(r.pouches) : '—'}{progOf(r, ['RTE'], titleOf('program'))}</td>
-          : offCell('fl-room', lab('RTE', 'RTE'), tr('Lo empaca MFO: RTE no entra en la cuenta'))}
-        {rte ? difCell('room', r.diffRte, 'pouches', 'fl-difroom', lab('RTE', tr('Dif. RTE')), titleOf('diffRoom') || titleOf('segun')) : offCell('fl-difroom', lab('RTE', tr('Dif. RTE')), tr('Lo empaca MFO: RTE no entra en la cuenta'))}
-        {!rte
-          ? <td className="slim fl-room" data-label={lab('MFO', 'MFO')} title={r.mfo.length ? mfoText(r.mfo) : tr('MFO no ha registrado nada de este lote')}>{first ? <>{fmtN(first.qty)} {word}{rest.length > 0 && <small>{tr('y {0}', mfoText(rest))}</small>}</> : r.mfo.length ? <>{mfoText(r.mfo)}</> : '—'}{progOf(r, ['MFO'], titleOf('program'))}</td>
-          : offCell('fl-room', lab('MFO', 'MFO'), tr('Lo empaca RTE: MFO no entra en la cuenta'))}
-        {!rte ? difCell('room', r.diffMfo, word || mfoWord('cajas'), 'fl-difroom', lab('MFO', tr('Dif. MFO')), r.mfoOnlyLb ? lbTitle : titleOf('diffRoom') || titleOf('segun')) : offCell('fl-difroom', lab('MFO', tr('Dif. MFO')), tr('Lo empaca RTE: MFO no entra en la cuenta'))}
-        <td className="slim fl-segun" data-label={lab('Packing', tr('Según cuarto (cs)'))} title={titleOf('segun')}>{r.segun == null || (r.segun === 0 && r.cases === 0) ? '—' : <>{n2(r.segun)}<small>{tr('según {0}', r.route)}</small></>}</td>
-        <td className="slim fl-pack" data-label={lab('Packing', tr('Packing'))} title={tr('Cajas en pallets que llevan este lote')}><b>{fmtN(r.cases)}</b><small>{r.pallets} pallets</small>{progOf(r, ['Packing'], titleOf('program'))}</td>
-        {difCell('cases', r.diffPacking, 'cs', 'fl-difpack', lab('Packing', tr('Dif. Packing')), titleOf('diffPacking'))}
-        <td className="slim fl-proj" data-label={tr('CS proyectado')} title={titleOf('proj')}>{n2(r.projected)}{r.projected != null && <small>{r.projectedFrom === 'mfo' ? tr('de MFO') : tr('mezclas × yield')}</small>}{r.palletsProjected != null && <small>{n2(r.palletsProjected)} pallets</small>}</td>
-        {difCell('cases', r.diffProjected, 'cs', 'fl-difproj', tr('Dif. de proyectado'), titleOf('diffProj') || titleOf('proj'))}
-        {/* CONSUMO (2026-10-19): what is left unpacked, in the room's word, and the cases no PO has; the arithmetic as the title */}
-        <td className={'slim fl-cons' + ((r.unitsLeft ?? 0) > 0 ? ' fl-inv' : '')} data-label={tr('Quedan por empacar')} title={consOf('units')}>{r.unitsLeft == null ? '—' : <><b>{fmtN(r.unitsLeft)}</b><small>{unitWordText(r.unitWord)}</small></>}</td>
-        <td className={'slim fl-cons' + (r.casesFree > 0 ? ' fl-inv' : '')} data-label={tr('Cajas sin pedido')} title={consOf('cases')}><b>{fmtN(r.casesFree)}</b><small>{tr('{0} en pedidos', fmtN(r.casesOnPo))}</small></td>
-      </tr>
-      {isOpen && (
-        <tr className="avdetail"><td colSpan={COLS}>
-          <div className="avd">
-            <div className="avd-block">
-              <h4>{tr('Cómo se calculó')}</h4>
-              <ul className="flhow">{ex.map((x) => <li key={x.key}><b>{x.label}</b> {x.text}</li>)}</ul>
-            </div>
-            <div className="avd-block">
-              <h4>{tr('Consumo')}</h4>
-              <ul className="flhow">{cons.map((x) => <li key={x.key}><b>{x.label}</b> {x.text}</li>)}</ul>
-            </div>
-            <div className="avd-block">
-              <h4>{tr('Por día')}</h4>
-              <table className="avmini">{miniHead()}<tbody>{r.days.map((d) => miniRow(d.date, shortDay(d.date), d))}</tbody></table>
-            </div>
-            <div className="avd-block">
-              <h4>{tr('Lo empaca')}</h4>
-              <p>{r.routeSaid ? trx('{0}, según la tabla de Productos. Se cambia en Avance, junto al código.', <b>{r.route}</b>) : trx('{0}, supuesto por lo que ha registrado cada cuarto: por eso lleva un "?". Se fija en Avance, junto al código.', <b>{r.route}</b>)}</p>
-              <button type="button" className="drill" onClick={() => onLot(r.lot)}>{trx('Ver el lote {0} en Avance', r.lot)}</button>
-            </div>
-          </div>
-        </td></tr>
+    // (a tap on a button of the row, "Ver en Avance" or the code itself, is that button's; anywhere else opens the window.
+    // A drag that selects text is not a tap: the office copies names and numbers from here to compare with its Excel, 2026-10-19)
+    <tr className="fl-row" onClick={(e) => { if ((e.target as HTMLElement).closest('button')) return; if (window.getSelection()?.toString()) return; onOpen(r.lot, r.code) }}>
+      <td className="avcode" data-label={tr('Código')}>
+        <div className="avc-top">
+          <button type="button" className="drill code" title={tr('Ver el detalle de este código en el lote')} onClick={() => onOpen(r.lot, r.code)}>{r.code}</button>
+          {routeBadge(r)}
+          {r.running && <span className="pill run" title={titleOf('open')}>{tr('en curso')}</span>}
+        </div>
+        <small className="pname">{r.name || <i className="red">{tr('no está en Productos')}</i>}</small>
+        {full && <span className={'avstage flst st-' + r.state}>{flujoStateText(r.state, r.diffPacking)}</span>}
+        {notesOf(r).map((t, i) => <small key={i} className="carry amber">{t}</small>)}
+      </td>
+      {full ? (
+        <>
+          <td className="slim fl-yield" data-label={tr('Yield')} title={tr('Cajas por mezcla, de la tabla de Productos (YIEL)')}>{n2(r.yieldCs)}</td>
+          <td className="slim fl-percase" data-label={tr('Pouch × cs')} title={tr('Unidades por caja, de la tabla de Productos (POUCH X CS)')}>{n2(r.perCase)}{!rte && word && r.mfoWordUsed !== 'cajas' && <small>{word}</small>}</td>
+          {/* PROD: the mezclas with their room; under them what Spiral weighed or counted apart ("1,200 lb Spiral": a fact
+              of the lot, never cases nor mezclas; alone when there is no mezcla, so a code Spiral only weighs has its cell: 2026-10-19) */}
+          {/* under each room's cell, what the office programmed of the code for this lot in that room ("prog. 80 mezclas", 2026-10-19) */}
+          <td className="slim fl-prod" data-label={lab('Kitchen', tr('PROD'))} title={titleOf('prod') || titleOf('spiral') || titleOf('program')}>
+            {r.mixes ? <><b>{r.mixes}</b><small>{r.mixRoom}</small></> : r.spiralApart.length ? <b>{spiralApartText(r.spiralApart)}</b> : '—'}
+            {r.spiralApart.length > 0 && <small className="fl-spiral" style={deptVars('Spiral')}>{r.mixes ? spiralApartText(r.spiralApart) + ' ' : ''}Spiral</small>}
+            {progOf(r, ['Kitchen', 'Spiral'], titleOf('program'))}
+          </td>
+          {rte
+            ? <td className="slim fl-room" data-label={lab('RTE', 'RTE')} title={r.pouches ? tr('{0} pouches registrados por RTE', fmtN(r.pouches)) : tr('RTE no ha registrado nada de este lote')}>{r.pouches ? fmtN(r.pouches) : '—'}{progOf(r, ['RTE'], titleOf('program'))}</td>
+            : offCell('fl-room', lab('RTE', 'RTE'), tr('Lo empaca MFO: RTE no entra en la cuenta'))}
+          {rte ? difCell('room', r.diffRte, 'pouches', 'fl-difroom', lab('RTE', tr('Dif. RTE')), titleOf('diffRoom') || titleOf('segun')) : offCell('fl-difroom', lab('RTE', tr('Dif. RTE')), tr('Lo empaca MFO: RTE no entra en la cuenta'))}
+          {!rte
+            ? <td className="slim fl-room" data-label={lab('MFO', 'MFO')} title={r.mfo.length ? mfoText(r.mfo) : tr('MFO no ha registrado nada de este lote')}>{first ? <>{fmtN(first.qty)} {word}{rest.length > 0 && <small>{tr('y {0}', mfoText(rest))}</small>}</> : r.mfo.length ? <>{mfoText(r.mfo)}</> : '—'}{progOf(r, ['MFO'], titleOf('program'))}</td>
+            : offCell('fl-room', lab('MFO', 'MFO'), tr('Lo empaca RTE: MFO no entra en la cuenta'))}
+          {!rte ? difCell('room', r.diffMfo, word || mfoWord('cajas'), 'fl-difroom', lab('MFO', tr('Dif. MFO')), r.mfoOnlyLb ? lbTitle : titleOf('diffRoom') || titleOf('segun')) : offCell('fl-difroom', lab('MFO', tr('Dif. MFO')), tr('Lo empaca RTE: MFO no entra en la cuenta'))}
+          <td className="slim fl-segun" data-label={lab('Packing', tr('Según cuarto (cs)'))} title={titleOf('segun')}>{r.segun == null || (r.segun === 0 && r.cases === 0) ? '—' : <>{n2(r.segun)}<small>{tr('según {0}', r.route)}</small></>}</td>
+          <td className="slim fl-pack" data-label={lab('Packing', tr('Packing'))} title={tr('Cajas en pallets que llevan este lote')}><b>{fmtN(r.cases)}</b><small>{r.pallets} pallets</small>{progOf(r, ['Packing'], titleOf('program'))}</td>
+          {difCell('cases', r.diffPacking, 'cs', 'fl-difpack', lab('Packing', tr('Dif. Packing')), titleOf('diffPacking'))}
+          <td className="slim fl-proj" data-label={tr('CS proyectado')} title={titleOf('proj')}>{n2(r.projected)}{r.projected != null && <small>{r.projectedFrom === 'mfo' ? tr('de MFO') : tr('mezclas × yield')}</small>}{r.palletsProjected != null && <small>{n2(r.palletsProjected)} pallets</small>}</td>
+          {difCell('cases', r.diffProjected, 'cs', 'fl-difproj', tr('Dif. de proyectado'), titleOf('diffProj') || titleOf('proj'))}
+          {/* CONSUMO (2026-10-19): what is left unpacked, in the room's word, and the cases no PO has; the arithmetic as the title */}
+          <td className={'slim fl-cons' + ((r.unitsLeft ?? 0) > 0 ? ' fl-inv' : '')} data-label={tr('Quedan por empacar')} title={consOf('units')}>{r.unitsLeft == null ? '—' : <><b>{fmtN(r.unitsLeft)}</b><small>{unitWordText(r.unitWord)}</small></>}</td>
+          <td className={'slim fl-cons' + (r.casesFree > 0 ? ' fl-inv' : '')} data-label={tr('Cajas sin pedido')} title={consOf('cases')}><b>{fmtN(r.casesFree)}</b><small>{tr('{0} en pedidos', fmtN(r.casesOnPo))}</small></td>
+        </>
+      ) : (
+        <>
+          {/* PROGRAMADO: the lot's program of this code, each room in its word (named only when the band would name it) */}
+          <td className="slim fl-progcol" data-label={tr('Programado')} title={titleOf('program') || tr('Ningún programa nombra este lote')}>
+            {pl.length ? pl.map((x) => <span key={x.dept + x.word} className="fl-pl"><b>{fmtN(x.qty)}</b><small>{x.word}</small></span>) : '—'}
+          </td>
+          {/* HECHO: what the room that packs the code registered of the lot (RTE's pouches, MFO's platos / copas / lb as
+              typed), the other MFO word apart, and the mezclas small under it ("80 mezclas · 1,200 lb Spiral") */}
+          <td className="slim fl-hecho" data-label={tr('Hecho')} title={rte ? (r.pouches ? tr('{0} pouches registrados por RTE', fmtN(r.pouches)) : tr('RTE no ha registrado nada de este lote')) : (r.mfo.length ? mfoText(r.mfo) : tr('MFO no ha registrado nada de este lote'))}>
+            {h.qty === '—' ? '—' : <><b>{h.qty}</b><small>{h.word}</small></>}
+            {h.also && <small>{h.also}</small>}
+            {mixLine && <small className="fl-mix">{mixLine}</small>}
+          </td>
+          <td className="slim fl-pack" data-label={lab('Packing', tr('Packing'))} title={tr('Cajas en pallets que llevan este lote')}><b>{fmtN(r.cases)}</b><small>{r.pallets} pallets</small></td>
+          {difCell('cases', r.diffPacking, 'cs', 'fl-difpack', lab('Packing', tr('Dif. Packing')), titleOf('diffPacking'))}
+          <td className="fl-state" data-label={tr('Estado')}><span className={'avstage flst st-' + r.state}>{flujoStateText(r.state, r.diffPacking)}</span></td>
+        </>
       )}
-    </Fragment>
+    </tr>
   )
 })
+
+/**
+ * one code of one lot, whole (Jose, 2026-10-19: "si le damos click a algo podamos ver más detalles sin tener que verlo
+ * todo en una pantalla"): the sheet's row with its signs explained, how each number was worked out, the consumo, the
+ * lot's program, each day, and every record of the lot with its pallets, each a tap from the report's own sheet and
+ * correction (RunDetail and RunEditor, as the Report opens them). Reads the memoised row; mounted only while open, so
+ * the clock never draws it. No autofocus, no scrollIntoView, no Escape handler: as every other window here
+ */
+function FlujoDetail({ s, r, onLot, onSearch, onPickLot, onClose }: { s: State; r: FlujoRow; onLot: (lot: string) => void; onSearch: (code: string) => void; onPickLot: (lot: string) => void; onClose: () => void }) {
+  const can = useCan(), { fixable, fix, seeBtn, fixBtn } = useFixers(), id = useId()
+  // a snapshot per draw: the window draws only when the store changes, never on the clock's tick, so an open run's
+  // "Trabajando" in its RunDetail stands still while the window stays (a reconciliation screen, not the floor's card).
+  // A live clock there would need `now` passed from Main through a non-memo wrapper, never into Flujo's memo
+  const now = clockNow()
+  const [see, setSee] = useState<{ runId: string; at?: number } | null>(null)
+  const [edit, setEdit] = useState<{ id: string; at?: number } | null>(null)
+  const [stop, setStop] = useState<string | null>(null)
+  const ex = useMemo(() => flujoExplain(r, shortDay), [r])
+  const cons = useMemo(() => flujoConsumo(r), [r])
+  const sheet = useMemo(() => flujoSheetRow(r, shortDay), [r])
+  const rec = useMemo(() => flujoRecords(s, r.lot, r.code), [s, r.lot, r.code])
+  const runToEdit = edit ? s.runs.find((x) => x.id === edit.id) : undefined
+  const stopToEdit = stop ? s.stops.find((x) => x.id === stop) : undefined
+  const shiftsOfRun = (x: FlujoRun) => spanShifts(shiftsOf(s, x.run.date), x.run.startedAt, x.run.endedAt ?? now)
+  // (a Comentario column only when one record has it: the report's rule, Jose 2026-10-18)
+  const runNotes = rec.runs.some((x) => !!x.note), palNotes = rec.pallets.some((p) => !!p.note)
+  return (
+    <div className="veil fl-veil" onClick={onClose}>
+      <div className="dlg wide fl-detail" role="dialog" aria-modal="true" aria-labelledby={id} onClick={(e) => e.stopPropagation()}>
+        <h3 id={id}>
+          <span className="fl-dt">{trx('Lote {0}', r.lot)} · <span className="code">{r.code}</span></span>
+          {r.name ? <small> · {r.name}</small> : <small className="red"> · {tr('no está en Productos')}</small>}
+          <span className="fl-dtags">
+            {routeBadge(r)}
+            <span className={'avstage st-' + r.state}>{flujoStateText(r.state, r.diffPacking)}</span>
+            {r.running && <span className="pill run">{tr('en curso')}</span>}
+          </span>
+          <small className="rp-dsub">{r.days.length ? r.days.map((d) => shortDay(d.date)).join(' · ') : tr('nada registrado todavía')}</small>
+        </h3>
+        {notesOf(r).map((t, i) => <p key={i} className="fl-dnote amber">{t}</p>)}
+        {/* (1) the sheet's row: every WO PENDIENTES column of this code in this lot, each with one line under it */}
+        <section className="fl-dsec">
+          <h4>{tr('La hoja')}</h4>
+          <dl className="fl-sheet">{sheet.map((c) => (
+            <div key={c.key} className={'fl-cell' + (c.dept ? ' dth' : '')} style={c.dept ? deptVars(c.dept) : undefined}>
+              <dt>{c.dept && <i className="demoji" aria-hidden="true">{DEPT_LOOK[c.dept].emoji}</i>}{c.label}</dt>
+              <dd className={c.cls}>
+                {c.key === 'state' ? <span className={'avstage st-' + r.state}>{c.value}</span> : <><b>{c.value}</b>{c.word && <small>{c.word}</small>}</>}
+                {c.note && <small className="fl-note">{c.note}</small>}
+              </dd>
+            </div>
+          ))}</dl>
+        </section>
+        {/* (2) and (3): the arithmetic in words, and the consumo */}
+        <div className="fl-dcols">
+          <section className="fl-dsec"><h4>{tr('Cómo se calculó')}</h4><ul className="flhow">{ex.map((x) => <li key={x.key}><b>{x.label}</b> {x.text}</li>)}</ul></section>
+          <section className="fl-dsec"><h4>{tr('Consumo')}</h4><ul className="flhow">{cons.map((x) => <li key={x.key}><b>{x.label}</b> {x.text}</li>)}</ul></section>
+        </div>
+        {/* (4) the lot's program, room by room, against what the lot has */}
+        {r.prog.length > 0 && <section className="fl-dsec"><h4>{tr('Programa del lote')}</h4><ul className="flhow">{r.prog.map((p) => <li key={p.dept}>{progLine(p)}</li>)}</ul></section>}
+        {/* (5) each day of the lot */}
+        <section className="fl-dsec"><h4>{tr('Por día')}</h4><div className="twrap"><table className="avmini">{miniHead()}<tbody>{r.days.map((d) => miniRow(d.date, shortDay(d.date), d))}</tbody></table></div></section>
+        {/* (6) the records: every run of the code touching the lot, each in its room's colour, and the lot's pallets;
+            each a tap to the report's sheet ("Ver") and, with the power, to its correction ("Corregir"). On a phone each
+            record is a card, as the Report shows the same records (rp-cardlist: its room or pallet on top, each fact with
+            its name, the buttons at the foot), so nothing starts off-screen (2026-10-19) */}
+        <section className="fl-dsec">
+          <h4>{tr('Registros de este lote')}</h4>
+          {rec.runs.length === 0 ? <p className="hint">{tr('Ningún cuarto ha registrado este código en este lote.')}</p> : (
+            <div className="twrap rp-cardlist"><table className="fl-records">
+              <thead><tr><th className="rp-act"></th><th>{tr('Cuarto')}</th><th>{tr('Fecha')}</th><th>{tr('Línea')}</th><th>{tr('Lote')}</th><th>{tr('Hecho')}</th><th>{tr('Horario')}</th><th>{tr('Registró')}</th>{runNotes && <th>{tr('Comentario')}</th>}</tr></thead>
+              <tbody>{rec.runs.map((x) => (
+                <tr key={x.run.id} className={x.open ? 'live' : undefined} style={deptVars(x.dept)}>
+                  <td className="rp-act"><div className="btns">{seeBtn(() => setSee({ runId: x.run.id }))}{fixBtn(shiftsOfRun(x), x.dept, () => setEdit({ id: x.run.id }))}</div></td>
+                  <td className="c-head"><DeptBadge d={x.dept} /></td>
+                  <td data-label={tr('Fecha')}>{shortDay(x.date)}</td>
+                  <td data-label={tr('Línea')}>{x.line}</td>
+                  <td data-label={tr('Lote')} className="fl-wrap">{x.lots.join(' · ')}</td>
+                  <td data-label={tr('Hecho')} className="fl-wrap"><b>{unitsText(x.dept, x.units, x.qty ?? 0, cfgOf(x.run))}</b>{x.open && <small className="building">{tr('en curso')}</small>}</td>
+                  <td data-label={tr('Horario')} className="fl-wrap"><span className="fl-t">{fmtTime(x.startedAt)}</span> – <span className="fl-t">{x.endedAt ? fmtTime(x.endedAt) : tr('en curso')}</span></td>
+                  <td data-label={tr('Registró')} className="fl-wrap">{x.who || '—'}</td>
+                  {runNotes && <td data-label={tr('Comentario')} className={'rp-note unote' + (x.note ? '' : ' c-none')}>{x.note ? '💬 ' + x.note : '—'}</td>}
+                </tr>
+              ))}</tbody>
+            </table></div>
+          )}
+          {rec.pallets.length > 0 && (
+            <>
+              <h5>{rec.pallets.length === 1 ? tr('1 pallet con este lote') : tr('{0} pallets con este lote', rec.pallets.length)}</h5>
+              <div className="twrap rp-cardlist"><table className="pallets fl-pallets">
+                <thead><tr><th className="rp-act"></th><th>{tr('Pallet')}</th><th>{tr('Fecha')}</th><th>{tr('Línea')}</th><th className="num">{tr('Cajas')}<small>{tr('de este lote')}</small></th><th>{tr('Tag')}</th><th className="num">{tr('Total')}</th><th>PO</th><th>{tr('Hora')}</th><th>{tr('Registró')}</th>{palNotes && <th>{tr('Comentario')}</th>}</tr></thead>
+                <tbody>{rec.pallets.map((p) => {
+                  // (the pallet being built has no unit yet: its sheet and its correction open on the run, not on a unit)
+                  const at = p.open ? undefined : p.at
+                  return (
+                    <tr key={p.run.id + ':' + p.at} className={p.open ? 'live' : undefined} style={deptVars('Packing')}>
+                      <td className="rp-act"><div className="btns">{seeBtn(() => setSee({ runId: p.run.id, at }))}{fixBtn(spanShifts(shiftsOf(s, p.run.date), p.run.startedAt, p.run.endedAt ?? now), 'Packing', () => setEdit({ id: p.run.id, at }))}</div></td>
+                      <td className="c-head"><span className="fl-ponly">{tr('Pallet')}</span><b>{p.n}</b>{p.open && <small className="building">{tr('en armado')}</small>}{p.parts.length > 1 && <small className="manylots">{trx('{0} lotes', p.parts.length)}</small>}</td>
+                      <td data-label={tr('Fecha')}>{shortDay(p.run.date)}</td>
+                      <td data-label={tr('Línea')}>{lineNameOf(s, p.run.lineId, p.run.line)}</td>
+                      <td data-label={tr('Cajas de este lote')} className="num"><b>{p.lotQty != null ? fmtN(p.lotQty) : '—'}</b></td>
+                      <td data-label={tr('Tag')}>{p.lotTag || <span className="notag">{tr('sin tag')}</span>}</td>
+                      <td data-label={tr('Total')} className="num">{fmtN(p.total)}</td>
+                      <td data-label="PO" className="fl-wrap">{p.po ? <>{p.poLabel}{p.of && <b className="pof">{p.of[1] ? trx('{0} de {1}', p.of[0], p.of[1]) : p.of[0]}</b>}</> : '—'}</td>
+                      <td data-label={tr('Hora')}>{p.open ? '—' : fmtTime(p.at)}</td>
+                      <td data-label={tr('Registró')} className="fl-wrap">{p.by || '—'}</td>
+                      {palNotes && <td data-label={tr('Comentario')} className={'rp-note unote' + (p.note ? '' : ' c-none')}>{p.note ? '💬 ' + p.note : '—'}</td>}
+                    </tr>
+                  )
+                })}</tbody>
+              </table></div>
+            </>
+          )}
+        </section>
+        {/* (7) who packs it */}
+        <section className="fl-dsec">
+          <h4>{tr('Lo empaca')}</h4>
+          <p>{r.routeSaid ? trx('{0}, según la tabla de Productos. Se cambia en Avance, junto al código.', <b>{r.route}</b>) : trx('{0}, supuesto por lo que ha registrado cada cuarto: por eso lleva un "?". Se fija en Avance, junto al código.', <b>{r.route}</b>)}</p>
+        </section>
+        <div className="dbtns spread">
+          <button type="button" className="btn soft" onClick={() => onLot(r.lot)}>{trx('Ver el lote {0} en Avance', r.lot)}</button>
+          <button type="button" className="btn" onClick={onClose}>{tr('Cerrar')}</button>
+        </div>
+        {see && <RunDetail s={s} runId={see.runId} at={see.at} now={now} mgr={can('depts')} fix={fix} fixable={fixable} onFix={(at) => setEdit({ id: see.runId, at })} onFixStop={setStop} onCode={(c) => { setSee(null); onClose(); onSearch(c) }} onLot={(l) => { setSee(null); onClose(); onPickLot(l) }} onClose={() => setSee(null)} />}
+        {edit && runToEdit && <RunEditor s={s} run={runToEdit} mgr={can('fix')} focusAt={edit.at} onClose={() => setEdit(null)} />}
+        {stop && stopToEdit && <StopEditor stop={stopToEdit} mgr={can('fix')} onClose={() => setStop(null)} />}
+      </div>
+    </div>
+  )
+}
 
 /** how to read Flujo de datos, in plain words, one tap away (as AvanceHelp) */
 function FlujoHelp({ onClose }: { onClose: () => void }) {
@@ -372,7 +547,7 @@ function FlujoHelp({ onClose }: { onClose: () => void }) {
           <li>{tr('Un pallet con dos lotes da a cada lote sus cajas y cuenta como pallet de los dos. Lo que se registra mientras un código sigue corriendo ya cuenta ("en curso"); el pallet que se está armando cuenta cuando se marca listo. Un código que comparte mezcla con otro sale en dos filas por ahora.')}</li>
           <li>{tr('Lo que Spiral pesa en libras o cuenta en cajas ("Spiral cuenta en", en la tabla de Productos) sale en PROD debajo de las mezclas, tal cual: no se pasa a cajas ni cuenta como mezclas, porque el yield es por mezcla. Un código que acaba de empezar en cualquier cuarto ya tiene su fila, en ceros y "en curso", y su lote ya está en la lista.')}</li>
           <li>{tr('El programa de un cuarto puede llevar su lote (al programar, sale el lote del día y se puede cambiar o dejar en blanco). Lo programado de un código para un lote sale debajo de la celda de ese cuarto ("prog. 80 mezclas"), en la banda del lote y en el Excel, y al abrir la fila se compara con lo hecho de ese lote. Un código programado para un lote que nadie ha empezado ya tiene su fila, en ceros. Un programa sin lote es del día, como lo muestra Avance, y aquí no se cuenta.')}</li>
-          <li>{tr('Toca ▸ junto al código para ver cómo se calculó cada número y lo hecho por día. Toca el código, o "Ver en Avance", para abrir ese lote en Avance en todos sus días. El Excel sale con las fechas, el lote y los chips que tengas puestos (no con la búsqueda) y trae una hoja Leyenda con los signos de la hoja de la oficina.')}</li>
+          <li>{tr('Toca una fila, o su código, para abrir su detalle: la hoja completa con sus signos, cómo se calculó cada número, el consumo, lo programado del lote, lo hecho por día y los registros del lote con sus pallets; desde ahí se ve y se corrige cada corrida, como en el Reporte. "Ver todas las columnas" pone la tabla como la hoja de la oficina, para compararla con el Excel. "Ver en Avance", en la banda del lote o en el detalle, abre ese lote en Avance en todos sus días. El Excel sale con las fechas, el lote y los chips que tengas puestos (no con la búsqueda) y trae una hoja Leyenda con los signos de la hoja de la oficina.')}</li>
         </ul>
         <div className="dbtns"><button type="button" className="btn primary" onClick={onClose}>{tr('Entendido')}</button></div>
       </div>

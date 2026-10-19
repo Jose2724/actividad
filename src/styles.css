@@ -957,6 +957,61 @@ table.avmini tbody tr:last-child td{border-bottom:0}
 .fltable tr.fl-lot small.fl-lotinv{color:#1b3a57}
 .fltable tr.fl-lot small.fl-lotprog{color:#4a5a6a;font-style:italic}
 .flinv .chip.on{background:#1b3a57;border-color:#1b3a57}
+/* ---- the compact table and the detail window (Jose, 2026-10-19: "ver más detalles sin tener que verlo todo en una
+   pantalla"): six columns by default, every row a tap to its window; the fifteen columns one chip away ---- */
+.fltable.fl-compact{width:100%;min-width:0}
+.av2 .fltable.fl-compact th{min-width:0;padding:8px 10px}
+.av2 .fltable.fl-compact td.slim{font-size:17px;padding:10px}
+.fltable.fl-compact td.slim small{max-width:none}
+.fltable td.fl-progcol .fl-pl{display:block} .fltable td.fl-progcol .fl-pl b{font-variant-numeric:tabular-nums}
+.fltable td.fl-hecho small.fl-mix{color:var(--ink);font-weight:600;margin-top:3px}
+.fltable td.fl-state{vertical-align:middle;white-space:nowrap} .fltable td.fl-state .avstage{margin-top:0}
+/* a row that opens something: a pointer and a hover tint on every cell, the sticky code cell and the tinted columns too */
+.fltable tr.fl-row,.fltable tr.fl-row td{cursor:pointer}
+@media (hover:hover){.av2 .fltable tr.fl-row:hover td,.av2 .fltable tr.fl-row:hover td.avcode,.av2 .fltable tr.fl-row:hover td.fl-proj,.av2 .fltable tr.fl-row:hover td.fl-difproj,.av2 .fltable tr.fl-row:hover td.fl-cons{background:#eef6f3}}
+.flcols .chip.on{background:#1b3a57;border-color:#1b3a57}
+/* the window: wider than the report's (the sheet's fourteen cells five to a row), one scroller (the window itself:
+   native scrolling, no frame of its own for the tables, which only slide sideways when they must) */
+.dlg.wide.fl-detail{width:min(960px,100%)}
+.fl-detail h3{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
+.fl-detail h3 .fl-dt{font-size:20px} .fl-detail h3 .fl-dt .code{font-size:20px;font-weight:800}
+.fl-detail h3>small{font-weight:500;font-size:15px;color:var(--muted)}
+.fl-detail h3 .fl-dtags{display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px}
+.fl-detail h3 .fl-dtags .avstage{margin-top:0}
+.fl-detail h3 .rp-dsub{flex-basis:100%;display:block;font-size:13px;font-weight:600;color:var(--muted)}
+.fl-detail .fl-dnote{margin:0;font-size:13.5px;font-weight:700;color:var(--amber)}
+.fl-dsec{display:grid;gap:6px;align-content:start}
+.fl-detail h4{margin:4px 0 0;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.fl-detail h5{margin:6px 0 0;font-size:13px;color:var(--ink)}
+.fl-dcols{display:grid;grid-template-columns:1fr 1fr;gap:12px 24px}
+.fl-detail .flhow{max-width:none;align-content:start}   /* (the shorter of the two lists stays packed at the top) */
+.fl-detail .twrap{max-height:none;overflow:visible;overflow-x:auto}
+/* "La hoja": the sheet's cells as tiles, the room's colour on the name (never on a number), a difference in its colour
+   with its word, and one line under each cell: the sign rule, the arithmetic, or why it is blank */
+.fl-sheet{margin:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px}
+/* (align-content:start: a tall neighbour in the row must not spread a short cell's lines apart) */
+.fl-cell{background:var(--bg);border-radius:10px;padding:8px 10px;display:grid;align-content:start;gap:2px;min-width:0}
+.fl-cell dt{font-size:11px;text-transform:uppercase;letter-spacing:.06em;font-weight:800;color:var(--muted);display:flex;align-items:center;gap:4px}
+.fl-cell.dth dt{color:var(--d-ink)}
+.fl-cell dd{margin:0;display:grid;gap:1px}
+.fl-cell dd b{font-size:18px;font-variant-numeric:tabular-nums;color:var(--ink)}
+.fl-cell dd>small{font-size:12px;font-weight:600;color:var(--muted)}
+.fl-cell dd small.fl-note{font-weight:500;font-size:11.5px;line-height:1.3;color:var(--muted)}
+.fl-cell dd.fl-sobra b,.fl-cell dd.fl-sobra>small:first-of-type{color:var(--amber)}
+.fl-cell dd.fl-falta b,.fl-cell dd.fl-falta>small:first-of-type{color:var(--warn)}
+.fl-cell dd.fl-ok b,.fl-cell dd.fl-ok>small:first-of-type{color:var(--ok)}
+.fl-cell dd .avstage{margin-top:2px;justify-self:start}
+/* the records: each run in its room's stripe (deptVars on the row), the pallets as the report's table */
+table.fl-records td,table.fl-pallets td{vertical-align:top}
+/* (the report's cells never wrap; here the lots, what was made, the hours, the PO and the names may, so both tables fit
+   the 960 px window of a PC without sliding sideways: 2026-10-19) */
+table.fl-records td.fl-wrap,table.fl-pallets td.fl-wrap{white-space:normal;min-width:72px}
+table.fl-records .fl-t{white-space:nowrap}   /* (an hour breaks between the two hours, never inside "10:05 AM") */
+table.fl-records tr td:first-child,table.fl-pallets tr td:first-child{box-shadow:inset 4px 0 0 var(--d)}
+table.fl-records tr.live td,table.fl-pallets tr.live td{background:#f1fbf5}
+table.fl-records .building,table.fl-pallets .building{display:block;font-size:12px;color:var(--ok);font-weight:700}
+.fl-detail .fl-ponly{display:none}   /* ("Pallet" before its number only on the phone's card, where no header names it) */
+table.fl-pallets th small{display:block;font-size:10px;font-weight:600;text-transform:none;letter-spacing:0}
 @media (max-width:720px){
   .fltable{min-width:0}
   .fltable td.off{display:none}                                   /* the other room's cell says nothing: not even listed */
@@ -971,6 +1026,25 @@ table.avmini tbody tr:last-child td{border-bottom:0}
   .fltable td.fl-proj,.fltable td.fl-difproj,.fltable td.fl-cons{background:none}
   .fltable td.fl-cons b{font-size:16px}
   .fltable td.slim small{white-space:normal;margin-left:0;max-width:none}
+  /* the compact card (2026-10-19): the state under the code, then Packing and its difference, what was made, the program */
+  .fltable td.fl-hecho{order:3}.fltable td.fl-progcol{order:4}
+  /* (the chip alone, no "ESTADO" over it: the selector must outweigh the cards' label rule .avtable td[data-label]:not(.avcode)::before) */
+  .fltable td.fl-state{order:0;grid-column:1/-1;white-space:normal} .avtable.fltable td.fl-state[data-label]::before{display:none}
+  .fltable tr.fl-row{cursor:pointer}
+  /* the window takes the whole phone and scrolls as one page (Jose's floor phone, 2026-10-19) */
+  .veil.fl-veil{padding:0;align-items:stretch}
+  .dlg.fl-detail{max-height:100dvh;border-radius:0;width:100%}
+  .fl-dcols{grid-template-columns:1fr}
+  .fl-sheet{grid-template-columns:1fr 1fr}
+  /* (the sticky title in three lines, not four: the days are in "Por día" just below) */
+  .fl-detail h3 .rp-dsub{display:none}
+  /* the window's records and pallets as the Report's cards (rp-cardlist), not a table to swipe whose facts start
+     off-screen (2026-10-19); the room's colour stays on the card's edge, the buttons at its foot */
+  .fl-detail .twrap.rp-cardlist{max-height:none;overflow:visible;border:0;background:none}
+  .fl-detail .rp-cardlist td.rp-act{grid-column:1/-1;order:99;position:static;box-shadow:none}
+  .fl-detail .rp-cardlist tr td:first-child{box-shadow:none}
+  .fl-detail .rp-cardlist td.num{text-align:left}
+  .fl-detail .fl-ponly{display:inline}
   .tabs.five button{font-size:14.5px;padding:8px 6px}  /* five tabs on one row (managers and the office); operators' three keep their size */
 }
 /* a device showing an old picture of the day (no server for a while): the bar on top, and the one on each line that asks before recording */

@@ -48,7 +48,7 @@ let viewChosen: View = 'gen', recChosen: RecSub = 'runs', palChosen: PalSub = 'p
 const PAGE = 50
 
 /** a room as it is shown everywhere in the report: its emoji and its name on its own tint (files keep the plain name) */
-function DeptBadge({ d }: { d: Dept }) {
+export function DeptBadge({ d }: { d: Dept }) {
   // a room this version does not know (a history line of one a newer version added, such as QC): its name alone, plain
   if (!roomKnown(d)) return <span className="rp-badge">{String(d)}</span>
   return <span className="rp-badge" style={deptVars(d)}><i aria-hidden="true">{DEPT_LOOK[d].emoji}</i>{d}</span>
@@ -105,6 +105,24 @@ const STOPS_NOTE = () => tr('El Parado de las tarjetas cuenta solo el tiempo par
  * before), the search, the part in view, and the boxes it opens. The parts below read it; the files never follow the
  * search, only the filters.
  */
+/**
+ * who may see and correct a record, and the two buttons ("Ver", "✎ Corregir" or the other shift's lock): the report's
+ * own rule, shared with the Flujo tab's detail window since 2026-10-19 (Jose: "si le damos click a algo podamos ver más
+ * detalles"), so a run is corrected from there exactly as from the report. Only in a room the server lets this person
+ * write: an operator who may look at every room corrects and adds only in their own (the rest was refused, and waited
+ * on the tablet for ever; review of 2026-10-18)
+ */
+export function useFixers() {
+  const can = useCan(), who = useWho()
+  const fixable = (room: string) => can('fix') && writesIn(who, room)
+  const fix = (shifts: string, room: string) => fixable(room) && canShift(who, shifts)
+  const seeBtn = (onSee: () => void) => <button type="button" className="btn xs" onClick={onSee}>{tr('Ver')}</button>
+  const fixBtn = (shifts: string, room: string, onFix: () => void) => (fix(shifts, room)
+    ? <button type="button" className="btn xs soft" aria-label={tr('Corregir')} onClick={onFix}>✎<span className="opt"> {tr('Corregir')}</span></button>
+    : fixable(room) ? <small className="rp-lock" title={tr('Lo corrige el turno {0} o quien tenga el permiso "Corregir lo del otro turno".', shifts)}>🔒 {tr('Otro turno')}</small> : null)
+  return { fixable, fix, seeBtn, fixBtn }
+}
+
 function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
   const can = useCan(), who = useWho(), viewOnly = who.role === 'viewer'
   const [date, setDate] = useState(() => workDay(s).date)
@@ -410,20 +428,13 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
     reveal(list)
   }
   const pageBar = (key: string, total: number) => <Pager total={total} page={pageNo(key, total)} onPage={(p, el) => turnPage(key, p, el)} />
-  // ---- who may correct or add (a viewer never) ----
-  // only in a room the server lets this person write: an operator who may look at every room corrects and adds only
-  // in their own (the rest was refused, and waited on the tablet for ever; review of 2026-10-18)
-  const fixable = (room: string) => can('fix') && writesIn(who, room)
-  const fix = (shifts: string, room: string) => fixable(room) && canShift(who, shifts)
+  // ---- who may correct or add (a viewer never): the report's rule, shared with Flujo's detail window (see useFixers) ----
+  const { fixable, fix, seeBtn, fixBtn } = useFixers()
   const canAdd = can('fix') && day.state === 'here'
   /** a "+ Agregar" of one room (none = whatever room the box opens on: the person's own, see AddRunDialog) */
   const addIn = (room?: string) => canAdd && (!room || writesIn(who, room))
   /** the shifts a run or a stop touched ("1", "2" or "1 y 2"): who may correct it */
   const spanOf = (x: { startedAt: number; endedAt: number | null }) => spanShifts(rep.plan, x.startedAt, x.endedAt ?? now)
-  const seeBtn = (onSee: () => void) => <button type="button" className="btn xs" onClick={onSee}>{tr('Ver')}</button>
-  const fixBtn = (shifts: string, room: string, onFix: () => void) => (fix(shifts, room)
-    ? <button type="button" className="btn xs soft" aria-label={tr('Corregir')} onClick={onFix}>✎<span className="opt"> {tr('Corregir')}</span></button>
-    : fixable(room) ? <small className="rp-lock" title={tr('Lo corrige el turno {0} o quien tenga el permiso "Corregir lo del otro turno".', shifts)}>🔒 {tr('Otro turno')}</small> : null)
   /** the first cell of a record's row: see it, and correct it (or why not) */
   const acts = (shifts: string, room: string, onSee: (() => void) | null, onFix: () => void, rowSpan?: number) => <td className="rp-act" rowSpan={rowSpan}><div className="btns">{onSee && seeBtn(onSee)}{fixBtn(shifts, room, onFix)}</div></td>
   // a run that is gone (deleted from its correction) closes its sheet
@@ -1284,7 +1295,7 @@ const Fact = ({ label, value, cls }: { label: string; value: ReactNode; cls?: st
  * (the correction opens above this sheet and closes back to it, updated), a missing unit is added, or the report is
  * narrowed to its code or its lot. It is read from the store, so a run of another date (one just added) shows too.
  */
-function RunDetail({ s, runId, at, now, mgr, fix, fixable, onFix, onFixStop, onCode, onLot, onClose }: { s: State; runId: string; at?: number; now: number; mgr: boolean; fix: (shifts: string, room: string) => boolean; fixable: (room: string) => boolean; onFix: (at?: number) => void; onFixStop: (id: string) => void; onCode: (c: string) => void; onLot: (l: string) => void; onClose: () => void }) {
+export function RunDetail({ s, runId, at, now, mgr, fix, fixable, onFix, onFixStop, onCode, onLot, onClose }: { s: State; runId: string; at?: number; now: number; mgr: boolean; fix: (shifts: string, room: string) => boolean; fixable: (room: string) => boolean; onFix: (at?: number) => void; onFixStop: (id: string) => void; onCode: (c: string) => void; onLot: (l: string) => void; onClose: () => void }) {
   const [adding, setAdding] = useState(false)
   const [focus, setFocus] = useState(at)
   const r = s.runs.find((x) => x.id === runId)

@@ -1,4 +1,4 @@
-import { apartOf, DEPTS, fmtN, measureOf, measureUnit, mfoBinWord, normCode, orderOfId, plainText, planLot, productOf, unitQty, type Dept, type Measure, type PackRoom, type Product, type State } from './store'
+import { apartOf, binOf, cfgOf, DEPTS, fmtN, lineNameOf, measureOf, measureUnit, mfoBinWord, normCode, noteOf, orderLabel, orderOfId, orderPallets, plainText, planLot, productOf, unitQty, whoText, type Dept, type Measure, type Order, type PackRoom, type Product, type Run, type State } from './store'
 import { avanceLots, datesBetween, lotAcrossDays, lotOrder, mfoList, mfoText, mfoWord, packRoomOf, type AvancePart, type LotDay, type MfoMade } from './avance'
 import { runLots, unitParts } from './report'
 import type { Cell } from './xlsx'
@@ -44,6 +44,12 @@ import { tr } from './i18n'
  * programmed for a lot that nobody has started yet has its row too, in zeros: the clerk's sheet is of pending work
  * orders, and a programmed lot is one. A program without a lot stays a day's program (Avance's business) and is
  * attributed to no lot.
+ *
+ * DETAIL WINDOW (Jose, 2026-10-19, from the floor: "sería bueno que si le damos click a algo podamos ver más detalles
+ * sin tener que verlo todo en una pantalla, que puede ser confuso"): the compact table shows six columns and the window
+ * shows the sheet's full row (flujoSheetRow), what the pack room made (flujoHecho), the lot's program (flujoProgLines)
+ * and every record of the code touching the lot (flujoRecords). Pure, so the checks read the very numbers the window
+ * shows.
  *
  * Pure: no React, no DOM, nothing of App (so the checks read the very numbers the screen and the Excel get).
  */
@@ -429,9 +435,18 @@ export const progText = (p: FlujoProg, named = false) => tr('prog. {0} {1}', fmt
  * or when another room in the band has the same word ("80 mezclas Kitchen · 80 mezclas Spiral"); otherwise plain
  */
 export function progSumText(list: FlujoProgSum[]): string {
+  return flujoProgLines(list).map((x) => fmtN(x.qty) + ' ' + x.word).join(' · ')
+}
+/**
+ * the lot's program as the band and the compact PROGRAMADO column say it (2026-10-19): one entry per room and word, the
+ * figure with the room's name in `word` when it needs naming (progSumText's rule: Spiral's lb/cajas, MFO's lb/cajas, or
+ * two rooms sharing a word). qty is the number; word is "mezclas", "pouches", "lb Spiral", "mezclas Kitchen"…
+ */
+export type FlujoProgLine = { dept: Dept; qty: number; word: string }
+export function flujoProgLines(list: FlujoProgSum[]): FlujoProgLine[] {
   const own = (p: FlujoProgSum) => p.dept === 'RTE' || p.dept === 'Packing' || (p.word === 'mezclas' ? p.dept === 'Kitchen' || p.dept === 'Spiral' : p.dept === 'MFO' && p.word !== 'lb' && p.word !== 'cajas')
   const named = (p: FlujoProgSum) => !own(p) || list.some((q) => q.dept !== p.dept && q.word === p.word)
-  return list.filter((p) => p.qty > 0).map((p) => fmtN(p.qty) + ' ' + progWord(p) + (named(p) ? ' ' + p.dept : '')).join(' · ')
+  return list.filter((p) => p.qty > 0).map((p) => ({ dept: p.dept, qty: p.qty, word: progWord(p) + (named(p) ? ' ' + p.dept : '') }))
 }
 /** "80 mezclas (Kitchen) · hechas 60 · faltan 20": one program of a lot against what the lot has (the fold) */
 export function progLine(p: FlujoProg): string {
@@ -611,6 +626,120 @@ export function flujoConsumo(r: FlujoRow): { key: string; label: string; text: s
   out.push({ key: 'cases', label: tr('Cajas'), text: r.cases > 0 ? tr('{0} hechas · {1} en pedidos ({2}) · {3} sin pedido', fmtN(r.cases), fmtN(r.casesOnPo), r.palletsOnPo === 1 ? tr('1 pallet') : tr('{0} pallets', r.palletsOnPo), fmtN(r.casesFree)) : tr('ninguna empacada todavía') })
   if (r.pallets > 0) out.push({ key: 'pallets', label: 'Pallets', text: tr('{0} hechos · {1} en pedidos', r.pallets, r.palletsOnPo) })
   return out
+}
+
+// ---- the compact table and the detail window (Jose, 2026-10-19: "si le damos click a algo podamos ver más detalles
+// sin tener que verlo todo en una pantalla, que puede ser confuso") ----
+/** a pound count keeps its half ("118.5"), as mfoText says it; a count of pouches or platos is whole (fmtN) */
+const qtyLb = (q: number) => (Math.round(q * 10) / 10).toLocaleString('en-US')
+/**
+ * what the room that packs the code registered of the lot, for the compact HECHO column: the number as text, its word,
+ * and what else MFO registered under another word ("y 60 copas"); '—' with no word when that room registered nothing
+ * (as today's RTE/MFO cells read). Mirrors the MFO cell's rule: the word that counts first, the rest apart, never added
+ */
+export function flujoHecho(r: FlujoRow): { qty: string; word: string; also: string } {
+  const NONE = { qty: '—', word: '', also: '' }
+  if (r.route === 'RTE') return r.pouches ? { qty: fmtN(r.pouches), word: tr('pouches'), also: '' } : NONE
+  const first = r.mfo.find((m) => m.word === r.mfoWordUsed), rest = r.mfo.filter((m) => m.word !== r.mfoWordUsed)
+  if (first) return { qty: fmtN(first.qty), word: mfoWord(first.word), also: rest.length ? tr('y {0}', mfoText(rest)) : '' }
+  // pounds alone (no countable word): said as they are, never cases
+  if (r.mfo.length) return { qty: qtyLb(r.mfo[0].qty), word: mfoWord(r.mfo[0].word), also: r.mfo.length > 1 ? tr('y {0}', mfoText(r.mfo.slice(1))) : '' }
+  return NONE
+}
+/** one cell of the sheet's row in the window: its value as text, its word, the difference's colour class, one line under it */
+export type FlujoSheetCell = { key: string; label: string; dept: Dept | null; value: string; word: string; cls: string; note: string }
+/**
+ * the sheet's columns of one row for the detail window (Jose, 2026-10-19), in the sheet's order, each with its value as
+ * text ('—' when blank), its word, the difference's colour class, and ONE line under it: the sheet's sign rule for a
+ * difference, the arithmetic for a computed cell, or why it is blank. The title of each cell of the table says the same
+ */
+export function flujoSheetRow(r: FlujoRow, fmtDay: (d: string) => string = (d) => d): FlujoSheetCell[] {
+  const rte = r.route === 'RTE'
+  const word = r.mfoWordUsed ? mfoWord(r.mfoWordUsed) : ''
+  const first = r.mfo.find((m) => m.word === r.mfoWordUsed), rest = r.mfo.filter((m) => m.word !== r.mfoWordUsed)
+  const ex = flujoExplain(r, fmtDay), exOf = (k: string) => ex.find((x) => x.key === k)?.text ?? ''
+  const LB = tr('MFO lo registró en libras: no se pasa a cajas'), OFF_RTE = tr('Lo empaca MFO: RTE no entra en la cuenta'), OFF_MFO = tr('Lo empaca RTE: MFO no entra en la cuenta')
+  const blank = r.inTable ? tr('en blanco en Productos') : tr('no está en Productos')
+  const cell = (key: string, label: string, dept: Dept | null, value: string, word: string, cls: string, note: string): FlujoSheetCell => ({ key, label, dept, value, word, cls, note })
+  return [
+    cell('yield', tr('YIEL'), null, n2(r.yieldCs), tr('cs / mezcla'), '', r.yieldCs == null ? blank : ''),
+    cell('perCase', tr('POUCH × CS'), null, n2(r.perCase), tr('por caja'), '', r.perCase == null ? blank : ''),
+    // PROD: the mezclas with their room; a code Spiral only weighed has its pounds here (a fact, never cases)
+    cell('prod', tr('PROD'), r.mixRoom, r.mixes ? String(r.mixes) : r.spiralApart.length ? spiralApartText(r.spiralApart) : '—', r.mixes ? tr('mezclas') + ' ' + r.mixRoom : r.spiralApart.length ? 'Spiral' : '', '', r.mixes && r.spiralApart.length ? tr('Spiral aparte: {0}', spiralApartText(r.spiralApart)) : ''),
+    cell('rte', 'RTE', 'RTE', rte && r.pouches ? fmtN(r.pouches) : '—', rte && r.pouches ? tr('pouches') : '', '', rte ? '' : r.otherRte ? tr('RTE registró {0} pouches de un código que empaca MFO', fmtN(r.pouches)) : OFF_RTE),
+    cell('diffRte', tr('Dif. RTE'), 'RTE', rte && r.diffRte != null ? n2(Math.abs(r.diffRte)) : '—', rte ? diffWord('room', r.diffRte, 'pouches') : '', rte ? diffText('room', r.diffRte, 'pouches').cls : '', rte ? tr('cajas × pouches por caja − pouches: − sobran (hechos sin empacar), + faltan (Packing empacó más de lo que reportó RTE)') : OFF_RTE),
+    cell('mfo', 'MFO', 'MFO', rte ? '—' : first ? fmtN(first.qty) : r.mfo.length ? qtyLb(r.mfo[0].qty) : '—', rte ? '' : first ? word : r.mfo.length ? mfoWord(r.mfo[0].word) : '', '', rte ? (r.otherMfo ? tr('MFO registró {0} de un código que empaca RTE', mfoText(r.mfo)) : OFF_MFO) : rest.length && first ? tr('y {0}', mfoText(rest)) : r.mfoOnlyLb ? LB : ''),
+    cell('diffMfo', tr('Dif. MFO'), 'MFO', !rte && r.diffMfo != null ? n2(Math.abs(r.diffMfo)) : '—', !rte ? diffWord('room', r.diffMfo, word || mfoWord('cajas')) : '', !rte ? diffText('room', r.diffMfo, word || mfoWord('cajas')).cls : '', rte ? OFF_MFO : r.mfoOnlyLb ? LB : tr('cajas × unidades por caja − lo de MFO: − sobran (hechos sin empacar), + faltan (Packing empacó más de lo que reportó MFO)')),
+    cell('segun', tr('Según cuarto (cs)'), 'Packing', r.segun == null || (r.segun === 0 && r.cases === 0) ? '—' : n2(r.segun), tr('según {0}', r.route), '', exOf('segun')),
+    cell('packing', tr('PACKING'), 'Packing', fmtN(r.cases), tr('cs'), '', tr('Cajas en pallets que llevan este lote')),
+    cell('diffPacking', tr('Dif. Packing'), 'Packing', r.diffPacking != null ? n2(Math.abs(r.diffPacking)) : '—', diffWord('cases', r.diffPacking, 'cs'), diffText('cases', r.diffPacking, 'cs').cls, tr('cajas de Packing − según cuarto: − faltan cajas, + cajas de más; cuadra hasta media caja')),
+    cell('projected', tr('CS proyectado'), null, n2(r.projected), r.projected == null ? '' : r.projectedFrom === 'mfo' ? tr('de MFO') : tr('mezclas × yield'), '', exOf('proj')),
+    // (no colour: the sheet leaves this difference blank; the window says it muted, as the table does)
+    cell('diffProjected', tr('Dif. de proyectado'), null, r.diffProjected != null ? n2(Math.abs(r.diffProjected)) : '—', diffWord('cases', r.diffProjected, 'cs'), '', tr('cajas de Packing − proyectado (la hoja lo deja en blanco; aquí se calcula)')),
+    cell('pallets', 'Pallets', 'Packing', String(r.pallets), r.palletsProjected != null ? tr('proyectados {0}', n2(r.palletsProjected)) : '', '', r.perPallet ? tr('{0} cajas por pallet', n2(r.perPallet)) : r.missing.includes('perPallet') ? tr('Falta en Productos: {0}', tr('cajas por pallet')) : ''),
+    cell('state', tr('ESTADO'), null, flujoStateText(r.state, r.diffPacking), '', 'st-' + r.state, r.state === 'nocompare' ? (r.mfoOnlyLb ? LB : missingText(r.missing)) : r.running ? exOf('open') : ''),
+  ]
+}
+/**
+ * one run of the code touching the lot, as the detail lists it: what it made OF THIS LOT (a pallet with two lots gives
+ * this lot its own cases; a run that passed through two lots is listed once, this lot first)
+ */
+export type FlujoRun = {
+  run: Run; dept: Dept; date: string; line: string          // line = lineNameOf(s, run.lineId, run.line)
+  lots: string[]                                            // [lot, ...the other lots of runLots(s, run) in the order met]
+  units: number                                             // units with a part of this lot (unitParts)
+  qty: number | null                                        // the sum of those parts (p.qty ?? unitQty, as flujoCodes); null for mezclas (cfgOf(run).qty === 'none')
+  word: string                                              // cfgOf(run).qtyUnit ('' for mezclas; 'pouches', 'cajas', 'platos', 'lb'…)
+  startedAt: number; endedAt: number | null; open: boolean  // open = !endedAt
+  who: string; note: string                                 // whoText(run), noteOf(run)
+}
+/** one pallet of the lot: the unit's parts, this lot's cases and tag, the pallet's total, its PO (only when said), its comment */
+export type FlujoPallet = {
+  run: Run; n: number; at: number; open: boolean             // n = its place among the run's units; the pallet being built: n = units.length + 1, at = its last part's at, open = true
+  parts: { lot: string; qty: number | null; tag: string }[]  // unitParts(s, run, u); for the one being built, run.extra.open.parts as {lot, qty, tag}
+  lotQty: number | null; lotTag: string                      // the part of this lot
+  total: number                                              // parts.reduce(qty ?? 0) (reportOf.palletOf's rule)
+  po: Order | undefined; poLabel: string                     // orderOfId(s, u.po) / orderLabel(po) or ''
+  of: [number, number | null] | null                         // its place among the order's pallets (reportOf.palletOf's expression, with orderPallets)
+  by: string; note: string                                   // u.by / u.note ?? ''; the one being built: its last part's by, note ''
+}
+/**
+ * every record of the code that touches the lot (Jose, 2026-10-19): runs in DEPTS order then by startedAt; pallets of
+ * the Packing runs that make pallets (not bins), by their moment, the one being built last. Deleted runs skipped.
+ * The pallet being built shows a PO only when one was SAID on it (run.extra.open.po), never palletPo's proposal: the
+ * report proposes the next order on its own list, but this window is the office's reconciliation and puts in nothing
+ * nobody chose (no guessed data, 2026-10-19)
+ */
+export function flujoRecords(s: State, lot: string, code: string): { runs: FlujoRun[]; pallets: FlujoPallet[] } {
+  const key = normCode(code)
+  const runs: FlujoRun[] = [], pallets: FlujoPallet[] = []
+  for (const r of s.runs) {
+    if (r.deleted || normCode(r.code) !== key) continue
+    const lots = runLots(s, r)
+    if (!lots.has(lot)) continue
+    const cfg = cfgOf(r)
+    let units = 0, qty = 0
+    for (const u of r.units) {
+      const parts = unitParts(s, r, u).filter((p) => p.lot === lot)
+      if (!parts.length) continue
+      units++
+      // (unitParts says null for a room counting mezclas or for Spiral's pounds: the unit's own figure then, as flujoCodes)
+      for (const p of parts) qty += p.qty ?? unitQty(s, r, u)
+    }
+    runs.push({ run: r, dept: r.dept, date: r.date, line: lineNameOf(s, r.lineId, r.line), lots: [lot, ...[...lots].filter((l) => l && l !== lot)], units, qty: cfg.qty === 'none' ? null : qty, word: cfg.qtyUnit, startedAt: r.startedAt, endedAt: r.endedAt, open: !r.endedAt, who: whoText(r), note: noteOf(r) })
+    if (r.dept !== 'Packing' || binOf(r)) continue
+    const palletOf = (n: number, at: number, parts: FlujoPallet['parts'], poId: string | undefined, by: string, open: boolean, note: string): FlujoPallet => {
+      const po = orderOfId(s, poId), seq = po ? orderPallets(s, po.id, r.perUnit) : null
+      const mine = parts.find((p) => p.lot === lot)
+      return { run: r, n, at, open, parts, lotQty: mine?.qty ?? null, lotTag: mine?.tag ?? '', total: parts.reduce((t, p) => t + (p.qty ?? 0), 0), po, poLabel: po ? orderLabel(po) : '', of: seq ? [open ? seq.done.length + 1 : seq.done.indexOf(at) + 1, seq.need] : null, by, note }
+    }
+    r.units.forEach((u, i) => { const parts = unitParts(s, r, u); if (parts.some((p) => p.lot === lot)) pallets.push(palletOf(i + 1, u.at, parts, u.po, u.by, false, u.note ?? '')) })
+    const o = r.endedAt ? null : r.extra?.open, last = o?.parts.length ? o.parts[o.parts.length - 1] : null
+    if (o && last && o.parts.some((p) => p.lot === lot)) pallets.push(palletOf(r.units.length + 1, last.at, o.parts.map((p) => ({ lot: p.lot, qty: p.qty, tag: p.tag })), o.po, last.by, true, ''))
+  }
+  runs.sort((a, b) => DEPTS.indexOf(a.dept) - DEPTS.indexOf(b.dept) || a.startedAt - b.startedAt)
+  pallets.sort((a, b) => Number(a.open) - Number(b.open) || a.at - b.at)
+  return { runs, pallets }
 }
 
 /** the days of a lot as the sheet writes them: ISO, joined */
