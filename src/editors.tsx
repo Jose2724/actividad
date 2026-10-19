@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import { addRunLater, addUnit, applyDraft, draftChecks, NOTE_MAX, usualFor, usualOf, wasteProblem, BIN_WORDS, binOf, binWord, byLineName, cfgFor, checkLaterPallets, DEPTS, fmtN, kindClass, LATER_MAX, laterPalletUnits, laterPoFits, laterStart, laterToOrder, MFO_WORDS, tagTwice, unitStartPo, type LaterPalletRow, plainDay, planRows, SPIRAL_UNITS, type Dept, byShip, CFG, cfgOf, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, setUnitOrder, splitStop, store, updateRun, updateStop, type Order, type Run, type State, type Stop, lineLabel } from './store'
+import { addRunLater, addUnit, applyDraft, draftChecks, draftUnitOf, NOTE_MAX, usualFor, usualOf, wasteProblem, BIN_WORDS, binOf, binWord, byLineName, cfgFor, checkLaterPallets, DEPTS, fmtN, kindClass, LATER_MAX, laterPalletUnits, laterPoFits, laterStart, laterToOrder, MFO_WORDS, tagTwice, unitStartPo, type LaterPalletRow, plainDay, planRows, SPIRAL_UNITS, type Dept, byShip, CFG, cfgOf, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, setUnitOrder, splitStop, store, updateRun, updateStop, type Order, type Run, type State, type Stop, lineLabel } from './store'
 import { clockNow } from './clock'
 import { unitStartLot } from './report'
 import { ConfirmDialog, LotsDialog, useCan, useSure, useWho, type SureBox } from './App'
@@ -35,6 +35,10 @@ export function RunEditor({ s, run, mgr, focusAt, onClose }: { s: State; run: Ru
   const [dropping, setDropping] = useState(false)
   const [adding, setAdding] = useState(false) // a unit that was never recorded, added now
   const [lotsOf, setLotsOf] = useState<number | null>(null)
+  // the comment of one unit (Jose, 2026-10-18: "comentarios a cada registro con lotes combinados"): a pallet's goes
+  // with its lots (the lots window has the box); a cart's, a bin's or a mezcla's has a window of its own
+  const [noting, setNoting] = useState<number | null>(null)
+  const unitNote = (i: number, note: string) => setUnits((list) => list.map((x, k) => (k === i ? { ...x, note } : x)))
   const lineBusy = !!run.endedAt && !!openRun(s, run.lineId)
   // units tapped on the line while this form is open: they are kept as they are (one added from here is in the form)
   const later = run.units.filter((u) => !opened.units.some((o) => o.at === u.at) && !units.some((o) => o.at === u.at)).length
@@ -88,7 +92,7 @@ export function RunEditor({ s, run, mgr, focusAt, onClose }: { s: State; run: Ru
         {units.length > 0 && (
           <div className="twrap">
             <table>
-              <thead><tr><th>#</th><th>{tr('Hora')}</th>{cfg.qty !== 'none' && <th>{cfg.qtyUnit}</th>}{cfg.lots && <th>{tr('Lotes y tags')}</th>}{cfg.refLabel && !tagsInLots && <th>{cfg.refLabel}</th>}{withOrders && <th>{tr('Pedido')}</th>}<th>{tr('Por')}</th><th></th></tr></thead>
+              <thead><tr><th>#</th><th>{tr('Hora')}</th>{cfg.qty !== 'none' && <th>{cfg.qtyUnit}</th>}{cfg.lots && <th>{tr('Lotes y tags')}</th>}{cfg.refLabel && !tagsInLots && <th>{cfg.refLabel}</th>}{withOrders && <th>{tr('Pedido')}</th>}<th>{tr('Por')}</th><th>{tr('Comentario')}</th><th></th></tr></thead>
               <tbody>{units.map((u, i) => (
                 <tr key={u.at + ':' + i} ref={focusAt != null && u.at === focusAt ? focusRow : undefined} className={focusAt != null && u.at === focusAt ? 'rp-focus' : undefined}>
                   <td>{i + 1}</td><td>{fmtTime(u.at)}</td>
@@ -100,6 +104,7 @@ export function RunEditor({ s, run, mgr, focusAt, onClose }: { s: State; run: Ru
                     return <td><select value={known} onChange={(e) => setUnitOrder(run.id, u.at, e.target.value)}><option value="">{tr('Sin pedido')}</option>{ordersFor(po).map((o) => <option key={o.id} value={o.id}>{orderLabel(o)}</option>)}</select></td>
                   })()}
                   <td>{u.by || '—'}</td>
+                  <td className="unote">{u.note && <span>💬 {u.note}</span>} <button type="button" className="lnk" title={tr('Cambiar el comentario de esta unidad')} onClick={() => (cfg.lots ? setLotsOf(i) : setNoting(i))}>{u.note ? '✎' : tr('+ Comentario')}</button></td>
                   <td><button type="button" className="lnk" title={tr('Quitar esta unidad')} onClick={() => setUnits(units.filter((_, k) => k !== i))}>✕</button></td>
                 </tr>
               ))}</tbody>
@@ -123,16 +128,39 @@ export function RunEditor({ s, run, mgr, focusAt, onClose }: { s: State; run: Ru
             <button type="button" className="btn primary" onClick={save}>{tr('Guardar')}</button>
           </div>
         </div>
-        {lotsOf != null && units[lotsOf] && <LotsDialog title={tr('Lotes de {0} {1}', cfg.unit.toLowerCase(), (lotsOf + 1))} unit={cfg.qtyUnit} refLabel={cfg.refLabel} lot={lot.trim()} qty={units[lotsOf].qty.trim() ? Number(units[lotsOf].qty) : null} start={units[lotsOf].lots} startRef={units[lotsOf].ref} onClose={() => setLotsOf(null)}
-          onPick={(total, ref, lots) => { setUnits(units.map((x, k) => { if (k !== lotsOf) return x; const { lots: _was, ...bare } = x; return { ...bare, qty: String(total), ref, ...(lots ? { lots } : {}) } })); setLotsOf(null) }} />}
+        {lotsOf != null && units[lotsOf] && <LotsDialog title={tr('Lotes de {0} {1}', cfg.unit.toLowerCase(), (lotsOf + 1))} unit={cfg.qtyUnit} refLabel={cfg.refLabel} lot={lot.trim()} qty={units[lotsOf].qty.trim() ? Number(units[lotsOf].qty) : null} start={units[lotsOf].lots} startRef={units[lotsOf].ref} startNote={units[lotsOf].note} onClose={() => setLotsOf(null)}
+          onPick={(total, ref, lots, _po, note) => { setUnits(units.map((x, k) => { if (k !== lotsOf) return x; const { lots: _was, ...bare } = x; return { ...bare, qty: String(total), ref, ...(lots ? { lots } : {}), note } })); setLotsOf(null) }} />}
+        {noting != null && units[noting] && <UnitNoteDialog title={tr('Comentario de {0} {1}', cfg.unit.toLowerCase(), noting + 1)} value={units[noting].note ?? ''} onClose={() => setNoting(null)} onPick={(note) => { unitNote(noting, note); setNoting(null) }} />}
         {adding && <AddUnitDialog s={s} run={run} onClose={() => setAdding(false)} onAdded={(at, more) => {
           // the unit is on the run now; the form shows it among the others, and saving leaves it as it is. "Agregar y
           // otro" leaves the window open for the next one, so the list is added to as it goes
           if (!more) setAdding(false)
           const u = store.get().runs.find((r) => r.id === run.id)?.units.find((x) => x.at === at)
-          if (u) setUnits((list) => [...list, { at: u.at, qty: u.qty != null ? String(u.qty) : '', ref: u.ref, by: u.by, ...(u.lots ? { lots: u.lots } : {}) }].sort((a, b) => a.at - b.at))
+          if (u) setUnits((list) => [...list, draftUnitOf(u)].sort((a, b) => a.at - b.at))
         }} />}
         {dropping && <ConfirmDialog title={tr('¿Borrar la corrida de {0}', run.code) + '?'} text={tr('Se borran sus unidades y su waste. No se puede deshacer.')} yes={tr('Borrar')} danger onYes={() => { deleteRun(run.id); onClose() }} onNo={() => setDropping(false)} />}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * The comment of one unit in Corregir, for the rooms whose units have no lots window (a cart, a bin, a mezcla): typed,
+ * corrected or cleared here, and saved with the form's Guardar like the rest (Jose, 2026-10-18)
+ */
+function UnitNoteDialog({ title, value, onClose, onPick }: { title: string; value: string; onClose: () => void; onPick: (note: string) => void }) {
+  const [note, setNote] = useState(value)
+  return (
+    <div className="veil" onClick={onClose}>
+      <div className="dlg" onClick={(e) => e.stopPropagation()}>
+        <h3>{title}</h3>
+        <form className="qform" onSubmit={(e) => { e.preventDefault(); onPick(note) }}>
+          <NoteBox value={note} onChange={setNote} />
+          <div className="dbtns">
+            <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
+            <button type="submit" className="btn primary">{tr('✓ Guardar')}</button>
+          </div>
+        </form>
       </div>
     </div>
   )
@@ -173,6 +201,9 @@ export function AddUnitDialog({ s, run, startPo, onClose, onAdded }: { s: State;
   const orders = cfg.orders ? s.orders.filter((o) => normCode(o.code) === normCode(run.code)).sort(byShip) : []
   // taken once, as it opened: "Agregar y otro" keeps the order they have chosen by then, as always
   const [po, setPo] = useState(() => unitStartPo(s, run, startPo))
+  // its comment (Jose, 2026-10-18: a comment on each pallet; one window for every room's units): the next one starts
+  // without it, like its cases and tags
+  const [note, setNote] = useState('')
   const end = run.endedAt ?? clockNow()
   // the hour is one of the run's day (a run that goes past midnight: the nearest to its start)
   const at = hm ? nearDay(run.startedAt, hm) : NaN
@@ -191,12 +222,12 @@ export function AddUnitDialog({ s, run, startPo, onClose, onAdded }: { s: State;
     const lots = tags ? rows.map((r, i) => ({ lot: r.lot.trim(), qty: nums[i], ...(r.tag.trim() ? { tag: r.tag.trim() } : {}) })) : undefined
     const total = lots ? lots.reduce((t, l) => t + l.qty, 0) : n
     sure.check(cfg.qty === 'none' ? [] : [{ key: 'qty', n: total, usual: usualOf(s, run), unit: cfg.qtyUnit, per: word, total: !!lots && lots.length > 1 }], () => {
-      const done = addUnit(run.id, { at, qty: cfg.qty === 'none' || tags ? null : n, ref: tags ? '' : ref, lots, po })
+      const done = addUnit(run.id, { at, qty: cfg.qty === 'none' || tags ? null : n, ref: tags ? '' : ref, lots, po, note })
       if (!done) return
       if (more) {
-        // the next one starts with what is its own blank (its cases and tags, its quantity and number); its lots, hour
-        // and order stay as they chose them, in sight, so nothing is saved that they did not see
-        setRows(rows.map((r) => ({ ...r, qty: '', tag: '' }))); setQty(''); setRef('')
+        // the next one starts with what is its own blank (its cases and tags, its quantity and number, its comment);
+        // its lots, hour and order stay as they chose them, in sight, so nothing is saved that they did not see
+        setRows(rows.map((r) => ({ ...r, qty: '', tag: '' }))); setQty(''); setRef(''); setNote('')
         setAdded((k) => k + 1)
         hold(true)
       }
@@ -234,6 +265,7 @@ export function AddUnitDialog({ s, run, startPo, onClose, onAdded }: { s: State;
           {orders.length > 0 && (
             <label>{tr('Pedido')}{' '}<select value={po} onChange={(e) => { hold(false); setPo(e.target.value) }}><option value="">{tr('Sin pedido')}</option>{orders.map((o) => <option key={o.id} value={o.id}>{orderLabel(o)}</option>)}</select></label>
           )}
+          <NoteBox value={note} onChange={(v) => { hold(false); setNote(v) }} />
           {/* how many were added from this window: its place is kept from the start (empty until then), so the
               window does not grow under the finger and the buttons stay where they were. A mezcla's keeps a second
               line for what lets the next one be added */}
@@ -533,8 +565,10 @@ export function AddRunDialog({ s, date, dept: first, order, onClose, onAdded }: 
  * para poner comentarios por favor"): a box of two lines, in "Agregar un registro" (every room) and in Corregir, of
  * up to NOTE_MAX characters, with how many are left when few are. What is typed is kept as typed (on one line and
  * without spaces at its ends: see cleanNote); left blank, the record has none. The app never writes in it.
+ * The same box is a unit's (a pallet's) comment: in its lots window, in "Pallet completo" and in "Agregar pallet"
+ * (Jose, 2026-10-18, later that day: "comentarios a cada registro con lotes combinados").
  */
-function NoteBox({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+export function NoteBox({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const left = NOTE_MAX - value.length
   return (
     <label className="notebox">

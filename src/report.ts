@@ -166,13 +166,14 @@ export function reportOf(s: State, date: string, now: number, f: ReportFilter = 
   // Packing's pallets one by one: every lot each one holds with its cases and its tag, its total, and its order with its
   // place among that order's pallets (3/12). The pallet a line is building is there too, while it is built (open).
   // With a lot chosen, the pallets that hold it, whole.
-  const palletOf = (r: Run, n: number, at: number, parts: { lot: string; qty: number | null; tag: string }[], po: string | undefined, by: string, open: boolean) => {
+  // (note: the comment typed on the pallet, '' = none; the pallet being built has none yet)
+  const palletOf = (r: Run, n: number, at: number, parts: { lot: string; qty: number | null; tag: string }[], po: string | undefined, by: string, open: boolean, note = '') => {
     const o = orderOfId(s, po), seq = o ? orderPallets(s, o.id, r.perUnit) : null
     const of: [number, number | null] | null = seq ? [open ? seq.done.length + 1 : seq.done.indexOf(at) + 1, seq.need] : null
-    return { r, n, at, parts, total: parts.reduce((t, p) => t + (p.qty ?? 0), 0), order: o ? orderLabel(o) : '', of, shift: shiftAt(plan, at), by, open }
+    return { r, n, at, parts, total: parts.reduce((t, p) => t + (p.qty ?? 0), 0), order: o ? orderLabel(o) : '', of, shift: shiftAt(plan, at), by, open, note }
   }
   const pallets = rows.filter((x) => x.r.dept === 'Packing' && !binOf(x.r)).flatMap((x) => {
-    const done = x.view.units.map((u) => palletOf(x.r, x.r.units.indexOf(u) + 1, u.at, unitParts(s, x.r, u), u.po, u.by, false))
+    const done = x.view.units.map((u) => palletOf(x.r, x.r.units.indexOf(u) + 1, u.at, unitParts(s, x.r, u), u.po, u.by, false, u.note ?? ''))
     const o = x.r.endedAt ? null : x.r.extra?.open, last = o?.parts.length ? o.parts[o.parts.length - 1] : null
     const building = o && last && (!lot || o.parts.some((p) => p.lot === lot)) && (!shift || o.parts.some((p) => shiftAt(plan, p.at) === shift)) ? [palletOf(x.r, x.r.units.length + 1, last.at, o.parts, palletPo(s, x.r), last.by, true)] : []
     return [...done, ...building]
@@ -198,6 +199,22 @@ export function runsSheet(s: State, rep: Report): Cell[][] {
   const reasons = (x: Report['rows'][number]) => Object.entries(x.st.reasons).map(([k, v]) => tr(k) + ' ' + fmtDur(v)).join(', ')
   return [[tr('Departamento'), tr('Línea'), tr('Código'), tr('Lote'), tr('Fecha'), tr('Inicio'), tr('Fin'), tr('Unidad'), tr('Hechas'), tr('Cantidad'), tr('Unidad de cantidad'), tr('Tags / bins'), tr('Waste (lb)'), tr('Tiempo trabajando'), tr('Promedio por unidad'), tr('Tiempo parado'), 'Set up', tr('Razones de paro'), tr('Registró'), tr('Turno'), tr('Comentario')],
     ...rep.rows.map((x): Cell[] => [x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.lots, xDay(x.r.date), T(x.r.startedAt), x.r.endedAt ? T(x.r.endedAt) : tr('en curso'), cfgOf(x.r).unit, x.units, CFG[x.r.dept].qty !== 'none' ? x.qty : '', CFG[x.r.dept].qty !== 'none' ? cfgOf(x.r).qtyUnit : '', x.view.units.map((u) => u.ref).filter(Boolean).join(', '), x.waste || '', D(x.st.working), x.timed ? D(x.st.avg) : '', D(x.st.down), x.st.setup ? D(x.st.setup) : '', reasons(x), whoText(x.r), rep.shift ? String(rep.shift) : x.shifts, noteOf(x.r)])]
+}
+/**
+ * The Excel's Pallets sheet: every lot of every pallet in view, the pallet's total, its PO and its place in it, and
+ * last its comment (Jose, 2026-10-18: a comment on each pallet), on its first line; and the Unidades sheet, one line
+ * per unit (a pallet with two lots, one per lot), each with the unit's comment last. Made here, as Resumen is, so
+ * the checks read the very lines the file gets.
+ */
+export function palletsSheet(s: State, rep: Report): Cell[][] {
+  const T = (ms: number) => xTime(ms, fmtTime(ms))
+  return [[tr('Pallet'), tr('Línea'), tr('Código'), tr('Lote'), tr('Cajas'), tr('Tag'), tr('Total del pallet'), 'PO', tr('Pallet del PO'), tr('Hora'), tr('Turno'), tr('Registró'), tr('Comentario')],
+    ...rep.pallets.flatMap((p) => p.parts.map((x, i): Cell[] => [p.n, lineNameOf(s, p.r.lineId, p.r.line), p.r.code, x.lot, x.qty ?? '', x.tag, i === 0 ? p.total : '', p.order, p.of ? (p.of[1] ? tr('pallet {0} de {1}', p.of[0], p.of[1]) : String(p.of[0])) : '', p.open ? tr('en armado') : T(p.at), p.shift, p.by, i === 0 ? p.note : '']))]
+}
+export function unitsSheet(s: State, rep: Report): Cell[][] {
+  const T = (ms: number) => xTime(ms, fmtTime(ms)), D = (ms: number) => xDur(ms, fmtDur(ms))
+  return [[tr('Departamento'), tr('Línea'), tr('Código'), tr('Lote'), '#', tr('Hora'), tr('Unidad'), tr('Cantidad'), tr('Unidad de cantidad'), tr('Tag / bin'), tr('Desde la anterior'), tr('Registró'), tr('Turno'), tr('Pedido'), tr('Comentario')],
+    ...rep.unitRows.map((x): Cell[] => [x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.lot, x.i + 1, T(x.u.at), cfgOf(x.r).unit, x.qty ?? '', x.qty != null ? cfgOf(x.r).qtyUnit : '', x.tag, D(x.gap), x.u.by, x.shift, x.order, x.u.note ?? ''])]
 }
 /** the words a filtered report carries in its title and in the name of its files */
 export const filterTitle = (code: string, lot: string, shift: 0 | 1 | 2 = 0, line = '') => (shift ? ' ' + tr('· Turno {0}', shift) : '') + (line ? ' · ' + line : '') + (code ? ' ' + tr('· código {0}', code) : '') + (lot ? ' ' + tr('· lote {0}', lot) : '')
@@ -254,11 +271,11 @@ export function searchReport(s: State, rep: Report, q: string, changes: Change[]
   const byAt = (a: Hit, b: Hit) => a.at - b.at
   const codes = rep.byCode.filter((c) => fits([c.code, product(c.code), c.dept, ...c.lots.map((l) => l.lot), ...c.lines], [c.code]))
     .map((c): Hit => ({ kind: 'code', key: hitKey.code(c.dept, c.code, c.bin), dept: c.dept, at: 0 }))
-  const pallets = rep.pallets.filter((p) => fits([String(p.n), p.r.code, product(p.r.code), ...p.parts.flatMap((x) => [x.lot, x.tag]), p.order, line(p.r), p.by, p.open ? '' : fmtTime(p.at), ...shiftWords(p.shift), cfgOf(p.r).unit, p.r.dept], [p.r.code]))
+  const pallets = rep.pallets.filter((p) => fits([String(p.n), p.r.code, product(p.r.code), ...p.parts.flatMap((x) => [x.lot, x.tag]), p.order, line(p.r), p.by, p.open ? '' : fmtTime(p.at), ...shiftWords(p.shift), cfgOf(p.r).unit, p.r.dept, p.note], [p.r.code]))
     .map((p): Hit => ({ kind: 'pallet', key: hitKey.pallet(p.r.id, p.n), dept: p.r.dept, at: p.at, runId: p.r.id, unitAt: p.open ? undefined : p.at })).sort(byAt)
   const bins = rep.bins.filter((b) => fits([String(b.n), b.r.code, product(b.r.code), b.lot, b.ref, binWord(b.word), line(b.r), b.by, fmtTime(b.at), ...shiftWords(b.shift), cfgOf(b.r).unit, b.r.dept], [b.r.code]))
     .map((b): Hit => ({ kind: 'bin', key: hitKey.bin(b.r.id, b.n), dept: b.r.dept, at: b.at, runId: b.r.id, unitAt: b.at })).sort(byAt)
-  const units = rep.unitRows.filter((x) => fits([String(x.i + 1), x.r.code, product(x.r.code), x.lot, x.tag, x.order, line(x.r), x.u.by, fmtTime(x.u.at), ...shiftWords(x.shift), cfgOf(x.r).unit, x.r.dept], [x.r.code]))
+  const units = rep.unitRows.filter((x) => fits([String(x.i + 1), x.r.code, product(x.r.code), x.lot, x.tag, x.order, line(x.r), x.u.by, fmtTime(x.u.at), ...shiftWords(x.shift), cfgOf(x.r).unit, x.r.dept, x.u.note], [x.r.code]))
     .map((x): Hit => ({ kind: 'unit', key: hitKey.unit(x.r.id, x.i, x.lot), dept: x.r.dept, at: x.u.at, runId: x.r.id, unitAt: x.u.at })).sort(byAt)
   // (a run is found by its comment too: Jose, 2026-10-18)
   const runs = rep.rows.filter((x) => fits([x.r.code, product(x.r.code), x.lots, line(x.r), whoText(x.r), fmtTime(x.r.startedAt), ...Object.keys(x.st.reasons).flatMap((k) => [k, phrase(k, 'en')]), ...shiftWords(x.shifts), x.r.dept, noteOf(x.r)], [x.r.code]))

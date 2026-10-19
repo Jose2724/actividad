@@ -2539,6 +2539,201 @@ section('MFO: cada bin guarda lo que escriben, en platos, copas o libras; nada s
     eq('los bins de MFO no van en la lista de bins de Packing', rep.bins.length, 0)
   })
 }
+section('Flujo de datos: las fórmulas de la hoja WO PENDIENTES, con sus propios números (2026-10-18)')
+calc.use((m) => {
+  // Jose, 2026-10-18 evening, with the office clerk's "WO PENDIENTES" sheet: "otra tab que se llame Flujo de Datos, que
+  // va calculando qué le toca a cada departamento según el yield y lo que esos departamentos ya tienen". Every row
+  // below is a row of that sheet, with the numbers its own cells show; the last ones are cases the sheet has no row for
+  const calcOf = (route, yieldCs, perCase, perPallet, mixes, pouches, mfoUnits, mfoCases, mfoLb, cases, inTable = true) => m.flujoCalc({ route, inTable, yieldCs, perCase, perPallet, mixes, pouches, mfoUnits, mfoCases, mfoLb, cases, pallets: cases ? 1 : 0 })
+  const out = (c) => [c.segun, c.diffRte, c.diffMfo, c.diffPacking, c.projected, c.projectedFrom, c.diffProjected, c.state]
+  const row = (what, args, want) => eq(what, out(calcOf(...args)), want)
+  row('2286 · LOTE 6222: 3487 ÷ 8 = 435.88, 442 × 8 − 3487 = 49, 442 − 435.875 = 6.13, 80 × 5.5 = 440', ['RTE', 5.5, 8, 36, 80, 3487, 0, 0, 0, 442], [435.88, 49, null, 6.13, 440, 'mixes', 2, 'over'])
+  eq('… y sus pallets proyectados: 440 ÷ 36', calcOf('RTE', 5.5, 8, 36, 80, 3487, 0, 0, 0, 442).palletsProjected, 12.22)
+  row('2234 · LOTE 6218: nada empacado todavía', ['RTE', 6.5, 6, null, 35, 1376, 0, 0, 0, 0], [229.33, -1376, null, -229.33, 227.5, 'mixes', -227.5, 'unpacked'])
+  row('4924 · LOTE 6218', ['RTE', 72.9, 6, null, 6, 1687, 0, 0, 0, 30], [281.17, -1507, null, -251.17, 437.4, 'mixes', -407.4, 'short'])
+  row('3293 · LOTE 6218', ['RTE', 10, 6, null, 14, 1274, 0, 0, 0, 22], [212.33, -1142, null, -190.33, 140, 'mixes', -118, 'short'])
+  row('4614 · LOTE 6222', ['RTE', 47, 6, null, 8, 2068, 0, 0, 0, 0], [344.67, -2068, null, -344.67, 376, 'mixes', -376, 'unpacked'])
+  row('4139 · LOTE 6222: cuadra', ['RTE', 17, 6, null, 20, 2076, 0, 0, 0, 346], [346, 0, null, 0, 340, 'mixes', 6, 'ok'])
+  row('8137 · LOTE 6222', ['RTE', 16.5, 6, null, 40, 3895, 0, 0, 0, 674], [649.17, 149, null, 24.83, 660, 'mixes', 14, 'over'])
+  row('8165 · LOTE 6222', ['RTE', 16.5, 6, null, 10, 1020, 0, 0, 0, 168], [170, -12, null, -2, 165, 'mixes', 3, 'short'])
+  row('2234 · LOTE 6222', ['RTE', 6.5, 6, null, 26, 927, 0, 0, 0, 153], [154.5, -9, null, -1.5, 169, 'mixes', -16, 'short'])
+  row('4917 · LOTE 6222', ['RTE', 74.3, 6, null, 10, 4288, 0, 0, 0, 22], [714.67, -4156, null, -692.67, 743, 'mixes', -721, 'short'])
+  row('5017 · LOTE 6222', ['RTE', 63, 6, null, 1, 380, 0, 0, 0, 56], [63.33, -44, null, -7.33, 63, 'mixes', -7, 'short'])
+  const mfo = calcOf('MFO', null, 6, 40, 0, 0, 1506, 0, 0, 242)
+  eq('4419 · LOTE 6222 (lo empaca MFO): 1506 ÷ 6 = 251, 242 × 6 − 1506 = −54, 242 − 251 = −9; RTE en blanco; sin yield en la tabla y no hace falta', [out(mfo), mfo.palletsProjected, mfo.missing], [[251, null, -54, -9, 251, 'mfo', -9, 'short'], 6.28, []])
+  row('2286 · LOTE 6223', ['RTE', 5.5, 8, null, 50, 2163, 0, 0, 0, 277], [270.38, 53, null, 6.63, 275, 'mixes', 2, 'over'])
+  row('0889 · LOTE 6223', ['RTE', 18.5, 8, null, 120, 17026, 0, 0, 0, 2027], [2128.25, -810, null, -101.25, 2220, 'mixes', -193, 'short'])
+  row('4955 · LOTE 6223: cuadra, con la proyección por encima', ['RTE', 85.6, 6, null, 8, 3456, 0, 0, 0, 576], [576, 0, null, 0, 684.8, 'mixes', -108.8, 'ok'])
+  row('4419 · LOTE 6223 (MFO): −0.83 es más de media caja', ['MFO', null, 6, null, 0, 0, 251, 0, 0, 41], [41.83, null, -5, -0.83, 41.83, 'mfo', -0.83, 'short'])
+  row('2286 · LOTE 6224: todo cuadra', ['RTE', 5.5, 8, null, 80, 3520, 0, 0, 0, 440], [440, 0, null, 0, 440, 'mixes', 0, 'ok'])
+  row('7130 · LOTE 6224 (la hoja escribe 20 por caja y calcula con 10: se sigue el cálculo)', ['RTE', 18, 10, null, 20, 3481, 0, 0, 0, 347], [348.1, -11, null, -1.1, 360, 'mixes', -13, 'short'])
+  row('0889 · LOTE 6224', ['RTE', 18.5, 8, null, 50, 6978, 0, 0, 0, 904], [872.25, 254, null, 31.75, 925, 'mixes', -21, 'over'])
+  row('2234 · LOTE 6224', ['RTE', 6.5, 6, null, 52, 1377, 0, 0, 0, 231], [229.5, 9, null, 1.5, 338, 'mixes', -107, 'over'])
+  row('4918 · LOTE 6224', ['RTE', 74.3, 6, null, 2, 868, 0, 0, 0, 0], [144.67, -868, null, -144.67, 148.6, 'mixes', -148.6, 'unpacked'])
+  row('4433 · LOTE 6224 (MFO): se prefiere 1658 ÷ 6 = 276.33 a 3 × 129 = 387, como hizo la oficina', ['MFO', 129, 6, 50, 3, 0, 1658, 0, 0, 273], [276.33, null, -20, -3.33, 276.33, 'mfo', -3.33, 'short'])
+  // what the sheet has no row for
+  const none = calcOf('MFO', 129, 6, 40, 3, 0, 0, 0, 0, 0)
+  eq('MFO sin registrar nada todavía: proyectado por mezclas × yield, y dos ceros no se comparan', [out(none), none.palletsProjected], [[0, null, null, null, 387, 'mixes', -387, 'unpacked'], 9.68])
+  row('MFO sin registrar nada y Packing ya empacó: cajas de más (así lo lee la hoja)', ['MFO', 129, 6, 40, 3, 0, 0, 0, 0, 100], [0, null, null, 100, 387, 'mixes', -287, 'over'])
+  const lb = calcOf('MFO', 20, 6, 40, 2, 0, 0, 0, 240, 30)
+  eq('MFO solo en libras: nada se pasa a cajas, sin comparar; la proyección sigue por mezclas', [out(lb), lb.mfoOnlyLb, lb.missing], [[null, null, null, null, 40, 'mixes', -10, 'nocompare'], true, []])
+  // (review of 2026-10-18: it came out −30, the gap in units, under the word "cajas"; the gap is 5 cajas)
+  row('bins de MFO de antes (contaban cajas): la diferencia en cajas, no en unidades', ['MFO', 25, 6, null, 2, 0, 0, 30, 0, 25], [30, null, -5, -5, 30, 'mfo', -5, 'short'])
+  eq('… y así se dice', m.diffText('room', calcOf('MFO', 25, 6, null, 2, 0, 0, 30, 0, 25).diffMfo, m.mfoWord('cajas')).text, 'sobran 5 cajas')
+  row('bins de antes sin pouches por caja en Productos: igual se comparan, ya son cajas', ['MFO', 25, null, null, 2, 0, 0, 30, 0, 25], [30, null, -5, -5, 30, 'mfo', -5, 'short'])
+  row('bins de antes y de ahora juntos', ['MFO', 25, 6, null, 2, 0, 60, 10, 0, 20], [20, null, 0, 0, 20, 'mfo', 0, 'ok'])
+  const noY = calcOf('RTE', null, 8, 36, 10, 800, 0, 0, 0, 100)
+  eq('sin yield en Productos: nada proyectado (nunca 0), y la fila dice qué falta', [out(noY), noY.missing], [[100, 0, null, 0, null, null, null, 'ok'], ['yield']])
+  const noK = calcOf('RTE', 5, null, 36, 10, 800, 0, 0, 0, 40)
+  eq('sin pouches por caja: nada en cajas según RTE, sin comparar', [out(noK), noK.missing], [[null, null, null, null, 50, 'mixes', -10, 'nocompare'], ['perCase']])
+  const noP = calcOf('RTE', null, null, null, 0, 100, 0, 0, 0, 0, false)
+  eq('un código que no está en Productos', [out(noP), noP.missing], [[null, null, null, null, null, null, null, 'unpacked'], ['product']])
+  row('solo Packing registró: cajas que RTE nunca reportó, de más', ['RTE', 5, 8, null, 0, 0, 0, 0, 0, 20], [0, 160, null, 20, null, null, null, 'over'])
+  const nothing = calcOf('RTE', 5, 8, null, 0, 0, 0, 0, 0, 0)
+  eq('nada registrado', [out(nothing), nothing.hasAny], [[0, null, null, null, null, null, null, 'none'], false])
+  eq('cuadra hasta media caja, en los dos sentidos', [-0.5, -0.51, 0.5, 0.51].map((d) => m.flujoState({ cases: 10, hasAny: true }, d)), ['ok', 'short', 'ok', 'over'])
+  eq('los números como se muestran', [m.n2(435.875), m.n2(440), m.n2(2128.25), m.n2(227.5), m.n2(-1376), m.n2(null), m.n2(0)], ['435.88', '440', '2,128.25', '227.5', '-1,376', '—', '0'])
+  eq('redondeo: nunca −0, y el medio hacia afuera por los dos lados', [Object.is(m.r2(-0.004), 0), m.r2(2.675), m.r2(-2.675), m.r2(6.125), m.r2(251 / 40)], [true, 2.68, -2.68, 6.13, 6.28])
+  eq('las diferencias en palabras, con los signos de la hoja', [m.diffText('cases', -0.33, 'cs').text, m.diffText('cases', -9, 'cs').text, m.diffText('cases', 6.13, 'cs').text, m.diffText('room', -1376, 'pouches').text, m.diffText('room', 49, 'pouches').text, m.diffText('room', -54, 'platos').text, m.diffText('room', null, 'platos').text], ['✓ cuadra', 'faltan 9 cs', '6.13 cs de más', 'sobran 1,376 pouches', 'faltan 49 pouches', 'sobran 54 platos', '—'])
+  eq('el estado en palabras', [m.flujoStateText('short', -9), m.flujoStateText('over', 6.13), m.flujoStateText('ok', 0), m.flujoStateText('unpacked', null), m.flujoStateText('nocompare', null), m.flujoStateText('none', null)], ['Faltan 9 cs', '6.13 cs de más', '✓ Cuadra', 'Sin empacar', 'Sin comparar', 'Sin registros'])
+  eq('el nombre del archivo', [m.flujoFile('2026-10-05', '2026-10-18', { lot: '6222', route: 'MFO', state: 'short' }), m.flujoFile('2026-10-18', '2026-10-05', { lot: '', route: '', state: '' })], ['actividad-flujo-2026-10-05-a-2026-10-18-lote-6222-mfo-faltan', 'actividad-flujo-2026-10-05-a-2026-10-18'])
+})
+section('Flujo de datos: cada lote en todos sus días, con lo que registró cada cuarto')
+{
+  // the same numbers of the sheet, now made on a device the way the floor makes them: each room on its line, the lot
+  // running into the next day, a pallet with two lots, bins and pounds that are not cases, a code written with and
+  // without its zero, a code without yield and one that is not in the table
+  const fl = await device('flujo', { user: 'Oficina', usual: true })
+  const got = fl.use((m) => {
+    const st = () => m.store.get()
+    m.role.set('office')
+    m.mergeProducts([
+      { code: '2286', name: 'Pollo con arroz', pouchesPerCase: 8, casesPerMix: 5.5, cratesPerCart: 24, pouchesPerCrate: 10, casesPerPallet: 50, room: 'RTE', updatedAt: 0 },
+      { code: '4419', name: 'Platos de carne', pouchesPerCase: 6, casesPerMix: 0, cratesPerCart: 0, pouchesPerCrate: 0, casesPerPallet: 40, room: 'MFO', updatedAt: 0 },
+      { code: '4433', name: 'Copas de res', pouchesPerCase: 6, casesPerMix: 129, cratesPerCart: 0, pouchesPerCrate: 0, casesPerPallet: 50, room: 'MFO', updatedAt: 0 },
+      { code: 'E9', name: 'Sin yield', pouchesPerCase: 8, casesPerMix: 0, cratesPerCart: 24, pouchesPerCrate: 10, casesPerPallet: 0, updatedAt: 0 },
+    ])
+    for (const [d, n] of [['Kitchen', 'Braiser 1'], ['RTE', 'Línea 1'], ['Packing', 'Línea 1'], ['Packing', 'Línea 2'], ['Packing', 'Línea 3'], ['MFO', 'Línea 1'], ['Spiral', 'Línea 1']]) m.addLine(d, n)
+    const line = (d, n) => st().lines.find((l) => l.dept === d && l.name === n)
+    const kitchen = line('Kitchen', 'Braiser 1'), rte = line('RTE', 'Línea 1'), p1 = line('Packing', 'Línea 1'), p2 = line('Packing', 'Línea 2'), p3 = line('Packing', 'Línea 3'), mfo = line('MFO', 'Línea 1'), spiral = line('Spiral', 'Línea 1')
+    const D8 = '2026-10-08', D9 = '2026-10-09'
+    clock = oct(8, 5, 0)
+    const tick = () => { clock += M }
+    const openOn = (l) => st().runs.find((r) => r.lineId === l.id && !r.endedAt)
+    /** a run on a line with its units ([qty, ref] or a pallet), ended unless `open`; gives its id */
+    const run = (l, code, lot, date, per, units, { bin = '', measure = '', open = false } = {}) => {
+      tick(); m.startRun(l, code, lot, date, per, bin, measure)
+      const id = openOn(l).id
+      for (const u of units) { tick(); if (typeof u === 'function') u(id); else m.unitDone(id, u[0], u[1] ?? '') }
+      if (!open) { tick(); m.endRun(id, false) }
+      return id
+    }
+    const pallet = (lots) => (id) => m.palletDone(id, lots, '')
+    const many = (n, u) => Array.from({ length: n }, () => u)
+    // Kitchen: 60 mezclas of 2286 / 6222 on the 8th and 20 more on the 9th (the lot ran into the next day)
+    run(kitchen, '2286', '6222', D8, null, many(60, [null]))
+    run(kitchen, '2286', '6222', D9, null, many(20, [null]))
+    // RTE: 14 carts of 240 and one of 127 = 3,487 pouches
+    run(rte, '2286', '6222', D8, 240, [...many(14, [240]), [127]])
+    // Packing: 8 pallets of 50, one of 12, and one with two lots (30 of 6222 + 20 of 6223) = 442 cases of 6222 on 10 pallets
+    run(p1, '2286', '6222', D8, 50, [...many(8, pallet([{ lot: '6222', qty: 50, tag: '1' }])), pallet([{ lot: '6222', qty: 12, tag: '9' }]), pallet([{ lot: '6222', qty: 30, tag: '10' }, { lot: '6223', qty: 20, tag: '11' }])])
+    // a Packing line filling bins of platos, and Spiral weighing the code in pounds: neither is cases nor mezclas
+    run(p2, '2286', '6222', D8, null, [[100, '1']], { bin: 'platos' })
+    run(spiral, '2286', '6222', D8, null, many(3, [500]), { measure: 'lb' })
+    // Packing still running on the 9th, with a pallet being built (a lot ran out on it): nothing of it counts yet
+    const p3id = run(p3, '2286', '6222', D9, 50, [], { open: true })
+    tick(); m.palletLotEnds(p3id, 25, '1', '6223')
+    // MFO 4419 / 6222: 1,506 platos in three bins; Packing two pallets of 121; and RTE registered 50 pouches of it by mistake
+    run(mfo, '4419', '6222', D8, null, [[500, '1'], [500, '2'], [506, '3']], { bin: 'platos' })
+    run(p1, '4419', '6222', D8, 121, many(2, pallet([{ lot: '6222', qty: 121, tag: '2' }])))
+    run(rte, '4419', '6222', D8, 50, [[50]])
+    // 4419 / 6223 (the 9th): 251 platos, 41 cases
+    run(mfo, '4419', '6223', D9, null, [[251, '4']], { bin: 'platos' })
+    const p4419 = run(p1, '4419', '6223', D9, 41, [pallet([{ lot: '6223', qty: 41, tag: '3' }])])
+    // 4433 / 6224: 3 mezclas, 1,658 platos, 273 cases
+    run(kitchen, '4433', '6224', D9, null, many(3, [null]))
+    run(mfo, '4433', '6224', D9, null, [[500, '5'], [500, '6'], [658, '7']], { bin: 'platos' })
+    run(p1, '4433', '6224', D9, 50, [...many(5, pallet([{ lot: '6224', qty: 50, tag: '4' }])), pallet([{ lot: '6224', qty: 23, tag: '5' }])])
+    // 4433 / 6225: MFO weighed it in pounds; 2 mezclas; 30 cases
+    run(mfo, '4433', '6225', D9, null, [[240, '8']], { bin: 'lb' })
+    run(kitchen, '4433', '6225', D9, null, many(2, [null]))
+    run(p1, '4433', '6225', D9, 30, [pallet([{ lot: '6225', qty: 30, tag: '6' }])])
+    // 4419 / 6226: an MFO run of before 2026-10-17 (no word: its bins counted cases), and 25 cases
+    m.applyRemote('act_runs', runRow({ id: 'old-mfo', dept: 'MFO', lineId: mfo.id, code: '4419', lot: '6226', date: D9, startedAt: oct(9, 5, 0), endedAt: oct(9, 6, 0), units: [unit(oct(9, 5, 30), 30, '9')] }))
+    run(p1, '4419', '6226', D9, 25, [pallet([{ lot: '6226', qty: 25, tag: '7' }])])
+    // 4419 / 6228 and 6229: MFO registered the code under two words in one lot (platos on one bin, copas on another):
+    // the word with the most of it counts, the other is shown apart and never added (review of 2026-10-18)
+    run(mfo, '4419', '6228', D9, null, [[600, '10']], { bin: 'platos' })
+    run(mfo, '4419', '6228', D9, null, [[60, '11']], { bin: 'copas' })
+    run(p1, '4419', '6228', D9, 100, [pallet([{ lot: '6228', qty: 100, tag: '12' }])])
+    run(mfo, '4419', '6229', D9, null, [[60, '13']], { bin: 'platos' })
+    run(mfo, '4419', '6229', D9, null, [[600, '14']], { bin: 'copas' })
+    run(p1, '4419', '6229', D9, 90, [pallet([{ lot: '6229', qty: 90, tag: '15' }])])
+    // lot 6227: a code written with and without its zero is one row; a code without yield; a code not in the table
+    run(kitchen, '100', '6227', D9, null, many(2, [null]))
+    run(rte, '0100', '6227', D9, 240, [[240]])
+    run(kitchen, 'E9', '6227', D9, null, many(10, [null]))
+    run(rte, 'E9', '6227', D9, 200, many(4, [200]))
+    run(p1, 'E9', '6227', D9, 50, many(2, pallet([{ lot: '6227', qty: 50, tag: '8' }])))
+    run(rte, 'ZZ', '6227', D9, 100, [[100]])
+    const lots = m.flujoLots(st(), D8, D9)
+    const row = (lot, code) => lots.find((l) => l.lot === lot).rows.find((r) => m.normCode(r.code) === m.normCode(code))
+    eq('los lotes de esos dos días, el más nuevo primero, cada uno con todos sus días', lots.map((l) => [l.lot, l.days]), [['6229', [D9]], ['6228', [D9]], ['6227', [D9]], ['6226', [D9]], ['6225', [D9]], ['6224', [D9]], ['6223', [D8, D9]], ['6222', [D8, D9]]])
+    const a = row('6222', '2286')
+    eq('2286 / 6222: la fila de la hoja, con sus mismos números', [a.route, a.routeSaid, a.mixes, a.mixRoom, a.pouches, a.cases, a.pallets, a.yieldCs, a.perCase, a.segun, a.diffRte, a.diffMfo, a.diffPacking, a.projected, a.projectedFrom, a.diffProjected, a.palletsProjected, a.state, a.running, a.missing], ['RTE', true, 80, 'Kitchen', 3487, 442, 10, 5.5, 8, 435.88, 49, null, 6.13, 440, 'mixes', 2, 8.8, 'over', true, []])
+    eq('… y lo que hizo cada día (el lote siguió al día siguiente)', a.days.map((d) => [d.date, d.mixes, d.pouches, d.cases]), [[D8, 60, 3487, 442], [D9, 20, 0, 0]])
+    eq('los bins de Packing y las libras de Spiral no entran: ni cajas ni mezclas', [a.otherMfo, a.mfo], [false, []])
+    const b = row('6223', '2286')
+    eq('2286 / 6223: las 20 cajas del pallet de dos lotes, que RTE nunca reportó de ese lote: cajas de más', [b.cases, b.pallets, b.pouches, b.mixes, b.segun, b.diffRte, b.diffPacking, b.projected, b.state, b.running], [20, 1, 0, 0, 0, 160, 20, null, 'over', true])
+    const c = row('6222', '4419')
+    eq('4419 / 6222 (lo empaca MFO): platos ÷ 6, RTE en blanco y avisado aparte', [c.route, c.routeSaid, c.mfoUnits, c.mfo, c.mfoWordUsed, c.segun, c.diffRte, c.diffMfo, c.diffPacking, c.projected, c.projectedFrom, c.diffProjected, c.palletsProjected, c.state, c.otherRte, c.pouches, c.missing], ['MFO', true, 1506, [{ word: 'platos', qty: 1506 }], 'platos', 251, null, -54, -9, 251, 'mfo', -9, 6.28, 'short', true, 50, []])
+    const d = row('6223', '4419'), e = row('6224', '4433'), f = row('6225', '4433'), g = row('6226', '4419')
+    eq('4419 / 6223', [d.segun, d.diffMfo, d.diffPacking, d.state], [41.83, -5, -0.83, 'short'])
+    eq('4433 / 6224: se prefiere lo de MFO (276.33) a 3 × 129', [e.mixes, e.segun, e.diffMfo, e.diffPacking, e.projected, e.projectedFrom, e.diffProjected, e.state], [3, 276.33, -20, -3.33, 276.33, 'mfo', -3.33, 'short'])
+    eq('4433 / 6225: MFO solo en libras, sin comparar; proyectado por mezclas', [f.mfoLb, f.mfoOnlyLb, f.mfo, f.segun, f.diffMfo, f.diffPacking, f.projected, f.projectedFrom, f.state], [240, true, [{ word: 'lb', qty: 240 }], null, null, null, 258, 'mixes', 'nocompare'])
+    eq('4419 / 6226: los bins de antes ya eran cajas, y la diferencia va en cajas', [g.mfoCases, g.mfoWordUsed, g.segun, g.diffMfo, g.diffPacking, g.state], [30, 'cajas', 30, -5, -5, 'short'])
+    const h = row('6228', '4419'), i = row('6229', '4419')
+    eq('4419 / 6228: 600 platos y 60 copas: cuentan los platos, las copas se muestran aparte', [h.mfoUnits, h.mfoWordUsed, h.mfo, h.segun, h.diffMfo, h.diffPacking, h.state, h.otherRte], [600, 'platos', [{ word: 'platos', qty: 600 }, { word: 'copas', qty: 60 }], 100, 0, 0, 'ok', false])
+    eq('4419 / 6229: 60 platos y 600 copas: cuentan las copas', [i.mfoUnits, i.mfoWordUsed, i.segun, i.diffMfo, i.diffPacking, i.state], [600, 'copas', 100, -60, -10, 'short'])
+    eq('100 y 0100 son una fila; sin yield se dice; un código que no está en Productos también', lots.find((l) => l.lot === '6227').rows.map((r) => [m.normCode(r.code), r.inTable, r.routeSaid, r.mixes, r.pouches, r.cases, r.segun, r.diffRte, r.diffPacking, r.projected, r.state, r.missing]), [['100', false, false, 2, 240, 0, null, null, null, null, 'unpacked', ['product']], ['E9', true, false, 10, 800, 100, 100, 0, 0, null, 'ok', ['yield']], ['ZZ', false, false, 0, 100, 0, null, null, null, null, 'unpacked', ['product']]])
+    eq('los mismos números que Avance da para el lote', (({ mixesDone, pouchesDone, casesDone, palletsDone }) => [mixesDone, pouchesDone, casesDone, palletsDone])(m.lotRows(st(), '6222').find((r) => r.code === '2286')), [80, 3487, 442, 10])
+    const s6222 = lots.find((l) => l.lot === '6222').sum
+    eq('el total del lote: cajas, pallets, proyectado y estados', [s6222.codes, s6222.cases, s6222.pallets, s6222.projected, s6222.states, s6222.shortCs, s6222.overCs], [2, 684, 12, 691, { none: 0, unpacked: 0, nocompare: 0, short: 1, over: 1, ok: 0 }, 9, 6.13])
+    eq('un lote es entero: mirando solo el 9, el 6222 trae también lo del 8', (({ mixes, days }) => [mixes, days.length])(m.flujoLots(st(), D9, D9).find((l) => l.lot === '6222').rows.find((r) => r.code === '2286')), [80, 2])
+    eq('días sin nada, y un rango al revés', [m.flujoLots(st(), '2026-10-01', '2026-10-07'), m.flujoLots(st(), D9, D8).map((l) => l.lot)], [[], lots.map((l) => l.lot)])
+    // a Kitchen run of the lot dated before the range: the lot keeps every day the device holds
+    run(kitchen, '2286', '6222', '2026-10-07', null, many(5, [null]))
+    const a2 = m.flujoLots(st(), D8, D9).find((l) => l.lot === '6222').rows.find((r) => r.code === '2286')
+    eq('un día del lote fuera del rango cuenta igual: 85 mezclas en 3 días, y el lote sigue en la vista del 8 al 9', [a2.mixes, a2.days.length, a2.projected, a2.diffProjected], [85, 3, 467.5, -25.5])
+    // the search and the chips; the files follow the chips and never the search
+    const flt = (f, search) => m.flujoFilter(lots, { q: '', lot: '', route: '', state: '', ...f }, search)
+    eq('buscar: código y lote juntos; el nombre del producto; un lote', [flt({ q: '2286 6222' }).map((l) => [l.lot, l.rows.map((r) => r.code)]), flt({ q: 'pollo' }).flatMap((l) => l.rows.map((r) => l.lot + '/' + r.code)), flt({ q: '6223' }).map((l) => l.lot)], [[['6222', ['2286']]], ['6223/2286', '6222/2286'], ['6223']])
+    eq('un lote escogido; un cuarto; un estado; y los archivos no siguen la búsqueda', [flt({ lot: '6224' }).map((l) => l.lot), flt({ route: 'MFO' }).flatMap((l) => l.rows.map((r) => l.lot + '/' + r.code)), flt({ state: 'short' }).flatMap((l) => l.rows.map((r) => l.lot + '/' + r.code)), flt({ q: 'zzzz' }).length, flt({ q: 'zzzz' }, false).length], [['6224'], ['6229/4419', '6228/4419', '6226/4419', '6225/4433', '6224/4433', '6223/4419', '6222/4419'], ['6229/4419', '6226/4419', '6224/4433', '6223/4419', '6222/4419'], 0, lots.length])
+    eq('con un cuarto escogido, el total del lote es de las filas que quedan', flt({ route: 'MFO' }).find((l) => l.lot === '6222').sum.cases, 242)
+    // the Excel: the office's columns, flat, one row per lot × code
+    const sheet = m.flujoSheet(lots)
+    eq('la hoja de Excel: las columnas de la oficina, plana, el lote en cada fila', [sheet[0].length, sheet[0][2], sheet[0][15], sheet[0].at(-1), sheet.length], [26, 'COD', 'SEGÚN RTE (CS)', 'Falta en Productos', 1 + lots.reduce((t, l) => t + l.rows.length, 0)])
+    eq('la fila 2286 / 6222', sheet.find((r) => r[0] === '6222' && r[2] === '2286'), ['6222', D8 + ', ' + D9, '2286', 'Pollo con arroz', 'RTE', 5.5, 8, 80, 'Kitchen', 3487, 49, '', '', '', '', 435.88, 442, 10, 6.13, 440, 'mezclas × yield', 2, 8.8, '6.13 cs de más', 'sí', ''])
+    eq('la fila 4419 / 6222: RTE en blanco (lo empaca MFO), MFO en platos', sheet.find((r) => r[0] === '6222' && r[2] === '4419').slice(9, 16), ['', '', 1506, 'platos', '', -54, 251])
+    eq('la fila 4433 / 6225: las libras aparte, nunca en cajas, y MFO en blanco (no 0: sí registró)', sheet.find((r) => r[0] === '6225' && r[2] === '4433').slice(11, 16), ['', '', '240 lb', '', ''])
+    eq('la fila 4419 / 6228: la palabra que cuenta y la otra aparte, sin sumarlas', sheet.find((r) => r[0] === '6228' && r[2] === '4419').slice(11, 16), [600, 'platos', '60 copas', 0, 100])
+    eq('la fila 4419 / 6226: los bins de antes, en cajas', sheet.find((r) => r[0] === '6226' && r[2] === '4419').slice(11, 16), [30, 'cajas', '', -5, 30])
+    eq('una fila sin yield lo dice en su columna', sheet.find((r) => r[0] === '6227' && r[2] === 'E9').at(-1), 'yield')
+    eq('la leyenda', [m.flujoLegend('x')[0], m.flujoLegend('x').at(-1)], [['Columna', 'Qué es'], ['Generado', 'x']])
+    const ex = (r, k) => m.flujoExplain(r).find((x) => x.key === k)?.text
+    eq('cómo se calculó, en palabras con los números reales', [ex(a, 'segun'), ex(a, 'proj'), ex(a, 'diffRoom'), ex(a, 'diffPacking'), ex(a, 'pallets')], ['3,487 pouches ÷ 8 por caja = 435.88', '80 mezclas × 5.5 yield = 440', '442 cs × 8 − 3,487 pouches = 49 (faltan 49 pouches)', '442 − 435.88 = 6.13 (6.13 cs de más)', '10 hechos · proyectados 440 ÷ 50 por pallet = 8.8'])
+    eq('y para un código de MFO', [ex(c, 'segun'), ex(c, 'diffRoom'), ex(c, 'proj'), ex(c, 'diffPacking')], ['1,506 platos ÷ 6 por caja = 251', '242 cs × 6 − 1,506 platos = -54 (sobran 54 platos)', 'lo que registró MFO, en cajas = 251 (se prefiere a mezclas × yield: —)', '242 − 251 = -9 (faltan 9 cs)'])
+    eq('los bins de antes se explican en cajas; con dos palabras, solo la que cuenta', [ex(g, 'segun'), ex(g, 'diffRoom'), ex(h, 'segun'), ex(i, 'diffRoom')], ['30 cajas de antes, ya en cajas = 30', '25 cs − 30 cajas de antes = -5 (sobran 5 cajas)', '600 platos ÷ 6 por caja = 100', '90 cs × 6 − 600 copas = -60 (sobran 60 copas)'])
+    eq('las mezclas por día, con las fechas como las escriba la pantalla', [ex(a, 'prod'), ex(e, 'prod'), m.flujoExplain(a, (d) => 'día ' + d.slice(-2)).find((x) => x.key === 'prod').text], ['80 registradas por Kitchen: 2026-10-08: 60 · 2026-10-09: 20', '3 registradas por Kitchen el 2026-10-09', '80 registradas por Kitchen: día 08: 60 · día 09: 20'])
+    m.deleteRun(p4419)
+    eq('borrada la corrida de Packing de 4419 / 6223: sus cajas se van de la fila', (({ cases, pallets, state }) => [cases, pallets, state])(m.flujoLots(st(), D8, D9).find((l) => l.lot === '6223').rows.find((r) => r.code === '4419')), [0, 0, 'unpacked'])
+    return { sheet }
+  })
+  const z = await fl.use(async (m) => m.loadZip())
+  const bytes = await fl.use(async (m) => m.xlsxBytes([{ name: 'Flujo de datos', rows: got.sheet }]))
+  const xml = z.strFromU8(z.unzipSync(bytes)['xl/worksheets/sheet1.xml'])
+  eq('en el archivo de Excel los números van como números, con sus dos decimales', [xml.includes('<v>435.88</v>'), xml.includes('<v>6.13</v>'), xml.includes('<t xml:space="preserve">SEGÚN RTE (CS)</t>')], [true, true, true])
+}
 section('Una línea quitada vuelve tal cual: la misma línea, con su nombre (2026-10-17: Spiral quedó sin líneas)')
 {
   const ln = await device('ln', { user: 'Eli', usual: true })
@@ -3639,6 +3834,185 @@ section('Un cambio del programa o de una meta que espera en la cola no pisa otro
     m.applyRemote('act_targets', { dept: 'opt:oplines', per_hour: 1, per_shift: 1, updated_at: at(T0 + 101 * M), updated_by: 'Edgar' })
     eq('el servidor ya tiene lo mismo, hecho después: sale de la cola y no hay nada que decir', [waiting(), st().lineRules.remove, notes().length], [[], true, said])
   })
+}
+
+section('Un comentario en cada pallet: se guarda con el pallet, se corrige en Corregir con su línea del historial, se ve en el reporte, se busca y va al Excel')
+{
+  // Jose, 2026-10-18, on the lots of a pallet in Corregir: "agregar también comentarios a cada registro con lotes
+  // combinados". The comment goes on the unit itself (act_runs.units), beside the run's own comment (extra.note):
+  // typed at "Pallet completo", in the lots window, in "Agregar pallet" or in Corregir, never by the app
+  const pn = await device('pnota', { user: 'Noelia' })
+  const ids = pn.use((m) => {
+    const st = () => m.store.get(), run = () => st().runs.find((r) => r.code === 'A100'), unit = (i) => run().units[i]
+    m.role.set('office')
+    m.addLine('Packing', 'Línea 1'); m.addLine('RTE', 'Línea 1')
+    const line = (dept) => st().lines.find((l) => l.dept === dept)
+    clock = oct(10, 8, 0); m.startRun(line('Packing'), 'A100', '6283', DAY, 36)
+    const id = run().id
+    // "Pallet completo" with a comment typed on two lines and with spaces around it: kept on one line, as it reads
+    clock = oct(10, 8, 30); m.palletDone(id, [{ lot: '6283', qty: 20, tag: '3100' }, { lot: '6284', qty: 16, tag: '3101' }], '', '  Pallet con dos lotes:\n  se acabó el 6283  ')
+    eq('el pallet lleva su comentario, en una línea; el resto del pallet como siempre', [unit(0).note, unit(0).qty, unit(0).ref, unit(0).lots], ['Pallet con dos lotes: se acabó el 6283', 36, '3100, 3101', [{ lot: '6283', qty: 20, tag: '3100' }, { lot: '6284', qty: 16, tag: '3101' }]])
+    // blank, or only spaces: the pallet has no comment at all (no key); the run's own comment is another thing
+    clock = oct(10, 9, 0); m.palletDone(id, [{ lot: '6284', qty: 36, tag: '3102' }], '', '   ')
+    eq('sin comentario: el pallet no lleva la marca, y la corrida no lleva comentario propio por eso', ['note' in unit(1), unit(1).ref, m.noteOf(run())], [false, '3102', ''])
+    // a cart of a room without lots, with a comment longer than the box takes: cut where the box cuts
+    clock = oct(10, 9, 5); m.startRun(line('RTE'), 'B200', '6283', DAY, 240)
+    const rte = st().runs.find((r) => r.code === 'B200').id
+    clock = oct(10, 9, 10); m.unitDone(rte, 240, '', undefined, undefined, 'x'.repeat(400))
+    eq('un carro con comentario de más de 300 caracteres: quedan 300', st().runs.find((r) => r.id === rte).units[0].note.length, 300)
+    eq('sube al servidor dentro de cada unidad', m.outbox.items().find((i) => i.table === 'act_runs' && i.key === id).row.units.map((u) => u.note ?? null), ['Pallet con dos lotes: se acabó el 6283', null])
+    // the tags window (fillUnit): the comment is kept when nothing is said of it, written when it is
+    clock = oct(10, 9, 20); m.fillUnit(id, unit(1).at, 36, [{ lot: '6284', qty: 36, tag: '3102' }], '3102')
+    eq('poner el tag no toca el comentario (ni pone uno)', 'note' in unit(1), false)
+    m.fillUnit(id, unit(1).at, 36, [{ lot: '6284', qty: 36, tag: '3102' }], '3102', 'Tag puesto después')
+    eq('escrito en la ventana de los tags, queda', unit(1).note, 'Tag puesto después')
+    // a pallet added after the fact ("Agregar pallet") with a comment: on the pallet and in its history line
+    clock = oct(10, 9, 30); const at = m.addUnit(id, { at: oct(10, 8, 45), qty: null, lots: [{ lot: '6283', qty: 30, tag: '3099' }], note: ' Encontrado en el piso ' })
+    eq('agregado después: el comentario va en el pallet y en el historial', [run().units.find((u) => u.at === at).note, st().changes.filter((c) => c.refKey === id && c.what.includes('Se agregó pallet')).map((c) => [c.what.split(' · ').pop(), c.after])], ['Encontrado en el piso', [['Se agregó pallet 2 (8:45 AM)', '30 cajas · 6283: 30 (tag 3099) · Comentario: Encontrado en el piso']]])
+    // Corregir: the form opens with each pallet's comment; corrected or cleared there, the history says it, pallet by pallet
+    const opened = m.draftOf(run())
+    eq('Corregir abre con el comentario de cada pallet', opened.units.map((u) => u.note ?? null), ['Pallet con dos lotes: se acabó el 6283', 'Encontrado en el piso', 'Tag puesto después'])
+    clock = oct(10, 10, 0)
+    m.applyDraft(id, opened, { ...opened, units: opened.units.map((u, i) => (i === 0 ? { ...u, note: ' Pallet con dos lotes ' } : i === 2 ? { ...u, note: '' } : u)) })
+    eq('corregido uno y borrado otro: quedan así (el borrado, con la marca vacía); el de en medio no se toca', run().units.map((u) => u.note ?? null), ['Pallet con dos lotes', 'Encontrado en el piso', ''])
+    const lines = () => st().changes.filter((c) => c.refKey === id && c.what.endsWith('· Comentario')).map((c) => [c.what.split(' · ').slice(-2).join(' · '), c.before, c.after])
+    eq('el historial lo dice, pallet por pallet (también el escrito en la ventana de los tags)', lines(), [['Pallet 2 · Comentario', '', 'Tag puesto después'], ['Pallet 1 · Comentario', 'Pallet con dos lotes: se acabó el 6283', 'Pallet con dos lotes'], ['Pallet 3 · Comentario', 'Tag puesto después', '']])
+    // saving the form without touching the comments changes nothing of them; a form of before (its units without the key) neither
+    clock = oct(10, 10, 5)
+    const o2 = m.draftOf(run()); m.applyDraft(id, o2, { ...o2, lot: '6283' })
+    const bare = { ...o2, units: o2.units.map(({ note: _n, ...u }) => u) }; m.applyDraft(id, bare, { ...bare, lot: '6290' })
+    eq('corregir otra cosa, también desde un formulario sin comentarios, no los toca', [run().lot, run().units.map((u) => u.note ?? null), lines().length], ['6290', ['Pallet con dos lotes', 'Encontrado en el piso', ''], 3])
+    // a record added after the fact with a comment on one of its pallets: on that pallet only
+    clock = oct(10, 10, 30); m.endRun(id)
+    const later = m.addRunLater({ dept: 'Packing', lineId: line('Packing').id, code: 'C300', lot: '6283', date: DAY, startedAt: oct(10, 12, 0), endedAt: oct(10, 13, 0), units: [{ qty: null, lots: [{ lot: '6283', qty: 36, tag: '4001' }], note: ' sin film ' }, { qty: null, lots: [{ lot: '6283', qty: 36, tag: '4002' }] }], perUnit: 36 })
+    eq('un registro agregado después con un comentario en un pallet: queda en ese pallet solo', st().runs.find((r) => r.id === later).units.map((u) => u.note ?? null), ['sin film', null])
+    // the report: each pallet with its comment, the search finds it by it, and the Excel has it last (Pallets and Unidades)
+    clock = oct(10, 14, 0)
+    const rep = m.reportOf(st(), DAY, clock)
+    eq('el reporte: cada pallet con su comentario', rep.pallets.filter((p) => p.r.id === id).map((p) => [p.n, p.note]), [[1, 'Pallet con dos lotes'], [2, 'Encontrado en el piso'], [3, '']])
+    const found = (q, kind) => m.searchReport(st(), rep, q).hits.filter((h) => h.kind === kind).map((h) => h.key)
+    eq('la búsqueda encuentra el pallet por su comentario, y el carro por el suyo', [found('encontrado piso', 'pallet'), found('dos lotes', 'pallet'), found('xxxx', 'unit').length, found('xxxx', 'pallet').length], [['pallet:' + id + ':2'], ['pallet:' + id + ':1'], 1, 0])
+    const pal = m.palletsSheet(st(), rep), uni = m.unitsSheet(st(), rep)
+    eq('el Excel, Pallets: la columna Comentario, la última, en la primera línea de cada pallet', [pal[0].at(-1), pal.slice(1).map((row) => [row[2], row[0], row[3], row.at(-1)])], ['Comentario', [['A100', 1, '6283', 'Pallet con dos lotes'], ['A100', 1, '6284', ''], ['A100', 2, '6283', 'Encontrado en el piso'], ['A100', 3, '6284', ''], ['C300', 1, '6283', 'sin film'], ['C300', 2, '6283', '']]])
+    eq('y Unidades, igual, también el carro de RTE', [uni[0].at(-1), uni.slice(1).map((row) => [row[0], row[2], row[4], row.at(-1)])], ['Comentario', [['Packing', 'A100', 1, 'Pallet con dos lotes'], ['Packing', 'A100', 1, 'Pallet con dos lotes'], ['Packing', 'A100', 2, 'Encontrado en el piso'], ['Packing', 'A100', 3, ''], ['RTE', 'B200', 1, 'x'.repeat(300)], ['Packing', 'C300', 1, 'sin film'], ['Packing', 'C300', 2, '']]])
+    return { id, rte }
+  })
+  // the app opened again (a reload, an update): every pallet's comment is read back, the cleared one as cleared
+  const stored = pn.use(() => JSON.parse(localStorage.getItem('act_v1')))
+  const again = await device('pnota-otra-vez', { seed: stored, user: 'Noelia' })
+  again.use((m) => {
+    const r = (id) => m.store.get().runs.find((x) => x.id === id)
+    eq('al volver a abrir la app, los comentarios de los pallets siguen (el borrado, como borrado)', [r(ids.id).units.map((u) => u.note ?? null), r(ids.rte).units[0].note.length], [['Pallet con dos lotes', 'Encontrado en el piso', ''], 300])
+    // a run that arrives from the server (another device): each unit's comment is read the same way, cleaned; what is not text is no comment
+    m.applyRemote('act_runs', runRow({ id: 'r-sv', dept: 'Packing', startedAt: oct(10, 11, 0), endedAt: oct(10, 12, 0), units: [{ at: oct(10, 11, 30), qty: 36, ref: '5', by: 'Ana', lots: [{ lot: '6283', qty: 36, tag: '5' }], note: '  del servidor \n ok ' }, { at: oct(10, 11, 40), qty: 36, ref: '6', by: 'Ana', note: 7 }] }))
+    eq('una corrida que llega del servidor: el comentario de cada unidad se lee igual, limpio', m.store.get().runs.find((r) => r.id === 'r-sv').units.map((u) => ('note' in u ? u.note : null)), ['del servidor ok', null])
+  })
+}
+section('El comentario de un pallet no se pierde cuando otra tablet cambia la misma corrida, ni con una versión de la app de antes')
+{
+  // Two tablets change the same run from the same version: the office corrects a pallet's comment in Corregir while
+  // the line, without signal, finishes the next pallet (with a comment of its own). Units are matched by their moment:
+  // the corrected one keeps its correction, the new one comes with its comment, whichever reaches the server first
+  const line = await device('pnota-linea', { user: 'Lucía' }), office = await device('pnota-oficina', { user: 'Jose' })
+  const both = [line, office]
+  const settle2 = () => { for (let n = 0; n < 20; n++) { if (!both.some((d) => first(d))) return; for (const d of both) send(d, both) } throw new Error('las dos tablets no terminan de ponerse de acuerdo') }
+  const runAt = (d, id) => d.use((m) => m.store.get().runs.find((r) => r.id === id))
+  const look = (r) => ({ notes: r.units.map((u) => u.note ?? null), pallets: r.units.map((u) => u.ref), lot: r.lot })
+  const agree = (what, id, want) => {
+    eq(what + ' · línea', look(runAt(line, id)), want)
+    eq(what + ' · oficina', look(runAt(office, id)), want)
+    const sv = server.get('act_runs|' + id)
+    eq(what + ' · servidor', look({ units: sv.units, lot: sv.lot }), want)
+    eq(what + ' · nada pendiente', both.map((d) => d.use((m) => m.outbox.size())), [0, 0])
+  }
+  const fixNote = (d, id, i, note) => d.use((m) => { const o = m.draftOf(runAt(d, id)); m.applyDraft(id, o, { ...o, units: o.units.map((u, k) => (k === i ? { ...u, note } : u)) }) })
+  const hearServer = (d, id) => d.use((m) => m.applyRemote('act_runs', server.get('act_runs|' + id)))
+  clock = oct(10, 6, 0)
+  line.use((m) => { m.addLine('Packing', 'Línea 1'); m.startRun(m.store.get().lines[0], 'A100', '6283', DAY, 36) })
+  const id = line.use((m) => m.store.get().runs[0].id)
+  clock = oct(10, 6, 30); line.use((m) => m.palletDone(id, [{ lot: '6283', qty: 36, tag: '3100' }], '', 'Film roto, se cambió'))
+  settle2()
+  // the office's version reaches the server first; the line comes back, merges its new pallet into it and sends it
+  clock = oct(10, 7, 0); fixNote(office, id, 0, 'Film roto, se cambió en el turno 1')
+  clock = oct(10, 7, 5); line.use((m) => m.palletDone(id, [{ lot: '6283', qty: 36, tag: '3101' }], '', 'Pallet 2 ok'))
+  send(office, [office])
+  hearServer(line, id); settle2()
+  agree('la corrección de la oficina y el pallet nuevo de la línea, con su comentario, quedan los dos', id, { notes: ['Film roto, se cambió en el turno 1', 'Pallet 2 ok'], pallets: ['3100', '3101'], lot: '6283' })
+  // the other way round: the line's version first (a comment written in the tags window), then the office's, which
+  // cleared pallet 1's comment on purpose: it stays cleared
+  clock = oct(10, 8, 0); line.use((m) => m.palletDone(id, [{ lot: '6283', qty: 36, tag: '3102' }], '', '')); settle2()
+  clock = oct(10, 8, 10); line.use((m) => m.fillUnit(id, runAt(line, id).units[2].at, 36, [{ lot: '6283', qty: 36, tag: '3102' }], '3102', 'Sin PO todavía'))
+  clock = oct(10, 8, 12); fixNote(office, id, 0, '')
+  send(line, [line])
+  hearServer(office, id); settle2()
+  agree('al revés también: el comentario nuevo de la línea y el borrado de la oficina (que se queda borrado)', id, { notes: ['', 'Pallet 2 ok', 'Sin PO todavía'], pallets: ['3100', '3101', '3102'], lot: '6283' })
+  clock = oct(10, 9, 0); line.use((m) => m.endRun(id, false)); settle2()
+  // A tablet still on the build of before pallet comments (until it updates by itself) adds a pallet in Corregir: it
+  // writes the run as it knows it, every pallet without its comment (those builds keep only at/qty/ref/by/lots/po).
+  // A device with a change of its own waiting merges the comments back (the cleared one stays cleared); one with
+  // nothing waiting takes the server's version as it is, as with the run's own comment
+  const oldWrite = (at, tag) => {
+    const was = server.get('act_runs|' + id)
+    const row = { ...was, units: [...was.units.map(({ note: _gone, ...u }) => u), { at, qty: 36, ref: tag, by: 'Tablet vieja', lots: [{ lot: '6283', qty: 36, tag }] }].sort((a, b) => a.at - b.at), updated_at: iso(clock), updated_by: 'Tablet vieja' }
+    land({ table: 'act_runs', key: id, row })
+  }
+  clock = oct(10, 9, 30); fixNote(office, id, 1, 'Pallet 2 ok, revisado') // the office corrects a comment, without signal yet
+  oldWrite(oct(10, 8, 50), '3103')
+  hearServer(line, id)
+  eq('la tablet de la línea, sin cambios suyos, toma la versión del servidor tal cual: sin comentarios en los pallets, y no escribe nada', [look(runAt(line, id)).notes, line.use((m) => m.outbox.size())], [[null, null, null, null], 0])
+  hearServer(office, id); settle2()
+  agree('la oficina, con un cambio suyo, los junta con esa versión: vuelven los comentarios (el borrado, borrado) y queda el pallet de la tablet vieja', id, { notes: ['', 'Pallet 2 ok, revisado', 'Sin PO todavía', null], pallets: ['3100', '3101', '3102', '3103'], lot: '6283' })
+}
+
+section('Un comentario y un tag en el mismo pallet desde dos tablets: quedan los dos (revisión 2026-10-18)')
+{
+  // The lots window invites the line to leave a tag blank and put it later; the office, meanwhile, comments on that
+  // same pallet in Corregir. The unit's comment merges apart from the rest of the unit (mergeUnit: the rule of
+  // mergeNote, unit by unit): whichever version reaches the server first, the tag and the comment both stay, on the
+  // line, in the office and on the server, and the line's history agrees with the row (before, the corrected unit
+  // went whole and one of the two was lost in either order)
+  const line = await device('ptag-linea', { user: 'Lucía' }), office = await device('ptag-oficina', { user: 'Jose' })
+  const both = [line, office]
+  const settle2 = () => { for (let n = 0; n < 20; n++) { if (!both.some((d) => first(d))) return; for (const d of both) send(d, both) } throw new Error('las dos tablets no terminan de ponerse de acuerdo') }
+  const runAt = (d, id) => d.use((m) => m.store.get().runs.find((r) => r.id === id))
+  const look = (r) => r.units.map((u) => [u.ref, (u.lots ?? []).map((l) => l.tag).join(','), u.note ?? null])
+  const agree = (what, id, want) => {
+    eq(what + ' · línea', look(runAt(line, id)), want)
+    eq(what + ' · oficina', look(runAt(office, id)), want)
+    eq(what + ' · servidor', look(server.get('act_runs|' + id)), want)
+    eq(what + ' · nada pendiente', both.map((d) => d.use((m) => m.outbox.size())), [0, 0])
+  }
+  const fixNote = (d, id, i, note) => d.use((m) => { const o = m.draftOf(runAt(d, id)); m.applyDraft(id, o, { ...o, units: o.units.map((u, k) => (k === i ? { ...u, note } : u)) }) })
+  const putTag = (d, id, i, tag) => d.use((m) => m.fillUnit(id, runAt(d, id).units[i].at, 36, [{ lot: '6283', qty: 36, tag }], tag))
+  const hearServer = (d, id) => d.use((m) => m.applyRemote('act_runs', server.get('act_runs|' + id)))
+  clock = oct(10, 6, 0)
+  line.use((m) => { m.addLine('Packing', 'Línea 1'); m.startRun(m.store.get().lines[0], 'A100', '6283', DAY, 36) })
+  const id = line.use((m) => m.store.get().runs[0].id)
+  // pallet 1 done without its tag; the office comments on it first (its version lands first); the line, from the
+  // version without the comment, puts the tag
+  clock = oct(10, 6, 30); line.use((m) => m.palletDone(id, [{ lot: '6283', qty: 36, tag: '' }], '')); settle2()
+  clock = oct(10, 7, 0); fixNote(office, id, 0, 'Pallet sin tag: revisar')
+  clock = oct(10, 7, 5); putTag(line, id, 0, '3100')
+  send(office, [office]); hearServer(line, id); settle2()
+  agree('el comentario de la oficina llegó primero y la línea puso el tag después: quedan los dos', id, [['3100', '3100', 'Pallet sin tag: revisar']])
+  // the other order: pallet 2 without its tag; the line's tag lands first; the office comments from the version without it
+  clock = oct(10, 8, 0); line.use((m) => m.palletDone(id, [{ lot: '6283', qty: 36, tag: '' }], '')); settle2()
+  clock = oct(10, 8, 10); putTag(line, id, 1, '3101')
+  clock = oct(10, 8, 12); fixNote(office, id, 1, 'Pallet 2 sin tag: revisar')
+  send(line, [line]); hearServer(office, id); settle2()
+  agree('al revés: el tag de la línea llegó primero y la oficina comentó después: quedan los dos', id, [['3100', '3100', 'Pallet sin tag: revisar'], ['3101', '3101', 'Pallet 2 sin tag: revisar']])
+  eq('el historial de la línea dice lo mismo que la fila', line.use((m) => m.store.get().changes.filter((c) => c.refKey === id && !c.deleted && c.what.endsWith('N° de tag')).map((c) => [c.before, c.after])), [['', '3100'], ['', '3101']])
+  // a comment cleared on purpose by the office while the line corrects another pallet's tag: cleared it stays, the tag stays
+  clock = oct(10, 9, 0); fixNote(office, id, 1, '')
+  clock = oct(10, 9, 2); putTag(line, id, 0, '3100A')
+  send(office, [office]); hearServer(line, id); settle2()
+  agree('un comentario borrado a propósito mientras la línea corrige el tag de otro pallet: borrado queda, y el tag también', id, [['3100A', '3100A', 'Pallet sin tag: revisar'], ['3101', '3101', '']])
+  // both comment on the same pallet from the same version: the one that merges keeps its own (the rule of the run's
+  // comment, mergeNote), and nothing else of the pallet moves
+  clock = oct(10, 9, 30); fixNote(office, id, 0, 'Lo vio la oficina')
+  clock = oct(10, 9, 31); fixNote(line, id, 0, 'Lo vio la línea')
+  send(office, [office]); hearServer(line, id); settle2()
+  agree('las dos comentaron el mismo pallet: queda el de quien juntó las dos versiones (la línea), con su tag', id, [['3100A', '3100A', 'Lo vio la línea'], ['3101', '3101', '']])
 }
 
 // =====================================================================================================================

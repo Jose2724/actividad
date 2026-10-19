@@ -9,7 +9,7 @@ import { loadPdf } from './pdf'
 import { sharePick, shareProblem, type Kind } from './send'
 import { runLots, spanShifts, unitParts } from './report'
 import { canDo, canShift, keepsPin, writesIn, type Power, type Who } from './powers'
-import { AddRunDialog, AddUnitDialog, RunEditor, StopEditor } from './editors'
+import { AddRunDialog, AddUnitDialog, NoteBox, RunEditor, StopEditor } from './editors'
 import { fetchMe, finishSignOut, loginEmail, rememberedMe, rememberedUser, rememberMe, rememberUser, signedOut, signOutHere, supabase, type Me } from './supabase'
 import { checkLineName, leaveAsk, loadDay, STALE_MS, startSync, syncStore, syncNow, unreachable } from './sync'
 import { storageFull } from './storage'
@@ -20,6 +20,7 @@ import { keepAwake } from './awake'
 import { Settings, type SettingsKey } from './Settings'
 import { DEPT_LOOK, deptVars } from './look'
 import { Report } from './ReportView'
+import { Flujo } from './FlujoView'
 import { appUrl, qrPath } from './qr'
 import { lang, locale, saveLang, tr } from './i18n'
 import { trx } from './trx'
@@ -469,7 +470,11 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
   const kept = viewKept<{ dept?: string; tab?: string; sec?: string }>()
   const [dept, setDept] = useState<Dept>(kept?.dept && isDept(kept.dept) ? kept.dept : home)
   // Empleados and Tablets live in Ajustes now: a view kept from before opens there, on its section
-  const [tab, setTab] = useState<'act' | 'av' | 'rep' | 'set'>(kept?.tab === 'av' || kept?.tab === 'rep' ? kept.tab : kept?.tab === 'set' || kept?.tab === 'emp' || kept?.tab === 'dev' ? 'set' : 'act')
+  const [tab, setTab] = useState<'act' | 'av' | 'fl' | 'rep' | 'set'>(kept?.tab === 'av' || kept?.tab === 'fl' || kept?.tab === 'rep' ? kept.tab : kept?.tab === 'set' || kept?.tab === 'emp' || kept?.tab === 'dev' ? 'set' : 'act')
+  // a lot tapped in Flujo de datos opens in Avance, over all its days (2026-10-18); the Avance tab itself opens plain.
+  // (The callback is made once: Flujo is a memo, so the clock's tick every second does not draw it again)
+  const [avLot, setAvLot] = useState('')
+  const openLot = useCallback((lot: string) => { setAvLot(lot); setTab('av') }, [])
   const [sec, setSec] = useState<SettingsKey>(kept?.tab === 'emp' ? 'people' : kept?.tab === 'dev' ? 'devices' : ((kept?.sec as SettingsKey | undefined) ?? 'shifts'))
   useEffect(() => { keepView({ dept, tab, sec }) }, [dept, tab, sec])
   const upd = useSyncExternalStore(updateStore.subscribe, updateStore.get)
@@ -521,9 +526,10 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
       {stale && <div className="stalebar top"><span>{sync.lastSync ? trx('⚠ Este aparato muestra lo de las {0}: lleva {1} sin bajar del servidor ({2}). Si en otra tablet cambió algo, aquí todavía no se ve.', fmtTime(sync.lastSync), agoText(staleMs), why) : trx('⚠ Este aparato no ha bajado nada del servidor todavía ({0}).', why)}</span><button type="button" className="btn sm" onClick={() => window.dispatchEvent(new Event('act-resync'))}>{tr('Reintentar')}</button></div>}
       <header className="top">
         <div className="brand"><h1>Actividad{!supabase && <span className="demotag">DEMO</span>}</h1><small>{new Date(now).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })} · <b className="livetime" title={supabase ? tr('La hora de la app: la del servidor, la misma en todos los aparatos') : ''}>{new Date(now).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' })}</b>{BUILD && BUILD !== 'dev' && <span className="buildtag" title={tr('La versión de la app en este aparato')}>v {BUILD.slice(0, 6)}</span>}</small></div>
-        <nav className="tabs">
+        <nav className={'tabs' + (can('products') || viewOnly ? ' five' : '')}>
           <button type="button" className={tab === 'act' ? 'on' : ''} onClick={() => setTab('act')}>{tr('Actividad')}</button>
-          {(can('products') || viewOnly) && <button type="button" className={tab === 'av' ? 'on' : ''} onClick={() => setTab('av')}>{tr('Avance')}</button>}
+          {(can('products') || viewOnly) && <button type="button" className={tab === 'av' ? 'on' : ''} onClick={() => { setAvLot(''); setTab('av') }}>{tr('Avance')}</button>}
+          {(can('products') || viewOnly) && <button type="button" className={tab === 'fl' ? 'on' : ''} title={tr('Flujo de datos')} onClick={() => setTab('fl')}>{tr('Flujo')}</button>}
           <button type="button" className={tab === 'rep' ? 'on' : ''} onClick={() => setTab('rep')}>{tr('Reporte')}</button>
           <button type="button" className={'settab' + (tab === 'set' ? ' on' : '')} onClick={() => setTab('set')} aria-label={tr('Ajustes')}><span className="gear">⚙</span><span className="word">{tr('Ajustes')}</span></button>
         </nav>
@@ -566,7 +572,7 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
           </WhoCtx.Provider>
         </div>
         </>
-      ) : tab === 'av' && (can('products') || viewOnly) ? <Avance s={s} /> : tab === 'set' ? <Settings s={s} now={now} day={day} name={name} home={home} mgr={mgr} admin={admin} viewOnly={viewOnly} meId={meId ?? ''} section={sec} onSection={setSec} onLeave={() => setLeaving(true)} /> : <Report s={s} now={now} only={can('depts') ? undefined : home} mgr={can('depts')} admin={admin} wholeDay={!!wholeDay} />}
+      ) : tab === 'av' && (can('products') || viewOnly) ? <Avance s={s} startLot={avLot} /> : tab === 'fl' && (can('products') || viewOnly) ? <Flujo s={s} today={day.date} onLot={openLot} /> : tab === 'set' ? <Settings s={s} now={now} day={day} name={name} home={home} mgr={mgr} admin={admin} viewOnly={viewOnly} meId={meId ?? ''} section={sec} onSection={setSec} onLeave={() => setLeaving(true)} /> : <Report s={s} now={now} only={can('depts') ? undefined : home} mgr={can('depts')} admin={admin} wholeDay={!!wholeDay} />}
       </ViewGuard>
     </div>
   )
@@ -615,7 +621,7 @@ function RouteSwitch({ room, said, readOnly, onPick }: { room: PackRoom; said: b
  * program still lacks). A code opens into its lots and its shifts. One lot of the day can be chosen with a tap, and
  * a lot's total across its days is said, since a lot goes on into the next day.
  */
-function Avance({ s }: { s: State }) {
+function Avance({ s, startLot = '' }: { s: State; startLot?: string }) {
   const viewOnly = useViewOnly()
   const today = workDay(s).date
   const [date, setDate] = useState(today)
@@ -627,10 +633,12 @@ function Avance({ s }: { s: State }) {
   const typing = useRef({ date, codes: new Set<string>() })
   if (typing.current.date !== date) typing.current = { date, codes: new Set() }
   for (const [c, n] of Object.entries(s.schedule[date] ?? {})) if (n > 0) typing.current.codes.add(normCode(c))
-  // one lot of the day: what was made of it, without the day's program (that is per code, not per lot)
-  const [lot, setLot] = useState('')
+  // one lot of the day: what was made of it, without the day's program (that is per code, not per lot). A lot tapped
+  // in Flujo de datos (startLot) opens here at once, over all its days: Avance is drawn anew on every change of tab,
+  // so its first state is enough
+  const [lot, setLot] = useState(startLot)
   // the lot can be looked at on this date only, or over every day it was worked (a lot goes on into the next day)
-  const [scope, setScope] = useState<'date' | 'all'>('date')
+  const [scope, setScope] = useState<'date' | 'all'>(startLot ? 'all' : 'date')
   // or several days added up: from one date to another (the days the device does not hold are brought from the server)
   const [range, setRange] = useState(false)
   const [from, setFrom] = useState(addDays(today, -6))
@@ -1289,6 +1297,7 @@ function OrderPalletsDialog({ s, order, onAdd, onClose }: { s: State; order: Ord
   const list = orderRunsOf(s, order.id).flatMap((r) => r.units.filter((u) => u.po === order.id).map((u) => ({ r, u, parts: unitParts(s, r, u), here: s.runs.some((x) => x.id === r.id) }))).sort((a, b) => a.u.at - b.u.at)
   const made = orderMade(s, order.id), seq = orderPallets(s, order.id), left = order.cases != null ? order.cases - made : null
   const run = editRun ? s.runs.find((r) => r.id === editRun) : undefined
+  const notes = list.some((x) => !!x.u.note) // (a pallet's comment, Jose 2026-10-18: a column only when one has it)
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg wide" onClick={(e) => e.stopPropagation()}>
@@ -1301,7 +1310,7 @@ function OrderPalletsDialog({ s, order, onAdd, onClose }: { s: State; order: Ord
         {list.length === 0 ? <p className="hint">{tr('Todavía no se le ha dado ningún pallet.')}</p> : (
           <div className="twrap">
             <table className="pallets">
-              <thead><tr><th>#</th><th>{tr('Fecha')}</th><th>{tr('Línea')}</th><th>{tr('Lote')}</th><th className="num">{tr('Cajas')}</th><th>{tr('Tag')}</th><th className="num">{tr('Total')}</th><th>{tr('Hora')}</th><th>{tr('Por')}</th><th></th></tr></thead>
+              <thead><tr><th>#</th><th>{tr('Fecha')}</th><th>{tr('Línea')}</th><th>{tr('Lote')}</th><th className="num">{tr('Cajas')}</th><th>{tr('Tag')}</th><th className="num">{tr('Total')}</th><th>{tr('Hora')}</th><th>{tr('Por')}</th>{notes && <th>{tr('Comentario')}</th>}<th></th></tr></thead>
               {list.map((x, k) => {
                 const parts = x.parts.length ? x.parts : [{ lot: x.r.lot, qty: x.u.qty, tag: x.u.ref }], span = parts.length
                 const fresh = added.includes(x.r.id + ':' + x.u.at)
@@ -1316,6 +1325,7 @@ function OrderPalletsDialog({ s, order, onAdd, onClose }: { s: State; order: Ord
                         {i === 0 && <td rowSpan={span} className="num"><b>{fmtN(unitQty(s, x.r, x.u))}</b></td>}
                         {i === 0 && <td rowSpan={span}>{fmtTime(x.u.at)}</td>}
                         {i === 0 && <td rowSpan={span}>{x.u.by || '—'}</td>}
+                        {i === 0 && notes && <td rowSpan={span} className="unote">{x.u.note ? '💬 ' + x.u.note : '—'}</td>}
                         {i === 0 && <td rowSpan={span}>{x.here && can('fix') && <button type="button" className="lnk" onClick={() => setEditRun(x.r.id)}>{tr('Corregir')}</button>}</td>}
                       </tr>
                     ))}
@@ -1894,6 +1904,8 @@ function PalletDoneDialog({ s, run, onClose, onSaved }: { s: State; run: Run; on
   const choices = poChoices(s, run)
   const [po, setPo] = useState(() => { const p = palletPo(s, run); return choices.some((x) => x.id === p) ? p : '' })
   const pick = choices.find((x) => x.id === po)
+  // a comment on this pallet (Jose, 2026-10-18: "comentarios a cada registro con lotes combinados"), typed or not
+  const [note, setNote] = useState('')
   const change = (i: number, patch: Partial<(typeof rows)[number]>) => setRows(rows.map((r, k) => (k === i ? { ...r, ...patch } : r)))
   const nums = rows.map((r) => Number(r.qty || 0))
   const total = nums.reduce((t, n) => t + (Number.isFinite(n) && n > 0 ? n : 0), 0)
@@ -1904,7 +1916,7 @@ function PalletDoneDialog({ s, run, onClose, onSaved }: { s: State; run: Run; on
   const lastRow = rows[rows.length - 1], fill = per > onIt && !lastRow.qty && lastRow.lot.trim() ? per - onIt : 0
   // a pallet of more than twice the usual cases is asked about first (Jose, 2026-10-18): the cases typed for its lots
   const sure = useSure(), lots = rows.filter((_, i) => nums[i] > 0).length
-  const save = () => { if (ok) sure.check([{ key: 'pallet', n: total, usual: usualOf(s, run), unit: tr('cajas'), per: 'pallet', total: lots > 1 }], () => { if (palletDone(run.id, rows.map((r, i) => ({ lot: r.lot, qty: nums[i], tag: r.tag })), po)) onSaved() }) }
+  const save = () => { if (ok) sure.check([{ key: 'pallet', n: total, usual: usualOf(s, run), unit: tr('cajas'), per: 'pallet', total: lots > 1 }], () => { if (palletDone(run.id, rows.map((r, i) => ({ lot: r.lot, qty: nums[i], tag: r.tag })), po, note)) onSaved() }) }
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
@@ -1933,6 +1945,7 @@ function PalletDoneDialog({ s, run, onClose, onSaved }: { s: State; run: Run; on
             </div>
           )}
           {missing > 0 && <p className="hint">{tr('Si todavía no tienen el tag, déjenlo en blanco: la tarjeta de la línea les recuerda ponerlo.')}</p>}
+          <NoteBox value={note} onChange={setNote} />
           <div className="dbtns">
             <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
             <button type="submit" className="btn primary" disabled={!ok}>{pick?.need ? tr('✓ Guardar pallet {0} de {1}', pick.n, pick.need) : tr('✓ Guardar pallet')}</button>
@@ -2194,7 +2207,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         </div>
       )}
       {filling && (cfg.lots
-        ? <LotsDialog key={'fill:' + filling.run.id} title={tr('Completar {0} {1} de {2} · ¿qué lleva ahora en total?', unitWord, noOf(filling), filling.run.code)} unit={cfg.qtyUnit} refLabel={cfg.refLabel} lot={filling.run.lot} qty={filling.usual} usual={filling.usual} per={unitWord} start={filling.unit.lots ?? [{ lot: filling.run.lot, qty: filling.usual }]} startRef={filling.unit.ref} onClose={() => setFilling(null)} onPick={(total, ref, lots) => { fillUnit(filling.run.id, filling.unit.at, total, lots, ref); setFilling(null) }} />
+        ? <LotsDialog key={'fill:' + filling.run.id} title={tr('Completar {0} {1} de {2} · ¿qué lleva ahora en total?', unitWord, noOf(filling), filling.run.code)} unit={cfg.qtyUnit} refLabel={cfg.refLabel} lot={filling.run.lot} qty={filling.usual} usual={filling.usual} per={unitWord} start={filling.unit.lots ?? [{ lot: filling.run.lot, qty: filling.usual }]} startRef={filling.unit.ref} startNote={filling.unit.note} onClose={() => setFilling(null)} onPick={(total, ref, lots, _po, note) => { fillUnit(filling.run.id, filling.unit.at, total, lots, ref, note); setFilling(null) }} />
         : <QtyDialog key={'fill:' + filling.run.id} title={tr('Completar {0} {1} de {2} · tiene {3} {4}. ¿Cuántos tiene ahora en total?', unitWord, noOf(filling), filling.run.code, filling.unit.qty, cfg.qtyUnit)} unit={cfg.qtyUnit} refLabel="" initial={filling.usual} usual={filling.usual} per={unitWord} perCase={perCaseOf(filling.run.code)} onClose={() => setFilling(null)} onPick={(q) => { fillUnit(filling.run.id, filling.unit.at, q); setFilling(null) }} />)}
     </>
   )
@@ -2386,10 +2399,10 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   const last = Math.max(run.units.length ? run.units[run.units.length - 1].at : run.startedAt, mineNow.carried ? turn.since : 0)
   const current = workedSince(s, run, last, now)
   /** records a unit from this screen. A second tap in the same instant (a finger that bounces) is not another unit */
-  const record = (qty: number | null, ref = '', lots?: LotPart[], po?: string) => {
+  const record = (qty: number | null, ref = '', lots?: LotPart[], po?: string, note?: string) => {
     if (performance.now() - tapped.current < 800) return
     tapped.current = performance.now()
-    unitDone(run.id, qty, ref, lots, po); buzz()
+    unitDone(run.id, qty, ref, lots, po, note); buzz()
   }
   // The orders open for this code (the office types them). The unit about to be recorded is proposed for one of them
   // (see nextOrderFor); the person can always say another, or none.
@@ -2502,14 +2515,14 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       {asking && <StopDialog title={tr('Parar {0} · {1}', lineLabel(line.name), run.code)} reasons={cfg.quick} setup onClose={() => setAsking(false)} onPick={(reason, note) => { startStop(line.dept, line.id, reason, note); setAsking(false) }} />}
       {fillUi}
       {counting && (rc.lots
-        ? <LotsDialog title={rc.qtyQ} unit={rc.qtyUnit} refLabel={rc.refLabel} lot={run.lot} qty={run.perUnit} usual={usualOf(s, run)} per={runWord} orders={orderOptions} order={nextOrder} onClose={() => { setCounting(false); setEndAfter(null) }} onPick={(q, ref, lots, po) => { record(q, ref, lots, po); setCounting(false); if (endAfter !== null) { setEndAfter(null); endRun(run.id, endAfter) } }} />
+        ? <LotsDialog title={rc.qtyQ} unit={rc.qtyUnit} refLabel={rc.refLabel} lot={run.lot} qty={run.perUnit} usual={usualOf(s, run)} per={runWord} orders={orderOptions} order={nextOrder} onClose={() => { setCounting(false); setEndAfter(null) }} onPick={(q, ref, lots, po, note) => { record(q, ref, lots, po, note); setCounting(false); if (endAfter !== null) { setEndAfter(null); endRun(run.id, endAfter) } }} />
         : <QtyDialog title={rc.qtyQ} unit={rc.qtyUnit} refLabel={rc.refLabel} initial={run.perUnit} usual={usualOf(s, run)} per={runWord} perCase={perCase} decimal={measureOf(run) === 'lb' || binOf(run) === 'lb'} onClose={() => { setCounting(false); setEndAfter(null) }} onPick={(q, ref) => { record(q, ref, binLots(q)); setCounting(false); if (endAfter !== null) { setEndAfter(null); endRun(run.id, endAfter) } }} />)}
       {packing === 'done' && <PalletDoneDialog s={s} run={run} onClose={() => { setPacking(null); setEndAfter(null) }} onSaved={() => { setPacking(null); buzz(); if (endAfter !== null) { const next = endAfter; setEndAfter(null); endRun(run.id, next) } }} />}
       {packing === 'lot' && <LotEndDialog run={run} onClose={() => setPacking(null)} />}
       {packing === 'reopen' && <ReopenPalletDialog run={run} onClose={() => setPacking(null)} />}
       {packing === 'po' && <PalletOrderDialog s={s} run={run} onClose={() => setPacking(null)} />}
       {packing === 'binlot' && <LotNowDialog run={run} onClose={() => setPacking(null)} />}
-      {tagUnit && <LotsDialog key={'tag:' + tagUnit.at} title={tr('Tags del pallet {0}', (tagging ?? 0) + 1)} unit={rc.qtyUnit} refLabel={rc.refLabel} lot={run.lot} qty={tagUnit.qty} usual={usualOf(s, run)} per={runWord} start={tagUnit.lots ?? [{ lot: run.lot, qty: tagUnit.qty ?? 0 }]} startRef={tagUnit.ref} onClose={() => setTagging(null)} onPick={(total, ref, lots) => { fillUnit(run.id, tagUnit.at, total, lots, ref); setTagging(null) }} />}
+      {tagUnit && <LotsDialog key={'tag:' + tagUnit.at} title={tr('Tags del pallet {0}', (tagging ?? 0) + 1)} unit={rc.qtyUnit} refLabel={rc.refLabel} lot={run.lot} qty={tagUnit.qty} usual={usualOf(s, run)} per={runWord} start={tagUnit.lots ?? [{ lot: run.lot, qty: tagUnit.qty ?? 0 }]} startRef={tagUnit.ref} startNote={tagUnit.note} onClose={() => setTagging(null)} onPick={(total, ref, lots, _po, note) => { fillUnit(run.id, tagUnit.at, total, lots, ref, note); setTagging(null) }} />}
       {typeof packing === 'number' && run.extra?.open?.parts[packing] && <PartDialog run={run} index={packing} onClose={() => setPacking(null)} />}
       {wasting && <QtyDialog title={tr('Waste de {0} · ¿cuántas libras?', run.code)} unit="lb" refLabel="" initial={null} decimal onClose={() => setWasting(false)} onPick={(lb) => { if (lb > 0) addWaste(run.id, lb); setWasting(false) }} />}
     </div>
@@ -2664,13 +2677,19 @@ export function NoticeDialog({ title, text, onClose }: { title: string; text?: s
  * `usual` / `per` = the usual quantity of one unit and the unit's word: a total typed more than twice it is asked about
  * first (useSure); a total left as the box opened with (only a tag added) is not asked about again.
  */
-export function LotsDialog({ title, unit, refLabel, lot, qty, start, startRef, orders, order, usual, per, onClose, onPick }: { title: string; unit: string; refLabel: string; lot: string; qty: number | null; start?: LotPart[]; startRef?: string; orders?: { id: string; label: string }[]; order?: string; usual?: number | null; per?: string; onClose: () => void; onPick: (total: number, ref: string, lots: LotPart[] | undefined, po?: string) => void }) {
+/**
+ * The lots of one unit (a pallet): each with its cases and its tag, its PO where the room fills orders, and the unit's
+ * own comment (Jose, 2026-10-18, on this window inside Corregir: "agregar también comentarios a cada registro con
+ * lotes combinados"), which every caller gets back with the lots (startNote = the one it has, to keep or change)
+ */
+export function LotsDialog({ title, unit, refLabel, lot, qty, start, startRef, startNote, orders, order, usual, per, onClose, onPick }: { title: string; unit: string; refLabel: string; lot: string; qty: number | null; start?: LotPart[]; startRef?: string; startNote?: string; orders?: { id: string; label: string }[]; order?: string; usual?: number | null; per?: string; onClose: () => void; onPick: (total: number, ref: string, lots: LotPart[] | undefined, po: string | undefined, note: string) => void }) {
   const tags = !!refLabel, own = !!start?.some((l) => !!l.tag)
   const [rows, setRows] = useState(() => (start?.length ? start.map((l) => ({ lot: l.lot, qty: String(l.qty), tag: l.tag ?? (own ? '' : startRef ?? '') })) : [{ lot, qty: qty != null ? String(qty) : '', tag: startRef ?? '' }]))
   const [opened] = useState(() => rows.reduce((t, r) => t + (Number(r.qty) || 0), 0))
   const sure = useSure()
   const [added, setAdded] = useState(false)
   const [po, setPo] = useState(order ?? '')
+  const [note, setNote] = useState(startNote ?? '')
   const change = (i: number, patch: Partial<{ lot: string; qty: string; tag: string }>) => setRows(rows.map((r, k) => (k === i ? { ...r, ...patch } : r)))
   const nums = rows.map((r) => Number(r.qty))
   const repeated = rows.some((r, i) => !!r.lot.trim() && rows.findIndex((o) => o.lot.trim() === r.lot.trim()) !== i)
@@ -2683,7 +2702,7 @@ export function LotsDialog({ title, unit, refLabel, lot, qty, start, startRef, o
     // write beside the quantity and its tag
     const ref = [...new Set(parts.map((p) => p.tag ?? '').filter(Boolean))].join(', ')
     sure.check(total === opened ? [] : [{ key: 'total', n: total, usual, unit, per: per ?? '', total: parts.length > 1 }],
-      () => onPick(total, ref, parts.length === 1 && parts[0].lot === lot ? undefined : parts, orders?.length ? po || undefined : undefined))
+      () => onPick(total, ref, parts.length === 1 && parts[0].lot === lot ? undefined : parts, orders?.length ? po || undefined : undefined, note))
   }
   return (
     <div className="veil" onClick={onClose}>
@@ -2703,6 +2722,7 @@ export function LotsDialog({ title, unit, refLabel, lot, qty, start, startRef, o
           {rows.length > 1 && <p className="lottotal">{trx('Total: {0} en {1} lotes', <b>{total} {unit}</b>, rows.length)}</p>}
           {repeated && <span className="err">{trx('Ese lote ya está en la lista: suma sus {0} en una sola línea.', unit)}</span>}
           {tags && <p className="hint">{tr('Cada lote lleva su tag. Si todavía no lo tienen, déjenlo en blanco y se pone después.')}</p>}
+          <NoteBox value={note} onChange={setNote} />
           {orders && orders.length > 0 && (
             <label>{trx('Pedido {0}', <small>{tr('(a cuál va)')}</small>)}
               <select value={po} onChange={(e) => setPo(e.target.value)}>

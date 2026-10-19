@@ -46,8 +46,15 @@ export function cfgOf(r: Pick<Run, 'dept' | 'extra'>): DeptCfg {
 export const savedText = (dept: Dept, n: number, c: DeptCfg = CFG[dept]) => c.unit + ' ' + n + ' ' + c.saved
 
 export type Line = { id: string; dept: Dept; name: string; updatedAt: number; deleted?: boolean; syncedAt?: number }
-/** one finished unit of work (a cart, a mezcla, a pallet…), how much it carried, its tag / bin number and who tapped it */
-export type Unit = { at: number; qty: number | null; ref: string; by: string; lots?: LotPart[]; po?: string } // po = the order it goes to (Order.id)
+/**
+ * one finished unit of work (a cart, a mezcla, a pallet…), how much it carried, its tag / bin number and who tapped it.
+ * po = the order it goes to (Order.id). note = a comment on this one unit (Jose, 2026-10-18, on the lots of a pallet
+ * in Corregir: "agregar también comentarios a cada registro con lotes combinados"): typed when the pallet is finished,
+ * in its lots window, in "Agregar pallet" or in Corregir, beside the run's own comment (RunExtra.note), and only by a
+ * person. Kept as that one is: '' = it had one and it was cleared on purpose (the key stays, so a merge tells it from
+ * a version written by a build of before, which drops what it does not know: see unitOf, noteBack and mergeRun)
+ */
+export type Unit = { at: number; qty: number | null; ref: string; by: string; lots?: LotPart[]; po?: string; note?: string }
 /** the part of a unit that belongs to one lot: a pallet can carry cases of two lots of the same product */
 export type LotPart = { lot: string; qty: number; tag?: string }
 /** the lots written on a unit, as they are kept: only real ones (a lot, and a quantity above zero); none = the run's lot */
@@ -57,7 +64,8 @@ export const cleanLots = (x: unknown): LotPart[] | undefined => {
   return out.length ? out : undefined
 }
 /** a unit as it is kept, whatever shape it arrives in (an older version of the app, the server) */
-const unitOf = (u: Partial<Unit>): Unit => { const lots = cleanLots(u.lots); return { at: u.at ?? 0, qty: u.qty ?? null, ref: u.ref ?? '', by: u.by ?? '', ...(lots ? { lots } : {}), ...(typeof u.po === 'string' && u.po ? { po: u.po } : {}) } }
+// (the comment last, also when it is '': the same unit read from the server and from this device is written the same)
+const unitOf = (u: Partial<Unit>): Unit => { const lots = cleanLots(u.lots); return { at: u.at ?? 0, qty: u.qty ?? null, ref: u.ref ?? '', by: u.by ?? '', ...(lots ? { lots } : {}), ...(typeof u.po === 'string' && u.po ? { po: u.po } : {}), ...(typeof u.note === 'string' ? { note: cleanNote(u.note) } : {}) } }
 /** "6283: 20 + 6284: 16" */
 export const lotsText = (lots: LotPart[] | undefined) => (lots?.length ? lots.map((l) => l.lot + ': ' + l.qty + (l.tag ? ' (tag ' + l.tag + ')' : '')).join(' + ') : '')
 /**
@@ -113,6 +121,13 @@ export const NOTE_MAX = 300
 export const cleanNote = (t: unknown) => (typeof t === 'string' ? t.replace(/\s+/g, ' ').trim().slice(0, NOTE_MAX) : '')
 /** a run's comment, to show and to search ('' = none) */
 export const noteOf = (r: Pick<Run, 'extra'>) => r.extra?.note ?? ''
+/** the comment key of a unit being made: only when one was typed (a blank one leaves no key: see Unit) */
+const noteKey = (note: string | undefined): Pick<Unit, 'note'> => { const said = cleanNote(note); return said ? { note: said } : {} }
+/**
+ * a unit with this comment on it (undefined = nothing said of it: as it was). Typed, it is kept cleaned; cleared on a
+ * unit that had one, it stays as '' (see Unit); cleared on one that never had one, nothing is added
+ */
+const withUnitNote = (u: Unit, note: string | undefined): Unit => { if (note === undefined) return u; const said = cleanNote(note); return said === (u.note ?? '') ? u : { ...u, note: said } }
 /** what arrives in a run's extra, kept only as far as it makes sense (undefined = nothing) */
 export function cleanExtra(x: unknown): RunExtra | undefined {
   if (!x || typeof x !== 'object') return undefined
@@ -683,12 +698,15 @@ export function startRun(line: Line, code: string, lot: string, date: string, pe
 const run = (id: string) => state.runs.find((r) => r.id === id)
 /** the last moment already on a run: nothing recorded after it may be stamped earlier (the clock can be corrected between two taps) */
 const after = (r: Run) => Math.max(r.startedAt, r.units.length ? r.units[r.units.length - 1].at + 1 : 0, ...(r.extra?.removed ?? []).map((t) => t + 1))
-/** a unit finished on the line. `lots` = what it carries of each lot when it is not all of the run's lot; the quantity is then their sum */
-export function unitDone(runId: string, qty: number | null, ref = '', lots?: LotPart[], po?: string) {
+/**
+ * a unit finished on the line. `lots` = what it carries of each lot when it is not all of the run's lot; the quantity
+ * is then their sum. `note` = a comment typed on this unit (see Unit)
+ */
+export function unitDone(runId: string, qty: number | null, ref = '', lots?: LotPart[], po?: string, note?: string) {
   const r = run(runId)
   if (!r) return
   const parts = cleanLots(lots)
-  putRun({ ...r, units: [...r.units, { at: Math.max(clockNow(), after(r)), qty: parts ? parts.reduce((t, l) => t + l.qty, 0) : qty, ref, by: user.get(), ...(parts ? { lots: parts } : {}), ...(po ? { po } : {}) }] })
+  putRun({ ...r, units: [...r.units, { at: Math.max(clockNow(), after(r)), qty: parts ? parts.reduce((t, l) => t + l.qty, 0) : qty, ref, by: user.get(), ...(parts ? { lots: parts } : {}), ...(po ? { po } : {}), ...noteKey(note) }] })
 }
 /**
  * A code ends. `setup` = another code is coming on this line: the time until it starts is the line's set up, written
@@ -712,10 +730,10 @@ export function endRun(runId: string, setup = false) {
   })
 }
 // ---- the pallet being built on a Packing line ----
-/** a finished pallet: its lots with their cases and tags, its total, and its order */
-function palletUnit(parts: { lot: string; qty: number; tag: string }[], po: string, at: number): Unit {
+/** a finished pallet: its lots with their cases and tags, its total, its order, and the comment typed on it (if any) */
+function palletUnit(parts: { lot: string; qty: number; tag: string }[], po: string, at: number, note?: string): Unit {
   const lots = parts.map((p) => ({ lot: p.lot.trim(), qty: p.qty, ...(p.tag.trim() ? { tag: p.tag.trim().slice(0, 30) } : {}) })).filter((p) => p.lot && Number.isFinite(p.qty) && p.qty > 0)
-  return { at, qty: lots.reduce((t, p) => t + p.qty, 0), ref: lots.map((p) => p.tag ?? '').filter(Boolean).join(', '), by: user.get(), lots, ...(po ? { po } : {}) }
+  return { at, qty: lots.reduce((t, p) => t + p.qty, 0), ref: lots.map((p) => p.tag ?? '').filter(Boolean).join(', '), by: user.get(), lots, ...(po ? { po } : {}), ...noteKey(note) }
 }
 const withOpen = (r: Run, open: NonNullable<RunExtra['open']>, more: Partial<RunExtra> = {}): RunExtra => ({ ...r.extra, ...more, open })
 /**
@@ -757,10 +775,10 @@ export function palletOrder(runId: string, po: string): boolean {
  * The pallet is finished: the lots it holds (each with its cases and its tag) make one pallet, for its order. The next
  * pallet starts empty, with the lot being packed now. false = nothing to record.
  */
-export function palletDone(runId: string, parts: { lot: string; qty: number; tag: string }[], po: string): boolean {
+export function palletDone(runId: string, parts: { lot: string; qty: number; tag: string }[], po: string, note?: string): boolean {
   const r = run(runId)
   if (!r || binOf(r) || r.dept !== 'Packing') return false
-  const unit = palletUnit(parts, po, Math.max(clockNow(), after(r)))
+  const unit = palletUnit(parts, po, Math.max(clockNow(), after(r)), note)
   if (!unit.lots?.length) return false
   const rest: RunExtra = r.extra ? (({ open: _o, ...x }) => x)(r.extra) : {}
   // the last lot of the pallet, when it got cases there, is the one being packed now (they may have corrected it there)
@@ -873,11 +891,12 @@ export function addWaste(runId: string, lb: number) { const r = run(runId); if (
  * More product went on a unit that had been closed short: its quantity is raised (with its lots, where a unit carries
  * them), instead of counting another unit. It is a correction like any other: who and when go to the history.
  */
-export function fillUnit(runId: string, at: number, qty: number, lots?: LotPart[], ref?: string) {
+export function fillUnit(runId: string, at: number, qty: number, lots?: LotPart[], ref?: string, note?: string) {
   const r = run(runId)
   if (!r || !r.units.some((u) => u.at === at)) return
   const parts = cleanLots(lots)
-  updateRun(runId, { units: r.units.map((u) => { if (u.at !== at) return u; const { lots: _was, ...bare } = u; return { ...bare, ...(parts ? { lots: parts, qty: parts.reduce((t, l) => t + l.qty, 0) } : { qty }), ...(ref != null ? { ref } : {}) } }) })
+  // (note: the comment typed in that window, when the window has the box; undefined leaves the unit's as it is)
+  updateRun(runId, { units: r.units.map((u) => { if (u.at !== at) return u; const { lots: _was, ...bare } = u; return withUnitNote({ ...bare, ...(parts ? { lots: parts, qty: parts.reduce((t, l) => t + l.qty, 0) } : { qty }), ...(ref != null ? { ref } : {}) }, note) }) })
 }
 /**
  * A unit nobody recorded (a pallet found on the floor with its tags, a cart that was not tapped) is put on its run
@@ -885,7 +904,7 @@ export function fillUnit(runId: string, at: number, qty: number, lots?: LotPart[
  * from the others' (two units are never on the same instant) and never before the code started. Returns that moment,
  * or 0 when nothing was added.
  */
-export function addUnit(runId: string, x: { at: number; qty: number | null; ref?: string; lots?: LotPart[]; po?: string }): number {
+export function addUnit(runId: string, x: { at: number; qty: number | null; ref?: string; lots?: LotPart[]; po?: string; note?: string }): number {
   const r = run(runId)
   if (!r || !Number.isFinite(x.at)) return 0
   const lots = cleanLots(x.lots), qty = lots ? lots.reduce((t, l) => t + l.qty, 0) : x.qty
@@ -894,11 +913,12 @@ export function addUnit(runId: string, x: { at: number; qty: number | null; ref?
   while (taken.has(at)) at++
   const ref = (x.ref ?? '').trim() || (lots ? [...new Set(lots.map((l) => l.tag ?? '').filter(Boolean))].join(', ') : '')
   const o = orderOfId(state, x.po)
-  const u: Unit = { at, qty, ref, by: user.get(), ...(lots ? { lots } : {}), ...(o ? { po: o.id } : {}) }
+  // (its comment, typed in the window: on the unit, and said in the history line, as the run's is in addRunLater)
+  const u: Unit = { at, qty, ref, by: user.get(), ...(lots ? { lots } : {}), ...(o ? { po: o.id } : {}), ...noteKey(x.note) }
   const units = [...r.units, u].sort((a, b) => a.at - b.at)
   putRun({ ...r, units })
   const cfg = cfgOf(r)
-  logChange(r.dept, 'Corrida ' + r.code + ' del ' + r.date + ' (' + r.dept + ', ' + lineNameOf(state, r.lineId, r.line) + ') · Se agregó ' + cfg.unit.toLowerCase() + ' ' + (units.indexOf(u) + 1) + ' (' + fmtTime(at) + ')', '', [qty != null ? qty + ' ' + cfg.qtyUnit : '', lots ? lotsText(lots) : ref, o ? orderLabelKept(o) : ''].filter(Boolean).join(' · ') || '1', 'act_runs', r.id)
+  logChange(r.dept, 'Corrida ' + r.code + ' del ' + r.date + ' (' + r.dept + ', ' + lineNameOf(state, r.lineId, r.line) + ') · Se agregó ' + cfg.unit.toLowerCase() + ' ' + (units.indexOf(u) + 1) + ' (' + fmtTime(at) + ')', '', [qty != null ? qty + ' ' + cfg.qtyUnit : '', lots ? lotsText(lots) : ref, o ? orderLabelKept(o) : '', u.note ? 'Comentario: ' + u.note : ''].filter(Boolean).join(' · ') || '1', 'act_runs', r.id)
   return at
 }
 /**
@@ -952,7 +972,7 @@ export function reopenRun(id: string): boolean {
  * report, Avance, the orders and what they lack, a PO's pallets and the search count them like any other. An order
  * this device does not know, or one given to something that does not fill orders (a bin), is dropped: never invented.
  */
-export type LaterRun = { dept: Dept; lineId: string; code: string; lot?: string; date: string; startedAt: number; endedAt?: number | null; units?: { qty: number | null; ref?: string; lots?: LotPart[]; po?: string }[]; perUnit?: number | null; waste?: number | string; bin?: string; measure?: Measure | ''; madeBy?: string; note?: string }
+export type LaterRun = { dept: Dept; lineId: string; code: string; lot?: string; date: string; startedAt: number; endedAt?: number | null; units?: { qty: number | null; ref?: string; lots?: LotPart[]; po?: string; note?: string }[]; perUnit?: number | null; waste?: number | string; bin?: string; measure?: Measure | ''; madeBy?: string; note?: string }
 export function addRunLater(x: LaterRun): string {
   const line = state.lines.find((l) => l.id === x.lineId && !l.deleted), code = x.code.trim().toUpperCase(), list = x.units ?? []
   // the waste as typed in the box ("25,5" is 25.5, blank is none); one that is not a number adds nothing (the box says
@@ -977,7 +997,7 @@ export function addRunLater(x: LaterRun): string {
     // its number as on the line: the one typed, else the tags of its lots (a pallet's tags are its number, see palletUnit)
     const ref = (u.ref ?? '').trim() || (lots ? [...new Set(lots.map((l) => l.tag ?? '').filter(Boolean))].join(', ') : '')
     const o = fills ? orderOfId(state, u.po) : undefined
-    return { at: atOf(i), qty: typeof qty === 'number' && Number.isFinite(qty) ? qty : null, ref, by, ...(lots ? { lots } : {}), ...(o ? { po: o.id } : {}) }
+    return { at: atOf(i), qty: typeof qty === 'number' && Number.isFinite(qty) ? qty : null, ref, by, ...(lots ? { lots } : {}), ...(o ? { po: o.id } : {}), ...noteKey(u.note) }
   })
   const r: Run = { id: uid(), dept: line.dept, lineId: line.id, line: line.name, code, lot: (x.lot ?? '').trim(), date: x.date, startedAt: start, endedAt: end, units, perUnit: x.perUnit != null && Number.isFinite(x.perUnit) ? x.perUnit : null, waste: Math.round(waste * 100) / 100 || 0, by, updatedAt: 0, ...(extra ? { extra } : {}) }
   batch(() => {
@@ -1118,7 +1138,7 @@ export function updateRun(id: string, patch: Partial<Pick<Run, 'code' | 'lot' | 
   r.units.forEach((u, i) => {
     const w = n.units.find((x) => x.at === u.at)
     if (!w) log('Se quitó ' + cfg.unit.toLowerCase() + ' ' + (i + 1) + ' (' + fmtTime(u.at) + ')', [u.qty != null ? u.qty + ' ' + cfg.qtyUnit : '', u.ref].filter(Boolean).join(' · ') || '1', '')
-    else { log(cfg.unit + ' ' + (i + 1) + ' · cantidad', v(u.qty), v(w.qty)); if (cfg.refLabel) log(cfg.unit + ' ' + (i + 1) + ' · ' + cfg.refLabel, u.ref, w.ref); if (cfg.lots) log(cfg.unit + ' ' + (i + 1) + ' · lotes', lotsText(u.lots), lotsText(w.lots)) }
+    else { log(cfg.unit + ' ' + (i + 1) + ' · cantidad', v(u.qty), v(w.qty)); if (cfg.refLabel) log(cfg.unit + ' ' + (i + 1) + ' · ' + cfg.refLabel, u.ref, w.ref); if (cfg.lots) log(cfg.unit + ' ' + (i + 1) + ' · lotes', lotsText(u.lots), lotsText(w.lots)); log(cfg.unit + ' ' + (i + 1) + ' · Comentario', u.note ?? '', w.note ?? '') }
   })
 }
 export function deleteRun(id: string) { const r = run(id); if (r) { putRun({ ...r, deleted: true }); logChange(r.dept, 'Se borró la corrida ' + r.code + ' del ' + r.date + ' (' + r.dept + ', ' + lineNameOf(state, r.lineId, r.line) + ')', r.units.length + ' ' + cfgOf(r).plural.toLowerCase() + (r.waste ? ' · waste ' + r.waste + ' lb' : ''), '', 'act_runs', r.id) } }
@@ -1171,8 +1191,11 @@ export function splitStop(id: string, at: number, reason: string, note = ''): st
 }
 export function deleteStop(id: string) { const x = stop(id); if (x) { putStop({ ...x, deleted: true }); logChange(x.dept, 'Se borró el paro ' + x.dept + ' ' + dayOf(x.startedAt) + ' ' + fmtTime(x.startedAt) + ' (' + stopLine(x) + ')', x.reason + (x.note ? ' · ' + x.note : '') + ' · ' + fmtTime(x.startedAt) + '–' + endText(x.endedAt), '', 'act_stops', x.id) } }
 /** the form of a correction, as the text the person sees and types */
-export type RunDraft = { code: string; lot: string; date: string; per: string; waste: string; units: { at: number; qty: string; ref: string; by: string; lots?: LotPart[] }[]; note?: string }
-export const draftOf = (r: Run): RunDraft => ({ code: r.code, lot: r.lot, date: r.date, per: r.perUnit != null ? String(r.perUnit) : '', waste: r.waste ? String(r.waste) : '', units: r.units.map((u) => ({ at: u.at, qty: u.qty != null ? String(u.qty) : '', ref: u.ref, by: u.by, ...(u.lots ? { lots: u.lots } : {}) })), note: noteOf(r) })
+// (a unit's note: its comment as the form holds it; absent = the form says nothing of it, see applyDraft)
+export type RunDraft = { code: string; lot: string; date: string; per: string; waste: string; units: { at: number; qty: string; ref: string; by: string; lots?: LotPart[]; note?: string }[]; note?: string }
+export const draftOf = (r: Run): RunDraft => ({ code: r.code, lot: r.lot, date: r.date, per: r.perUnit != null ? String(r.perUnit) : '', waste: r.waste ? String(r.waste) : '', units: r.units.map(draftUnitOf), note: noteOf(r) })
+/** a unit as Corregir holds it (its comment too, when it has one, so the form can show and change it) */
+export const draftUnitOf = (u: Unit): RunDraft['units'][number] => ({ at: u.at, qty: u.qty != null ? String(u.qty) : '', ref: u.ref, by: u.by, ...(u.lots ? { lots: u.lots } : {}), ...(u.note !== undefined ? { note: u.note } : {}) })
 const typed = (t: string) => { const n = Number(t.replace(',', '.')); return Number.isFinite(n) ? n : 0 }
 /**
  * What is wrong with the waste typed in Corregir ('' = nothing: a number, or blank for none). The box takes digits,
@@ -1205,13 +1228,16 @@ export function applyDraft(id: string, opened: RunDraft, draft: RunDraft): strin
     const a = was.get(u.at), b = now.get(u.at)
     if (!a || !b) return u // tapped after the form opened: untouched
     const ref = changed(b.ref, a.ref) ? b.ref.trim() : u.ref
+    // its comment, when the form changed it (typed, corrected or cleared in its window); a form that says nothing of
+    // it (one of before, or untouched) leaves the unit's as it is
+    const note = b.note !== undefined && cleanNote(b.note) !== cleanNote(a.note ?? '') ? b.note : undefined
     // the lots of a pallet were changed in the form: they stand, and its quantity is their sum
     if (JSON.stringify(a.lots ?? null) !== JSON.stringify(b.lots ?? null)) {
       const lots = cleanLots(b.lots), { lots: _was, ...bare } = u
-      return lots ? { ...bare, ref, lots, qty: lots.reduce((t, l) => t + l.qty, 0) } : { ...bare, ref, qty: cfg.qty !== 'none' && b.qty.trim() ? typed(b.qty) : u.qty }
+      return withUnitNote(lots ? { ...bare, ref, lots, qty: lots.reduce((t, l) => t + l.qty, 0) } : { ...bare, ref, qty: cfg.qty !== 'none' && b.qty.trim() ? typed(b.qty) : u.qty }, note)
     }
     const qty = cfg.qty !== 'none' && changed(b.qty, a.qty) ? (b.qty.trim() ? typed(b.qty) : null) : u.qty
-    return qty === u.qty && ref === u.ref ? u : { ...u, qty, ref }
+    return qty === u.qty && ref === u.ref && note === undefined ? u : withUnitNote({ ...u, qty, ref }, note)
   })
   if (units.length !== r.units.length || units.some((u, i) => u !== r.units[i])) patch.units = units
   if (Object.keys(patch).length) updateRun(id, patch)
@@ -2027,6 +2053,33 @@ const withRemoved = (r: Run, ats: number[]): Run => { const dead = new Set([...(
 const allUnits = (first: Run, second: Run) => { const have = new Set(first.units.map((u) => u.at)), dead = tombs(first, second); return [...first.units, ...second.units.filter((u) => !have.has(u.at))].filter((u) => !dead.has(u.at)).sort(byAt) }
 const unionRun = (first: Run, second: Run): Run => ({ ...first, units: allUnits(first, second), extra: withTombs(first.extra, tombs(first, second)) })
 /**
+ * a unit as the other side has it, with its comment put back when that side says nothing of comments (no key: a
+ * build of before pallet comments, which drops what it does not know) and the version it is merged with had one. ''
+ * is a comment cleared on purpose, and stands. The rule of mergeNote, unit by unit (Jose, 2026-10-18)
+ */
+const noteBack = (u: Unit, known: Unit | undefined): Unit => (u.note === undefined && known?.note !== undefined ? { ...u, note: known.note } : u)
+/** a unit without its comment: what the floor typed of it (its moment, count, tag, lots, PO) */
+const bareUnit = ({ note: _said, ...rest }: Unit): Unit => rest
+/** the same unit, read in canonically (unitOf): the order of the keys says nothing */
+const sameUnit = (a: Unit, b: Unit) => same(unitOf(a), unitOf(b))
+/** the same unit but for its comment */
+const sameBare = (a: Unit, b: Unit) => same(bareUnit(unitOf(a)), bareUnit(unitOf(b)))
+/**
+ * One unit, three ways, its comment apart from the rest (the rule of mergeNote, unit by unit). The lots window invites
+ * the line to leave a tag blank and put it later; meanwhile the office comments on that same pallet in Corregir. Before
+ * (review of 2026-10-18) the corrected unit went whole and one side was lost in either order: the comment, or the tag
+ * without a trace in the row while the line's history still said it was put. Now: I changed only the comment, theirs
+ * stands with my comment; they changed only the comment and I left it alone, mine stands with theirs; both changed
+ * more than the comment, my correction stands whole, as before. A version without the comment key was written by a
+ * build of before and says nothing of it (noteBack).
+ */
+function mergeUnit(base: Unit, mine: Unit, theirs: Unit): Unit {
+  if (sameUnit(mine, base)) return noteBack(theirs, base)
+  if (sameBare(mine, base)) { const { note: _theirs, ...rest } = theirs; return mine.note === undefined ? rest : { ...rest, note: mine.note } }
+  if (sameBare(theirs, base) && mine.note === base.note) return theirs.note === undefined ? mine : { ...mine, note: theirs.note }
+  return mine
+}
+/**
  * A run's comment when two versions of it meet (Jose, 2026-10-18: comments on the records). It is merged on its own,
  * apart from the rest of the extra: a comment corrected on one device and the pallet being built on the line's tablet
  * are both kept, and neither makes the other's change lose. A version that has no comment key at all was written by
@@ -2053,7 +2106,7 @@ function mergeRun(base: Run, mine: Run, theirs: Run): Run {
   // what any version took off on purpose stays off, whoever took it
   const dead = tombs(base, mine, theirs)
   out.units = [
-    ...theirs.units.filter((u) => !(inBase.has(u.at) && !inMine.has(u.at))).map((u) => { const m = inMine.get(u.at), b = inBase.get(u.at); return m && b && !same(m, b) ? m : u }),
+    ...theirs.units.filter((u) => !(inBase.has(u.at) && !inMine.has(u.at))).map((u) => { const m = inMine.get(u.at), b = inBase.get(u.at); return m && b ? mergeUnit(b, m, u) : noteBack(u, b ?? m) }),
     ...mine.units.filter((u) => !inBase.has(u.at) && !inTheirs.has(u.at)),
   ].filter((u) => !dead.has(u.at)).sort(byAt)
   // (in the order a row is read in, see cleanExtra: the same content must read as the same row in reconcile). The
@@ -2119,9 +2172,10 @@ type Synced = { id: string; updatedAt: number; deleted?: boolean; syncedAt?: num
 type Kind<T> = { of: (r: Row) => T; row: (x: T) => Row; merge: (base: T, mine: T, theirs: T) => T; keep: (mine: T, theirs: T) => T; grow?: (theirs: T, mine: T) => T }
 const LINE: Kind<Line> = { of: lineOfRow, row: rowOfLine, merge: (b, m, t) => merge3(b, m, t, ['dept', 'name', 'deleted']), keep: (_m, t) => t }
 const STOP: Kind<Stop> = { of: stopOfRow, row: rowOfStop, merge: (b, m, t) => merge3(b, m, t, ['dept', 'lineId', 'reason', 'note', 'startedAt', 'endedAt', 'by', 'deleted']), keep: (_m, t) => t }
-// (keep: a comment this device holds stays when the server's version says nothing of comments, see mergeNote; grow
-// leaves the comment as the server has it: a device that did not change the run never writes it back)
-const RUN: Kind<Run> = { of: runOfRow, row: rowOfRun, merge: mergeRun, keep: (m, t) => { const u = unionRun(t, m); return { ...u, extra: withNote(u.extra, t.extra?.note ?? m.extra?.note) } }, grow: (t, m) => unionRun(t, m) }
+// (keep: a comment this device holds, the run's or a unit's, stays when the server's version says nothing of comments,
+// see mergeNote and noteBack; grow leaves the comments as the server has them: a device that did not change the run
+// never writes them back)
+const RUN: Kind<Run> = { of: runOfRow, row: rowOfRun, merge: mergeRun, keep: (m, t) => { const u = unionRun(t, m), own = new Map(m.units.map((x) => [x.at, x])); return { ...u, units: u.units.map((x) => noteBack(x, own.get(x.at))), extra: withNote(u.extra, t.extra?.note ?? m.extra?.note) } }, grow: (t, m) => unionRun(t, m) }
 const body = (x: Synced) => JSON.stringify({ ...x, updatedAt: 0, syncedAt: 0 })
 /** rows deleted while this page is open, with when: a late echo of an earlier version must not bring one back */
 const gone = new Map<string, number>()

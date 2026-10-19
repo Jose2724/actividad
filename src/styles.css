@@ -855,6 +855,15 @@ table.avmini tbody tr:last-child td{border-bottom:0}
   .avcode .pname,.avcode .carry{margin-left:0}
   .avsearch{max-width:none}
   .avadd .addcode input{width:auto;flex:1}
+  /* the small "Por día" / "Por lote" table inside a fold stays a table (the card rules above matched its rows and
+     cells too: the header vanished and each day came out as bare numbers two per line, review of 2026-10-18); its
+     block scrolls sideways when the seven columns do not fit */
+  .avd-block{max-width:100%;overflow-x:auto}
+  .avtable table.avmini{display:table;min-width:0;width:auto}
+  .avtable table.avmini thead{display:table-header-group}
+  .avtable table.avmini tbody{display:table-row-group}
+  .avtable table.avmini tr{display:table-row;padding:0;border-bottom:1px solid var(--line)}
+  .avtable table.avmini th,.avtable table.avmini td{display:table-cell;padding:4px 8px;white-space:nowrap}
 }
 /* ---- sticky heads (2026-10-16): a long table scrolls inside its own frame and keeps its column names in sight ---- */
 .report .twrap,.orders .twrap,.av2 .twrap{max-height:78vh;overflow:auto}
@@ -862,6 +871,64 @@ table.avmini tbody tr:last-child td{border-bottom:0}
 .report .twrap tfoot td,.av2 .twrap tfoot td{position:sticky;bottom:0;z-index:1}
 @media (max-width:720px){.av2 .twrap{max-height:none;overflow:visible}}
 @media print{.report .twrap,.orders .twrap,.av2 .twrap{max-height:none;overflow:visible}}
+/* ---- Flujo de datos (2026-10-18): the office's WO PENDIENTES, lot by lot. Colour says MEANING only (amber = short /
+   made and not packed, red = over / packed more than reported, green = squares); the rooms keep their colours on the
+   headers, badges, tiles and the phone's captions, never on a number. Word + number always together ---- */
+.fltable{min-width:0}
+/* thirteen columns on one screen: the headers may wrap, the cells breathe a little less than Avance's */
+.av2 .fltable th,.av2 .fltable th.dth{white-space:normal;line-height:1.15;min-width:64px}
+.fltable th small{display:block;font-size:10px;letter-spacing:.04em;font-weight:600;text-transform:none}
+.fltable td{padding:8px}
+.av2 .fltable td.avcode{min-width:190px}
+.av2 .fltable td.slim{font-size:16px}
+.fltable td.avcode,.fltable th:first-child{position:sticky;left:0;background:var(--surface);z-index:1;box-shadow:1px 0 0 var(--line)}
+/* (more specific than the sticky-heads rule above, which set every th to z-index 2: the next header painted over "Código" when the frame scrolled sideways, review of 2026-10-18) */
+.av2 .twrap .fltable thead th:first-child{z-index:3;background:var(--surface)}
+.fltable td.slim small{display:block;font-size:10.5px;font-weight:600;color:var(--muted);white-space:normal;max-width:92px;margin-left:auto}
+.fltable td.dif b{display:block;font-variant-numeric:tabular-nums}
+.fltable td.dif small{display:block;font-size:11px;font-weight:700}
+.fltable td.fl-sobra b,.fltable td.fl-sobra small{color:var(--amber)}
+.fltable td.fl-falta b,.fltable td.fl-falta small{color:var(--warn)}
+.fltable td.fl-ok b,.fltable td.fl-ok small{color:var(--ok)}
+.fltable td.fl-none,.fltable td.off{color:#b9c6d2}
+.fltable td.fl-difpack b{font-size:17px}
+.fltable td.fl-difproj b,.fltable td.fl-difproj small{color:var(--muted)}
+.fltable th.fl-proj,.fltable td.fl-proj,.fltable td.fl-difproj{background:var(--soft)}
+.fltable tr.avopen td.fl-proj,.fltable tr.avopen td.fl-difproj{background:#dcebe8}
+.fltable tr.fl-lot td{background:var(--bg);border-top:2px solid var(--line);padding:8px 12px;white-space:normal;font-weight:600}
+/* the band's text sticks, not its cell (a cell as wide as the table cannot stick: "Lote 6290" scrolled off first, review
+   of 2026-10-18); its pieces are flex items with "·" drawn before each one, so a wrapped line never ends in a lone dot */
+.fltable tr.fl-lot td>div{position:sticky;left:12px;width:max-content;max-width:calc(100vw - 80px);display:flex;flex-wrap:wrap;gap:2px 0;align-items:baseline} /* (narrower than the frame by its padding and scrollbar: a wider band has no room to stick and scrolls off) */
+.fltable tr.fl-lot td>div>*+*::before{content:'·';color:var(--muted);margin:0 .45em}
+.fltable tr.fl-lot b{font-size:17px}.fltable tr.fl-lot small{color:var(--muted);font-weight:600}
+.fltable tr.fl-lot .drill{font-weight:700}
+.flst{margin-top:4px}
+.avstage.st-short{background:#fff1d6;color:var(--amber)}
+.avstage.st-over{background:var(--red-soft);color:var(--warn)}
+.avstage.st-ok{background:#d9f2e2;color:var(--ok)}
+.avstage.st-unpacked,.avstage.st-none{background:#eef2f6;color:#5b6b7a}
+.avstage.st-nocompare{background:transparent;color:var(--muted);border:1px dashed #b9c6d2}
+.flstates .dotst{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;background:#8a99a8}
+.flstates .st-short .dotst{background:#d08a12}.flstates .st-over .dotst{background:var(--warn)}.flstates .st-ok .dotst{background:var(--ok)}
+.flstates .chip.on .dotst{background:#fff}
+.made.fl-tile-short{background:#fff1d6;color:#7a4700}.made.fl-tile-over{background:var(--red-soft);color:#9b1f19}
+.flhow{margin:0;padding-left:18px;font-size:13px;color:var(--muted);max-width:520px;display:grid;gap:3px}.flhow b{color:var(--ink)}
+.flujo .pill.run{font-size:11px;padding:2px 8px}
+@media (max-width:720px){
+  .fltable{min-width:0}
+  .fltable td.off{display:none}                                   /* the other room's cell says nothing: not even listed */
+  .fltable tr.fl-lot{display:block;padding:10px 12px;border-bottom:0;background:var(--bg);box-shadow:inset 6px 0 0 var(--accent);border-radius:12px;margin:10px 0 6px}
+  .fltable tr.fl-lot td{display:block;padding:0;border:0;white-space:normal}
+  .fltable tr.fl-lot td>div{position:static;width:auto;max-width:none;gap:4px 12px}
+  .fltable tr.fl-lot td>div>*+*::before{content:none}
+  .fltable td.avcode{position:static;box-shadow:none}
+  /* the clerk's cells first: Packing, its difference, the mezclas, then the route's room */
+  .fltable td.fl-pack{order:1}.fltable td.fl-difpack{order:2}.fltable td.fl-prod{order:3}.fltable td.fl-room{order:4}.fltable td.fl-difroom{order:5}.fltable td.fl-segun{order:6}.fltable td.fl-proj{order:7}.fltable td.fl-difproj{order:8}.fltable td.fl-yield{order:9}.fltable td.fl-percase{order:10}
+  .fltable td.dif b{font-size:16px}
+  .fltable td.fl-proj,.fltable td.fl-difproj{background:none}
+  .fltable td.slim small{white-space:normal;margin-left:0;max-width:none}
+  .tabs.five button{font-size:14.5px;padding:8px 6px}  /* five tabs on one row (managers and the office); operators' three keep their size */
+}
 /* a device showing an old picture of the day (no server for a while): the bar on top, and the one on each line that asks before recording */
 .stalebar{background:#fff7e6;color:var(--amber);border:1.5px solid #f2c97a;border-radius:12px;padding:8px 12px;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;font-weight:600;font-size:14px;line-height:1.35}
 .stalebar.top{border-radius:0;border-width:0 0 1.5px;padding:8px 16px}
@@ -1338,3 +1405,8 @@ table.bycode tr.trow.rp-dtotal td.red{color:var(--warn)}
 .rp-detail .setfact.rp-dnote{grid-column:1/-1}
 .rp-detail .setfact.rp-dnote span{font-size:15px;color:var(--ink);overflow-wrap:anywhere}
 @media (max-width:720px){.rp-cardlist td.rp-note{grid-column:1/-1;max-width:none;min-width:0}}
+/* a pallet's (a unit's) own comment (Jose, 2026-10-18): small and wrapped, in the tables of the report, of a PO's
+   pallets and of Corregir */
+.unote{font-size:13px;color:var(--muted);overflow-wrap:anywhere}
+td.unote{white-space:normal;min-width:160px;max-width:320px}
+td.unote .lnk{white-space:nowrap}

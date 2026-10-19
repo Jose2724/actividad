@@ -5,7 +5,7 @@ import { avanceRows, mfoText, mfoWord, pending } from './avance'
 import { cellText, loadZip, xDur, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 import { buildPdf, loadPdf } from './pdf'
 import { homeScreenApple, type Kind } from './send'
-import { filterFile, filterTitle, hitKey, reportOf, runLots, runsSheet, searchReport, spanShifts, unitParts, type Hit, type HitKind, type Report as ReportData, type ReportFilter, type Scope as SearchScope } from './report'
+import { filterFile, filterTitle, hitKey, palletsSheet, reportOf, runLots, runsSheet, searchReport, spanShifts, unitParts, unitsSheet, type Hit, type HitKind, type Report as ReportData, type ReportFilter, type Scope as SearchScope } from './report'
 import { canShift, writesIn } from './powers'
 import { AddRunDialog, AddUnitDialog, RunEditor, StopEditor } from './editors'
 import { supabase } from './supabase'
@@ -239,8 +239,8 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
       ...byCode.map((c): Cell[] => [c.dept, c.code, cw(c).unit, c.units, CFG[c.dept].qty !== 'none' ? c.qty : '', CFG[c.dept].qty !== 'none' ? cw(c).qtyUnit : '', c.waste || '', c.lines.join(', '), boxes(c)?.cases ?? '', boxes(c)?.loose ?? '', ...(c.byShift ? shiftCols.map((k) => (c.byShift as [number, number])[k - 1]) : [])])]
     const porLote: Cell[][] = [[tr('Departamento'), tr('Código'), tr('Lote'), tr('Unidad'), tr('Hechas'), tr('Cantidad'), tr('Unidad de cantidad'), ...(rep.shift ? [] : shiftCols.map((k) => tr('Turno {0}', k)))],
       ...byCode.flatMap((c) => c.lots.map((l): Cell[] => [c.dept, c.code, l.lot, cw(c).unit, l.units, CFG[c.dept].qty !== 'none' ? l.qty : '', CFG[c.dept].qty !== 'none' ? cw(c).qtyUnit : '', ...(l.byShift ? shiftCols.map((k) => (l.byShift as [number, number])[k - 1]) : [])]))]
-    const unidades: Cell[][] = [[tr('Departamento'), tr('Línea'), tr('Código'), tr('Lote'), '#', tr('Hora'), tr('Unidad'), tr('Cantidad'), tr('Unidad de cantidad'), tr('Tag / bin'), tr('Desde la anterior'), tr('Registró'), tr('Turno'), tr('Pedido')],
-      ...unitRows.map((x): Cell[] => [x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.lot, x.i + 1, T(x.u.at), cfgOf(x.r).unit, x.qty ?? '', x.qty != null ? cfgOf(x.r).qtyUnit : '', x.tag, D(x.gap), x.u.by, x.shift, x.order])]
+    // the units and the pallets, each with its comment last: made in report.ts, where the checks read them too
+    const unidades = unitsSheet(s, rep)
     const paros: Cell[][] = [[tr('Departamento'), tr('Línea'), tr('Razón'), tr('Detalle'), tr('Inicio'), tr('Fin'), tr('Duración'), tr('Registró'), tr('Turno')],
       ...stops.map((x): Cell[] => [x.dept, lineName(x), tr(x.reason), noteLabel(x.note), T(x.startedAt), x.endedAt ? T(x.endedAt) : tr('en curso'), D(x.ms), x.by, spanShifts(rep.plan, x.startedAt, x.endedAt ?? now)])]
     // the whole day first and each shift under it (not when the report is of one shift only); what a room filled in bins
@@ -254,8 +254,7 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
     const carryText = (code: string) => [...carry.filter((x) => normCode(x.code) === normCode(code)).map((x) => x.done ? tr('{0}: ✓ completado el {1}', x.dept, shortDay(x.next)) : x.made > 0 ? tr('{0}: pendiente {1} {2} · siguió el {3}', x.dept, fmtN(x.pending - x.made), x.unit, shortDay(x.next)) : tr('{0}: pendiente {1} {2} al día siguiente', x.dept, fmtN(x.pending), x.unit)), ...came.filter((x) => normCode(x.code) === normCode(code)).map((x) => tr('↪ {0}: {1} {2} del lote del {3}', x.dept, fmtN(x.made), x.unit, shortDay(x.from)))].join(' · ')
     const avance: Cell[][] = [[tr('Código'), tr('Producto'), tr('Al día siguiente'), tr('Lo empaca'), tr('Mezclas progr.'), tr('Mezclas hechas'), tr('Mezclas pend.'), 'Spiral', tr('Pouches progr.'), tr('Pouches esper.'), tr('Pouches hechos'), tr('Pouches pend.'), tr('Pouches faltan'), tr('Cajas progr.'), tr('Cajas esper.'), tr('Cajas hechas'), tr('Cajas pend.'), tr('Cajas faltan'), tr('MFO progr.'), tr('MFO esper.'), tr('MFO hecho'), tr('MFO en'), tr('MFO además'), tr('MFO pend.'), tr('Pallets progr.'), tr('Pallets esper.'), tr('Pallets hechos'), tr('Waste lb')],
       ...av.map((r): Cell[] => [r.code, r.product?.name ?? '', carryText(r.code), r.packRoom, r.scheduled, r.mixesDone, r.mixesPending, r.spiralDone, r.pouchesPlan, r.pouchesExp, r.pouchesDone, pending(r.pouchesExp, r.pouchesDone), pending(r.pouchesPlan, r.pouchesDone), r.casesPlan, r.casesExp, r.casesDone, pending(r.casesExp, r.casesDone), pending(r.casesPlan, r.casesDone), r.mfoPlan, r.mfoExp, r.mfo[0]?.qty ?? 0, r.mfo[0] ? mfoWord(r.mfo[0].word) : '', mfoText(r.mfo.slice(1)), pending(r.mfoExp, r.mfo[0]?.qty ?? 0), r.palletsPlan, r.palletsExp, r.palletsDone, r.wasteLb])]
-    const pallets: Cell[][] = [[tr('Pallet'), tr('Línea'), tr('Código'), tr('Lote'), tr('Cajas'), tr('Tag'), tr('Total del pallet'), 'PO', tr('Pallet del PO'), tr('Hora'), tr('Turno'), tr('Registró')],
-      ...rep.pallets.flatMap((p) => p.parts.map((x, i): Cell[] => [p.n, lineNameOf(s, p.r.lineId, p.r.line), p.r.code, x.lot, x.qty ?? '', x.tag, i === 0 ? p.total : '', p.order, p.of ? (p.of[1] ? tr('pallet {0} de {1}', p.of[0], p.of[1]) : String(p.of[0])) : '', p.open ? tr('en armado') : T(p.at), p.shift, p.by]))]
+    const pallets = palletsSheet(s, rep)
     const bins: Cell[][] = [[tr('Bin'), tr('Línea'), tr('Código'), tr('Lote'), tr('Cantidad'), tr('Unidad de cantidad'), tr('N° de bin'), tr('Hora'), tr('Turno'), tr('Registró')],
       ...rep.bins.map((b): Cell[] => [b.n, lineNameOf(s, b.r.lineId, b.r.line), b.r.code, b.lot, b.qty ?? '', binWord(b.word), b.ref, T(b.at), b.shift, b.by])]
     return { resumen, porTurno, porCodigo, porLote, pallets, bins, unidades, paros, cambios, avance }
@@ -712,7 +711,7 @@ function HitCard({ k, h }: { k: Kit; h: Hit }) {
     title = <>{tr('Pallet {0}', p.n)} · <span className="code">{hl(p.r.code, toks)}</span>{p.open && <> <span className="pill run">{tr('en armado')}</span></>}</>
     sub = <>
       {p.parts.map((x, i) => <span key={i} className="ln">{joined([<>{tr('Lote')} {hl(x.lot, toks)}</>, (x.qty != null ? fmtN(x.qty) : '—') + ' ' + CFG.Packing.qtyUnit, x.tag ? <>{tr('Tag')} {hl(x.tag, toks)}</> : tr('sin tag')])}</span>)}
-      <span className="ln">{joined([p.order ? <>{hl(p.order, toks)}{p.of && ' ' + ofText(p.of)}</> : null, hl(lineNameOf(s, p.r.lineId, p.r.line), toks), p.open ? null : at(p.at), turn(p.shift), by(p.by)])}</span>
+      <span className="ln">{joined([p.order ? <>{hl(p.order, toks)}{p.of && ' ' + ofText(p.of)}</> : null, hl(lineNameOf(s, p.r.lineId, p.r.line), toks), p.open ? null : at(p.at), turn(p.shift), by(p.by), p.note ? <>💬 {hl(p.note, toks)}</> : null])}</span>
     </>
     btns = <>{seeBtn(() => setDetail({ runId: p.r.id, at: unitAt }))}{fixBtn(spanOf(p.r), p.r.dept, () => setEditRun({ id: p.r.id, at: unitAt }))}</>
   } else if (h.kind === 'bin') {
@@ -726,7 +725,7 @@ function HitCard({ k, h }: { k: Kit; h: Hit }) {
     if (!x) return null
     const c = cfgOf(x.r)
     title = <>{c.unit + ' ' + (x.i + 1)} · <span className="code">{hl(x.r.code, toks)}</span>{x.lot && <> · {trx('Lote {0}', hl(x.lot, toks))}</>}</>
-    sub = joined([x.qty != null ? x.qty.toLocaleString('en-US') + ' ' + c.qtyUnit : null, x.tag ? <>{c.refLabel ? c.refLabel + ' ' : ''}{hl(x.tag, toks)}</> : null, x.order ? hl(x.order, toks) : null, hl(lineNameOf(s, x.r.lineId, x.r.line), toks), at(x.u.at), turn(x.shift), by(x.u.by)])
+    sub = joined([x.qty != null ? x.qty.toLocaleString('en-US') + ' ' + c.qtyUnit : null, x.tag ? <>{c.refLabel ? c.refLabel + ' ' : ''}{hl(x.tag, toks)}</> : null, x.order ? hl(x.order, toks) : null, hl(lineNameOf(s, x.r.lineId, x.r.line), toks), at(x.u.at), turn(x.shift), by(x.u.by), x.u.note ? <>💬 {hl(x.u.note, toks)}</> : null])
     btns = <>{seeBtn(() => setDetail({ runId: x.r.id, at: x.u.at }))}{fixBtn(spanOf(x.r), x.r.dept, () => setEditRun({ id: x.r.id, at: x.u.at }))}</>
   } else if (h.kind === 'run') {
     const x = rows.find((y) => hitKey.run(y.r.id) === h.key)
@@ -1002,6 +1001,8 @@ function PalletsView({ k }: { k: Kit }) {
   const sub: PalSub = palSub === 'pallets' ? (rep.pallets.length ? 'pallets' : 'bins') : rep.bins.length ? 'bins' : 'pallets'
   const subs = [{ label: tr('Pallets'), n: palletsFound.length, open: () => setPalSub('pallets') }, { label: tr('Bins'), n: binsShown.length, open: () => setPalSub('bins') }]
   const lost = searching && (sub === 'pallets' ? !palletsFound.length : !binsShown.length)
+  // the comment of each pallet, in a column of its own only when one in view has it (Jose, 2026-10-18)
+  const notes = palletsShown.some((p) => !!p.note)
   return (
     <div className="rp-list">
       <div className="rp-tools">
@@ -1022,7 +1023,7 @@ function PalletsView({ k }: { k: Kit }) {
           </div>
           <div className="twrap">
             <table className="pallets">
-              <thead><tr><th className="rp-act"></th><th>{tr('Pallet')}</th><th>{tr('Código')}</th><th>{tr('Lote')}</th><th className="num">{tr('Cajas')}</th><th>{tr('Tag')}</th><th className="num">{tr('Total')}</th><th>PO</th><th>{tr('Línea')}</th><th>{tr('Hora')}</th>{!rep.shift && <th>{tr('Turno')}</th>}<th>{tr('Registró')}</th></tr></thead>
+              <thead><tr><th className="rp-act"></th><th>{tr('Pallet')}</th><th>{tr('Código')}</th><th>{tr('Lote')}</th><th className="num">{tr('Cajas')}</th><th>{tr('Tag')}</th><th className="num">{tr('Total')}</th><th>PO</th><th>{tr('Línea')}</th><th>{tr('Hora')}</th>{!rep.shift && <th>{tr('Turno')}</th>}<th>{tr('Registró')}</th>{notes && <th>{tr('Comentario')}</th>}</tr></thead>
               {pageOf('pallets', palletsShown).map((p) => {
                 const span = p.parts.length, unitAt = p.open ? undefined : p.at
                 return (
@@ -1041,6 +1042,7 @@ function PalletsView({ k }: { k: Kit }) {
                         {i === 0 && <td rowSpan={span}>{p.open ? '—' : hl(fmtTime(p.at), toks)}</td>}
                         {i === 0 && !rep.shift && <td rowSpan={span}>{p.shift}</td>}
                         {i === 0 && <td rowSpan={span}>{p.by ? hl(p.by, toks) : '—'}</td>}
+                        {i === 0 && notes && <td rowSpan={span} className="rp-note unote">{p.note ? <>💬 {hl(p.note, toks)}</> : '—'}</td>}
                       </tr>
                     ))}
                   </tbody>
@@ -1160,11 +1162,12 @@ function RunsTable({ k }: { k: Kit }) {
 /** Registros › Unidades: every unit recorded (a pallet with two lots, one row for each lot) */
 function UnitsTable({ k }: { k: Kit }) {
   const { s, rep, unitsShown, withOrders, manyRooms, acts, spanOf, setDetail, setEditRun, pageOf, pageBar, toks } = k
+  const notes = unitsShown.some((x) => !!x.u.note) // (a unit's comment, Jose 2026-10-18: a column only when one has it)
   return (
     <>
       {!unitsShown.length ? <p className="hint">{tr('Nada registrado con estos filtros.')}</p> : <div className="twrap rp-cardlist">
         <table>
-          <thead><tr><th className="rp-act"></th><th>{tr('Hora')}</th>{!rep.shift && <th>{tr('Turno')}</th>}{manyRooms && <th>{tr('Depto')}</th>}<th>{tr('Línea')}</th><th>{tr('Código')}</th><th>{tr('Lote')}</th><th>#</th><th>{tr('Unidad')}</th><th>{tr('Cantidad')}</th><th>{tr('Tag / bin')}</th>{withOrders && <th>{tr('Pedido')}</th>}<th>{tr('Desde la anterior')}</th><th>{tr('Registró')}</th></tr></thead>
+          <thead><tr><th className="rp-act"></th><th>{tr('Hora')}</th>{!rep.shift && <th>{tr('Turno')}</th>}{manyRooms && <th>{tr('Depto')}</th>}<th>{tr('Línea')}</th><th>{tr('Código')}</th><th>{tr('Lote')}</th><th>#</th><th>{tr('Unidad')}</th><th>{tr('Cantidad')}</th><th>{tr('Tag / bin')}</th>{withOrders && <th>{tr('Pedido')}</th>}<th>{tr('Desde la anterior')}</th><th>{tr('Registró')}</th>{notes && <th>{tr('Comentario')}</th>}</tr></thead>
           <tbody>{pageOf('units', unitsShown).map((x) => (
             <tr key={x.r.id + ':' + x.i + ':' + x.lot} style={deptVars(x.r.dept)}>
               {acts(spanOf(x.r), x.r.dept, () => setDetail({ runId: x.r.id, at: x.u.at }), () => setEditRun({ id: x.r.id, at: x.u.at }))}
@@ -1180,6 +1183,7 @@ function UnitsTable({ k }: { k: Kit }) {
               {withOrders && <td data-label={tr('Pedido')} className={none(x.order || '—')}>{x.order ? hl(x.order, toks) : '—'}</td>}
               <td data-label={tr('Desde la anterior')}>{fmtDur(x.gap)}</td>
               <td data-label={tr('Registró')} className={none(x.u.by || '—')}>{x.u.by ? hl(x.u.by, toks) : '—'}</td>
+              {notes && <td data-label={tr('Comentario')} className={'rp-note unote' + (x.u.note ? '' : ' c-none')}>{x.u.note ? <>💬 {hl(x.u.note, toks)}</> : '—'}</td>}
             </tr>
           ))}</tbody>
         </table>
@@ -1290,6 +1294,7 @@ function RunDetail({ s, runId, at, now, mgr, fix, fixable, onFix, onFixStop, onC
   const cfg = cfgOf(r), lots = [...runLots(s, r)].filter(Boolean), product = productOf(s, r.code)?.name
   const reasons = Object.entries(st.reasons).map(([key, v]) => tr(key) + ' ' + fmtDur(v)).join(', ')
   const orders = r.units.some((u) => orderOfId(s, u.po))
+  const unitNotes = r.units.some((u) => !!u.note) // (a unit's own comment, Jose 2026-10-18: a column when one has it)
   // the stops of its line (and of the whole room) while it ran: the same rule as the report's
   const stopsOf = s.stops.filter((x) => !x.deleted && x.dept === r.dept && (x.lineId === r.lineId || x.lineId === null) && x.startedAt < (r.endedAt ?? now) && (x.endedAt ?? now) > r.startedAt).sort((a, b) => a.startedAt - b.startedAt)
   const changes = mgr ? s.changes.filter((c) => !c.deleted && c.refTable === 'act_runs' && c.refKey === r.id).sort((a, b) => a.at - b.at) : []
@@ -1315,7 +1320,7 @@ function RunDetail({ s, runId, at, now, mgr, fix, fixable, onFix, onFixStop, onC
         {r.units.length > 0 && (
           <div className="twrap">
             <table>
-              <thead><tr><th>#</th><th>{tr('Hora')}</th><th>{tr('Turno')}</th>{cfg.qty !== 'none' && <th className="num">{cfg.qtyUnit}</th>}<th>{tr('Lote / tag')}</th>{orders && <th>{tr('Pedido')}</th>}<th>{tr('Registró')}</th></tr></thead>
+              <thead><tr><th>#</th><th>{tr('Hora')}</th><th>{tr('Turno')}</th>{cfg.qty !== 'none' && <th className="num">{cfg.qtyUnit}</th>}<th>{tr('Lote / tag')}</th>{orders && <th>{tr('Pedido')}</th>}<th>{tr('Registró')}</th>{unitNotes && <th>{tr('Comentario')}</th>}</tr></thead>
               <tbody>{r.units.map((u, i) => {
                 const parts = unitParts(s, r, u), o = orderOfId(s, u.po)
                 return (
@@ -1325,6 +1330,7 @@ function RunDetail({ s, runId, at, now, mgr, fix, fixable, onFix, onFixStop, onC
                     <td>{parts.map((p) => [p.lot, p.tag].filter(Boolean).join(' · ')).filter(Boolean).join(' / ') || '—'}</td>
                     {orders && <td>{o ? orderLabel(o) : '—'}</td>}
                     <td>{u.by || '—'}</td>
+                    {unitNotes && <td className="rp-note unote">{u.note ? '💬 ' + u.note : '—'}</td>}
                   </tr>
                 )
               })}</tbody>
