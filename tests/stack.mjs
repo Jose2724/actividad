@@ -687,6 +687,63 @@ section('Un pedido que empezó hace 20 días: sus días viejos se traen del serv
   signedInAs(ana, 'op', 'Packing'); await m.pullAll()
 }
 
+section('Un cambio de un pedido de producción cuya respuesta se pierde, deshecho antes de la vuelta siguiente: queda lo último que se escribió (revisión 2026-10-20)')
+{
+  signedInAs(jose, 'mgr', ''); await m.pullAll()
+  const day = date()
+  const woSrv = async (id) => (await sql(null, 'select qty::float as qty, closed_at is not null as closed from public.act_work_orders where id = $1', [id])).rows[0]
+  const O = m.saveWorkOrder({ dept: 'Kitchen', code: 'S950', qty: 100, unit: 'mezclas', startDate: day, wo: 'U-1', note: '' }); await sent()
+  // 100 → 200: the server takes it and the answer never comes back (the 25 s limit, a WiFi that drops)
+  net.lose = 'act_work_orders'
+  m.saveWorkOrder({ dept: 'Kitchen', code: 'S950', qty: 200, unit: 'mezclas', startDate: day, wo: 'U-1', note: '' }, O); await lost()
+  eq('el servidor tiene 200 y la tablet no lo supo', [(await woSrv(O)).qty, m.outbox.items().some((i) => i.table === 'act_work_orders' && i.key === O)], [200, true])
+  // the office puts it back to 100 before the next pass. Until the review it was taken for another device's change:
+  // the server's 200 was kept, on the server and on the tablet
+  await offline(() => m.saveWorkOrder({ dept: 'Kitchen', code: 'S950', qty: 100, unit: 'mezclas', startDate: day, wo: 'U-1', note: '' }, O))
+  await m.syncNow(); await sent()
+  eq('vuelto a 100: 100 en el servidor y en la tablet, nada esperando', [(await woSrv(O)).qty, m.workOrderOf(st(), O).qty, m.outbox.size()], [100, 100, 0])
+  // the same with closing (its answer lost) and reopening
+  net.lose = 'act_work_orders'
+  m.closeWorkOrder(O); await lost()
+  eq('cerrado en el servidor sin que la tablet lo supiera', (await woSrv(O)).closed, true)
+  await offline(() => m.reopenWorkOrder(O))
+  await m.syncNow(); await sent()
+  eq('reabierto: abierto en el servidor y en la tablet (quedaba cerrado mientras la historia decía "Reabierto")', [(await woSrv(O)).closed, m.workOrderOf(st(), O).closedAt], [false, null])
+}
+
+section('Una corrida vieja que un pedido sigue contando, borrada en el servidor mientras la tablet estaba cerrada: la versión nueva la suelta (revisión 2026-10-20)')
+{
+  signedInAs(jose, 'mgr', ''); await m.pullAll()
+  const day = date(), back = (n) => { const d = new Date(day + 'T12:00:00'); d.setDate(d.getDate() - n); return m.dayOf(d.getTime()) }
+  const at = (d, h, mi) => new Date(d + 'T' + String(h).padStart(2, '0') + ':' + String(mi).padStart(2, '0') + ':00').getTime()
+  const OLD = uuid(), LINE = uuid(), runs = [uuid(), uuid()]
+  await orderSql(OLD, 'Kitchen', 'S960', 'D-1', 100, 'mezclas', back(20), "now() - interval '20 days'")
+  // two runs of those days, as the server holds them: stamped then (a pull of what changed lately does not bring them)
+  await sql(null, 'alter table public.act_runs disable trigger act_runs_touch')
+  const oldRun = (id, d, n) => sql(null, "insert into public.act_runs (id, dept, line_id, line, code, lot, date, started_at, ended_at, units, per_unit, waste, by_name, deleted, updated_at, synced_at) values ($1, 'Kitchen', $2, 'Braiser 9', 'S960', '6280', $3, $4, $5, $6::jsonb, null, 0, 'prueba', false, $4, now() - interval '20 days')", [id, LINE, d, iso(at(d, 7, 59)), iso(at(d, 9, 0)), JSON.stringify(Array.from({ length: n }, (_, i) => ({ at: at(d, 8, i), qty: null, ref: '', by: 'Luis' })))])
+  await oldRun(runs[0], back(20), 30); await oldRun(runs[1], back(19), 20)
+  await sql(null, 'alter table public.act_runs enable trigger act_runs_touch')
+  await m.pullAll()
+  const made = (x) => x.orderStatus(x.store.get(), x.workOrderOf(x.store.get(), OLD), day).made
+  eq('la tablet guarda aparte las dos corridas viejas y cuenta 50', [made(m), st().orderRuns.filter((r) => r.code === 'S960').length], [50, 2])
+  // the office takes the second one away on the server while this tablet is closed; then a new version is published
+  await sql(null, 'update public.act_runs set deleted = true, updated_at = now() where id = $1', [runs[1]])
+  await quiet()
+  const snap = new Map(disk)
+  disk.delete('act_pulled_with') // a new version (or whose rows it brings changed): the next pull brings everything again
+  const opened = await import(pathToFileURL(resolve(dirname(fileURLToPath(import.meta.url)), '../node_modules/.cache/act-check/device.js')).href + '?stack-newver')
+  opened.role.set('mgr'); opened.myDept.set('')
+  await opened.pullAll()
+  // (a whole pull lists only the days a device keeps and what is still open: the deleted run came only with its order's
+  // old days, which were asked for without the runs taken off; the tablet kept counting it, and could close the order's
+  // account with it and share it)
+  eq('la versión nueva baja todo: la corrida borrada se va y el pedido cuenta 30', [made(opened), opened.store.get().orderRuns.filter((r) => r.code === 'S960').map((r) => r.id)], [30, [runs[0]]])
+  await quiet()
+  for (const k of [...disk.keys()]) disk.delete(k)
+  for (const [k, v] of snap) disk.set(k, v)
+  signedInAs(ana, 'op', 'Packing'); await m.pullAll()
+}
+
 section('Una respuesta que se pierde y la app se vuelve a abrir antes de saberlo: lo que se mandó se recuerda (auditoría 2026-10-17, S1)')
 {
   // what was sent is written down before it goes, so a reload in the middle (a new version, a reload by hand) does

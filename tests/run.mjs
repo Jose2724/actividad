@@ -4237,7 +4237,7 @@ section('Pedidos de producción: la cuenta de la oficina, día por día, con su 
     const dd = (d) => d.slice(8) + '/' + d.slice(5, 7)
     eq('la cuenta de la oficina en palabras: 1000 − 80 → 920; hicieron 50: 920 + 30 = 950; 950 − 80 → 870; hicieron 70: 870 + 10 = 880', s19.byDay.map((d) => m.orderDayLine(d, 1000, '2026-10-20', dd)), ['18/10: de 1,000 disponibles se programaron 80 → quedan 920 sin programar. Se hicieron 50 → quedaron 30 pendientes, que vuelven al pedido: 920 + 30 = 950 disponibles.', '19/10: de 950 disponibles se programaron 80 → quedan 870 sin programar. Se hicieron 70 → quedaron 10 pendientes, que vuelven al pedido: 870 + 10 = 880 disponibles.'])
     eq('el 20, hoy: de los 880 se programan 80 → 800 sin programar; lo que no se haga vuelve al pedido', m.orderDayLine(s20.byDay[2], 1000, '2026-10-20', dd), '20/10 (hoy): de 880 disponibles se programaron 80 → quedan 800 sin programar. Van 0, faltan 80; lo que no se haga hoy vuelve al pedido.')
-    eq('lo disponible para programar cada mañana (el diálogo del programa): 1000 el 18, 950 el 19, 880 el 20 y el 21', ['2026-10-18', '2026-10-19', '2026-10-20', '2026-10-21'].map((d) => m.availOn(m.workOrderOf(st(), A), s20, d)), [1000, 950, 880, 880])
+    eq('lo disponible para programar cada mañana (el diálogo del programa, el 20): 1000 el 18, 950 el 19, 880 el 20; el 21, los 880 menos las 80 que el 20 ya tiene programadas', ['2026-10-18', '2026-10-19', '2026-10-20', '2026-10-21'].map((d) => m.availOn(m.workOrderOf(st(), A), s20, d, '2026-10-20')), [1000, 950, 880, 800])
     eq('un día que completa el pedido con de más: lo disponible esa mañana es el total menos lo de antes (140), no 0 + lo hecho', m.orderDayLine({ date: '2026-10-18', programmed: 240, made: 240, pending: 0, cumMade: 600, disponible: 0 }, 500, '2026-10-20', dd), '18/10: de 140 disponibles se programaron 240 y se hicieron 240: el pedido se completó (100 de más).')
     eq('un día sin programa, y uno que hizo más de lo programado', [m.orderDayLine({ date: '2026-10-18', programmed: 0, made: 60, pending: 0, cumMade: 60, disponible: 240 }, 300, '2026-10-20', dd), m.orderDayLine({ date: '2026-10-18', programmed: 50, made: 60, pending: 0, cumMade: 60, disponible: 240 }, 300, '2026-10-20', dd)], ['18/10: sin programa ese día. Se hicieron 60: quedan 300 − 60 = 240 disponibles.', '18/10: de 300 disponibles se programaron 50 y se hicieron 60, más de lo programado: quedan 300 − 60 = 240 disponibles.'])
     eq('las libras con sus decimales', [m.woN(1543.4), m.woN(2950.7), m.woN(1000)], ['1,543.4', '2,950.7', '1,000'])
@@ -4549,6 +4549,81 @@ section('Pedidos de producción: un año de pedidos semanales de un código no l
     eq('cambiar el 26 anula su cuenta y las de todos los que empezaron después (se cuentan otra vez), no las de antes', [standing().slice(0, 25).every(Boolean), standing().slice(25).some(Boolean)], [true, false])
     clock = at(56, 12, 7); const late = m.saveWorkOrder({ dept: 'Kitchen', code: '0889', qty: 5, unit: 'mezclas', startDate: dayOfK(3), wo: 'tarde', note: '' })
     eq('un pedido nuevo con fecha de la semana 4: anula las cuentas desde la 4', [standing().slice(0, 3).every(Boolean), standing().slice(3).some(Boolean), !!late], [true, false, true])
+  })
+}
+
+section('Pedidos de producción: lo que corrigió la revisión del 2026-10-20')
+{
+  const rv2 = await device('wo-rv2', { user: 'Oficina' })
+  let marks = null
+  rv2.use((m) => {
+    const st = () => m.store.get()
+    const mins = (d, h, mi, n) => Array.from({ length: n }, (_, i) => oct(d, h, mi + i))
+    let nr = 0
+    const rowOf = (code, date, ats) => runRow({ id: 'rv2-run-' + ++nr, dept: 'Kitchen', lineId: 'RV2', line: 'Braiser 1', code, lot: '', date, startedAt: ats[0] - M, endedAt: ats.at(-1) + M, units: ats.map((at) => unit(at, null, '', 'Luis')) })
+    const ran = (code, date, ats) => { const row = rowOf(code, date, ats); m.applyRemote('act_runs', row); return row }
+    const save = (code, qty, start, wo) => m.saveWorkOrder({ dept: 'Kitchen', code, qty, unit: 'mezclas', startDate: start, wo, note: '' })
+    const status = (id, today) => m.orderStatus(st(), m.workOrderOf(st(), id), today)
+    const dd = (d) => d.slice(8) + '/' + d.slice(5, 7)
+
+    // ---- the days programmed ahead, in the office's own sum: of the 920, 50 still pending today: 870, then 790, then 710 ----
+    clock = oct(18, 5, 0); const A = save('0789', 1000, '2026-10-18', '4512')
+    m.setPlan('2026-10-18', 'Kitchen', '0789', 80, '', A); ran('0789', '2026-10-18', mins(18, 8, 0, 50))
+    clock = oct(19, 5, 0); m.setPlan('2026-10-19', 'Kitchen', '0789', 80, '', A); ran('0789', '2026-10-19', mins(19, 8, 0, 30))
+    clock = oct(19, 13, 0); m.setPlan('2026-10-20', 'Kitchen', '0789', 80, '', A); m.setPlan('2026-10-21', 'Kitchen', '0789', 80, '', A)
+    const x = status(A, '2026-10-19'), o = m.workOrderOf(st(), A)
+    eq('la tabla: sin programar 870 el 19 (hoy), 790 el 20, 710 el 21', x.byDay.map((r) => [r.date, r.sinProgramar]), [['2026-10-18', 920], ['2026-10-19', 870], ['2026-10-20', 790], ['2026-10-21', 710]])
+    eq('y cada día por delante lo dice con los números de su fila, como la oficina (decían "de 920 … quedan 840" los dos)', x.byDay.slice(1).map((r, i) => m.orderDayLine(r, 1000, '2026-10-19', dd, x.byDay[i])), ['19/10 (hoy): de 950 disponibles se programaron 80 → quedan 870 sin programar. Van 30, faltan 50; lo que no se haga hoy vuelve al pedido.', '20/10: de 870 disponibles se programaron 80 → quedan 790 sin programar.', '21/10: de 790 disponibles se programaron 80 → quedan 710 sin programar.'])
+    eq('el diálogo del programa ofrece lo mismo para cada día (decía 920 para el 20 y el 21): 950 hoy, 870 el 20, 790 el 21, 710 el 22', ['2026-10-19', '2026-10-20', '2026-10-21', '2026-10-22'].map((d) => m.availOn(o, x, d, '2026-10-19')), [950, 870, 790, 710])
+    eq('lo mismo con los números del día que se programa (el diálogo los pide con ese día)', ['2026-10-20', '2026-10-21'].map((d) => m.availOn(o, m.orderStatus(st(), o, d), d, '2026-10-19')), [870, 790])
+
+    // ---- an order closed by hand before its start day (cancelled), its account closed, then reopened ----
+    clock = oct(1, 6, 0); const CB = save('CB', 100, '2026-10-10', 'CB')
+    clock = oct(3, 6, 0); m.closeWorkOrder(CB)
+    clock = oct(30, 12, 0); m.markFetched('Kitchen|CB|', '2026-10-10'); m.markPulled(); m.prune()
+    const c0 = status(CB, '2026-10-30'), seal = st().orderSeals.find((s) => s.id === CB)
+    eq('cerrado antes de empezar: su cuenta se cierra hasta su día de inicio (era hasta el día que se cerró, y él no estaba en su firma)', [c0.sealed, c0.state, seal?.upto, seal?.sig.startsWith('1:')], [true, 'cerrado', '2026-10-10', true])
+    clock = oct(30, 13, 0); m.reopenWorkOrder(CB)
+    eq('reabierto: la cuenta ya no vale', status(CB, '2026-10-30').sealed, false)
+    ran('CB', '2026-10-30', mins(30, 14, 0, 10))
+    eq('y lo que se registra de CB cuenta para él (se quedaba en 0 para siempre)', [status(CB, '2026-10-30').state, status(CB, '2026-10-30').made, status(CB, '2026-10-30').disponible, m.workNeeds(st()).some((n) => n.q === 'Kitchen|CB|')], ['abierto', 10, 90, true])
+
+    // ---- a closed account whose old records the office corrected afterwards: "Calcular otra vez con el servidor" ----
+    clock = oct(1, 5, 0); const Q = save('Q3', 100, '2026-10-01', 'Q')
+    const qrows = [ran('Q3', '2026-10-01', mins(1, 8, 0, 50)), ran('Q3', '2026-10-02', mins(2, 8, 0, 50))]
+    clock = oct(30, 14, 0); m.markFetched('Kitchen|Q3|', '2026-10-01'); m.prune()
+    const base = status(Q, '2026-10-30'), mark0 = m.outbox.items().find((i) => i.table === 'act_changes' && i.key === 'wodone:' + Q)?.row
+    eq('completo con 100 y cerrada su cuenta, que sube como marca', [base.sealed, base.state, base.made, !!mark0, mark0?.deleted], [true, 'completado', 100, true, false])
+    // the office takes away a mezcla of the first day in the Reporte: the server now has 49 that day
+    const fixed = qrows.map((r, k) => (k === 0 ? { ...r, units: r.units.slice(1), updated_at: iso(oct(30, 14, 5)) } : r))
+    const g = m.orderGroup(st(), m.workOrderOf(st(), Q)), view = m.stateWith(st(), { runs: fixed }, g.ids, true), w = m.orderStatus(view, m.workOrderOf(view, Q), '2026-10-30')
+    eq('la ventana lo cuenta con los registros del servidor (99, abierto) y ofrece calcular otra vez por la cuenta de este aparato, no por la suya (que nunca dice "cerrada")', [w.sealed, w.state, w.made, m.recountOffer(base, w, true), m.recountOffer(w, w, true), m.recountOffer(base, base, true), m.recountOffer(base, w, false), m.recountOffer(null, w, true)], [false, 'abierto', 99, 'differs', '', 'same', '', ''])
+    clock = oct(30, 14, 10)
+    const n = m.resealGroup(view, g.ids, '2026-10-30'), after = status(Q, '2026-10-30')
+    const mark1 = m.outbox.items().find((i) => i.table === 'act_changes' && i.key === 'wodone:' + Q)?.row
+    eq('ya no está terminado: la cuenta se quita aquí (−1, no "coincide"), su marca sube quitada, y el pedido se cuenta otra vez con sus registros', [n, after.sealed, st().orderSeals.some((s) => s.id === Q), mark1?.deleted, m.workNeeds(st()).some((x) => x.q === 'Kitchen|Q3|'), after.complete], [-1, false, false, true, true, false])
+    eq('otra vez: ya no hay cuenta que quitar', m.resealGroup(view, g.ids, '2026-10-30'), 0)
+    marks = { first: mark0, gone: mark1, Q, order: m.outbox.items().find((i) => i.table === 'act_work_orders' && i.key === Q)?.row }
+  })
+  // another device that had the account from its mark lets it go with the mark taken away
+  const far = await device('wo-rv2-far', { user: 'Mesa' })
+  far.use((m) => {
+    m.applyRemote('act_work_orders', marks.order)
+    m.applyRemote('act_changes', marks.first)
+    const o = () => m.workOrderOf(m.store.get(), marks.Q), x0 = m.orderStatus(m.store.get(), o(), '2026-10-30')
+    m.applyRemote('act_changes', marks.gone)
+    const x1 = m.orderStatus(m.store.get(), o(), '2026-10-30')
+    eq('otro aparato: con la marca, completo; con la marca quitada, ya no (se cuenta con los registros)', [x0.sealed, x0.state, x1.sealed, m.store.get().orderSeals.length], [true, 'completado', false, 0])
+  })
+  // the history's search: word by word, as Flujo's
+  calc.use((m) => {
+    const a = { code: '889', productCode: '0889', wo: '4512', note: 'para el cliente', name: 'Beef Stew', lots: ['6290'] }
+    const b = { code: 'A100', wo: '7001', note: '', lots: ['6290', '6291'] }
+    const finds = (q) => [m.woMatch(a, m.woTokens(q)), m.woMatch(b, m.woTokens(q))]
+    eq('"0889" (el código como lo escribe la oficina), "889", "WO 4512", "wo4512", "4512", "beef", "cliente"', ['0889', '889', 'WO 4512', 'wo4512', '4512', 'beef', 'cliente'].map(finds), [[true, false], [true, false], [true, false], [true, false], [true, false], [true, false], [true, false]])
+    eq('"A100 6290" (código y lote), "a100", "6291"; "WO" solo y nada escrito: todos', ['A100 6290', 'a100', '6291', 'WO', ''].map(finds), [[false, true], [false, true], [false, true], [true, true], [true, true]])
+    eq('"0889" sin el producto en la tabla (el pedido guarda 889)', m.woMatch({ code: '889', wo: '', note: '', lots: [] }, m.woTokens('0889')), true)
+    eq('lo que no está no sale: "0890", "WO 4513", "A100 6292", "4512 6291"', ['0890', 'WO 4513', 'A100 6292', '4512 6291'].map(finds), [[false, false], [false, false], [false, false], [false, false]])
   })
 }
 

@@ -265,7 +265,12 @@ console.log('· Lo que otra tablet agregó a una corrida no se pierde cuando est
   // hundred ms ahead of this machine's; with Date.now() + 1 the other tablet's pallet looked older now and then)
   const at2 = Math.max(Date.now(), local().updatedAt) + 1
   db.act_runs = db.act_runs.map((r) => (r.id === id ? { ...r, units: [...r.units, { at: at2, qty: 36, ref: '2', by: 'Otra' }], updated_at: new Date(at2).toISOString(), synced_at: new Date(at2 + 1).toISOString() } : r))
+  // A unit is known by its moment: two pallets of one run in the same millisecond are one. This tablet stamps pallet 3
+  // by its shared clock (this machine's corrected by the server's, good to about 100 ms), and when that read a few ms
+  // behind, pallet 3 came out in the very millisecond of pallet 2 and was taken for it: about 1 run in 140 failed 8
+  // checks from here on (review of 2026-10-20). So it waits until its shared clock is past the other tablet's pallet
   await sleep(5)
+  while (m.clockNow() <= at2) await sleep(1)
   // this tablet records pallet 3 with its old picture of the run, and sends it
   m.unitDone(id, 36, '3')
   eq('antes de mandar, esta tablet solo conoce dos pallets', local().units.map((u) => u.ref), ['1', '3'])
@@ -286,14 +291,22 @@ console.log('· Lo que otra tablet agregó a una corrida no se pierde cuando est
   eq('un eco tardío de la versión vieja tampoco lo trae de vuelta', local().units.map((u) => u.ref), ['1', '3'])
   await settle()
   eq('y el servidor sigue sin él', [srv().units.map((u) => u.ref), m.outbox.size()], [['1', '3'], 0])
+  // two tablets add a missing pallet at the same typed minute: the same moment, two different pallets. Both stay
+  // (review of 2026-10-20: one used to swallow the other)
+  const atSame = Math.max(Date.now(), local().updatedAt) + 1
+  db.act_runs = db.act_runs.map((r) => (r.id === id ? { ...r, units: [...r.units, { at: atSame, qty: 36, ref: 'X', by: 'Otra' }], updated_at: new Date(atSame).toISOString(), synced_at: new Date(atSame + 1).toISOString() } : r))
+  m.addUnit(id, { at: atSame, qty: 36, ref: 'Y' })
+  await settle()
+  while (m.clockNow() <= atSame + 2) await sleep(1) // (what this tablet records next comes after both)
+  eq('dos tablets agregan un pallet al mismo instante: quedan los dos, en el servidor y en la tablet', [srv().units.map((u) => u.ref).sort(), local().units.map((u) => u.ref).sort(), new Set(srv().units.map((u) => u.at)).size === srv().units.length, m.outbox.size()], [['1', '3', 'X', 'Y'], ['1', '3', 'X', 'Y'], true, 0])
   // a run is never sent blind: when the server cannot say what it has of it, the run waits for the next pass
   m.unitDone(id, 36, '4')
   db.failRefresh = true
   await settle()
-  eq('sin poder traer la versión del servidor, la corrida espera en la cola y el servidor no cambia', [m.outbox.size(), srv().units.map((u) => u.ref)], [1, ['1', '3']])
+  eq('sin poder traer la versión del servidor, la corrida espera en la cola y el servidor no cambia', [m.outbox.size(), srv().units.map((u) => u.ref)], [1, ['1', '3', 'X', 'Y']])
   db.failRefresh = false
   await settle()
-  eq('a la siguiente pasada sube, junta con lo del servidor', [m.outbox.size(), srv().units.map((u) => u.ref)], [0, ['1', '3', '4']])
+  eq('a la siguiente pasada sube, junta con lo del servidor', [m.outbox.size(), srv().units.map((u) => u.ref)], [0, ['1', '3', 'X', 'Y', '4']])
   // the server refuses a row of this device's own (the person signed in is no longer who it thinks): nothing is
   // dropped, the screen knows, and it goes up as soon as the server takes it again
   db.refuse = 'act_runs'
@@ -302,7 +315,7 @@ console.log('· Lo que otra tablet agregó a una corrida no se pierde cuando est
   eq('un registro propio que el servidor rechaza no se descarta: espera, y la pantalla lo sabe', [m.outbox.size(), m.outbox.refused().length, m.syncStore.get().refused, m.syncStore.get().since > 0, /sin permiso/.test(m.syncStore.get().lastError)], [1, 1, 1, true, true])
   db.refuse = ''
   await settle()
-  eq('cuando el servidor lo vuelve a aceptar, sube y la alerta se quita', [m.outbox.size(), m.syncStore.get().refused, srv().units.map((u) => u.ref)], [0, 0, ['1', '3', '4', '5']])
+  eq('cuando el servidor lo vuelve a aceptar, sube y la alerta se quita', [m.outbox.size(), m.syncStore.get().refused, srv().units.map((u) => u.ref)], [0, 0, ['1', '3', 'X', 'Y', '4', '5']])
   // the device tells the server how it is (tab Tablets): who is on it, its build, what has not gone up, its clock
   eq('sin la tabla de tablets (su SQL sin correr) el aviso no insiste ni estorba', await m.sayHello('e-1'), false)
   db.act_devices = []

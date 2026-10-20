@@ -560,6 +560,9 @@ table.shiftgrid tr.sep td{background:var(--bg);color:var(--muted);font-size:11px
 @media (max-width:600px){
   .plan{padding:12px}
   .plan td .pname{white-space:normal}
+  /* each shift's part is for wider screens: a phone's card keeps the code, what was set, what is made and what is left
+     (main's rule, lost with the orders' columns: the card had grown to nine facts, review of 2026-10-20) */
+  .plan .pctable th.pc-turn,.plan .pctable td.pc-turn{display:none}
 }
 /* Packing: what a line is going to make (pallets or bins), the pallet being built with its lots and tags, and the bins */
 .start .makes{grid-column:1/-1}
@@ -1611,6 +1614,11 @@ table.pctable td,table.wotable td{vertical-align:top}
 .wo-days tr.wo-ahead td{color:var(--muted)}
 .wo-days tr.live td{background:#f1fbf5}
 .wo-days td.wo-pend{color:var(--warn);font-weight:700}
+/* (the order's window is drawn beside the room's card, not inside it, since 2026-10-20: its numbers keep to the right
+   on their own, as the card's did) */
+.wo-detail .wotable th.num,.wo-detail .wotable td.num{text-align:right;font-variant-numeric:tabular-nums}
+.wo-detail table.wotable th{white-space:normal;vertical-align:bottom;line-height:1.2}
+.wo-detail table.wotable th,.wo-detail table.wotable td{padding:8px}
 .wo-sum li{font-size:14px}
 .wo-done{display:grid;gap:4px;justify-items:start}
 .wo-done b{color:var(--ok)}
@@ -1627,6 +1635,7 @@ table.pctable td,table.wotable td{vertical-align:top}
   .plan td.pc-left .pc-bar{justify-content:flex-start}
   .plan td.pc-left .bar{max-width:none}
   .plan td.pc-since,.wotable td,.wo-sub{white-space:normal}
+  .wo-detail .rp-cardlist .wotable td.num{text-align:left}
   .wotiles{grid-template-columns:1fr 1fr}
   .wotile b{font-size:22px}
   .seg.woseg{max-width:none}
@@ -1669,6 +1678,22 @@ table.pctable td,table.wotable td{vertical-align:top}
   /* the cards side by side, each with its facts in rows of three or four */
   .wo-cards tbody{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:8px;align-items:start}
   .wo-cards tr{margin:0;grid-template-columns:repeat(auto-fill,minmax(92px,1fr))}
+}
+/* An order's day by day (the office's own sum) stays a table wherever its window holds it: its smallest is 775 px, so
+   from 900 px on. Until the review of 2026-10-20 it was cards up to 1279 px, where the running Disponible could not be
+   read down its column. Narrower, its days are cards side by side; on a phone, the Report's cards (rp-cardlist) */
+@media (min-width:721px) and (max-width:899px){
+  .wo-detail .twrap.wo-days{max-height:none;overflow:visible;border:0;background:none}
+  .wo-days table{display:block} .wo-days thead{display:none}
+  .wo-days tbody{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:8px;align-items:start}
+  .wo-days tr{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px 12px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px 10px 16px;box-shadow:inset 6px 0 0 var(--d,var(--line))}
+  .wo-days tr.live{background:#f1fbf5}
+  .wo-days td{display:block;padding:0;border:0;white-space:normal;min-width:0;background:none!important;overflow-wrap:anywhere}
+  .wo-days td[data-label]::before{content:attr(data-label);display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;margin-bottom:1px}
+  .wo-days td.c-head{grid-column:1/-1;order:-1;display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;font-weight:800;font-size:15.5px}
+  .wo-days td.c-head::before{display:none}
+  .wo-days td.c-none{display:none}
+  .wo-detail .wo-days .wotable td.num{text-align:left;white-space:normal}
 }
 /* The switches and chips of the production orders look like buttons (the house rule; review of 2026-10-19): each choice
    a grey button with its edge, the chosen one green, as the Report's switch (.seg.rp-subs) and chips (.report .chip) */

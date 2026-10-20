@@ -91,8 +91,8 @@ export type FlujoIn = {
   mfoUnits: number            // MFO, in the word it counts in (platos, copas, a typed word: see flujoRow; never 'lb' nor 'cajas')
   mfoCases: number            // MFO's 'cajas' (bins of before 2026-10-17): already cases
   mfoLb: number               // MFO's pounds: shown, never turned into cases
-  cases: number               // PACKING = cases on pallets that carry the lot
-  pallets: number             // pallets that carry the lot
+  cases: number               // PACKING = cases on pallets that carry the lot (each lot its own cases of them)
+  pallets: number             // pallets that carry the lot; one of two lots counts only in the lot with most of its cases (palletOwner)
   casesOnPo: number           // of PACKING, the cases on pallets that carry a PO (flujoOnPo: the same per-lot parts)
   palletsOnPo: number         // of those pallets, the ones with a PO
 }
@@ -244,7 +244,7 @@ export const unitWordText = (w: string) => (w === 'pouches' ? tr('pouches') : w 
  * CONSUMO's "cajas en pedidos": per code of a lot, the cases Packing put on pallets that carry a PO (one orderOfId
  * still knows: a PO written by mistake and taken away leaves its pallets without one), and those pallets. The same
  * parts PACKING counts (lotAcrossDays: a Packing line filling bins makes no cases; a pallet with two lots gives each
- * lot its own cases and counts as a pallet of both). Whether the PO is closed does not matter (Jose, 2026-10-19: the
+ * lot its own cases and counts as a pallet only in the lot with most of them, palletOwner). Whether the PO is closed does not matter (Jose, 2026-10-19: the
  * inventory is the cases without a PO). Once per lot: every code of it at one pass over the runs
  */
 export function flujoOnPo(s: State, lot: string): Map<string, { cases: number; pallets: number }> {

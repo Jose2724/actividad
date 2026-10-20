@@ -1,6 +1,6 @@
 import { createContext, memo, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
-import { CFG, closeWorkOrder, dayOf, deleteWorkOrder, DEPTS, fmtTime, lineNameOf, NOTE_MAX, normCode, numOf, orderKind, orderQueue, ordersOf, orderStatus, orderUnitDefault, orderUnitWord, plainText, productOf, reopenWorkOrder, resealGroup, saveWorkOrder, shiftsOf, stateWith, whoText, woQueue, workOrderOf, WO_MAX, WO_UNITS, type Change, type Dept, type OrderStatus, type Run, type State, type WorkOrder } from './store'
+import { CFG, closeWorkOrder, dayOf, deleteWorkOrder, DEPTS, fmtTime, lineNameOf, NOTE_MAX, normCode, numOf, orderKind, orderQueue, ordersOf, orderStatus, orderUnitDefault, orderUnitWord, productOf, reopenWorkOrder, resealGroup, saveWorkOrder, shiftsOf, stateWith, whoText, woQueue, workOrderOf, writesRoom, WO_MAX, WO_UNITS, type Change, type Dept, type OrderStatus, type Run, type State, type WorkOrder } from './store'
 import { bringWorkOrderRuns, loadOrderRows, syncStore } from './sync'
 import { supabase } from './supabase'
 import { clockNow } from './clock'
@@ -14,7 +14,7 @@ import { DEPT_LOOK, deptVars } from './look'
 import { writesIn } from './powers'
 import { tr } from './i18n'
 import { trx } from './trx'
-import { orderDayLine, woN } from './woSum'
+import { orderDayLine, recountOffer, woMatch, woN, woTokens } from './woSum'
 
 /**
  * THE PRODUCTION ORDERS ON SCREEN (Jose and the office clerk, 2026-10-19). The clerk's correction, as Jose relayed it:
@@ -45,6 +45,21 @@ export const startText = (o: WorkOrder, today: string) => (o.startDate === today
 /** the numbers can be short: with a server, the device does not hold every record of the order's days yet */
 export const shortOf = (st: OrderStatus) => !!supabase && !st.complete && !st.sealed
 const SHORT_TITLE = () => tr('Faltan días viejos de este pedido en este aparato: los números pueden cambiar cuando lleguen del servidor.')
+
+/**
+ * A part of the screen brought back into view when it is hidden above, after what a tap changes is drawn: the history's
+ * pager and "Ver todos los pedidos de producción ›" make the page shorter or start a new page, and the browser left the
+ * person at the foot of it with the search, the filters and the first orders far above (review of 2026-10-20). The
+ * Report's own rule (ReportView, reveal): never a scroll when the part is in view, below the app's bar
+ */
+export function revealAbove(el: Element | null | undefined) {
+  requestAnimationFrame(() => {
+    if (!el) return
+    const bar = Math.max(0, document.querySelector('header.top')?.getBoundingClientRect().bottom ?? 0)
+    const gap = el.getBoundingClientRect().top - bar - 8
+    if (gap < -8) window.scrollBy(0, gap)
+  })
+}
 
 /** an order's state as a tag: open (or waiting for its start day), completed or closed on a day, deleted */
 export function WoStateTag({ o, st }: { o: WorkOrder; st: OrderStatus }) {
@@ -194,7 +209,9 @@ export const OpenOrders = memo(function OpenOrders({ s, dept, today, edit, onAll
   const list = useMemo(() => ordersOf(s, dept, today).filter((x) => x.status.state === 'abierto'), [s, dept, today])
   if (!list.length && !edit) return null
   const closingO = closing ? workOrderOf(s, closing) : undefined
+  // (its windows beside the card, not inside it: the card's table rules restyled theirs; review of 2026-10-20)
   return (
+    <>
     <div className="plan woopen">
       <div className="tc-head">
         <h3>{trx('Pedidos de producción abiertos en {0}', dept)}<small> · {list.length}</small></h3>
@@ -233,15 +250,23 @@ export const OpenOrders = memo(function OpenOrders({ s, dept, today, edit, onAll
       )}
       {list.length > 0 && <p className="hint">{tr('Disponible = el total menos todo lo hecho para el pedido. Sin programar = lo disponible que todavía no está en un programa.')}</p>}
       <div className="wofoot"><button type="button" className="btn sm" onClick={onAll}>{tr('Ver todos los pedidos de producción ›')}</button></div>
-      {detail && <OrderDetail s={s} id={detail} today={today} edit={edit} onClose={closeDetail} />}
-      {adding && <WorkOrderDialog s={s} dept={dept} today={today} onClose={() => setAdding(false)} />}
-      {closingO && <WoAsk s={s} o={closingO} what="close" today={today} onNo={() => setClosing(null)} onDone={() => setClosing(null)} />}
     </div>
+    {detail && <OrderDetail s={s} id={detail} today={today} edit={edit} onClose={closeDetail} />}
+    {adding && <WorkOrderDialog s={s} dept={dept} today={today} onClose={() => setAdding(false)} />}
+    {closingO && <WoAsk s={s} o={closingO} what="close" today={today} onNo={() => setClosing(null)} onDone={() => setClosing(null)} />}
+    </>
   )
 })
 
 type HistState = '' | 'abierto' | 'completado' | 'cerrado'
 const HIST_PAGE = 50
+/**
+ * The history's choices, kept while the page stays open, as Flujo keeps its own (review of 2026-10-20: the office's
+ * "pendiente total" of every open order of every room was 3-4 taps away every time, and lost on the next room or tab).
+ * One view for whoever reads every room (its room chip is part of it), one per room for the others
+ */
+type HistView = { room: Dept | ''; q: string; only: HistState; from: string; to: string; by: 'start' | 'finish' }
+const histKept = new Map<string, HistView>()
 /**
  * Every production order (Jose, 2026-10-19): the room's, or with the room chips every room's for whoever reads them all
  * (managers, the office, "Solo ver": the all-rooms view lives here, one tap from every room, rather than as a sixth tab
@@ -251,20 +276,28 @@ const HIST_PAGE = 50
  */
 export const OrderHistory = memo(function OrderHistory({ s, dept, today, edit, readsAll }: { s: State; dept: Dept; today: string; edit: boolean; readsAll: boolean }) {
   const who = useWho()
-  const [room, setRoom] = useState<Dept | ''>(dept)
-  const [q, setQ] = useState('')
-  const [only, setOnly] = useState<HistState>('')
-  const [from, setFrom] = useState('')
-  const [to, setTo] = useState('')
-  const [by, setBy] = useState<'start' | 'finish'>('start')
+  // whoever reads every room starts on all of them (the office's view of every open order, Jose 2026-10-19); the
+  // others on their room. What was chosen last stays
+  const home: Dept | '' = readsAll ? '' : dept, keyOf = readsAll ? '*' : dept
+  const was = histKept.get(keyOf) ?? { room: home, q: '', only: '' as HistState, from: '', to: '', by: 'start' as const }
+  const [room, setRoom] = useState<Dept | ''>(readsAll ? was.room : dept)
+  const [q, setQ] = useState(was.q)
+  const [only, setOnly] = useState<HistState>(was.only)
+  const [from, setFrom] = useState(was.from)
+  const [to, setTo] = useState(was.to)
+  const [by, setBy] = useState<'start' | 'finish'>(was.by)
+  useEffect(() => { histKept.set(keyOf, { room, q, only, from, to, by }) }, [keyOf, room, q, only, from, to, by])
   const [page, setPage] = useState(0)
+  const topRef = useRef<HTMLDivElement>(null)
+  const turn = (p: number) => { setPage(p); revealAbove(topRef.current) }
   const [detail, setDetail] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
   const closeDetail = useCallback(() => setDetail(null), [])
   const all = useMemo(() => ordersOf(s, null, today), [s, today])
   const rooms: Dept[] = readsAll ? DEPTS : [dept]
-  const needle = plainText(q)
-  const hits = (x: (typeof all)[number]) => !needle || [x.order.code, x.order.wo, x.order.note, productOf(s, x.order.code)?.name ?? '', ...x.status.lots].some((t) => plainText(t).includes(needle))
+  // every word typed, in the code, WO, note, product or lots ("0889", "WO 4512", "A100 6290": woMatch in woSum.ts)
+  const toks = woTokens(q)
+  const hits = (x: (typeof all)[number]) => { const p = productOf(s, x.order.code); return woMatch({ code: x.order.code, productCode: p?.code, wo: x.order.wo, note: x.order.note, name: p?.name, lots: x.status.lots }, toks) }
   const inDates = (x: (typeof all)[number]) => {
     if (!from && !to) return true
     const d = by === 'start' ? x.order.startDate : x.status.finishDay
@@ -278,8 +311,8 @@ export const OrderHistory = memo(function OrderHistory({ s, dept, today, edit, r
   const shown = list.slice(at * HIST_PAGE, (at + 1) * HIST_PAGE)
   const preset = (n: number) => from === addDays(today, -(n - 1)) && to === today
   const pick = (n: number) => { setFrom(addDays(today, -(n - 1))); setTo(today); setPage(0) }
-  const filtering = !!(needle || only || from || to || (readsAll && room !== dept))
-  const clear = () => { setQ(''); setOnly(''); setFrom(''); setTo(''); setRoom(dept); setPage(0) }
+  const filtering = !!(toks.length || only || from || to || room !== home)
+  const clear = () => { setQ(''); setOnly(''); setFrom(''); setTo(''); setRoom(home); setPage(0) }
   // the old days of the orders in view that this device does not hold yet: asked once per queue while the view is open
   const sync = useSyncStatus()
   const asked = useRef(new Set<string>())
@@ -297,7 +330,8 @@ export const OrderHistory = memo(function OrderHistory({ s, dept, today, edit, r
   const stillShort = list.some((x) => shortOf(x.status))
   const canEdit = (o: WorkOrder) => edit && writesIn(who, o.dept)
   return (
-    <div className="plan wohist">
+    <>
+    <div className="plan wohist" ref={topRef}>
       <div className="tc-head">
         <h3>{readsAll && !room ? tr('Pedidos de producción · todos los cuartos') : trx('Pedidos de producción de {0}', room || dept)}<small> · {list.length}</small></h3>
         {edit && <button type="button" className="btn soft sm" onClick={() => setAdding(true)}>{tr('+ Nuevo pedido')}</button>}
@@ -350,7 +384,7 @@ export const OrderHistory = memo(function OrderHistory({ s, dept, today, edit, r
       ) : (
         <div className="twrap rp-cardlist wo-cards">
           <table className="wotable">
-            <thead><tr><th>{tr('Cuarto')}</th><th>{tr('Código')}</th><th>WO</th><th className="num">{tr('Total')}</th><th>{tr('Desde')}</th><th className="num">{tr('Hecho')}</th><th className="num">{tr('Disponible')}</th><th>{tr('Estado')}</th><th className="rp-act"></th></tr></thead>
+            <thead><tr><th>{tr('Cuarto')}</th><th>{tr('Código')}</th><th>WO</th><th className="num">{tr('Total')}</th><th>{tr('Desde')}</th><th className="num">{tr('Hecho')}</th><th className="num">{tr('Disponible')}</th><th className="num">{tr('Sin programar')}</th><th>{tr('Estado')}</th><th className="rp-act"></th></tr></thead>
             <tbody>{shown.map(({ order: o, status: st }) => {
               const name = productOf(s, o.code)?.name
               return (
@@ -362,6 +396,8 @@ export const OrderHistory = memo(function OrderHistory({ s, dept, today, edit, r
                   <td data-label={tr('Desde')}>{startText(o, today)}</td>
                   <td className="num" data-label={tr('Hecho')} title={shortOf(st) ? SHORT_TITLE() : undefined}>{woN(st.made)}{shortOf(st) && <small className="wo-short"> …</small>}{st.over > 0 && <small className="wo-sub">{tr('+{0} de más', woN(st.over))}</small>}</td>
                   <td className="num" data-label={tr('Disponible')}><b>{woN(st.disponible)}</b></td>
+                  {/* what the office still has to program of each open order (Jose, 2026-10-19: "para saber cuánto nos queda y poner luego la programación") */}
+                  <td className={'num' + (st.state === 'abierto' ? '' : ' c-none')} data-label={tr('Sin programar')}>{st.state === 'abierto' ? <>{woN(st.sinProgramar)}{st.pendingToday > 0 && <small className="wo-sub">{tr('{0} pendientes en programas', woN(st.pendingToday))}</small>}</> : '—'}</td>
                   <td data-label={tr('Estado')}><WoStateTag o={o} st={st} /></td>
                   <td className="rp-act"><div className="btns"><button type="button" className="btn xs" onClick={() => setDetail(o.id)}>{tr('Ver')}</button></div></td>
                 </tr>
@@ -374,14 +410,15 @@ export const OrderHistory = memo(function OrderHistory({ s, dept, today, edit, r
         <div className="rp-pager">
           <span>{tr('{0}–{1} de {2}', at * HIST_PAGE + 1, Math.min(list.length, (at + 1) * HIST_PAGE), list.length)}</span>
           <div className="btns">
-            <button type="button" className="btn sm" disabled={at === 0} onClick={() => setPage(at - 1)}>{tr('‹ Anterior')}</button>
-            <button type="button" className="btn sm" disabled={at >= pages - 1} onClick={() => setPage(at + 1)}>{tr('Siguiente ›')}</button>
+            <button type="button" className="btn sm" disabled={at === 0} onClick={() => turn(at - 1)}>{tr('‹ Anterior')}</button>
+            <button type="button" className="btn sm" disabled={at >= pages - 1} onClick={() => turn(at + 1)}>{tr('Siguiente ›')}</button>
           </div>
         </div>
       )}
-      {detail && <OrderDetail s={s} id={detail} today={today} edit={!!workOrderOf(s, detail) && canEdit(workOrderOf(s, detail)!)} onClose={closeDetail} />}
-      {adding && <WorkOrderDialog s={s} dept={room || dept} today={today} onClose={() => setAdding(false)} />}
     </div>
+    {detail && <OrderDetail s={s} id={detail} today={today} edit={!!workOrderOf(s, detail) && canEdit(workOrderOf(s, detail)!)} onClose={closeDetail} />}
+    {adding && <WorkOrderDialog s={s} dept={room || dept} today={today} onClose={() => setAdding(false)} />}
+    </>
   )
 })
 /** the sync's state (offline or not), for the lines that say why the old days are not here */
@@ -426,6 +463,10 @@ export const OrderDetail = memo(function OrderDetail({ s, id, today, edit, onClo
   const st = orderStatus(view, o, today)
   const unit = orderUnitWord(o), name = productOf(s, o.code)?.name, cfg = CFG[o.dept]
   const fromServer = !!rows && view !== s
+  // its closed account worked out again with the server's records: offered by the device's own numbers (base), never
+  // by the window's (worked out without the account, they never say "sealed": review of 2026-10-20)
+  // (only for who may write the room's history, where the account goes as a mark: "Solo ver" keeps its own)
+  const offer = writesRoom(o.dept) ? recountOffer(base, st, fromServer) : ''
   // the records that counted, oldest first: the device's own (each with "Ver" and "Corregir") and older ones (seen here)
   const runOf = (runId: string): Run | undefined => view.runs.find((r) => r.id === runId) ?? view.orderRuns.find((r) => r.id === runId)
   const counted = st.runs.map((p) => ({ p, r: runOf(p.runId) })).filter((x): x is { p: typeof x.p; r: Run } => !!x.r).sort((a, b) => a.r.startedAt - b.r.startedAt)
@@ -468,7 +509,7 @@ export const OrderDetail = memo(function OrderDetail({ s, id, today, edit, onClo
         <section className="fl-dsec">
           <h4>{tr('Día por día')}</h4>
           {st.byDay.length === 0 ? <p className="hint">{st.sealed ? tr('El día por día de una cuenta cerrada se trae del servidor: sale aquí cuando haya señal.') : tr('Nada programado ni hecho de este pedido todavía.')}</p> : (
-            <div className="twrap rp-cardlist wo-cards wo-days">
+            <div className="twrap rp-cardlist wo-days">
               <table className="wotable">
                 <thead><tr><th>{tr('Día')}</th><th className="num">{tr('Programado')}</th><th>{tr('Lote')}</th><th className="num">{tr('Turno 1')}</th><th className="num">{tr('Turno 2')}</th><th className="num">{tr('Hecho')}</th><th className="num">{tr('Pendiente')}</th><th className="num">{tr('Total hecho')}</th><th className="num">{tr('Disponible')}</th><th className="num">{tr('Sin programar')}</th></tr></thead>
                 <tbody>
@@ -498,7 +539,7 @@ export const OrderDetail = memo(function OrderDetail({ s, id, today, edit, onClo
           {st.byDay.length > 0 && (
             <>
               <h5>{tr('La cuenta, como la hace la oficina')}</h5>
-              <ul className="flhow wo-sum">{st.byDay.map((d) => <li key={d.date}>{orderDayLine(d, o.qty, today, shortDay)}</li>)}</ul>
+              <ul className="flhow wo-sum">{st.byDay.map((d, i) => <li key={d.date}>{orderDayLine(d, o.qty, today, shortDay, st.byDay[i - 1])}</li>)}</ul>
               <p className="hint">{tr('Disponible = el total menos todo lo hecho para el pedido: lo que un día no hizo vuelve al pedido y se programa otra vez.')}</p>
             </>
           )}
@@ -567,7 +608,13 @@ export const OrderDetail = memo(function OrderDetail({ s, id, today, edit, onClo
             </div>
           )}
         </section>
-        {st.sealed && fromServer && rows && <section className="fl-dsec"><div className="btns"><button type="button" className="btn soft sm" onClick={() => { const n = resealGroup(view, rows.unseal, today); setRecount(n ? tr('La cuenta cambió con los registros del servidor y quedó guardada.') : tr('La cuenta guardada coincide con los registros del servidor.')) }}>{tr('Calcular otra vez con el servidor')}</button></div>{recount && <p className="hint ok">{recount}</p>}</section>}
+        {(offer || recount) && (
+          <section className="fl-dsec">
+            {offer === 'differs' && base && <p className="hint amber">{tr('La cuenta guardada de este pedido dice otra cosa ({0} hechas): los registros del servidor cambiaron después de cerrarla. Las listas siguen con la cuenta guardada hasta que se calcule otra vez.', woN(base.made))}</p>}
+            {offer && rows && <div className="btns"><button type="button" className="btn soft sm" onClick={() => { const n = resealGroup(view, rows.unseal, today); setRecount(n < 0 ? tr('Con los registros del servidor el pedido ya no está terminado: su cuenta guardada se quitó en todos los aparatos y se cuenta otra vez con los registros.') : n ? tr('La cuenta cambió con los registros del servidor y quedó guardada.') : tr('La cuenta guardada coincide con los registros del servidor.')) }}>{tr('Calcular otra vez con el servidor')}</button></div>}
+            {recount && <p className="hint ok">{recount}</p>}
+          </section>
+        )}
         <div className="dbtns spread">
           <div className="btns">
             {edit && <button type="button" className="btn soft" onClick={() => setChanging(true)}>{tr('✎ Cambiar')}</button>}

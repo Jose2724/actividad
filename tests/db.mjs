@@ -492,6 +492,13 @@ section('020: los pedidos de producción de cada cuarto y el pedido del programa
   eq('Noelia (Kitchen) lee los de Kitchen; Ana (Packing), los de Packing', [await seen(noe), await seen(ana)], [[['Kitchen', 4]], [['Packing', 4]]])
   eq('la oficina, "Solo ver" y el manager: todos', [await seen(edgar), await seen(mike), await seen(jose)], [everything, everything, everything])
   eq('una cuenta sin papel, o desactivada: nada', [await seen(frank), await seen(gone)], [[], []])
+  // (review of 2026-10-20) a request made by hand, not by the app: a plain INSERT, as PostgREST makes a POST without its
+  // upsert. Without the room in the write rule it went in, and an MFO order planted with an earlier start day would take
+  // MFO's production first on every MFO tablet. The same row moved to another room by an UPDATE, refused too
+  const plain = (who, row) => code(as(db, who, (tx) => { const cols = Object.keys(row); return tx.query(`insert into public.act_work_orders (${cols.join(', ')}) values (${cols.map((_, i) => '$' + (i + 1)).join(', ')})`, cols.map((c) => row[c])) }))
+  const PIA = uuid()
+  eq('Pia con un INSERT a mano: en su cuarto sí; en otro (MFO) no; ni pasarlo a otro cuarto después', [await plain(pia, woRow(PIA, 'RTE', '101', 50, { unit: 'pouches' })), await plain(pia, woRow(uuid(), 'MFO', '301', 900, { unit: 'platos', start_date: '2026-01-01' })), await code(as(db, pia, (tx) => tx.query("update public.act_work_orders set dept = 'MFO' where id = $1", [PIA])))], ['', '42501', '42501'])
+  eq('el manager y la oficina con un INSERT a mano, en cualquier cuarto', [await plain(jose, woRow(uuid(), 'MFO', '302', 10, { unit: 'platos' })), await plain(edgar, woRow(uuid(), 'Spiral', '303', 10, { unit: 'lb' }))], ['', ''])
 
   // nobody erases; the server stamps every version and keeps the one before
   eq('DELETE y TRUNCATE, ni el manager', [await undone(jose, 'delete from public.act_work_orders'), await undone(jose, 'truncate public.act_work_orders')], ['42501', '42501'])

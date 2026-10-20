@@ -2422,12 +2422,20 @@ const sealOfStatus = (s: State, o: WorkOrder, st: OrderStatus, upto: string): Or
  * office): a device that only looks keeps its own, unsent. Nothing the app writes ever takes a mark away: one that no
  * longer stands is ignored, and written again when the order can be closed again
  */
-function pushSeal(o: WorkOrder, seal: OrderSeal) {
+function pushSeal(o: WorkOrder, seal: OrderSeal, gone = false) {
   if (!writesRoom(o.dept)) return
   const { id: _id, updatedAt: _at, ...body } = seal
-  const c: Change = { id: 'wodone:' + o.id, at: seal.finishAt || clockNow(), by: user.get(), dept: o.dept, what: 'Pedido de producción terminado · ' + o.code + (o.wo ? ' · WO ' + o.wo : ''), before: '', after: JSON.stringify(body), refTable: WO_DONE_REF, refKey: o.id, updatedAt: seal.updatedAt }
+  const c: Change = { id: 'wodone:' + o.id, at: seal.finishAt || clockNow(), by: user.get(), dept: o.dept, what: 'Pedido de producción terminado · ' + o.code + (o.wo ? ' · WO ' + o.wo : ''), before: '', after: JSON.stringify(body), refTable: WO_DONE_REF, refKey: o.id, updatedAt: seal.updatedAt, ...(gone ? { deleted: true } : {}) }
   push('act_changes', c.id, rowOfChange(c))
 }
+/**
+ * The day an account is closed up to (OrderSeal.upto: the orders of the queue that start on or before it are in its
+ * fingerprint): the last day its group finished, and never before a start day of the group. An order closed by hand
+ * before its start day (cancelled) finished before it started: closed up to that day, its own row was not in its
+ * fingerprint, and reopening it, or changing its total or its start day, left the account standing, counting nothing
+ * for it for good (review of 2026-10-20)
+ */
+const sealUpto = (group: WorkOrder[], last: string) => [last, ...group.map((o) => o.startDate)].sort().at(-1) ?? last
 /**
  * The orders whose account can be closed (see "the account of a finished order"): the orders of a queue are taken
  * oldest first in groups that overlap (an order joins the group while one of it is still open, or when it starts on
@@ -2443,7 +2451,7 @@ function sealFinished() {
     if (!queueHeld(need.q, need.from)) continue
     const st = queueStatuses(s, need.q, today)
     let group: WorkOrder[] = [], open = false, last = ''
-    const close = () => { if (group.length && !open && last && last < kept) for (const o of group) made.push({ o, seal: sealOfStatus(s, o, st.get(o.id)!, last) }); group = []; open = false; last = '' }
+    const close = () => { if (group.length && !open && last && last < kept) { const upto = sealUpto(group, last); for (const o of group) made.push({ o, seal: sealOfStatus(s, o, st.get(o.id)!, upto) }) } group = []; open = false; last = '' }
     for (const o of liveOrders(s, need.q)) {
       if (group.length && !open && o.startDate > last) close()
       group.push(o)
@@ -2498,19 +2506,34 @@ export function stateWith(s: State, rows: { runs?: Row[]; plans?: Row[]; changes
  * The account of a group of orders worked out again from the server's records (st = stateWith(…, ids, true): "Calcular
  * otra vez con el servidor"): where it differs from the one kept here (a correction of an old run), it is kept as it
  * comes out now and shared again. Only for a group finished before the days the device keeps (the others are worked out
- * from the records anyway). Returns how many accounts changed
+ * from the records anyway). Returns how many accounts changed, or -1 when the records no longer close it: one of the
+ * group is not finished any more (an old mezcla deleted in the Reporte), or it finished within the days the device
+ * keeps. Then the accounts of the group are taken away, here and on every device (their marks go up deleted: see
+ * applyRemote), and the orders are worked out from their records again. Until the review of 2026-10-20 they were left
+ * as they were: the order stayed "Completado" on every list and every device, and the window said "coincide"
  */
 export function resealGroup(st: State, ids: string[], today: string): number {
   const list = ids.map((id) => st.workOrders.find((o) => o.id === id && !o.deleted)).filter((o): o is WorkOrder => !!o).map((o) => ({ o, x: orderStatus(st, o, today) }))
-  if (!list.length || list.some(({ x }) => !x.finishDay || x.sealed)) return 0
-  const upto = list.map(({ x }) => x.finishDay).sort().at(-1) ?? ''
-  if (upto >= firstKeptDay()) return 0
+  if (!list.length || list.some(({ x }) => x.sealed)) return 0
+  const last = list.map(({ x }) => x.finishDay).sort().at(-1) ?? ''
+  if (list.some(({ x }) => !x.finishDay) || last >= firstKeptDay()) return unsealOrders(ids) ? -1 : 0
+  const upto = sealUpto(list.map(({ o }) => o), last)
   const fresh = list.map(({ o, x }) => ({ o, seal: sealOfStatus(state, o, x, upto) })).filter(({ seal }) => { const was = state.orderSeals.find((y) => y.id === seal.id); return !was || !same({ ...was, updatedAt: 0 }, { ...seal, updatedAt: 0 }) })
   if (!fresh.length) return 0
   const ids2 = new Set(fresh.map((x) => x.o.id))
   set({ ...state, orderSeals: [...state.orderSeals.filter((x) => !ids2.has(x.id)), ...fresh.map((x) => x.seal)] })
   for (const x of fresh) pushSeal(x.o, x.seal)
   return fresh.length
+}
+/** the closed accounts of these orders taken away, here and as marks for every device; whether there was any */
+function unsealOrders(ids: string[]): boolean {
+  const gone = state.orderSeals.filter((x) => ids.includes(x.id))
+  if (!gone.length) return false
+  batch(() => {
+    set({ ...state, orderSeals: state.orderSeals.filter((x) => !ids.includes(x.id)) })
+    for (const seal of gone) { const o = state.workOrders.find((w) => w.id === seal.id); if (o) pushSeal(o, { ...seal, updatedAt: Math.max(clockNow(), seal.updatedAt + 1) }, true) }
+  })
+  return true
 }
 
 // ---- typing, closing and taking away an order ----
@@ -2595,10 +2618,16 @@ export function deleteWorkOrder(id: string): boolean {
  */
 const WO_KEYS = ['dept', 'code', 'wo', 'qty', 'unit', 'startDate', 'note', 'createdAt', 'createdBy', 'closedAt', 'closedBy'] as const
 const woBody = (o: WorkOrder) => [...WO_KEYS.map((k) => o[k]), !!o.deleted]
-function mergeQueuedOrder(pend: { row: Row; base?: Row | null }, row: Row, theirs: WorkOrder): WorkOrder | null {
+function mergeQueuedOrder(pend: { row: Row; base?: Row | null; tried?: Row[] }, row: Row, theirs: WorkOrder): WorkOrder | null {
   const mine = workOrderOfRow(pend.row, fromIso(pend.row.updated_at) ?? 0)
   if (!mine) return null
   if (same(woBody(mine), woBody(theirs))) { drop('act_work_orders', theirs.id); return theirs }
+  // A version this device itself sent whose answer never came back (the 25 s limit, a WiFi that dropped): the server
+  // took it, and it is this change's own past, not another device's change (as reconcile does for the runs, lines and
+  // stops). Merged field by field against the old base instead, a change undone before the next pass (a total put back
+  // to 100 after 200 went up unanswered, an order reopened after its closing went up unanswered) took the server's
+  // field back, and the undo was lost on the server and on the device (review of 2026-10-20)
+  if (pend.tried?.some((t) => { const x = workOrderOfRow(t, fromIso(t.updated_at) ?? 0); return !!x && x.updatedAt === theirs.updatedAt && same(woBody(x), woBody(theirs)) })) { rebase('act_work_orders', theirs.id, pend.row, row); return null }
   const base = pend.base ? workOrderOfRow(pend.base, fromIso(pend.base.updated_at) ?? 0) : null
   // (no version to start from: an order typed here that went up and whose answer was lost; this change goes up as it is)
   if (!base) { rebase('act_work_orders', theirs.id, pend.row, row); return null }
@@ -2835,9 +2864,18 @@ function mergeRun(base: Run, mine: Run, theirs: Run): Run {
   const inBase = new Map(base.units.map((u) => [u.at, u])), inMine = new Map(mine.units.map((u) => [u.at, u])), inTheirs = new Set(theirs.units.map((u) => u.at))
   // what any version took off on purpose stays off, whoever took it
   const dead = tombs(base, mine, theirs)
+  // Two NEW units of two tablets can carry the same moment: two people adding a missing pallet at the same typed
+  // minute, or two clocks reading the same millisecond. A unit is known by its moment, so one used to swallow the
+  // other and a pallet was lost (review of 2026-10-20). A unit of mine that is new on both sides, sits on a moment
+  // the other side also filled with something new, and is not the same unit (its echo after a lost answer is), moves
+  // to the next free millisecond: both stay. Units the base had are corrections and are matched as always.
+  const theirsAt = new Map(theirs.units.map((u) => [u.at, u])), used = new Set([...theirs.units.map((u) => u.at), ...mine.units.map((u) => u.at), ...dead])
+  const clash = (u: Unit) => { const t = theirsAt.get(u.at); return !!t && !inBase.has(u.at) && !sameUnit(t, u) }
+  const moved = (u: Unit): Unit => { let at = u.at + 1; while (used.has(at)) at++; used.add(at); return { ...u, at } }
   out.units = [
-    ...theirs.units.filter((u) => !(inBase.has(u.at) && !inMine.has(u.at))).map((u) => { const m = inMine.get(u.at), b = inBase.get(u.at); return m && b ? mergeUnit(b, m, u) : noteBack(u, b ?? m) }),
+    ...theirs.units.filter((u) => !(inBase.has(u.at) && !inMine.has(u.at))).map((u) => { const m = inMine.get(u.at), b = inBase.get(u.at); return m && b ? mergeUnit(b, m, u) : m && !b && clash(m) ? u : noteBack(u, b ?? m) }),
     ...mine.units.filter((u) => !inBase.has(u.at) && !inTheirs.has(u.at)),
+    ...mine.units.filter((u) => clash(u)).map(moved),
   ].filter((u) => !dead.has(u.at)).sort(byAt)
   // (in the order a row is read in, see cleanExtra: the same content must read as the same row in reconcile). The
   // comment merges on its own (mergeNote): mergeExtra goes key by key for the rest

@@ -142,10 +142,11 @@ export function verdict(code: string, message: string): 'notReady' | 'refused' |
 
 /**
  * remembers that this version of the row is going up (see pass). Only for the rows that are merged when they come
- * down (lines, runs, stops); only the last three, since each one is a whole row, and they leave with the server's answer
+ * down (lines, runs, stops, production orders); only the last three, since each one is a whole row, and they leave
+ * with the server's answer
  */
 function tryOf(it: Item) {
-  if (it.table !== 'act_lines' && it.table !== 'act_runs' && it.table !== 'act_stops') return
+  if (it.table !== 'act_lines' && it.table !== 'act_runs' && it.table !== 'act_stops' && it.table !== 'act_work_orders') return
   const was = JSON.stringify(it.row)
   write(read().map((i) => (is(it.table, it.key)(i) ? { ...i, tried: [...(i.tried ?? []).filter((t) => JSON.stringify(t) !== was), it.row].slice(-3) } : i)))
 }

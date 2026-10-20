@@ -247,8 +247,14 @@ async function bringOrderRuns() {
 async function bringSeals() {
   try { await pages(listing('act_changes', (q) => q.eq('ref_table', WO_DONE_REF)), (rows) => batch(() => { for (const row of rows) applyRemote('act_changes', row) })) } catch { /* the records are brought instead */ }
 }
-/** what a production order is worked out with, older than the days this device keeps: the runs of its code and room, and the programs of it, from a day to the first day the device keeps */
-const oldRuns = (dept: Dept, code: string, from: string, until: string) => listing('act_runs', (q) => q.eq('dept', dept).gte('date', from).lt('date', until).eq('deleted', false).in('code', codeVariants(code)))
+/**
+ * what a production order is worked out with, older than the days this device keeps: the runs of its code and room, and
+ * the programs of it, from a day to the first day the device keeps. The runs taken off too: a run of those days that
+ * this device keeps for an order (State.orderRuns) and that was deleted on the server while it was away is only
+ * dropped by its deleted row (applyRemote). Listed without them, a device whose next pull was a whole one (a new
+ * version) kept counting it, and could close the order's account with it and share it (review of 2026-10-20)
+ */
+const oldRuns = (dept: Dept, code: string, from: string, until: string) => listing('act_runs', (q) => q.eq('dept', dept).gte('date', from).lt('date', until).in('code', codeVariants(code)))
 const oldPlans = (dept: Dept, code: string, from: string, until: string) => listing('act_plan', (q) => q.eq('dept', dept).gte('date', from).lt('date', until).in('code', codeVariants(code)))
 /**
  * A production order counts everything its room made of its code since its start day, and a device keeps 14 days

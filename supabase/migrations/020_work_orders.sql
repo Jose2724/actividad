@@ -17,7 +17,9 @@
 --      no unique rule that could refuse the second one typed on another tablet.
 --   2. Who reads and writes them: every Actividad role reads the orders of the rooms it reads (015: an operator, its
 --      own room; managers, the office and "Solo ver", every room); the managers, the office and whoever holds the power
---      "Productos y programa" write them, as act_plan. Nobody deletes or empties the table from the app (018, 8).
+--      "Productos y programa" write them, as act_plan, each only in the rooms it reads: an operator with that power,
+--      in its own room (an order planted in another room would take that room's production first). Nobody deletes or
+--      empties the table from the app (018, 8).
 --   3. act_plan.order_id: the order a day's program is a part of (empty = a plain day's program, as every program of
 --      before this file). No foreign key on purpose: a program typed on a tablet may reach the server before its
 --      order does (each table goes up on its own, and an order waits while the server is asked what it has of it); a
@@ -50,9 +52,12 @@ alter table public.act_work_orders enable row level security;
 drop policy if exists act_work_orders_read on public.act_work_orders;
 create policy act_work_orders_read on public.act_work_orders for select to authenticated using (public.act_can_read(dept));
 drop policy if exists act_work_orders_insert on public.act_work_orders;
-create policy act_work_orders_insert on public.act_work_orders for insert to authenticated with check (public.act_is_mgr() or public.act_has('products'));
+-- (the room too: without it an operator of RTE holding "Productos y programa" could plant an MFO order with a plain
+-- INSERT, one PostgREST makes without its upsert, and every MFO tablet would count MFO's production against it first;
+-- the app never writes another room's order for anyone the read rule would not show it to. Review of 2026-10-20)
+create policy act_work_orders_insert on public.act_work_orders for insert to authenticated with check ((public.act_is_mgr() or public.act_has('products')) and public.act_can_read(dept));
 drop policy if exists act_work_orders_update on public.act_work_orders;
-create policy act_work_orders_update on public.act_work_orders for update to authenticated using (public.act_is_mgr() or public.act_has('products')) with check (public.act_is_mgr() or public.act_has('products'));
+create policy act_work_orders_update on public.act_work_orders for update to authenticated using (public.act_is_mgr() or public.act_has('products')) with check ((public.act_is_mgr() or public.act_has('products')) and public.act_can_read(dept));
 grant select, insert, update on table public.act_work_orders to authenticated;
 revoke delete, truncate on table public.act_work_orders from anon, authenticated;
 

@@ -37,7 +37,7 @@ export type AvanceRow = {
   mfo: MfoMade[]
   /** what MFO has to pack of a code it packs, in cases (mezclas × yield): only while its bins counted cases (before 2026-10-17); null otherwise */
   mfoPlan: number | null; mfoExp: number | null
-  /** the same made numbers, shift by shift (a unit counts on the shift of its hour) and lot by lot (a pallet with two lots gives each its cases and is a pallet of both) */
+  /** the same made numbers, shift by shift (a unit counts on the shift of its hour) and lot by lot (a pallet with two lots gives each its cases, and is a pallet only of the lot with most of them: palletOwner) */
   byShift: [AvancePart, AvancePart]; lots: ({ lot: string } & AvancePart)[]
   /** a row of one lot over all its days (lotRows): what each day made of it */
   days?: LotDay[]

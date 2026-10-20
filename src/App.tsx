@@ -21,7 +21,7 @@ import { Settings, type SettingsKey } from './Settings'
 import { DEPT_LOOK, deptVars } from './look'
 import { Report } from './ReportView'
 import { Flujo, flujoOpenAt } from './FlujoView'
-import { daysBetween, daysText, OpenOrders, OrderDetail, OrderHistory, shortOf, startText, WoNavCtx, woName, WorkOrderDialog, WoStateTag, type WoNav } from './WorkOrders'
+import { daysBetween, daysText, OpenOrders, OrderDetail, OrderHistory, revealAbove, shortOf, startText, WoNavCtx, woName, WorkOrderDialog, WoStateTag, type WoNav } from './WorkOrders'
 import { availOn, woN } from './woSum'
 import { appUrl, qrPath } from './qr'
 import { lang, locale, saveLang, tr } from './i18n'
@@ -1616,7 +1616,10 @@ function PlanCard({ s, dept, date, mgr }: { s: State; dept: Dept; date: string; 
   if (!planned.length && !prev.length && !mgr) return null
   const cfg = CFG[dept], byCode = dept === 'Spiral' || dept === 'MFO', unit = byCode ? tr('la unidad de cada código') : cfg.qty === 'none' ? cfg.plural.toLowerCase() : cfg.qtyUnit
   const yesterday = dayBefore(date)
+  // (its windows are drawn beside the card, not inside it: the card's own table rules restyled the run sheet and the
+  // tables of the order's window; review of 2026-10-20)
   return (
+    <>
     <div className="plan">
       <div className="tc-head">
         <h3>{trx('Programa de {0}', dept)}<small> · {tr('hoy')} · {tr('en {0}', unit)}</small></h3>
@@ -1640,7 +1643,7 @@ function PlanCard({ s, dept, date, mgr }: { s: State; dept: Dept; date: string; 
       {planned.length ? (
         <div className="twrap rp-cardlist wo-cards">
           <table className="pctable">
-            <thead><tr><th>{tr('Código')}</th><th>{tr('Lote')}</th><th>{tr('Pedido')}</th><th>{tr('Desde')}</th><th className="num">{tr('Programado hoy')}</th><th className="num">{tr('Turno 1')}</th><th className="num">{tr('Turno 2')}</th><th className="num">{tr('Hecho hoy')}</th><th className="num">{tr('Pendiente hoy')}</th><th className="num">{tr('Disponible del pedido')}</th></tr></thead>
+            <thead><tr><th>{tr('Código')}</th><th>{tr('Lote')}</th><th className="pc-order">{tr('Pedido de producción')}</th><th>{tr('Desde')}</th><th className="num">{tr('Programado hoy')}</th><th className="num pc-turn">{tr('Turno 1')}</th><th className="num pc-turn">{tr('Turno 2')}</th><th className="num">{tr('Hecho hoy')}</th><th className="num">{tr('Pendiente hoy')}</th><th className="num">{tr('Disponible del pedido')}</th></tr></thead>
             <tbody>{planned.map((r) => {
               const pct = Math.max(0, Math.min(100, Math.floor((r.done / r.planned) * 100)))
               const o = r.orderId ? workOrderOf(s, r.orderId) : undefined, st = o && !o.deleted ? orderStatus(s, o, date) : null
@@ -1651,17 +1654,19 @@ function PlanCard({ s, dept, date, mgr }: { s: State; dept: Dept; date: string; 
                   {/* the lot the program names (2026-10-19), blank when the office left it out (a phone's card leaves it out) */}
                   <td className={'pc-lot' + (r.lot ? '' : ' c-none')} data-label={tr('Lote')}>{r.lot || '—'}</td>
                   {/* the production order this program is a part of: a tap opens it (its window has the whole sum) */}
-                  <td className="pc-order" data-label={tr('Pedido')}>
+                  {/* "de producción" said in full: in Packing a "pedido" is also the customer's PO (its Pedidos tab, the live card's "Pedido de C300"); review of 2026-10-20 */}
+                  <td className="pc-order" data-label={tr('Pedido de producción')}>
                     {o && st ? <button type="button" className="drill wolink" title={tr('Ver el pedido')} onClick={() => setDetail(o.id)}><span>{woName(o)}</span><small>{tr('de {0} {1}', woN(o.qty), orderUnitWord(o))}</small></button>
-                      : <span className="wo-none">{!r.orderId ? tr('sin pedido') : o ? tr('pedido borrado') : tr('pedido que este aparato no tiene')}</span>}
+                      : <span className="wo-none">{!r.orderId ? tr('sin pedido de producción') : o ? tr('pedido borrado') : tr('pedido que este aparato no tiene')}</span>}
                     {o && st && st.state !== 'abierto' && <WoStateTag o={o} st={st} />}
                   </td>
                   {/* since when (Jose, 2026-10-19): the order's start day, "hoy", or the day with how long ago in amber */}
                   <td className={'pc-since' + (old ? ' old' : '') + (o && st ? '' : ' c-none')} data-label={tr('Desde')}>{o && st ? <>{startText(o, date)}{old > 0 && <small className="wo-age"> 🕒 {daysText(old)}</small>}</> : '—'}</td>
                   {/* in the word of its order when it has one (an MFO code's copas order before its first bin of copas read "platos") */}
                   <td className="num" data-label={tr('Programado hoy')}>{woN(r.planned)}{byCode && <small className="punit"> {o && st ? orderUnitWord(o) : r.unit}</small>}</td>
-                  <td className="num" data-label={tr('Turno 1')}>{woN(r.byShift[0])}</td>
-                  <td className="num" data-label={tr('Turno 2')}>{woN(r.byShift[1])}</td>
+                  {/* each shift's part: for wider screens (a phone keeps the code, what was set, what is made and what is left, as before the orders) */}
+                  <td className="num pc-turn" data-label={tr('Turno 1')}>{woN(r.byShift[0])}</td>
+                  <td className="num pc-turn" data-label={tr('Turno 2')}>{woN(r.byShift[1])}</td>
                   <td className="num" data-label={tr('Hecho hoy')}><b>{woN(r.done)}</b></td>
                   <td className={'num pc-left ' + (r.left <= 0 ? 'ok' : 'left')} data-label={tr('Pendiente hoy')}>
                     <span>{r.left > 0 ? woN(r.left) : tr('✓ completo') + (r.left < 0 ? ' (+' + woN(-r.left) + ')' : '')}</span>
@@ -1678,9 +1683,10 @@ function PlanCard({ s, dept, date, mgr }: { s: State; dept: Dept; date: string; 
         </div>
       ) : <p className="hint">{mgr ? trx('{0} no tiene programa para hoy. Pon aquí los códigos que le tocan y cuánto de cada uno: lo que registren se descuenta solo.', dept) : trx('{0} no tiene programa para hoy.', dept)}</p>}
       {planned.length > 0 && <p className="hint">{tr('Cada vez que se registra uno de estos códigos, baja solo lo pendiente.')}{planned.some((r) => r.orderId) && ' ' + tr('Lo que el día no hace vuelve a su pedido: no pasa solo al día siguiente, se programa otra vez.')}{extra.length > 0 && ' ' + tr('Fuera del programa: {0}.', extra.map((r) => r.code + ' (' + fmtN(r.done) + ')').join(', '))}</p>}
-      {editing && <PlanDialog s={s} dept={dept} today={date} unit={unit} onClose={() => setEditing(false)} />}
-      {detail && <OrderDetail s={s} id={detail} today={date} edit={mgr} onClose={closeDetail} />}
     </div>
+    {editing && <PlanDialog s={s} dept={dept} today={date} unit={unit} onClose={() => setEditing(false)} />}
+    {detail && <OrderDetail s={s} id={detail} today={date} edit={mgr} onClose={closeDetail} />}
+    </>
   )
 }
 
@@ -1715,7 +1721,7 @@ function PlanDialog({ s, dept, today, unit, onClose }: { s: State; dept: Dept; t
   const orderOf = (l: Line): string | null => (l.order === undefined ? optsOf(l)[0]?.id ?? null : l.order)
   const optText = (o: WorkOrder) => {
     const st = orderStatus(s, o, date)
-    return [woName(o), st.state === 'abierto' ? tr('{0} disponibles', woN(availOn(o, st, date))) : st.state === 'completado' ? tr('completo') : tr('cerrado'), tr('de {0} {1}', woN(o.qty), orderUnitWord(o)), tr('desde {0}', shortDay(o.startDate))].join(' · ')
+    return [woName(o), st.state === 'abierto' ? tr('{0} disponibles', woN(availOn(o, st, date, today))) : st.state === 'completado' ? tr('completo') : tr('cerrado'), tr('de {0} {1}', woN(o.qty), orderUnitWord(o)), tr('desde {0}', shortDay(o.startDate))].join(' · ')
   }
   const save = () => {
     const typed = new Map(lines.filter((l) => normCode(l.code)).map((l) => [normCode(l.code), l]))
@@ -1743,7 +1749,7 @@ function PlanDialog({ s, dept, today, unit, onClose }: { s: State; dept: Dept; t
               const opts = optsOf(l), cur = orderOf(l), curO = cur ? workOrderOf(s, cur) : undefined
               const list = curO && !curO.deleted && !opts.some((o) => o.id === cur) ? [...opts, curO] : opts
               const chosen = cur ? list.find((o) => o.id === cur) : undefined, st = chosen ? orderStatus(s, chosen, date) : null
-              const avail = chosen && st ? availOn(chosen, st, date) : null, q = numOf(l.qty)
+              const avail = chosen && st ? availOn(chosen, st, date, today) : null, q = numOf(l.qty)
               return (
                 <div key={i} className="planline">
                   <div className={'planrow' + (dept === 'Spiral' ? ' spiral' : '')}>
@@ -1756,14 +1762,14 @@ function PlanDialog({ s, dept, today, unit, onClose }: { s: State; dept: Dept; t
                   {normCode(l.code) && (
                     <div className="planorder">
                       {list.length > 0 ? (
-                        <label><span>{tr('Pedido')}</span>
-                          <select value={cur ?? ''} aria-label={tr('Pedido de {0}', l.code.trim())} onChange={(e) => change(i, { order: e.target.value || null })}>
+                        <label><span>{tr('Pedido de producción')}</span>
+                          <select value={cur ?? ''} aria-label={tr('Pedido de producción de {0}', l.code.trim())} onChange={(e) => change(i, { order: e.target.value || null })}>
                             {list.map((o) => <option key={o.id} value={o.id}>{optText(o)}</option>)}
-                            <option value="">{tr('Sin pedido')}</option>
+                            <option value="">{tr('Sin pedido de producción')}</option>
                           </select>
                         </label>
-                      ) : <span className="planorder-none">{trx('Sin pedido abierto de {0}', <b className="code">{l.code.trim()}</b>)}</span>}
-                      <button type="button" className="btn soft sm" onClick={() => setCreating(i)}>{tr('+ Crear pedido')}</button>
+                      ) : <span className="planorder-none">{trx('Sin pedido de producción abierto de {0}', <b className="code">{l.code.trim()}</b>)}</span>}
+                      <button type="button" className="btn soft sm" onClick={() => setCreating(i)}>{tr('+ Crear pedido de producción')}</button>
                       {/* more than the order has available: said, never refused (the office may know better) */}
                       {avail != null && q > avail && <p className="hint amber">{tr('El pedido tiene {0} disponibles; programas {1}.', woN(avail), woN(q))}</p>}
                     </div>
@@ -1801,14 +1807,28 @@ function deptTabOf(d: Dept): DeptTab {
 function keepDeptTab(d: Dept, t: DeptTab) {
   try { const m = JSON.parse(sessionStorage.getItem(DEPT_TAB_KEY) || '{}') as Record<string, string>; m[d] = t; sessionStorage.setItem(DEPT_TAB_KEY, JSON.stringify(m)) } catch { /* private window: it opens on "En vivo" */ }
 }
+/**
+ * the part of a room's Programa tab chosen last ("Hoy" or "Pedidos de producción"), kept the same way, under "<room>|plan"
+ * (review of 2026-10-20: the office's view of every order was lost on every change of room or tab)
+ */
+type PlanPart = 'hoy' | 'wo'
+function planPartOf(d: Dept): PlanPart {
+  try { return (JSON.parse(sessionStorage.getItem(DEPT_TAB_KEY) || '{}') as Record<string, string>)[d + '|plan'] === 'wo' ? 'wo' : 'hoy' } catch { return 'hoy' }
+}
+function keepPlanPart(d: Dept, p: PlanPart) {
+  try { const m = JSON.parse(sessionStorage.getItem(DEPT_TAB_KEY) || '{}') as Record<string, string>; m[d + '|plan'] = p; sessionStorage.setItem(DEPT_TAB_KEY, JSON.stringify(m)) } catch { /* private window: it opens on "Hoy" */ }
+}
 function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now: number; mgr: boolean; day: WorkDay; readsAll: boolean }) {
   const lines = s.lines.filter((l) => l.dept === dept).sort(byLineName)
   const [part, setPart] = useState<DeptTab>(() => deptTabOf(dept))
   // the Programa tab in two parts (Jose and the office, 2026-10-19): "Hoy", the day's program and the room's open
   // production orders; and "Pedidos de producción", every order with its search (for whoever reads every room, all of
-  // them: the all-rooms view). It opens on Hoy
-  const [planPart, setPlanPart] = useState<'hoy' | 'wo'>('hoy')
-  const showOrders = useCallback(() => setPlanPart('wo'), [])
+  // them: the all-rooms view). It opens on Hoy, or on the part chosen last in this room
+  const [planPart, setPlanPart] = useState<PlanPart>(() => planPartOf(dept))
+  const segRef = useRef<HTMLDivElement>(null)
+  const pickPlan = useCallback((p: PlanPart) => { setPlanPart(p); keepPlanPart(dept, p) }, [dept])
+  // ("Ver todos los pedidos de producción ›", at the foot of Hoy: the switch comes back into view, see revealAbove)
+  const showOrders = useCallback(() => { pickPlan('wo'); revealAbove(segRef.current) }, [pickPlan])
   const openWo = useMemo(() => ordersOf(s, dept, day.date).filter((x) => x.status.state === 'abierto').length, [s, dept, day.date])
   const pick = (t: DeptTab) => { setPart(t); keepDeptTab(dept, t) }
   const ds = deptStop(s, dept)
@@ -1922,9 +1942,9 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
       {/* what the office sets for the room: the day's program and the orders being filled, each in its own tab */}
       {shown === 'plan' && (
         <>
-          <div className="seg woseg" role="tablist" aria-label={tr('Partes del programa')}>
-            <button type="button" role="tab" aria-selected={planPart === 'hoy'} className={planPart === 'hoy' ? 'on' : ''} onClick={() => setPlanPart('hoy')}>{tr('Hoy')}<small>{planned === 1 ? tr('1 código programado') : tr('{0} códigos programados', planned)}</small></button>
-            <button type="button" role="tab" aria-selected={planPart === 'wo'} className={planPart === 'wo' ? 'on' : ''} onClick={() => setPlanPart('wo')}>{tr('Pedidos de producción')}<small>{openWo === 1 ? tr('1 abierto') : tr('{0} abiertos', openWo)}</small></button>
+          <div className="seg woseg" role="tablist" aria-label={tr('Partes del programa')} ref={segRef}>
+            <button type="button" role="tab" aria-selected={planPart === 'hoy'} className={planPart === 'hoy' ? 'on' : ''} onClick={() => pickPlan('hoy')}>{tr('Hoy')}<small>{planned === 1 ? tr('1 código programado') : tr('{0} códigos programados', planned)}</small></button>
+            <button type="button" role="tab" aria-selected={planPart === 'wo'} className={planPart === 'wo' ? 'on' : ''} onClick={() => pickPlan('wo')}>{tr('Pedidos de producción')}<small>{openWo === 1 ? tr('1 abierto') : tr('{0} abiertos', openWo)}</small></button>
           </div>
           {planPart === 'hoy' ? (
             <>
