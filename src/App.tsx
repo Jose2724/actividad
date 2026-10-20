@@ -1742,6 +1742,11 @@ function PlanDialog({ s, dept, today, unit, onClose }: { s: State; dept: Dept; t
   const rowKey = (l: Line) => normCode(l.code) + '|' + planLot(l.lot)
   const twiceKey = lines.filter((l) => normCode(l.code)).map(rowKey).find((k, i, all) => all.indexOf(k) !== i)
   const twice = twiceKey ? lines.find((l) => rowKey(l) === twiceKey) : undefined
+  // a NEW row with its code and no quantity was dropped without a word when saving (the office, 2026-10-20: "le doy a
+  // guardar y no se muestra"): a blank quantity only takes off a row that was already on the program. Now it is said,
+  // and nothing is saved until it has its quantity or its code is cleared
+  const onProgram = new Set(planOf(s, date, dept).map((p) => normCode(p.code) + '|' + planLot(p.lot)))
+  const noQty = lines.find((l) => normCode(l.code) && !(numOf(l.qty) > 0) && !onProgram.has(rowKey(l)))
   // the open orders of the row's code (store.ts, programOrderChoices): in Spiral those of the unit the row says; in MFO
   // those of every word its bins are counted in (platos, copas, lb), the word of its last bins first (review of
   // 2026-10-19: a copas order of a code not binned on this device was not offered); the room's own elsewhere
@@ -1769,7 +1774,7 @@ function PlanDialog({ s, dept, today, unit, onClose }: { s: State; dept: Dept; t
       <div className="dlg plandlg" onClick={(e) => e.stopPropagation()}>
         <h3>{trx('Programa de {0}', dept)}</h3>
         <p>{trx('Los códigos que {0} tiene que hacer ese día y cuánto de cada uno, en {1}. Lo ven todas sus tablets, y cada vez que registran uno de esos códigos se descuenta solo. Para quitar un código, deja su cantidad en blanco.', dept, unit)} {tr('El lote es opcional: sale el del día y se puede cambiar o dejar en blanco. Con lote, "Flujo de datos" compara lo programado con lo hecho de ese lote.')} {tr('Un código puede ir en varios renglones, uno por lote: cada lote se descuenta aparte.')} {tr('Si el código tiene un pedido de producción abierto, el programa del día es una parte de él: sale el más viejo y se puede cambiar.')}</p>
-        <form className="qform" onSubmit={(e) => { e.preventDefault(); if (!twice) save() }}>
+        <form className="qform" onSubmit={(e) => { e.preventDefault(); if (!twice && !noQty) save() }}>
           <label>{tr('Día')}{' '}<input type="date" value={date} onChange={(e) => pickDate(e.target.value)} /></label>
           <div className="planrows">
             <div className={'planrow head' + (dept === 'Spiral' ? ' spiral' : '')}><span>{tr('Código')}</span><span>{dept === 'Spiral' || dept === 'MFO' ? tr('Cantidad') : trx('Cantidad ({0})', unit)}</span>{dept === 'Spiral' && <span>{tr('Unidad')}</span>}<span>{tr('Lote')}</span></div>
@@ -1810,10 +1815,11 @@ function PlanDialog({ s, dept, today, unit, onClose }: { s: State; dept: Dept; t
             })}
             <datalist id={listId}>{s.products.map((p) => <option key={p.code} value={p.code}>{p.name}</option>)}</datalist>
           </div>
+          {noQty && !twice && <p className="hint red">{planLot(noQty.lot) ? trx('Falta la cantidad del código {0} con el lote {1}: escríbela, o borra el código si no va.', noQty.code.trim(), planLot(noQty.lot)) : trx('Falta la cantidad del código {0}: escríbela, o borra el código si no va.', noQty.code.trim())}</p>}
           {twice && <p className="hint red">{planLot(twice.lot) ? trx('El código {0} con el lote {1} está dos veces: déjalo en un solo renglón.', twice.code.trim(), planLot(twice.lot)) : trx('El código {0} sin lote está dos veces: déjalo en un solo renglón.', twice.code.trim())}</p>}
           <div className="dbtns">
             <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
-            <button type="submit" className="btn primary" disabled={!!twice}>{tr('✓ Guardar')}</button>
+            <button type="submit" className="btn primary" disabled={!!twice || !!noQty}>{tr('✓ Guardar')}</button>
           </div>
         </form>
         {/* "+ Crear pedido": its room, code, unit and the day being programmed come with it; the total is left empty (no

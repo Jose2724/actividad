@@ -1817,4 +1817,7 @@ export const EN: Record<string, string> = {
   'Con los registros del servidor el pedido ya no está terminado: su cuenta guardada se quitó en todos los aparatos y se cuenta otra vez con los registros.': 'With the server\'s records the order is no longer finished: its saved sum was taken away on every device and it is worked out from the records again.',
   // MFO bins with their lots (2026-10-20)
   'Cambiar los lotes de este bin': "Change this bin's lots",
+  // a new program row without its quantity is said, not dropped (2026-10-20)
+  'Falta la cantidad del código {0} con el lote {1}: escríbela, o borra el código si no va.': "Code {0} with lot {1} has no quantity: type it, or clear the code if it does not go.",
+  'Falta la cantidad del código {0}: escríbela, o borra el código si no va.': "Code {0} has no quantity: type it, or clear the code if it does not go.",
 }
