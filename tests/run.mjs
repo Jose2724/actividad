@@ -4831,6 +4831,31 @@ section('Pedidos de producción: lo que corrigió la revisión del 2026-10-20')
   })
 }
 
+section('MFO: un bin con varios lotes, corregido en Corregir (2026-10-20)')
+{
+  // the office: "otro código en el mismo bin 6291" / "que se pueda poner también varios lotes a un bin"
+  const mb = await device('mfo-lotes', { user: 'Jose', usual: true })
+  mb.use((m) => {
+    const st = () => m.store.get()
+    m.addLine('MFO', 'Línea 1')
+    const l = st().lines.find((x) => x.dept === 'MFO')
+    const id = m.addRunLater({ dept: 'MFO', lineId: l.id, code: '4563', lot: '6290', date: DAY, startedAt: oct(10, 7, 0), endedAt: oct(10, 10, 0), units: [{ qty: 690, ref: '1' }, { qty: 630, ref: '2' }, { qty: 450, ref: '3' }], bin: 'platos' })
+    const r = () => st().runs.find((x) => x.id === id)
+    const opened = m.draftOf(r()), draft = m.draftOf(r())
+    // bin 1: 400 platos of 6290 and 290 of 6291, as the lots window gives them (its quantity is their sum)
+    draft.units[0] = { ...draft.units[0], qty: '690', lots: [{ lot: '6290', qty: 400 }, { lot: '6291', qty: 290 }] }
+    // bin 3: all of it of 6291
+    draft.units[2] = { ...draft.units[2], qty: '450', lots: [{ lot: '6291', qty: 450 }] }
+    eq('se guarda sin problema', m.applyDraft(id, opened, draft), '')
+    const parts = r().units.map((u) => m.unitParts(st(), r(), u).map((p) => [p.lot, p.qty]))
+    eq('cada bin con sus lotes; el bin 2 sigue con el lote de la corrida', parts, [[['6290', 400], ['6291', 290]], [['6290', 630]], [['6291', 450]]])
+    eq('el bin conserva su número y su cantidad es la suma de sus lotes', r().units.map((u) => [u.ref, u.qty]), [['1', 690], ['2', 630], ['3', 450]])
+    const lotOf = (lot) => m.flujoLots(st(), DAY, DAY).find((x) => x.lot === lot)?.rows.find((x) => x.code === '4563')
+    eq('Flujo: el lote 6290 cuenta 1,030 platos y el 6291 cuenta 740', [lotOf('6290')?.mfoUnits, lotOf('6291')?.mfoUnits], [1030, 740])
+    eq('el historial dice los lotes de cada bin', st().changes.filter((x) => x.refKey === id && / · lotes$/.test(x.what)).map((x) => x.after), ['6290: 400 + 6291: 290', '6291: 450'])
+  })
+}
+
 // =====================================================================================================================
 console.log('')
 if (failed.length) { console.log(failed.length + ' FALLARON de ' + (passed + failed.length) + ':\n'); for (const f of failed) console.log('  ✗ ' + f + '\n'); process.exit(1) }

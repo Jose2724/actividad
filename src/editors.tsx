@@ -23,6 +23,10 @@ export function RunEditor({ s, run, mgr, focusAt, onClose }: { s: State; run: Ru
   useEffect(() => { focusRow.current?.scrollIntoView({ block: 'nearest' }) }, []) // (braces: in new browsers scrollIntoView returns a promise, which an effect must not return)
   // a Packing line that filled bins is corrected in a bin's words; a pallet carries a tag for each of its lots
   const cfg = cfgOf(run), tagsInLots = !!cfg.lots
+  // MFO's bins carry their lots too, one or several, each with its platos or copas (Jose and the office, 2026-10-20:
+  // "otro código en el mismo bin 6291" / "que se pueda poner también varios lotes a un bin"): the same lots window
+  // as a pallet's, without tags (a bin keeps its number). Not for bins weighed in pounds: the window counts whole units
+  const lotEdit = tagsInLots || (run.dept === 'MFO' && cfg.qty !== 'none' && binOf(run) !== 'lb')
   // how the form opened: saving applies only what was changed since, on top of what the run is by then
   const [opened] = useState(() => draftOf(run))
   const [code, setCode] = useState(opened.code)
@@ -92,12 +96,12 @@ export function RunEditor({ s, run, mgr, focusAt, onClose }: { s: State; run: Ru
         {units.length > 0 && (
           <div className="twrap">
             <table>
-              <thead><tr><th>#</th><th>{tr('Hora')}</th>{cfg.qty !== 'none' && <th>{cfg.qtyUnit}</th>}{cfg.lots && <th>{tr('Lotes y tags')}</th>}{cfg.refLabel && !tagsInLots && <th>{cfg.refLabel}</th>}{withOrders && <th>{tr('Pedido')}</th>}<th>{tr('Por')}</th><th>{tr('Comentario')}</th><th></th></tr></thead>
+              <thead><tr><th>#</th><th>{tr('Hora')}</th>{cfg.qty !== 'none' && <th>{cfg.qtyUnit}</th>}{lotEdit && <th>{cfg.lots ? tr('Lotes y tags') : tr('Lotes')}</th>}{cfg.refLabel && !tagsInLots && <th>{cfg.refLabel}</th>}{withOrders && <th>{tr('Pedido')}</th>}<th>{tr('Por')}</th><th>{tr('Comentario')}</th><th></th></tr></thead>
               <tbody>{units.map((u, i) => (
                 <tr key={u.at + ':' + i} ref={focusAt != null && u.at === focusAt ? focusRow : undefined} className={focusAt != null && u.at === focusAt ? 'rp-focus' : undefined}>
                   <td>{i + 1}</td><td>{fmtTime(u.at)}</td>
                   {cfg.qty !== 'none' && <td><input className="num" inputMode="numeric" value={u.qty} disabled={!!u.lots?.length} title={u.lots?.length ? tr('Es la suma de sus lotes') : ''} onChange={(e) => setUnits(units.map((x, k) => (k === i ? { ...x, qty: e.target.value.replace(/\D/g, '') } : x)))} /></td>}
-                  {cfg.lots && <td>{u.lots?.length ? lotsText(u.lots) : <small>{(lot || '—') + (u.ref ? ' (tag ' + u.ref + ')' : '')}</small>} <button type="button" className="lnk" title={tr('Cambiar los lotes y los tags de esta unidad')} onClick={() => setLotsOf(i)}>✎</button></td>}
+                  {lotEdit && <td>{u.lots?.length ? lotsText(u.lots) : <small>{(lot || '—') + (tagsInLots && u.ref ? ' (tag ' + u.ref + ')' : '')}</small>} <button type="button" className="lnk" title={tagsInLots ? tr('Cambiar los lotes y los tags de esta unidad') : tr('Cambiar los lotes de este bin')} onClick={() => setLotsOf(i)}>✎</button></td>}
                   {cfg.refLabel && !tagsInLots && <td><input className="num" value={u.ref} onChange={(e) => setUnits(units.map((x, k) => (k === i ? { ...x, ref: e.target.value } : x)))} autoComplete="off" /></td>}
                   {withOrders && (() => {
                     const po = run.units.find((x) => x.at === u.at)?.po, known = po && s.orders.some((o) => o.id === po) ? po : ''
@@ -128,8 +132,8 @@ export function RunEditor({ s, run, mgr, focusAt, onClose }: { s: State; run: Ru
             <button type="button" className="btn primary" onClick={save}>{tr('Guardar')}</button>
           </div>
         </div>
-        {lotsOf != null && units[lotsOf] && <LotsDialog title={tr('Lotes de {0} {1}', cfg.unit.toLowerCase(), (lotsOf + 1))} unit={cfg.qtyUnit} refLabel={cfg.refLabel} lot={lot.trim()} qty={units[lotsOf].qty.trim() ? Number(units[lotsOf].qty) : null} start={units[lotsOf].lots} startRef={units[lotsOf].ref} startNote={units[lotsOf].note} onClose={() => setLotsOf(null)}
-          onPick={(total, ref, lots, _po, note) => { setUnits(units.map((x, k) => { if (k !== lotsOf) return x; const { lots: _was, ...bare } = x; return { ...bare, qty: String(total), ref, ...(lots ? { lots } : {}), note } })); setLotsOf(null) }} />}
+        {lotsOf != null && units[lotsOf] && <LotsDialog what={tagsInLots ? undefined : cfg.unit.toLowerCase()} title={tr('Lotes de {0} {1}', cfg.unit.toLowerCase(), (lotsOf + 1))} unit={cfg.qtyUnit} refLabel={tagsInLots ? cfg.refLabel : ''} lot={lot.trim()} qty={units[lotsOf].qty.trim() ? Number(units[lotsOf].qty) : null} start={units[lotsOf].lots} startRef={tagsInLots ? units[lotsOf].ref : ''} startNote={units[lotsOf].note} onClose={() => setLotsOf(null)}
+          onPick={(total, ref, lots, _po, note) => { setUnits(units.map((x, k) => { if (k !== lotsOf) return x; const { lots: _was, ...bare } = x; return { ...bare, qty: String(total), ref: tagsInLots ? ref : x.ref, ...(lots ? { lots } : {}), note } })); setLotsOf(null) }} />}
         {noting != null && units[noting] && <UnitNoteDialog title={tr('Comentario de {0} {1}', cfg.unit.toLowerCase(), noting + 1)} value={units[noting].note ?? ''} onClose={() => setNoting(null)} onPick={(note) => { unitNote(noting, note); setNoting(null) }} />}
         {adding && <AddUnitDialog s={s} run={run} onClose={() => setAdding(false)} onAdded={(at, more) => {
           // the unit is on the run now; the form shows it among the others, and saving leaves it as it is. "Agregar y

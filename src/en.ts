@@ -1815,4 +1815,6 @@ export const EN: Record<string, string> = {
   // the review of 2026-10-20 on the production orders
   'La cuenta guardada de este pedido dice otra cosa ({0} hechas): los registros del servidor cambiaron después de cerrarla. Las listas siguen con la cuenta guardada hasta que se calcule otra vez.': 'This order\'s saved sum says something else ({0} made): the server\'s records changed after it was closed. The lists keep the saved sum until it is worked out again.',
   'Con los registros del servidor el pedido ya no está terminado: su cuenta guardada se quitó en todos los aparatos y se cuenta otra vez con los registros.': 'With the server\'s records the order is no longer finished: its saved sum was taken away on every device and it is worked out from the records again.',
+  // MFO bins with their lots (2026-10-20)
+  'Cambiar los lotes de este bin': "Change this bin's lots",
 }

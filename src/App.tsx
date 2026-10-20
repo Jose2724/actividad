@@ -2872,7 +2872,7 @@ export function NoticeDialog({ title, text, onClose }: { title: string; text?: s
  * own comment (Jose, 2026-10-18, on this window inside Corregir: "agregar también comentarios a cada registro con
  * lotes combinados"), which every caller gets back with the lots (startNote = the one it has, to keep or change)
  */
-export function LotsDialog({ title, unit, refLabel, lot, qty, start, startRef, startNote, orders, order, usual, per, onClose, onPick }: { title: string; unit: string; refLabel: string; lot: string; qty: number | null; start?: LotPart[]; startRef?: string; startNote?: string; orders?: { id: string; label: string }[]; order?: string; usual?: number | null; per?: string; onClose: () => void; onPick: (total: number, ref: string, lots: LotPart[] | undefined, po: string | undefined, note: string) => void }) {
+export function LotsDialog({ what, title, unit, refLabel, lot, qty, start, startRef, startNote, orders, order, usual, per, onClose, onPick }: { what?: string; title: string; unit: string; refLabel: string; lot: string; qty: number | null; start?: LotPart[]; startRef?: string; startNote?: string; orders?: { id: string; label: string }[]; order?: string; usual?: number | null; per?: string; onClose: () => void; onPick: (total: number, ref: string, lots: LotPart[] | undefined, po: string | undefined, note: string) => void }) {
   const tags = !!refLabel, own = !!start?.some((l) => !!l.tag)
   const [rows, setRows] = useState(() => (start?.length ? start.map((l) => ({ lot: l.lot, qty: String(l.qty), tag: l.tag ?? (own ? '' : startRef ?? '') })) : [{ lot, qty: qty != null ? String(qty) : '', tag: startRef ?? '' }]))
   const [opened] = useState(() => rows.reduce((t, r) => t + (Number(r.qty) || 0), 0))
@@ -2908,7 +2908,7 @@ export function LotsDialog({ title, unit, refLabel, lot, qty, start, startRef, s
               {rows.length > 1 && <button type="button" className="lnk" title={tr('Quitar este lote')} onClick={() => setRows(rows.filter((_, k) => k !== i))}>✕</button>}
             </div>
           ))}
-          <button type="button" className="lnk addlot" onClick={() => { setAdded(true); setRows([...rows, { lot: '', qty: '', tag: '' }]) }}>{trx('+ Otro lote en este {0}', unit === tr('cajas') ? 'pallet' : tr('mismo'))}</button>
+          <button type="button" className="lnk addlot" onClick={() => { setAdded(true); setRows([...rows, { lot: '', qty: '', tag: '' }]) }}>{trx('+ Otro lote en este {0}', what ?? (unit === tr('cajas') ? 'pallet' : tr('mismo')))}</button>
           {rows.length > 1 && <p className="lottotal">{trx('Total: {0} en {1} lotes', <b>{total} {unit}</b>, rows.length)}</p>}
           {repeated && <span className="err">{trx('Ese lote ya está en la lista: suma sus {0} en una sola línea.', unit)}</span>}
           {tags && <p className="hint">{tr('Cada lote lleva su tag. Si todavía no lo tienen, déjenlo en blanco y se pone después.')}</p>}
