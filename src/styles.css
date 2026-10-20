@@ -540,22 +540,14 @@ table.shiftgrid tr.sep td{background:var(--bg);color:var(--muted);font-size:11px
 .plan td{padding:8px;border-top:1px solid var(--line);vertical-align:middle}
 .plan th.num,.plan td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .plan td.left{font-weight:800;color:var(--warn)}
-.plan td.planbar .bar i.pend{background:var(--warn)}
 .plan td.ok{color:var(--ok);font-weight:700}
 .plan b.code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:16px}
 .plan .pname{display:block;color:var(--muted);font-size:12px;font-weight:500}
 .plan .pill{margin-left:8px}
-.plan .planbar{width:22%;min-width:90px}
-.plan td.planbar{white-space:nowrap}
-.plan td.planbar .bar{display:inline-block;width:calc(100% - 44px);height:10px;margin:0 6px 0 0;vertical-align:middle}
-.plan td.planbar small{color:var(--muted);font-variant-numeric:tabular-nums}
 .planrows{display:grid;gap:6px}
 /* code, quantity, and the lot (2026-10-19: offered as the day's, free to change or clear) */
 .planrow{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) minmax(0,.9fr);gap:8px}
 .planrow.head{font-size:12px;color:var(--muted);font-weight:700}
-.plan th.plot,.plan td.plot{font-family:ui-monospace,Menlo,Consolas,monospace;white-space:nowrap}
-/* the lot under the code: for the phone only (the media query below shows it and hides the column) */
-.plan .plotsm{display:none;font-family:ui-monospace,Menlo,Consolas,monospace}
 .hint.red{color:var(--warn)}
 /* on a free line: the pending codes of the program, to start one with a tap */
 .todo{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
@@ -563,20 +555,11 @@ table.shiftgrid tr.sep td{background:var(--bg);color:var(--muted);font-size:11px
 .todo small{color:var(--muted);font-size:12.5px;font-weight:700}
 .chip.sm{min-height:36px;padding:0 10px;font-size:13.5px;font-weight:500}
 .chip.sm b{font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:800}
-/* on a phone the program keeps what matters (the code, what was set, what is made, what is left): each shift's part and
-   the bar are for wider screens, and the lot column goes under the code (with the column, HECHO and PENDIENTE fell out
-   of the card's frame at 375 px: review of 2026-10-19) */
+/* on a phone the program is a card per code (rp-cardlist, below with the production orders): the product's name may
+   wrap, and nothing of the card starts off-screen at 375 px (review of 2026-10-19) */
 @media (max-width:600px){
   .plan{padding:12px}
-  .plan .turn,.plan .planbar,.plan .plot{display:none}
-  .plan .plotsm{display:block}
-  /* the product's name may wrap and the headers lose their letter-spacing, so the four columns fit in a 375 px frame
-     (a name like "Beef stew · bin 5 lb" kept on one line pushed PENDIENTE out of it) */
-  .plan th{letter-spacing:0}
   .plan td .pname{white-space:normal}
-  .plan td .plotsm{white-space:nowrap}
-  .plan th,.plan td{padding:6px 5px}
-  .plan table{font-size:14px}
 }
 /* Packing: what a line is going to make (pallets or bins), the pallet being built with its lots and tags, and the bins */
 .start .makes{grid-column:1/-1}
@@ -1532,3 +1515,165 @@ td.unote .lnk{white-space:nowrap}
 .otable tr.multilot td, tbody tr.multilot td{background:#f4f8ff}
 tbody tr.multilot + tr.multilot td{border-top:1px dashed #c8d6ea}
 .onelot{display:block;margin-top:2px;font-size:11px;font-weight:800;color:#3b5b8a;white-space:nowrap}
+/* ---- the production orders of each room (Jose and the office clerk, 2026-10-19) ----
+   The Programa tab in two parts (the day, and every order), the room's card with each code's order, its open orders,
+   their history and an order's window. Buttons as everywhere: green the main one, soft green the other actions, grey
+   the rest, red only to delete. An order's state in its own pill colours; the room's colour only as its stripe */
+.seg.woseg{max-width:560px}
+.plan table.pctable th,.plan table.wotable th{white-space:normal;vertical-align:bottom;line-height:1.2}
+.plan table.pctable td{padding:8px 6px}
+.dlg.plandlg{width:min(680px,100%)}
+.seg.woseg button{min-height:52px}
+.plan .tc-head h3 small{text-transform:none;letter-spacing:0;font-weight:500;color:var(--muted)}
+/* what the last day left pending: a notice, never a figure filled in anywhere */
+.wonotice{margin:0;padding:8px 12px;border-radius:10px;background:#fff7e6;border:1px solid #f0d7a4;color:#7a4700;font-weight:600;font-size:14px;line-height:1.4}
+.wonotice .drill{color:#7a4700}
+table.pctable td,table.wotable td{vertical-align:top}
+.plan .wolink{display:grid;gap:1px;text-align:left;padding:0;text-decoration:none}
+.plan .wolink span{text-decoration:underline;text-underline-offset:3px}
+.plan .wolink small{font-weight:600;color:var(--muted);font-size:12px}
+.plan td.pc-lot{font-family:ui-monospace,Menlo,Consolas,monospace;white-space:nowrap}
+.plan td.pc-order .wost{margin-top:4px}
+.plan td.pc-since,.wotable td{white-space:nowrap}
+.plan td.old,.wotable td.old{color:var(--amber);font-weight:700}
+.wo-age{display:block;color:var(--amber);font-weight:700;font-size:12px}
+.wo-none{color:var(--muted);font-size:13px;font-weight:600;white-space:normal}
+.wo-sub{display:block;color:var(--muted);font-size:12px;font-weight:600;white-space:nowrap}
+.wo-short{color:var(--amber);font-weight:800}
+.plan td.pc-left .pc-bar{display:flex;align-items:center;gap:6px;margin-top:4px;justify-content:flex-end}
+.plan td.pc-left .bar{flex:1;min-width:56px;max-width:110px;height:8px;margin:0}
+.plan td.pc-left .bar i.pend{background:var(--warn)}
+.plan td.pc-left small{color:var(--muted);font-variant-numeric:tabular-nums;font-weight:600;font-size:12px}
+.plan td.pc-disp b{font-size:16px}
+.plan td.pc-disp .ok{color:var(--ok);font-weight:700}
+/* an order's state */
+.wost{display:inline-block;font-weight:700;border-radius:99px;padding:2px 9px;font-size:12.5px;white-space:nowrap;line-height:1.4}
+.wost.st-open{background:#e8f0fe;color:#1d4ed8}
+.wost.st-wait{background:var(--bg);color:var(--muted);border:1px solid var(--line)}
+.wost.st-done{background:#d9f2e2;color:var(--ok)}
+.wost.st-closed{background:#e4e8ee;color:#3f4b57}
+.wost.st-gone{background:var(--red-soft);color:#9b1f19}
+.plan td .wost{display:inline-block}
+.plan td.c-head .wost{margin-left:6px}
+/* the room's open orders and the history */
+.wotable td.wo-barcol{min-width:120px}
+.wotable td.wo-barcol .bar{display:inline-block;width:calc(100% - 44px);height:8px;margin:0 6px 0 0;vertical-align:middle}
+.wotable td.wo-barcol .bar i.pend{background:#d08a12}
+.wotable td.wo-barcol small{color:var(--muted);font-variant-numeric:tabular-nums;font-weight:600;font-size:12px}
+.wotable td.rp-act .btns{display:flex;gap:6px;flex-wrap:nowrap;justify-content:flex-end}
+.wotable td small{font-weight:600}
+/* (the product's name may wrap under its code, and "sin WO" never: the history's nine columns fit a PC's 1280 px) */
+.wotable td.c-head{white-space:normal;min-width:140px}
+.wotable .wo-none{white-space:nowrap}
+.wofoot{display:flex;justify-content:flex-end}
+.woempty{display:grid;gap:6px}
+.wofilters{padding:10px}
+.wofilters input[type=search]{min-height:48px;padding:0 12px;border-radius:12px;border:1.5px solid var(--line);background:var(--surface);width:100%;max-width:440px;font-size:17px}
+.wofilters .wostates{display:flex;flex-wrap:wrap;gap:6px}
+.wofilters .wostates .chip small{margin-left:5px;opacity:.75;font-weight:700}
+.wo-dates{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:end}
+.seg.wo-by{width:280px;max-width:100%}
+.seg.wo-by button{min-height:40px;font-size:14px}
+.hint.amber{color:var(--amber);font-weight:600}
+/* an order typed or changed */
+.wo-dlg .wo-qty{display:flex;align-items:center;gap:8px}
+.wo-dlg .wo-qty input{flex:1}
+.wo-dlg .wo-qty b{color:var(--ink);font-size:16px;white-space:nowrap}
+.wo-units{display:grid;gap:6px}
+.wo-units .lab{font-size:13px;font-weight:600;color:var(--muted)}
+.wo-locked{display:grid;gap:4px;padding:10px 12px;border-radius:12px;background:var(--bg);color:var(--ink)}
+.wo-locked small{font-size:12.5px}
+/* the program dialog: each code's order, under its row */
+.planline{display:grid;gap:4px}
+.planline+.planline{margin-top:4px}
+.planorder{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:6px 10px;border-radius:10px;background:var(--bg);font-size:13.5px}
+.planorder label{display:flex;align-items:center;gap:8px;flex:1 1 260px;min-width:0;font-weight:700;color:var(--muted);font-size:13px}
+.planorder select{flex:1;min-width:0;max-width:100%;min-height:44px;padding:0 8px;border-radius:10px;border:1.5px solid var(--btn-line);background:var(--surface);font-size:15px;font-weight:600;color:var(--ink)}
+.planorder .hint{flex-basis:100%;margin:0}
+.planorder-none{color:var(--muted);font-weight:600;flex:1 1 auto}
+/* an order's window */
+.wotiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.wotile{border-radius:12px;padding:10px 12px;display:grid;gap:2px;min-width:0;background:var(--bg)}
+.wotile label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;font-weight:800;color:var(--muted)}
+.wotile b{font-size:26px;font-variant-numeric:tabular-nums;line-height:1.1;overflow-wrap:anywhere}
+.wotile small{font-size:12.5px;font-weight:600}
+.wotile.t-made b{color:var(--ok)}
+.wotile.t-disp{background:var(--soft)} .wotile.t-disp b{color:var(--accent)}
+.wotile.t-sinprog{background:#fff7e6} .wotile.t-sinprog b{color:#7a4700}
+.wo-barline{display:flex;align-items:center;gap:8px}
+.wo-barline .bar{flex:1;height:10px;margin:0}
+.wo-barline .bar i.pend{background:#d08a12}
+.wo-barline small{font-weight:700;font-variant-numeric:tabular-nums}
+.wo-detail .wo-note{margin:0;color:var(--ink)}
+.wo-detail .hint{font-size:14px}
+.wo-detail h4 small{text-transform:none;letter-spacing:0}
+.wo-days tr.wo-start td{background:var(--bg);font-weight:700}
+.wo-days tr.wo-ahead td{color:var(--muted)}
+.wo-days tr.live td{background:#f1fbf5}
+.wo-days td.wo-pend{color:var(--warn);font-weight:700}
+.wo-sum li{font-size:14px}
+.wo-done{display:grid;gap:4px;justify-items:start}
+.wo-done b{color:var(--ok)}
+.wo-lots{display:flex;flex-wrap:wrap;gap:6px}
+.wo-lot{font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:700}
+@media (max-width:720px){
+  /* each code, order, day or record a card (rp-cardlist): its code or day on top, each fact with its name, the
+     buttons at its foot, the room's colour on its edge */
+  .plan .twrap.rp-cardlist,.wo-detail .twrap.rp-cardlist{max-height:none;overflow:visible;border:0;background:none}
+  .wo-cards td.num,.plan .rp-cardlist td.num{text-align:left}
+  .wo-cards td.rp-act{grid-column:1/-1;order:99;position:static;box-shadow:none}
+  .wo-cards td.rp-act .btns{justify-content:flex-end}
+  .wo-cards td.wo-barcol{grid-column:1/-1}
+  .plan td.pc-left .pc-bar{justify-content:flex-start}
+  .plan td.pc-left .bar{max-width:none}
+  .plan td.pc-since,.wotable td,.wo-sub{white-space:normal}
+  .wotiles{grid-template-columns:1fr 1fr}
+  .wotile b{font-size:22px}
+  .seg.woseg{max-width:none}
+  .wofilters input[type=search]{max-width:none}
+  /* the two dates side by side, the presets under them: the filters keep to one screen */
+  .wofilters .rangepick label{flex:1 1 40%}
+  .wofilters .rangepick input[type=date]{min-width:0;width:100%}
+  .seg.wo-by{width:100%}
+  .planorder label{flex-basis:100%}
+  /* the window's buttons two by two, so its foot stays two rows high on a phone (it was four) */
+  .wo-detail>.dbtns.spread{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .wo-detail>.dbtns.spread>.btns{display:contents}
+  .wo-detail>.dbtns.spread .btn{padding:0 8px;white-space:normal;line-height:1.15}
+}
+/* Between a phone and a PC (721 to 1279 px: a tablet standing or lying, a small laptop) the room's program, its open
+   orders, the history and an order's days are cards too, as on a phone, two or three abreast. As tables they were
+   wider than their frame there: at 1024 px "Pendiente hoy" and "Disponible del pedido" (the office's two numbers)
+   started off-screen, and the history's Estado and Ver sat behind a scrollbar (review of 2026-10-19; at 1241 the open
+   orders still went 10 px past their frame). From 1280 the tables fit. (The Report's card rules, written for .wo-cards alone so the Report keeps its own breakpoint) */
+@media (max-width:1279px){
+  .twrap.wo-cards{max-height:none;overflow:visible;border:0;background:none}
+  .wo-cards table,.wo-cards tbody{display:block} .wo-cards thead{display:none}
+  .wo-cards tr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px 12px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px 10px 16px;margin-bottom:8px;box-shadow:inset 6px 0 0 var(--d,var(--line))}
+  .wo-cards tr.live{background:#f1fbf5}
+  .wo-cards td{display:block;padding:0;border:0;white-space:normal;min-width:0;background:none!important;overflow-wrap:anywhere}
+  .wo-cards td[data-label]::before{content:attr(data-label);display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;margin-bottom:1px}
+  .wo-cards td.c-head{grid-column:1/-1;order:-1;display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;font-weight:800;font-size:15.5px}
+  .wo-cards td.c-head::before{display:none}
+  .wo-cards td.c-none{display:none}
+  /* (a number's cell wraps too: "Disponible del pedido" went past the card's edge at 1024 px) */
+  .wo-cards td.num{text-align:left;white-space:normal}
+  .wo-cards td.rp-act{grid-column:1/-1;order:99;position:static;box-shadow:none}
+  .wo-cards td.rp-act .btns{justify-content:flex-end}
+  .wo-cards td.wo-barcol{grid-column:1/-1}
+  .plan td.pc-left .pc-bar{justify-content:flex-start}
+  .plan td.pc-left .bar{max-width:none}
+  .plan .wo-cards td.pc-since,.wo-cards.twrap .wotable td,.wo-cards .wo-sub{white-space:normal}
+}
+@media (min-width:721px) and (max-width:1279px){
+  /* the cards side by side, each with its facts in rows of three or four */
+  .wo-cards tbody{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:8px;align-items:start}
+  .wo-cards tr{margin:0;grid-template-columns:repeat(auto-fill,minmax(92px,1fr))}
+}
+/* The switches and chips of the production orders look like buttons (the house rule; review of 2026-10-19): each choice
+   a grey button with its edge, the chosen one green, as the Report's switch (.seg.rp-subs) and chips (.report .chip) */
+.seg.woseg,.seg.wo-by{background:none;padding:0;gap:6px}
+.seg.woseg button:not([class*="c-"]),.seg.wo-by button:not([class*="c-"]){background:var(--btn);border:1.5px solid var(--btn-line);box-shadow:0 2px 0 var(--btn-edge);color:var(--ink)}
+.seg.woseg button.on:not([class*="c-"]),.seg.wo-by button.on:not([class*="c-"]){background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 2px 0 #0a4f4a}
+.wohist .chip,.wo-dlg .chip{background:var(--btn);border-color:var(--btn-line);box-shadow:0 2px 0 var(--btn-edge)}
+.wohist .chip.on,.wo-dlg .chip.on{background:var(--accent);border-color:var(--accent);color:#fff}

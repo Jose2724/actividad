@@ -580,6 +580,113 @@ section('Un cambio del programa o de una meta que esperó en la tablet no pisa o
   signedInAs(ana, 'op', 'Packing'); await m.pullAll()
 }
 
+// ---- the production orders (Jose and the office, 2026-10-19) ----
+const elsa = await person(db, { name: 'Elsa', actRole: 'office' })
+/** an order typed by the office on its PC (Elsa), straight to the server */
+const orderSql = (id, dept, c, wo, qty, unitWord, start, created = 'now()') => sql(elsa, `insert into public.act_work_orders (id, dept, code, wo, qty, unit, start_date, created_at, created_by, updated_at, updated_by) values ($1, $2, $3, $4, $5, $6, $7, ${created}, 'Elsa', now(), 'Elsa')`, [id, dept, c, wo, qty, unitWord, start])
+
+section('Antes de que Jose corra el 020: un programa sin pedido sube; un pedido y el programa que lo nombra esperan, dicho en la pantalla (2026-10-19)')
+{
+  signedInAs(jose, 'mgr', ''); await m.pullAll()
+  // the server as it is until Jose runs 020: no table of orders, no column for a program's order
+  await sql(null, 'drop table public.act_work_orders')
+  await sql(null, 'alter table public.act_plan drop column order_id')
+  const day = date(), posts = (t) => asked.filter(([method, x]) => method === 'POST' && x === t).length
+  const planSrv = async (c) => { const r = (await sql(null, "select * from public.act_plan where date = $1 and dept = 'Kitchen' and code = $2", [day, c])).rows[0]; return r ? [Number(r.qty), r.order_id === undefined ? 'sin columna' : r.order_id] : null }
+  const p0 = posts('act_plan')
+  m.setPlan(day, 'Kitchen', 'S100', 5); await sent()
+  eq('un programa sin pedido sube igual: el servidor no conoce order_id (PGRST204) y la fila se manda otra vez sin la columna', [await planSrv('S100'), posts('act_plan') - p0, m.outbox.size(), m.syncStore.get().lastError], [[5, 'sin columna'], 2, 0, ''])
+  const O = m.saveWorkOrder({ dept: 'Kitchen', code: 'S200', qty: 100, unit: 'mezclas', startDate: day, wo: 'S-1', note: '' })
+  m.setPlan(day, 'Kitchen', 'S200', 10, '', O)
+  m.setPlan(day, 'Kitchen', 'S300', 7)
+  await m.flushNow(); await quiet()
+  const waits = () => m.outbox.items().filter((i) => i.table === 'act_work_orders' || i.table === 'act_plan').map((i) => i.table + '|' + i.key).sort()
+  eq('el pedido y el programa que lo nombra esperan en la tablet; el programa sin pedido escrito después sube; la pantalla nombra el SQL que falta', [waits(), await planSrv('S300'), await planSrv('S200'), m.syncStore.get().lastError], [['act_plan|' + day + '|Kitchen|S200', 'act_work_orders|' + O], [7, 'sin columna'], null, 'Falta ejecutar en Supabase el SQL 020 (pedidos de producción): un programa con pedido espera'])
+  eq('bajar del servidor sigue igual (la tabla que falta no se nota), y la tablet guarda el pedido con su programa', [await m.pullAll(), m.workOrderOf(st(), O)?.wo, m.planRows(st(), day, 'Kitchen').find((r) => r.code === 'S200')?.orderId], [true, 'S-1', O])
+  await runFile(db, '020_work_orders.sql'); await m.flushNow(); await sent()
+  const woSrv = async (id) => (await sql(null, 'select dept, code, wo, qty::float as qty, unit, start_date::text as start, created_by from public.act_work_orders where id = $1', [id])).rows[0] ?? null
+  eq('corrido el 020: el pedido y su programa suben solos en la vuelta siguiente, y la pantalla ya no dice nada', [await woSrv(O), await planSrv('S200'), m.outbox.size(), m.syncStore.get().lastError], [{ dept: 'Kitchen', code: 'S200', wo: 'S-1', qty: 100, unit: 'mezclas', start: day, created_by: 'Jose' }, [10, O], 0, ''])
+}
+
+section('Dos pedidos del mismo código escritos a la vez, uno en una tablet sin señal: quedan los dos, y el más viejo va primero (2026-10-19)')
+{
+  const day = date()
+  let mine = ''
+  await offline(() => { mine = m.saveWorkOrder({ dept: 'Kitchen', code: 'S400', qty: 80, unit: 'mezclas', startDate: day, wo: 'T-1', note: '' }) })
+  await orderSql(uuid(), 'Kitchen', 'S400', 'E-1', 50, 'mezclas', day, "now() - interval '1 minute'")
+  await m.syncNow(); await sent()
+  eq('el servidor guarda los dos; la tablet tiene los dos, el que se escribió antes primero', [(await sql(null, "select wo from public.act_work_orders where dept = 'Kitchen' and code = 'S400' order by wo")).rows.map((r) => r.wo), m.openWorkOrdersFor(st(), 'Kitchen', 'S400', '', day).map((o) => o.wo), !!m.workOrderOf(st(), mine)], [['E-1', 'T-1'], ['E-1', 'T-1'], true])
+}
+
+section('Un pedido y el programa que lo nombra, escritos en la PC de la oficina: la tablet los baja y cuenta lo que ella registra (2026-10-19)')
+{
+  const day = date(), O3 = uuid()
+  await orderSql(O3, 'Kitchen', 'S500', 'E-5', 40, 'mezclas', day)
+  await sql(elsa, "insert into public.act_plan (date, dept, code, qty, lot, order_id, updated_at, updated_by) values ($1, 'Kitchen', 'S500', 12, '', $2, now(), 'Elsa')", [day, O3])
+  m.addLine('Kitchen', 'Braiser 7')
+  const b7 = st().lines.find((l) => l.dept === 'Kitchen' && l.name === 'Braiser 7')
+  m.startRun(b7, 'S500', '6300', day, null)
+  const run = st().runs.find((r) => r.lineId === b7.id && !r.endedAt)
+  for (let i = 0; i < 3; i++) m.unitDone(run.id, null)
+  m.endRun(run.id); await m.syncNow(); await sent()
+  const row = m.planRows(st(), day, 'Kitchen').find((r) => r.code === 'S500'), x = m.orderStatus(st(), m.workOrderOf(st(), O3), day)
+  eq('el programa es de su pedido; el pedido cuenta las 3 mezclas de esta tablet: 37 disponibles, 9 pendientes del día, 28 sin programar', [row?.orderId, row?.planned, row?.done, x.made, x.disponible, x.pendingToday, x.sinProgramar, x.byDay.map((d) => [d.programmed, d.made, d.pending])], [O3, 12, 3, 3, 37, 9, 28, [[12, 3, 9]]])
+}
+
+section('La tablet de un operador baja solo los pedidos de su cuarto (2026-10-19)')
+{
+  const day = date(), PK = uuid(), KX = uuid()
+  signedInAs(ana, 'op', 'Packing'); await m.pullAll()
+  await orderSql(PK, 'Packing', 'S800', '', 360, 'cajas', day)
+  await orderSql(KX, 'Kitchen', 'S900', '', 20, 'mezclas', day)
+  const g0 = net.gets.length
+  await m.pullAll()
+  const ask = net.gets.slice(g0).filter((g) => g.startsWith('act_work_orders?'))
+  eq('baja el de Packing y no el de Kitchen, y los pide por su cuarto', [!!m.workOrderOf(st(), PK), !!m.workOrderOf(st(), KX), ask.length > 0 && ask.every((g) => g.includes('dept=eq.Packing'))], [true, false, true])
+}
+
+section('Un pedido que empezó hace 20 días: sus días viejos se traen del servidor y se guardan; terminado, su cuenta se cierra y otra tablet no los vuelve a pedir (2026-10-19)')
+{
+  signedInAs(jose, 'mgr', ''); await m.pullAll()
+  const day = date(), back = (n) => { const d = new Date(day + 'T12:00:00'); d.setDate(d.getDate() - n); return m.dayOf(d.getTime()) }
+  const at = (d, h, mi) => new Date(d + 'T' + String(h).padStart(2, '0') + ':' + String(mi).padStart(2, '0') + ':00').getTime()
+  const OPEN = uuid(), DONE = uuid(), LINE = uuid()
+  await orderSql(OPEN, 'Kitchen', 'S610', 'V-1', 100, 'mezclas', back(20), "now() - interval '20 days'")
+  await orderSql(DONE, 'Kitchen', 'S710', 'V-2', 30, 'mezclas', back(20), "now() - interval '20 days'")
+  // runs of 20 days ago as the server holds them: stamped then (a pull of what changed lately does not bring them)
+  await sql(null, 'alter table public.act_runs disable trigger act_runs_touch')
+  const oldRun = (c, d, n) => sql(null, "insert into public.act_runs (id, dept, line_id, line, code, lot, date, started_at, ended_at, units, per_unit, waste, by_name, deleted, updated_at, synced_at) values ($1, 'Kitchen', $2, 'Braiser 8', $3, '6280', $4, $5, $6, $7::jsonb, null, 0, 'prueba', false, $5, now() - interval '20 days')", [uuid(), LINE, c, d, iso(at(d, 7, 59)), iso(at(d, 9, 0)), JSON.stringify(Array.from({ length: n }, (_, i) => ({ at: at(d, 8, i), qty: null, ref: '', by: 'Luis' })))])
+  await oldRun('S610', back(20), 20); await oldRun('S610', back(18), 10)
+  await oldRun('S710', back(20), 20); await oldRun('S710', back(19), 15)
+  await sql(null, 'alter table public.act_runs enable trigger act_runs_touch')
+  const g0 = net.gets.length
+  await m.pullAll()
+  const old = (from) => net.gets.slice(from).filter((g) => g.startsWith('act_runs?') && g.includes('date=gte.' + back(20))).map((g) => (/S710/.test(g) ? 'S710' : /S610/.test(g) ? 'S610' : '?')).sort()
+  eq('los días viejos de los dos pedidos se le piden al servidor, por su código y desde que empezaron', old(g0), ['S610', 'S710'])
+  const open = m.orderStatus(st(), m.workOrderOf(st(), OPEN), day), done = m.orderStatus(st(), m.workOrderOf(st(), DONE), day)
+  eq('el abierto guarda aparte sus corridas viejas y cuenta todo lo hecho desde que empezó', [open.made, open.disponible, open.complete, open.state, st().orderRuns.filter((r) => r.code === 'S610').length, st().runs.some((r) => r.code === 'S610')], [30, 70, true, 'abierto', 2, false])
+  eq('el que terminó antes de los días que guarda: su cuenta se cierra, y sus corridas viejas no se quedan', [done.sealed, done.state, done.made, done.finishDay, st().orderRuns.some((r) => r.code === 'S710')], [true, 'completado', 30, back(19), false])
+  await sent()
+  eq('su marca sube al servidor, con su cuarto', (await sql(null, 'select dept, ref_table, ref_key from public.act_changes where id = $1', ['wodone:' + DONE])).rows[0], { dept: 'Kitchen', ref_table: 'act_work_orders:done', ref_key: DONE })
+  // its detail asks the server for what it is made of, and works it out again with it (nothing is saved)
+  const rows = await m.loadOrderRows(m.workOrderOf(st(), DONE))
+  const again = m.stateWith(st(), rows, rows.unseal, true), dx = m.orderStatus(again, m.workOrderOf(again, DONE), day)
+  eq('el detalle trae del servidor sus corridas y su historia, y lo cuenta otra vez igual, sin tocar lo guardado', [rows.from, rows.unseal, rows.runs.length, rows.changes.some((c) => c.id === 'wodone:' + DONE), dx.sealed, dx.complete, dx.made, dx.finishDay, dx.byDay.map((d) => [d.date, d.made]), m.orderStatus(st(), m.workOrderOf(st(), DONE), day).sealed], [back(20), [DONE], 2, true, false, true, 30, back(19), [[back(20), 20], [back(19), 10]], true])
+  // a new tablet (or one that lost its copy): the mark gives it that account; it asks the server only for the open one
+  const snap = new Map(disk)
+  for (const k of ['act_v1', 'act_since2', 'act_since_span', 'act_outbox', 'act_pulled_with', 'act_last_pull']) disk.delete(k)
+  const fresh = await import(pathToFileURL(resolve(dirname(fileURLToPath(import.meta.url)), '../node_modules/.cache/act-check/device.js')).href + '?stack2')
+  fresh.role.set('mgr'); fresh.myDept.set('')
+  const g1 = net.gets.length
+  const pulled = await fresh.pullAll()
+  const fs = () => fresh.store.get(), fd = fresh.orderStatus(fs(), fresh.workOrderOf(fs(), DONE), day), fo = fresh.orderStatus(fs(), fresh.workOrderOf(fs(), OPEN), day)
+  eq('otra tablet, nueva: con la marca tiene la cuenta del terminado sin pedir sus días viejos; los del abierto sí los pide', [pulled, fd.sealed, fd.state, fd.made, fo.made, fo.complete, old(g1)], [true, true, 'completado', 30, 30, true, ['S610']])
+  await quiet()
+  for (const k of [...disk.keys()]) disk.delete(k)
+  for (const [k, v] of snap) disk.set(k, v)
+  signedInAs(ana, 'op', 'Packing'); await m.pullAll()
+}
+
 section('Una respuesta que se pierde y la app se vuelve a abrir antes de saberlo: lo que se mandó se recuerda (auditoría 2026-10-17, S1)')
 {
   // what was sent is written down before it goes, so a reload in the middle (a new version, a reload by hand) does

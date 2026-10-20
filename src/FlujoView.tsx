@@ -44,6 +44,15 @@ import { trx } from './trx'
  * chip "Con inventario". All of it from the same numbers: nobody types the consumo either.
  */
 let kept = { today: '', from: '', to: '', days: KEEP_DAYS, byHand: false, lot: '', q: '', route: '' as PackRoom | '', state: '' as FlujoState | '', inv: false, full: false }
+/**
+ * Flujo opened on a code from somewhere else: the detail of a production order (Jose, 2026-10-19: "soy partidario de
+ * bases de datos relacionadas, para hacer links que llevan a otra información"). The search is the code and the range
+ * the order's days, typed as by hand (a preset would move with the day); the chips are let go so the code is in sight.
+ * Read when the tab is drawn, so the caller switches to it right after
+ */
+export function flujoOpenAt(q: string, from: string, to: string, today: string) {
+  kept = { ...kept, today, from: from <= to ? from : to, to, byHand: true, lot: '', q, route: '', state: '', inv: false }
+}
 
 /**
  * A memo: Main draws itself every second for its clock and this tab shows no clock; drawing ~200 rows took 100-140 ms

@@ -1,7 +1,7 @@
 import { noSignal, passExpired, rememberedMe, renewSession, supabase } from './supabase'
 import { startClock } from './clock'
 import { afterFlush, beforeFlush, flush, outbox, setMayGo, setOwnRow, type Item, type Row, type Table } from './outbox'
-import { applyRemote, awayDay, batch, closeDay, DEPTS, firstKeptDay, myDept, onlyTakesOff, openDay, prune, role, sameName, shareLocalLines, store, viewOnly, type Dept } from './store'
+import { applyRemote, awayDay, batch, closeDay, codeVariants, DEPTS, firstKeptDay, markFetched, markPulled, myDept, normCode, onlyTakesOff, openDay, orderGroup, prune, queueHeld, role, sameName, shareLocalLines, store, viewOnly, WO_DONE_REF, workNeeds, type Dept, type WorkOrder } from './store'
 import { canDo } from './powers'
 import { tr } from './i18n'
 import { BUILD } from './update'
@@ -94,7 +94,8 @@ export function leaveAsk(st: Pick<SyncStatus, 'state' | 'pending'> & Partial<Pic
   return { title: tr('¿Salir de Actividad?'), text: tr('Para volver a entrar hay que poner el usuario y el PIN. Lo que está corriendo sigue contando.'), yes: tr('Salir'), danger: false }
 }
 
-const TABLES: Table[] = ['act_lines', 'act_runs', 'act_stops', 'act_products', 'act_schedule', 'act_changes', 'act_targets', 'act_plan']
+// (the production orders last, 2026-10-19: while Jose has not run 020 their table is missing, and the pull goes on quietly)
+const TABLES: Table[] = ['act_lines', 'act_runs', 'act_stops', 'act_products', 'act_schedule', 'act_changes', 'act_targets', 'act_plan', 'act_work_orders']
 const SINCE = 'act_since2' // the cursor is the server's synced_at (see migrations/003), not the tablets' clocks
 const PULLED_WITH = 'act_pulled_with' // the version of the app and whose rows last pulled everything: either one new pulls everything again
 const pulledWith = () => { try { return localStorage.getItem(PULLED_WITH) || '' } catch { return '' } }
@@ -155,7 +156,7 @@ export async function pages(get: (from: number, to: number) => PromiseLike<Page>
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Q = any // a query to the server while it is being put together
 /** the columns that tell two rows with the same synced_at apart, so the listing always comes in the same order */
-const ORDER: Record<Table, string[]> = { act_lines: ['id'], act_runs: ['id'], act_stops: ['id'], act_changes: ['id'], act_products: ['code'], act_schedule: ['date', 'code'], act_targets: ['dept'], act_plan: ['date', 'dept', 'code'] }
+const ORDER: Record<Table, string[]> = { act_lines: ['id'], act_runs: ['id'], act_stops: ['id'], act_changes: ['id'], act_products: ['code'], act_schedule: ['date', 'code'], act_targets: ['dept'], act_plan: ['date', 'dept', 'code'], act_work_orders: ['id'] }
 /**
  * An operator's device asks only for its own room (the server would give it nothing else anyway, see
  * migrations/015): the rooms' tables by their room, the history by its room or with none (the start of the day).
@@ -164,7 +165,7 @@ const ORDER: Record<Table, string[]> = { act_lines: ['id'], act_runs: ['id'], ac
 const scoped = (t: Table, q: Q): Q => {
   const dept = myDept.get()
   if (role.get() !== 'op' || !dept) return q
-  if (t === 'act_lines' || t === 'act_runs' || t === 'act_stops' || t === 'act_plan') return q.eq('dept', dept)
+  if (t === 'act_lines' || t === 'act_runs' || t === 'act_stops' || t === 'act_plan' || t === 'act_work_orders') return q.eq('dept', dept)
   if (t === 'act_changes') return q.or(`dept.eq.${dept},dept.is.null`)
   return q
 }
@@ -237,6 +238,70 @@ async function bringOrderRuns() {
     } catch { /* asked again on the next pull */ }
   }
 }
+/**
+ * The closed accounts of finished production orders (see "the account of a finished order" in store.ts) are history
+ * lines of their own, dated when the order finished: a device's first pull brings only the last two weeks of history,
+ * so on a pull of everything they are asked for apart. A failure here never fails the pull: without them the device
+ * brings those orders' records instead (fetchWorkRuns)
+ */
+async function bringSeals() {
+  try { await pages(listing('act_changes', (q) => q.eq('ref_table', WO_DONE_REF)), (rows) => batch(() => { for (const row of rows) applyRemote('act_changes', row) })) } catch { /* the records are brought instead */ }
+}
+/** what a production order is worked out with, older than the days this device keeps: the runs of its code and room, and the programs of it, from a day to the first day the device keeps */
+const oldRuns = (dept: Dept, code: string, from: string, until: string) => listing('act_runs', (q) => q.eq('dept', dept).gte('date', from).lt('date', until).eq('deleted', false).in('code', codeVariants(code)))
+const oldPlans = (dept: Dept, code: string, from: string, until: string) => listing('act_plan', (q) => q.eq('dept', dept).gte('date', from).lt('date', until).in('code', codeVariants(code)))
+/**
+ * A production order counts everything its room made of its code since its start day, and a device keeps 14 days
+ * (Jose and the office, 2026-10-19: an order of 1000 mezclas at 80 a day lasts about 13). For each order still worked
+ * out from its records (see workNeeds), the days older than the device keeps are brought once per page opened: its
+ * runs and its programs, applied as any row from the server, and kept apart by pruning (State.orderRuns). Until they
+ * are here its numbers say they are incomplete. A failure never fails the pull: it is asked again on the next one.
+ * only = these queues alone (a screen that shows an old order). Returns whether everything asked for came
+ */
+async function fetchWorkRuns(only?: string[]): Promise<boolean> {
+  if (!supabase) return true
+  let ok = true
+  for (const need of workNeeds(store.get())) {
+    const until = firstKeptDay()
+    if ((only && !only.includes(need.q)) || need.from >= until || queueHeld(need.q, need.from)) continue
+    try {
+      const e1 = await pages(oldRuns(need.dept, need.code, need.from, until), (rows) => batch(() => { for (const row of rows) applyRemote('act_runs', row) }))
+      if (e1) { ok = false; continue }
+      const e2 = await pages(oldPlans(need.dept, need.code, need.from, until), (rows) => batch(() => { for (const row of rows) applyRemote('act_plan', row) }))
+      if (e2 && !missing(e2.code)) { ok = false; continue }
+      markFetched(need.q, need.from)
+    } catch { ok = false }
+  }
+  return ok
+}
+/** the old records of the production orders still worked out from them (all, or the queues named), brought now; then the device keeps what it needs of them */
+export async function bringWorkOrderRuns(only?: string[]): Promise<boolean> {
+  const ok = await fetchWorkRuns(only)
+  prune()
+  return ok
+}
+/**
+ * Everything an order's numbers are made of, from the server: the runs and programs of its group of orders (see
+ * orderGroup) from its first day to the first day this device keeps, and the history lines of the order and of the
+ * programs that name it. The detail of an old order works its numbers out again with them (stateWith(s, rows, unseal,
+ * true)). null = the server could not be asked now
+ */
+export async function loadOrderRows(o: WorkOrder): Promise<{ runs: Row[]; plans: Row[]; changes: Row[]; unseal: string[]; from: string } | null> {
+  if (!supabase) return null
+  const g = orderGroup(store.get(), o), until = firstKeptDay(), out = { runs: [] as Row[], plans: [] as Row[], changes: [] as Row[], unseal: g.ids, from: g.from }
+  try {
+    if (g.from < until) {
+      if (await pages(oldRuns(o.dept, o.code, g.from, until), (rows) => { out.runs.push(...rows) })) return null
+      const e = await pages(oldPlans(o.dept, o.code, g.from, until), (rows) => { out.plans.push(...rows) })
+      if (e && !missing(e.code)) return null
+    }
+    const keyOf = (date: string, dept: string, code: string) => date + '|' + dept + '|' + normCode(code)
+    const keys = new Set([o.id, ...store.get().plans.filter((p) => p.orderId === o.id).map((p) => keyOf(p.date, p.dept, p.code)), ...out.plans.filter((r) => r.order_id === o.id).map((r) => keyOf(String(r.date ?? '').slice(0, 10), String(r.dept ?? ''), String(r.code ?? '')))])
+    const list = [...keys]
+    for (let k = 0; k < list.length; k += 100) if (await pages(listing('act_changes', (q) => q.in('ref_key', list.slice(k, k + 100))), (rows) => { out.changes.push(...rows) })) return null
+    return out
+  } catch { return null }
+}
 let pull: Promise<boolean> | null = null
 /** everything changed on the server since the last pull; one pull at a time, whoever asks meanwhile waits for it */
 export function pullAll(): Promise<boolean> {
@@ -272,7 +337,11 @@ async function pullNow(): Promise<boolean> {
     // moved forward only makes the next pull read a little more again)
     if (newest) { setSince(newest); try { localStorage.setItem(SPAN, String(Math.round(Math.max(performance.now() - began, Date.now() - beganAt)))) } catch { /* full */ } }
     try { localStorage.setItem(PULLED_WITH, scope) } catch { /* private */ }
+    if (!cursor) await bringSeals()
     await bringOrderRuns()
+    await fetchWorkRuns()
+    // the plant is on this device now: the accounts of finished orders can be closed with it (see prune in store.ts)
+    markPulled()
     prune() // the days this device no longer keeps (also when the date changes while the app stays open)
     const at = Date.now()
     try { localStorage.setItem(LAST_PULL, String(at)) } catch { /* the full-storage bar says it */ }
@@ -331,7 +400,7 @@ export async function loadDay(date: string): Promise<boolean> {
  */
 const REFRESHED: Table[] = ['act_runs', 'act_stops', 'act_lines']
 /** the tables kept by the last change, whose queued rows are brought from the server before they go up (see below) */
-const BY_TIME: Table[] = ['act_plan', 'act_targets']
+const BY_TIME: Table[] = ['act_plan', 'act_targets', 'act_work_orders']
 async function refreshQueued(): Promise<Table[]> {
   if (!supabase) return []
   const held: Table[] = []
@@ -359,7 +428,7 @@ async function refreshQueued(): Promise<Table[]> {
       const part = rows.slice(k, k + 100), of = (c: string) => [...new Set(part.map((r) => String(r[c] ?? '')))]
       try {
         const q = supabase.from(t).select('*')
-        const { data, error } = await (t === 'act_targets' ? q.in('dept', of('dept')) : q.in('date', of('date')).in('dept', of('dept')))
+        const { data, error } = await (t === 'act_targets' ? q.in('dept', of('dept')) : t === 'act_work_orders' ? q.in('id', of('id')) : q.in('date', of('date')).in('dept', of('dept')))
         if (error && missing(error.code)) break // the table's SQL has not been run: the pass says so when it sends
         if (error || !Array.isArray(data)) throw error
         batch(() => { for (const row of data as Row[]) applyRemote(t, row) })
@@ -431,6 +500,10 @@ export function startSync() {
   // the rooms' programs on a channel of their own: while their table's SQL has not been run, only this one fails to listen
   supabase.channel('act-live-plan')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'act_plan' }, (p) => applyRemote('act_plan', p.new as Record<string, unknown>))
+    .subscribe()
+  // and the production orders (2026-10-19): until Jose runs 020, only this one fails to listen
+  supabase.channel('act-live-wo')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'act_work_orders' }, (p) => applyRemote('act_work_orders', p.new as Record<string, unknown>))
     .subscribe()
   window.addEventListener('online', () => { void syncNow() })
   window.addEventListener('act-resync', () => { void syncNow() })

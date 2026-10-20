@@ -238,17 +238,81 @@ export type TurnGoal = { key: string; perHour: number | null; total: number | nu
  * programmed for. The dialog offers the day's lot (lotFor) and the office may change it or leave it blank: '' = no
  * lot, a day's program as before. With a lot, "Flujo de datos" adds the program up per lot and says what is left.
  * (The only figure the app ever prefills that the person would otherwise type: office data, not a floor record.)
+ * orderId (Jose and the office, 2026-10-19): the production order this day's program is a part of (see "the
+ * production orders of each room"). Absent = a plain day's program, as every program typed before that day: nothing
+ * old is turned into an order by itself (the office types its open orders once).
  */
-export type Plan = { date: string; dept: Dept; code: string; qty: number; lot: string; updatedAt: number }
+export type Plan = { date: string; dept: Dept; code: string; qty: number; lot: string; orderId?: string; updatedAt: number }
 /** a lot as typed on a program: trimmed, at most this long (declared above load(): it is read there) */
 export const PLAN_LOT_MAX = 30
+// ---- the production orders: what load() needs of them is declared here (see "the production orders of each room") ----
+/** the longest order number (WO#) kept */
+export const WO_MAX = 30
+/**
+ * the units an order of each room is typed in: the room's own count (Kitchen and Spiral mezclas, RTE pouches, Packing
+ * cases), and in Spiral and MFO also the words its codes are counted in (pounds or cases; copas or pounds)
+ */
+export const WO_UNITS: Record<Dept, string[]> = { Kitchen: ['mezclas'], Spiral: ['mezclas', 'lb', 'cajas'], RTE: ['pouches'], MFO: ['platos', 'copas', 'lb'], Packing: ['cajas'] }
+/** the ref_table of an order's closed account in act_changes (see "the account of a finished order" below) */
+export const WO_DONE_REF = 'act_work_orders:done'
+/**
+ * A production order (Jose and the office clerk, 2026-10-19): so much of one code for one room, in the room's unit,
+ * from a day on. The office types it once; each day's program is a part of it (Plan.orderId), and what the room
+ * registers of the code from its start day on is taken off it by the app. Never erased: closed by hand (closedAt,
+ * closedBy) or marked deleted when it was typed by mistake (kept with its flag, gone from the screens).
+ * code = the code as normCode writes it ("0889" and "889" are one); unit = the word it was typed in ('' from the server
+ * = the room's own); createdAt = when it was typed, on the shared clock (two orders of one start day go in this order)
+ */
+export type WorkOrder = { id: string; dept: Dept; code: string; wo: string; qty: number; unit: string; startDate: string; note: string; createdAt: number; createdBy: string; closedAt: number | null; closedBy: string; deleted?: boolean; updatedAt: number; syncedAt?: number }
+/** one unit (a mezcla, a cart, a bin, a pallet) as it counted for an order: k = its place in its run (1, 2…), day = its run's work day */
+export type OrderUnitRef = { runId: string; k: number; at: number; day: string; shift: 1 | 2; n: number; by: string; line: string }
+/**
+ * One day of an order, as the office does the sum (Jose, 2026-10-19): what was programmed of it that day, what each
+ * shift made for it, what the day left pending (it goes back to the order), all made so far, what is still available
+ * of the order after that day, and what of it was not yet programmed.
+ */
+export type OrderDay = { date: string; programmed: number; lot: string; made1: number; made2: number; made: number; pending: number; cumMade: number; disponible: number; sinProgramar: number; closed?: boolean }
+/**
+ * The closed account of a finished order (see "the account of a finished order"): its numbers frozen, so a device that
+ * lets go of the days it was made in keeps saying the same. sig = a fingerprint of the orders of its queue as they were
+ * when it was closed (any change to them voids it, see sealSig); upto = the last day its group of orders finished.
+ * Its day by day is not kept (review of 2026-10-19: every account of a code carried it, on every device and in every
+ * mark): the order's window brings it from the server's records (loadOrderRows) when it is opened.
+ */
+export type OrderSeal = { id: string; sig: string; upto: string; made: number; finishAt: number; finishDay: string; completed: OrderUnitRef | null; lots: string[]; updatedAt: number }
+// (function declarations: load() uses them while this file is still being read, see the note at `let state = load()`)
+/** a real UUID, as the server's columns take it */
+function isUuid(x: unknown): x is string { return typeof x === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(x) }
+/** an order as it is kept on the device, whatever was saved (null = not one: no id, room, code, quantity or start day) */
+function workOrderFrom(x: Partial<WorkOrder> | null | undefined): WorkOrder | null {
+  if (!x || typeof x !== 'object' || !isUuid(x.id) || !(DEPTS as unknown[]).includes(x.dept) || !isDay(String(x.startDate ?? ''))) return null
+  const code = normCode(String(x.code ?? '')), qty = Number(x.qty), closedAt = Number(x.closedAt)
+  if (!code || !Number.isFinite(qty)) return null
+  return { id: x.id, dept: x.dept as Dept, code, wo: String(x.wo ?? '').trim().slice(0, WO_MAX), qty, unit: String(x.unit ?? ''), startDate: String(x.startDate), note: cleanNote(x.note), createdAt: Number(x.createdAt) || 0, createdBy: String(x.createdBy ?? ''), closedAt: x.closedAt != null && Number.isFinite(closedAt) && closedAt > 0 ? closedAt : null, closedBy: String(x.closedBy ?? ''), ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
+}
+/** a number as kept in an account (0 for anything that is not one) */
+function numIn(x: unknown) { const n = Number(x); return Number.isFinite(n) ? n : 0 }
+/** a closed account as it is kept, from the device or from its mark on the server (null = not one) */
+function sealFrom(x: unknown): OrderSeal | null {
+  if (!x || typeof x !== 'object') return null
+  const e = x as Record<string, unknown>, made = Number(e.made)
+  if (typeof e.id !== 'string' || !e.id || typeof e.sig !== 'string' || !Number.isFinite(made)) return null
+  const c = e.completed as Record<string, unknown> | null | undefined
+  const completed: OrderUnitRef | null = c && typeof c === 'object' && typeof c.runId === 'string' ? { runId: c.runId, k: numIn(c.k), at: numIn(c.at), day: String(c.day ?? ''), shift: Number(c.shift) === 2 ? 2 : 1, n: numIn(c.n), by: String(c.by ?? ''), line: String(c.line ?? '') } : null
+  // (a day by day an account may still carry is not read: see OrderSeal)
+  return { id: e.id, sig: e.sig, upto: String(e.upto ?? ''), made, finishAt: numIn(e.finishAt), finishDay: String(e.finishDay ?? ''), completed, lots: Array.isArray(e.lots) ? e.lots.map(String).slice(0, 30) : [], updatedAt: numIn(e.updatedAt) }
+}
 export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Product[]; schedule: Schedule; changes: Change[]; targets: Target[]; shifts: ShiftPlan[]; shiftWeeks: ShiftWeek[]; dayShifts: DayShifts[]; lineRules: LineRules; lineTargets: LineTarget[]; orders: Order[]; turnGoals: TurnGoal[]; plans: Plan[]
   /**
    * runs the device no longer keeps (older than its days) that hold pallets given to an order still open: an order's
    * "Hechas" counts every pallet it ever got, not only the days this device holds. They come from the server (see
-   * sync's bringOrderRuns) or stay behind when a day is pruned, and go when their order closes.
+   * sync's bringOrderRuns) or stay behind when a day is pruned, and go when their order closes. Since 2026-10-19 also
+   * the runs of a code a production order still counts (see workNeeds): its "Disponible" adds up every day since it
+   * started, also the ones older than the device's 14 days.
    */
-  orderRuns: Run[] }
+  orderRuns: Run[]
+  /** the production orders of every room (deleted ones kept with their flag), and the closed accounts of finished ones */
+  workOrders: WorkOrder[]; orderSeals: OrderSeal[] }
 /**
  * An order to fill in Packing: so many cases of one product for a customer, to ship by a date. Most carry the
  * customer's purchase order number (PO); some never do and some get it later. See "the orders Packing fills".
@@ -334,10 +398,10 @@ function tidySchedule(sch: Schedule): Schedule {
 function isDay(text: string) { return /^\d{4}-\d{2}-\d{2}$/.test(text) }
 /** with a server the lines (and products) are shared and come from it; without one, each device starts with a line per room */
 const SERVER = !!import.meta.env.VITE_SUPABASE_URL
-function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, lineTargets: [], orders: [], turnGoals: [], plans: [] } }
+function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [] } }
 function load(): State {
   try {
-    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[] }
+    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[] }
     const s = JSON.parse(localStorage.getItem(KEY) || 'null') as Raw | null
     // rows saved by earlier versions: carts as plain timestamps, units without a tag or a name, products with one
     // pouches-per-cart number, nothing with an update time
@@ -369,7 +433,12 @@ function load(): State {
         lineTargets: (s.lineTargets ?? []).filter((t) => !!t && !!t.lineId && !isTurnKey(String(t.lineId))).map((t) => ({ lineId: String(t.lineId), perHour: t.perHour ?? null, perDay: t.perDay ?? null, updatedAt: t.updatedAt ?? 0 })),
         orders: (s.orders ?? []).map((o) => (o ? orderOf(String(o.id ?? ''), o, String(o.by ?? ''), o.updatedAt ?? 0) : null)).filter((o): o is Order => !!o),
         // (lot since 2026-10-19: a program saved before it reads ''. Written inline, as above: nothing below load())
-        plans: (s.plans ?? []).filter((p) => !!p && isDay(String(p.date ?? '')) && DEPTS.includes(p.dept as Dept) && !!normCode(String(p.code ?? ''))).map((p) => ({ date: String(p.date), dept: p.dept as Dept, code: String(p.code).trim().toUpperCase(), qty: Number(p.qty) > 0 ? Number(p.qty) : 0, lot: String(p.lot ?? '').trim().slice(0, PLAN_LOT_MAX), updatedAt: p.updatedAt ?? 0 })),
+        // (orderId since 2026-10-19: kept only when it is a real id; a program saved before it is a plain day's program)
+        plans: (s.plans ?? []).filter((p) => !!p && isDay(String(p.date ?? '')) && DEPTS.includes(p.dept as Dept) && !!normCode(String(p.code ?? ''))).map((p) => ({ date: String(p.date), dept: p.dept as Dept, code: String(p.code).trim().toUpperCase(), qty: Number(p.qty) > 0 ? Number(p.qty) : 0, lot: String(p.lot ?? '').trim().slice(0, PLAN_LOT_MAX), ...(isUuid(p.orderId) ? { orderId: p.orderId } : {}), updatedAt: p.updatedAt ?? 0 })),
+        // the production orders and their closed accounts (2026-10-19). Read with function declarations only (see the
+        // note at `let state = load()`): a stored field nothing reads back is a field lost on every reload
+        workOrders: (s.workOrders ?? []).map(workOrderFrom).filter((o): o is WorkOrder => !!o),
+        orderSeals: (s.orderSeals ?? []).map(sealFrom).filter((x): x is OrderSeal => !!x),
         turnGoals: (s.turnGoals ?? []).filter((g) => !!g && isTurnKey(String(g.key ?? ''))).map((g) => ({ key: String(g.key), perHour: g.perHour ?? null, total: g.total ?? null, updatedAt: g.updatedAt ?? 0 })),
       }
     }
@@ -413,18 +482,55 @@ function pruned(s: State): State {
   const stops = s.stops.filter((x) => !x.endedAt || x.startedAt >= fromMs || opened.has(dayOf(x.startedAt)) || waiting.has('act_stops|' + x.id) || beside(x))
   const changes = s.changes.filter((c) => c.at >= fromMs || opened.has(dayOf(c.at)) || waiting.has('act_changes|' + c.id))
   const days = Object.keys(s.schedule).filter((d) => d >= from || opened.has(d))
-  const plans = s.plans.filter((p) => p.date >= from || opened.has(p.date) || waiting.has('act_plan|' + planKey(p.date, p.dept, p.code)))
+  // A production order still in play (2026-10-19, see workNeeds) keeps what its numbers are made of: the runs of its
+  // code in its room and unit, and the day programs that name it, from the day its queue starts. An order of 1000
+  // mezclas at 80 a day lasts about 13 days, and a device keeps 14: without this, "Disponible" went up on the day its
+  // first days were let go
+  const needs = workNeeds(s), needFrom = new Map(needs.map((n) => [n.q, n.from]))
+  const liveFrom = new Map<string, string>()
+  for (const o of s.workOrders) { const f = needFrom.get(orderQueue(o)); if (f !== undefined && !o.deleted) liveFrom.set(o.id, f) }
+  const needed = (r: Run) => { const f = r.deleted ? undefined : needFrom.get(woQueue(r.dept, r.code, apartOf(r))); return f !== undefined && r.date >= f }
+  const forWork = (p: Plan) => { const f = p.orderId ? liveFrom.get(p.orderId) : undefined; return f !== undefined && p.date >= f }
+  const plans = s.plans.filter((p) => p.date >= from || opened.has(p.date) || waiting.has('act_plan|' + planKey(p.date, p.dept, p.code)) || forWork(p))
   // a run that goes with its day keeps counting for the order its pallets went to, as long as that order is open
   const kept = new Set(runs.map((r) => r.id)), openIds = new Set(s.orders.filter((o) => !o.closed).map((o) => o.id))
-  const forOrder = (r: Run) => r.units.some((u) => !!u.po && openIds.has(u.po))
+  const forOrder = (r: Run) => r.units.some((u) => !!u.po && openIds.has(u.po)) || needed(r)
   const gone = s.runs.filter((r) => !kept.has(r.id) && forOrder(r))
   const orderRuns = [...(s.orderRuns ?? []).filter((r) => !kept.has(r.id) && !gone.some((g) => g.id === r.id) && forOrder(r)), ...gone]
   const sameOrderRuns = orderRuns.length === (s.orderRuns ?? []).length && orderRuns.every((r, k) => r === s.orderRuns[k])
   if (runs.length === s.runs.length && stops.length === s.stops.length && changes.length === s.changes.length && days.length === Object.keys(s.schedule).length && plans.length === s.plans.length && sameOrderRuns) return s
   return { ...s, runs, orderRuns, stops, changes, schedule: Object.fromEntries(days.map((d) => [d, s.schedule[d]])), plans }
 }
-/** lets go of the days the device no longer keeps (see pruned) */
-export function prune() { const next = pruned(state); if (next !== state) set(next) }
+// ---- what this device holds of the days of each production order (2026-10-19) ----
+/** this page has brought the plant from the server at least once (sync.ts says so after every pull that went well) */
+let pulledOnce = false
+export function markPulled() { pulledOnce = true }
+/**
+ * for each queue of orders (a room, a code and its unit: see woQueue), the first day whose runs and programs this page
+ * brought from the server beyond the days it keeps (sync.ts, bringWorkOrderRuns). Kept in memory only: a page opened
+ * again brings them again once, so an order's numbers are never made of an old copy
+ */
+const fetched = new Map<string, string>()
+export function markFetched(q: string, from: string) { fetched.set(q, from) }
+/**
+ * Does this device hold every record of a queue from that day on? Without a server, always (the device is the only
+ * copy). With one: once it has brought the plant, the days it keeps; and older days when it brought them for that
+ * queue. Until then an order's numbers are said to be incomplete (OrderStatus.complete) and nothing is closed with them
+ */
+export function queueHeld(q: string, day: string): boolean {
+  return !SERVER || (pulledOnce && (day >= firstKeptDay() || (fetched.get(q) ?? '9999-12-31') <= day))
+}
+/**
+ * lets go of the days the device no longer keeps (see pruned). First, with the plant brought from the server, the
+ * production orders finished before those days get their closed account (see sealFinished), so what they counted is
+ * not lost with the days; and what this device says it holds of each order's days follows what it keeps (see queueHeld)
+ */
+export function prune() {
+  if (SERVER && pulledOnce) sealFinished()
+  const needs = workNeeds(state)
+  for (const [q, f] of [...fetched]) { const n = needs.find((x) => x.q === q); if (!n) fetched.delete(q); else if (f < n.from) fetched.set(q, n.from) }
+  const next = pruned(state); if (next !== state) set(next)
+}
 
 let state = load()
 const subs = new Set<() => void>()
@@ -1683,7 +1789,7 @@ export function whoText(r: Run) { return [...new Set([r.by, ...r.units.map((u) =
 const resync = () => { if (SERVER) { try { localStorage.removeItem('act_since2'); localStorage.removeItem('act_outbox') } catch { /* private */ } window.dispatchEvent(new Event('act-resync')) } }
 export function reset() { set(fresh()); resync() }
 /** a clean slate for the records only: runs, stops and the schedule go; the lines and the products table stay */
-export function resetRecords() { set({ ...state, runs: [], orderRuns: [], stops: [], schedule: {}, changes: [], plans: [] }); resync() }
+export function resetRecords() { set({ ...state, runs: [], orderRuns: [], stops: [], schedule: {}, changes: [], plans: [], workOrders: [], orderSeals: [] }); resync() }
 
 export const productOf = (s: State, code: string) => s.products.find((p) => normCode(p.code) === normCode(code))
 /**
@@ -1806,16 +1912,30 @@ export const planLot = (x: unknown) => String(x ?? '').trim().slice(0, PLAN_LOT_
 /** " · lote 6291" after a program's name in the history ('' without a lot) */
 const lotNote = (lot: string) => (lot ? ' · lote ' + lot : '')
 // (the lot goes up always, '' when none: until Jose runs 019 the server answers that the column is missing and the
-// row waits in the queue, said on the screen; see outbox.ts)
-const rowOfPlan = (p: Plan) => ({ date: p.date, dept: p.dept, code: normCode(p.code), qty: p.qty, lot: planLot(p.lot), updated_at: iso(p.updatedAt), updated_by: user.get() })
+// row waits in the queue, said on the screen; see outbox.ts. The production order too, null when none (Jose,
+// 2026-10-19): the whole row stands, so a program unlinked on a device is unlinked on the server. Until 020 is run a
+// program without one goes up without the column, and one with an order waits, said on the screen: see outbox.ts)
+const rowOfPlan = (p: Plan) => ({ date: p.date, dept: p.dept, code: normCode(p.code), qty: p.qty, lot: planLot(p.lot), order_id: p.orderId ?? null, updated_at: iso(p.updatedAt), updated_by: user.get() })
+/**
+ * " · pedido WO 4512" (or " · pedido 889 desde 2026-10-18" when it has no WO number) after a program's name in the
+ * history; '' without an order. An order this device does not have is named by the start of its id
+ */
+function orderNote(id: string | null | undefined) {
+  if (!id) return ''
+  const o = state.workOrders.find((x) => x.id === id)
+  return ' · pedido ' + (o ? (o.wo ? 'WO ' + o.wo : o.code + ' desde ' + o.startDate) : id.slice(0, 8))
+}
 /** what a room has on its program for a day */
 export const planOf = (s: State, date: string, dept: Dept) => s.plans.filter((p) => p.date === date && p.dept === dept && p.qty > 0)
 /**
  * the office sets how much of a code a room has to make on a day (nothing = the code is taken off its program), and
  * for which lot (Jose, 2026-10-19; '' = no lot). The same quantity with another lot is a change too: Flujo counts the
- * program under its lot
+ * program under its lot.
+ * orderId (Jose and the office, 2026-10-19): the production order this program is a part of. undefined = as it was
+ * (a program changed without saying keeps its order), null or '' = none (a plain day's program). Another order, or
+ * none, is a change too, said in the history
  */
-export function setPlan(date: string, dept: Dept, code: string, qty: number, lot = '') {
+export function setPlan(date: string, dept: Dept, code: string, qty: number, lot = '', orderId?: string | null) {
   const key = normCode(code)
   if (!key || !isDay(date) || !DEPTS.includes(dept)) return
   const n = Number.isFinite(qty) && qty > 0 ? Math.round(qty * 100) / 100 : 0
@@ -1825,14 +1945,17 @@ export function setPlan(date: string, dept: Dept, code: string, qty: number, lot
   // typed with its quantity blank came with a lot and used to make a row of 0 with it, sent to the server and saying
   // nothing (review of 2026-10-19). Taking a code off (a quantity it had → 0) still goes through, its lot as it was
   if (n === 0 && !(old && old.qty > 0)) return
-  if ((old?.qty ?? 0) === n && (old?.lot ?? '') === l) return
-  const p: Plan = { date, dept, code: code.trim().toUpperCase(), qty: n, lot: l, updatedAt: stamp(old) }
+  const link = orderId === undefined ? old?.orderId : isUuid(orderId) ? orderId : undefined
+  if ((old?.qty ?? 0) === n && (old?.lot ?? '') === l && (old?.orderId ?? '') === (link ?? '')) return
+  const p: Plan = { date, dept, code: code.trim().toUpperCase(), qty: n, lot: l, ...(link ? { orderId: link } : {}), updatedAt: stamp(old) }
   set({ ...state, plans: [...state.plans.filter((x) => x !== old), p] })
   push('act_plan', planKey(date, dept, key), rowOfPlan(p))
   // the line names the lot it is for now; "before" is the quantity it had, with the lot it had when that changed, and
-  // nothing at all when it had no quantity (a code taken off keeps its lot: alone it read " · lote 6292", review of 2026-10-19)
-  const was = v(old?.qty)
-  logChange(dept, 'Programa ' + date + ' · ' + dept + ' · ' + key + lotNote(l), was && old && old.lot && old.lot !== l ? was + lotNote(old.lot) : was, v(n), 'act_plan', planKey(date, dept, key))
+  // nothing at all when it had no quantity (a code taken off keeps its lot: alone it read " · lote 6292", review of 2026-10-19).
+  // It names the order it is a part of now, and "before" the one it had when that changed (or "sin pedido")
+  const was = v(old?.qty), relinked = (old?.orderId ?? '') !== (link ?? '')
+  const before = was && old && old.lot && old.lot !== l ? was + lotNote(old.lot) : was
+  logChange(dept, 'Programa ' + date + ' · ' + dept + ' · ' + key + lotNote(l) + orderNote(link), before && relinked ? before + (old?.orderId ? orderNote(old.orderId) : ' · sin pedido') : before, v(n), 'act_plan', planKey(date, dept, key))
 }
 /**
  * One code of a room's day against its program: what was set, what the room has registered of it (in all, and by
@@ -1850,8 +1973,8 @@ export function setPlan(date: string, dept: Dept, code: string, qty: number, lot
  * the lot's program in Flujo when the lot has no bin of the code yet (review of 2026-10-19: both must say the same)
  */
 export const mfoBinWord = (runs: Run[], code: string): string | undefined => { const key = normCode(code); return runs.filter((r) => r.dept === 'MFO' && normCode(r.code) === key && !!binOf(r)).sort((a, b) => b.startedAt - a.startedAt).map(apartOf)[0] }
-/** lot = the lot the program names ('' when none, 2026-10-19) */
-export type PlanRow = { code: string; name: string; planned: number; done: number; byShift: [number, number]; left: number; running: boolean; lines: string[]; unit: string; kind: string; other: { word: string; n: number }[]; lot: string }
+/** lot = the lot the program names ('' when none, 2026-10-19); orderId = the production order it is a part of ('' = none, 2026-10-19) */
+export type PlanRow = { code: string; name: string; planned: number; done: number; byShift: [number, number]; left: number; running: boolean; lines: string[]; unit: string; kind: string; other: { word: string; n: number }[]; lot: string; orderId: string }
 export function planRows(s: State, date: string, dept: Dept): PlanRow[] {
   const cfg = CFG[dept], hours = shiftsOf(s, date)
   const all = s.runs.filter((r) => r.dept === dept && r.date === date), plan = planOf(s, date, dept)
@@ -1871,7 +1994,7 @@ export function planRows(s: State, date: string, dept: Dept): PlanRow[] {
     const done = made(0), planned = set?.qty ?? 0, open = mine.filter((r) => !r.endedAt)
     const wordOf = (w: string) => (dept === 'Spiral' ? measureUnit(w) : w ? apartWord(dept, w) : roomUnit)
     const other = [...ofCode.filter((r) => apartOf(r) !== measure && (dept === 'Spiral' || dept === 'MFO' || !!apartOf(r))).reduce((m, r) => { const w = apartOf(r), n = w || cfg.qty !== 'none' ? runQty(s, r) : r.units.length; return m.set(w, (m.get(w) ?? 0) + n) }, new Map<string, number>())].filter(([, n]) => n > 0).map(([word, n]) => ({ word: wordOf(word), n }))
-    return { code: product?.code ?? set?.code ?? mine[0]?.code ?? ofCode[0]?.code ?? key, name: product?.name ?? '', planned, done, byShift: [made(1), made(2)], left: planned ? Math.round((planned - done) * 100) / 100 : 0, running: open.length > 0, unit: measure ? wordOf(measure) : roomUnit, kind: measure, other, lines: [...new Set(open.map((r) => lineNameOf(s, r.lineId, r.line)))], lot: set?.lot ?? '' }
+    return { code: product?.code ?? set?.code ?? mine[0]?.code ?? ofCode[0]?.code ?? key, name: product?.name ?? '', planned, done, byShift: [made(1), made(2)], left: planned ? Math.round((planned - done) * 100) / 100 : 0, running: open.length > 0, unit: measure ? wordOf(measure) : roomUnit, kind: measure, other, lines: [...new Set(open.map((r) => lineNameOf(s, r.lineId, r.line)))], lot: set?.lot ?? '', orderId: set?.orderId ?? '' }
   }).sort((a, b) => Number(b.planned > 0) - Number(a.planned > 0) || a.code.localeCompare(b.code, undefined, { numeric: true }))
 }
 // ---- a code and its lot that go on into the next day ----
@@ -1912,6 +2035,580 @@ export function cameFrom(s: State, date: string): { dept: Dept; code: string; un
     }
   }
   return out
+}
+// ---- the production orders of each room ----
+/**
+ * The office clerk's correction of 2026-10-19, relayed by Jose: "No es una cantidad por lote, es una cantidad por
+ * mezcla: el pedido es de 1000 mezclas; el día 1 se programa hacer 80: de las 1000 le quitas 80 → 920 sin programar,
+ * aparte de las 80 del día 1. El día 1 hicieron 50 → quedan 30 pendientes; esos 30 vuelven: 920 + 30 = 950 disponibles
+ * para el día 2. El día 2 se programan 80 de los 950 → 870; si el día 2 hacen 70 → 10 pendientes; 870 + 10 = 880
+ * disponibles para el día 3."
+ * So an order (WorkOrder) is so much of a code for one room, from a day on, typed once by the office; what is still
+ * available of it ("Disponible") is its quantity minus everything the room made for it; each day's program is a part
+ * of it (Plan.orderId); and what a day did not make goes back to the order: it is never carried over as a program (the
+ * office programs every day again, and the room's card only says what yesterday left). Each room has its own orders in
+ * its own unit; the lot stays on each day's program, optional, as before.
+ *
+ * What the room registers of the code counts for its open orders, oldest first (foldQueue): a unit for exactly one
+ * order, whole (an RTE cart of 240 that completes an order of 1000 leaves it at 1200, it is never split); when one is
+ * complete the next units go to the next one; nothing before an order's start day counts for it, and an order closed
+ * by hand takes nothing from that moment on. A day's program that names an order takes that day's units first, up to
+ * its quantity: by default the program names the oldest open order, so this is the same thing; it differs only when
+ * the office chose a later order for the day (without it, the order chosen would show "pending" while the room had
+ * made the units).
+ */
+/** the queue of orders a run or an order belongs to: its room, its code and the word it is counted in ('' = the room's own) */
+export const woQueue = (dept: Dept, code: string, kind: string) => dept + '|' + normCode(code) + '|' + kind
+/**
+ * the word an order counts in, as its room's runs carry it (apartOf): Spiral's pounds or cases; MFO's copas or pounds
+ * (or the cases of the bins of before 2026-10-17). '' = the room's own count: mezclas, pouches, pallets of cases, bins
+ * of platos. Runs counted in another word never count for it (a Packing line's bins do not count for an order of cases)
+ */
+export function orderKind(o: Pick<WorkOrder, 'dept' | 'unit'>): string {
+  if (o.dept === 'Spiral') return o.unit === 'lb' || o.unit === 'cajas' ? o.unit : ''
+  if (o.dept === 'MFO') return !o.unit || o.unit === 'platos' ? '' : o.unit
+  return ''
+}
+/** the queue an order is in (see woQueue) */
+export const orderQueue = (o: Pick<WorkOrder, 'dept' | 'code' | 'unit'>) => woQueue(o.dept, o.code, orderKind(o))
+/**
+ * the unit a new order of a code is offered in (shown, and changed with a tap): Spiral's as the products table counts
+ * the code, MFO's as its last bins on this device said (platos when none did), the room's own elsewhere
+ */
+export function orderUnitDefault(s: State, dept: Dept, code: string): string {
+  if (dept === 'Spiral') return productOf(s, code)?.spiralUnit ?? 'mezclas'
+  if (dept === 'MFO') { const w = mfoBinWord(s.runs, code); return w && WO_UNITS.MFO.includes(w) ? w : 'platos' }
+  return WO_UNITS[dept][0]
+}
+/** an order's unit as the screen says it: mezclas, lb, cajas, pouches, platos, copas */
+export function orderUnitWord(o: Pick<WorkOrder, 'dept' | 'unit'>): string {
+  const k = orderKind(o)
+  if (o.dept === 'Kitchen') return tr('mezclas')
+  if (o.dept === 'Spiral') return measureUnit(k)
+  if (o.dept === 'RTE') return tr('pouches')
+  if (o.dept === 'MFO') return k === 'lb' ? tr('lb') : binWord(k || 'platos')
+  return tr('cajas')
+}
+/** an order's unit as the history keeps it: data, in Spanish ('' from the server is the room's own) */
+const unitKept = (o: Pick<WorkOrder, 'dept' | 'unit'>) => o.unit || WO_UNITS[o.dept][0]
+/** oldest first: by start day, then by when it was typed (the shared clock), then by its id (the same on every device) */
+const fifo = (a: WorkOrder, b: WorkOrder) => (a.startDate < b.startDate ? -1 : a.startDate > b.startDate ? 1 : a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+/** quantities as typed carry at most two decimals: sums stay so (pounds added up do not end in …0000001) */
+const r2 = (x: number) => Math.round(x * 100) / 100
+/** an order by its id (the deleted ones too) */
+export const workOrderOf = (s: State, id: string | null | undefined) => (id ? s.workOrders.find((o) => o.id === id) : undefined)
+/**
+ * The product codes of a room are typed with and without their zeros ("0889", "889") and the server compares text:
+ * the spellings of a code to ask it for. A numeric code with its zeros up to six digits; any other code as it is and in
+ * small letters. What comes back is still checked with normCode
+ */
+export function codeVariants(code: string): string[] {
+  const k = normCode(code)
+  if (/^\d+$/.test(k)) { const out: string[] = []; for (let t = k; t.length <= 6; t = '0' + t) out.push(t); return out.length ? out : [k] }
+  return [...new Set([k, k.toLowerCase()])]
+}
+
+// ---- the account of a finished order ----
+/**
+ * A device keeps 14 days and an order can last longer than that: the office's own example, 1000 mezclas at 80 a day,
+ * lasts about 13. While an order is in play its device keeps (pruned) or brings (sync.ts, bringWorkOrderRuns) every
+ * record of its code since it started. Once it and every order of its queue that overlaps it have finished (complete
+ * or closed) before the days the device keeps, their account is closed (OrderSeal): their numbers are frozen and their
+ * old records can go, without "Disponible" or "Completado" changing (a completed order whose records were let go would
+ * otherwise read as open again). The account is shared as a mark in the history table (act_changes, ref_table
+ * WO_DONE_REF), so a new device does not have to bring the plant's past to know it. It stands only while nothing of
+ * its queue changed (sig): an order typed later with an earlier start day, or one of them changed, reopened or
+ * deleted, voids it, and it is worked out again from the records.
+ */
+/**
+ * The fingerprint an account keeps of its queue (review of 2026-10-19). Until then it kept the list itself, every order
+ * of the code typed so far, so each account of a code was longer than the one before (a year of weekly orders of one
+ * code: 200,000 letters on every device, and as much again in the marks) and checking every account took a moment on
+ * each change. Now it keeps 16 letters worked out from that same list (cyrb53's mixing, two 32-bit lanes: the same on
+ * every device) and how many orders it holds: an order typed later with an earlier start day, or one of them changed,
+ * reopened or deleted, still gives other letters and voids the account. The list goes in start-day order (then by id),
+ * so the fingerprints of every day of a queue come out of one pass over it (woIndex)
+ */
+type Fp = [number, number]
+const FP0: Fp = [0xdeadbeef, 0x41c6ce57]
+const fpAdd = (h: Fp, text: string): Fp => { let h1 = h[0], h2 = h[1]; for (let i = 0; i < text.length; i++) { const c = text.charCodeAt(i); h1 = Math.imul(h1 ^ c, 2654435761); h2 = Math.imul(h2 ^ c, 1597334677) } return [h1, h2] }
+const fpEnd = (h: Fp) => { let h1 = Math.imul(h[0] ^ (h[0] >>> 16), 2246822507); h1 ^= Math.imul(h[1] ^ (h[1] >>> 13), 3266489909); let h2 = Math.imul(h[1] ^ (h[1] >>> 16), 2246822507); h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909); return (h2 >>> 0).toString(16).padStart(8, '0') + (h1 >>> 0).toString(16).padStart(8, '0') }
+/** the orders by id and by queue (in the order they are kept), and each queue's fingerprints by start day: worked out once per list of orders, a new list only when an order changes */
+type WoIndex = { byId: Map<string, WorkOrder>; byQ: Map<string, WorkOrder[]>; sigs: Map<string, { days: string[]; sigs: string[] }> }
+const woIndexMemo = new WeakMap<WorkOrder[], WoIndex>()
+function woIndex(list: WorkOrder[]): WoIndex {
+  const hit = woIndexMemo.get(list)
+  if (hit) return hit
+  const byId = new Map<string, WorkOrder>(), byQ = new Map<string, WorkOrder[]>()
+  for (const o of list) { if (!byId.has(o.id)) byId.set(o.id, o); const q = orderQueue(o), l = byQ.get(q); if (l) l.push(o); else byQ.set(q, [o]) }
+  const out: WoIndex = { byId, byQ, sigs: new Map() }
+  woIndexMemo.set(list, out)
+  return out
+}
+/** the fingerprint of the orders of o's queue (deleted ones too) that start on or before upto */
+function sealSig(s: State, o: WorkOrder, upto: string): string {
+  const ix = woIndex(s.workOrders), q = orderQueue(o)
+  let f = ix.sigs.get(q)
+  if (!f) {
+    const list = [...(ix.byQ.get(q) ?? [])].sort((a, b) => (a.startDate < b.startDate ? -1 : a.startDate > b.startDate ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    const g = { days: [] as string[], sigs: [] as string[] }
+    let h = FP0
+    list.forEach((x, k) => {
+      h = fpAdd(h, JSON.stringify([x.id, x.startDate, x.createdAt, x.qty, x.closedAt, !!x.deleted, x.unit, x.code]))
+      if (k === list.length - 1 || list[k + 1].startDate !== x.startDate) { g.days.push(x.startDate); g.sigs.push(k + 1 + ':' + fpEnd(h)) }
+    })
+    f = g
+    ix.sigs.set(q, f)
+  }
+  // the last start day on or before upto (the days are in order: halved until found)
+  let lo = 0, hi = f.days.length
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (f.days[mid] <= upto) lo = mid + 1; else hi = mid }
+  return lo ? f.sigs[lo - 1] : '0:' + fpEnd(FP0)
+}
+/** an order's closed account, if it has one (standing or not: see sealedIds); by id, once per list of accounts */
+const sealIndexMemo = new WeakMap<OrderSeal[], Map<string, OrderSeal>>()
+function sealOf(s: State, id: string): OrderSeal | undefined {
+  let m = sealIndexMemo.get(s.orderSeals)
+  if (!m) { m = new Map(); for (const x of s.orderSeals) if (!m.has(x.id)) m.set(x.id, x); sealIndexMemo.set(s.orderSeals, m) }
+  return m.get(id)
+}
+/** the orders whose closed account still stands: worked out again only when the orders or the accounts change */
+const sealMemo = new WeakMap<OrderSeal[], { orders: WorkOrder[]; ids: Set<string> }>()
+function sealedIds(s: State): Set<string> {
+  const hit = sealMemo.get(s.orderSeals)
+  if (hit && hit.orders === s.workOrders) return hit.ids
+  const ids = new Set<string>(), ix = woIndex(s.workOrders)
+  for (const seal of s.orderSeals) { const o = ix.byId.get(seal.id); if (o && !o.deleted && seal.sig === sealSig(s, o, seal.upto)) ids.add(o.id) }
+  sealMemo.set(s.orderSeals, { orders: s.workOrders, ids })
+  return ids
+}
+/** the orders of a queue still worked out from their records (not deleted, no standing account), oldest first (once per state and queue) */
+const liveMemo = new WeakMap<State, Map<string, WorkOrder[]>>()
+function liveOrders(s: State, q: string): WorkOrder[] {
+  let m = liveMemo.get(s)
+  if (!m) { m = new Map(); liveMemo.set(s, m) }
+  let list = m.get(q)
+  if (!list) { const sealed = sealedIds(s); list = (woIndex(s.workOrders).byQ.get(q) ?? []).filter((o) => !o.deleted && !sealed.has(o.id)).sort(fifo); m.set(q, list) }
+  return list
+}
+/** what a device has to keep (and bring) for its production orders: each queue with an order still worked out from its records, from its first start day */
+export type WorkNeed = { q: string; dept: Dept; code: string; kind: string; from: string }
+// (a function declaration: pruned() uses it, and pruned() sits above `let state = load()`)
+export function workNeeds(s: State): WorkNeed[] {
+  const out = new Map<string, WorkNeed>(), sealed = sealedIds(s)
+  for (const o of s.workOrders) {
+    if (o.deleted || sealed.has(o.id)) continue
+    const q = orderQueue(o), was = out.get(q)
+    if (!was || o.startDate < was.from) out.set(q, { q, dept: o.dept, code: o.code, kind: orderKind(o), from: o.startDate })
+  }
+  return [...out.values()]
+}
+
+// ---- what each order has made ----
+export type OrderState = 'abierto' | 'completado' | 'cerrado' | 'borrado'
+/** a run that counted for an order: how many of its units and how much they made for it */
+export type OrderRunPart = { runId: string; day: string; units: number; n: number }
+/**
+ * An order's numbers, as the office keeps them (Jose, 2026-10-19).
+ *  - made: everything made for it; disponible: its quantity minus that (never below 0; over: what was made beyond it).
+ *  - pendingToday: what the programs of today and later still have pending of it; sinProgramar: what is available and
+ *    not programmed yet (disponible − pendingToday).
+ *  - byDay: the office's sum, day by day (OrderDay). completedAt / completedBy: the unit that completed it.
+ *  - finishAt / finishDay: when it finished (completed, or closed by hand: whichever came first); '' while open.
+ *  - state: abierto / completado / cerrado / borrado; waiting: it starts on a day still to come.
+ *  - lots: the lots of what counted, and of its programs. runs: the runs that counted.
+ *  - complete: this device holds every record it is made of (when not, the numbers can be short: the screens say so
+ *    and ask the server). sealed: the numbers come from its closed account.
+ */
+export type OrderStatus = { id: string; made: number; disponible: number; over: number; pendingToday: number; sinProgramar: number; byDay: OrderDay[]; completedAt: number | null; completedBy: OrderUnitRef | null; finishAt: number | null; finishDay: string; state: OrderState; waiting: boolean; lots: string[]; runs: OrderRunPart[]; complete: boolean; sealed: boolean }
+/** the runs of each queue (see woQueue) in a state: the device's own first, then the older ones kept for orders; never one twice, never a deleted one */
+const runIndex = new WeakMap<State, Map<string, Run[]>>()
+function runsOfQueue(s: State, q: string): Run[] {
+  let idx = runIndex.get(s)
+  if (!idx) {
+    idx = new Map()
+    const seen = new Set<string>()
+    for (const r of [...s.runs, ...s.orderRuns]) {
+      if (seen.has(r.id)) continue
+      seen.add(r.id)
+      if (r.deleted || !roomKnown(r.dept)) continue
+      const k = woQueue(r.dept, r.code, apartOf(r)), list = idx.get(k)
+      if (list) list.push(r); else idx.set(k, [r])
+    }
+    runIndex.set(s, idx)
+  }
+  return idx.get(q) ?? []
+}
+/** states made with the server's rows of an order's days (stateWith(…, whole)): they hold all of them */
+const wholeStates = new WeakSet<State>()
+const statusMemo = new WeakMap<State, Map<string, Map<string, OrderStatus>>>()
+/**
+ * the numbers of every order of a queue still worked out from its records, by id (worked out once per state, day and
+ * whether the device holds every record of the queue: what it holds changes without the state changing, when the
+ * server's old days arrive or the device's own days move on)
+ */
+export function queueStatuses(s: State, q: string, today: string): Map<string, OrderStatus> {
+  const orders = liveOrders(s, q)
+  const complete = orders.length > 0 && (queueHeld(q, orders[0].startDate) || wholeStates.has(s))
+  let byQ = statusMemo.get(s)
+  if (!byQ) { byQ = new Map(); statusMemo.set(s, byQ) }
+  const key = q + '|' + today + '|' + complete, hit = byQ.get(key)
+  if (hit) return hit
+  const out = foldQueue(s, orders, today, complete)
+  byQ.set(key, out)
+  return out
+}
+type OrderAcc = { made: number; days: Map<string, [number, number]>; completedBy: OrderUnitRef | null; runs: Map<string, OrderRunPart>; lots: Set<string> }
+/**
+ * Every unit the room registered of the code in the queue's unit, from the first start day of its orders on, in the
+ * order they were made, goes to one order: the one the day's program names, while it is open and that day has not
+ * made the program's quantity for it yet; else the oldest open one. "Open" for a unit: it started on or before the
+ * unit's day, it was not closed before the unit, and it is not complete yet. A unit's day is its run's work day, as
+ * the room's card counts it (planRows), and its shift is by the hours of that day (a day of one shift gives all to it).
+ * One unit counts as planRows counts it: a mezcla is one, a cart its pouches, a bin what it holds, a pallet its cases.
+ */
+function foldQueue(s: State, orders: WorkOrder[], today: string, complete: boolean): Map<string, OrderStatus> {
+  const out = new Map<string, OrderStatus>()
+  if (!orders.length) return out
+  const q = orderQueue(orders[0])
+  const { dept, code: key } = orders[0], kind = orderKind(orders[0]), from = orders[0].startDate, cfg = CFG[dept]
+  const programs = s.plans.filter((p) => p.dept === dept && p.qty > 0 && normCode(p.code) === key)
+  const dayPlan = new Map(programs.map((p) => [p.date, p]))
+  const units: { u: OrderUnitRef; r: Run; unit: Unit }[] = []
+  for (const r of runsOfQueue(s, q)) {
+    if (r.date < from) continue
+    const h = shiftsOf(s, r.date), line = lineNameOf(s, r.lineId, r.line)
+    r.units.forEach((unit, i) => {
+      const n = cfg.qty === 'none' && !kind ? 1 : unitQty(s, r, unit)
+      if (n > 0) units.push({ u: { runId: r.id, k: i + 1, at: unit.at, day: r.date, shift: shiftAt(h, unit.at), n, by: unit.by, line }, r, unit })
+    })
+  }
+  units.sort((a, b) => a.u.at - b.u.at || (a.u.runId < b.u.runId ? -1 : a.u.runId > b.u.runId ? 1 : 0) || a.u.k - b.u.k)
+  const acc = new Map<string, OrderAcc>(orders.map((o) => [o.id, { made: 0, days: new Map(), completedBy: null, runs: new Map(), lots: new Set() }]))
+  const madeOn = (o: WorkOrder, day: string) => { const d = acc.get(o.id)!.days.get(day); return d ? d[0] + d[1] : 0 }
+  const open = (o: WorkOrder, u: OrderUnitRef) => o.startDate <= u.day && (o.closedAt == null || u.at < o.closedAt) && acc.get(o.id)!.made < o.qty
+  for (const { u, r, unit } of units) {
+    const p = dayPlan.get(u.day), named = p?.orderId ? orders.find((o) => o.id === p.orderId) : undefined
+    const target = named && p && open(named, u) && madeOn(named, u.day) < p.qty ? named : orders.find((o) => open(o, u))
+    if (!target) continue
+    const a = acc.get(target.id)!
+    a.made = r2(a.made + u.n)
+    const d = a.days.get(u.day) ?? [0, 0]
+    d[u.shift - 1] = r2(d[u.shift - 1] + u.n)
+    a.days.set(u.day, d)
+    if (!a.completedBy && a.made >= target.qty) a.completedBy = u
+    const part = a.runs.get(r.id) ?? { runId: r.id, day: r.date, units: 0, n: 0 }
+    part.units++; part.n = r2(part.n + u.n)
+    a.runs.set(r.id, part)
+    for (const l of [r.lot, r.extra?.lotNow ?? '', ...(unit.lots ?? []).map((x) => x.lot)]) if (l) a.lots.add(l)
+  }
+  for (const o of orders) out.set(o.id, statusOf(s, o, acc.get(o.id)!, programs.filter((p) => p.orderId === o.id), today, complete))
+  return out
+}
+/**
+ * One order's numbers from what counted for it. Its days are the days it got units and the days of the programs that
+ * name it. For each, as the office does it: before = what was available that morning; the day's pending is what its
+ * program asked of what was available, minus what the day made (never below 0; no program, nothing pending); what is
+ * made is taken off, and what was pending goes back: available after the day = quantity − all made so far. "Sin
+ * programar" of a past day is what was available less that day's pending; of today and the days programmed ahead, what
+ * is available less the pending of today up to that day (so a program typed for tomorrow is not counted twice).
+ */
+function statusOf(s: State, o: WorkOrder, a: OrderAcc, linked: Plan[], today: string, complete: boolean): OrderStatus {
+  const days = [...new Set([...a.days.keys(), ...linked.map((p) => p.date)])].sort()
+  // closed by hand: from the day it was closed on, what its program did not make does not go back to it (it takes
+  // nothing more: what the room made after went to the next order). Until the review of 2026-10-19 it stayed pending
+  // on it, and the next day's notice said it "went back" to an order that no longer takes anything
+  const closeDay = o.closedAt != null ? plainDay(s, o.closedAt) : ''
+  let cum = 0, ahead = 0
+  const byDay = days.map((date): OrderDay => {
+    const p = linked.find((x) => x.date === date), prog = p?.qty ?? 0, before = Math.max(0, o.qty - cum)
+    const [made1, made2] = a.days.get(date) ?? [0, 0], made = r2(made1 + made2), closed = !!closeDay && date >= closeDay
+    const pending = prog > 0 && !closed ? r2(Math.max(0, Math.min(prog, before) - made)) : 0
+    cum = r2(cum + made)
+    return { date, programmed: prog, lot: p?.lot ?? '', made1, made2, made, pending, cumMade: cum, disponible: r2(Math.max(0, o.qty - cum)), sinProgramar: 0, ...(closed ? { closed: true } : {}) }
+  })
+  for (const row of byDay) {
+    if (row.date < today) row.sinProgramar = r2(Math.max(0, row.disponible - row.pending))
+    else { ahead = r2(ahead + row.pending); row.sinProgramar = r2(Math.max(0, row.disponible - ahead)) }
+  }
+  const made = a.made, disponible = r2(Math.max(0, o.qty - made)), pendingToday = r2(byDay.filter((x) => x.date >= today).reduce((t, x) => t + x.pending, 0))
+  const completedBy = a.completedBy, completedAt = completedBy?.at ?? null
+  const state: OrderState = completedAt != null && (o.closedAt == null || completedAt <= o.closedAt) ? 'completado' : o.closedAt != null ? 'cerrado' : 'abierto'
+  const finishDay = state === 'completado' && completedBy ? completedBy.day : state === 'cerrado' && o.closedAt != null ? plainDay(s, o.closedAt) : ''
+  const lots = [...new Set([...a.lots, ...linked.map((p) => p.lot).filter(Boolean)])].slice(0, 30)
+  return { id: o.id, made, disponible, over: r2(Math.max(0, made - o.qty)), pendingToday, sinProgramar: r2(Math.max(0, disponible - pendingToday)), byDay, completedAt, completedBy, finishAt: completedAt ?? o.closedAt ?? null, finishDay, state, waiting: o.startDate > today, lots, runs: [...a.runs.values()], complete, sealed: false }
+}
+/** the numbers of an order from its closed account (frozen; its day by day is not kept: the order's window brings it from the server) */
+function statusFromSeal(o: WorkOrder, seal: OrderSeal, today: string): OrderStatus {
+  const made = seal.made, disponible = r2(Math.max(0, o.qty - made)), completedAt = seal.completed?.at ?? null
+  const state: OrderState = completedAt != null && (o.closedAt == null || completedAt <= o.closedAt) ? 'completado' : o.closedAt != null ? 'cerrado' : 'abierto'
+  return { id: o.id, made, disponible, over: r2(Math.max(0, made - o.qty)), pendingToday: 0, sinProgramar: disponible, byDay: [], completedAt, completedBy: seal.completed, finishAt: seal.finishAt || null, finishDay: seal.finishDay, state, waiting: o.startDate > today, lots: seal.lots, runs: [], complete: false, sealed: true }
+}
+/** an order with nothing worked out (a deleted one: its units went back to the others) */
+const noStatus = (o: WorkOrder, state: OrderState, today: string): OrderStatus => ({ id: o.id, made: 0, disponible: 0, over: 0, pendingToday: 0, sinProgramar: 0, byDay: [], completedAt: null, completedBy: null, finishAt: null, finishDay: '', state, waiting: o.startDate > today, lots: [], runs: [], complete: false, sealed: false })
+/** one order's numbers on a day (today = the work day the screen shows: what is "today" for its pending) */
+export function orderStatus(s: State, o: WorkOrder, today: string): OrderStatus {
+  if (o.deleted) return noStatus(o, 'borrado', today)
+  const seal = sealedIds(s).has(o.id) ? sealOf(s, o.id) : undefined
+  if (seal) return statusFromSeal(o, seal, today)
+  return queueStatuses(s, orderQueue(o), today).get(o.id) ?? noStatus(o, 'abierto', today)
+}
+/**
+ * The orders of a room (null = every room) with their numbers, without the deleted ones: the open ones first, oldest
+ * first (the order they are filled in), then the finished ones, the last finished first
+ */
+export function ordersOf(s: State, dept: Dept | null, today: string): { order: WorkOrder; status: OrderStatus }[] {
+  const list = s.workOrders.filter((o) => !o.deleted && (!dept || o.dept === dept)).map((order) => ({ order, status: orderStatus(s, order, today) }))
+  const open = list.filter((x) => x.status.state === 'abierto').sort((a, b) => fifo(a.order, b.order))
+  const done = list.filter((x) => x.status.state !== 'abierto').sort((a, b) => (b.status.finishAt ?? 0) - (a.status.finishAt ?? 0) || fifo(a.order, b.order))
+  return [...open, ...done]
+}
+/**
+ * the open orders a day's program of a code can be a part of (kind = the word the code is counted in that day: see
+ * orderKind), oldest first: the program dialog offers them, the first one by default
+ */
+export function openWorkOrdersFor(s: State, dept: Dept, code: string, kind: string, date: string): WorkOrder[] {
+  return (woIndex(s.workOrders).byQ.get(woQueue(dept, code, kind)) ?? []).filter((o) => !o.deleted && o.startDate <= date && orderStatus(s, o, date).state === 'abierto').sort(fifo)
+}
+/**
+ * The open orders the program dialog offers for a code, the one a program goes with by default first. Spiral: those of
+ * the unit the row says (mezclas, lb, cajas). MFO has no unit on the row: the orders of every word its bins are
+ * counted in (platos, copas, lb), those of the word the code's last bins said first, else all oldest first. Until the
+ * review of 2026-10-19 MFO offered only the word of the last bins on this device, so a new copas or lb order of a code
+ * not binned in its 14 days (or binned in another word) could not be picked, and the office typed it a second time.
+ * Elsewhere, the room's own count
+ */
+export function programOrderChoices(s: State, dept: Dept, code: string, date: string, spiralUnit = 'mezclas'): WorkOrder[] {
+  if (!normCode(code)) return []
+  if (dept === 'Spiral') return openWorkOrdersFor(s, dept, code, spiralUnit === 'lb' || spiralUnit === 'cajas' ? spiralUnit : '', date)
+  if (dept !== 'MFO') return openWorkOrdersFor(s, dept, code, '', date)
+  const kinds = [...new Set(WO_UNITS.MFO.map((u) => orderKind({ dept, unit: u })))], w = mfoBinWord(s.runs, code)
+  const first = w !== undefined && kinds.includes(w) ? openWorkOrdersFor(s, dept, code, w, date) : []
+  return [...first, ...kinds.flatMap((k) => (w !== undefined && k === w ? [] : openWorkOrdersFor(s, dept, code, k, date))).sort(fifo)]
+}
+/**
+ * What the last day with a program of each code left pending (up to 7 days back, so Monday sees Saturday's): with an
+ * order, that day's pending of it (it went back to the order); without one, what its program lacked. Only what is above
+ * 0. The room's card says it as a notice (Jose, 2026-10-19: "ayer quedaron N pendientes"): nothing is prefilled from it
+ */
+export type PrevPending = { code: string; n: number; unit: string; date: string; orderId: string; was: string }
+export function prevPending(s: State, dept: Dept, date: string): PrevPending[] {
+  const out: PrevPending[] = [], seen = new Set<string>()
+  for (let d = dayBefore(date), i = 0; i < 7; i++, d = dayBefore(d)) {
+    const plans = planOf(s, d, dept)
+    if (!plans.length) continue
+    const rows = planRows(s, d, dept)
+    for (const p of plans) {
+      const key = normCode(p.code)
+      if (seen.has(key)) continue
+      seen.add(key)
+      const row = rows.find((x) => normCode(x.code) === key), o = p.orderId ? s.workOrders.find((x) => x.id === p.orderId && !x.deleted) : undefined
+      const plain = Math.max(0, row?.left ?? 0)
+      // (an order no longer open takes nothing back: then what the card said that day, and the order is only named, in
+      // `was`; review of 2026-10-19, an order closed in the middle of the day was said to get back what went to the next)
+      const live = !!o && orderStatus(s, o, date).state === 'abierto'
+      const n = o && live ? orderStatus(s, o, date).byDay.find((x) => x.date === d)?.pending ?? plain : plain
+      if (n > 0) out.push({ code: row?.code ?? p.code, n, unit: o ? orderUnitWord(o) : row?.unit ?? '', date: d, orderId: o && live ? o.id : '', was: o && !live ? o.id : '' })
+    }
+  }
+  return out
+}
+
+// ---- closing the account of finished orders, and working it out again ----
+const sealOfStatus = (s: State, o: WorkOrder, st: OrderStatus, upto: string): OrderSeal => ({ id: o.id, sig: sealSig(s, o, upto), upto, made: st.made, finishAt: st.finishAt ?? 0, finishDay: st.finishDay, completed: st.completedBy, lots: st.lots, updatedAt: clockNow() })
+/**
+ * The account goes to the server as a mark of the order's room in act_changes, kept apart from the history lines (see
+ * applyRemote). Only by someone who may write that room's history (writesRoom: its operators, the managers, the
+ * office): a device that only looks keeps its own, unsent. Nothing the app writes ever takes a mark away: one that no
+ * longer stands is ignored, and written again when the order can be closed again
+ */
+function pushSeal(o: WorkOrder, seal: OrderSeal) {
+  if (!writesRoom(o.dept)) return
+  const { id: _id, updatedAt: _at, ...body } = seal
+  const c: Change = { id: 'wodone:' + o.id, at: seal.finishAt || clockNow(), by: user.get(), dept: o.dept, what: 'Pedido de producción terminado · ' + o.code + (o.wo ? ' · WO ' + o.wo : ''), before: '', after: JSON.stringify(body), refTable: WO_DONE_REF, refKey: o.id, updatedAt: seal.updatedAt }
+  push('act_changes', c.id, rowOfChange(c))
+}
+/**
+ * The orders whose account can be closed (see "the account of a finished order"): the orders of a queue are taken
+ * oldest first in groups that overlap (an order joins the group while one of it is still open, or when it starts on
+ * or before the day the group last finished); a group closes when every order of it has finished, before the days the
+ * device keeps, and the device holds every record of its queue. All of a group close together, so an order whose
+ * account stands never shares a day with one still worked out from its records. Only once the page has brought the
+ * plant from the server (prune)
+ */
+function sealFinished() {
+  const s = state, kept = firstKeptDay(), today = plainDay(s, clockNow())
+  const made: { o: WorkOrder; seal: OrderSeal }[] = []
+  for (const need of workNeeds(s)) {
+    if (!queueHeld(need.q, need.from)) continue
+    const st = queueStatuses(s, need.q, today)
+    let group: WorkOrder[] = [], open = false, last = ''
+    const close = () => { if (group.length && !open && last && last < kept) for (const o of group) made.push({ o, seal: sealOfStatus(s, o, st.get(o.id)!, last) }); group = []; open = false; last = '' }
+    for (const o of liveOrders(s, need.q)) {
+      if (group.length && !open && o.startDate > last) close()
+      group.push(o)
+      const x = st.get(o.id)
+      if (!x?.finishDay) open = true
+      else if (x.finishDay > last) last = x.finishDay
+    }
+    close()
+  }
+  if (!made.length) return
+  const ids = new Set(made.map((x) => x.o.id))
+  set({ ...state, orderSeals: [...state.orderSeals.filter((x) => !ids.has(x.id)), ...made.map((x) => x.seal)] })
+  for (const x of made) pushSeal(x.o, x.seal)
+}
+/**
+ * The group an order's numbers are worked out with: for an order whose account stands, the orders closed with it
+ * (ids) and the first day of them; for any other, the first start day of its queue's orders still worked out from
+ * their records (ids empty). What to ask the server for, to work its numbers out again (sync.ts, loadOrderRows)
+ */
+export function orderGroup(s: State, o: WorkOrder): { q: string; from: string; ids: string[] } {
+  const q = orderQueue(o), sealed = sealedIds(s), seal = sealed.has(o.id) ? sealOf(s, o.id) : undefined
+  if (seal) {
+    const group = (woIndex(s.workOrders).byQ.get(q) ?? []).filter((x) => sealed.has(x.id) && sealOf(s, x.id)?.upto === seal.upto)
+    return { q, from: group.map((x) => x.startDate).sort()[0] ?? o.startDate, ids: group.map((x) => x.id) }
+  }
+  return { q, from: liveOrders(s, q).map((x) => x.startDate).sort()[0] ?? o.startDate, ids: [] }
+}
+/** a program as the server sends it (null = not one this version keeps) */
+function planOfRow(row: Row, at: number): Plan | null {
+  const date = String(row.date ?? '').slice(0, 10), dept = row.dept as Dept, key = normCode(String(row.code ?? ''))
+  if (!isDay(date) || !roomKnown(dept) || !key) return null
+  return { date, dept, code: key, qty: Number(row.qty) > 0 ? Number(row.qty) : 0, lot: planLot(row.lot), ...(isUuid(row.order_id) ? { orderId: row.order_id } : {}), updatedAt: at }
+}
+/**
+ * A copy of a state with rows brought from the server added (runs, programs, history lines; what the device already
+ * holds stands), and the closed accounts of the orders named in `unseal` left out, so their numbers are worked out
+ * again from the records. whole = the rows are every record of those orders' days the device does not keep (their
+ * numbers are then complete). Nothing is saved: the screens use it to show an old order (Jose, 2026-10-19)
+ */
+export function stateWith(s: State, rows: { runs?: Row[]; plans?: Row[]; changes?: Row[] }, unseal: string[] = [], whole = false): State {
+  const have = new Set([...s.runs, ...s.orderRuns].map((r) => r.id)), more: Run[] = []
+  for (const row of rows.runs ?? []) { if (!roomKnown(row.dept) || have.has(String(row.id))) continue; const r = runOfRow(row); have.add(r.id); if (!r.deleted) more.push(r) }
+  const plans = [...s.plans]
+  for (const row of rows.plans ?? []) { const p = planOfRow(row, fromIso(row.updated_at) ?? 0); if (p && !plans.some((x) => x.date === p.date && x.dept === p.dept && normCode(x.code) === p.code)) plans.push(p) }
+  const changes = [...s.changes]
+  for (const row of rows.changes ?? []) { if (row.ref_table === WO_DONE_REF || changes.some((c) => c.id === row.id)) continue; const c = changeOfRow(row); if (!c.deleted) changes.push(c) }
+  const next: State = { ...s, orderRuns: [...s.orderRuns, ...more], plans, changes, orderSeals: s.orderSeals.filter((x) => !unseal.includes(x.id)) }
+  if (whole) wholeStates.add(next)
+  return next
+}
+/**
+ * The account of a group of orders worked out again from the server's records (st = stateWith(…, ids, true): "Calcular
+ * otra vez con el servidor"): where it differs from the one kept here (a correction of an old run), it is kept as it
+ * comes out now and shared again. Only for a group finished before the days the device keeps (the others are worked out
+ * from the records anyway). Returns how many accounts changed
+ */
+export function resealGroup(st: State, ids: string[], today: string): number {
+  const list = ids.map((id) => st.workOrders.find((o) => o.id === id && !o.deleted)).filter((o): o is WorkOrder => !!o).map((o) => ({ o, x: orderStatus(st, o, today) }))
+  if (!list.length || list.some(({ x }) => !x.finishDay || x.sealed)) return 0
+  const upto = list.map(({ x }) => x.finishDay).sort().at(-1) ?? ''
+  if (upto >= firstKeptDay()) return 0
+  const fresh = list.map(({ o, x }) => ({ o, seal: sealOfStatus(state, o, x, upto) })).filter(({ seal }) => { const was = state.orderSeals.find((y) => y.id === seal.id); return !was || !same({ ...was, updatedAt: 0 }, { ...seal, updatedAt: 0 }) })
+  if (!fresh.length) return 0
+  const ids2 = new Set(fresh.map((x) => x.o.id))
+  set({ ...state, orderSeals: [...state.orderSeals.filter((x) => !ids2.has(x.id)), ...fresh.map((x) => x.seal)] })
+  for (const x of fresh) pushSeal(x.o, x.seal)
+  return fresh.length
+}
+
+// ---- typing, closing and taking away an order ----
+const rowOfWorkOrder = (o: WorkOrder) => ({ id: o.id, dept: o.dept, code: normCode(o.code), wo: o.wo, qty: o.qty, unit: o.unit, start_date: o.startDate, note: o.note, created_at: iso(o.createdAt || o.updatedAt), created_by: o.createdBy, closed_at: iso(o.closedAt), closed_by: o.closedBy || null, deleted: !!o.deleted, updated_at: iso(o.updatedAt), updated_by: user.get() })
+/** an order as the server sends it (null = not one this version keeps: no id, an unknown room, no code or start day) */
+function workOrderOfRow(row: Row, at: number): WorkOrder | null {
+  return workOrderFrom({ id: row.id as string, dept: row.dept as Dept, code: String(row.code ?? ''), wo: String(row.wo ?? ''), qty: Number(row.qty), unit: String(row.unit ?? ''), startDate: String(row.start_date ?? '').slice(0, 10), note: String(row.note ?? ''), createdAt: fromIso(row.created_at) ?? 0, createdBy: String(row.created_by ?? ''), closedAt: fromIso(row.closed_at), closedBy: String(row.closed_by ?? ''), deleted: !!row.deleted, updatedAt: at, ...syncedOf(row) })
+}
+/**
+ * an order put in its place in the list (a deleted one stays, with its flag), always written the same way (the shape
+ * load() reads back: a reload gives the very same order)
+ */
+const withOrder = (list: WorkOrder[], o: WorkOrder) => { const x = workOrderFrom(o) ?? o, i = list.findIndex((y) => y.id === x.id); return i < 0 ? [...list, x] : list.map((y, k) => (k === i ? x : y)) }
+function putWorkOrder(o: WorkOrder, was: WorkOrder | undefined) {
+  set({ ...state, workOrders: withOrder(state.workOrders, o) })
+  push('act_work_orders', o.id, rowOfWorkOrder(o), baseOf(was, rowOfWorkOrder))
+}
+/** an order as the history names it, in the same words whatever the screen's language */
+const woKept = (o: WorkOrder) => 'Pedido de producción ' + o.code + (o.wo ? ' WO ' + o.wo : '') + ' (' + o.dept + ')'
+const woAmount = (o: WorkOrder) => String(o.qty) + ' ' + unitKept(o)
+/** what the office types for an order: its room, code, total in the room's unit, start day, and optionally its WO number and a note */
+export type WorkOrderDraft = { dept: Dept; code: string; qty: number; unit: string; startDate: string; wo: string; note: string }
+/**
+ * The office types an order, or changes one (id). null = not saved: no room, no code, no quantity above 0, no start
+ * day, or a unit the room does not count in. Its room, code and unit stay as typed (they decide what counts for it: to
+ * fix one, delete the order and type it again); its total, start day, WO number and note can change. Every change goes
+ * to the history. Returns its id
+ */
+export function saveWorkOrder(d: WorkOrderDraft, id?: string): string | null {
+  const old = id ? state.workOrders.find((o) => o.id === id) : undefined
+  if (id && !old) return null
+  const dept = old ? old.dept : d.dept, code = old ? old.code : normCode(String(d.code ?? '')), unit = old ? old.unit : String(d.unit ?? '')
+  const qty = Number.isFinite(d.qty) ? r2(d.qty) : NaN, start = String(d.startDate ?? '')
+  if (!roomKnown(dept) || !code || !(qty > 0) || !isDay(start) || (!old && !WO_UNITS[dept].includes(unit))) return null
+  const o: WorkOrder = { id: old?.id ?? uid(), dept, code, wo: String(d.wo ?? '').trim().slice(0, WO_MAX), qty, unit, startDate: start, note: cleanNote(d.note), createdAt: old?.createdAt ?? clockNow(), createdBy: old?.createdBy ?? user.get(), closedAt: old?.closedAt ?? null, closedBy: old?.closedBy ?? '', ...(old?.deleted ? { deleted: true } : {}), updatedAt: stamp(old) }
+  if (old && old.qty === o.qty && old.wo === o.wo && old.startDate === o.startDate && old.note === o.note) return old.id
+  batch(() => {
+    putWorkOrder(o, old)
+    const log = (what: string, before: string, after: string) => logChange(o.dept, what, before, after, 'act_work_orders', o.id)
+    if (!old) { log('Pedido de producción nuevo · ' + o.dept + ' · ' + o.code, '', woAmount(o) + ' desde ' + o.startDate + (o.wo ? ' · WO ' + o.wo : '')); return }
+    if (old.qty !== o.qty) log(woKept(o) + ' · Total', woAmount(old), woAmount(o))
+    if (old.wo !== o.wo) log(woKept(o) + ' · WO', old.wo, o.wo)
+    if (old.startDate !== o.startDate) log(woKept(o) + ' · Empieza', old.startDate, o.startDate)
+    if (old.note !== o.note) log(woKept(o) + ' · Nota', old.note, o.note)
+  })
+  return o.id
+}
+/** an order is closed by hand (a manager, the office, "Productos y programa"): from this moment on it takes nothing more */
+export function closeWorkOrder(id: string): boolean {
+  const old = state.workOrders.find((o) => o.id === id)
+  if (!old || old.deleted || old.closedAt != null) return false
+  const o: WorkOrder = { ...old, closedAt: clockNow(), closedBy: user.get(), updatedAt: stamp(old) }
+  batch(() => { putWorkOrder(o, old); logChange(o.dept, woKept(o) + ' · Cerrado', '', 'cerrado', 'act_work_orders', o.id) })
+  return true
+}
+/**
+ * an order closed by mistake is opened again: it counts as if it had never been closed (what the room made of the code
+ * meanwhile can come back to it from a later order: the confirmation says so)
+ */
+export function reopenWorkOrder(id: string): boolean {
+  const old = state.workOrders.find((o) => o.id === id)
+  if (!old || old.deleted || old.closedAt == null) return false
+  const o: WorkOrder = { ...old, closedAt: null, closedBy: '', updatedAt: stamp(old) }
+  batch(() => { putWorkOrder(o, old); logChange(o.dept, woKept(o) + ' · Reabierto', 'cerrado', 'abierto', 'act_work_orders', o.id) })
+  return true
+}
+/**
+ * an order typed by mistake is taken away: it stays on the server and on the device, marked, and leaves every screen;
+ * what was made of its code counts for the other orders, and the programs that named it are plain day programs
+ */
+export function deleteWorkOrder(id: string): boolean {
+  const old = state.workOrders.find((o) => o.id === id)
+  if (!old || old.deleted) return false
+  const o: WorkOrder = { ...old, deleted: true, updatedAt: stamp(old) }
+  batch(() => { putWorkOrder(o, old); logChange(o.dept, woKept(o) + ' · Borrado', woAmount(old), '', 'act_work_orders', o.id) })
+  return true
+}
+/**
+ * An order's change waiting here meets the server's version of it (one made BEFORE it: a newer one already won, see
+ * keepNewer). Each side keeps what it changed: what this change did not touch is taken from the server (another
+ * tablet closed the order while this one changed its note: both stand). Returns the order to keep here (null = as it is)
+ */
+const WO_KEYS = ['dept', 'code', 'wo', 'qty', 'unit', 'startDate', 'note', 'createdAt', 'createdBy', 'closedAt', 'closedBy'] as const
+const woBody = (o: WorkOrder) => [...WO_KEYS.map((k) => o[k]), !!o.deleted]
+function mergeQueuedOrder(pend: { row: Row; base?: Row | null }, row: Row, theirs: WorkOrder): WorkOrder | null {
+  const mine = workOrderOfRow(pend.row, fromIso(pend.row.updated_at) ?? 0)
+  if (!mine) return null
+  if (same(woBody(mine), woBody(theirs))) { drop('act_work_orders', theirs.id); return theirs }
+  const base = pend.base ? workOrderOfRow(pend.base, fromIso(pend.base.updated_at) ?? 0) : null
+  // (no version to start from: an order typed here that went up and whose answer was lost; this change goes up as it is)
+  if (!base) { rebase('act_work_orders', theirs.id, pend.row, row); return null }
+  const pick = <K extends (typeof WO_KEYS)[number]>(k: K): WorkOrder[K] => (same(mine[k], base[k]) ? theirs[k] : mine[k])
+  const gone = !!mine.deleted !== !!base.deleted ? !!mine.deleted : !!theirs.deleted
+  const merged: WorkOrder = { id: theirs.id, dept: pick('dept'), code: pick('code'), wo: pick('wo'), qty: pick('qty'), unit: pick('unit'), startDate: pick('startDate'), note: pick('note'), createdAt: pick('createdAt'), createdBy: pick('createdBy'), closedAt: pick('closedAt'), closedBy: pick('closedBy'), ...(gone ? { deleted: true } : {}), updatedAt: Math.max(mine.updatedAt, theirs.updatedAt) }
+  if (same(woBody(merged), woBody(theirs))) { drop('act_work_orders', theirs.id); return theirs }
+  if (same(woBody(merged), woBody(mine))) { rebase('act_work_orders', theirs.id, pend.row, row); return null }
+  rebase('act_work_orders', theirs.id, { ...rowOfWorkOrder(merged), updated_by: String(pend.row.updated_by ?? '') || user.get() }, row)
+  return merged
 }
 export const targetOf = (s: State, dept: Dept) => s.targets.find((t) => t.dept === dept)
 /**
@@ -2343,9 +3040,10 @@ export function roomKnown(dept: unknown): dept is Dept { return (DEPTS as unknow
  * queue, and the history says what was not sent, whose it was, and who changed it after (nothing vanishes without a
  * word). sync.ts brings the server's version of each one before it goes up (refreshQueued).
  */
-function keepNewer(table: 'act_plan' | 'act_targets', row: Row, at: number) {
+// (the production orders too, Jose 2026-10-19: an order is the office's, kept whole like the program; key = its id)
+function keepNewer(table: 'act_plan' | 'act_targets' | 'act_work_orders', row: Row, at: number) {
   const date = String(row.date ?? '').slice(0, 10), dept = row.dept as Dept, code = String(row.code ?? '')
-  const key = table === 'act_targets' ? String(row.dept ?? '') : isDay(date) && roomKnown(dept) && normCode(code) ? planKey(date, dept, code) : ''
+  const key = table === 'act_targets' ? String(row.dept ?? '') : table === 'act_work_orders' ? (isUuid(row.id) ? row.id : '') : isDay(date) && roomKnown(dept) && normCode(code) ? planKey(date, dept, code) : ''
   const pend = key ? queued(table, key) : undefined
   if (!pend || !(at > (fromIso(pend.row.updated_at) ?? 0))) return
   drop(table, key)
@@ -2354,10 +3052,11 @@ function keepNewer(table: 'act_plan' | 'act_targets', row: Row, at: number) {
   const theirLot = table === 'act_plan' && planLot(row.lot) !== planLot(pend.row.lot) ? lotNote(planLot(row.lot) || '—') : ''
   logChange(mine.dept, mine.what + ' · no se subió: ' + (String(row.updated_by ?? '') || 'otra persona') + ' lo cambió después', mine.text, theirs.text + theirLot, table, key, String(pend.row.updated_by ?? '') || user.get())
 }
-/** a program's or a setting's row as the history says it: what it is, its value, and the room its line goes with */
-function settingOf(table: 'act_plan' | 'act_targets', row: Row): { what: string; text: string; dept: Dept | null } {
+/** a program's, a setting's or a production order's row as the history says it: what it is, its value, and the room its line goes with */
+function settingOf(table: 'act_plan' | 'act_targets' | 'act_work_orders', row: Row): { what: string; text: string; dept: Dept | null } {
   const num = (x: unknown) => (x == null || !(Number(x) > 0) ? '' : String(Number(x)))
-  if (table === 'act_plan') { const dept = row.dept as Dept; return { what: 'Programa ' + String(row.date ?? '').slice(0, 10) + ' · ' + dept + ' · ' + normCode(String(row.code ?? '')) + lotNote(planLot(row.lot)), text: num(row.qty), dept: roomKnown(dept) ? dept : null } }
+  if (table === 'act_plan') { const dept = row.dept as Dept; return { what: 'Programa ' + String(row.date ?? '').slice(0, 10) + ' · ' + dept + ' · ' + normCode(String(row.code ?? '')) + lotNote(planLot(row.lot)) + orderNote(isUuid(row.order_id) ? row.order_id : ''), text: num(row.qty), dept: roomKnown(dept) ? dept : null } }
+  if (table === 'act_work_orders') { const dept = row.dept as Dept, known = roomKnown(dept); return { what: 'Pedido de producción ' + normCode(String(row.code ?? '')) + (row.wo ? ' WO ' + String(row.wo) : '') + ' (' + String(row.dept ?? '') + ')', text: num(row.qty) + ' ' + (known ? unitKept({ dept, unit: String(row.unit ?? '') }) : String(row.unit ?? '')) + (row.closed_at ? ' · cerrado' : '') + (row.deleted ? ' · borrado' : ''), dept: known ? dept : null } }
   const key = String(row.dept ?? '')
   if (key === OPT_LINES) return { what: 'Operadores y líneas', text: linesText({ add: row.per_hour == null || Number(row.per_hour) !== 0, remove: Number(row.per_shift) === 1, updatedAt: 0 }), dept: null }
   if (key.startsWith(WEEK_KEY)) { const w = row.per_hour == null ? '' : String(row.per_hour); return { what: 'Turnos de la semana desde el ' + key.slice(WEEK_KEY.length), text: weekOk(w) ? weekText(w) : '', dept: null } }
@@ -2381,7 +3080,7 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
   if ((table === 'act_lines' || table === 'act_runs' || table === 'act_stops') && !roomKnown(row.dept)) return
   const at = fromIso(row.updated_at) ?? 0
   const newer = <T extends { updatedAt: number }>(cur: T | undefined) => !cur || at >= cur.updatedAt
-  if (table === 'act_plan' || table === 'act_targets') keepNewer(table, row, at)
+  if (table === 'act_plan' || table === 'act_targets' || table === 'act_work_orders') keepNewer(table, row, at)
   if (table === 'act_lines') {
     const next = reconcile('act_lines', state.lines.find((l) => l.id === row.id), row, LINE)
     if (next) set({ ...state, lines: upsertIn(state.lines, next) })
@@ -2397,8 +3096,17 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
     if (!isDay(date) || !DEPTS.includes(dept) || !key || queued('act_plan', planKey(date, dept, key))) return // what was typed here is newer and on its way
     const cur = state.plans.find((p) => p.date === date && p.dept === dept && normCode(p.code) === key)
     if (!newer(cur)) return
-    // (lot: '' from a server where 019 has not run yet, or a program typed without one)
-    set({ ...state, plans: [...state.plans.filter((p) => p !== cur), { date, dept, code: cur?.code ?? key, qty: Number(row.qty) > 0 ? Number(row.qty) : 0, lot: planLot(row.lot), updatedAt: at }] })
+    // (lot: '' from a server where 019 has not run yet, or a program typed without one; the production order: none
+    // from a server where 020 has not run yet, or a plain day's program)
+    set({ ...state, plans: [...state.plans.filter((p) => p !== cur), { date, dept, code: cur?.code ?? key, qty: Number(row.qty) > 0 ? Number(row.qty) : 0, lot: planLot(row.lot), ...(isUuid(row.order_id) ? { orderId: row.order_id } : {}), updatedAt: at }] })
+  } else if (table === 'act_work_orders') {
+    // a production order (2026-10-19): the newer version stands, as the program's (one of a room this version does not
+    // know is left out); a change of it still waiting here keeps what it changed (mergeQueuedOrder)
+    const theirs = workOrderOfRow(row, at)
+    if (!theirs) return
+    const pend = queued('act_work_orders', theirs.id)
+    const next = pend ? mergeQueuedOrder(pend, row, theirs) : newer(state.workOrders.find((o) => o.id === theirs.id)) ? theirs : null
+    if (next) set({ ...state, workOrders: withOrder(state.workOrders, next) })
   } else if (table === 'act_products') {
     const code = String(row.code ?? ''), key = normCode(code)
     const i = state.products.findIndex((p) => normCode(p.code) === key)
@@ -2416,6 +3124,17 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
     for (const c of Object.keys(day)) if (c !== code && normCode(c) === code) delete day[c]
     day[code] = Number(row.mixes ?? 0)
     set({ ...state, schedule: { ...state.schedule, [date]: day } })
+  } else if (table === 'act_changes' && row.ref_table === WO_DONE_REF) {
+    // the closed account of a finished production order (see "the account of a finished order"): kept apart from the
+    // history lines. The newer one stands, one waiting here to go up stands, and a mark taken away takes it away
+    const id = String(row.ref_key ?? '')
+    if (!id || queued('act_changes', String(row.id ?? ''))) return
+    if (!newer(state.orderSeals.find((x) => x.id === id))) return
+    let body: unknown = null
+    try { body = JSON.parse(String(row.after ?? '')) } catch { /* not an account */ }
+    const seal = row.deleted ? null : sealFrom({ ...(body && typeof body === 'object' ? body : {}), id, updatedAt: at })
+    if (!seal && !row.deleted) return
+    set({ ...state, orderSeals: [...state.orderSeals.filter((x) => x.id !== id), ...(seal ? [seal] : [])] })
   } else if (table === 'act_changes' && row.ref_table === ORDER_REF && String(row.id ?? '').startsWith(ORDER_ID)) {
     // an order (see "the orders Packing fills"): kept apart from the history
     const id = String(row.id).slice(ORDER_ID.length)

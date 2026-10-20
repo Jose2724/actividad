@@ -109,6 +109,8 @@ eq('uno de hace más de seis horas no era un Set up: se quita', (await stopNow(s
 const empId = async (name) => (await db.query('select id::text from public.employees where name = $1', [name])).rows[0].id
 const chg = (id, dept, ref, key, o = {}) => ({ id, at: iso(NOW), by_name: 'prueba', dept, what: 'prueba', before: '', after: '', ref_table: ref, ref_key: key, deleted: false, updated_at: iso(NOW), updated_by: 'prueba', ...o })
 const device = (id, name, userId, o = {}) => ({ id, name, user_id: userId, role: 'op', dept: 'Packing', build: 'b', pending: 0, error: '', updated_at: iso(NOW), updated_by: name, ...o })
+/** a production order as the app sends it (020, Jose 2026-10-19) */
+const woRow = (id, dept, codeV, qty, o = {}) => ({ id, dept, code: codeV, wo: '', qty, unit: '', start_date: '2026-10-19', note: '', created_at: iso(NOW), created_by: 'prueba', closed_at: null, closed_by: null, deleted: false, updated_at: iso(NOW), updated_by: 'prueba', ...o })
 /** the write as the app sends it, then the same row again changed (a coalesced history line, a cancel, a delete mark) */
 const twice = async (who, table, row, key = 'id', patch = {}) => (await code(as(db, who, (tx) => upsert(tx, table, row, key)))) + '|' + (await code(as(db, who, (tx) => upsert(tx, table, { ...row, ...patch }, key))))
 /** one after the other (one request at a time, as the server takes them) */
@@ -150,6 +152,13 @@ for (const [nm, who] of [['Jose', jose], ['Edgar (oficina)', edgar], ['Mara (man
   for (const d of ['Packing', 'Kitchen']) for (const ref of ['act_runs', 'act_plan', 'act_targets']) today[nm + ': historia de ' + d + ' ' + ref + ' (y borrarla, como el borrado de un día)'] = await twice(who, 'act_changes', chg(uuid(), d, ref, 'k'), 'id', { deleted: true })
   for (const key of ['shifts:' + date, 'shiftweek:' + date, 'shiftday:' + date, 'opt:oplines', 'Packing@1', 'line:' + K1 + '@2', 'line:' + K1, 'Kitchen']) today[nm + ': act_targets ' + key.replace(date, '<fecha>')] = await twice(who, 'act_targets', target(key), 'dept', { per_hour: 2 })
   today[nm + ': programa de Kitchen'] = await twice(who, 'act_plan', { date, dept: 'Kitchen', code: '0889', qty: 3, updated_at: iso(NOW), updated_by: nm }, 'date,dept,code', { qty: 4 })
+  // the production orders (020, 2026-10-19): a program that names its order and then none; an order typed and
+  // closed; its history line; the closed account of a finished one
+  const order = uuid()
+  today[nm + ': programa de Kitchen con su pedido de producción, y luego sin él (020)'] = await twice(who, 'act_plan', { date, dept: 'Kitchen', code: '0890', qty: 3, lot: '', order_id: order, updated_at: iso(NOW), updated_by: nm }, 'date,dept,code', { order_id: null })
+  today[nm + ': un pedido de producción de Packing, y lo cierra (020)'] = await twice(who, 'act_work_orders', woRow(order, 'Packing', '890', 360, { unit: 'cajas' }), 'id', { closed_at: iso(NOW), closed_by: nm })
+  today[nm + ': la historia del pedido de producción (020)'] = await twice(who, 'act_changes', chg(uuid(), 'Packing', 'act_work_orders', order), 'id', { after: 'b' })
+  today[nm + ': la cuenta cerrada de un pedido terminado (020)'] = await twice(who, 'act_changes', chg('wodone:' + order, 'Packing', 'act_work_orders:done', order), 'id', { after: 'b' })
   today[nm + ': un producto'] = await twice(who, 'act_products', { code: 'T' + k, name: 'prueba', updated_at: iso(NOW), updated_by: nm }, 'code', { name: 'otro' })
   today[nm + ': mezclas del día'] = await twice(who, 'act_schedule', { date, code: '0889', mixes: 2, updated_at: iso(NOW), updated_by: nm }, 'date,code', { mixes: 3 })
   today[nm + ': una línea de Kitchen'] = await twice(who, 'act_lines', line(uuid(), 'Kitchen', 'Braiser ' + (10 + k)), 'id', { deleted: true })
@@ -164,6 +173,14 @@ today['Pia (products): un producto'] = await twice(pia, 'act_products', { code: 
 today['Pia (products): mezclas del día'] = await twice(pia, 'act_schedule', { date: '2026-12-02', code: '0889', mixes: 2, updated_at: iso(NOW), updated_by: 'Pia' }, 'date,code', { mixes: 3 })
 today['Pia (products): el programa de su cuarto'] = await twice(pia, 'act_plan', { date: '2026-12-02', dept: 'RTE', code: '0889', qty: 3, updated_at: iso(NOW), updated_by: 'Pia' }, 'date,dept,code', { qty: 4 })
 today['Pia (products): la historia del programa de su cuarto'] = await twice(pia, 'act_changes', chg(uuid(), 'RTE', 'act_plan', 'k'), 'id', { after: 'b' })
+{
+  // (020, 2026-10-19) an operator with "Productos y programa": the orders of her own room, and her room's programs with their order
+  const order = uuid()
+  today['Pia (products): un pedido de producción de su cuarto, y lo cambia (020)'] = await twice(pia, 'act_work_orders', woRow(order, 'RTE', '889', 24000, { unit: 'pouches' }), 'id', { qty: 25000 })
+  today['Pia (products): su historia (020)'] = await twice(pia, 'act_changes', chg(uuid(), 'RTE', 'act_work_orders', order), 'id', { after: 'b' })
+  today['Pia (products): el programa de su cuarto con su pedido (020)'] = await twice(pia, 'act_plan', { date: '2026-12-07', dept: 'RTE', code: '0889', qty: 3, lot: '', order_id: order, updated_at: iso(NOW), updated_by: 'Pia' }, 'date,dept,code', { qty: 4 })
+  today['Ana (op): la cuenta cerrada de un pedido terminado de su cuarto (020)'] = await twice(ana, 'act_changes', chg('wodone:' + uuid(), 'Packing', 'act_work_orders:done', 'k'), 'id', { after: 'b' })
+}
 for (const key of ['shifts:2026-12-03', 'shiftweek:2026-12-03', 'shiftday:2026-12-04']) today['Gina (shifts): act_targets ' + key] = await twice(gina, 'act_targets', target(key), 'dept', { per_hour: 3 })
 today['Gina (shifts): la historia del calendario'] = await twice(gina, 'act_changes', chg(uuid(), null, 'act_targets', 'shiftweek:2026-12-03'), 'id', { after: 'b' })
 for (const key of ['Packing@2', 'line:' + P1 + '@1', 'line:' + P1, 'Packing']) today['Olga (goals): act_targets ' + key.replace(P1, '<línea>')] = await twice(olga, 'act_targets', target(key), 'dept', { per_hour: 4 })
@@ -433,6 +450,73 @@ section('019: el programa de un cuarto lleva su lote, opcional (Jose, 2026-10-19
   eq('la oficina también, con el lote en blanco (programa del día); un operador sin el poder, no', [await code(as(db, edgar, (tx) => upsert(tx, 'act_plan', planRow('2026-12-05', 'RTE', '889', 1000, { lot: '' }), 'date,dept,code'))), await lotOf('2026-12-05', 'RTE', '889'), await code(as(db, ana, (tx) => upsert(tx, 'act_plan', planRow('2026-12-05', 'Packing', '889', 10, { lot: '6339' }), 'date,dept,code')))], ['', '', '42501'])
   eq('una fila escrita sin la columna (una versión de antes del lote) se lee con el lote vacío', [await code(as(db, jose, (tx) => upsert(tx, 'act_plan', planRow('2026-12-06', 'Kitchen', '889', 4), 'date,dept,code'))), await lotOf('2026-12-06', 'Kitchen', '889')], ['', ''])
   eq('cambiar el lote de un programa que ya estaba es una versión más, y la fila sigue siendo una (día, cuarto, código)', [await code(as(db, jose, (tx) => upsert(tx, 'act_plan', planRow('2026-12-05', 'Spiral', '889', 3, { lot: '6340' }), 'date,dept,code'))), await lotOf('2026-12-05', 'Spiral', '889'), (await db.query("select count(*)::int as n from public.act_plan where date = '2026-12-05' and dept = 'Spiral'")).rows[0].n], ['', '6340', 1])
+}
+
+// ---- 020 (Jose, 2026-10-19): the production orders of each room, and the order of each day's program ----
+section('020: los pedidos de producción de cada cuarto y el pedido del programa de cada día (Jose, 2026-10-19)')
+{
+  // before it is run: what a tablet of this version meets (a server with every file up to 019)
+  {
+    const { db: old, applied: before020 } = await serverDb({ upTo: '020' })
+    const j = await person(old, { name: 'Jose', actRole: 'mgr', role: 'admin' })
+    eq('una base con todo hasta el 019', before020.at(-1), '019_plan_lot.sql')
+    eq('antes del 020 la tabla de pedidos no está (42P01; PostgREST dice PGRST205 y la app la espera callada)', await code(as(old, j, (tx) => tx.query('select * from public.act_work_orders'))), '42P01')
+    eq('un programa con order_id se rechaza entero (42703; PostgREST dice PGRST204)', await code(as(old, j, (tx) => upsert(tx, 'act_plan', { date: '2026-10-19', dept: 'Kitchen', code: '889', qty: 80, lot: '', order_id: uuid(), updated_at: iso(NOW), updated_by: 'Jose' }, 'date,dept,code'))), '42703')
+    eq('el mismo programa sin la columna, como la app lo vuelve a mandar cuando no tiene pedido: entra', await code(as(old, j, (tx) => upsert(tx, 'act_plan', { date: '2026-10-19', dept: 'Kitchen', code: '889', qty: 80, lot: '', updated_at: iso(NOW), updated_by: 'Jose' }, 'date,dept,code'))), '')
+    await old.close()
+  }
+  const run020 = () => runFile(db, '020_work_orders.sql')
+  eq('el 020 corre dos veces más sin error ("Safe to run again")', [await code(run020()), await code(run020())], ['', ''])
+  const cols = (await db.query("select column_name, data_type, is_nullable from information_schema.columns where table_schema = 'public' and table_name = 'act_work_orders' order by ordinal_position")).rows.map((r) => [r.column_name, r.data_type, r.is_nullable])
+  eq('las columnas de act_work_orders', cols, [['id', 'uuid', 'NO'], ['dept', 'text', 'NO'], ['code', 'text', 'NO'], ['wo', 'text', 'NO'], ['qty', 'numeric', 'NO'], ['unit', 'text', 'NO'], ['start_date', 'date', 'NO'], ['note', 'text', 'NO'], ['created_at', 'timestamp with time zone', 'NO'], ['created_by', 'text', 'NO'], ['closed_at', 'timestamp with time zone', 'YES'], ['closed_by', 'text', 'YES'], ['deleted', 'boolean', 'NO'], ['updated_at', 'timestamp with time zone', 'NO'], ['updated_by', 'text', 'YES'], ['synced_at', 'timestamp with time zone', 'NO']])
+  eq('act_plan.order_id: uuid, vacía por omisión, y act_plan sin ninguna llave foránea (un programa puede llegar antes que su pedido)', [(await db.query("select data_type, is_nullable, column_default from information_schema.columns where table_schema = 'public' and table_name = 'act_plan' and column_name = 'order_id'")).rows[0], (await db.query("select count(*)::int as n from pg_constraint where conrelid in ('public.act_plan'::regclass, 'public.act_work_orders'::regclass) and contype in ('f', 'u')")).rows[0].n], [{ data_type: 'uuid', is_nullable: 'YES', column_default: null }, 0])
+  eq('cada trigger una vez, la tabla en la publicación de realtime, sus índices', [(await db.query("select tgname from pg_trigger where tgrelid = 'public.act_work_orders'::regclass and not tgisinternal order by 1")).rows.map((r) => r.tgname), (await db.query("select count(*)::int as n from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'act_work_orders'")).rows[0].n, (await db.query("select indexname from pg_indexes where schemaname = 'public' and indexname in ('act_work_orders_synced', 'act_plan_order') order by 1")).rows.map((r) => r.indexname)], [['act_work_orders_history', 'act_work_orders_touch'], 1, ['act_plan_order', 'act_work_orders_synced']])
+  eq('sin índice único: dos pedidos del mismo cuarto y código nunca se rechazan', (await db.query("select count(*)::int as n from pg_index where indrelid = 'public.act_work_orders'::regclass and indisunique and not indisprimary")).rows[0].n, 0)
+
+  // who writes an order: as the program (act_plan): managers, the office, and "Productos y programa"
+  const K1 = uuid(), K2 = uuid(), R1 = uuid(), PK = uuid(), S1 = uuid()
+  eq('el manager lo escribe y lo cierra (dos versiones)', await twice(jose, 'act_work_orders', woRow(K1, 'Kitchen', '889', 1000, { unit: 'mezclas', wo: 'WO-1' }), 'id', { closed_at: iso(NOW + 1000), closed_by: 'Jose', updated_at: iso(NOW + 1000) }), '|')
+  eq('la oficina escribe uno de RTE y lo cambia', await twice(edgar, 'act_work_orders', woRow(R1, 'RTE', '889', 24000, { unit: 'pouches' }), 'id', { qty: 25000 }), '|')
+  eq('un manager con solo "Corregir" (sigue siendo manager)', await twice(mara, 'act_work_orders', woRow(S1, 'Spiral', '1200', 3000, { unit: 'lb' }), 'id', { note: 'x' }), '|')
+  eq('Pia (operadora de RTE con "Productos y programa") en su cuarto: sí', await twice(pia, 'act_work_orders', woRow(uuid(), 'RTE', '100', 5000, { unit: 'pouches' }), 'id', { qty: 5100 }), '|')
+  eq('Pia en otro cuarto: no (la app escribe con INSERT … ON CONFLICT, que pide poder leer la fila, y el 015 le deja leer solo su cuarto); act_plan ya era así', [await twice(pia, 'act_work_orders', woRow(uuid(), 'MFO', '300', 900, { unit: 'platos' }), 'id', { qty: 950 }), await twice(pia, 'act_plan', { date: '2026-12-09', dept: 'MFO', code: '300', qty: 3, updated_at: iso(NOW), updated_by: 'Pia' }, 'date,dept,code', { qty: 4 })], ['42501|42501', '42501|42501'])
+  eq('una operadora sin el poder, "Solo ver", una cuenta sin papel en Actividad, una desactivada: no', await each([noe, mike, frank, gone], (who) => code(as(db, who, (tx) => upsert(tx, 'act_work_orders', woRow(uuid(), 'Kitchen', '889', 5))))), ['42501', '42501', '42501', '42501'])
+  eq('dos pedidos del mismo cuarto y código, de dos tablets (dos WO): se guardan los dos', [await code(as(db, jose, (tx) => upsert(tx, 'act_work_orders', woRow(K2, 'Kitchen', '889', 500, { wo: 'WO-2', unit: 'mezclas' })))), await code(as(db, edgar, (tx) => upsert(tx, 'act_work_orders', woRow(uuid(), 'Kitchen', '889', 500, { wo: 'WO-2', unit: 'mezclas' })))), (await db.query("select count(*)::int as n from public.act_work_orders where dept = 'Kitchen' and code = '889'")).rows[0].n], ['', '', 3])
+  eq('uno marcado borrado y puesto otra vez', await twice(jose, 'act_work_orders', woRow(PK, 'Packing', '889', 360, { unit: 'cajas', deleted: true }), 'id', { deleted: false }), '|')
+  eq('una fila con lo mínimo: lo demás lo ponen sus valores de omisión', [await code(as(db, jose, (tx) => upsert(tx, 'act_work_orders', { id: uuid(), dept: 'Kitchen', code: '777', qty: 10, start_date: '2026-10-19', updated_at: iso(NOW), updated_by: 'Jose' }))), (await db.query("select wo, unit, note, created_by, deleted from public.act_work_orders where code = '777'")).rows[0]], ['', { wo: '', unit: '', note: '', created_by: '', deleted: false }])
+
+  // who reads them: the rule of 015 (an operator, her own room)
+  const seen = (who) => as(db, who, async (tx) => (await tx.query('select dept, count(*)::int as n from public.act_work_orders group by dept order by dept')).rows.map((r) => [r.dept, r.n]))
+  // (with the ones the section of 018 wrote: three of Packing, one of RTE)
+  const everything = [['Kitchen', 4], ['Packing', 4], ['RTE', 3], ['Spiral', 1]]
+  eq('Noelia (Kitchen) lee los de Kitchen; Ana (Packing), los de Packing', [await seen(noe), await seen(ana)], [[['Kitchen', 4]], [['Packing', 4]]])
+  eq('la oficina, "Solo ver" y el manager: todos', [await seen(edgar), await seen(mike), await seen(jose)], [everything, everything, everything])
+  eq('una cuenta sin papel, o desactivada: nada', [await seen(frank), await seen(gone)], [[], []])
+
+  // nobody erases; the server stamps every version and keeps the one before
+  eq('DELETE y TRUNCATE, ni el manager', [await undone(jose, 'delete from public.act_work_orders'), await undone(jose, 'truncate public.act_work_orders')], ['42501', '42501'])
+  const stampOf = async () => (await db.query('select synced_at from public.act_work_orders where id = $1', [R1])).rows[0].synced_at
+  const s1 = await stampOf()
+  await new Promise((r) => setTimeout(r, 15))
+  await as(db, edgar, (tx) => upsert(tx, 'act_work_orders', woRow(R1, 'RTE', '889', 26000, { unit: 'pouches', updated_at: iso(NOW - 99_000) })))
+  eq('cada versión que llega lleva una hora del servidor más nueva (aunque la de la tablet sea vieja)', (await stampOf()) > s1, true)
+  const log = (await db.query("select by_name, (was ->> 'qty')::numeric as was_qty, uid::text from public.act_runs_log where table_name = 'act_work_orders' and row_id = $1 order by n", [R1])).rows.map((r) => [r.by_name, Number(r.was_qty), r.uid])
+  eq('act_runs_log guarda cada versión de antes, con la cuenta que mandó el cambio', log, [['prueba', 24000, edgar.id], ['prueba', 25000, edgar.id]])
+
+  // act_plan.order_id: the order a day's program is a part of
+  const planRow = (date, dept, c, qty, o = {}) => ({ date, dept, code: c, qty, lot: '', updated_at: iso(NOW), updated_by: 'prueba', ...o })
+  const orderOf = async (date, dept, c) => { const r = (await db.query('select order_id::text from public.act_plan where date = $1 and dept = $2 and code = $3', [date, dept, c])).rows[0]; return r ? r.order_id : 'sin fila' }
+  eq('la oficina programa 80 del pedido K1', [await code(as(db, edgar, (tx) => upsert(tx, 'act_plan', planRow('2026-10-19', 'Kitchen', '889', 80, { order_id: K1 }), 'date,dept,code'))), await orderOf('2026-10-19', 'Kitchen', '889')], ['', K1])
+  eq('lo pasa a otro pedido, y luego a ninguno (null)', [await code(as(db, edgar, (tx) => upsert(tx, 'act_plan', planRow('2026-10-19', 'Kitchen', '889', 80, { order_id: K2 }), 'date,dept,code'))), await orderOf('2026-10-19', 'Kitchen', '889'), await code(as(db, edgar, (tx) => upsert(tx, 'act_plan', planRow('2026-10-19', 'Kitchen', '889', 80, { order_id: null }), 'date,dept,code'))), await orderOf('2026-10-19', 'Kitchen', '889')], ['', K2, '', null])
+  eq('una tablet de antes del 020 (no manda la columna) cambia la cantidad y el pedido del programa se queda', [await code(as(db, edgar, (tx) => upsert(tx, 'act_plan', planRow('2026-10-20', 'Kitchen', '889', 80, { order_id: K1 }), 'date,dept,code'))), await code(as(db, edgar, (tx) => upsert(tx, 'act_plan', planRow('2026-10-20', 'Kitchen', '889', 90), 'date,dept,code'))), await orderOf('2026-10-20', 'Kitchen', '889')], ['', '', K1])
+  eq('un programa cuyo pedido todavía no llegó al servidor entra igual (sin llave foránea: la app cuida la relación)', await code(as(db, jose, (tx) => upsert(tx, 'act_plan', planRow('2026-10-21', 'Spiral', '1200', 400, { order_id: uuid() }), 'date,dept,code'))), '')
+  eq('una operadora sin el poder sigue sin escribir el programa, con o sin pedido', [await code(as(db, noe, (tx) => upsert(tx, 'act_plan', planRow('2026-10-21', 'Kitchen', '889', 1, { order_id: K1 }), 'date,dept,code'))), await code(as(db, noe, (tx) => upsert(tx, 'act_plan', planRow('2026-10-21', 'Kitchen', '889', 1), 'date,dept,code')))], ['42501', '42501'])
+
+  // the history of an order goes with its room, under the rules of always (001/018): nothing new was needed
+  eq('el manager, la oficina y Pia (su cuarto) escriben la historia de un pedido con su cuarto', [await twice(jose, 'act_changes', chg(uuid(), 'Kitchen', 'act_work_orders', K1), 'id', { after: 'b' }), await twice(edgar, 'act_changes', chg(uuid(), 'RTE', 'act_work_orders', R1), 'id', { after: 'b' }), await twice(pia, 'act_changes', chg(uuid(), 'RTE', 'act_work_orders', R1), 'id', { after: 'b', deleted: true })], ['|', '|', '|'])
+  eq('la cuenta cerrada de un pedido: la escribe quien escribe su cuarto (Noelia en Kitchen); no Ana (Packing) ni "Solo ver"', [await twice(noe, 'act_changes', chg('wodone:' + K1, 'Kitchen', 'act_work_orders:done', K1), 'id', { after: 'c' }), await code(as(db, ana, (tx) => upsert(tx, 'act_changes', chg('wodone:' + K2, 'Kitchen', 'act_work_orders:done', K2)))), await code(as(db, mike, (tx) => upsert(tx, 'act_changes', chg('wodone:' + K2, 'Kitchen', 'act_work_orders:done', K2))))], ['|', '42501', '42501'])
+  eq('una línea sin cuarto de un pedido no entra para una operadora (la app nunca la manda)', [await code(as(db, pia, (tx) => upsert(tx, 'act_changes', chg(uuid(), null, 'act_work_orders', R1)))), await code(as(db, noe, (tx) => upsert(tx, 'act_changes', chg(uuid(), null, 'act_work_orders:done', K1))))], ['42501', '42501'])
+  eq('Noelia lee la historia y las cuentas de los pedidos de su cuarto; Ana no', [await as(db, noe, async (tx) => (await tx.query("select count(*)::int as n from public.act_changes where ref_table like 'act_work_orders%' and dept = 'Kitchen'")).rows[0].n), await as(db, ana, async (tx) => (await tx.query("select count(*)::int as n from public.act_changes where ref_table like 'act_work_orders%' and dept = 'Kitchen'")).rows[0].n)], [2, 0])
 }
 
 section('Correr otra vez un archivo viejo, solo, no afloja ni cambia ninguna regla')

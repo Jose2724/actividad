@@ -4,7 +4,7 @@
 // eq / neq / gt / gte / lt / lte / in / is / cs and or(...), order, offset and limit, a single object; upsert on a
 // conflict key; HEAD (the clock). Errors come back as PostgREST sends them: { code, message, details, hint } and its
 // HTTP status. A token is read, not checked: these are made-up people on this machine.
-const STATUS = { '42501': 403, '23505': 409, '23503': 409, '42P01': 404, PGRST205: 404, PGRST116: 406 }
+const STATUS = { '42501': 403, '23505': 409, '23503': 409, '42P01': 404, PGRST205: 404, PGRST116: 406, PGRST204: 400 }
 const json = (body, status = 200, headers = {}) => new Response(body == null ? null : JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...headers } })
 const fail = (e) => { const code = String(e?.code ?? 'XX000'); return json({ code, message: String(e?.message ?? e), details: e?.detail ?? null, hint: e?.hint ?? null }, STATUS[code] ?? (/^(22|23)/.test(code) ? 400 : 500)) }
 const ident = (c) => { const t = c.trim(); if (!/^[a-z_][a-z0-9_]*$/i.test(t)) throw Object.assign(new Error('bad column ' + c), { code: '42703' }); return '"' + t + '"' }
@@ -85,6 +85,11 @@ export function restOver(db, { log } = {}) {
           const body = JSON.parse(String(init.body ?? '[]')), list = Array.isArray(body) ? body : [body]
           const merge = /merge-duplicates/.test(String(headers.get('prefer') ?? ''))
           const key = url.searchParams.get('on_conflict')?.split(',') ?? (await keyOf(tx, table))
+          // a column the table does not have: the real server refuses the whole row before Postgres sees it, with its
+          // own code and words (PGRST204, "Could not find the 'order_id' column of 'act_plan' in the schema cache"),
+          // not Postgres's 42703 (what a tablet meets until the SQL that adds the column is run, Jose 2026-10-19)
+          const have = new Set((await tx.query("select attname from pg_attribute where attrelid = ('public.' || $1)::regclass and attnum > 0 and not attisdropped", [table])).rows.map((r) => r.attname))
+          for (const row of list) for (const c of Object.keys(row)) if (!have.has(c)) throw Object.assign(new Error(`Could not find the '${c}' column of '${table}' in the schema cache`), { code: 'PGRST204' })
           for (const row of list) {
             const cols = Object.keys(row), vals = cols.map((c) => (row[c] !== null && typeof row[c] === 'object' ? JSON.stringify(row[c]) : row[c]))
             const set = cols.filter((c) => !key.includes(c)).map((c) => ident(c) + ' = excluded.' + ident(c)).join(', ')

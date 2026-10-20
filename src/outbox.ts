@@ -1,5 +1,5 @@
 import { storageFull } from './storage'
-import { noSignal, supabase } from './supabase'
+import { missingColumn, noSignal, supabase } from './supabase'
 import { tr } from './i18n'
 
 /**
@@ -8,7 +8,7 @@ import { tr } from './i18n'
  * Nothing leaves the queue unless the server took it, or already has everything it wanted. A row the server will not
  * take from the person signed in now (another room's) waits on the device for someone who may send it.
  */
-export type Table = 'act_lines' | 'act_runs' | 'act_stops' | 'act_products' | 'act_schedule' | 'act_changes' | 'act_targets' | 'act_plan'
+export type Table = 'act_lines' | 'act_runs' | 'act_stops' | 'act_products' | 'act_schedule' | 'act_changes' | 'act_targets' | 'act_plan' | 'act_work_orders'
 export type Row = Record<string, unknown>
 /**
  * a queued change: the row as it should be on the server and, for rows another device may also be changing, what the
@@ -192,14 +192,25 @@ async function pass(): Promise<FlushResult> {
       // comes down it is this device's own past, not another tablet's change (see reconcile in store.ts). Written
       // before sending, so a reload in the middle of the request is covered too (audit 2026-10-17, S1)
       tryOf(it)
-      const { error: e } = await supabase.from(it.table).upsert(it.row, { onConflict: it.table === 'act_schedule' ? 'date,code' : it.table === 'act_plan' ? 'date,dept,code' : it.table === 'act_products' ? 'code' : it.table === 'act_targets' ? 'dept' : 'id' })
+      const onConflict = it.table === 'act_schedule' ? 'date,code' : it.table === 'act_plan' ? 'date,dept,code' : it.table === 'act_products' ? 'code' : it.table === 'act_targets' ? 'dept' : 'id'
+      let { error: e } = await supabase.from(it.table).upsert(it.row, { onConflict })
+      // A day's program carries its production order (order_id, null when none: Jose and the office, 2026-10-19), and
+      // until Jose runs 020 the server has no such column: PostgREST refuses the whole row (PGRST204, "Could not find
+      // the 'order_id' column of 'act_plan'"; Postgres itself says 42703). A program with no order loses nothing
+      // without the column: it goes again at once without it, and the room's program never waits for 020. One that
+      // names an order waits on its own, said on the screen, and the other programs go on up
+      if (e && it.table === 'act_plan' && missingColumn(e) && /order_id/.test(e.message ?? '')) {
+        if (it.row.order_id == null) { const { order_id: _none, ...bare } = it.row; ({ error: e } = await supabase.from(it.table).upsert(bare, { onConflict })) }
+        else { skipped.add(keyOf(it)); error = tr('Falta ejecutar en Supabase el SQL 020 (pedidos de producción): un programa con pedido espera'); continue }
+      }
       if (e) {
         console.warn('actividad sync', it.table, e)
         const v = verdict(String(e.code ?? ''), e.message ?? ''), k = keyOf(it)
         // (a program with its lot column while 019 has not been run: the server says the column is missing, PGRST204 /
         // 42703; named by its file so Jose knows what to paste, 2026-10-19. Every program waits until then, with or
         // without a lot typed: the row always carries the column)
-        if (v === 'notReady') { waiting.add(it.table); error = it.table === 'act_plan' && ['PGRST204', '42703'].includes(String(e.code ?? '')) ? tr('Falta ejecutar en Supabase el SQL 019 (el lote del programa): el programa espera') : tr('Falta ejecutar en Supabase el SQL de {0}', it.table); continue }
+        // (the production orders while 020 has not been run: their table is not there; named by its file too, 2026-10-19)
+        if (v === 'notReady') { waiting.add(it.table); error = it.table === 'act_plan' && ['PGRST204', '42703'].includes(String(e.code ?? '')) ? tr('Falta ejecutar en Supabase el SQL 019 (el lote del programa): el programa espera') : it.table === 'act_work_orders' ? tr('Falta ejecutar en Supabase el SQL 020 (pedidos de producción): los pedidos esperan') : tr('Falta ejecutar en Supabase el SQL de {0}', it.table); continue }
         if (v === 'refused') {
           skipped.add(k)
           // a row of this device's own that the server refuses: the person signed in is no longer who the server

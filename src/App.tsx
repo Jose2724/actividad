@@ -1,6 +1,6 @@
-import { Component, createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { Component, createContext, Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
-import { addLine, addWaste, awayDay, cameFrom, carriedOver, dayAfter, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, noteOf, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderAddRuns, orderOfId, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, PLAN_LOT_MAX, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay } from './store'
+import { addLine, addWaste, awayDay, cameFrom, carriedOver, dayAfter, dayBefore, orderUnitDefault, programOrderChoices, ordersOf, orderStatus, orderUnitWord, prevPending, workOrderOf, type WorkOrder, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, noteOf, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderAddRuns, orderOfId, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, PLAN_LOT_MAX, productOf, productsCsv, purgeDay, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay } from './store'
 import { avanceLots, avanceRange, avanceRows, datesBetween, lotAcrossDays, lotRows, lotsKnown, mfoList, mfoText, mfoWord, n1, pending, type AvancePart, type AvanceRow, type MfoMade } from './avance'
 import { loadZip, type Cell } from './xlsx'
 
@@ -20,7 +20,9 @@ import { keepAwake } from './awake'
 import { Settings, type SettingsKey } from './Settings'
 import { DEPT_LOOK, deptVars } from './look'
 import { Report } from './ReportView'
-import { Flujo } from './FlujoView'
+import { Flujo, flujoOpenAt } from './FlujoView'
+import { daysBetween, daysText, OpenOrders, OrderDetail, OrderHistory, shortOf, startText, WoNavCtx, woName, WorkOrderDialog, WoStateTag, type WoNav } from './WorkOrders'
+import { availOn, woN } from './woSum'
 import { appUrl, qrPath } from './qr'
 import { lang, locale, saveLang, tr } from './i18n'
 import { trx } from './trx'
@@ -475,6 +477,11 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
   // (The callback is made once: Flujo is a memo, so the clock's tick every second does not draw it again)
   const [avLot, setAvLot] = useState('')
   const openLot = useCallback((lot: string) => { setAvLot(lot); setTab('av') }, [])
+  // a production order's window leads to Flujo on its code over its days, and to Avance on one of its lots (Jose,
+  // 2026-10-19: "bases de datos relacionadas, para hacer links que llevan a otra información"): only for whoever has
+  // those tabs, as their own buttons say
+  const seesFlows = can('products') || viewOnly
+  const woNav = useMemo<WoNav>(() => (seesFlows ? { openFlujo: (code, from, to) => { flujoOpenAt(code, from, to, day.date); setTab('fl') }, openLot } : {}), [seesFlows, day.date, openLot])
   const [sec, setSec] = useState<SettingsKey>(kept?.tab === 'emp' ? 'people' : kept?.tab === 'dev' ? 'devices' : ((kept?.sec as SettingsKey | undefined) ?? 'shifts'))
   useEffect(() => { keepView({ dept, tab, sec }) }, [dept, tab, sec])
   const upd = useSyncExternalStore(updateStore.subscribe, updateStore.get)
@@ -537,6 +544,7 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
       </header>
       {leaving && <LeaveDialog onYes={() => { setLeaving(false); onLogout() }} onNo={() => setLeaving(false)} />}
       {/* a view that fails to draw says so, and the rest of the app stays (see ViewGuard) */}
+      <WoNavCtx.Provider value={woNav}>
       <ViewGuard reset={tab + '|' + dept}>
       {tab === 'act' ? (
         <>
@@ -568,12 +576,13 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
           {/* an operator who may look at every room writes only their own (the server refuses the rest): another room is
               shown as to somebody who only looks, with nothing to tap that would never reach the server (review of 2026-10-18) */}
           <WhoCtx.Provider value={writesIn(who, can('depts') ? dept : home) ? who : { ...who, role: 'viewer' }}>
-            <DeptPanel key={dept} s={s} dept={can('depts') ? dept : home} now={now} mgr={mgr} day={day} />
+            <DeptPanel key={dept} s={s} dept={can('depts') ? dept : home} now={now} mgr={mgr} day={day} readsAll={who.role !== 'op'} />
           </WhoCtx.Provider>
         </div>
         </>
       ) : tab === 'av' && (can('products') || viewOnly) ? <Avance s={s} startLot={avLot} /> : tab === 'fl' && (can('products') || viewOnly) ? <Flujo s={s} today={day.date} onLot={openLot} /> : tab === 'set' ? <Settings s={s} now={now} day={day} name={name} home={home} mgr={mgr} admin={admin} viewOnly={viewOnly} meId={meId ?? ''} section={sec} onSection={setSec} onLeave={() => setLeaving(true)} /> : <Report s={s} now={now} only={can('depts') ? undefined : home} mgr={can('depts')} admin={admin} wholeDay={!!wholeDay} />}
       </ViewGuard>
+      </WoNavCtx.Provider>
     </div>
   )
 }
@@ -1588,42 +1597,89 @@ export function TargetDialog({ s, dept, unit, inCourse, onClose }: { s: State; d
  * The room's program for the day: the codes the office set for it and how much of each, with what the room has
  * registered taken off by itself. It is the office's AVANCE sheet seen from one room: SCHEDULE, 1 TURNO, 2 TURNO,
  * PENDING. The program is the day's (both shifts work it down); each shift's part is told apart.
+ * With the production orders (Jose and the office clerk, 2026-10-19: "no es una cantidad por lote, es una cantidad por
+ * mezcla"), each code's program is a part of its order: the row names the order (its WO and its total), since when it
+ * runs ("Desde": its start day, with how long ago in amber when it started on an earlier day) and what is still
+ * available of it (Disponible: the total less everything made for it). What the day did not make goes back to the
+ * order: it is never carried as a program, and the card only says what the last day left ("Ayer quedaron N
+ * pendientes"), as a notice; nothing is filled in from it. Hecho hoy and Pendiente hoy are the day's, as before (Avance,
+ * the chips and Flujo read the same day programs). On a phone each code is a card (rp-cardlist): nothing starts off-screen
  */
 function PlanCard({ s, dept, date, mgr }: { s: State; dept: Dept; date: string; mgr: boolean }) {
   const [editing, setEditing] = useState(false)
+  const [detail, setDetail] = useState<string | null>(null)
+  const closeDetail = useCallback(() => setDetail(null), [])
   const rows = planRows(s, date, dept)
   const planned = rows.filter((r) => r.planned > 0), extra = rows.filter((r) => !r.planned && r.done > 0)
-  if (!planned.length && !mgr) return null
+  // (worked out once per picture of the store and day: the card is drawn every second for the clock)
+  const prev = useMemo(() => prevPending(s, dept, date), [s, dept, date])
+  if (!planned.length && !prev.length && !mgr) return null
   const cfg = CFG[dept], byCode = dept === 'Spiral' || dept === 'MFO', unit = byCode ? tr('la unidad de cada código') : cfg.qty === 'none' ? cfg.plural.toLowerCase() : cfg.qtyUnit
+  const yesterday = dayBefore(date)
   return (
     <div className="plan">
       <div className="tc-head">
-        <h3>{trx('Programa del día en {0} · en {1}', dept, unit)}</h3>
-        {mgr && <button type="button" className="lnk" onClick={() => setEditing(true)}>{planned.length ? tr('✎ Cambiar programa') : tr('+ Poner programa')}</button>}
+        <h3>{trx('Programa de {0}', dept)}<small> · {tr('hoy')} · {tr('en {0}', unit)}</small></h3>
+        {mgr && <button type="button" className="btn soft sm" onClick={() => setEditing(true)}>{planned.length ? tr('✎ Cambiar programa') : tr('+ Poner programa')}</button>}
       </div>
+      {/* what the last day with a program left pending of each code: said, never filled in (Jose, 2026-10-19). With an
+          order it went back to it: the order's link and what it has available now */}
+      {prev.map((p) => {
+        const o = p.orderId ? workOrderOf(s, p.orderId) : undefined, st = o && !o.deleted ? orderStatus(s, o, date) : null
+        const w = p.was ? workOrderOf(s, p.was) : undefined, wst = w && !w.deleted ? orderStatus(s, w, date) : null
+        const said = p.date === yesterday ? tr('Ayer quedaron {0} {1} pendientes de {2}', woN(p.n), p.unit, p.code) : tr('El {0} quedaron {1} {2} pendientes de {3}', shortDay(p.date), woN(p.n), p.unit, p.code)
+        const link = (x: WorkOrder) => <button type="button" className="drill" onClick={() => setDetail(x.id)}>{woName(x)}</button>
+        return (
+          <p key={p.code + '|' + p.date} className="wonotice">
+            {'⚠ '}{o && st ? trx('{0}: vuelven al pedido {1} ({2} disponibles).', said, link(o), woN(st.disponible))
+              : w && wst ? (wst.state === 'cerrado' ? trx('{0}. Su pedido {1} está cerrado: si hacen falta, se programan otra vez.', said, link(w)) : trx('{0}. Su pedido {1} ya está completo: si hacen falta, se programan otra vez.', said, link(w)))
+              : tr('{0}. No tenían pedido: si hacen falta, se programan otra vez.', said)}
+          </p>
+        )
+      })}
       {planned.length ? (
-        <div className="twrap">
-          <table>
-            <thead><tr><th>{tr('Código')}</th><th className="plot">{tr('Lote')}</th><th className="num">{tr('Programado')}</th><th className="num turn">{tr('Turno 1')}</th><th className="num turn">{tr('Turno 2')}</th><th className="num">{tr('Hecho')}</th><th className="num">{tr('Pendiente')}</th><th className="planbar"></th></tr></thead>
+        <div className="twrap rp-cardlist wo-cards">
+          <table className="pctable">
+            <thead><tr><th>{tr('Código')}</th><th>{tr('Lote')}</th><th>{tr('Pedido')}</th><th>{tr('Desde')}</th><th className="num">{tr('Programado hoy')}</th><th className="num">{tr('Turno 1')}</th><th className="num">{tr('Turno 2')}</th><th className="num">{tr('Hecho hoy')}</th><th className="num">{tr('Pendiente hoy')}</th><th className="num">{tr('Disponible del pedido')}</th></tr></thead>
             <tbody>{planned.map((r) => {
               const pct = Math.max(0, Math.min(100, Math.floor((r.done / r.planned) * 100)))
+              const o = r.orderId ? workOrderOf(s, r.orderId) : undefined, st = o && !o.deleted ? orderStatus(s, o, date) : null
+              const old = o && st && o.startDate < date ? daysBetween(o.startDate, date) : 0
               return (
                 <tr key={r.code}>
-                  {/* (on a phone the LOTE column is hidden and the lot goes here, under the code: with the column, HECHO and PENDIENTE fell out of the frame at 375 px, review of 2026-10-19) */}
-                  <td><b className="code">{r.code}</b>{r.name && <small className="pname">{r.name}</small>}{r.lot && <small className="pname plotsm">{tr('lote {0}', r.lot)}</small>}{r.other.length > 0 && <small className="pname">{tr('también {0}', r.other.map((o) => fmtN(o.n) + ' ' + o.word).join(' · '))}</small>}{r.running && <span className="pill run">● {r.lines.map(lineLabel).join(', ')}</span>}</td>
-                  {/* the lot the program names (2026-10-19), blank when the office left it out */}
-                  <td className="plot">{r.lot}</td>
-                  <td className="num">{fmtN(r.planned)}{byCode && <small className="punit"> {r.unit}</small>}</td><td className="num turn">{fmtN(r.byShift[0])}</td><td className="num turn">{fmtN(r.byShift[1])}</td><td className="num"><b>{fmtN(r.done)}</b></td>
-                  <td className={'num ' + (r.left <= 0 ? 'ok' : 'left')}>{r.left > 0 ? fmtN(r.left) : tr('✓ completo') + (r.left < 0 ? ' (+' + fmtN(-r.left) + ')' : '')}</td>
-                  <td className="planbar"><div className="bar"><i className={pct >= 100 ? 'ok' : 'pend'} style={{ width: pct + '%' }} /></div><small>{pct}%</small></td>
+                  <td className="c-head"><b className="code">{r.code}</b>{r.name && <small className="pname">{r.name}</small>}{r.other.length > 0 && <small className="pname">{tr('también {0}', r.other.map((x) => fmtN(x.n) + ' ' + x.word).join(' · '))}</small>}{r.running && <span className="pill run">● {r.lines.map(lineLabel).join(', ')}</span>}</td>
+                  {/* the lot the program names (2026-10-19), blank when the office left it out (a phone's card leaves it out) */}
+                  <td className={'pc-lot' + (r.lot ? '' : ' c-none')} data-label={tr('Lote')}>{r.lot || '—'}</td>
+                  {/* the production order this program is a part of: a tap opens it (its window has the whole sum) */}
+                  <td className="pc-order" data-label={tr('Pedido')}>
+                    {o && st ? <button type="button" className="drill wolink" title={tr('Ver el pedido')} onClick={() => setDetail(o.id)}><span>{woName(o)}</span><small>{tr('de {0} {1}', woN(o.qty), orderUnitWord(o))}</small></button>
+                      : <span className="wo-none">{!r.orderId ? tr('sin pedido') : o ? tr('pedido borrado') : tr('pedido que este aparato no tiene')}</span>}
+                    {o && st && st.state !== 'abierto' && <WoStateTag o={o} st={st} />}
+                  </td>
+                  {/* since when (Jose, 2026-10-19): the order's start day, "hoy", or the day with how long ago in amber */}
+                  <td className={'pc-since' + (old ? ' old' : '') + (o && st ? '' : ' c-none')} data-label={tr('Desde')}>{o && st ? <>{startText(o, date)}{old > 0 && <small className="wo-age"> 🕒 {daysText(old)}</small>}</> : '—'}</td>
+                  {/* in the word of its order when it has one (an MFO code's copas order before its first bin of copas read "platos") */}
+                  <td className="num" data-label={tr('Programado hoy')}>{woN(r.planned)}{byCode && <small className="punit"> {o && st ? orderUnitWord(o) : r.unit}</small>}</td>
+                  <td className="num" data-label={tr('Turno 1')}>{woN(r.byShift[0])}</td>
+                  <td className="num" data-label={tr('Turno 2')}>{woN(r.byShift[1])}</td>
+                  <td className="num" data-label={tr('Hecho hoy')}><b>{woN(r.done)}</b></td>
+                  <td className={'num pc-left ' + (r.left <= 0 ? 'ok' : 'left')} data-label={tr('Pendiente hoy')}>
+                    <span>{r.left > 0 ? woN(r.left) : tr('✓ completo') + (r.left < 0 ? ' (+' + woN(-r.left) + ')' : '')}</span>
+                    <div className="pc-bar"><div className="bar"><i className={pct >= 100 ? 'ok' : 'pend'} style={{ width: pct + '%' }} /></div><small>{pct}%</small></div>
+                  </td>
+                  <td className={'num pc-disp' + (o && st ? '' : ' c-none')} data-label={tr('Disponible del pedido')}>
+                    {!o || !st ? '—' : st.state === 'completado' || st.disponible <= 0 ? <span className="ok">{st.over > 0 ? tr('✓ completo (+{0})', woN(st.over)) : tr('✓ completo')}</span> : <><b>{woN(st.disponible)}</b><small className="wo-sub">{tr('de {0}', woN(o.qty))}</small></>}
+                    {st && shortOf(st) && <small className="wo-short" title={tr('Faltan días viejos de este pedido en este aparato: los números pueden cambiar cuando lleguen del servidor.')}> …</small>}
+                  </td>
                 </tr>
               )
             })}</tbody>
           </table>
         </div>
-      ) : <p className="hint">{trx('{0} no tiene programa para hoy. Pon aquí los códigos que le tocan y cuánto de cada uno: lo que registren se descuenta solo.', dept)}</p>}
-      {planned.length > 0 && <p className="hint">{tr('Cada vez que se registra uno de estos códigos, baja solo lo pendiente.')}{extra.length > 0 && ' ' + tr('Fuera del programa: {0}.', extra.map((r) => r.code + ' (' + fmtN(r.done) + ')').join(', '))}</p>}
+      ) : <p className="hint">{mgr ? trx('{0} no tiene programa para hoy. Pon aquí los códigos que le tocan y cuánto de cada uno: lo que registren se descuenta solo.', dept) : trx('{0} no tiene programa para hoy.', dept)}</p>}
+      {planned.length > 0 && <p className="hint">{tr('Cada vez que se registra uno de estos códigos, baja solo lo pendiente.')}{planned.some((r) => r.orderId) && ' ' + tr('Lo que el día no hace vuelve a su pedido: no pasa solo al día siguiente, se programa otra vez.')}{extra.length > 0 && ' ' + tr('Fuera del programa: {0}.', extra.map((r) => r.code + ' (' + fmtN(r.done) + ')').join(', '))}</p>}
       {editing && <PlanDialog s={s} dept={dept} today={date} unit={unit} onClose={() => setEditing(false)} />}
+      {detail && <OrderDetail s={s} id={detail} today={date} edit={mgr} onClose={closeDetail} />}
     </div>
   )
 }
@@ -1633,43 +1689,88 @@ function PlanCard({ s, dept, date, mgr }: { s: State; dept: Dept; date: string; 
  * it is for (Jose, 2026-10-19: "que por defecto salga el lote del día, y que sea opcional": a new row comes with the
  * lot of the day being programmed, lotFor; the office may change it or clear it, and a blank lot is a day's program
  * as before). A code left without a quantity is taken off. Nothing is saved until "Guardar".
+ * Each code's program is a part of its production order (Jose and the office clerk, 2026-10-19): under a code with
+ * open orders the dialog shows them with what each has available for that day (its total less what was made before
+ * it: the office's "880 disponible para el día 3"), and the program goes with the oldest one unless another is picked
+ * (or "Sin pedido"). Any code offers "+ Crear pedido" right there. A program typed before the orders keeps none until
+ * the office picks one: nothing is linked by itself. Programming more than the order has available is said, not refused.
  */
 function PlanDialog({ s, dept, today, unit, onClose }: { s: State; dept: Dept; today: string; unit: string; onClose: () => void }) {
-  type Line = { code: string; qty: string; unit: SpiralUnit; lot: string }
+  // order: undefined = not chosen (the oldest open order of the code, when there is one); null = none; an id = that order
+  type Line = { code: string; qty: string; unit: SpiralUnit; lot: string; order?: string | null }
   const blank = (d: string): Line => ({ code: '', qty: '', unit: 'mezclas', lot: lotFor(d) })
-  const draftOf = (date: string): Line[] => [...planOf(s, date, dept).sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true })).map((p) => ({ code: productOf(s, p.code)?.code ?? p.code, qty: String(p.qty), unit: productOf(s, p.code)?.spiralUnit ?? 'mezclas', lot: p.lot })), blank(date)]
+  const draftOf = (date: string): Line[] => [...planOf(s, date, dept).sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true })).map((p) => ({ code: productOf(s, p.code)?.code ?? p.code, qty: String(p.qty), unit: productOf(s, p.code)?.spiralUnit ?? 'mezclas', lot: p.lot, order: p.orderId ?? null })), blank(date)]
   const [date, setDate] = useState(today)
   const [lines, setLines] = useState<Line[]>(() => draftOf(today))
+  const [creating, setCreating] = useState<number | null>(null) // the row whose "+ Crear pedido" is open
   const pickDate = (d: string) => { if (d) { setDate(d); setLines(draftOf(d)) } }
-  // (in Spiral a code the products table knows brings how it is counted)
-  const change = (i: number, patch: Partial<Line>) => setLines((cur) => { const next = cur.map((l, k) => (k === i ? { ...l, ...patch, ...(patch.code != null && productOf(s, patch.code)?.spiralUnit ? { unit: productOf(s, patch.code)!.spiralUnit! } : {}) } : l)); return next[next.length - 1].code.trim() ? [...next, blank(date)] : next })
+  // (in Spiral a code the products table knows brings how it is counted; another code or unit is another queue of
+  // orders: its order is chosen again, the oldest open one by default)
+  const change = (i: number, patch: Partial<Line>) => setLines((cur) => { const next = cur.map((l, k) => (k === i ? { ...l, ...patch, ...(patch.code != null && productOf(s, patch.code)?.spiralUnit ? { unit: productOf(s, patch.code)!.spiralUnit! } : {}), ...(patch.code != null || patch.unit != null ? { order: undefined } : {}) } : l)); return next[next.length - 1].code.trim() ? [...next, blank(date)] : next })
   const twice = lines.map((l) => normCode(l.code)).filter((k, i, all) => k && all.indexOf(k) !== i)
+  // the open orders of the row's code (store.ts, programOrderChoices): in Spiral those of the unit the row says; in MFO
+  // those of every word its bins are counted in (platos, copas, lb), the word of its last bins first (review of
+  // 2026-10-19: a copas order of a code not binned on this device was not offered); the room's own elsewhere
+  const optsOf = (l: Line) => programOrderChoices(s, dept, l.code, date, l.unit)
+  const orderOf = (l: Line): string | null => (l.order === undefined ? optsOf(l)[0]?.id ?? null : l.order)
+  const optText = (o: WorkOrder) => {
+    const st = orderStatus(s, o, date)
+    return [woName(o), st.state === 'abierto' ? tr('{0} disponibles', woN(availOn(o, st, date))) : st.state === 'completado' ? tr('completo') : tr('cerrado'), tr('de {0} {1}', woN(o.qty), orderUnitWord(o)), tr('desde {0}', shortDay(o.startDate))].join(' · ')
+  }
   const save = () => {
     const typed = new Map(lines.filter((l) => normCode(l.code)).map((l) => [normCode(l.code), l]))
-    // a code that was on the program and is not typed any more is taken off (its lot as it was); the rest are set to what was typed
+    // a code that was on the program and is not typed any more is taken off (its lot as it was); the rest are set to
+    // what was typed, each with its order (or none)
     for (const p of planOf(s, date, dept)) if (!typed.has(normCode(p.code))) setPlan(date, dept, p.code, 0, p.lot)
-    for (const l of typed.values()) { setPlan(date, dept, l.code, numOf(l.qty), l.lot); if (dept === 'Spiral') setSpiralUnit(l.code, l.unit) }
+    for (const l of typed.values()) { setPlan(date, dept, l.code, numOf(l.qty), l.lot, orderOf(l)); if (dept === 'Spiral') setSpiralUnit(l.code, l.unit) }
     onClose()
   }
+  const making = creating != null ? lines[creating] : undefined
+  const makingUnit = !making ? undefined : dept === 'Spiral' ? making.unit : dept === 'MFO' ? orderUnitDefault(s, dept, making.code) : undefined
   const listId = 'plan-codes-' + dept
   return (
     <div className="veil" onClick={onClose}>
-      <div className="dlg" onClick={(e) => e.stopPropagation()}>
+      <div className="dlg plandlg" onClick={(e) => e.stopPropagation()}>
         <h3>{trx('Programa de {0}', dept)}</h3>
-        <p>{trx('Los códigos que {0} tiene que hacer ese día y cuánto de cada uno, en {1}. Lo ven todas sus tablets, y cada vez que registran uno de esos códigos se descuenta solo. Para quitar un código, deja su cantidad en blanco.', dept, unit)} {tr('El lote es opcional: sale el del día y se puede cambiar o dejar en blanco. Con lote, "Flujo de datos" compara lo programado con lo hecho de ese lote.')}</p>
+        <p>{trx('Los códigos que {0} tiene que hacer ese día y cuánto de cada uno, en {1}. Lo ven todas sus tablets, y cada vez que registran uno de esos códigos se descuenta solo. Para quitar un código, deja su cantidad en blanco.', dept, unit)} {tr('El lote es opcional: sale el del día y se puede cambiar o dejar en blanco. Con lote, "Flujo de datos" compara lo programado con lo hecho de ese lote.')} {tr('Si el código tiene un pedido de producción abierto, el programa del día es una parte de él: sale el más viejo y se puede cambiar.')}</p>
         <form className="qform" onSubmit={(e) => { e.preventDefault(); if (!twice.length) save() }}>
           <label>{tr('Día')}{' '}<input type="date" value={date} onChange={(e) => pickDate(e.target.value)} /></label>
           <div className="planrows">
             <div className={'planrow head' + (dept === 'Spiral' ? ' spiral' : '')}><span>{tr('Código')}</span><span>{dept === 'Spiral' || dept === 'MFO' ? tr('Cantidad') : trx('Cantidad ({0})', unit)}</span>{dept === 'Spiral' && <span>{tr('Unidad')}</span>}<span>{tr('Lote')}</span></div>
-            {lines.map((l, i) => (
-              <div key={i} className={'planrow' + (dept === 'Spiral' ? ' spiral' : '')}>
-                <input list={listId} value={l.code} placeholder={tr('ej. 0100')} autoComplete="off" aria-label={tr('Código')} onChange={(e) => change(i, { code: e.target.value })} />
-                <input value={l.qty} inputMode="decimal" placeholder="0" autoComplete="off" aria-label={tr('Cantidad ({0})', unit)} onChange={(e) => change(i, { qty: e.target.value.replace(/[^\d.,]/g, '') })} />
-                {dept === 'Spiral' && <select value={l.unit} aria-label={tr('Unidad')} onChange={(e) => change(i, { unit: e.target.value as SpiralUnit })}>{SPIRAL_UNITS.map((u) => <option key={u} value={u}>{measureUnit(u)}</option>)}</select>}
-                {/* the lot, offered as the day's (lotFor) and free to change or clear: the only box the app fills in for the person (Jose, 2026-10-19) */}
-                <input value={l.lot} inputMode="numeric" maxLength={PLAN_LOT_MAX} placeholder={tr('sin lote')} autoComplete="off" aria-label={tr('Lote')} onChange={(e) => change(i, { lot: e.target.value })} />
-              </div>
-            ))}
+            {lines.map((l, i) => {
+              // the production order of the row (2026-10-19): the open ones of its code, the oldest first and chosen by
+              // default; the one the program already names stays in the list even when it is no longer open
+              const opts = optsOf(l), cur = orderOf(l), curO = cur ? workOrderOf(s, cur) : undefined
+              const list = curO && !curO.deleted && !opts.some((o) => o.id === cur) ? [...opts, curO] : opts
+              const chosen = cur ? list.find((o) => o.id === cur) : undefined, st = chosen ? orderStatus(s, chosen, date) : null
+              const avail = chosen && st ? availOn(chosen, st, date) : null, q = numOf(l.qty)
+              return (
+                <div key={i} className="planline">
+                  <div className={'planrow' + (dept === 'Spiral' ? ' spiral' : '')}>
+                    <input list={listId} value={l.code} placeholder={tr('ej. 0100')} autoComplete="off" aria-label={tr('Código')} onChange={(e) => change(i, { code: e.target.value })} />
+                    <input value={l.qty} inputMode="decimal" placeholder="0" autoComplete="off" aria-label={tr('Cantidad ({0})', unit)} onChange={(e) => change(i, { qty: e.target.value.replace(/[^\d.,]/g, '') })} />
+                    {dept === 'Spiral' && <select value={l.unit} aria-label={tr('Unidad')} onChange={(e) => change(i, { unit: e.target.value as SpiralUnit })}>{SPIRAL_UNITS.map((u) => <option key={u} value={u}>{measureUnit(u)}</option>)}</select>}
+                    {/* the lot, offered as the day's (lotFor) and free to change or clear: the only box the app fills in for the person (Jose, 2026-10-19) */}
+                    <input value={l.lot} inputMode="numeric" maxLength={PLAN_LOT_MAX} placeholder={tr('sin lote')} autoComplete="off" aria-label={tr('Lote')} onChange={(e) => change(i, { lot: e.target.value })} />
+                  </div>
+                  {normCode(l.code) && (
+                    <div className="planorder">
+                      {list.length > 0 ? (
+                        <label><span>{tr('Pedido')}</span>
+                          <select value={cur ?? ''} aria-label={tr('Pedido de {0}', l.code.trim())} onChange={(e) => change(i, { order: e.target.value || null })}>
+                            {list.map((o) => <option key={o.id} value={o.id}>{optText(o)}</option>)}
+                            <option value="">{tr('Sin pedido')}</option>
+                          </select>
+                        </label>
+                      ) : <span className="planorder-none">{trx('Sin pedido abierto de {0}', <b className="code">{l.code.trim()}</b>)}</span>}
+                      <button type="button" className="btn soft sm" onClick={() => setCreating(i)}>{tr('+ Crear pedido')}</button>
+                      {/* more than the order has available: said, never refused (the office may know better) */}
+                      {avail != null && q > avail && <p className="hint amber">{tr('El pedido tiene {0} disponibles; programas {1}.', woN(avail), woN(q))}</p>}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
             <datalist id={listId}>{s.products.map((p) => <option key={p.code} value={p.code}>{p.name}</option>)}</datalist>
           </div>
           {twice.length > 0 && <p className="hint red">{trx('El código {0} está dos veces: déjalo en un solo renglón.', twice[0])}</p>}
@@ -1678,6 +1779,9 @@ function PlanDialog({ s, dept, today, unit, onClose }: { s: State; dept: Dept; t
             <button type="submit" className="btn primary" disabled={twice.length > 0}>{tr('✓ Guardar')}</button>
           </div>
         </form>
+        {/* "+ Crear pedido": its room, code, unit and the day being programmed come with it; the total is left empty (no
+            guessed data). Once saved, the row's program goes with it */}
+        {making && creating != null && <WorkOrderDialog s={s} dept={dept} today={today} start={{ code: making.code.trim(), unit: makingUnit, startDate: date }} onClose={() => setCreating(null)} onSaved={(id) => change(creating, { order: id })} />}
       </div>
     </div>
   )
@@ -1697,9 +1801,15 @@ function deptTabOf(d: Dept): DeptTab {
 function keepDeptTab(d: Dept, t: DeptTab) {
   try { const m = JSON.parse(sessionStorage.getItem(DEPT_TAB_KEY) || '{}') as Record<string, string>; m[d] = t; sessionStorage.setItem(DEPT_TAB_KEY, JSON.stringify(m)) } catch { /* private window: it opens on "En vivo" */ }
 }
-function DeptPanel({ s, dept, now, day }: { s: State; dept: Dept; now: number; mgr: boolean; day: WorkDay }) {
+function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now: number; mgr: boolean; day: WorkDay; readsAll: boolean }) {
   const lines = s.lines.filter((l) => l.dept === dept).sort(byLineName)
   const [part, setPart] = useState<DeptTab>(() => deptTabOf(dept))
+  // the Programa tab in two parts (Jose and the office, 2026-10-19): "Hoy", the day's program and the room's open
+  // production orders; and "Pedidos de producción", every order with its search (for whoever reads every room, all of
+  // them: the all-rooms view). It opens on Hoy
+  const [planPart, setPlanPart] = useState<'hoy' | 'wo'>('hoy')
+  const showOrders = useCallback(() => setPlanPart('wo'), [])
+  const openWo = useMemo(() => ordersOf(s, dept, day.date).filter((x) => x.status.state === 'abierto').length, [s, dept, day.date])
   const pick = (t: DeptTab) => { setPart(t); keepDeptTab(dept, t) }
   const ds = deptStop(s, dept)
   const can = useCan(), who = useWho(), viewOnly = who.role === 'viewer'
@@ -1810,7 +1920,20 @@ function DeptPanel({ s, dept, now, day }: { s: State; dept: Dept; now: number; m
         </>
       )}
       {/* what the office sets for the room: the day's program and the orders being filled, each in its own tab */}
-      {shown === 'plan' && <PlanCard s={s} dept={dept} date={day.date} mgr={can('products')} />}
+      {shown === 'plan' && (
+        <>
+          <div className="seg woseg" role="tablist" aria-label={tr('Partes del programa')}>
+            <button type="button" role="tab" aria-selected={planPart === 'hoy'} className={planPart === 'hoy' ? 'on' : ''} onClick={() => setPlanPart('hoy')}>{tr('Hoy')}<small>{planned === 1 ? tr('1 código programado') : tr('{0} códigos programados', planned)}</small></button>
+            <button type="button" role="tab" aria-selected={planPart === 'wo'} className={planPart === 'wo' ? 'on' : ''} onClick={() => setPlanPart('wo')}>{tr('Pedidos de producción')}<small>{openWo === 1 ? tr('1 abierto') : tr('{0} abiertos', openWo)}</small></button>
+          </div>
+          {planPart === 'hoy' ? (
+            <>
+              <PlanCard s={s} dept={dept} date={day.date} mgr={can('products')} />
+              <OpenOrders s={s} dept={dept} today={day.date} edit={can('products')} onAll={showOrders} />
+            </>
+          ) : <OrderHistory s={s} dept={dept} today={day.date} edit={can('products')} readsAll={readsAll} />}
+        </>
+      )}
       {/* the pallets nobody recorded are added from the orders too, for the same people as from Terminados (Jose,
           2026-10-18: "también de agregar registro de pallet desde packing tab pedidos"); the order can be chosen in both */}
       {shown === 'orders' && hasOrders && (
