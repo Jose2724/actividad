@@ -557,25 +557,54 @@ section('Un cambio del programa o de una meta que esperó en la tablet no pisa o
   eq('y en la vuelta siguiente sube', [await goalSrv('Kitchen@2'), m.outbox.size()], [[7, 56, 'Jose'], 0])
   // a room's program: the manager types RTE's for today with no session and leaves; Ana (Packing) does not even hear
   // RTE's program. The office changes that code meanwhile; then the manager comes back
-  const day = date(), planSrv = async () => { const r = (await sql(null, "select qty, updated_by from public.act_plan where date = $1 and dept = 'RTE' and code = '100'", [day])).rows[0]; return r ? [Number(r.qty), r.updated_by] : null }
+  // (a row of the program is its day, room, code AND lot since 021, the office's 889 of two lots on 2026-10-20)
+  const day = date(), planSrv = async (lot = '') => { const r = (await sql(null, "select qty, updated_by from public.act_plan where date = $1 and dept = 'RTE' and code = '100' and lot = $2", [day, lot])).rows[0]; return r ? [Number(r.qty), r.updated_by] : null }
+  const lotsSrv = async () => (await sql(null, "select lot, qty from public.act_plan where date = $1 and dept = 'RTE' and code = '100' order by lot", [day])).rows.map((r) => [r.lot, Number(r.qty)])
   signedOut(); m.setPlan(day, 'RTE', '0100', 500); await quiet()
   signedInAs(ana, 'op', 'Packing'); await m.syncNow(); await quiet()
   eq('entra Ana: el programa de RTE espera aparte', [waiting('act_plan'), m.syncStore.get().otherRooms.includes('RTE'), await planSrv()], [[day + '|RTE|100'], true, null])
-  await sql(edgar, "insert into public.act_plan (date, dept, code, qty, updated_at, updated_by) values ($1, 'RTE', '100', 650, now(), 'Edgar') on conflict (date, dept, code) do update set qty = excluded.qty, updated_at = excluded.updated_at, updated_by = excluded.updated_by", [day])
+  await sql(edgar, "insert into public.act_plan (date, dept, code, qty, updated_at, updated_by) values ($1, 'RTE', '100', 650, now(), 'Edgar') on conflict (date, dept, code, lot) do update set qty = excluded.qty, updated_at = excluded.updated_at, updated_by = excluded.updated_by", [day])
   signedInAs(jose, 'mgr', ''); await m.syncNow(); await sent()
   eq('entra el manager: queda el 650 de la oficina, y el historial dice que el 500 no se subió', [await planSrv(), m.planOf(st(), day, 'RTE').map((p) => [p.code, p.qty]), m.outbox.size(), await notSent(day + '|RTE|100')], [[650, 'Edgar'], [['0100', 650]], 0, [['Jose', 'Programa ' + day + ' · RTE · 100 · no se subió: Edgar lo cambió después', '500', '650']]])
-  // the program's lot (Jose, 2026-10-19) goes up in the same row and the server keeps it (019); a row the office
-  // wrote without the column came down with the lot empty
+  // the program's lot (Jose, 2026-10-19): a row the office wrote without the column came down with the lot empty
   eq('lo que bajó sin lote se lee vacío', m.planOf(st(), day, 'RTE').map((p) => p.lot), [''])
-  m.setPlan(day, 'RTE', '0100', 650, '6300'); await m.syncNow(); await sent()
-  eq('el lote del programa sube con la fila y el servidor lo guarda (019)', [(await sql(null, "select lot, qty from public.act_plan where date = $1 and dept = 'RTE' and code = '100'", [day])).rows.map((r) => [r.lot, Number(r.qty)]), m.outbox.size()], [[['6300', 650]], 0])
-  // until Jose runs 019 the server has no lot column: the program waits in the queue (nothing is lost) and the screen
-  // names the SQL that is missing; once 019 is run, it goes up on the next pass with its lot
-  await sql(null, 'alter table public.act_plan drop column lot')
-  m.setPlan(day, 'RTE', '0100', 700, '6300'); await m.flushNow(); await quiet()
-  eq('sin la columna del 019 el programa espera en la cola y la pantalla dice qué SQL falta', [waiting('act_plan'), m.syncStore.get().lastError, await planSrv()], [[day + '|RTE|100'], 'Falta ejecutar en Supabase el SQL 019 (el lote del programa): el programa espera', [650, 'Jose']])
-  await runFile(db, '019_plan_lot.sql'); await m.flushNow(); await sent()
-  eq('corrido el 019, sube en la vuelta siguiente con su lote', [(await sql(null, "select lot, qty from public.act_plan where date = $1 and dept = 'RTE' and code = '100'", [day])).rows.map((r) => [r.lot, Number(r.qty)]), m.outbox.size(), m.syncStore.get().lastError], [[['6300', 700]], 0, ''])
+  // The server as it was before 019: no lot column, its key (date, dept, code). The program waits in the queue (nothing
+  // is lost) and the screen names the SQL that is missing; with 019 run and 021 not yet (the server as it is on
+  // 2026-10-20, before Jose runs 021) it still waits: its key (date, dept, code, lot) is not there (42P10), said too;
+  // once 021 is run, it goes up on the next pass
+  await sql(null, 'alter table public.act_plan drop column lot') // (the key of 021 goes with the column)
+  await sql(null, 'alter table public.act_plan add primary key (date, dept, code)')
+  m.setPlan(day, 'RTE', '0100', 700); await m.flushNow(); await quiet()
+  eq('sin la columna del 019 el programa espera en la cola y la pantalla dice qué SQL falta', [waiting('act_plan'), m.syncStore.get().lastError, await sql(null, "select qty::int as q from public.act_plan where date = $1 and dept = 'RTE' and code = '100'", [day]).then((r) => r.rows.map((x) => x.q))], [[day + '|RTE|100'], 'Falta ejecutar en Supabase el SQL 019 (el lote del programa): el programa espera', [650]])
+  await runFile(db, '019_plan_lot.sql'); await m.flushNow(); await quiet()
+  eq('corrido el 019 y no el 021: el programa por lote no encuentra su llave (42P10), sigue esperando, nunca se tira, y la pantalla dice el 021', [waiting('act_plan'), m.syncStore.get().lastError, await planSrv()], [[day + '|RTE|100'], 'Falta ejecutar en Supabase el SQL 021 (el programa por lote): el programa espera', [650, 'Edgar']])
+  await runFile(db, '021_plan_by_lot.sql'); await m.flushNow(); await sent()
+  eq('corrido el 021, sube en la vuelta siguiente, y la pantalla ya no dice nada', [await planSrv(), m.outbox.size(), m.syncStore.get().lastError], [[700, 'Jose'], 0, ''])
+  // the office moves the row to lot 6300 in its dialog: the row without a lot is taken off, the one of 6300 is set,
+  // and the server keeps both rows (another lot of the code is another row)
+  m.setPlan(day, 'RTE', '0100', 0); m.setPlan(day, 'RTE', '0100', 650, '6300'); await m.syncNow(); await sent()
+  eq('el lote sube con su fila y el servidor la guarda aparte de la de sin lote (019 y 021)', [await lotsSrv(), m.outbox.size()], [[['', 0], ['6300', 650]], 0])
+  // A tablet still on the build of before, once 021 is run, sends a program by (date, dept, code): the server has no
+  // such key (42P10) and takes nothing of it (that build stops its pass there and tries again every 20 s; the row stays
+  // in its queue). The new build calls that answer "not ready": it waits, never dropped. When that tablet opens the
+  // new build, the row it left queued under its code alone takes its lot's key and goes up
+  const oldRow = { date: day, dept: 'RTE', code: '100', qty: 800, lot: '6300', order_id: null, updated_at: new Date().toISOString(), updated_by: 'Jose' }
+  const { error: oldErr } = await m.supabase.from('act_plan').upsert(oldRow, { onConflict: 'date,dept,code' })
+  eq('la versión de antes, después del 021: el servidor no tiene esa llave (42P10) y no cambia nada; esta versión lo llama "esperar"', [oldErr?.code, m.verdict(String(oldErr?.code ?? ''), oldErr?.message ?? ''), await lotsSrv()], ['42P10', 'notReady', [['', 0], ['6300', 650]]])
+  disk.set('act_outbox', JSON.stringify([...JSON.parse(disk.get('act_outbox') || '[]'), { table: 'act_plan', key: day + '|RTE|100', row: oldRow, at: Date.now() }]))
+  m.rekeyQueuedPlans() // what the new build does when it opens
+  eq('lo que esa versión dejó en la cola con la llave del código solo toma la de su lote', waiting('act_plan'), [day + '|RTE|100|6300'])
+  await m.flushNow(); await sent()
+  eq('y sube con la llave nueva: el renglón del 6300 queda en 800, el de sin lote como estaba', [await lotsSrv(), m.outbox.size(), m.syncStore.get().lastError], [[['', 0], ['6300', 800]], 0, ''])
+  // A copy of before 2026-10-20 that the server no longer has: one row per code then, and its lot was changed in
+  // place; a tablet that missed that change kept the old lot (6299 here). The first whole pull of the new build (every
+  // new version pulls everything once) lets it go: the server's rows stay, and nothing waiting in the queue goes
+  m.applyRemote('act_plan', { date: day, dept: 'RTE', code: '100', qty: 640, lot: '6299', order_id: null, updated_at: new Date(Date.now() - 3600e3).toISOString(), updated_by: 'Jose' })
+  const lotsHere = () => m.store.get().plans.filter((p) => p.date === day && p.dept === 'RTE' && m.normCode(p.code) === '100').map((p) => [p.lot, p.qty]).sort()
+  const staleBefore = lotsHere()
+  disk.delete('act_pulled_with'); await m.pullAll()
+  // (the 800 the queue of before sent was not on this screen yet: it comes with the pull)
+  eq('una copia vieja que el servidor ya no tiene se suelta en la primera bajada entera; las del servidor quedan', [staleBefore, lotsHere()], [[['', 0], ['6299', 640], ['6300', 650]], [['', 0], ['6300', 800]]])
   // the tablet is Ana's again for what follows
   signedInAs(ana, 'op', 'Packing'); await m.pullAll()
 }

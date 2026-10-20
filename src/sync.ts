@@ -1,7 +1,7 @@
 import { noSignal, passExpired, rememberedMe, renewSession, supabase } from './supabase'
-import { startClock } from './clock'
+import { clockNow, startClock } from './clock'
 import { afterFlush, beforeFlush, flush, outbox, setMayGo, setOwnRow, type Item, type Row, type Table } from './outbox'
-import { applyRemote, awayDay, batch, closeDay, codeVariants, DEPTS, firstKeptDay, markFetched, markPulled, myDept, normCode, onlyTakesOff, openDay, orderGroup, prune, queueHeld, role, sameName, shareLocalLines, store, viewOnly, WO_DONE_REF, workNeeds, type Dept, type WorkOrder } from './store'
+import { applyRemote, awayDay, batch, closeDay, codeVariants, DEPTS, firstKeptDay, keepServerPlans, markFetched, markPulled, myDept, onlyTakesOff, openDay, orderGroup, planHeardMark, planKeyOfRow, planRefKeys, prune, queueHeld, role, sameName, shareLocalLines, store, viewOnly, WO_DONE_REF, workNeeds, type Dept, type WorkOrder } from './store'
 import { canDo } from './powers'
 import { tr } from './i18n'
 import { BUILD } from './update'
@@ -156,7 +156,7 @@ export async function pages(get: (from: number, to: number) => PromiseLike<Page>
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Q = any // a query to the server while it is being put together
 /** the columns that tell two rows with the same synced_at apart, so the listing always comes in the same order */
-const ORDER: Record<Table, string[]> = { act_lines: ['id'], act_runs: ['id'], act_stops: ['id'], act_changes: ['id'], act_products: ['code'], act_schedule: ['date', 'code'], act_targets: ['dept'], act_plan: ['date', 'dept', 'code'], act_work_orders: ['id'] }
+const ORDER: Record<Table, string[]> = { act_lines: ['id'], act_runs: ['id'], act_stops: ['id'], act_changes: ['id'], act_products: ['code'], act_schedule: ['date', 'code'], act_targets: ['dept'], act_plan: ['date', 'dept', 'code', 'lot'], act_work_orders: ['id'] }
 /**
  * An operator's device asks only for its own room (the server would give it nothing else anyway, see
  * migrations/015): the rooms' tables by their room, the history by its room or with none (the start of the day).
@@ -301,8 +301,8 @@ export async function loadOrderRows(o: WorkOrder): Promise<{ runs: Row[]; plans:
       const e = await pages(oldPlans(o.dept, o.code, g.from, until), (rows) => { out.plans.push(...rows) })
       if (e && !missing(e.code)) return null
     }
-    const keyOf = (date: string, dept: string, code: string) => date + '|' + dept + '|' + normCode(code)
-    const keys = new Set([o.id, ...store.get().plans.filter((p) => p.orderId === o.id).map((p) => keyOf(p.date, p.dept, p.code)), ...out.plans.filter((r) => r.order_id === o.id).map((r) => keyOf(String(r.date ?? '').slice(0, 10), String(r.dept ?? ''), String(r.code ?? '')))])
+    // (each program by the keys its history lines carry: its code and lot, and its code alone from before 2026-10-20)
+    const keys = new Set([o.id, ...store.get().plans.filter((p) => p.orderId === o.id).flatMap(planRefKeys), ...out.plans.filter((r) => r.order_id === o.id).flatMap((r) => planRefKeys({ date: String(r.date ?? '').slice(0, 10), dept: r.dept as Dept, code: String(r.code ?? ''), lot: String(r.lot ?? '') }))])
     const list = [...keys]
     for (let k = 0; k < list.length; k += 100) if (await pages(listing('act_changes', (q) => q.in('ref_key', list.slice(k, k + 100))), (rows) => { out.changes.push(...rows) })) return null
     return out
@@ -331,13 +331,21 @@ async function pullNow(): Promise<boolean> {
     const first: Partial<Record<Table, (q: Q) => Q>> = cursor ? {} : firstPull(firstKeptDay())
     let newest = cursor
     const began = performance.now(), beganAt = Date.now()
+    // A whole pull brings every program of the days this device keeps: what it holds of them that the server does not
+    // have is let go after (keepServerPlans; 2026-10-20, the program by lot). What waits in the queue now, and what is
+    // changed here while the pull runs, stays. The rooms are the ones asked for (see scoped)
+    const plansSeen = cursor ? null : new Set<string>(), plansFrom = firstKeptDay(), plansSince = clockNow(), plansHeard = planHeardMark()
+    const plansWaiting = new Set(outbox.items().filter((i) => i.table === 'act_plan').map((i) => i.key))
     for (const t of TABLES) {
       const narrow = (q: Q) => { const x = first[t] ? first[t]!(q) : q; return from ? x.gt('synced_at', from) : x }
       const error = await pages(listing(t, narrow), (rows) => batch(() => {
-        for (const row of rows) { applyRemote(t, row); const u = String(row.synced_at ?? ''); if (u && (!newest || Date.parse(u) > Date.parse(newest))) newest = u }
+        for (const row of rows) { applyRemote(t, row); if (plansSeen && t === 'act_plan') plansSeen.add(planKeyOfRow(row)); const u = String(row.synced_at ?? ''); if (u && (!newest || Date.parse(u) > Date.parse(newest))) newest = u }
       }))
       if (error && missing(error.code)) continue
       if (error) { setStatus(failed(error.message)); return false }
+      // (only when whose rows were asked for did not change while they came: a sign-in in the middle could have narrowed
+      // or widened the rooms, and a room not asked for must not lose its programs)
+      if (plansSeen && t === 'act_plan' && pulledFor() === scope) keepServerPlans(plansSeen, plansFrom, role.get() === 'op' && myDept.get() ? [myDept.get() as Dept] : null, plansWaiting, plansSince, plansHeard)
     }
     // (the longer of the two watches: a tablet that sleeps in the middle of a pull may stop its stopwatch, and a clock
     // moved forward only makes the next pull read a little more again)

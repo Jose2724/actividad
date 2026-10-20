@@ -1,6 +1,6 @@
 import { createContext, memo, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
-import { CFG, closeWorkOrder, dayOf, deleteWorkOrder, DEPTS, fmtTime, lineNameOf, NOTE_MAX, normCode, numOf, orderKind, orderQueue, ordersOf, orderStatus, orderUnitDefault, orderUnitWord, productOf, reopenWorkOrder, resealGroup, saveWorkOrder, shiftsOf, stateWith, whoText, woQueue, workOrderOf, writesRoom, WO_MAX, WO_UNITS, type Change, type Dept, type OrderStatus, type Run, type State, type WorkOrder } from './store'
+import { CFG, closeWorkOrder, dayOf, deleteWorkOrder, DEPTS, fmtTime, lineNameOf, NOTE_MAX, normCode, numOf, orderKind, orderQueue, ordersOf, orderStatus, orderUnitDefault, orderUnitWord, planLinesOf, productOf, reopenWorkOrder, resealGroup, saveWorkOrder, shiftsOf, stateWith, whoText, woQueue, workOrderOf, writesRoom, WO_MAX, WO_UNITS, type Change, type Dept, type OrderStatus, type Run, type State, type WorkOrder } from './store'
 import { bringWorkOrderRuns, loadOrderRows, syncStore } from './sync'
 import { supabase } from './supabase'
 import { clockNow } from './clock'
@@ -472,9 +472,10 @@ export const OrderDetail = memo(function OrderDetail({ s, id, today, edit, onClo
   const counted = st.runs.map((p) => ({ p, r: runOf(p.runId) })).filter((x): x is { p: typeof x.p; r: Run } => !!x.r).sort((a, b) => a.r.startedAt - b.r.startedAt)
   const here = (runId: string) => s.runs.some((r) => r.id === runId)
   const runsShown = allRuns ? counted : counted.slice(-50)
-  // its history: the order's own lines and those of the programs that named it (each program by its key, as store.ts keeps it)
-  const planKeys = new Set(view.plans.filter((p) => p.orderId === o.id).map((p) => p.date + '|' + p.dept + '|' + normCode(p.code)))
-  const history: Change[] = view.changes.filter((c) => !c.deleted && ((c.refTable === 'act_work_orders' && c.refKey === o.id) || (c.refTable === 'act_plan' && planKeys.has(c.refKey)))).sort((a, b) => a.at - b.at)
+  // its history: the order's own lines and those of the programs that named it (each program by its keys, as store.ts
+  // keeps them: its code and lot, and its code alone in the lines of before 2026-10-20 that name its lot: planLinesOf)
+  const ofPlans = planLinesOf(view.plans.filter((p) => p.orderId === o.id))
+  const history: Change[] = view.changes.filter((c) => !c.deleted && ((c.refTable === 'act_work_orders' && c.refKey === o.id) || ofPlans(c))).sort((a, b) => a.at - b.at)
   const done = st.completedBy, closed = o.closedAt != null
   const runToFix = fixing ? s.runs.find((r) => r.id === fixing.id) : undefined
   const stopToFix = stop ? s.stops.find((x) => x.id === stop) : undefined

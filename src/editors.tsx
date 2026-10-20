@@ -460,7 +460,9 @@ export function AddRunDialog({ s, date, dept: first, order, onClose, onAdded }: 
   const orders = byPallet && code.trim() ? s.orders.filter((o) => normCode(o.code) === normCode(code)).sort(byShip) : []
   const listed = checkLaterPallets(pallets)
   const ok = !!line && !!code.trim() && !!day && startOk && endOk && (byPallet ? listed.ok : Number.isInteger(n) && n >= 0 && n <= LATER_MAX && (per == null || (Number.isFinite(per) && per >= 0)) && !countMissing) && !wasteBad
-  const program = planRows(s, day, dept).filter((r) => r.planned > 0).map((r) => r.code)
+  // (one chip per code: a code may have a row of the program per lot, 2026-10-20; the lot of a record added after the
+  // fact is typed, never taken from the program)
+  const program = [...new Map(planRows(s, day, dept).filter((r) => r.planned > 0).map((r) => [normCode(r.code), r.code])).values()]
   // what each unit carried, typed more than twice the usual for the code in that room counted that way (the products
   // table's, or its last run's), is asked about first (Jose, 2026-10-18). How many units has no usual: never asked.
   // The list of pallets is asked about once per number of cases, not once per pallet (six pallets of 480 is one question)

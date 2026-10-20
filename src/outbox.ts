@@ -105,6 +105,20 @@ export function rebase(table: Table, key: string, row: Row, base: Row) {
   emit()
   void flush()
 }
+/**
+ * a queued row is known by another key from now on: a day's program queued by a build of before 2026-10-20 waited
+ * under its code alone, and its key now carries its lot (store.ts, planKey and rekeyQueuedPlans). It keeps its place,
+ * when it was first queued and what was tried. When a change of the row under the new key is already waiting, that
+ * one was made after (by this build), and the old one leaves: they are the same row of the server
+ */
+export function rekey(table: Table, from: string, to: string) {
+  if (from === to) return
+  const items = read()
+  if (!items.some(is(table, from))) return
+  write(items.some(is(table, to)) ? items.filter((i) => !is(table, from)(i)) : items.map((i) => (is(table, from)(i) ? { ...i, key: to } : i)))
+  forget(table, from)
+  emit()
+}
 /** the server already has everything this queued change wanted */
 export function drop(table: Table, key: string) { write(read().filter((i) => !is(table, key)(i))); forget(table, key); emit() }
 /**
@@ -130,10 +144,17 @@ let before: (() => Promise<Table[] | unknown>) | null = null
 /** something to do before a pass (sync.ts brings down what changed while this device was away, so the queue is merged with it first); it may name tables whose rows must wait for the next pass */
 export const beforeFlush = (f: () => Promise<Table[] | unknown>) => { before = f }
 
+/**
+ * the server has no key like the one a row goes up by (on_conflict): Postgres's 42P10, "there is no unique or exclusion
+ * constraint matching the ON CONFLICT specification" (told by its words too, whatever code a server puts on them)
+ */
+export const noSuchKey = (code: string, message: string) => code === '42P10' || /no unique or exclusion constraint matching the on conflict/i.test(message)
 /** how the server answered a row it did not take */
 export function verdict(code: string, message: string): 'notReady' | 'refused' | 'bad' | 'later' {
-  // the table or a column is not there yet (its SQL still to run), or the table lacks its grants: the rows wait
-  if (['42P01', 'PGRST205', 'PGRST204', '42703'].includes(code)) return 'notReady'
+  // the table or a column is not there yet (its SQL still to run), or the table lacks its grants: the rows wait.
+  // 42P10 = the key the row goes up by (on_conflict) is not one the table has: a program by its lot before Jose runs
+  // 021, or a build of before 021 sending it by its code alone after (2026-10-20). The row waits, never dropped
+  if (['42P01', 'PGRST205', 'PGRST204', '42703'].includes(code) || noSuchKey(code, message)) return 'notReady'
   if (code === '42501') return /row-level security/i.test(message) ? 'refused' : 'notReady'
   // a row the database rejects as it is (a missing value, a broken reference): kept, and the rest goes on
   if (['22P02', '23502', '23503', '23514'].includes(code)) return 'bad'
@@ -150,6 +171,12 @@ function tryOf(it: Item) {
   const was = JSON.stringify(it.row)
   write(read().map((i) => (is(it.table, it.key)(i) ? { ...i, tried: [...(i.tried ?? []).filter((t) => JSON.stringify(t) !== was), it.row].slice(-3) } : i)))
 }
+
+/**
+ * the key each table's rows go up by (PostgREST's on_conflict): the table's primary key. A day's program: its day,
+ * room, code and lot (021, the office's 889 of two lots on 2026-10-20)
+ */
+export const conflictOf = (table: Table) => (table === 'act_schedule' ? 'date,code' : table === 'act_plan' ? 'date,dept,code,lot' : table === 'act_products' ? 'code' : table === 'act_targets' ? 'dept' : 'id')
 
 let flushing = false
 /** how many queued rows the server refuses to this session, and how many wait for someone else */
@@ -193,7 +220,9 @@ async function pass(): Promise<FlushResult> {
       // comes down it is this device's own past, not another tablet's change (see reconcile in store.ts). Written
       // before sending, so a reload in the middle of the request is covered too (audit 2026-10-17, S1)
       tryOf(it)
-      const onConflict = it.table === 'act_schedule' ? 'date,code' : it.table === 'act_plan' ? 'date,dept,code' : it.table === 'act_products' ? 'code' : it.table === 'act_targets' ? 'dept' : 'id'
+      // (a day's program by its day, room, code AND lot since 2026-10-20: the primary key 021 gives act_plan. Until Jose
+      // runs 021 the server has no such key (42P10) and the programs wait, said on the screen; see verdict)
+      const onConflict = conflictOf(it.table)
       let { error: e } = await supabase.from(it.table).upsert(it.row, { onConflict })
       // A day's program carries its production order (order_id, null when none: Jose and the office, 2026-10-19), and
       // until Jose runs 020 the server has no such column: PostgREST refuses the whole row (PGRST204, "Could not find
@@ -211,7 +240,9 @@ async function pass(): Promise<FlushResult> {
         // 42703; named by its file so Jose knows what to paste, 2026-10-19. Every program waits until then, with or
         // without a lot typed: the row always carries the column)
         // (the production orders while 020 has not been run: their table is not there; named by its file too, 2026-10-19)
-        if (v === 'notReady') { waiting.add(it.table); error = it.table === 'act_plan' && ['PGRST204', '42703'].includes(String(e.code ?? '')) ? tr('Falta ejecutar en Supabase el SQL 019 (el lote del programa): el programa espera') : it.table === 'act_work_orders' ? tr('Falta ejecutar en Supabase el SQL 020 (pedidos de producción): los pedidos esperan') : tr('Falta ejecutar en Supabase el SQL de {0}', it.table); continue }
+        // (a program by its lot while 021 has not been run: the server has no key of day, room, code and lot, 42P10;
+        // named by its file, 2026-10-20)
+        if (v === 'notReady') { waiting.add(it.table); error = it.table === 'act_plan' && noSuchKey(String(e.code ?? ''), e.message ?? '') ? tr('Falta ejecutar en Supabase el SQL 021 (el programa por lote): el programa espera') : it.table === 'act_plan' && ['PGRST204', '42703'].includes(String(e.code ?? '')) ? tr('Falta ejecutar en Supabase el SQL 019 (el lote del programa): el programa espera') : it.table === 'act_work_orders' ? tr('Falta ejecutar en Supabase el SQL 020 (pedidos de producción): los pedidos esperan') : tr('Falta ejecutar en Supabase el SQL de {0}', it.table); continue }
         if (v === 'refused') {
           skipped.add(k)
           // a row of this device's own that the server refuses: the person signed in is no longer who the server

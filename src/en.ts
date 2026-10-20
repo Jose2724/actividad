@@ -579,6 +579,7 @@ export const EN: Record<string, string> = {
   'Podrá entrar otra vez con su PIN.': 'They will be able to sign in again with their PIN.',
   'Falta ejecutar en Supabase el SQL de {0}': 'The SQL for {0} still has to be run in Supabase',
   'Falta ejecutar en Supabase el SQL 019 (el lote del programa): el programa espera': 'SQL 019 (the schedule\'s lot) still has to be run in Supabase: the schedule is waiting',
+  'Falta ejecutar en Supabase el SQL 021 (el programa por lote): el programa espera': 'SQL 021 (the schedule by lot) still has to be run in Supabase: the schedule is waiting',
   // the production orders while 020 has not been run (2026-10-19)
   'Falta ejecutar en Supabase el SQL 020 (pedidos de producción): un programa con pedido espera': 'SQL 020 (production orders) still has to be run in Supabase: a schedule with an order is waiting',
   'Falta ejecutar en Supabase el SQL 020 (pedidos de producción): los pedidos esperan': 'SQL 020 (production orders) still has to be run in Supabase: the orders are waiting',
@@ -755,7 +756,11 @@ export const EN: Record<string, string> = {
   'nada registrado todavía': 'nothing recorded yet',
   'Día': 'Day',
   'Cantidad ({0})': 'Quantity ({0})',
-  'El código {0} está dos veces: déjalo en un solo renglón.': 'Code {0} is there twice: keep it on one row only.',
+  'El código {0} con el lote {1} está dos veces: déjalo en un solo renglón.': 'Code {0} with lot {1} is there twice: keep it on one row only.',
+  'El código {0} sin lote está dos veces: déjalo en un solo renglón.': 'Code {0} without a lot is there twice: keep it on one row only.',
+  'Un código puede ir en varios renglones, uno por lote: cada lote se descuenta aparte.': 'A code can go on several rows, one per lot: each lot is counted down on its own.',
+  'también: {0}': 'also: {0}',
+  'del lote {0}': 'of lot {0}',
   'Del programa de hoy:': 'From today\'s schedule:',
   'faltan {0}': '{0} to go',
   // Packing: the pallet being built lot by lot, each lot with its tag; the bins

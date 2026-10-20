@@ -4,7 +4,7 @@
 // eq / neq / gt / gte / lt / lte / in / is / cs and or(...), order, offset and limit, a single object; upsert on a
 // conflict key; HEAD (the clock). Errors come back as PostgREST sends them: { code, message, details, hint } and its
 // HTTP status. A token is read, not checked: these are made-up people on this machine.
-const STATUS = { '42501': 403, '23505': 409, '23503': 409, '42P01': 404, PGRST205: 404, PGRST116: 406, PGRST204: 400 }
+const STATUS = { '42501': 403, '23505': 409, '23503': 409, '42P01': 404, PGRST205: 404, PGRST116: 406, PGRST204: 400, '42P10': 400 } // (42P10: an upsert by a key the table does not have, as PostgREST answers it: 021)
 const json = (body, status = 200, headers = {}) => new Response(body == null ? null : JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...headers } })
 const fail = (e) => { const code = String(e?.code ?? 'XX000'); return json({ code, message: String(e?.message ?? e), details: e?.detail ?? null, hint: e?.hint ?? null }, STATUS[code] ?? (/^(22|23)/.test(code) ? 400 : 500)) }
 const ident = (c) => { const t = c.trim(); if (!/^[a-z_][a-z0-9_]*$/i.test(t)) throw Object.assign(new Error('bad column ' + c), { code: '42703' }); return '"' + t + '"' }

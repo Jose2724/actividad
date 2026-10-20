@@ -2030,16 +2030,21 @@ section('El programa de cada cuarto: lo que se registra se descuenta solo')
     const before = st().plans.some((p) => p.date === '2026-08-01'); m.prune()
     eq('el programa de un día que el aparato ya no guarda se suelta con ese día', [before, st().plans.some((p) => p.date === '2026-08-01'), st().plans.some((p) => p.date === DAY)], [true, false, true])
     // ---- the program's lot (Jose, 2026-10-19: "que por defecto salga el lote del día, y que sea opcional") ----
-    const plan = (dept, code) => st().plans.find((p) => p.date === DAY && p.dept === dept && m.normCode(p.code) === m.normCode(code))
-    const sentRow = (dept, code) => m.outbox.items().find((i) => i.table === 'act_plan' && i.key === DAY + '|' + dept + '|' + m.normCode(code))?.row
+    // (a row of the program is its code AND its lot since 2026-10-20: `lot` undefined = whichever row of the code)
+    const plan = (dept, code, lot) => st().plans.find((p) => p.date === DAY && p.dept === dept && m.normCode(p.code) === m.normCode(code) && (lot === undefined || p.lot === lot))
+    const sentRow = (dept, code, lot = '') => m.outbox.items().find((i) => i.table === 'act_plan' && i.key === DAY + '|' + dept + '|' + m.normCode(code) + (lot ? '|' + lot : ''))?.row
     const lines = () => st().changes.filter((c) => c.refTable === 'act_plan' && c.dept === 'Spiral').map((c) => [c.what, c.before, c.after])
     clock = oct(10, 6, 0); m.setPlan(DAY, 'Spiral', '0889', 3, ' 6291 ')
-    eq('un programa con lote: se guarda recortado, sube en la fila y el historial lo nombra', [plan('Spiral', '889').lot, sentRow('Spiral', '889').lot, lines(), m.planRows(st(), DAY, 'Spiral').map((r) => [r.code, r.lot])], ['6291', '6291', [['Programa 2026-10-10 · Spiral · 889 · lote 6291', '', '3']], [['0889', '6291']]])
+    eq('un programa con lote: se guarda recortado, sube en la fila (con la llave de su lote) y el historial lo nombra', [plan('Spiral', '889').lot, sentRow('Spiral', '889', '6291').lot, lines(), m.planRows(st(), DAY, 'Spiral').map((r) => [r.code, r.lot])], ['6291', '6291', [['Programa 2026-10-10 · Spiral · 889 · lote 6291', '', '3']], [['0889', '6291']]])
     eq('los de antes, sin lote, llevan la columna vacía y suben igual (el servidor los toma en cuanto el 019 esté corrido)', [plan('RTE', '100').lot, sentRow('RTE', '100').lot, m.planRows(st(), DAY, 'RTE').map((r) => r.lot)], ['', '', ['', '']])
+    // the same code with another lot is another row of the program, never a change of this one (2026-10-20: "si el
+    // lote es diferente que sea otra programación aun si es el mismo código")
     clock = oct(10, 6, 1); m.setPlan(DAY, 'Spiral', '0889', 3, '6292')
-    eq('la misma cantidad con otro lote es un cambio: el renglón nombra el lote de ahora y "antes" dice el que tenía', [plan('Spiral', '889').lot, sentRow('Spiral', '889').lot, lines().at(-1)], ['6292', '6292', ['Programa 2026-10-10 · Spiral · 889 · lote 6292', '3 · lote 6291', '3']])
-    clock = oct(10, 6, 2); m.setPlan(DAY, 'Spiral', '0889', 3, '6292'); m.setPlan(DAY, 'Spiral', '0889', 3, '')
-    eq('repetir lo mismo no escribe nada; quitarle el lote lo deja como programa del día', [lines().length, plan('Spiral', '889').lot, lines().at(-1)], [3, '', ['Programa 2026-10-10 · Spiral · 889', '3 · lote 6292', '3']])
+    eq('el mismo código con otro lote es otro renglón: los dos quedan, cada uno sube con su llave y su línea del historial', [plan('Spiral', '889', '6291').qty, plan('Spiral', '889', '6292').qty, sentRow('Spiral', '889', '6292').lot, lines().at(-1), m.planRows(st(), DAY, 'Spiral').map((r) => [r.code, r.lot, r.planned])], [3, 3, '6292', ['Programa 2026-10-10 · Spiral · 889 · lote 6292', '', '3'], [['0889', '6291', 3], ['0889', '6292', 3]]])
+    // moving a row to another lot, as the dialog does it: the old one taken off, the new one set, both in the history
+    // (two minutes after: the same line retyped within 90 s folds into one, see logChange)
+    clock = oct(10, 6, 3); m.setPlan(DAY, 'Spiral', '0889', 3, '6292'); m.setPlan(DAY, 'Spiral', '0889', 0, '6292'); m.setPlan(DAY, 'Spiral', '0889', 3, '')
+    eq('repetir lo mismo no escribe nada; pasar el renglón a sin lote es quitar el de 6292 y poner el del día, los dos en el historial', [lines().length, plan('Spiral', '889', '').qty, plan('Spiral', '889', '6292').qty, lines().slice(-2), m.planRows(st(), DAY, 'Spiral').map((r) => [r.lot, r.planned])], [4, 3, 0, [['Programa 2026-10-10 · Spiral · 889 · lote 6292', '3', ''], ['Programa 2026-10-10 · Spiral · 889', '', '3']], [['6291', 3], ['', 3]]])
     clock = oct(10, 6, 3); m.setPlan(DAY, 'Spiral', 'L1', 2, 'x'.repeat(40))
     eq('un lote muy largo se recorta', plan('Spiral', 'L1').lot, 'x'.repeat(m.PLAN_LOT_MAX))
     // from the server: a row with its lot, and one from before 019 (no column at all)
@@ -2080,6 +2085,200 @@ section('El programa de cada cuarto: lo que se registra se descuenta solo')
   eq('una fila más vieja no pisa a la más nueva, y una que no es de un cuarto o de un día no entra', mgr.use((m) => [m.planOf(m.store.get(), DP, 'RTE').map((p) => p.qty), m.store.get().plans.filter((p) => p.date === DP).length]), [[960], 1])
   clock = oct(21, 7, 0); tab.use((m) => m.endRun(running(tab).id, false)); settle()
   eq('nada queda pendiente de enviar', all.map((d) => d.use((m) => m.outbox.size())), [0, 0])
+}
+section('El programa por lote: el 889 de RTE con dos lotes el mismo día, como lo mandó la oficina (2026-10-20)')
+{
+  // The office, 2026-10-20: RTE's program had 889 · lote 6292 · 15,688 pouches and 889 · lote 6290 · 2,482. The dialog
+  // refused the second ("El código 889 está dos veces: déjalo en un solo renglón") and the card showed 889 · lote 6292 ·
+  // hecho 25,244 · "✓ completo (+9,556)": "aquí me está sumando de varios lotes, es por eso que sale mucha cantidad
+  // adicional". Jose's rule: "la clave está en el lote: si los lotes son iguales que lo descuente; si el lote es
+  // diferente que sea otra programación aun si es el mismo código". Every run and number here is made up
+  const pl = await device('plan-lot', { user: 'Oficina', usual: true })
+  const D = '2026-10-19', NEXT = '2026-10-20'
+  const keyOf = (p) => p.date + '|' + p.dept + '|' + p.code + (p.lot ? '|' + p.lot : '')
+  pl.use((m) => {
+    const st = () => m.store.get()
+    const lineOf = (dept, name) => { m.addLine(dept, name); return st().lines.find((l) => l.dept === dept && l.name === name) }
+    const open = (line) => st().runs.find((r) => r.lineId === line.id && !r.endedAt)
+    const rows = (dept, date = D) => m.planRows(st(), date, dept).map((r) => [r.code, r.lot, r.planned, r.done, r.byShift, r.left])
+    const done = (line, ats, qty) => { for (const at of ats) { clock = at; m.unitDone(open(line).id, qty) } }
+    // ---- the office's program, as typed in its dialog ----
+    clock = oct(19, 5, 0)
+    m.setPlan(D, 'RTE', '889', 15688, '6292'); m.setPlan(D, 'RTE', '889', 2482, '6290'); m.setPlan(D, 'RTE', '2010', 3360, '6292')
+    eq('el 889 dos veces, con los lotes 6292 y 6290: son dos renglones del programa, cada uno sube con su llave', [m.planOf(st(), D, 'RTE').map((p) => [p.code, p.lot, p.qty]), m.outbox.items().filter((i) => i.table === 'act_plan').map((i) => [i.key, i.row.lot, i.row.qty])], [[['889', '6292', 15688], ['889', '6290', 2482], ['2010', '6292', 3360]], [[D + '|RTE|889|6292', '6292', 15688], [D + '|RTE|889|6290', '6290', 2482], [D + '|RTE|2010|6292', '6292', 3360]]])
+    const n0 = st().plans.length
+    clock = oct(19, 5, 3); m.setPlan(D, 'RTE', '0889', 15688, '6292')
+    clock = oct(19, 5, 5); m.setPlan(D, 'RTE', '889', 15700, ' 6292 ')
+    eq('el mismo código con el mismo lote es el mismo renglón (también escrito 0889 o con espacios): no hace otro, lo cambia', [st().plans.length - n0, m.planRows(st(), D, 'RTE').map((r) => [r.code, r.lot, r.planned])], [0, [['889', '6290', 2482], ['889', '6292', 15700], ['2010', '6292', 3360]]])
+    clock = oct(19, 5, 7); m.setPlan(D, 'RTE', '889', 15688, '6292')
+    // ---- the floor: Línea 1 runs 889 of lot 6292 in both shifts; Línea 2 runs 889 of lot 6290 in shift 2; Línea 3
+    // runs 889 of a lot nobody programmed (6293) ----
+    const l1 = lineOf('RTE', 'Línea 1'), l2 = lineOf('RTE', 'Línea 2'), l3 = lineOf('RTE', 'Línea 3')
+    clock = oct(19, 6, 30); m.startRun(l1, '889', '6292', D, 2000)
+    done(l1, [oct(19, 7, 0), oct(19, 8, 0), oct(19, 9, 0), oct(19, 10, 0), oct(19, 11, 0), oct(19, 12, 0), oct(19, 13, 0)], 2000)
+    done(l1, [oct(19, 14, 0)], 204)
+    clock = oct(19, 15, 40); m.startRun(l2, '889', '6290', D, 1241)
+    done(l1, [oct(19, 16, 0)], 1000)
+    done(l2, [oct(19, 17, 0), oct(19, 18, 0)], 1241)
+    clock = oct(19, 18, 30); m.startRun(l3, '0889', '6293', D, 480)
+    done(l3, [oct(19, 19, 0), oct(19, 20, 0)], 480)
+    const row889 = (lot) => m.planRows(st(), D, 'RTE').find((r) => r.code === '889' && r.lot === lot)
+    eq('cada renglón cuenta solo lo de su lote, por turno: 6290 completo con sus 2,482; 6292 lleva 15,204 (14,204 y 1,000) y le faltan 484', rows('RTE'), [['889', '6290', 2482, 2482, [0, 2482], 0], ['889', '6292', 15688, 15204, [14204, 1000], 484], ['2010', '6292', 3360, 0, [0, 0], 3360]])
+    eq('lo del lote que nadie programó (6293) no entra en ningún renglón: se dice aparte, en el primero del código', [row889('6290').also, row889('6292').also], [[{ lot: '6293', n: 960 }], []])
+    const made889 = st().runs.filter((r) => m.normCode(r.code) === '889').reduce((t, r) => t + m.runQty(st(), r), 0)
+    eq('nunca un renglón con todo el código (antes: 18,646 en el 6292, "completo (+2,958)"); los renglones y lo de aparte suman lo hecho, sin contar nada dos veces', [made889, m.planRows(st(), D, 'RTE').filter((r) => r.code === '889').reduce((t, r) => t + r.done + r.also.reduce((a, x) => a + x.n, 0), 0)], [18646, 18646])
+    eq('cada línea corriendo sale en el renglón del lote que corre (la del 6293 en ninguno)', [row889('6290').lines, row889('6292').lines, row889('6290').running], [['Línea 2'], ['Línea 1'], true])
+    // a row without a lot counts what no row of a lot of its code claims
+    clock = oct(19, 20, 30); m.setPlan(D, 'RTE', '889', 1000, '')
+    eq('un renglón sin lote cuenta solo lo que ningún renglón de lote del código reclama (el 6293), por turno; ya no queda nada aparte', [rows('RTE').filter((r) => r[0] === '889'), m.planRows(st(), D, 'RTE').filter((r) => r.code === '889').map((r) => r.also)], [[['889', '6290', 2482, 2482, [0, 2482], 0], ['889', '6292', 15688, 15204, [14204, 1000], 484], ['889', '', 1000, 960, [0, 960], 40]], [[], [], []]])
+    eq('los chips de una línea libre y del registro de después leen los mismos renglones (uno por código y lote)', m.planRows(st(), D, 'RTE').filter((r) => r.planned > 0 && r.left > 0).map((r) => [r.code, r.lot, r.left]), [['889', '6292', 484], ['889', '', 40], ['2010', '6292', 3360]])
+    eq('Flujo suma el programa de cada lote: el 6292 tiene 15,688 de 889 y el 6290 tiene 2,482', [m.flujoProgram(st(), '6292').get('889').prog, m.flujoProgram(st(), '6290').get('889').prog, m.flujoProgram(st(), '6293').get('889')], [[{ dept: 'RTE', qty: 15688 }], [{ dept: 'RTE', qty: 2482 }], undefined])
+
+    // ---- Packing: a pallet of two lots gives each programmed lot its cases ----
+    m.setPlan(D, 'Packing', 'A100', 40, '6292'); m.setPlan(D, 'Packing', 'A100', 30, '6290')
+    const pk = lineOf('Packing', 'Línea 1')
+    clock = oct(19, 7, 0); m.startRun(pk, 'A100', '6290', D, 36)
+    clock = oct(19, 8, 0); m.palletDone(open(pk).id, [{ lot: '6290', qty: 20, tag: '501' }, { lot: '6292', qty: 16, tag: '502' }], '')
+    clock = oct(19, 9, 0); m.palletDone(open(pk).id, [{ lot: '6292', qty: 36, tag: '503' }], '')
+    clock = oct(19, 10, 0); m.palletDone(open(pk).id, [{ lot: '6294', qty: 12, tag: '504' }], '')
+    const pr = m.planRows(st(), D, 'Packing')
+    eq('Packing: el pallet de dos lotes da a cada renglón sus cajas (20 al 6290, 16 al 6292); el lote sin programa (6294) se dice aparte', [rows('Packing'), pr[0].also, pr[0].unit], [[['A100', '6290', 30, 20, [20, 0], 10], ['A100', '6292', 40, 52, [52, 0], -12]], [{ lot: '6294', n: 12 }], 'cajas'])
+
+    // ---- MFO: platos counted as typed, by lot; copas apart ----
+    m.setPlan(D, 'MFO', 'M1', 100, '6292'); m.setPlan(D, 'MFO', 'M1', 50, '6290')
+    const mf = lineOf('MFO', 'Línea 1'), mf2 = lineOf('MFO', 'Línea 2')
+    clock = oct(19, 8, 0); m.startRun(mf2, 'M1', '6290', D, null, 'copas'); clock = oct(19, 9, 0); m.unitDone(open(mf2).id, 12)
+    clock = oct(19, 7, 0); m.startRun(mf, 'M1', '6292', D, null, 'platos')
+    clock = oct(19, 7, 30); m.unitDone(open(mf).id, 60)
+    clock = oct(19, 16, 0); m.unitDone(open(mf).id, 25)
+    clock = oct(19, 16, 10); m.endRun(open(mf).id)
+    clock = oct(19, 16, 20); m.startRun(mf, 'M1', '6290', D, null, 'platos')
+    clock = oct(19, 17, 0); m.unitDone(open(mf).id, 30)
+    const mr = m.planRows(st(), D, 'MFO')
+    eq('MFO: cada lote con sus platos, por turno; las copas van aparte una sola vez, en el primer renglón del código', [rows('MFO'), mr.map((r) => r.unit), mr.map((r) => r.other)], [[['M1', '6290', 50, 30, [0, 30], 20], ['M1', '6292', 100, 85, [60, 25], 15]], ['platos', 'platos'], [[{ word: 'copas', n: 12 }], []]])
+
+    // ---- Spiral: pounds by lot; mezclas one by one, a lot nobody named going to the row without a lot ----
+    m.setSpiralUnit('S1', 'lb')
+    m.setPlan(D, 'Spiral', 'S1', 3000, '6292'); m.setPlan(D, 'Spiral', 'S1', 1000, '6290'); m.setPlan(D, 'Spiral', 'S2', 5, '6292'); m.setPlan(D, 'Spiral', 'S2', 3, '')
+    const sp = lineOf('Spiral', 'Línea 1'), sp2 = lineOf('Spiral', 'Línea 2')
+    clock = oct(19, 7, 0); m.startRun(sp, 'S1', '6292', D, null, '', 'lb')
+    clock = oct(19, 8, 0); m.unitDone(open(sp).id, 1200.5); clock = oct(19, 9, 0); m.unitDone(open(sp).id, 800)
+    clock = oct(19, 9, 30); m.endRun(open(sp).id); clock = oct(19, 9, 40); m.startRun(sp, 'S1', '6290', D, null, '', 'lb')
+    clock = oct(19, 10, 0); m.unitDone(open(sp).id, 640.25)
+    clock = oct(19, 7, 5); m.startRun(sp2, 'S2', '6292', D, null)
+    for (let i = 1; i <= 4; i++) { clock = oct(19, 7, 5 + i * 5); m.unitDone(open(sp2).id, null) }
+    clock = oct(19, 8, 0); m.endRun(open(sp2).id); clock = oct(19, 8, 5); m.startRun(sp2, 'S2', '6299', D, null)
+    for (let i = 1; i <= 2; i++) { clock = oct(19, 8, 5 + i * 5); m.unitDone(open(sp2).id, null) }
+    const sr = m.planRows(st(), D, 'Spiral')
+    eq('Spiral: S1 en libras por lote; S2 en mezclas: 4 del 6292, y las 2 del 6299 (sin renglón) al renglón sin lote', [rows('Spiral'), sr.map((r) => r.unit)], [[['S1', '6290', 1000, 640.25, [640.25, 0], 359.75], ['S1', '6292', 3000, 2000.5, [2000.5, 0], 999.5], ['S2', '6292', 5, 4, [4, 0], 1], ['S2', '', 3, 2, [2, 0], 1]], ['lb', 'lb', 'mezclas', 'mezclas']])
+
+    // ---- the next day: each row goes on with its own lot ----
+    clock = oct(19, 23, 0); m.endRun(open(l1).id)
+    clock = oct(20, 7, 0); m.startRun(l1, '889', '6292', NEXT, 484)
+    clock = oct(20, 7, 30); m.unitDone(open(l1).id, 484)
+    eq('lo pendiente de cada renglón sigue con su lote; el renglón sin lote no se lleva el lote del día (6292) si otro renglón del código lo nombra', m.carriedOver(st(), D).filter((x) => x.dept === 'RTE').map((x) => [x.code, x.lot, x.pending, x.made, x.done]), [['889', '6292', 484, 484, true], ['889', '', 40, 0, false], ['2010', '6292', 3360, 0, false]])
+
+    // ---- a production order with two lot rows of one code (2026-10-19's orders, 2026-10-20's rows) ----
+    clock = oct(20, 9, 0)
+    const W = m.saveWorkOrder({ dept: 'RTE', code: '889', qty: 30000, unit: 'pouches', startDate: D, wo: 'R-889', note: '' })
+    m.setPlan(D, 'RTE', '889', 15688, '6292', W); m.setPlan(D, 'RTE', '889', 5000, '6290', W)
+    const ws = m.orderStatus(st(), m.workOrderOf(st(), W), NEXT)
+    eq('el pedido: lo programado del día es la suma de sus renglones (15,688 + 5,000), con sus lotes; lo hecho sigue por código, el más viejo primero', [ws.byDay.map((x) => [x.date, x.programmed, x.lot, x.made1, x.made2, x.made, x.pending]), ws.made, ws.disponible], [[[D, 20688, '6290, 6292', 14204, 4442, 18646, 2042], [NEXT, 0, '', 484, 0, 484, 0]], 19130, 10870])
+    eq('la tarjeta: cada renglón dice su pedido (los dos del mismo), el de sin lote ninguno', m.planRows(st(), D, 'RTE').filter((r) => r.code === '889').map((r) => [r.lot, r.orderId === W]), [['6290', true], ['6292', true], ['', false]])
+    eq('el aviso del día siguiente: el pedido una sola vez, con lo que quedó de sus dos renglones; el renglón sin lote y el 2010, cada uno lo suyo', m.prevPending(st(), 'RTE', NEXT), [{ code: '889', lot: '6290, 6292', n: 2042, unit: 'pouches', date: D, orderId: W, was: '' }, { code: '889', lot: '', n: 40, unit: 'pouches', date: D, orderId: '', was: '' }, { code: '2010', lot: '6292', n: 3360, unit: 'pouches', date: D, orderId: '', was: '' }])
+    eq('el historial del pedido encuentra cada renglón por su llave (y por la del código sola, la de antes)', [m.planRefKeys({ date: D, dept: 'RTE', code: '0889', lot: '6292' }), m.planRefKeys({ date: D, dept: 'RTE', code: '889', lot: '' })], [[D + '|RTE|889|6292', D + '|RTE|889'], [D + '|RTE|889']])
+    // (review of 2026-10-20: the key of the code alone is also the key of the code's row WITHOUT a lot: the order's
+    // window listed the 1,000 of the 889 without a lot, which is not its)
+    const ofW = m.planLinesOf(st().plans.filter((p) => p.orderId === W)), linesW = st().changes.filter(ofW)
+    eq('el historial del pedido: las líneas de sus dos renglones, no las del 889 sin lote (que no es suyo)', [linesW.length > 0, linesW.every((c) => c.refKey === D + '|RTE|889|6292' || c.refKey === D + '|RTE|889|6290'), st().changes.some((c) => c.refTable === 'act_plan' && c.refKey === D + '|RTE|889')], [true, true, true])
+    const of6292 = m.planLinesOf([{ date: D, dept: 'RTE', code: '889', lot: '6292' }]), line = (refKey, what, refTable = 'act_plan') => of6292({ refTable, refKey, what })
+    eq('con la llave del código solo, el renglón de un lote toma las líneas de antes que nombran su lote; las del renglón sin lote, otro lote (62921) u otra tabla no', [line(D + '|RTE|889|6292', 'Programa ' + D + ' · RTE · 889 · lote 6292'), line(D + '|RTE|889', 'Programa ' + D + ' · RTE · 889 · lote 6292 · pedido WO R-889'), line(D + '|RTE|889', 'Programa ' + D + ' · RTE · 889'), line(D + '|RTE|889', 'Programa ' + D + ' · RTE · 889 · lote 62921'), line(D + '|RTE|889|6292', 'x', 'act_work_orders')], [true, true, false, false, false])
+
+    // ---- from the server: two lots of one code are two rows; an older version of one does not overwrite it ----
+    m.applyRemote('act_plan', { date: D, dept: 'Kitchen', code: '889', qty: 80, lot: '6292', updated_at: iso(oct(19, 4, 0)) })
+    m.applyRemote('act_plan', { date: D, dept: 'Kitchen', code: '889', qty: 20, lot: '6290', updated_at: iso(oct(19, 4, 0)) })
+    m.applyRemote('act_plan', { date: D, dept: 'Kitchen', code: '889', qty: 99, lot: '6290', updated_at: iso(oct(19, 3, 0)) })
+    eq('del servidor: dos lotes del mismo código son dos renglones; una versión más vieja de uno no lo pisa', m.planOf(st(), D, 'Kitchen').map((p) => [p.lot, p.qty]), [['6292', 80], ['6290', 20]])
+    const sw = m.stateWith(st(), { plans: [{ date: '2026-09-01', dept: 'RTE', code: '889', qty: 5, lot: '6244', updated_at: iso(oct(1, 0, 0)) }, { date: '2026-09-01', dept: 'RTE', code: '889', qty: 7, lot: '6245', updated_at: iso(oct(1, 0, 0)) }] })
+    eq('los renglones de días viejos que trae un pedido: los dos lotes', sw.plans.filter((p) => p.date === '2026-09-01').map((p) => [p.lot, p.qty]), [['6244', 5], ['6245', 7]])
+
+    // ---- what waits in the queue keeps its day, by its lot ----
+    m.setPlan('2026-08-02', 'RTE', '889', 10, '6214')
+    m.prune()
+    const old = () => st().plans.some((p) => p.date === '2026-08-02' && p.lot === '6214')
+    const waitedOld = old()
+    m.drop('act_plan', '2026-08-02|RTE|889|6214'); m.prune()
+    eq('un renglón con lote de un día que el aparato ya no guarda se queda mientras espera subir, y se suelta después', [waitedOld, old()], [true, false])
+
+    // ---- a whole pull: a copy the server no longer has (the lot of before, changed in place) goes ----
+    m.applyRemote('act_plan', { date: D, dept: 'Kitchen', code: '889', qty: 80, lot: '6291', updated_at: iso(oct(19, 2, 0)) })
+    const seen = new Set(st().plans.filter((p) => !(p.dept === 'Kitchen' && p.lot === '6291')).map((p) => keyOf({ ...p, code: m.normCode(p.code) })))
+    const kept = (lot) => st().plans.some((p) => p.date === D && p.dept === 'Kitchen' && p.lot === lot)
+    const onlyRte = m.keepServerPlans(seen, m.firstKeptDay(), ['RTE'], new Set(), m.clockNow())
+    const both = m.keepServerPlans(seen, m.firstKeptDay(), null, new Set(), m.clockNow())
+    eq('después de bajar todo: lo que el servidor ya no tiene se suelta (solo de los cuartos que se bajaron); lo demás queda', [onlyRte, both, kept('6291'), kept('6292'), kept('6290'), m.planOf(st(), D, 'RTE').length], [0, 1, false, true, true, 4])
+    // (review of 2026-10-20) a row that comes from the server while the listing is being read (realtime, a refresh
+    // before sending), typed on another device before the pull began, is on the server although the listing missed it
+    m.applyRemote('act_plan', { date: D, dept: 'Kitchen', code: '889', qty: 60, lot: '6296', updated_at: iso(oct(19, 1, 0)) })
+    const mark = m.planHeardMark()
+    m.applyRemote('act_plan', { date: D, dept: 'Kitchen', code: '889', qty: 70, lot: '6295', updated_at: iso(oct(19, 1, 0)) })
+    const seen2 = new Set(st().plans.filter((p) => !(p.dept === 'Kitchen' && (p.lot === '6295' || p.lot === '6296'))).map((p) => keyOf({ ...p, code: m.normCode(p.code) })))
+    eq('lo que llegó del servidor mientras se bajaba todo se queda; una copia de antes que la lista no trajo, no', [m.keepServerPlans(seen2, m.firstKeptDay(), null, new Set(), m.clockNow(), mark), kept('6295'), kept('6296')], [1, true, false])
+
+    // ---- the queue: the key of each row, and the server's answer when it has no such key ----
+    eq('la llave con que sube el programa es la de 021: día, cuarto, código y lote', m.conflictOf('act_plan'), 'date,dept,code,lot')
+    eq('"no hay llave así" (42P10, o dicho en palabras): el programa espera, nunca se tira', [m.verdict('42P10', 'there is no unique or exclusion constraint matching the ON CONFLICT specification'), m.verdict('XX000', 'there is no unique or exclusion constraint matching the ON CONFLICT specification'), m.noSuchKey('23505', 'duplicate key')], ['notReady', 'notReady', false])
+  })
+  // a program saved on the device with two lots of one code reads back whole (a new stored shape gets its reload check)
+  const plr = await device('plan-lot-reload', { seed: { lines: [], runs: [], stops: [], products: [], schedule: {}, changes: [], targets: [], shifts: [NO_GAP], plans: [{ date: D, dept: 'RTE', code: '889', qty: 15688, lot: '6292', updatedAt: T0 }, { date: D, dept: 'RTE', code: '889', qty: 2482, lot: '6290', updatedAt: T0 }] } })
+  eq('al volver a abrir, los dos renglones del 889 siguen, cada uno con su lote', plr.use((m) => m.planOf(m.store.get(), D, 'RTE').map((p) => [p.code, p.lot, p.qty])), [['889', '6292', 15688], ['889', '6290', 2482]])
+  // a program queued by the build of before 2026-10-20 waits under its code alone: this build gives it its lot's key
+  on = 'plan-oldq'
+  const oldRow = (code, qty, lot) => ({ date: D, dept: 'RTE', code, qty, lot, order_id: null, updated_at: iso(oct(19, 5, 0)), updated_by: 'Oficina' })
+  localStorage.setItem('act_outbox', JSON.stringify([{ table: 'act_plan', key: D + '|RTE|889', row: oldRow('889', 2482, '6290'), at: oct(19, 5, 0) }, { table: 'act_plan', key: D + '|RTE|2010', row: oldRow('2010', 3360, ''), at: oct(19, 5, 0) }]))
+  const oq = await device('plan-oldq', { user: 'Oficina' })
+  oq.use((m) => {
+    eq('lo que esperaba con la llave del código solo toma la de su lote (y el que no tiene lote se queda como estaba)', m.outbox.items().map((i) => [i.key, i.row.lot, i.row.qty]), [[D + '|RTE|889|6290', '6290', 2482], [D + '|RTE|2010', '', 3360]])
+    m.applyRemote('act_plan', { date: D, dept: 'RTE', code: '889', qty: 500, lot: '', updated_at: iso(oct(19, 6, 0)), updated_by: 'Edgar' })
+    eq('una versión más nueva del 889 sin lote no lo saca de la cola: es otro renglón', m.outbox.items().filter((i) => i.table === 'act_plan').map((i) => i.key), [D + '|RTE|889|6290', D + '|RTE|2010'])
+    m.applyRemote('act_plan', { date: D, dept: 'RTE', code: '889', qty: 2600, lot: '6290', updated_at: iso(oct(19, 6, 5)), updated_by: 'Edgar' })
+    eq('una más nueva de su mismo lote sí: queda la del servidor y el historial lo dice', [m.outbox.items().filter((i) => i.table === 'act_plan').map((i) => i.key), m.store.get().changes.filter((c) => c.what.includes('no se subió')).map((c) => [c.what, c.before, c.after])], [[D + '|RTE|2010'], [['Programa ' + D + ' · RTE · 889 · lote 6290 · no se subió: Edgar lo cambió después', '2482', '2600']]])
+  })
+  // ---- two lots of one code, each row naming an order of its own (review of 2026-10-20): the 6290 row may be the end of
+  // an older order and the 6292 row a newer one. Each order takes the units of its own lot; until that review every
+  // unit tried the day's orders in the lots' order, and the order of 6290 took the carts of 6292 ----
+  const two = await device('plan-lot-orders', { user: 'Oficina' })
+  two.use((m) => {
+    const st = () => m.store.get()
+    const lineOf = (name) => { m.addLine('RTE', name); return st().lines.find((l) => l.dept === 'RTE' && l.name === name) }
+    const open = (line) => st().runs.find((r) => r.lineId === line.id && !r.endedAt)
+    clock = oct(18, 9, 0)
+    const OLD = m.saveWorkOrder({ dept: 'RTE', code: '889', qty: 5000, unit: 'pouches', startDate: '2026-10-18', wo: 'R-OLD', note: '' })
+    clock = oct(19, 5, 0)
+    const NEW = m.saveWorkOrder({ dept: 'RTE', code: '889', qty: 20000, unit: 'pouches', startDate: D, wo: 'R-NEW', note: '' })
+    m.setPlan(D, 'RTE', '889', 2482, '6290', OLD); m.setPlan(D, 'RTE', '889', 15688, '6292', NEW)
+    const of = (id) => { const x = m.orderStatus(st(), m.workOrderOf(st(), id), D), d = x.byDay.find((y) => y.date === D); return [x.made, d?.programmed ?? 0, d?.pending ?? 0, x.lots] }
+    const l1 = lineOf('Línea 1'), l2 = lineOf('Línea 2'), l3 = lineOf('Línea 3')
+    // Línea 1 makes two carts of 6292; nothing of 6290 has run yet
+    clock = oct(19, 6, 0); m.startRun(l1, '889', '6292', D, 2000)
+    clock = oct(19, 7, 0); m.unitDone(open(l1).id, 2000); clock = oct(19, 8, 0); m.unitDone(open(l1).id, 2000)
+    eq('dos pedidos en dos lotes del 889: los carritos del 6292 van al pedido del 6292; el del 6290 (más viejo) sigue con su lote pendiente', [of(OLD), of(NEW)], [[0, 2482, 2482, ['6290']], [4000, 15688, 11688, ['6292']]])
+    // then Línea 2 makes 6290, and Línea 1 goes on with 6292
+    clock = oct(19, 9, 0); m.startRun(l2, '889', '6290', D, 1241)
+    clock = oct(19, 10, 0); m.unitDone(open(l2).id, 1241); clock = oct(19, 11, 0); m.unitDone(open(l2).id, 1241)
+    clock = oct(19, 12, 0); m.unitDone(open(l1).id, 2000)
+    eq('y los del 6290 al pedido del 6290: cada pedido solo con su lote, como la tarjeta los cuenta', [of(OLD), of(NEW), m.planRows(st(), D, 'RTE').map((r) => [r.lot, r.done, r.orderId === OLD ? 'OLD' : r.orderId === NEW ? 'NEW' : ''])], [[2482, 2482, 0, ['6290']], [6000, 15688, 9688, ['6292']], [['6290', 2482, 'OLD'], ['6292', 6000, 'NEW']]])
+    // a lot nobody programmed: no row names it, so it goes by code, the oldest open order first (as before)
+    clock = oct(19, 13, 0); m.startRun(l3, '889', '6293', D, 480)
+    clock = oct(19, 14, 0); m.unitDone(open(l3).id, 480)
+    eq('un lote que ningún renglón nombra va por código, al pedido más viejo abierto (y la tarjeta lo dice aparte)', [of(OLD)[0], of(NEW)[0], m.planRows(st(), D, 'RTE')[0].also], [2962, 6000, [{ lot: '6293', n: 480 }]])
+    // with a row without a lot that names an order, that row's order takes what the lot rows leave
+    clock = oct(19, 15, 0); m.setPlan(D, 'RTE', '889', 1000, '', NEW)
+    eq('un renglón sin lote con su pedido: lo de los lotes sin renglón va a ese pedido', [of(OLD)[0], of(NEW)[0], of(NEW)[1]], [2482, 6480, 16688])
+    // the row's quantity is what its order takes first; past it, the oldest open order (as the order rule always was)
+    clock = oct(19, 15, 30); m.setPlan(D, 'RTE', '889', 4000, '6292', NEW)
+    eq('pasada la cantidad del renglón, lo demás de su lote va al pedido más viejo abierto', [of(OLD)[0], of(NEW)[0]], [4482, 4480])
+  })
 }
 section('Packing: un pallet con varios lotes, cada lote con su tag; y las líneas que hacen bins')
 {
@@ -3996,10 +4195,15 @@ section('Un cambio del programa o de una meta que espera en la cola no pisa otro
     clock = T0 + 70 * M; m.setPlan(DAY, 'Packing', '0889', 40)
     m.applyRemote('act_plan', { date: DAY, dept: 'Packing', code: '889', qty: 55, updated_at: at(T0 + 71 * M), updated_by: 'Edgar' })
     eq('el programa de un cuarto, igual', [waiting(), m.planOf(st(), DAY, 'Packing').map((p) => p.qty), notes().at(-1)], [[], [55], ['Santiago', 'Programa ' + DAY + ' · Packing · 889 · no se subió: Edgar lo cambió después', '40', '55']])
-    // the program's lot (2026-10-19): the same quantity with another lot is a change; when the server's names another lot, the line says it
+    // the program's lot: since 2026-10-20 a code of another lot is another row of the program (the office's 889 of
+    // lots 6292 and 6290): the server's row of lot 6284 never takes the place of the one of lot 6283 waiting here; a
+    // newer version of that same lot does
     clock = T0 + 72 * M; m.setPlan(DAY, 'Packing', '0889', 55, '6283')
     m.applyRemote('act_plan', { date: DAY, dept: 'Packing', code: '889', qty: 55, lot: '6284', updated_at: at(T0 + 73 * M), updated_by: 'Edgar' })
-    eq('con lotes distintos, el historial nombra el de aquí y dice el del servidor', [waiting(), m.planOf(st(), DAY, 'Packing').map((p) => p.lot), notes().at(-1)], [[], ['6284'], ['Santiago', 'Programa ' + DAY + ' · Packing · 889 · lote 6283 · no se subió: Edgar lo cambió después', '55', '55 · lote 6284']])
+    const said = notes().length
+    eq('con otro lote es otro renglón: el de aquí sigue en la cola, y quedan los dos', [waiting(), m.planOf(st(), DAY, 'Packing').map((p) => [p.lot, p.qty]), notes().length], [['act_plan|' + DAY + '|Packing|889|6283'], [['', 55], ['6283', 55], ['6284', 55]], said])
+    m.applyRemote('act_plan', { date: DAY, dept: 'Packing', code: '889', qty: 60, lot: '6283', updated_at: at(T0 + 74 * M), updated_by: 'Edgar' })
+    eq('una versión del servidor de ese mismo lote hecha después: la de aquí sale de la cola y el historial lo dice', [waiting(), m.planOf(st(), DAY, 'Packing').map((p) => [p.lot, p.qty]), notes().at(-1)], [[], [['', 55], ['6284', 55], ['6283', 60]], ['Santiago', 'Programa ' + DAY + ' · Packing · 889 · lote 6283 · no se subió: Edgar lo cambió después', '55', '60']])
     clock = T0 + 80 * M; m.setShiftWeek('2026-11-02', '3333311')
     m.applyRemote('act_targets', { dept: 'shiftweek:2026-11-02', per_hour: 3333333, per_shift: null, updated_at: at(T0 + 81 * M), updated_by: 'Edgar' })
     eq('el calendario, igual, dicho como lo dice el historial', [waiting(), m.weekOf(st(), '2026-11-02'), notes().at(-1)], [[], '3333333', ['Santiago', 'Turnos de la semana desde el 2026-11-02 · no se subió: Edgar lo cambió después', 'dom 1 y 2, lun 1 y 2, mar 1 y 2, mié 1 y 2, jue 1 y 2, vie solo 1, sáb solo 1', 'Turnos 1 y 2 todos los días']])
@@ -4007,10 +4211,10 @@ section('Un cambio del programa o de una meta que espera en la cola no pisa otro
     clock = T0 + 90 * M; m.setLineShiftGoal(line, 2, 5, null)
     m.applyRemote('act_targets', { dept: 'line:' + line.id + '@2', per_hour: 6, per_shift: null, updated_at: at(T0 + 91 * M), updated_by: 'Edgar' })
     eq('la meta de una línea, con el nombre de la línea', notes().at(-1), ['Santiago', 'Meta ' + line.name + ' (RTE) · Turno 2 · no se subió: Edgar lo cambió después', '5 por hora', '6 por hora'])
-    const said = notes().length
+    const said2 = notes().length
     clock = T0 + 100 * M; m.setLineRules({ remove: true })
     m.applyRemote('act_targets', { dept: 'opt:oplines', per_hour: 1, per_shift: 1, updated_at: at(T0 + 101 * M), updated_by: 'Edgar' })
-    eq('el servidor ya tiene lo mismo, hecho después: sale de la cola y no hay nada que decir', [waiting(), st().lineRules.remove, notes().length], [[], true, said])
+    eq('el servidor ya tiene lo mismo, hecho después: sale de la cola y no hay nada que decir', [waiting(), st().lineRules.remove, notes().length], [[], true, said2])
   })
 }
 
@@ -4241,7 +4445,7 @@ section('Pedidos de producción: la cuenta de la oficina, día por día, con su 
     eq('un día que completa el pedido con de más: lo disponible esa mañana es el total menos lo de antes (140), no 0 + lo hecho', m.orderDayLine({ date: '2026-10-18', programmed: 240, made: 240, pending: 0, cumMade: 600, disponible: 0 }, 500, '2026-10-20', dd), '18/10: de 140 disponibles se programaron 240 y se hicieron 240: el pedido se completó (100 de más).')
     eq('un día sin programa, y uno que hizo más de lo programado', [m.orderDayLine({ date: '2026-10-18', programmed: 0, made: 60, pending: 0, cumMade: 60, disponible: 240 }, 300, '2026-10-20', dd), m.orderDayLine({ date: '2026-10-18', programmed: 50, made: 60, pending: 0, cumMade: 60, disponible: 240 }, 300, '2026-10-20', dd)], ['18/10: sin programa ese día. Se hicieron 60: quedan 300 − 60 = 240 disponibles.', '18/10: de 300 disponibles se programaron 50 y se hicieron 60, más de lo programado: quedan 300 − 60 = 240 disponibles.'])
     eq('las libras con sus decimales', [m.woN(1543.4), m.woN(2950.7), m.woN(1000)], ['1,543.4', '2,950.7', '1,000'])
-    eq('"ayer quedaron 10 pendientes de 0889": vuelven al pedido, y no se programa nada solo', [m.prevPending(st(), 'Kitchen', '2026-10-20'), m.planOf(st(), '2026-10-21', 'Kitchen')], [[{ code: '0889', n: 10, unit: 'mezclas', date: '2026-10-19', orderId: A, was: '' }], []])
+    eq('"ayer quedaron 10 pendientes de 0889": vuelven al pedido, y no se programa nada solo', [m.prevPending(st(), 'Kitchen', '2026-10-20'), m.planOf(st(), '2026-10-21', 'Kitchen')], [[{ code: '0889', lot: '', n: 10, unit: 'mezclas', date: '2026-10-19', orderId: A, was: '' }], []])
     eq('la tarjeta del cuarto sigue con sus números del día (hecho, por turno, pendiente) y dice de qué pedido es', m.planRows(st(), '2026-10-19', 'Kitchen').map((r) => [r.code, r.planned, r.done, r.byShift, r.left, r.orderId]), [['0889', 80, 70, [40, 30], 10, A]])
     eq('el pedido se guarda con su código como lo escribe la app, su unidad, su WO, quién y cuándo', [m.workOrderOf(st(), A).code, m.workOrderOf(st(), A).unit, m.workOrderOf(st(), A).wo, m.workOrderOf(st(), A).createdBy, m.workOrderOf(st(), A).createdAt], ['889', 'mezclas', '4512', 'Oficina', oct(18, 6, 0)])
     eq('y sube a su tabla, y el programa con su pedido', [m.outbox.items().find((i) => i.table === 'act_work_orders' && i.key === A)?.row.qty, m.outbox.items().find((i) => i.table === 'act_plan' && i.key === '2026-10-18|Kitchen|889')?.row.order_id], [1000, A])
@@ -4476,7 +4680,7 @@ section('Pedidos de producción: lo que corrigió la revisión del 2026-10-19 (u
     const sa = status(A, '2026-10-19')
     eq('cerrado a las 9 con 30 hechas: desde ese día no le queda nada pendiente (lo que siguió fue al B)', [sa.state, sa.made, sa.pendingToday, sa.byDay.map((x) => [x.date, x.programmed, x.made, x.pending, !!x.closed]), status(B, '2026-10-19').made], ['cerrado', 30, 0, [['2026-10-18', 80, 30, 0, true]], 30])
     eq('la tarjeta de ese día: 60 hechas, 20 pendientes', m.planRows(st(), '2026-10-18', 'Kitchen').map((r) => [r.code, r.planned, r.done, r.left]), [['P1', 80, 60, 20]])
-    eq('el aviso del 19 dice esos mismos 20, nombra el pedido cerrado y no dice que vuelven a él', m.prevPending(st(), 'Kitchen', '2026-10-19'), [{ code: 'P1', n: 20, unit: 'mezclas', date: '2026-10-18', orderId: '', was: A }])
+    eq('el aviso del 19 dice esos mismos 20, nombra el pedido cerrado y no dice que vuelven a él', m.prevPending(st(), 'Kitchen', '2026-10-19'), [{ code: 'P1', lot: '', n: 20, unit: 'mezclas', date: '2026-10-18', orderId: '', was: A }])
     eq('la ventana del pedido lo dice en palabras', m.orderDayLine(sa.byDay[0], 1000, '2026-10-19', dd), '18/10: de 1,000 disponibles se programaron 80. Se hicieron 30 para el pedido hasta que se cerró: lo que faltaba ya no vuelve a él (quedan 970 sin hacer).')
     // ---- closed before the first mezcla: the room made the 80 for the next one; nothing is pending anywhere ----
     clock = oct(20, 5, 0); const C = save('Kitchen', 'P2', 500, 'mezclas', '2026-10-20', 'C')
@@ -4493,7 +4697,7 @@ section('Pedidos de producción: lo que corrigió la revisión del 2026-10-19 (u
     m.setPlan('2026-10-22', 'Kitchen', 'P3', 80, '', E)
     ranOn('Kitchen', 'P3', '2026-10-22', mins(22, 8, 0, 70))
     clock = oct(23, 6, 0)
-    eq('completo con la 50 y 20 más para el F: la tarjeta dejó 10 pendientes, y el aviso dice esos 10 y nombra el pedido completo', [status(E, '2026-10-23').state, status(F, '2026-10-23').made, m.planRows(st(), '2026-10-22', 'Kitchen').map((r) => r.left), m.prevPending(st(), 'Kitchen', '2026-10-23').filter((p) => p.code === 'P3')], ['completado', 20, [10], [{ code: 'P3', n: 10, unit: 'mezclas', date: '2026-10-22', orderId: '', was: E }]])
+    eq('completo con la 50 y 20 más para el F: la tarjeta dejó 10 pendientes, y el aviso dice esos 10 y nombra el pedido completo', [status(E, '2026-10-23').state, status(F, '2026-10-23').made, m.planRows(st(), '2026-10-22', 'Kitchen').map((r) => r.left), m.prevPending(st(), 'Kitchen', '2026-10-23').filter((p) => p.code === 'P3')], ['completado', 20, [10], [{ code: 'P3', lot: '', n: 10, unit: 'mezclas', date: '2026-10-22', orderId: '', was: E }]])
     // ---- MFO: the program offers its orders of every word (platos, copas, lb), not only the word of its last bins ----
     clock = oct(24, 5, 0); const Zc = save('MFO', 'Z900', 100, 'copas', '2026-10-24', '900')
     const offered = (code, date) => m.programOrderChoices(st(), 'MFO', code, date).map((o) => o.wo)

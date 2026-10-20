@@ -543,6 +543,8 @@ table.shiftgrid tr.sep td{background:var(--bg);color:var(--muted);font-size:11px
 .plan td.ok{color:var(--ok);font-weight:700}
 .plan b.code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:16px}
 .plan .pname{display:block;color:var(--muted);font-size:12px;font-weight:500}
+/* what was made of the code in a lot no row names (2026-10-20): said under the code, in amber so nobody reads it as the row's */
+.plan .pname.also{color:var(--amber);font-weight:700}
 .plan .pill{margin-left:8px}
 .planrows{display:grid;gap:6px}
 /* code, quantity, and the lot (2026-10-19: offered as the day's, free to change or clear) */
