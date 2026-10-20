@@ -1317,8 +1317,9 @@ function OrderPalletsDialog({ s, order, onAdd, onClose }: { s: State; order: Ord
                 return (
                   <tbody key={x.r.id + ':' + x.u.at}>
                     {parts.map((p, i) => (
-                      <tr key={i} className={fresh ? 'rp-focus' : undefined}>
-                        {i === 0 && <td rowSpan={span}><b>{k + 1}</b>{seq.need ? <small className="ofn">/{seq.need}</small> : null}</td>}
+                      <tr key={i} className={(fresh ? 'rp-focus' : '') + (span > 1 ? ' multilot' : '') || undefined}>
+                        {/* a pallet of two lots is one pallet: said beside its number, so its second line is not read as another (the office, 2026-10-19) */}
+                        {i === 0 && <td rowSpan={span}><b>{k + 1}</b>{seq.need ? <small className="ofn">/{seq.need}</small> : null}{span > 1 && <small className="onelot">{tr('1 pallet · {0} lotes', span)}</small>}</td>}
                         {i === 0 && <td rowSpan={span}>{shortDay(x.r.date)}</td>}
                         {i === 0 && <td rowSpan={span}>{lineNameOf(s, x.r.lineId, x.r.line)}</td>}
                         <td>{p.lot || '—'}</td><td className="num">{p.qty != null ? fmtN(p.qty) : '—'}</td><td>{p.tag || <span className="notag">{tr('sin tag')}</span>}</td>

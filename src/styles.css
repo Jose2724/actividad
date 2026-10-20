@@ -1528,3 +1528,7 @@ table.bycode tr.trow.rp-dtotal td.red{color:var(--warn)}
 .unote{font-size:13px;color:var(--muted);overflow-wrap:anywhere}
 td.unote{white-space:normal;min-width:160px;max-width:320px}
 td.unote .lnk{white-space:nowrap}
+/* the PO window: a pallet of two lots is one pallet, with its lots framed together (the office, 2026-10-19) */
+.otable tr.multilot td, tbody tr.multilot td{background:#f4f8ff}
+tbody tr.multilot + tr.multilot td{border-top:1px dashed #c8d6ea}
+.onelot{display:block;margin-top:2px;font-size:11px;font-weight:800;color:#3b5b8a;white-space:nowrap}
