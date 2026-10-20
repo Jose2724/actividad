@@ -1820,4 +1820,14 @@ export const EN: Record<string, string> = {
   // a new program row without its quantity is said, not dropped (2026-10-20)
   'Falta la cantidad del código {0} con el lote {1}: escríbela, o borra el código si no va.': "Code {0} with lot {1} has no quantity: type it, or clear the code if it does not go.",
   'Falta la cantidad del código {0}: escríbela, o borra el código si no va.': "Code {0} has no quantity: type it, or clear the code if it does not go.",
+  // the employees as an Excel file (2026-10-20)
+  'no': 'no',
+  'los de su rol': "its role's",
+  'Rol en Actividad': 'Role in Actividad',
+  'Poderes': 'Powers',
+  'Activa': 'Active',
+  'Rol en Freezer RTE': 'Role in Freezer RTE',
+  'admin': 'admin',
+  'trabajador': 'worker',
+  'pide carros': 'requests carts',
 }

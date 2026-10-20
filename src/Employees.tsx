@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { missingColumn, rowRights, supabase } from './supabase'
 import { cleanPowers, defaultPowers, POWERS, powersOf, rolesGiven, type Power, type Role } from './powers'
 import { DEPTS } from './store'
-import { ConfirmDialog, useWho } from './App'
+import { ConfirmDialog, download, useWho } from './App'
+import { xlsxBytes, XLSX_TYPE } from './xlsx'
 import { tr } from './i18n'
 import { trx } from './trx'
 
@@ -72,11 +73,26 @@ export function Employees({ meId, admin }: { meId: string; admin: boolean }) {
   const count = (f: RoleFilter) => all.filter((e) => f === 'all' || (f === 'none' ? !e.act_role : e.act_role === f)).length
   const chips: [RoleFilter, string][] = [['all', tr('Todos')], ['op', tr('Operadores')], ['mgr', tr('Managers')], ['office', tr('Oficina')], ['viewer', tr('Solo ver')], ['none', tr('Sin acceso')]]
   const filtered = !!needle || roleF !== 'all' || !!deptF
+  const excel = async () => {
+    const yesNo = (b: boolean) => (b ? tr('sí') : tr('no'))
+    const powerText = (e: Emp) => (!e.act_role || e.act_role === 'viewer' ? '' : e.act_powers == null ? tr('los de su rol') : (cleanPowers(e.act_powers) ?? []).map((k) => POWERS.find((p) => p.key === k)?.label ?? k).join(', '))
+    const rows = [
+      [tr('Nombre'), tr('Usuario'), tr('Rol en Actividad'), tr('Departamento'), tr('Turno'), tr('Poderes'), tr('Activa'), tr('Rol en Freezer RTE')],
+      ...shown.map((e) => [e.name, e.username ?? '', e.act_role ? ROLE[e.act_role] ?? e.act_role : tr('Sin acceso'), e.act_role === 'op' ? e.act_dept ?? '' : '', e.act_shift === 1 || e.act_shift === 2 ? tr('Turno {0}', e.act_shift) : '', powerText(e), yesNo(e.active), e.role === 'admin' ? tr('admin') : e.role === 'worker' ? tr('trabajador') : tr('pide carros')]),
+    ]
+    const bytes = await xlsxBytes([{ name: tr('Empleados'), rows }])
+    download(new File([bytes], 'actividad-empleados-' + new Date().toISOString().slice(0, 10) + '.xlsx', { type: XLSX_TYPE }))
+  }
   return (
     <section className="report emps">
       <div className="emphead">
         <div><h2>{tr('Empleados')}</h2><small>{list ? (filtered ? tr('Se ven {0} de {1}', shown.length, all.length) : all.length === 1 ? tr('1 persona') : tr('{0} personas', all.length)) : tr('Cargando…')}</small></div>
-        <button type="button" className="btn primary" onClick={() => setCreating(true)}>{tr('+ Nuevo usuario')}</button>
+        <div className="btns">
+          {/* the list of accounts as a file (Jose, 2026-10-20): what is seen (search and filters), never the PINs: the
+              app never has them (Supabase keeps them encrypted, they cannot be read back), a forgotten one is set again */}
+          <button type="button" className="btn" disabled={!shown.length} onClick={() => void excel()}>{tr('⬇ Excel')}</button>
+          <button type="button" className="btn primary" onClick={() => setCreating(true)}>{tr('+ Nuevo usuario')}</button>
+        </div>
       </div>
       <div className="emptools">
         <div className="empsearch">
