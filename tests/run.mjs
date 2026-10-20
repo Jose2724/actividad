@@ -2334,7 +2334,7 @@ section('Avance: cada código lo empaca RTE o MFO, nunca los dos; y se puede ver
     // what Jose asked on 2026-10-16 for the office: each code opens into its lots and its shifts, the total of a lot
     // across its days, and "Lo empaca" fixed from Avance itself
     const m5 = row('M500')
-    eq('cada código dice lo hecho por lote (el pallet de dos lotes da a cada uno sus cajas y cuenta como pallet de los dos)', m5.lots.map((l) => [l.lot, l.mixes, l.mfo, l.cases, l.pallets]), [['6292', 0, {}, 15, 1], ['6293', 2, { cajas: 30 }, 25, 1]])
+    eq('cada código dice lo hecho por lote (el pallet de dos lotes da a cada uno sus cajas y cuenta como pallet solo del lote con más cajas: la oficina, 2026-10-19)', m5.lots.map((l) => [l.lot, l.mixes, l.mfo, l.cases, l.pallets]), [['6292', 0, {}, 15, 0], ['6293', 2, { cajas: 30 }, 25, 1]])
     eq('y por turno: todo fue en el turno 1', [m5.byShift[0].mixes, m5.byShift[0].mfo, m5.byShift[0].cases, m5.byShift[0].pallets, m5.byShift[1].cases, m5.byShift[1].mixes], [2, { cajas: 30 }, 40, 1, 0, 0])
     eq('con un lote escogido, por turno solo va lo de ese lote', row('M500', '6292').byShift[0].cases, 15)
     const across = m.lotAcrossDays(st(), '6293')
@@ -2754,7 +2754,7 @@ section('Flujo de datos: cada lote en todos sus días, con lo que registró cada
     eq('sus pallets: los diez listos de la Línea 1 (el de dos lotes con sus 30 de este lote y 50 en total) y el que se arma en la Línea 3, al final; ninguno con PO', [rec.pallets.length, rec.pallets.slice(7).map((p) => [p.n, p.lotQty, p.lotTag, p.total, p.open, p.poLabel]), rec.pallets.map((p) => p.by).every(Boolean)], [11, [[8, 50, '1', 50, false, ''], [9, 12, '9', 12, false, ''], [10, 30, '10', 50, false, ''], [1, 25, '1', 25, true, '']], true])
     eq('otro código del mismo lote tiene los suyos; un lote que nadie tocó, ninguno', [m.flujoRecords(st(), '6222', '4419').runs.map((x) => [x.dept, x.units, x.qty, x.word]), m.flujoRecords(st(), '9999', '2286').runs.length], [[['RTE', 1, 50, 'pouches'], ['MFO', 3, 1506, 'platos'], ['Packing', 2, 242, 'cajas']], 0])
     const b = row('6223', '2286')
-    eq('2286 / 6223: las 20 cajas del pallet de dos lotes, que RTE nunca reportó de ese lote: cajas de más', [b.cases, b.pallets, b.pouches, b.mixes, b.segun, b.diffRte, b.diffPacking, b.projected, b.state, b.running], [20, 1, 0, 0, 0, 160, 20, null, 'over', true])
+    eq('2286 / 6223: las 20 cajas del pallet de dos lotes, que RTE nunca reportó de ese lote: cajas de más', [b.cases, b.pallets, b.pouches, b.mixes, b.segun, b.diffRte, b.diffPacking, b.projected, b.state, b.running], [20, 0, 0, 0, 0, 160, 20, null, 'over', true])
     const c = row('6222', '4419')
     eq('4419 / 6222 (lo empaca MFO): platos ÷ 6, RTE en blanco y avisado aparte', [c.route, c.routeSaid, c.mfoUnits, c.mfo, c.mfoWordUsed, c.segun, c.diffRte, c.diffMfo, c.diffPacking, c.projected, c.projectedFrom, c.diffProjected, c.palletsProjected, c.state, c.otherRte, c.pouches, c.missing], ['MFO', true, 1506, [{ word: 'platos', qty: 1506 }], 'platos', 251, null, -54, -9, 251, 'mfo', -9, 6.28, 'short', true, 50, []])
     const d = row('6223', '4419'), e = row('6224', '4433'), f = row('6225', '4433'), g = row('6226', '4419')
@@ -2810,13 +2810,13 @@ section('Flujo de datos: cada lote en todos sus días, con lo que registró cada
     const after = m.flujoLots(st(), D8, D9), rowA = (lot, code) => after.find((l) => l.lot === lot).rows.find((r) => r.code === code)
     const x = rowA('6222', '2286'), y = rowA('6223', '2286'), z = rowA('6222', '4419')
     eq('2286 / 6222: 514 cajas, 72 en el PO en 2 pallets, 442 sin pedido; 85 mezclas − 79.25 usadas = 5.75; 514 × 8 = 4,112 > 3,487 pouches: quedan 0 y Packing empacó de más', [x.cases, x.pallets, x.casesOnPo, x.palletsOnPo, x.casesFree, x.mixes, x.mixesUsed, x.mixesLeft, x.unitWord, x.unitsMade, x.unitsUsed, x.unitsLeft, x.packedOver], [514, 12, 72, 2, 442, 85, 79.25, 5.75, 'pouches', 3487, 4112, 0, true])
-    eq('2286 / 6223: del pallet de dos lotes, sus 20 cajas en el PO; las otras 20 (del pallet sin PO) sin pedido', [y.cases, y.pallets, y.casesOnPo, y.palletsOnPo, y.casesFree], [40, 2, 20, 1, 20])
+    eq('2286 / 6223: sus 40 cajas van en dos pallets de dos lotes que cuentan como pallets del 6222 (más cajas): 20 en el PO, 20 sin pedido, 0 pallets propios', [y.cases, y.pallets, y.casesOnPo, y.palletsOnPo, y.casesFree], [40, 0, 20, 0, 20])
     eq('4419 / 6222 (MFO, en platos): 1,506 hechos, 242 × 6 = 1,452 usados, quedan 54 platos; sin PO, 242 sin pedido', [z.unitWord, z.unitsMade, z.unitsUsed, z.unitsLeft, z.casesOnPo, z.casesFree, z.mixesUsed], ['platos', 1506, 1452, 54, 0, 242, null])
     eq('los pallets con PO del lote dicen su pedido; el de dos lotes, solo sus cajas de este lote y el total del pallet', m.flujoRecords(st(), '6222', '2286').pallets.filter((p) => p.po).map((p) => [p.poLabel, p.lotQty, p.lotTag, p.total, p.of?.[0]]), [['Cliente · PO 4471', 36, '20', 36, 1], ['Cliente · PO 4471', 36, '21', 56, 2]])
     const sx = after.find((l) => l.lot === '6222').sum
     eq('el total del lote 6222: lo sin empacar palabra por palabra (pouches aparte de platos), cajas sin pedido y en pedidos', [sx.left, sx.casesFree, sx.freeRows, sx.casesOnPo, sx.palletsOnPo], [[{ word: 'pouches', qty: 0, rows: 0 }, { word: 'platos', qty: 54, rows: 1 }], 684, 2, 72, 2])
     const all = m.flujoSum(after.flatMap((l) => l.rows))
-    eq('los totales de las tiles sobre todo lo que se ve: pouches, platos (20 + 251 + 54) y copas aparte; 1,322 cajas sin pedido en 9 códigos, 92 en pedidos en 3 pallets', [all.left, all.casesFree, all.freeRows, all.casesOnPo, all.palletsOnPo], [[{ word: 'pouches', qty: 0, rows: 0 }, { word: 'platos', qty: 325, rows: 3 }, { word: 'copas', qty: 60, rows: 1 }], 1322, 9, 92, 3])
+    eq('los totales de las tiles sobre todo lo que se ve: pouches, platos (20 + 251 + 54) y copas aparte; 1,322 cajas sin pedido en 9 códigos, 92 en pedidos en 2 pallets (el de dos lotes cuenta una vez)', [all.left, all.casesFree, all.freeRows, all.casesOnPo, all.palletsOnPo], [[{ word: 'pouches', qty: 0, rows: 0 }, { word: 'platos', qty: 325, rows: 3 }, { word: 'copas', qty: 60, rows: 1 }], 1322, 9, 92, 2])
     eq('el chip "Con inventario": fuera los códigos sin nada sin empacar ni cajas sin pedido', m.flujoFilter(after, { q: '', lot: '', route: '', state: '', inv: true }).flatMap((l) => l.rows.map((r) => l.lot + '/' + r.code)), ['6229/4419', '6228/4419', '6227/E9', '6226/4419', '6225/4433', '6224/4433', '6223/2286', '6223/4419', '6222/2286', '6222/4419'])
     const sheet2 = m.flujoSheet(after)
     eq('el Excel: las columnas de CONSUMO, y la fila 2286 / 6222 con su PO', [sheet2[0].slice(26, 34), sheet2.find((r) => r[0] === '6222' && r[2] === '2286').slice(26, 34)], [['CONSUMO: MEZCLAS USADAS', 'MEZCLAS QUE QUEDAN', 'UNIDAD', 'UNIDADES USADAS EN CAJAS', 'UNIDADES QUE QUEDAN', 'CAJAS EN PEDIDOS', 'CAJAS SIN PEDIDO', 'PALLETS EN PEDIDOS'], [79.25, 5.75, 'pouches', 4112, 0, 72, 442, 2]])
@@ -3473,14 +3473,14 @@ section('Reporte: lo hecho por departamento, por código y lote, y por causa de 
     eq('cada código con sus lotes, y de cada lote lo que hizo cada turno', day.byCode.map(codeLots), [
       ['RTE', 'A100', 4, 920, [['6283', 3, 720, [480, 240]], ['6284', 1, 200, [0, 200]]]],
       ['RTE', 'B200', 2, 288, [['6283', 2, 288, [0, 288]]]],
-      ['Packing', 'A100', 2, 100, [['6283', 2, 80, [50, 30]], ['6284', 1, 20, [0, 20]]]]])
+      ['Packing', 'A100', 2, 100, [['6283', 2, 80, [50, 30]], ['6284', 0, 20, [0, 20]]]]])
     eq('los lotes de un código suman el código, y los códigos suman el departamento', [day.byCode.map((c) => c.lots.reduce((t, l) => t + l.qty, 0) === c.qty), day.byDept.map((d) => day.byCode.filter((c) => c.dept === d.dept).reduce((t, c) => t + c.qty, 0) === d.qty), day.byDept.map((d) => { const b = day.byShift.find((x) => x.dept === d.dept); return b.first.qty + b.second.qty === d.qty && b.day.qty === d.qty })], [[true, true, true], [true, true], [true, true]])
     eq('el parado, causa por causa, de mayor a menor: juntas son el total de Parado', [day.reasons.map((x) => [x.reason, min(x.ms)]), day.reasons.reduce((t, x) => t + x.ms, 0) === day.down], [[['Problema mecánico', 20], ['Break', 10]], true])
     const two = m.reportOf(st(), DAY, clock, { shift: 2 })
     eq('con el turno 2: lo de ese turno solo, en los números grandes, en los lotes y en las causas', [two.byDept.map(dept), two.byCode.map(codeLots), two.reasons.map((x) => [x.reason, min(x.ms)]), two.byShift.length], [[['RTE', 3, 4, 728], ['Packing', 1, 1, 50]], [
       ['RTE', 'A100', 2, 440, [['6283', 1, 240, null], ['6284', 1, 200, null]]],
       ['RTE', 'B200', 2, 288, [['6283', 2, 288, null]]],
-      ['Packing', 'A100', 1, 50, [['6283', 1, 30, null], ['6284', 1, 20, null]]]], [['Problema mecánico', 20]], 0])
+      ['Packing', 'A100', 1, 50, [['6283', 1, 30, null], ['6284', 0, 20, null]]]], [['Problema mecánico', 20]], 0])
     const lot = m.reportOf(st(), DAY, clock, { lot: '6284' })
     eq('con el lote 6284: lo que lleva ese lote, también del pallet que lo comparte con otro', [lot.byDept.map(dept), lot.byCode.map(codeLots)], [[['RTE', 1, 1, 200], ['Packing', 1, 1, 20]], [['RTE', 'A100', 1, 200, [['6284', 1, 200, [0, 200]]]], ['Packing', 'A100', 1, 20, [['6284', 1, 20, [0, 20]]]]]])
     const both = m.reportOf(st(), DAY, clock, { code: 'A100', shift: 1 })

@@ -1,6 +1,6 @@
 import { apartOf, binOf, cfgOf, DEPTS, fmtN, lineNameOf, measureOf, measureUnit, mfoBinWord, normCode, noteOf, orderLabel, orderOfId, orderPallets, plainText, planLot, productOf, unitQty, whoText, type Dept, type Measure, type Order, type PackRoom, type Product, type Run, type State } from './store'
 import { avanceLots, datesBetween, lotAcrossDays, lotOrder, mfoList, mfoText, mfoWord, packRoomOf, type AvancePart, type LotDay, type MfoMade } from './avance'
-import { runLots, unitParts } from './report'
+import { palletOwner, runLots, unitParts } from './report'
 import type { Cell } from './xlsx'
 import { tr } from './i18n'
 
@@ -253,12 +253,14 @@ export function flujoOnPo(s: State, lot: string): Map<string, { cases: number; p
     if (r.dept !== 'Packing' || apartOf(r)) continue
     for (const u of r.units) {
       if (!orderOfId(s, u.po)) continue
-      for (const p of unitParts(s, r, u)) {
+      const parts = unitParts(s, r, u), owner = palletOwner(parts)
+      for (const p of parts) {
         if (p.lot !== lot) continue
         const key = normCode(r.code)
         let x = out.get(key)
         if (!x) { x = { cases: 0, pallets: 0 }; out.set(key, x) }
-        x.cases += p.qty ?? 0; x.pallets++
+        // a pallet of two lots is a pallet of one of them only (palletOwner): the sums never give one pallet more
+        x.cases += p.qty ?? 0; if (parts.length < 2 || p.lot === owner) x.pallets++
       }
     }
   }

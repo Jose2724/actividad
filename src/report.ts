@@ -18,6 +18,12 @@ export function unitParts(s: State, r: Run, u: Unit): { lot: string; qty: number
   if (u.lots?.length) { const own = u.lots.some((l) => !!l.tag); return u.lots.map((l) => ({ lot: l.lot, qty: l.qty, tag: l.tag ?? (own ? '' : u.ref) })) }
   return [{ lot: r.lot, qty: CFG[r.dept].qty === 'none' ? null : unitQty(s, r, u), tag: u.ref }]
 }
+/**
+ * The lot a pallet of two lots counts as a pallet of: the one with most of its cases (the first written on a tie). The
+ * other lot keeps its cases but not the pallet, so adding the lots up never gives one pallet more than were made (the
+ * office, 2026-10-19: "por más que esté registrado junto, en el resumen muestra un palet adicional")
+ */
+export const palletOwner = (parts: { lot: string; qty: number | null }[]) => parts.reduce((best, p) => ((p.qty ?? 0) > (best.qty ?? 0) ? p : best), parts[0])?.lot ?? ''
 /** every lot a run has touched: on its units, and while it runs, on the pallet being built and the lot being packed now */
 export const runLots = (s: State, r: Run) => new Set([...(r.units.length ? r.units.flatMap((u) => unitParts(s, r, u).map((p) => p.lot)) : [r.lot]), ...(r.endedAt ? [] : [...(r.extra?.open?.parts.map((p) => p.lot) ?? []), ...(r.extra?.lotNow ? [r.extra.lotNow] : [])])])
 /**
@@ -131,13 +137,14 @@ export function reportOf(s: State, date: string, now: number, f: ReportFilter = 
     const line = lineNameOf(s, x.r.lineId, x.r.line)
     if (!e.lines.includes(line)) e.lines.push(line)
     // each lot of the code with what it carries: its units, its quantity and what each shift made of it. (A pallet
-    // with cases of two lots is one pallet of the code, and is counted as a unit of both its lots.)
+    // with cases of two lots is one pallet of the code: each lot gets its cases, the pallet counts in one lot only,
+    // the one with most of its cases: see palletOwner)
     const none = CFG[x.r.dept].qty === 'none'
     const lotLine = (name: string) => { let l = e.lots.find((y) => y.lot === name); if (!l) e.lots.push((l = { lot: name, units: 0, qty: 0, byShift: shift ? null : [0, 0] })); return l }
     if (!x.parts.length && (!lot || x.r.lot === lot)) lotLine(x.r.lot)
     for (const p of x.parts) for (const piece of p.kept) {
-      const l = lotLine(piece.lot), n = none ? 1 : piece.qty ?? 0
-      l.units++
+      const l = lotLine(piece.lot), n = none ? 1 : piece.qty ?? 0, all = unitParts(s, x.r, p.u)
+      if (lot || all.length < 2 || piece.lot === palletOwner(all)) l.units++ // (one lot in view: its pallets, whole)
       if (!none) l.qty += n
       if (l.byShift) l.byShift[shiftAt(plan, p.u.at) - 1] += n
     }

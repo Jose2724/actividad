@@ -1,5 +1,5 @@
 import { apartOf, apartWord, binOf, normCode, productOf, shiftAt, shiftsOf, unitQty, type PackRoom, type Product, type Run, type State, type Unit } from './store'
-import { runLots, unitParts } from './report'
+import { palletOwner, runLots, unitParts } from './report'
 
 /**
  * The day's progress per product, with the same arithmetic as the office's AVANCE sheet and its daily summary:
@@ -130,12 +130,14 @@ export function avanceRows(s: State, date: string, keep?: Set<string>, lot = '')
     const byShift: [AvancePart, AvancePart] = [part(), part()], lotMap = new Map<string, AvancePart>()
     const lotPart = (l: string) => { let x = lotMap.get(l); if (!x) { x = part(); lotMap.set(l, x) } return x }
     const kitchenBy: [number, number] = [0, 0], kitchenLot = new Map<string, number>()
-    const put = (dept: string, x: AvancePart, q: number, w = '') => { if (dept === 'Spiral') x.spiral++; else if (dept === 'RTE') x.pouches += q; else if (dept === 'Packing') { x.cases += q; x.pallets++ } else if (dept === 'MFO') x.mfo[w] = (x.mfo[w] ?? 0) + q }
+    // whole = this lot counts the unit itself: a pallet of two lots is a pallet of one of them only (palletOwner)
+    const put = (dept: string, x: AvancePart, q: number, w = '', whole = true) => { if (dept === 'Spiral') x.spiral++; else if (dept === 'RTE') x.pouches += q; else if (dept === 'Packing') { x.cases += q; if (whole) x.pallets++ } else if (dept === 'MFO') x.mfo[w] = (x.mfo[w] ?? 0) + q }
     for (const dept of ['Kitchen', 'Spiral', 'RTE', 'Packing', 'MFO'] as const) for (const r of of(dept)) for (const u of r.units) {
       if (!has(r, u)) continue
       const k = shiftAt(hours, u.at) - 1
       if (dept === 'Kitchen') kitchenBy[k]++; else put(dept, byShift[k], ofLot(r, u), mfoWordOf(r))
-      for (const p of unitParts(s, r, u)) { if (lot && p.lot !== lot) continue; if (dept === 'Kitchen') kitchenLot.set(p.lot, (kitchenLot.get(p.lot) ?? 0) + 1); else put(dept, lotPart(p.lot), p.qty ?? 0, mfoWordOf(r)) }
+      const parts = unitParts(s, r, u), owner = palletOwner(parts)
+      for (const p of parts) { if (lot && p.lot !== lot) continue; if (dept === 'Kitchen') kitchenLot.set(p.lot, (kitchenLot.get(p.lot) ?? 0) + 1); else put(dept, lotPart(p.lot), p.qty ?? 0, mfoWordOf(r), !!lot || parts.length < 2 || p.lot === owner) }
     }
     for (const k of [0, 1] as const) byShift[k].mixes = mixRoom === 'Spiral' ? byShift[k].spiral : kitchenBy[k]
     for (const l of kitchenLot.keys()) lotPart(l)
@@ -170,12 +172,14 @@ export function lotAcrossDays(s: State, lot: string): { days: string[]; codes: (
     const key = normCode(r.code)
     for (const u of r.units) for (const p of unitParts(s, r, u)) {
       if (p.lot !== lot) continue
+      // a pallet of two lots is a pallet of one of them only (palletOwner): adding lots up never gives one more
+      const parts = unitParts(s, r, u), whole = parts.length < 2 || p.lot === palletOwner(parts)
       days.add(r.date)
       let c = byCode.get(key)
       if (!c) { c = { code: productOf(s, key)?.code ?? r.code, dates: new Map() }; byCode.set(key, c) }
       let d = c.dates.get(r.date)
       if (!d) { d = { kitchen: 0, x: part() }; c.dates.set(r.date, d) }
-      if (r.dept === 'Kitchen') d.kitchen++; else if (r.dept === 'Spiral') d.x.spiral++; else if (r.dept === 'RTE') d.x.pouches += p.qty ?? 0; else if (r.dept === 'Packing') { d.x.cases += p.qty ?? 0; d.x.pallets++ } else if (r.dept === 'MFO') { const w = mfoWordOf(r); d.x.mfo[w] = (d.x.mfo[w] ?? 0) + (p.qty ?? 0) }
+      if (r.dept === 'Kitchen') d.kitchen++; else if (r.dept === 'Spiral') d.x.spiral++; else if (r.dept === 'RTE') d.x.pouches += p.qty ?? 0; else if (r.dept === 'Packing') { d.x.cases += p.qty ?? 0; if (whole) d.x.pallets++ } else if (r.dept === 'MFO') { const w = mfoWordOf(r); d.x.mfo[w] = (d.x.mfo[w] ?? 0) + (p.qty ?? 0) }
     }
   }
   const add = (t: AvancePart, x: AvancePart): AvancePart => ({ mixes: t.mixes + x.mixes, spiral: t.spiral + x.spiral, pouches: t.pouches + x.pouches, cases: t.cases + x.cases, mfo: addWords(t.mfo, x.mfo), pallets: t.pallets + x.pallets })
