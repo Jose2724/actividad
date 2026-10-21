@@ -460,6 +460,16 @@ function Gate({ dept, mgr, onDept, onManager, onName, onBack }: { dept: Dept | n
 
 /** who is using the app, for every screen that asks what they may do (see powers.ts) */
 const WhoCtx = createContext<Who>({ role: 'op' })
+/**
+ * The floor's numbers open the Reporte on their records (Jose, 2026-10-20: "aquí que tengan link todo, los paros, lo
+ * hecho etc... para saber rápido todo"): what a shift made, a code of the shift, a line's units, its time worked, its
+ * time stopped, the stop in course. Only for whoever looks after the rooms (managers, the office, "Solo ver"): an
+ * operator working the tablet taps those big tiles by mistake, and the floor must not leave them for the report.
+ * null = no links.
+ */
+const ReportLinkCtx = createContext<((x: ReportAt) => void) | null>(null)
+/** a tile that opens its records when there is somewhere to go (the floor's look stays the same: a mark on its label) */
+const tapProps = (go: (() => void) | null) => (go ? { role: 'button', tabIndex: 0, onClick: go, onKeyDown: (e: { key: string }) => { if (e.key === 'Enter') go() } } : {})
 export const useWho = () => useContext(WhoCtx)
 /** somebody who only looks: the screens show everything and offer nothing to press (the server refuses their writes too) */
 export const useViewOnly = () => useWho().role === 'viewer'
@@ -552,6 +562,7 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
       {leaving && <LeaveDialog onYes={() => { setLeaving(false); onLogout() }} onNo={() => setLeaving(false)} />}
       {/* a view that fails to draw says so, and the rest of the app stays (see ViewGuard) */}
       <WoNavCtx.Provider value={woNav}>
+      <ReportLinkCtx.Provider value={mgr ? toReport : null}>
       <ViewGuard reset={tab + '|' + dept}>
       {tab === 'act' ? (
         <>
@@ -589,6 +600,7 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
         </>
       ) : tab === 'pt' && seesProgram ? <ProgramToday s={s} date={day.date} now={now} rooms={programRooms(can('depts'), home)} onReport={toReport} /> : tab === 'av' && (can('products') || viewOnly) ? <Avance s={s} startLot={avLot} /> : tab === 'fl' && (can('products') || viewOnly) ? <Flujo s={s} today={day.date} onLot={openLot} /> : tab === 'set' ? <Settings s={s} now={now} day={day} name={name} home={home} mgr={mgr} admin={admin} viewOnly={viewOnly} meId={meId ?? ''} section={sec} onSection={setSec} onLeave={() => setLeaving(true)} /> : <Report s={s} now={now} only={can('depts') ? undefined : home} mgr={can('depts')} admin={admin} wholeDay={!!wholeDay} />}
       </ViewGuard>
+      </ReportLinkCtx.Provider>
       </WoNavCtx.Provider>
     </div>
   )
@@ -1509,6 +1521,8 @@ function TodayCard({ s, dept, now, mgr, date }: { s: State; dept: Dept; now: num
   // a room that counts its units themselves says one of them in the singular ("1 mezcla")
   const label = (n: number) => (cfg.qty === 'none' ? unitWord(n) : t.unitLabel)
   const paceArrow = pace == null ? '' : pace >= 1 ? '▲ ' : '▼ '
+  const toRep = useContext(ReportLinkCtx)
+  const goShift = (x: Partial<ReportAt> = {}) => (toRep ? () => toRep({ date, dept, shift: t.shift, view: 'rec', rec: 'runs', ...x }) : null)
   /** "Braiser 1, 2, 3" when the lines share their word; "Línea 1, Línea 2" otherwise */
   const linesText = (lines: string[]) => { const m = lines.map((l) => /^(.*?)\s*(\d+)$/.exec(l)); const w = m[0]?.[1]; return lines.length > 1 && w && m.every((x) => x && x[1] === w) ? w + ' ' + m.map((x) => x![2]).join(', ') : lines.join(', ') }
   return (
@@ -1519,7 +1533,7 @@ function TodayCard({ s, dept, now, mgr, date }: { s: State; dept: Dept; now: num
       </div>
       {/* four tiles: what the shift has made, its goal, its pace, its clock (from zero again with the next shift) */}
       <div className="tc-tiles">
-        <div className="tct made">
+        <div className={'tct made' + (toRep ? ' tap' : '')} {...tapProps(goShift())}>
           <label>{tr('Hecho en el turno')}</label>
           <b>{fmtN(t.shiftQty)} <span>{label(t.shiftQty)}</span></b>
           <small>{cfg.qty !== 'none' ? t.shiftUnits + ' ' + unitWord(t.shiftUnits) : t.shiftCodes.length === 1 ? tr('1 código') : t.shiftCodes.length ? tr('{0} códigos', t.shiftCodes.length) : '\u00a0'}</small>
@@ -1547,7 +1561,7 @@ function TodayCard({ s, dept, now, mgr, date }: { s: State; dept: Dept; now: num
         </div>
       </div>
       {t.paused > 0 && <p className="tc-paused">{tr('Ese rato no cuenta. Si siguen trabajando, al registrar lo siguiente cuenta todo; si ya se fueron, toca "Terminar turno".')}</p>}
-      {many && <div className="tc-codes">{t.shiftCodes.map((c) => <span key={c.code} className="tc-code"><b>{c.code}</b> {fmtN(c.qty)} {t.unitLabel}{cfg.qty !== 'none' && <> · {c.units} {unitWord(c.units)}</>} · {linesText(c.lines)}</span>)}</div>}
+      {many && <div className="tc-codes">{t.shiftCodes.map((c) => <span key={c.code} className={'tc-code' + (toRep ? ' tap' : '')} {...tapProps(goShift({ code: c.code, view: 'code' }))}><b>{c.code}</b> {fmtN(c.qty)} {t.unitLabel}{cfg.qty !== 'none' && <> · {c.units} {unitWord(c.units)}</>} · {linesText(c.lines)}</span>)}</div>}
       {editing && <TargetDialog s={s} dept={dept} unit={t.unitLabel} inCourse={t.shift} onClose={() => setEditing(false)} />}
     </div>
   )
@@ -2599,6 +2613,10 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   // A code that came running from the shift before: what this shift sees of it starts from zero at the hand-over (its
   // units, its quantity, its time), and one line says what it brought. A code this shift started is shown whole.
   const mineNow = runSince(s, run, turn.since, now)
+  // (each number of the card opens its records of this line in the shift in course: see ReportLinkCtx)
+  const toRep = useContext(ReportLinkCtx)
+  const goLine = (x: Partial<ReportAt>) => (toRep ? () => toRep({ date: run.date, dept: line.dept, shift: turn.shift, line: line.id, code: run.code, ...x }) : null)
+  const tap = toRep ? ' tap' : ''
   const cameFrom = shiftAt(shiftsOf(s, run.date), run.startedAt)
   const last = Math.max(run.units.length ? run.units[run.units.length - 1].at : run.startedAt, mineNow.carried ? turn.since : 0)
   const current = workedSince(s, run, last, now)
@@ -2679,16 +2697,16 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         </div>
       )}
       {inSetup && stop && <div className="setupbar running">⏱ <b>{reasonText(s, stop.reason)}</b>{stop.note && ' · ' + noteLabel(stop.note)} · <b>{fmtDur(stopTime(s, stop, now))}</b> <small>{trx('desde las {0}', fmtTime(stop.startedAt))}</small>{!quiet && <button type="button" className="lnk sm" onClick={() => setFixingStop(true)}>{tr('Corregir')}</button>}</div>}
-      {stop && !inSetup && <div className="stopbar">⏸ <b>{reasonText(s, stop.reason)}</b>{stop.note && ' · ' + noteLabel(stop.note)} · <b>{fmtDur(stopTime(s, stop, now))}</b>{stop.lineId === null && ' ' + tr('· todo el departamento')}{!quiet && stop.lineId === line.id && <button type="button" className="lnk sm" onClick={() => setFixingStop(true)}>{tr('Corregir')}</button>}</div>}
+      {stop && !inSetup && <div className={'stopbar' + tap} {...tapProps(goLine({ code: '', line: stop.lineId ?? '', view: 'rec', rec: 'stops', cause: stop.reason }))}>⏸ <b>{reasonText(s, stop.reason)}</b>{stop.note && ' · ' + noteLabel(stop.note)} · <b>{fmtDur(stopTime(s, stop, now))}</b>{stop.lineId === null && ' ' + tr('· todo el departamento')}{!quiet && stop.lineId === line.id && <button type="button" className="lnk sm" onClick={(e) => { e.stopPropagation(); setFixingStop(true) }}>{tr('Corregir')}</button>}</div>}
       {fixing && <RunEditor s={s} run={run} mgr={mgr} onClose={() => setFixing(false)} />}
       {fixingStop && stop && <StopEditor stop={stop} mgr={mgr} onClose={() => setFixingStop(false)} />}
       {/* what is made, big: how many units and how much they carry (with its cases, where pouches are counted); then the
           unit in hand with its average, and the time worked with the time stopped */}
       <div className={'tiles' + (rc.qty !== 'none' ? ' four' : '')}>
-        <div key={'n' + (just?.at ?? 0)} className={'tile main' + lit}><label>{rc.plural}</label><b>{mineNow.units}</b></div>
-        {rc.qty !== 'none' && <div key={'q' + (just?.at ?? 0)} className={'tile main' + lit}><label>{rc.qtyUnit}</label><b>{fmtN(mineNow.qty)}</b>{cases && <small>{casesText(cases)}</small>}</div>}
+        <div key={'n' + (just?.at ?? 0)} className={'tile main' + lit + tap} {...tapProps(goLine({ view: 'rec', rec: 'units' }))}><label>{rc.plural}</label><b>{mineNow.units}</b></div>
+        {rc.qty !== 'none' && <div key={'q' + (just?.at ?? 0)} className={'tile main' + lit + tap} {...tapProps(goLine({ view: 'rec', rec: 'units' }))}><label>{rc.qtyUnit}</label><b>{fmtN(mineNow.qty)}</b>{cases && <small>{casesText(cases)}</small>}</div>}
         <div className="tile"><label>{(rc.saved.endsWith('a') ? tr('Esta') + ' ' : tr('Este') + ' ') + runWord}</label><b>{fmtDur(current)}</b><small>{trx('prom. {0}', mineNow.units ? fmtDur(mineNow.avg) : '—')}</small></div>
-        <div className="tile"><label>{tr('Trabajando')}</label><b>{fmtDur(mineNow.working)}</b><small className={mineNow.setup ? 'both' : ''}><span className={mineNow.down ? 'red' : ''}>{trx('parado {0}', fmtDur(mineNow.down))}</span>{mineNow.setup > 0 && <span className="amber"> · {tr('set up {0}', fmtDur(mineNow.setup))}</span>}</small></div>
+        <div className={'tile' + tap} {...tapProps(goLine({ view: 'rec', rec: 'runs' }))}><label>{tr('Trabajando')}</label><b>{fmtDur(mineNow.working)}</b><small className={mineNow.setup ? 'both' : ''}><span className={mineNow.down ? 'red' : ''} {...(toRep && mineNow.down > 0 ? { role: 'link', onClick: (e: { stopPropagation: () => void }) => { e.stopPropagation(); goLine({ code: '', view: 'rec', rec: 'stops', cause: '!setup' })!() } } : {})}>{trx('parado {0}', fmtDur(mineNow.down))}</span>{mineNow.setup > 0 && <span className="amber"> · {tr('set up {0}', fmtDur(mineNow.setup))}</span>}</small></div>
       </div>
       {pallets
         ? <PalletPanel s={s} run={run} readOnly={quiet} saved={just ? savedText(line.dept, just.n - brought, rc) : ''} onDone={done} onLot={() => setPacking('lot')} onLotNow={() => setPacking('binlot')} onPart={(i) => setPacking(i)} onOrder={() => setPacking('po')} onReopen={() => setPacking('reopen')} canReopen={run.units.length > brought && !run.extra?.open?.parts.length} />

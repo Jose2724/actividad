@@ -1819,3 +1819,9 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 .pt-tag.carry{background:#ede9fe;color:#5b21b6;font-weight:700}
 .pt-tag.order{background:#e0f2fe;color:#075985}
 @media (max-width:560px){.pt-nums{grid-template-columns:repeat(2,minmax(0,1fr))}.pt-code{font-size:20px}}
+/* a number of the floor that opens its records in the Reporte (managers, the office, "Solo ver"; Jose, 2026-10-20) */
+.tap{cursor:pointer}
+.tap>label,.tc-code.tap>b{text-decoration:underline dotted;text-underline-offset:3px}
+.tap:hover{outline:2px solid var(--accent);outline-offset:-2px}
+.stopbar.tap>b:first-of-type{text-decoration:underline;text-underline-offset:3px}
+.tile .red[role=link]{text-decoration:underline;cursor:pointer}
