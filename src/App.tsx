@@ -1736,7 +1736,7 @@ function PlanDialog({ s, dept, today, unit, onClose }: { s: State; dept: Dept; t
   const change = (i: number, patch: Partial<Line>) => setLines((cur) => {
     const key = normCode(patch.code ?? cur[i].code), sibling = patch.code != null && key ? cur.find((l, k) => k !== i && normCode(l.code) === key) : undefined
     const unitNow = patch.code != null ? productOf(s, patch.code)?.spiralUnit ?? sibling?.unit : undefined
-    const next = cur.map((l, k) => (k === i ? { ...l, ...patch, ...(unitNow ? { unit: unitNow } : {}), ...(patch.code != null || patch.unit != null ? { order: undefined } : {}) } : patch.unit != null && key && normCode(l.code) === key && l.unit !== patch.unit ? { ...l, unit: patch.unit, order: undefined } : l))
+    const next = cur.map((l, k) => (k === i ? { ...l, ...patch, ...(unitNow ? { unit: unitNow } : {}), ...(patch.code != null || patch.unit != null || patch.lot != null ? { order: undefined } : {}) } : patch.unit != null && key && normCode(l.code) === key && l.unit !== patch.unit ? { ...l, unit: patch.unit, order: undefined } : l))
     return next[next.length - 1].code.trim() ? [...next, blank(date)] : next
   })
   // the same code with the same lot on two rows (the same code with another lot is another row of the program)
@@ -1751,11 +1751,12 @@ function PlanDialog({ s, dept, today, unit, onClose }: { s: State; dept: Dept; t
   // the open orders of the row's code (store.ts, programOrderChoices): in Spiral those of the unit the row says; in MFO
   // those of every word its bins are counted in (platos, copas, lb), the word of its last bins first (review of
   // 2026-10-19: a copas order of a code not binned on this device was not offered); the room's own elsewhere
-  const optsOf = (l: Line) => programOrderChoices(s, dept, l.code, date, l.unit)
+  // (an order with a lot, 2026-10-20, is offered only to the rows of that lot, and first to them)
+  const optsOf = (l: Line) => { const lot = planLot(l.lot); return programOrderChoices(s, dept, l.code, date, l.unit).filter((o) => !o.lot || o.lot === lot).sort((x, y) => Number(!!lot && y.lot === lot) - Number(!!lot && x.lot === lot)) }
   const orderOf = (l: Line): string | null => (l.order === undefined ? optsOf(l)[0]?.id ?? null : l.order)
   const optText = (o: WorkOrder) => {
     const st = orderStatus(s, o, date)
-    return [woName(o), st.state === 'abierto' ? tr('{0} disponibles', woN(availOn(o, st, date, today))) : st.state === 'completado' ? tr('completo') : tr('cerrado'), tr('de {0} {1}', woN(o.qty), orderUnitWord(o)), tr('desde {0}', shortDay(o.startDate))].join(' · ')
+    return [woName(o) + (o.lot ? ' · ' + tr('lote {0}', o.lot) : ''), st.state === 'abierto' ? tr('{0} disponibles', woN(availOn(o, st, date, today))) : st.state === 'completado' ? tr('completo') : tr('cerrado'), tr('de {0} {1}', woN(o.qty), orderUnitWord(o)), tr('desde {0}', shortDay(o.startDate))].join(' · ')
   }
   const save = () => {
     const typed = new Map(lines.filter((l) => normCode(l.code)).map((l) => [rowKey(l), l]))
@@ -1825,7 +1826,7 @@ function PlanDialog({ s, dept, today, unit, onClose }: { s: State; dept: Dept; t
         </form>
         {/* "+ Crear pedido": its room, code, unit and the day being programmed come with it; the total is left empty (no
             guessed data). Once saved, the row's program goes with it */}
-        {making && creating != null && <WorkOrderDialog s={s} dept={dept} today={today} start={{ code: making.code.trim(), unit: makingUnit, startDate: date }} onClose={() => setCreating(null)} onSaved={(id) => change(creating, { order: id })} />}
+        {making && creating != null && <WorkOrderDialog s={s} dept={dept} today={today} start={{ code: making.code.trim(), lot: making.lot.trim(), unit: makingUnit, startDate: date }} onClose={() => setCreating(null)} onSaved={(id) => change(creating, { order: id })} />}
       </div>
     </div>
   )

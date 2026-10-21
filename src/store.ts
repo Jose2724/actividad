@@ -270,7 +270,7 @@ export const WO_DONE_REF = 'act_work_orders:done'
  * code = the code as normCode writes it ("0889" and "889" are one); unit = the word it was typed in ('' from the server
  * = the room's own); createdAt = when it was typed, on the shared clock (two orders of one start day go in this order)
  */
-export type WorkOrder = { id: string; dept: Dept; code: string; wo: string; qty: number; unit: string; startDate: string; note: string; createdAt: number; createdBy: string; closedAt: number | null; closedBy: string; deleted?: boolean; updatedAt: number; syncedAt?: number }
+export type WorkOrder = { id: string; dept: Dept; code: string; lot: string; wo: string; qty: number; unit: string; startDate: string; note: string; createdAt: number; createdBy: string; closedAt: number | null; closedBy: string; deleted?: boolean; updatedAt: number; syncedAt?: number }
 /** one unit (a mezcla, a cart, a bin, a pallet) as it counted for an order: k = its place in its run (1, 2…), day = its run's work day */
 export type OrderUnitRef = { runId: string; k: number; at: number; day: string; shift: 1 | 2; n: number; by: string; line: string }
 /**
@@ -296,7 +296,7 @@ function workOrderFrom(x: Partial<WorkOrder> | null | undefined): WorkOrder | nu
   if (!x || typeof x !== 'object' || !isUuid(x.id) || !(DEPTS as unknown[]).includes(x.dept) || !isDay(String(x.startDate ?? ''))) return null
   const code = normCode(String(x.code ?? '')), qty = Number(x.qty), closedAt = Number(x.closedAt)
   if (!code || !Number.isFinite(qty)) return null
-  return { id: x.id, dept: x.dept as Dept, code, wo: String(x.wo ?? '').trim().slice(0, WO_MAX), qty, unit: String(x.unit ?? ''), startDate: String(x.startDate), note: cleanNote(x.note), createdAt: Number(x.createdAt) || 0, createdBy: String(x.createdBy ?? ''), closedAt: x.closedAt != null && Number.isFinite(closedAt) && closedAt > 0 ? closedAt : null, closedBy: String(x.closedBy ?? ''), ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
+  return { id: x.id, dept: x.dept as Dept, code, lot: String(x.lot ?? '').trim().slice(0, PLAN_LOT_MAX), wo: String(x.wo ?? '').trim().slice(0, WO_MAX), qty, unit: String(x.unit ?? ''), startDate: String(x.startDate), note: cleanNote(x.note), createdAt: Number(x.createdAt) || 0, createdBy: String(x.createdBy ?? ''), closedAt: x.closedAt != null && Number.isFinite(closedAt) && closedAt > 0 ? closedAt : null, closedBy: String(x.closedBy ?? ''), ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
 }
 /** a number as kept in an account (0 for anything that is not one) */
 function numIn(x: unknown) { const n = Number(x); return Number.isFinite(n) ? n : 0 }
@@ -2346,7 +2346,7 @@ function sealSig(s: State, o: WorkOrder, upto: string): string {
     const g = { days: [] as string[], sigs: [] as string[] }
     let h = FP0
     list.forEach((x, k) => {
-      h = fpAdd(h, JSON.stringify([x.id, x.startDate, x.createdAt, x.qty, x.closedAt, !!x.deleted, x.unit, x.code]))
+      h = fpAdd(h, JSON.stringify([x.id, x.startDate, x.createdAt, x.qty, x.closedAt, !!x.deleted, x.unit, x.code, ...(x.lot ? [x.lot] : [])]))
       if (k === list.length - 1 || list[k + 1].startDate !== x.startDate) { g.days.push(x.startDate); g.sigs.push(k + 1 + ':' + fpEnd(h)) }
     })
     f = g
@@ -2489,14 +2489,16 @@ function foldQueue(s: State, orders: WorkOrder[], today: string, complete: boole
   }
   units.sort((a, b) => a.u.at - b.u.at || (a.u.runId < b.u.runId ? -1 : a.u.runId > b.u.runId ? 1 : 0) || a.u.k - b.u.k)
   const acc = new Map<string, OrderAcc>(orders.map((o) => [o.id, { made: 0, days: new Map(), completedBy: null, runs: new Map(), lots: new Set() }]))
-  const open = (o: WorkOrder, u: OrderUnitRef) => o.startDate <= u.day && (o.closedAt == null || u.at < o.closedAt) && acc.get(o.id)!.made < o.qty
+  // (an order with a lot, Jose 2026-10-20, takes only the units of that lot; one without a lot, any lot of the code)
+  const open = (o: WorkOrder, u: OrderUnitRef, lot: string) => o.startDate <= u.day && (o.closedAt == null || u.at < o.closedAt) && acc.get(o.id)!.made < o.qty && (!o.lot || o.lot === lot)
   for (const { u, r, unit } of units) {
     // (the unit's lot as the card takes it: a pallet of two lots goes whole to the lot with most of it, since an order
     // takes a unit whole; a unit without lots is its run's lot)
-    const row = rowOfUnit(u.day, lotShares(s, r, unit, true)[0].lot)
+    const lot = lotShares(s, r, unit, true)[0].lot
+    const row = rowOfUnit(u.day, lot)
     const named = row?.orderId ? orders.find((o) => o.id === row.orderId) : undefined
-    let target = named && row && open(named, u) && (tookOfRow.get(row) ?? 0) < row.qty ? named : undefined
-    target ??= orders.find((o) => open(o, u))
+    let target = named && row && open(named, u, lot) && (tookOfRow.get(row) ?? 0) < row.qty ? named : undefined
+    target ??= orders.find((o) => open(o, u, lot))
     if (!target) continue
     if (row && row.orderId === target.id) tookOfRow.set(row, r2((tookOfRow.get(row) ?? 0) + u.n))
     const a = acc.get(target.id)!
@@ -2783,10 +2785,10 @@ function unsealOrders(ids: string[]): boolean {
 }
 
 // ---- typing, closing and taking away an order ----
-const rowOfWorkOrder = (o: WorkOrder) => ({ id: o.id, dept: o.dept, code: normCode(o.code), wo: o.wo, qty: o.qty, unit: o.unit, start_date: o.startDate, note: o.note, created_at: iso(o.createdAt || o.updatedAt), created_by: o.createdBy, closed_at: iso(o.closedAt), closed_by: o.closedBy || null, deleted: !!o.deleted, updated_at: iso(o.updatedAt), updated_by: user.get() })
+const rowOfWorkOrder = (o: WorkOrder) => ({ id: o.id, dept: o.dept, code: normCode(o.code), lot: o.lot, wo: o.wo, qty: o.qty, unit: o.unit, start_date: o.startDate, note: o.note, created_at: iso(o.createdAt || o.updatedAt), created_by: o.createdBy, closed_at: iso(o.closedAt), closed_by: o.closedBy || null, deleted: !!o.deleted, updated_at: iso(o.updatedAt), updated_by: user.get() })
 /** an order as the server sends it (null = not one this version keeps: no id, an unknown room, no code or start day) */
 function workOrderOfRow(row: Row, at: number): WorkOrder | null {
-  return workOrderFrom({ id: row.id as string, dept: row.dept as Dept, code: String(row.code ?? ''), wo: String(row.wo ?? ''), qty: Number(row.qty), unit: String(row.unit ?? ''), startDate: String(row.start_date ?? '').slice(0, 10), note: String(row.note ?? ''), createdAt: fromIso(row.created_at) ?? 0, createdBy: String(row.created_by ?? ''), closedAt: fromIso(row.closed_at), closedBy: String(row.closed_by ?? ''), deleted: !!row.deleted, updatedAt: at, ...syncedOf(row) })
+  return workOrderFrom({ id: row.id as string, dept: row.dept as Dept, code: String(row.code ?? ''), lot: String(row.lot ?? ''), wo: String(row.wo ?? ''), qty: Number(row.qty), unit: String(row.unit ?? ''), startDate: String(row.start_date ?? '').slice(0, 10), note: String(row.note ?? ''), createdAt: fromIso(row.created_at) ?? 0, createdBy: String(row.created_by ?? ''), closedAt: fromIso(row.closed_at), closedBy: String(row.closed_by ?? ''), deleted: !!row.deleted, updatedAt: at, ...syncedOf(row) })
 }
 /**
  * an order put in its place in the list (a deleted one stays, with its flag), always written the same way (the shape
@@ -2798,10 +2800,10 @@ function putWorkOrder(o: WorkOrder, was: WorkOrder | undefined) {
   push('act_work_orders', o.id, rowOfWorkOrder(o), baseOf(was, rowOfWorkOrder))
 }
 /** an order as the history names it, in the same words whatever the screen's language */
-const woKept = (o: WorkOrder) => 'Pedido de producción ' + o.code + (o.wo ? ' WO ' + o.wo : '') + ' (' + o.dept + ')'
+const woKept = (o: WorkOrder) => 'Pedido de producción ' + o.code + (o.lot ? ' lote ' + o.lot : '') + (o.wo ? ' WO ' + o.wo : '') + ' (' + o.dept + ')'
 const woAmount = (o: WorkOrder) => String(o.qty) + ' ' + unitKept(o)
 /** what the office types for an order: its room, code, total in the room's unit, start day, and optionally its WO number and a note */
-export type WorkOrderDraft = { dept: Dept; code: string; qty: number; unit: string; startDate: string; wo: string; note: string }
+export type WorkOrderDraft = { dept: Dept; code: string; lot?: string; qty: number; unit: string; startDate: string; wo: string; note: string }
 /**
  * The office types an order, or changes one (id). null = not saved: no room, no code, no quantity above 0, no start
  * day, or a unit the room does not count in. Its room, code and unit stay as typed (they decide what counts for it: to
@@ -2814,13 +2816,15 @@ export function saveWorkOrder(d: WorkOrderDraft, id?: string): string | null {
   const dept = old ? old.dept : d.dept, code = old ? old.code : normCode(String(d.code ?? '')), unit = old ? old.unit : String(d.unit ?? '')
   const qty = Number.isFinite(d.qty) ? r2(d.qty) : NaN, start = String(d.startDate ?? '')
   if (!roomKnown(dept) || !code || !(qty > 0) || !isDay(start) || (!old && !WO_UNITS[dept].includes(unit))) return null
-  const o: WorkOrder = { id: old?.id ?? uid(), dept, code, wo: String(d.wo ?? '').trim().slice(0, WO_MAX), qty, unit, startDate: start, note: cleanNote(d.note), createdAt: old?.createdAt ?? clockNow(), createdBy: old?.createdBy ?? user.get(), closedAt: old?.closedAt ?? null, closedBy: old?.closedBy ?? '', ...(old?.deleted ? { deleted: true } : {}), updatedAt: stamp(old) }
-  if (old && old.qty === o.qty && old.wo === o.wo && old.startDate === o.startDate && old.note === o.note) return old.id
+  const lot = d.lot === undefined ? old?.lot ?? '' : planLot(d.lot)
+  const o: WorkOrder = { id: old?.id ?? uid(), dept, code, lot, wo: String(d.wo ?? '').trim().slice(0, WO_MAX), qty, unit, startDate: start, note: cleanNote(d.note), createdAt: old?.createdAt ?? clockNow(), createdBy: old?.createdBy ?? user.get(), closedAt: old?.closedAt ?? null, closedBy: old?.closedBy ?? '', ...(old?.deleted ? { deleted: true } : {}), updatedAt: stamp(old) }
+  if (old && old.qty === o.qty && old.lot === o.lot && old.wo === o.wo && old.startDate === o.startDate && old.note === o.note) return old.id
   batch(() => {
     putWorkOrder(o, old)
     const log = (what: string, before: string, after: string) => logChange(o.dept, what, before, after, 'act_work_orders', o.id)
-    if (!old) { log('Pedido de producción nuevo · ' + o.dept + ' · ' + o.code, '', woAmount(o) + ' desde ' + o.startDate + (o.wo ? ' · WO ' + o.wo : '')); return }
+    if (!old) { log('Pedido de producción nuevo · ' + o.dept + ' · ' + o.code, '', woAmount(o) + (o.lot ? ' · lote ' + o.lot : '') + ' desde ' + o.startDate + (o.wo ? ' · WO ' + o.wo : '')); return }
     if (old.qty !== o.qty) log(woKept(o) + ' · Total', woAmount(old), woAmount(o))
+    if (old.lot !== o.lot) log(woKept(o) + ' · Lote', old.lot, o.lot)
     if (old.wo !== o.wo) log(woKept(o) + ' · WO', old.wo, o.wo)
     if (old.startDate !== o.startDate) log(woKept(o) + ' · Empieza', old.startDate, o.startDate)
     if (old.note !== o.note) log(woKept(o) + ' · Nota', old.note, o.note)
@@ -2862,7 +2866,7 @@ export function deleteWorkOrder(id: string): boolean {
  * keepNewer). Each side keeps what it changed: what this change did not touch is taken from the server (another
  * tablet closed the order while this one changed its note: both stand). Returns the order to keep here (null = as it is)
  */
-const WO_KEYS = ['dept', 'code', 'wo', 'qty', 'unit', 'startDate', 'note', 'createdAt', 'createdBy', 'closedAt', 'closedBy'] as const
+const WO_KEYS = ['dept', 'code', 'lot', 'wo', 'qty', 'unit', 'startDate', 'note', 'createdAt', 'createdBy', 'closedAt', 'closedBy'] as const
 const woBody = (o: WorkOrder) => [...WO_KEYS.map((k) => o[k]), !!o.deleted]
 function mergeQueuedOrder(pend: { row: Row; base?: Row | null; tried?: Row[] }, row: Row, theirs: WorkOrder): WorkOrder | null {
   const mine = workOrderOfRow(pend.row, fromIso(pend.row.updated_at) ?? 0)
@@ -2879,7 +2883,7 @@ function mergeQueuedOrder(pend: { row: Row; base?: Row | null; tried?: Row[] }, 
   if (!base) { rebase('act_work_orders', theirs.id, pend.row, row); return null }
   const pick = <K extends (typeof WO_KEYS)[number]>(k: K): WorkOrder[K] => (same(mine[k], base[k]) ? theirs[k] : mine[k])
   const gone = !!mine.deleted !== !!base.deleted ? !!mine.deleted : !!theirs.deleted
-  const merged: WorkOrder = { id: theirs.id, dept: pick('dept'), code: pick('code'), wo: pick('wo'), qty: pick('qty'), unit: pick('unit'), startDate: pick('startDate'), note: pick('note'), createdAt: pick('createdAt'), createdBy: pick('createdBy'), closedAt: pick('closedAt'), closedBy: pick('closedBy'), ...(gone ? { deleted: true } : {}), updatedAt: Math.max(mine.updatedAt, theirs.updatedAt) }
+  const merged: WorkOrder = { id: theirs.id, dept: pick('dept'), code: pick('code'), lot: pick('lot'), wo: pick('wo'), qty: pick('qty'), unit: pick('unit'), startDate: pick('startDate'), note: pick('note'), createdAt: pick('createdAt'), createdBy: pick('createdBy'), closedAt: pick('closedAt'), closedBy: pick('closedBy'), ...(gone ? { deleted: true } : {}), updatedAt: Math.max(mine.updatedAt, theirs.updatedAt) }
   if (same(woBody(merged), woBody(theirs))) { drop('act_work_orders', theirs.id); return theirs }
   if (same(woBody(merged), woBody(mine))) { rebase('act_work_orders', theirs.id, pend.row, row); return null }
   rebase('act_work_orders', theirs.id, { ...rowOfWorkOrder(merged), updated_by: String(pend.row.updated_by ?? '') || user.get() }, row)

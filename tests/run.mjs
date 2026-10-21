@@ -4457,6 +4457,22 @@ section('Pedidos de producción: la cuenta de la oficina, día por día, con su 
     ranOn('Kitchen', 'K2', '2026-10-21', [...mins(21, 8, 0, 5), ...mins(21, 18, 0, 5)])
     eq('un día de un solo turno (solo el 2): todo lo hecho es de ese turno', status(K2, '2026-10-21').byDay.map((x) => [x.made1, x.made2, x.made]), [[0, 10, 10]])
 
+    // ---- an order with a lot (Jose, 2026-10-20): only that lot counts for it; an order without a lot takes any ----
+    clock = oct(21, 5, 1)
+    const LA = m.saveWorkOrder({ dept: 'Kitchen', code: 'L1', lot: ' 6290 ', qty: 50, unit: 'mezclas', startDate: '2026-10-21', wo: '', note: '' })
+    clock = oct(21, 5, 2)
+    const LB = m.saveWorkOrder({ dept: 'Kitchen', code: 'L1', qty: 100, unit: 'mezclas', startDate: '2026-10-21', wo: '', note: '' })
+    ranOn('Kitchen', 'L1', '2026-10-21', mins(21, 8, 0, 4), { lot: '6292' })
+    ranOn('Kitchen', 'L1', '2026-10-21', mins(21, 9, 0, 3), { lot: '6290', lineId: 'WL-K2', line: 'Braiser 2' })
+    eq('el pedido con lote 6290 (el más viejo) toma solo las 3 de su lote; las 4 del 6292 van al pedido sin lote', [status(LA, '2026-10-21').made, status(LB, '2026-10-21').made], [3, 4])
+    eq('su lote se guarda sin espacios, sube con el pedido y queda en la historia', [m.workOrderOf(st(), LA).lot, m.outbox.items().find((i) => i.table === 'act_work_orders' && i.key === LA)?.row.lot, st().changes.some((c) => c.after.includes('lote 6290'))], ['6290', '6290', true])
+    m.saveWorkOrder({ dept: 'Kitchen', code: 'L1', lot: '', qty: 50, unit: 'mezclas', startDate: '2026-10-21', wo: '', note: '' }, LA)
+    eq('sin lote otra vez: toma lo más viejo de cualquier lote (las 4 del 6292 primero) y la historia dice el cambio', [status(LA, '2026-10-21').made, status(LB, '2026-10-21').made, st().changes.some((c) => c.what.endsWith('· Lote') && c.before === '6290' && c.after === '')], [7, 0, true])
+    m.saveWorkOrder({ dept: 'Kitchen', code: 'L1', lot: '6290', qty: 50, unit: 'mezclas', startDate: '2026-10-21', wo: '', note: '' }, LA)
+    const kept = JSON.parse(localStorage.getItem('act_v1')).workOrders.find((o) => o.id === LA)
+    eq('al abrir la app otra vez el pedido sigue con su lote (lo que load() lee)', kept?.lot, '6290')
+    eq('un pedido del servidor sin la columna (antes del 022) queda sin lote', m.workOrderOf(st(), LB).lot, '')
+
     // ---- the moment an order is complete ----
     clock = oct(22, 5, 0)
     const C1 = m.saveWorkOrder({ dept: 'Kitchen', code: 'C9', qty: 100, unit: 'mezclas', startDate: '2026-10-22', wo: 'WO-1', note: '' })

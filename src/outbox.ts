@@ -233,6 +233,13 @@ async function pass(): Promise<FlushResult> {
         if (it.row.order_id == null) { const { order_id: _none, ...bare } = it.row; ({ error: e } = await supabase.from(it.table).upsert(bare, { onConflict })) }
         else { skipped.add(keyOf(it)); error = tr('Falta ejecutar en Supabase el SQL 020 (pedidos de producción): un programa con pedido espera'); continue }
       }
+      // A production order carries its lot (2026-10-20) and until Jose runs 022 the server has no such column: an order
+      // with no lot loses nothing without it and goes again at once without it; one with a lot waits on its own, said
+      // on the screen (as a program's order above)
+      if (e && it.table === 'act_work_orders' && missingColumn(e) && /\blot\b/.test(e.message ?? '')) {
+        if (!it.row.lot) { const { lot: _none, ...bare } = it.row; ({ error: e } = await supabase.from(it.table).upsert(bare, { onConflict })) }
+        else { skipped.add(keyOf(it)); error = tr('Falta ejecutar en Supabase el SQL 022 (el lote del pedido): un pedido con lote espera'); continue }
+      }
       if (e) {
         console.warn('actividad sync', it.table, e)
         const v = verdict(String(e.code ?? ''), e.message ?? ''), k = keyOf(it)

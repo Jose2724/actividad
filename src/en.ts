@@ -1968,4 +1968,7 @@ export const EN: Record<string, string> = {
   'Cambios a este paro': 'Changes to this stop',
   'Otros paros de esta línea este día': 'Other stops of this line this day',
   '✎ Corregir': '✎ Correct',
+  // the lot of a production order (Jose, 2026-10-20)
+  'Con lote, solo ese lote cuenta para el pedido. Si el pedido lleva varios lotes, déjalo vacío.': 'With a lot, only that lot counts for the order. If the order takes several lots, leave it empty.',
+  'Falta ejecutar en Supabase el SQL 022 (el lote del pedido): un pedido con lote espera': 'SQL 022 (the order lot) still has to be run in Supabase: an order with a lot is waiting',
 }

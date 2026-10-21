@@ -1,6 +1,6 @@
 import { createContext, memo, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
-import { CFG, closeWorkOrder, dayOf, deleteWorkOrder, DEPTS, fmtTime, lineNameOf, NOTE_MAX, normCode, numOf, orderKind, orderQueue, ordersOf, orderStatus, orderUnitDefault, orderUnitWord, planLinesOf, productOf, reopenWorkOrder, resealGroup, saveWorkOrder, shiftsOf, stateWith, whoText, woQueue, workOrderOf, writesRoom, WO_MAX, WO_UNITS, type Change, type Dept, type OrderStatus, type Run, type State, type WorkOrder } from './store'
+import { CFG, closeWorkOrder, PLAN_LOT_MAX, dayOf, deleteWorkOrder, DEPTS, fmtTime, lineNameOf, NOTE_MAX, normCode, numOf, orderKind, orderQueue, ordersOf, orderStatus, orderUnitDefault, orderUnitWord, planLinesOf, productOf, reopenWorkOrder, resealGroup, saveWorkOrder, shiftsOf, stateWith, whoText, woQueue, workOrderOf, writesRoom, WO_MAX, WO_UNITS, type Change, type Dept, type OrderStatus, type Run, type State, type WorkOrder } from './store'
 import { bringWorkOrderRuns, loadOrderRows, syncStore } from './sync'
 import { supabase } from './supabase'
 import { clockNow } from './clock'
@@ -104,10 +104,12 @@ const DRAFT_ID = '00000000-0000-4000-8000-000000000000'
  * day come with it, and the total is left EMPTY (Jose's rule: nothing the person would type is guessed). With a start
  * day already past, it says what the room already made of the code since then (it counts at once)
  */
-export function WorkOrderDialog({ s, dept, today, order, start, onClose, onSaved }: { s: State; dept: Dept; today: string; order?: WorkOrder; start?: { code?: string; unit?: string; startDate?: string }; onClose: () => void; onSaved?: (id: string) => void }) {
+export function WorkOrderDialog({ s, dept, today, order, start, onClose, onSaved }: { s: State; dept: Dept; today: string; order?: WorkOrder; start?: { code?: string; lot?: string; unit?: string; startDate?: string }; onClose: () => void; onSaved?: (id: string) => void }) {
   const room = order?.dept ?? dept
   const [code, setCode] = useState(order?.code ?? start?.code ?? '')
   const [qty, setQty] = useState(order ? String(order.qty) : '')
+  // the lot (Jose, 2026-10-20: "falta poner el lote"): optional; with one, only that lot counts for the order
+  const [lot, setLot] = useState(order?.lot ?? start?.lot ?? '')
   // the unit tapped ('' = the code's own: the products table's in Spiral, the last bins' in MFO)
   const [picked, setPicked] = useState(order ? '' : start?.unit && WO_UNITS[room].includes(start.unit) ? start.unit : '')
   const [startDate, setStartDate] = useState(order?.startDate ?? start?.startDate ?? today)
@@ -127,13 +129,13 @@ export function WorkOrderDialog({ s, dept, today, order, start, onClose, onSaved
   // what it would count with a start day already past (worked out on a copy of the state with this order in it)
   const preview = useMemo(() => {
     if (!key || !(n > 0) || !isDate(startDate) || startDate >= today) return null
-    const draft: WorkOrder = order ? { ...order, qty: n, startDate } : { id: DRAFT_ID, dept: room, code: key, wo: '', qty: n, unit, startDate, note: '', createdAt: clockNow(), createdBy: '', closedAt: null, closedBy: '', updatedAt: 0 }
+    const draft: WorkOrder = order ? { ...order, lot: lot.trim(), qty: n, startDate } : { id: DRAFT_ID, dept: room, code: key, lot: lot.trim(), wo: '', qty: n, unit, startDate, note: '', createdAt: clockNow(), createdBy: '', closedAt: null, closedBy: '', updatedAt: 0 }
     return orderStatus({ ...s, workOrders: [...s.workOrders.filter((x) => x.id !== draft.id), draft] }, draft, today)
-  }, [s, key, n, startDate, unit, today, order, room])
+  }, [s, key, lot, n, startDate, unit, today, order, room])
   const save = () => {
     setTried(true)
     if (!key || !(n > 0) || !isDate(startDate)) return
-    const id = saveWorkOrder({ dept: room, code: key, qty: n, unit, startDate, wo, note }, order?.id)
+    const id = saveWorkOrder({ dept: room, code: key, lot, qty: n, unit, startDate, wo, note }, order?.id)
     if (!id) { setFailed(true); return }
     onSaved?.(id)
     onClose()
@@ -157,6 +159,9 @@ export function WorkOrderDialog({ s, dept, today, order, start, onClose, onSaved
               {tried && !key && <span className="err">{tr('Pon el código.')}</span>}
             </label>
           )}
+          <label>{tr('Lote')}{' '}<input value={lot} maxLength={PLAN_LOT_MAX} placeholder={tr('opcional')} autoComplete="off" aria-label={tr('Lote')} onChange={(e) => { setLot(e.target.value); setFailed(false) }} />
+            <small>{tr('Con lote, solo ese lote cuenta para el pedido. Si el pedido lleva varios lotes, déjalo vacío.')}</small>
+          </label>
           {!order && <datalist id={listId}>{s.products.map((p) => <option key={p.code} value={p.code}>{p.name}</option>)}</datalist>}
           <label>{tr('Cantidad total')}{' '}
             <span className="wo-qty"><input value={qty} inputMode="decimal" placeholder="0" autoComplete="off" aria-label={tr('Cantidad total')} onChange={(e) => { setQty(e.target.value.replace(/[^\d.,]/g, '')); setFailed(false) }} /><b>{unitWord}</b></span>
@@ -172,7 +177,7 @@ export function WorkOrderDialog({ s, dept, today, order, start, onClose, onSaved
           <label>{tr('Empieza el')}{' '}<input type="date" value={startDate} aria-label={tr('Empieza el')} onChange={(e) => { if (e.target.value) setStartDate(e.target.value) }} /></label>
           <label>{tr('N° de pedido (WO)')}{' '}<input value={wo} maxLength={WO_MAX} placeholder={tr('opcional')} autoComplete="off" aria-label={tr('N° de pedido (WO)')} onChange={(e) => setWo(e.target.value)} /></label>
           <label>{tr('Nota')}{' '}<input value={note} maxLength={NOTE_MAX} placeholder={tr('opcional')} autoComplete="off" aria-label={tr('Nota')} onChange={(e) => setNote(e.target.value)} /></label>
-          <p className="hint">{trx('Lo que {0} registre de {1} desde el {2} cuenta para este pedido, en {3}.', room, <b className="code">{key || '…'}</b>, isDate(startDate) ? shortDay(startDate) : '…', unitWord)}</p>
+          <p className="hint">{trx('Lo que {0} registre de {1} desde el {2} cuenta para este pedido, en {3}.', room, <b className="code">{(key || '…') + (lot.trim() ? ' · ' + tr('lote {0}', lot.trim()) : '')}</b>, isDate(startDate) ? shortDay(startDate) : '…', unitWord)}</p>
           {preview && <p className="hint ok">{tr('Con lo ya registrado desde ese día, a este pedido le tocan {0}: quedan {1} disponibles.', woN(preview.made), woN(preview.disponible))}{shortOf(preview) && ' ' + tr('(con los días que tiene este aparato)')}</p>}
           {others.length > 0 && <p className="hint amber">{others.length === 1 ? tr('Ya hay 1 pedido abierto de {0} en {1}: lo hecho cuenta primero para el más viejo, o para el que diga el programa del día.', key, room) : tr('Ya hay {0} pedidos abiertos de {1} en {2}: lo hecho cuenta primero para el más viejo, o para el que diga el programa del día.', others.length, key, room)}</p>}
           {failed && <p className="hint red">{tr('No se pudo guardar: revisa el código, la cantidad y el día.')}</p>}
@@ -225,7 +230,7 @@ export const OpenOrders = memo(function OpenOrders({ s, dept, today, edit, onAll
               const name = productOf(s, o.code)?.name, unit = orderUnitWord(o), old = o.startDate < today ? daysBetween(o.startDate, today) : 0
               return (
                 <tr key={o.id} style={deptVars(o.dept)}>
-                  <td className="c-head"><button type="button" className="drill code" title={tr('Ver el pedido')} onClick={() => setDetail(o.id)}>{o.code}</button>{name && <small className="pname">{name}</small>}{st.waiting && <WoStateTag o={o} st={st} />}</td>
+                  <td className="c-head"><button type="button" className="drill code" title={tr('Ver el pedido')} onClick={() => setDetail(o.id)}>{o.code}</button>{o.lot && <small className="wo-lot"> {tr('lote {0}', o.lot)}</small>}{name && <small className="pname">{name}</small>}{st.waiting && <WoStateTag o={o} st={st} />}</td>
                   <td data-label="WO">{o.wo || <span className="wo-none">{tr('sin WO')}</span>}</td>
                   <td className="num" data-label={tr('Total')}>{woN(o.qty)} <small>{unit}</small></td>
                   <td data-label={tr('Desde')} className={old ? 'old' : undefined}>{st.waiting ? tr('empieza el {0}', shortDay(o.startDate)) : startText(o, today)}{old > 0 && <small className="wo-age"> 🕒 {daysText(old)}</small>}</td>
@@ -390,7 +395,7 @@ export const OrderHistory = memo(function OrderHistory({ s, dept, today, edit, r
               return (
                 <tr key={o.id} style={deptVars(o.dept)}>
                   <td data-label={tr('Cuarto')}><DeptBadge d={o.dept} /></td>
-                  <td className="c-head"><button type="button" className="drill code" title={tr('Ver el pedido')} onClick={() => setDetail(o.id)}>{o.code}</button>{name && <small className="pname">{name}</small>}</td>
+                  <td className="c-head"><button type="button" className="drill code" title={tr('Ver el pedido')} onClick={() => setDetail(o.id)}>{o.code}</button>{o.lot && <small className="wo-lot"> {tr('lote {0}', o.lot)}</small>}{name && <small className="pname">{name}</small>}</td>
                   <td data-label="WO">{o.wo || <span className="wo-none">{tr('sin WO')}</span>}</td>
                   <td className="num" data-label={tr('Total')}>{woN(o.qty)} <small>{orderUnitWord(o)}</small></td>
                   <td data-label={tr('Desde')}>{startText(o, today)}</td>

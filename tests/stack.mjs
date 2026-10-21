@@ -650,6 +650,8 @@ section('Antes de que Jose corra el 020: un programa sin pedido sube; un pedido 
   eq('el pedido y el programa que lo nombra esperan en la tablet; el programa sin pedido escrito después sube; la pantalla nombra el SQL que falta', [waits(), await planSrv('S300'), await planSrv('S200'), m.syncStore.get().lastError], [['act_plan|' + day + '|Kitchen|S200', 'act_work_orders|' + O], [7, 'sin columna'], null, 'Falta ejecutar en Supabase el SQL 020 (pedidos de producción): un programa con pedido espera'])
   eq('bajar del servidor sigue igual (la tabla que falta no se nota), y la tablet guarda el pedido con su programa', [await m.pullAll(), m.workOrderOf(st(), O)?.wo, m.planRows(st(), day, 'Kitchen').find((r) => r.code === 'S200')?.orderId], [true, 'S-1', O])
   await runFile(db, '020_work_orders.sql'); await m.flushNow(); await sent()
+  // (and the lot of the orders, 022, which this table taken away and made again by 020 does not have)
+  await runFile(db, '022_work_order_lot.sql')
   const woSrv = async (id) => (await sql(null, 'select dept, code, wo, qty::float as qty, unit, start_date::text as start, created_by from public.act_work_orders where id = $1', [id])).rows[0] ?? null
   eq('corrido el 020: el pedido y su programa suben solos en la vuelta siguiente, y la pantalla ya no dice nada', [await woSrv(O), await planSrv('S200'), m.outbox.size(), m.syncStore.get().lastError], [{ dept: 'Kitchen', code: 'S200', wo: 'S-1', qty: 100, unit: 'mezclas', start: day, created_by: 'Jose' }, [10, O], 0, ''])
 }
