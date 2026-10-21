@@ -1865,3 +1865,10 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 /* the day's pending notices folded under one line (Jose, 2026-10-21) */
 .wo-fold{display:flex;width:100%;justify-content:space-between;align-items:center;gap:10px;text-align:left;font:inherit;cursor:pointer}
 .wo-fold span{font-weight:700;text-decoration:underline;white-space:nowrap}
+
+/* Ajustes › Asistencia: the people expected, every room and shift (Jose, 2026-10-21) */
+.att-set{max-width:480px}
+.att-set input{width:80px;min-height:40px;font-size:17px;text-align:right}
+.att-set input.chg{border-color:var(--accent);background:var(--soft);font-weight:700}
+.att-set tfoot td{font-weight:800}
+.att-set small{color:var(--muted)}

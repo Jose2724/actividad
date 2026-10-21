@@ -2078,4 +2078,14 @@ export const EN: Record<string, string> = {
   '{0} códigos quedaron pendientes de días anteriores': '{0} codes were left pending from earlier days',
   'Ocultar ▴': 'Hide ▴',
   'Ver ▾': 'Show ▾',
+  // Ajustes › Asistencia (Jose, 2026-10-21)
+  "personas esperadas por cuarto y turno": "people expected per room and shift",
+  "Asistencia · personas esperadas": "Attendance · people expected",
+  "Cuántas personas espera cada cuarto en cada turno. Con esto la tarjeta de asistencia del piso y el reporte sacan el % de faltas. Se quedan así hasta que alguien las cambie otra vez.": "How many people each room expects on each shift. The floor's attendance card and the report work out the % missing with it. They stay so until someone changes them again.",
+  "al principio {0}": "at first {0}",
+  "Hoy trabaja un solo turno: cuenta el número de ese turno.": "Only one shift works today: that shift's number counts.",
+  "✓ Guardado: ya lo ven todas las tablets.": "✓ Saved: every tablet sees it now.",
+  "Deshacer cambios": "Undo changes",
+  "✓ Guardar 1 cambio": "✓ Save 1 change",
+  "✓ Guardar {0} cambios": "✓ Save {0} changes",
 }

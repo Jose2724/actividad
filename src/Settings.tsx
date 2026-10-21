@@ -5,6 +5,7 @@ import { Employees } from './Employees'
 import { Devices } from './DevicesView'
 import { supabase } from './supabase'
 import { syncStore } from './sync'
+import { ATT_DEFAULT, attExpectedOf, attShifts, setAttExpected } from './store'
 import { BUILD } from './update'
 import { clockOffText, clockState } from './clock'
 import { fmtTime } from './clock-fmt'
@@ -19,7 +20,7 @@ import { trx } from './trx'
  * powers allow; the last one, this device, is everybody's. The dialogs that do the work are the same ones the floor
  * and the report already use, so one rule holds everywhere.
  */
-export type SettingsKey = 'shifts' | 'day' | 'lines' | 'stops' | 'program' | 'products' | 'goals' | 'people' | 'devices' | 'device'
+export type SettingsKey = 'shifts' | 'day' | 'lines' | 'stops' | 'program' | 'attendance' | 'products' | 'goals' | 'people' | 'devices' | 'device'
 const fmtN = (x: number) => Math.round(x).toLocaleString('en-US')
 
 export function settingsSections(can: (p: 'shifts' | 'day' | 'products' | 'goals' | 'people') => boolean, mgr: boolean, viewOnly: boolean, admin = false): { key: SettingsKey; title: string; sub: string }[] {
@@ -29,6 +30,7 @@ export function settingsSections(can: (p: 'shifts' | 'day' | 'products' | 'goals
     ...(mgr && !viewOnly ? [{ key: 'lines' as const, title: tr('Líneas'), sub: tr('las líneas de cada cuarto') }] : []),
     // (whoever only looks sees the list and whether it is on, without the switch)
     ...(mgr ? [{ key: 'stops' as const, title: tr('Códigos de paro'), sub: tr('Reason Codes: prender o apagar') }] : []),
+    ...(mgr ? [{ key: 'attendance' as const, title: tr('Asistencia'), sub: tr('personas esperadas por cuarto y turno') }] : []),
     ...(admin ? [{ key: 'program' as const, title: tr('Programa del día'), sub: tr('la pestaña: solo tú o todos') }] : []),
     ...(can('products') || viewOnly ? [{ key: 'products' as const, title: tr('Productos'), sub: tr('la tabla maestra') }] : []),
     ...(can('goals') ? [{ key: 'goals' as const, title: tr('Metas'), sub: tr('por turno y por cuarto') }] : []),
@@ -53,6 +55,7 @@ export function Settings({ s, now, day, name, home, mgr, admin, viewOnly, meId, 
         {sec === 'lines' && <LinesSettings s={s} />}
         {sec === 'stops' && <StopCodesSettings s={s} viewOnly={viewOnly} />}
         {sec === 'program' && <ProgramViewSettings s={s} />}
+        {sec === 'attendance' && <AttendanceSettings s={s} date={day.date} viewOnly={viewOnly} />}
         {sec === 'products' && <div className="setcard wide"><div className="sethead"><h3>{tr('Productos')}</h3></div><p className="hint">{tr('La tabla maestra de la oficina: con ella las mezclas se vuelven pouches, cajas y pallets esperados, y cada cuarto sabe cuánto lleva un carro, un pallet o una caja.')}</p><Products s={s} readOnly={!can('products')} /></div>}
         {sec === 'goals' && <GoalsSettings s={s} now={now} day={day} />}
         {sec === 'people' && <Employees meId={meId} admin={admin} />}
@@ -207,6 +210,46 @@ function LinesSettings({ s }: { s: State }) {
  * shifts at once. "Probar cómo se ve al parar" opens the very stop box the operators will get, tiles and codes, while it
  * is off too, and saves nothing: to show it to the boss without turning it on for the plant.
  */
+/**
+ * The people each room expects on each shift, all at once (Jose, 2026-10-21: "pon la tabla en Ajustes para cambiarlos
+ * de una vez"): a box per room and shift with what it says now, Guardar saves the ones changed (each one to the
+ * history, as from the attendance window on the floor). The managers and the office write it; "Solo ver" reads it.
+ * The plant's number of the shift is the rooms' added up, as the attendance total.
+ */
+function AttendanceSettings({ s, date, viewOnly }: { s: State; date: string; viewOnly: boolean }) {
+  const now = (d: Dept, k: 1 | 2) => String(attExpectedOf(s, d, k))
+  const [typed, setTyped] = useState<Record<string, string>>({})
+  const [saved, setSaved] = useState(false)
+  const val = (d: Dept, k: 1 | 2) => typed[d + k] ?? now(d, k)
+  const changed = DEPTS.flatMap((d) => ([1, 2] as const).filter((k) => typed[d + k] !== undefined && typed[d + k] !== '' && Number(typed[d + k]) !== attExpectedOf(s, d, k)).map((k) => ({ d, k, n: Number(typed[d + k]) })))
+  const total = (k: 1 | 2) => DEPTS.reduce((t, d) => t + (Number(val(d, k)) || 0), 0)
+  const save = () => { for (const x of changed) setAttExpected(x.d, x.k, x.n); setTyped({}); setSaved(true) }
+  const one = attShifts(s, date).length === 1
+  return (
+    <div className="setcard">
+      <div className="sethead"><h3>{tr('Asistencia · personas esperadas')}</h3></div>
+      <p className="hint">{tr('Cuántas personas espera cada cuarto en cada turno. Con esto la tarjeta de asistencia del piso y el reporte sacan el % de faltas. Se quedan así hasta que alguien las cambie otra vez.')}</p>
+      <div className="twrap">
+        <table className="att-set">
+          <thead><tr><th>{tr('Cuarto')}</th><th className="num">{tr('Turno 1')}</th><th className="num">{tr('Turno 2')}</th></tr></thead>
+          <tbody>
+            {DEPTS.map((d) => (
+              <tr key={d}>
+                <td><b>{d}</b><small> · {tr('al principio {0}', ATT_DEFAULT[d])}</small></td>
+                {([1, 2] as const).map((k) => <td key={k} className="num"><input value={val(d, k)} inputMode="numeric" disabled={viewOnly} aria-label={d + ' · ' + tr('Turno {0}', k)} className={typed[d + k] !== undefined && Number(typed[d + k]) !== attExpectedOf(s, d, k) ? 'chg' : ''} onChange={(e) => { setTyped({ ...typed, [d + k]: e.target.value.replace(/\D/g, '').slice(0, 4) }); setSaved(false) }} /></td>)}
+              </tr>
+            ))}
+          </tbody>
+          <tfoot><tr><td>{tr('TOTAL')}</td><td className="num">{total(1)}</td><td className="num">{total(2)}</td></tr></tfoot>
+        </table>
+      </div>
+      {one && <p className="hint">{tr('Hoy trabaja un solo turno: cuenta el número de ese turno.')}</p>}
+      {saved && !changed.length && <p className="hint ok">{tr('✓ Guardado: ya lo ven todas las tablets.')}</p>}
+      {!viewOnly && <div className="btns"><button type="button" className="btn" disabled={!changed.length} onClick={() => setTyped({})}>{tr('Deshacer cambios')}</button><button type="button" className="btn primary" disabled={!changed.length} onClick={save}>{!changed.length ? tr('✓ Guardar') : changed.length === 1 ? tr('✓ Guardar 1 cambio') : tr('✓ Guardar {0} cambios', changed.length)}</button></div>}
+    </div>
+  )
+}
+
 /**
  * The Programa del día tab (Jose, 2026-10-20: "que lo vea yo solamente ... y cuando ellos digan está bien, entonces en
  * ajuste lo prendo para que lo vean todos"): only the admin sees this card. Off, the tab is the admin's alone (marked
