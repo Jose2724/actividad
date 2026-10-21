@@ -1880,3 +1880,8 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 .hint.shiftmark{margin:4px 0 0}
 .cut-set input[type=time]{min-height:38px;font-size:16px}
 .cut-set small{color:var(--muted)}
+
+/* Agregar un registro: the shift it is for and the line's free hours in it (Jose, 2026-10-21) */
+.later-free{grid-column:1/-1;display:grid;gap:6px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px}
+.later-free .lab{font-weight:700;margin-right:4px}
+.later-free .chip.free{background:#dcfce7;border-color:#86efac;color:#166534;font-weight:700}

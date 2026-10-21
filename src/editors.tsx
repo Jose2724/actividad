@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
-import { addRunLater, addUnit, applyDraft, draftChecks, draftUnitOf, NOTE_MAX, usualFor, usualOf, wasteProblem, BIN_WORDS, binOf, binWord, byLineName, cfgFor, checkLaterPallets, DEPTS, fmtN, kindClass, LATER_MAX, laterPalletUnits, laterPoFits, laterStart, laterToOrder, MFO_WORDS, tagTwice, unitStartPo, type LaterPalletRow, plainDay, planRows, SPIRAL_UNITS, type Dept, byShip, CFG, cfgOf, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, reasonText, setUnitOrder, splitStop, store, updateRun, updateStop, type Order, type Run, type State, type Stop, lineLabel } from './store'
+import { addRunLater, lineTimes, runsOnLine, shiftAt, shiftsOf, turnOf, addUnit, applyDraft, draftChecks, draftUnitOf, NOTE_MAX, usualFor, usualOf, wasteProblem, BIN_WORDS, binOf, binWord, byLineName, cfgFor, checkLaterPallets, DEPTS, fmtN, kindClass, LATER_MAX, laterPalletUnits, laterPoFits, laterStart, laterToOrder, MFO_WORDS, tagTwice, unitStartPo, type LaterPalletRow, plainDay, planRows, SPIRAL_UNITS, type Dept, byShip, CFG, cfgOf, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, reasonText, setUnitOrder, splitStop, store, updateRun, updateStop, type Order, type Run, type State, type Stop, lineLabel } from './store'
 import { clockNow } from './clock'
 import { unitStartLot } from './report'
 import { ConfirmDialog, LotsDialog, useCan, useSure, useWho, type SureBox } from './App'
@@ -450,6 +450,8 @@ export function AddRunDialog({ s, date, dept: first, order, onClose, onAdded }: 
   const [madeBy, setMadeBy] = useState('')
   const [note, setNote] = useState('')
   const [problem, setProblem] = useState('')
+  // the shift the record is for (Jose, 2026-10-21): it says the line's free hours in it, and a tap puts them in the boxes
+  const [shiftPick, setShiftPick] = useState<1 | 2 | null>(null)
   const formId = useId()
   // Packing's pallets one by one, and the order its quick bar gives to the ones it adds (see LaterPallets). Their
   // keys are counted here, with the list, and not in LaterPallets: the list stays when Bins (or another room) is
@@ -506,6 +508,11 @@ export function AddRunDialog({ s, date, dept: first, order, onClose, onAdded }: 
     setPallets((list) => (list.every((p) => fits(p.po)) ? list : list.map((p) => (fits(p.po) ? p : { ...p, po: '' }))))
     if (!fits(quickPo)) setQuickPo('')
   }
+  // the line's free hours and its codes in the shift chosen (or the one the start hour typed is in, or the one in course)
+  const shownShift: 1 | 2 = shiftPick ?? (Number.isFinite(startAt) ? shiftAt(shiftsOf(s, day, dept), startAt) : (turnOf(s, day, clockNow(), dept).shift || 1) as 1 | 2)
+  const times = line && day ? lineTimes(s, line.id, day, dept, shownShift, clockNow()) : { window: { from: 0, to: 0 }, free: [], busy: [] }
+  const hm = (at: number) => { const d = new Date(at); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') }
+  const busyText = (r: Run) => r.code + ' · ' + (r.date !== day ? tr('desde el {0} ', r.date.slice(5).split('-').reverse().join('/')) : '') + fmtTime(r.startedAt) + ' – ' + (r.endedAt ? fmtTime(r.endedAt) : tr('sigue en curso'))
   const save = () => {
     if (!ok || !line) return
     const refList = refs.split(/[,;\s]+/).map((t) => t.trim()).filter(Boolean)
@@ -517,7 +524,7 @@ export function AddRunDialog({ s, date, dept: first, order, onClose, onAdded }: 
       : cfg.qty === 'none' || per == null ? [] : [{ key: 'each', n: per, usual, unit: cfg.qtyUnit, per: unit }]
     sure.check(checks, () => {
       const id = addRunLater({ dept, lineId: line.id, code, lot, date: day, startedAt: startAt, endedAt: endAt, units, perUnit, waste: cfg.waste ? waste : 0, bin: dept === 'Spiral' ? '' : word, measure: dept === 'Spiral' && (word === 'lb' || word === 'cajas') ? word : '', madeBy, note })
-      if (!id) { setProblem(tr('A esas horas la línea tenía otro código. Cambia la línea o las horas.')); return }
+      if (!id) { const c = runsOnLine(s, line.id, startAt, endAt ?? startAt + Math.max(0, units.length - 1) * 60_000); setProblem(c.length ? tr('A esas horas {0} tenía {1}. Escoge una hora libre de abajo, u otra línea.', lineLabel(line.name), c.map(busyText).join(' · ')) : tr('A esas horas la línea tenía otro código. Cambia la línea o las horas.')); return }
       onAdded(id)
     })
   }
@@ -567,6 +574,14 @@ export function AddRunDialog({ s, date, dept: first, order, onClose, onAdded }: 
             <label>{tr('Fecha')}{' '}<input type="date" value={day} onChange={(e) => { setDay(e.target.value); setProblem('') }} /></label>
             <label>{tr('Empezó')}{' '}<input type="time" value={from} onChange={(e) => { setFrom(e.target.value); setProblem('') }} /></label>
             <label>{tr('Terminó')} <small>{tr('(si no, con la última unidad)')}</small><input type="time" value={to} onChange={(e) => { setTo(e.target.value); setProblem('') }} /></label>
+            {line && day && (
+              <div className="later-free">
+                <div className="chips"><span className="lab">{tr('¿Para qué turno?')}</span>{([1, 2] as const).map((k) => <button key={k} type="button" className={'chip' + (shownShift === k ? ' on' : '')} aria-pressed={shownShift === k} onClick={() => setShiftPick(k)}>{tr('Turno {0}', k)}</button>)}</div>
+                <small>{trx('{0} en el Turno {1} ({2} – {3}):', <b>{lineLabel(line.name)}</b>, shownShift, fmtTime(times.window.from), fmtTime(times.window.to))}</small>
+                {times.free.length ? <div className="chips">{times.free.map((x) => <button key={x.from} type="button" className="chip free" onClick={() => { setFrom(hm(x.from)); setTo(hm(x.to)); setProblem('') }}>{tr('Libre {0} – {1}', fmtTime(x.from), fmtTime(x.to))}</button>)}</div> : <small className="red">{tr('No tuvo ningún rato libre en ese turno.')}</small>}
+                {times.busy.length > 0 && <small>{tr('Ocupada: {0}', times.busy.map(busyText).join(' · '))}</small>}
+              </div>
+            )}
             {!byPallet && <label>{cfg.saved.endsWith('a') ? tr('Cuántas {0}', plural) : tr('Cuántos {0}', plural)}{' '}<input value={count} onChange={(e) => setCount(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder={tr('ej. 6')} autoComplete="off" /></label>}
             {!byPallet && cfg.qty !== 'none' && <label>{tr('{0} por {1}', cfg.qtyUnit, unit)} <small>{tr('(si se sabe)')}</small><input value={each} onChange={(e) => setEach(e.target.value.replace(/[^\d.,]/g, ''))} inputMode="decimal" autoComplete="off" /></label>}
             {!byPallet && cfg.refLabel && <label>{cfg.refLabel} <small>{tr('(en orden, separados por coma)')}</small><input value={refs} onChange={(e) => setRefs(e.target.value)} placeholder={tr('ej. 1741, 1742')} autoComplete="off" /></label>}

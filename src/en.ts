@@ -2110,4 +2110,13 @@ export const EN: Record<string, string> = {
   "el de la planta": "the plant's",
   "El de la planta": "The plant's",
   "Tiene que ser a menos de 4 horas del cambio de la planta.": "It has to be within 4 hours of the plant's shift change.",
+  // Agregar un registro: free hours (Jose, 2026-10-21)
+  "A esas horas {0} tenía {1}. Escoge una hora libre de abajo, u otra línea.": "At those hours {0} had {1}. Pick a free time below, or another line.",
+  "¿Para qué turno?": "Which shift is it for?",
+  "{0} en el Turno {1} ({2} – {3}):": "{0} in Shift {1} ({2} – {3}):",
+  "Libre {0} – {1}": "Free {0} – {1}",
+  "No tuvo ningún rato libre en ese turno.": "It had no free time in that shift.",
+  "Ocupada: {0}": "Busy: {0}",
+  "desde el {0} ": "since {0} ",
+  "sigue en curso": "still running",
 }

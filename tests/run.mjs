@@ -5048,6 +5048,24 @@ section('Cada cuarto cambia de turno por su cuenta: RTE se queda hasta las 3:30,
   const again = await device('roomcut-again', { seed: JSON.parse(disks.get('roomcut').get('act_v1')), user: 'Jose' })
   eq('al volver a abrir: el cambio de RTE sigue (3:30) y el de Packing quitado', again.use((m) => [m.roomMark(m.store.get(), '2026-10-21', 'RTE')?.how, m.roomMark(m.store.get(), '2026-10-21', 'Packing')]), ['fin', undefined])
 }
+section('Agregar un registro: qué tenía la línea a esa hora y sus horas libres del turno (Jose, 2026-10-21)')
+{
+  const fr = await device('freehours', { user: 'Jose' })
+  fr.use((m) => {
+    const st = () => m.store.get(), D = '2026-10-22', at = (h, mi = 0) => oct(22, h, mi)
+    m.applyRemote('act_lines', { id: 'FL3', dept: 'RTE', name: 'Línea 3', deleted: false, updated_at: iso(at(4)), updated_by: 'x' })
+    m.applyRemote('act_runs', runRow({ id: 'fr-a', dept: 'RTE', lineId: 'FL3', line: 'Línea 3', code: '2286', date: D, startedAt: at(7), endedAt: at(9, 30) }))
+    m.applyRemote('act_runs', runRow({ id: 'fr-b', dept: 'RTE', lineId: 'FL3', line: 'Línea 3', code: '0889', date: D, startedAt: at(12), endedAt: null }))
+    clock = at(14)
+    const t = m.lineTimes(st(), 'FL3', D, 'RTE', 1, clock)
+    eq('Turno 1 de la Línea 3: libre antes de las 7, de 9:30 a 12; ocupada por 2286 y por 0889, que sigue en curso', [t.free.map((x) => [new Date(x.from).getHours() * 60 + new Date(x.from).getMinutes(), new Date(x.to).getHours() * 60 + new Date(x.to).getMinutes()]), t.busy.map((r) => r.code)], [[[210, 420], [570, 720]], ['2286', '0889']])
+    eq('lo que la ocupa a las 13:00 es el 0889 que sigue en curso (lo que el aviso nombra)', m.runsOnLine(st(), 'FL3', at(13), at(13, 30)).map((r) => r.code), ['0889'])
+    eq('a las 10:00 cabe un registro: no se cruza con nada', m.runsOnLine(st(), 'FL3', at(10), at(11)).length, 0)
+    const id = m.addRunLater({ dept: 'RTE', lineId: 'FL3', code: '7777', date: D, startedAt: at(10), endedAt: at(11), units: [{ qty: 240 }] })
+    eq('y se agrega en ese rato libre', !!id, true)
+    eq('el Turno 2 todavía no empieza (son las 2:00 PM): no tiene horas libres para agregar', m.lineTimes(st(), 'FL3', D, 'RTE', 2, clock).free.length, 0)
+  })
+}
 section('Programa del día: la pestaña del admin, prendida para todos desde Ajustes (Jose, 2026-10-20)')
 {
   const pv = await device('program-view', { user: 'Jose' })

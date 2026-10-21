@@ -1323,6 +1323,30 @@ export function reopenRun(id: string): boolean {
  * report, Avance, the orders and what they lack, a PO's pallets and the search count them like any other. An order
  * this device does not know, or one given to something that does not fill orders (a bin), is dropped: never invented.
  */
+/**
+ * What keeps a record added after the fact off a line (Jose, 2026-10-21: "me dice que la línea estaba ocupada a esa
+ * hora ... sería bueno que la app diga la hora disponible y para qué turno la quiero agregar"): the runs of the line
+ * in those hours. A run still going (one left open, even from another day) takes the line up to now and beyond.
+ */
+export const runsOnLine = (s: State, lineId: string, a: number, b: number) => s.runs.filter((r) => !r.deleted && r.lineId === lineId && r.startedAt < b && (r.endedAt ?? Infinity) > a).sort((x, y) => x.startedAt - y.startedAt)
+/** a shift's stretch of a day of work, by its room's own hours (its hand-over, see ShiftMark) */
+export function shiftWindow(s: State, date: string, dept: Dept, k: 1 | 2): { from: number; to: number } {
+  const h = shiftsOf(s, date, dept), { toFirst, toSecond } = shiftCuts(h), d0 = new Date(date + 'T00:00:00').getTime(), at = (m: number) => d0 + Math.round(m * 60_000)
+  if (h.only) return { from: at(toFirst), to: at(toFirst) + 86_400_000 }
+  return k === 1 ? { from: at(toFirst), to: at(toSecond) } : { from: at(toSecond), to: at(toFirst) + 86_400_000 }
+}
+/**
+ * The stretches of a shift in which a line had no code (up to now: what has not happened yet is not free to add), and
+ * the runs that filled the rest. A stretch shorter than a minute is left out
+ */
+export function lineTimes(s: State, lineId: string, date: string, dept: Dept, k: 1 | 2, now: number) {
+  const w = shiftWindow(s, date, dept, k), end = Math.min(w.to, now), busy = runsOnLine(s, lineId, w.from, end)
+  const free: { from: number; to: number }[] = []
+  let cur = w.from
+  for (const r of busy) { if (r.startedAt - cur >= 60_000) free.push({ from: cur, to: Math.min(r.startedAt, end) }); cur = Math.max(cur, r.endedAt ?? Infinity) }
+  if (end - cur >= 60_000) free.push({ from: cur, to: end })
+  return { window: w, free: free.filter((x) => x.to - x.from >= 60_000), busy }
+}
 export type LaterRun = { dept: Dept; lineId: string; code: string; lot?: string; date: string; startedAt: number; endedAt?: number | null; units?: { qty: number | null; ref?: string; lots?: LotPart[]; po?: string; note?: string }[]; perUnit?: number | null; waste?: number | string; bin?: string; measure?: Measure | ''; madeBy?: string; note?: string }
 export function addRunLater(x: LaterRun): string {
   const line = state.lines.find((l) => l.id === x.lineId && !l.deleted), code = x.code.trim().toUpperCase(), list = x.units ?? []
