@@ -2771,7 +2771,7 @@ export function StopDialog({ title, intro, reasons, setup, codes, onClose, onPic
   const other = !codes && reason === 'Otra', isSetup = reason === SETUP
   const ok = codes ? codeReady(reason, note) : other ? note.trim().length > 0 : !!reason
   return (
-    <div className="veil" onClick={onClose}>
+    <div className={'veil' + (codes ? ' rc-veil' : '')} onClick={onClose}>
       <div className={'dlg' + (codes ? ' rc-dlg' : '')} onClick={(e) => e.stopPropagation()}>
         <h3>{title}</h3>
         {intro && <p className="rc-try">{intro}</p>}

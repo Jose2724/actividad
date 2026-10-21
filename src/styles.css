@@ -111,6 +111,9 @@ input[type=text],input:not([type]),input[type=date]{min-height:48px;padding:0 12
 /* a window never grows past the screen: it scrolls inside, with its title and its buttons always in sight (a
    correction with twenty units on a phone used to push Cancelar and Guardar off the screen, 2026-10-17) */
 .dlg{background:var(--surface);border-radius:18px;padding:18px;width:min(560px,100%);display:grid;gap:12px;max-height:calc(100vh - 24px);max-height:calc(100dvh - 24px);overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+/* the code picker's box stands at the top: centred, it grew when a code was chosen and moved up under the finger, and a
+   second tap fell on another code (Jose, 2026-10-20) */
+.veil.rc-veil{align-items:flex-start}
 .dlg>h3{position:sticky;top:-18px;margin:-18px -18px 0;padding:18px 18px 8px;background:var(--surface);z-index:2}
 .dlg>.dbtns{position:sticky;bottom:-18px;margin:0 -18px -18px;padding:12px 18px 18px;background:var(--surface);border-top:1px solid var(--line);z-index:2}
 .dlg h3{font-size:20px}

@@ -331,7 +331,7 @@ export function StopEditor({ stop, mgr, onClose }: { stop: Stop; mgr: boolean; o
     onClose()
   }
   return (
-    <div className="veil" onClick={onClose}>
+    <div className={'veil' + (codes ? ' rc-veil' : '')} onClick={onClose}>
       <div className={'dlg' + (codes ? ' rc-dlg' : '')} onClick={(e) => e.stopPropagation()}>
         <h3>{trx('Corregir paro · {0}', stop.dept)}</h3>
         {codes ? (
@@ -390,7 +390,7 @@ function StopSplitter({ stop, onBack, onClose }: { stop: Stop; onBack: () => voi
   const own = reasonText(st, stop.reason)
   const go = () => { if (ok && splitStop(stop.id, cut, second, note)) onClose() }
   return (
-    <div className="veil" onClick={onClose}>
+    <div className={'veil' + (codes ? ' rc-veil' : '')} onClick={onClose}>
       <div className={'dlg' + (codes ? ' rc-dlg' : '')} onClick={(e) => e.stopPropagation()}>
         <h3>{trx('Dividir paro · {0}', stop.dept)}</h3>
         {total < 2 ? <p>{tr('Este paro dura menos de dos minutos: no hay tiempo que dividir.')}</p> : (
