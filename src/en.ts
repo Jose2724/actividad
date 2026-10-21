@@ -2074,4 +2074,8 @@ export const EN: Record<string, string> = {
   "⬇ Descargar Excel": "⬇ Download Excel",
   "📄 Hacer el PDF": "📄 Make the PDF",
   "✉ Preparar para enviar": "✉ Get it ready to send",
+  // the pending notices folded (Jose, 2026-10-21)
+  '{0} códigos quedaron pendientes de días anteriores': '{0} codes were left pending from earlier days',
+  'Ocultar ▴': 'Hide ▴',
+  'Ver ▾': 'Show ▾',
 }

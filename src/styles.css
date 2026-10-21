@@ -1861,3 +1861,7 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 .part.on{border-color:var(--accent);background:var(--soft)}
 .part input{width:22px;height:22px;margin-top:2px;flex:none;accent-color:var(--accent)}
 .part span{display:grid;gap:2px}.part small{color:var(--muted)}
+
+/* the day's pending notices folded under one line (Jose, 2026-10-21) */
+.wo-fold{display:flex;width:100%;justify-content:space-between;align-items:center;gap:10px;text-align:left;font:inherit;cursor:pointer}
+.wo-fold span{font-weight:700;text-decoration:underline;white-space:nowrap}

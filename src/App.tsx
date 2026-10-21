@@ -1640,6 +1640,8 @@ function PlanCard({ s, dept, date, mgr }: { s: State; dept: Dept; date: string; 
   const planned = rows.filter((r) => r.planned > 0), extra = rows.filter((r) => !r.planned && r.done > 0)
   // (worked out once per picture of the store and day: the card is drawn every second for the clock)
   const prev = useMemo(() => prevPending(s, dept, date), [s, dept, date])
+  // (more than one notice is folded under one line, open with a tap: Jose, 2026-10-21 "que se oculte, está muy largo")
+  const [prevOpen, setPrevOpen] = useState(false)
   if (!planned.length && !prev.length && !mgr) return null
   const cfg = CFG[dept], byCode = dept === 'Spiral' || dept === 'MFO', unit = byCode ? tr('la unidad de cada código') : cfg.qty === 'none' ? cfg.plural.toLowerCase() : cfg.qtyUnit
   const yesterday = dayBefore(date)
@@ -1659,7 +1661,8 @@ function PlanCard({ s, dept, date, mgr }: { s: State; dept: Dept; date: string; 
       </div>
       {/* what the last day with a program left pending of each code: said, never filled in (Jose, 2026-10-19). With an
           order it went back to it: the order's link and what it has available now */}
-      {prev.map((p) => {
+      {prev.length > 1 && <button type="button" className="wonotice wo-fold" aria-expanded={prevOpen} onClick={() => setPrevOpen(!prevOpen)}>{'⚠ '}{tr('{0} códigos quedaron pendientes de días anteriores', prev.length)}<span>{prevOpen ? tr('Ocultar ▴') : tr('Ver ▾')}</span></button>}
+      {(prev.length <= 1 || prevOpen) && prev.map((p) => {
         const o = p.orderId ? workOrderOf(s, p.orderId) : undefined, st = o && !o.deleted ? orderStatus(s, o, date) : null
         const w = p.was ? workOrderOf(s, p.was) : undefined, wst = w && !w.deleted ? orderStatus(s, w, date) : null
         // (the row's lot with its code: a code may have a row per lot, 2026-10-20)
