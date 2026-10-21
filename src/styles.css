@@ -1852,4 +1852,5 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 .att-barcol i{display:block;height:100%;background:#f59e0b}.att-barcol i.red{background:#dc2626}
 .att-names{display:flex;flex-wrap:wrap;gap:6px 12px;padding:6px 0 10px;border-bottom:1px solid var(--line)}
 .att-names .gone{text-decoration:line-through;color:var(--muted)}
-@media (max-width:560px){.att-row{grid-template-columns:minmax(90px,1.3fr) 44px 44px 50px minmax(40px,1fr);font-size:14px}.att-sum b{font-size:20px}}
+@media (max-width:560px){.att-row{grid-template-columns:minmax(84px,1.2fr) 62px 58px 50px minmax(30px,1fr);gap:6px;font-size:14px}.att-row.head{font-size:10px;letter-spacing:0}.att-sum b{font-size:20px}}
+.att-gone .lnk{margin-left:8px}
