@@ -4857,6 +4857,104 @@ section('MFO: un bin con varios lotes, corregido en Corregir (2026-10-20)')
 }
 
 // =====================================================================================================================
+//  The plant's Reason Codes (Jose, 2026-10-20: the list of his new boss; a manager's switch in Ajustes)
+// =====================================================================================================================
+section('Códigos de paro (Reason Codes): apagados todo como siempre; encendidos, cada paro lleva un código de la lista')
+{
+  const rc = await device('codes', { user: 'Jose' })
+  rc.use((m) => {
+    const st = () => m.store.get()
+    const code = (k) => m.codeReason(m.REASON_CODES.find((c) => c.code === k))
+    eq('la lista: 37 códigos, cada uno con su definición, su familia y su categoría; los PLN son planeados', [m.REASON_CODES.length, new Set(m.REASON_CODES.map((c) => c.code)).size, m.REASON_CODES.every((c) => c.def && c.label && m.REASON_CATS.some((k) => k.key === c.cat)), m.REASON_CODES.filter((c) => c.planned).map((c) => c.code), m.REASON_CODES.filter((c) => c.family === 'Quality').map((c) => c.code), m.REASON_CODES.filter((c) => c.family === 'Performance').map((c) => c.code)], [37, 37, true, ['PLN-01', 'PLN-02', 'PLN-03', 'PLN-04', 'PLN-05', 'PLN-06'], ['QAL-01', 'QAL-02', 'QAL-03', 'QAL-04'], ['PER-01', 'PER-02', 'PER-03', 'PER-04']])
+    eq('un paro con código se guarda como su código y su nombre en español; PLN-03 es el Set up de siempre', [code('EQP-01'), code('OTH-01'), code('PLN-03'), m.reasonCodeOf('Set up')?.code, m.reasonCodeOf('EQP-01 Falla mecánica')?.code, m.reasonCodeOf('Break'), m.reasonCodeOf('XYZ-01 algo')], ['EQP-01 Falla mecánica', 'OTH-01 Otro (explicar en el detalle)', 'Set up', 'PLN-03', 'EQP-01', undefined, undefined])
+    eq('un código escrito a mano (o en inglés) es el mismo código; con palabras propias se queda como se escribió', [m.tidyReason('RTE', 'eqp-01'), m.tidyReason('RTE', 'EQP 01'), m.tidyReason('RTE', 'EQP-01 Mechanical failure'), m.tidyReason('RTE', 'eqp-01 falla mecanica'), m.tidyReason('RTE', 'pln-03'), m.tidyReason('RTE', 'EQP-01 se trabó la banda'), m.tidyReason('RTE', 'break')], ['EQP-01 Falla mecánica', 'EQP-01 Falla mecánica', 'EQP-01 Falla mecánica', 'EQP-01 Falla mecánica', 'Set up', 'EQP-01 se trabó la banda', 'Break'])
+    clock = T0
+    m.addLine('RTE', 'Línea 1')
+    const line = st().lines.find((l) => l.dept === 'RTE')
+    m.startRun(line, 'A100', '6283', DAY, 240)
+    const run = () => st().runs.find((r) => r.lineId === line.id)
+    eq('al principio están apagados', st().reasonCodes, { on: false, updatedAt: 0 })
+    clock = T0 + 10 * M
+    eq('apagados: un paro con una causa de las de siempre, como siempre', m.startStop('RTE', line.id, 'Break', ''), true)
+    const old = st().stops.find((x) => x.reason === 'Break')
+    clock = T0 + 20 * M; m.endStop(old.id)
+    clock = T0 + 21 * M; m.setReasonCodes(true)
+    const sent = () => m.outbox.items().filter((i) => i.table === 'act_targets' && i.key === 'opt:reasoncodes')
+    eq('se encienden: sube con lo que fija el manager (1 = encendidos) y queda en el historial', [st().reasonCodes.on, sent().map((i) => [i.row.dept, i.row.per_hour]), st().changes.filter((c) => c.refKey === 'opt:reasoncodes').map((c) => [c.what, c.before, c.after, c.dept])], [true, [['opt:reasoncodes', 1]], [['Códigos de paro', 'apagados', 'encendidos', null]]])
+    m.setReasonCodes(true)
+    eq('decir lo que ya está no manda nada', sent().length, 1)
+    clock = T0 + 30 * M
+    const n0 = st().stops.length
+    eq('encendidos: una causa que no es de la lista no para la línea, ni escrita a mano ("Otra")', [m.startStop('RTE', line.id, 'Break', ''), m.startStop('RTE', line.id, 'se trabó la banda', ''), m.startStop('RTE', line.id, '', ''), st().stops.length], [false, false, false, n0])
+    eq('con un código sí, y el detalle es opcional', [m.startStop('RTE', line.id, 'EQP-01 Falla mecánica', '  banda rota '), st().stops.at(-1).reason, st().stops.at(-1).note], [true, 'EQP-01 Falla mecánica', 'banda rota'])
+    clock = T0 + 50 * M; m.endStop(st().stops.at(-1).id)
+    clock = T0 + 60 * M
+    eq('OTH-01 sin detalle no se acepta; con detalle sí', [m.startStop('RTE', line.id, code('OTH-01'), ''), m.startStop('RTE', line.id, code('OTH-01'), '   '), m.reasonProblem(st(), 'RTE', code('OTH-01'), ''), m.startStop('RTE', line.id, code('OTH-01'), 'se fue el agua')], [false, false, 'Con OTH-01 hay que escribir el detalle.', true])
+    const oth = st().stops.at(-1)
+    clock = T0 + 65 * M; m.endStop(oth.id)
+    eq('al corregir, OTH-01 no se queda sin su detalle', [m.updateStop(oth.id, { note: '' }), st().stops.find((x) => x.id === oth.id).note], [false, 'se fue el agua'])
+    clock = T0 + 70 * M; m.startStop('RTE', line.id, code('PLN-01'), '')
+    clock = T0 + 100 * M; m.endStop(st().stops.at(-1).id)
+    // PLN-03 chosen in the list is the Set up: counted apart, not as stopped, and kept as 'Set up' (016's trigger looks for it)
+    clock = T0 + 110 * M
+    eq('PLN-03 de la lista empieza un Set up: se guarda "Set up"', [m.startStop('RTE', line.id, code('PLN-03'), ''), st().stops.at(-1).reason], [true, 'Set up'])
+    clock = T0 + 125 * M; m.endStop(st().stops.at(-1).id)
+    clock = T0 + 130 * M; m.startStop('RTE', line.id, 'qal-04', '')
+    eq('un código escrito a mano se guarda con el nombre de la lista', st().stops.at(-1).reason, 'QAL-04 Proceso fuera de control')
+    clock = T0 + 136 * M; m.endStop(st().stops.at(-1).id)
+    clock = T0 + 140 * M
+    const rs = m.runStats(st(), run(), clock)
+    eq('el Set up de PLN-03 cuenta aparte; lo demás es tiempo parado, código por código', [rs.setup / M, rs.down / M, Object.fromEntries(Object.entries(rs.reasons).map(([k, v]) => [k, v / M]))], [15, 71, { Break: 10, 'EQP-01 Falla mecánica': 20, 'OTH-01 Otro (explicar en el detalle)': 5, 'PLN-01 Break / comida': 30, 'QAL-04 Proceso fuera de control': 6 }])
+    // the stop of before the codes keeps its cause: nobody rewrites the history
+    eq('el paro de antes sigue con su causa escrita', st().stops.find((x) => x.id === old.id).reason, 'Break')
+    eq('se le puede corregir la hora sin tocar su causa', [m.updateStop(old.id, { endedAt: T0 + 19 * M }), st().stops.find((x) => x.id === old.id).reason, st().stops.find((x) => x.id === old.id).endedAt], [true, 'Break', T0 + 19 * M])
+    m.updateStop(old.id, { endedAt: T0 + 20 * M })
+    eq('pero si se le cambia la causa, tiene que ser un código', [m.updateStop(old.id, { reason: 'Limpieza' }), st().stops.find((x) => x.id === old.id).reason], [false, 'Break'])
+    // the report: a Pareto by code, the time planned and not, by OEE family; the stop of before is "Sin código"
+    const rep = m.reportOf(st(), DAY, clock)
+    const p = m.paretoOf(rep)
+    eq('Pareto por código: el de más tiempo primero, con sus veces y sus minutos', p.rows.map((r) => [r.code, r.times, r.ms / M]), [['PLN-01', 1, 30], ['EQP-01', 1, 20], ['PLN-03', 1, 15], ['', 1, 10], ['QAL-04', 1, 6], ['OTH-01', 1, 5]])
+    eq('planeado contra no planeado, sin código aparte, y por familia OEE; todo suma el Parado más el Set up', [p.planned / M, p.unplanned / M, p.uncoded / M, p.families.map((f) => [f.family, f.ms / M]), p.total / M, (rep.down + rep.setup) / M], [45, 31, 10, [['Availability', 70], ['Performance', 0], ['Quality', 6]], 86, 86])
+    eq('el reporte del día tiene paros con código', m.hasCodedStops(rep), true)
+    eq('la hoja Paros del Excel lleva código, planeado o no, familia y categoría, al final', [m.CODE_HEADS(), m.codeCells('EQP-01 Falla mecánica'), m.codeCells('Set up'), m.codeCells('PLN-01 Break / comida'), m.codeCells('Break')], [['Código', 'Planeado / No planeado', 'Familia', 'Categoría'], ['EQP-01', 'No planeado', 'Disponibilidad', 'Equipo'], ['PLN-03', 'Planeado', 'Disponibilidad', 'Set up / cambio'], ['PLN-01', 'Planeado', 'Disponibilidad', 'Paro planeado'], ['Sin código', '', '', '']])
+    eq('en pantalla: el Set up con su código mientras están encendidos; una causa de antes como era', [m.reasonText(st(), 'Set up'), m.reasonText(st(), 'EQP-01 Falla mecánica'), m.reasonText(st(), 'Break')], ['PLN-03 · Cambio de producto (Set up)', 'EQP-01 · Falla mecánica', 'Break'])
+    // two stops covering the same moment on a line: that moment goes to the one that began first (as always)
+    clock = T0 + 150 * M; m.startStop('RTE', line.id, code('MAT-01'), '')
+    clock = T0 + 155 * M; m.startStop('RTE', null, code('LAB-01'), '')
+    clock = T0 + 160 * M; for (const x of st().stops.filter((y) => !y.endedAt)) m.endStop(x.id)
+    const both = m.runStats(st(), run(), clock).reasons
+    eq('un rato cubierto por dos paros cuenta una vez, para el que empezó primero', [both['MAT-01 Falta de material'] / M, both['LAB-01 Falta de personal'] ?? 0], [10, 0])
+    // dividing a stop: the rest takes a code too
+    const mat = st().stops.find((x) => x.reason === 'MAT-01 Falta de material')
+    eq('al dividir, el resto tiene que llevar un código (y OTH-01 su detalle)', [m.splitStop(mat.id, T0 + 153 * M, 'Break'), m.splitStop(mat.id, T0 + 153 * M, code('OTH-01'), ''), !!m.splitStop(mat.id, T0 + 153 * M, code('MAT-04'), 'montacargas')], ['', '', true])
+    // off again: every stop as before
+    clock = T0 + 170 * M; m.setReasonCodes(false)
+    eq('se apagan: sube 0, queda en el historial, y las causas de siempre vuelven', [st().reasonCodes.on, sent().map((i) => i.row.per_hour), st().changes.filter((c) => c.refKey === 'opt:reasoncodes').map((c) => c.after), m.startStop('RTE', line.id, 'Break', ''), m.reasonText(st(), 'Set up')], [false, [0], ['encendidos', 'apagados'], true, 'Set up'])
+    m.endStop(st().stops.at(-1).id)
+    eq('apagados, el reporte sigue mostrando el Pareto porque el día tiene paros con código', m.hasCodedStops(m.reportOf(st(), DAY, clock)), true)
+    // another manager's word arrives; an older one does not change it
+    m.applyRemote('act_targets', { dept: 'opt:reasoncodes', per_hour: 1, per_shift: null, updated_at: iso(T0 + 180 * M), updated_by: 'Edgar' })
+    eq('lo que dice otro manager llega a este aparato', st().reasonCodes, { on: true, updatedAt: T0 + 180 * M })
+    m.applyRemote('act_targets', { dept: 'opt:reasoncodes', per_hour: 0, per_shift: null, updated_at: iso(T0 + 175 * M), updated_by: 'Edgar' })
+    eq('una versión vieja no lo cambia', st().reasonCodes.on, true)
+    eq('la fila de los códigos no es la meta de nadie', [st().targets, st().turnGoals, st().lineTargets], [[], [], []])
+  })
+  // the switch is a stored field: read back on every reload (the rule of 2026-10-17)
+  const saved = JSON.parse(disks.get('codes').get('act_v1'))
+  const back = await device('codes-again', { seed: saved, user: 'Jose' })
+  eq('al volver a abrir: los códigos siguen encendidos, con su hora', back.use((m) => m.store.get().reasonCodes), { on: true, updatedAt: T0 + 180 * M })
+  const before = await device('codes-before', { seed: { ...saved, reasonCodes: undefined }, user: 'Jose' })
+  eq('lo guardado por una versión de antes, sin el campo: apagados', before.use((m) => m.store.get().reasonCodes), { on: false, updatedAt: 0 })
+  // a switch waiting to go up loses to a newer one on the server, and the history says so
+  const q = await device('codes-queue', { user: 'Jose' })
+  q.use((m) => {
+    clock = T0 + 200 * M; m.setReasonCodes(true)
+    m.applyRemote('act_targets', { dept: 'opt:reasoncodes', per_hour: 0, per_shift: null, updated_at: iso(T0 + 201 * M), updated_by: 'Edgar' })
+    eq('el servidor lo cambió después: el de aquí sale de la cola, se queda lo del servidor y se dice', [m.outbox.items().filter((i) => i.key === 'opt:reasoncodes').length, m.store.get().reasonCodes.on, m.store.get().changes.filter((c) => /no se subió/.test(c.what)).map((c) => [c.what, c.before, c.after])], [0, false, [['Códigos de paro · no se subió: Edgar lo cambió después', 'encendidos', 'apagados']]])
+  })
+}
+
+// =====================================================================================================================
 console.log('')
 if (failed.length) { console.log(failed.length + ' FALLARON de ' + (passed + failed.length) + ':\n'); for (const f of failed) console.log('  ✗ ' + f + '\n'); process.exit(1) }
 console.log('✓ ' + passed + ' comprobaciones, todas correctas')

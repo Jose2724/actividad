@@ -134,6 +134,23 @@ await sql(jose, "insert into public.act_targets (dept, per_hour, per_shift, upda
 await m.pullAll()
 eq('los operadores no agregan, sí quitan', [st().lineRules.add, st().lineRules.remove], [false, true])
 
+section('Los códigos de paro que prende el manager llegan a la tablet, y el paro sube con su código (2026-10-20)')
+{
+  const codes = (on) => sql(jose, "insert into public.act_targets (dept, per_hour, per_shift, updated_at, updated_by) values ('opt:reasoncodes', $1, null, now(), 'Jose') on conflict (dept) do update set per_hour = excluded.per_hour, updated_at = excluded.updated_at", [on ? 1 : 0])
+  await codes(true); await m.pullAll()
+  eq('encendidos en la tablet del operador', st().reasonCodes.on, true)
+  const n = st().stops.length
+  eq('una causa que no es de la lista no para la línea', [m.startStop('Packing', P2, 'Break', ''), st().stops.length], [false, n])
+  eq('con un código sí', m.startStop('Packing', P2, 'MAT-01 Falta de material', 'cajas'), true)
+  const sid = st().stops.find((x) => x.lineId === P2 && !x.endedAt).id
+  m.endStop(sid); await drain()
+  eq('en el servidor: el paro con su código, como se guardó', (await sql(null, 'select reason, note, ended_at is not null as ended from public.act_stops where id = $1', [sid])).rows.map((r) => [r.reason, r.note, r.ended]), [['MAT-01 Falta de material', 'cajas', true]])
+  await codes(false); await m.pullAll()
+  eq('apagados otra vez: la tablet vuelve a las causas de siempre', [st().reasonCodes.on, m.startStop('Packing', P2, 'Break', '')], [false, true])
+  m.endStop(st().stops.find((x) => x.lineId === P2 && !x.endedAt).id); await drain()
+  eq('nada se queda en la cola', m.outbox.size(), 0)
+}
+
 section('Una cuenta que el servidor ya no acepta: lo registrado se queda en la tablet y se dice')
 await sql(null, 'update public.employees set active = false where user_id = $1', [ana.id])
 m.addLine('Packing', 'Línea 6'); const r = await drain()

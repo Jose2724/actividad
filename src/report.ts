@@ -2,6 +2,7 @@ import { apartOf, binOf, binWord, CFG, cfgOf, DEPTS, fmtDur, fmtTime, kindOf, li
 import { clockNow } from './clock'
 import { xDay, xDur, xTime, type Cell } from './xlsx'
 import { phrase, tr } from './i18n'
+import { catOf, codeReason, FAMILY_SHOWN, reasonCodeOf, type OeeFamily } from './reasons'
 
 /**
  * The day's report, as the tables on screen and in every file made from them (Excel, CSV, PDF): one place decides
@@ -195,6 +196,39 @@ export function reportOf(s: State, date: string, now: number, f: ReportFilter = 
   const distinct = new Set(rows.map((x) => normCode(x.r.code))).size, lines = new Set(rows.map((x) => x.r.lineId)).size
   return { runs, rows, unitRows, pallets, bins, stops, byCode, byShift, byDept, reasons, distinct, lines, working: rows.reduce((t, x) => t + x.st.working, 0), down: rows.reduce((t, x) => t + x.st.down, 0), setup: setupOf(shift), codes, lots, code, lot, shift, plan, filtered, line, lineChoices }
 }
+// ---- the stops by Reason Code (Jose, 2026-10-20: the plant's standard list, see reasons.ts) ----
+/**
+ * The report in view, code by code, as a Pareto: each code with its reason (as a stop keeps it: the Set up's for PLN-03), how many stops and how much time, the most
+ * time first; then the time planned against the time not planned, and by OEE family. The time is the report's own: what
+ * the lines were stopped for while they had a code (the "Parado" by cause, where a moment covered by two stops goes to
+ * the one that began first) and the Set up, which is PLN-03. A stop of before the codes, with a cause typed or of its
+ * room's list, is "Sin código" (key ''), and it is neither planned nor not. times = the stops of the report in view.
+ */
+export type ParetoRow = { code: string; reason: string; times: number; ms: number; planned: boolean | null; family: OeeFamily | null; cat: string }
+export function paretoOf(rep: Report) {
+  const rows = new Map<string, ParetoRow>()
+  const row = (reason: string) => {
+    const c = reasonCodeOf(reason), key = c ? c.code : ''
+    let r = rows.get(key)
+    if (!r) rows.set(key, (r = { code: key, reason: c ? codeReason(c) : '', times: 0, ms: 0, planned: c ? c.planned : null, family: c ? c.family : null, cat: c ? catOf(c.cat).label : '' }))
+    return r
+  }
+  for (const x of rep.reasons) row(x.reason).ms += x.ms
+  if (rep.setup > 0) row(SETUP).ms += rep.setup
+  for (const x of rep.stops) row(x.reason).times++
+  const list = [...rows.values()].filter((r) => r.ms > 0 || r.times > 0).sort((a, b) => b.ms - a.ms || b.times - a.times || (a.code || '~').localeCompare(b.code || '~'))
+  const sum = (f: (r: ParetoRow) => boolean) => list.filter(f).reduce((t, r) => t + r.ms, 0)
+  const families = (['Availability', 'Performance', 'Quality'] as OeeFamily[]).map((family) => ({ family, ms: sum((r) => r.family === family) }))
+  return { rows: list, total: sum(() => true), planned: sum((r) => r.planned === true), unplanned: sum((r) => r.planned === false), uncoded: sum((r) => r.planned === null), families }
+}
+/** a report that has a stop with a Reason Code (the Set up alone does not say so: every day has one) */
+export const hasCodedStops = (rep: Report) => rep.stops.some((x) => x.reason !== SETUP && !!reasonCodeOf(x.reason))
+/** the four columns of a stop's code in the Paros sheet: its code, planned or not, its family, its category (blank for one of before the codes) */
+export function codeCells(reason: string): Cell[] {
+  const c = reasonCodeOf(reason)
+  return c ? [c.code, c.planned ? tr('Planeado') : tr('No planeado'), FAMILY_SHOWN[c.family](), tr(catOf(c.cat).label)] : [tr('Sin código'), '', '', '']
+}
+export const CODE_HEADS = () => [tr('Código'), tr('Planeado / No planeado'), tr('Familia'), tr('Categoría')]
 /**
  * The Excel's (and the CSV's) first sheet, Resumen: one line per run of the report in view, typed (numbers, times,
  * spans) so Excel can sort and add them, and the run's comment in the last column, as it was typed (Jose, 2026-10-18:
@@ -287,7 +321,7 @@ export function searchReport(s: State, rep: Report, q: string, changes: Change[]
   // (a run is found by its comment too: Jose, 2026-10-18)
   const runs = rep.rows.filter((x) => fits([x.r.code, product(x.r.code), x.lots, line(x.r), whoText(x.r), fmtTime(x.r.startedAt), ...Object.keys(x.st.reasons).flatMap((k) => [k, phrase(k, 'en')]), ...shiftWords(x.shifts), x.r.dept, noteOf(x.r)], [x.r.code]))
     .map((x): Hit => ({ kind: 'run', key: hitKey.run(x.r.id), dept: x.r.dept, at: x.r.startedAt, runId: x.r.id })).sort(byAt)
-  const stops = rep.stops.filter((x) => fits([x.reason, phrase(x.reason, 'en'), noteLabel(x.note), x.note, x.lineId === null ? tr('Todo {0}', x.dept) : lineOf(x.lineId), x.by, fmtTime(x.startedAt), ...shiftWords(spanShifts(rep.plan, x.startedAt, x.endedAt ?? now)), x.dept]))
+  const stops = rep.stops.filter((x) => fits([x.reason, phrase(x.reason, 'en'), reasonCodeOf(x.reason)?.code ?? '', noteLabel(x.note), x.note, x.lineId === null ? tr('Todo {0}', x.dept) : lineOf(x.lineId), x.by, fmtTime(x.startedAt), ...shiftWords(spanShifts(rep.plan, x.startedAt, x.endedAt ?? now)), x.dept]))
     .map((x): Hit => ({ kind: 'stop', key: hitKey.stop(x.id), dept: x.dept, at: x.startedAt, stopId: x.id })).sort(byAt)
   const done = changes.filter((c) => fits([c.what, c.by, c.before, c.after, c.dept, fmtTime(c.at)]))
     .map((c): Hit => ({ kind: 'change', key: hitKey.change(c.id), dept: c.dept, at: c.at, changeId: c.id })).sort(byAt)

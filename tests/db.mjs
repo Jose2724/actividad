@@ -52,6 +52,12 @@ const target = (key) => ({ dept: key, per_hour: 1, per_shift: 0, updated_at: iso
 eq('lo que fija el manager (turnos, metas, reglas de líneas): lo escribe el manager, no un operador', [await code(as(db, ana, (tx) => upsert(tx, 'act_targets', target('opt:oplines'), 'dept'))), await code(as(db, jose, (tx) => upsert(tx, 'act_targets', target('opt:oplines'), 'dept')))], ['42501', ''])
 eq('y lo leen todos', await as(db, noe, async (tx) => (await tx.query("select per_hour from public.act_targets where dept = 'opt:oplines'")).rows.map((r) => Number(r.per_hour))), [1])
 
+// the Reason Codes switch (2026-10-20, Ajustes): an 'opt:' key as the line rules', no migration of its own
+const codesRow = (on, who) => ({ dept: 'opt:reasoncodes', per_hour: on ? 1 : 0, per_shift: null, updated_at: iso(NOW), updated_by: who })
+eq('los códigos de paro: los prenden o apagan el manager y la oficina; ni un operador ni "Solo ver"', [await code(as(db, ana, (tx) => upsert(tx, 'act_targets', codesRow(true, 'Ana'), 'dept'))), await code(as(db, mike, (tx) => upsert(tx, 'act_targets', codesRow(true, 'Mike'), 'dept'))), await code(as(db, edgar, (tx) => upsert(tx, 'act_targets', codesRow(false, 'Edgar'), 'dept'))), await code(as(db, jose, (tx) => upsert(tx, 'act_targets', codesRow(true, 'Jose'), 'dept')))], ['42501', '42501', '', ''])
+eq('y lo leen todos, también un operador de otro cuarto y "Solo ver"', [await as(db, noe, async (tx) => (await tx.query("select per_hour from public.act_targets where dept = 'opt:reasoncodes'")).rows.map((r) => Number(r.per_hour))), await as(db, mike, async (tx) => (await tx.query("select per_hour from public.act_targets where dept = 'opt:reasoncodes'")).rows.length)], [[1], 1])
+eq('su línea del historial la escribe el manager', await code(as(db, jose, (tx) => upsert(tx, 'act_changes', { id: uuid(), at: iso(NOW), by_name: 'Jose', dept: null, what: 'Códigos de paro', before: 'apagados', after: 'encendidos', ref_table: 'act_targets', ref_key: 'opt:reasoncodes', deleted: false, updated_at: iso(NOW), updated_by: 'Jose' }))), '')
+
 section('El servidor pone su hora a cada fila que llega (el orden de las versiones)')
 const L = uuid()
 await as(db, ana, (tx) => upsert(tx, 'act_lines', line(L, 'Packing', 'Línea 5')))
@@ -225,6 +231,7 @@ eq('en el servidor no hay ninguna fila con el nombre de una marca que no sea esa
 section('018: el calendario va con el poder de los turnos; las reglas de las líneas, solo el manager y la oficina')
 eq('quien tiene "turnos" guarda la semana y los días aparte (antes se rechazaban y se perdían)', await each(['shifts:2026-12-10', 'shiftweek:2026-12-10', 'shiftday:2026-12-11'], (key) => code(as(db, gina, (tx) => upsert(tx, 'act_targets', target(key), 'dept')))), ['', '', ''])
 eq('quien tiene solo "metas" no toca el calendario ni las reglas de las líneas', await each(['shifts:2026-12-12', 'shiftweek:2026-12-12', 'shiftday:2026-12-13', 'opt:oplines'], (key) => code(as(db, olga, (tx) => upsert(tx, 'act_targets', target(key), 'dept')))), ['42501', '42501', '42501', '42501'])
+eq('ni los códigos de paro, ni quien tiene "turnos"', [await code(as(db, olga, (tx) => upsert(tx, 'act_targets', target('opt:reasoncodes'), 'dept'))), await code(as(db, gina, (tx) => upsert(tx, 'act_targets', target('opt:reasoncodes'), 'dept')))], ['42501', '42501'])
 eq('y sí sus metas; quien tiene solo "turnos" no pone metas', [await code(as(db, olga, (tx) => upsert(tx, 'act_targets', target('Packing@1'), 'dept'))), await code(as(db, olga, (tx) => upsert(tx, 'act_targets', target('line:' + P1 + '@2'), 'dept'))), await code(as(db, gina, (tx) => upsert(tx, 'act_targets', target('Packing@1'), 'dept')))], ['', '', '42501'])
 
 section('018: la historia sin cuarto (pedidos, días, productos) la lee solo quien tiene un papel en Actividad')

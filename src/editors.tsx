@@ -1,9 +1,11 @@
-import { useEffect, useId, useRef, useState } from 'react'
-import { addRunLater, addUnit, applyDraft, draftChecks, draftUnitOf, NOTE_MAX, usualFor, usualOf, wasteProblem, BIN_WORDS, binOf, binWord, byLineName, cfgFor, checkLaterPallets, DEPTS, fmtN, kindClass, LATER_MAX, laterPalletUnits, laterPoFits, laterStart, laterToOrder, MFO_WORDS, tagTwice, unitStartPo, type LaterPalletRow, plainDay, planRows, SPIRAL_UNITS, type Dept, byShip, CFG, cfgOf, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, setUnitOrder, splitStop, store, updateRun, updateStop, type Order, type Run, type State, type Stop, lineLabel } from './store'
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
+import { addRunLater, addUnit, applyDraft, draftChecks, draftUnitOf, NOTE_MAX, usualFor, usualOf, wasteProblem, BIN_WORDS, binOf, binWord, byLineName, cfgFor, checkLaterPallets, DEPTS, fmtN, kindClass, LATER_MAX, laterPalletUnits, laterPoFits, laterStart, laterToOrder, MFO_WORDS, tagTwice, unitStartPo, type LaterPalletRow, plainDay, planRows, SPIRAL_UNITS, type Dept, byShip, CFG, cfgOf, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, reasonText, setUnitOrder, splitStop, store, updateRun, updateStop, type Order, type Run, type State, type Stop, lineLabel } from './store'
 import { clockNow } from './clock'
 import { unitStartLot } from './report'
 import { ConfirmDialog, LotsDialog, useCan, useSure, useWho, type SureBox } from './App'
 import { writesIn } from './powers'
+import { CodePicker, codeReady, detailHint } from './CodePicker'
+import { reasonCodeOf } from './reasons'
 import { tr } from './i18n'
 import { trx } from './trx'
 
@@ -289,26 +291,34 @@ export function AddUnitDialog({ s, run, startPo, onClose, onAdded }: { s: State;
   )
 }
 
-/** Fixing a stop: its reason, its note, when it started and ended; or dropping one that was never real. */
+/**
+ * Fixing a stop: its reason, its note, when it started and ended; or dropping one that was never real. With the Reason
+ * Codes on (Jose, 2026-10-20) the reason is a code of the list, chosen as when stopping (CodePicker): a stop of before
+ * the codes shows its cause as it was, and saving a correction asks for its code (a manager who corrects it in code
+ * mode gives it one); a stop nobody corrects keeps its cause. PLN-03 (the Set up) only on a line, as the Set up is.
+ */
 export function StopEditor({ stop, mgr, onClose }: { stop: Stop; mgr: boolean; onClose: () => void }) {
   const can = useCan()
+  const st = useSyncExternalStore(store.subscribe, store.get), codes = st.reasonCodes.on
   const reasons = CFG[stop.dept].reasons
   const known = reasons.includes(stop.reason)
   // how the form opened: saving applies only what was changed since (a stop ended on the line meanwhile stays ended)
   const [opened] = useState(() => ({ reason: known ? stop.reason : 'Otra', other: known ? '' : stop.reason, note: stop.note, start: hm(stop.startedAt), end: stop.endedAt ? hm(stop.endedAt) : '' }))
   const [reason, setReason] = useState(opened.reason)
   const [other, setOther] = useState(opened.other)
+  // the code chosen in code mode ('' = none yet: a stop of before the codes)
+  const [code, setCode] = useState(() => (reasonCodeOf(stop.reason) ? stop.reason : ''))
   const [note, setNote] = useState(opened.note)
   const [start, setStart] = useState(opened.start)
   const [end, setEnd] = useState(opened.end)
   const [dropping, setDropping] = useState(false)
   const [dividing, setDividing] = useState(false)
-  const ok = reason === 'Otra' ? other.trim().length > 0 : !!reason
+  const ok = codes ? codeReady(code, note) : reason === 'Otra' ? other.trim().length > 0 : !!reason
   if (dividing) return <StopSplitter stop={stop} onBack={() => setDividing(false)} onClose={onClose} />
   const save = () => {
     const patch: Parameters<typeof updateStop>[1] = {}
     const text = (r: string, o: string) => (r === 'Otra' ? o.trim() : r)
-    if (text(reason, other) !== text(opened.reason, opened.other)) patch.reason = text(reason, other)
+    if (codes ? code !== stop.reason : text(reason, other) !== text(opened.reason, opened.other)) patch.reason = codes ? code : text(reason, other)
     if (note.trim() !== opened.note.trim()) patch.note = note.trim()
     // a time left as it was keeps its seconds; a changed one is read from HH:MM on the day nearest to the old moment
     const startedAt = start !== opened.start ? nearDay(stop.startedAt, start) : stop.startedAt
@@ -321,11 +331,20 @@ export function StopEditor({ stop, mgr, onClose }: { stop: Stop; mgr: boolean; o
   }
   return (
     <div className="veil" onClick={onClose}>
-      <div className="dlg" onClick={(e) => e.stopPropagation()}>
+      <div className={'dlg' + (codes ? ' rc-dlg' : '')} onClick={(e) => e.stopPropagation()}>
         <h3>{trx('Corregir paro · {0}', stop.dept)}</h3>
-        <div className="chips">{[...reasons, 'Otra'].map((r) => <button key={r} type="button" className={'chip' + (reason === r ? ' on' : '')} onClick={() => setReason(r)}>{tr(r)}</button>)}</div>
-        {reason === 'Otra' && <input placeholder={tr('Escribe la razón')} value={other} onChange={(e) => setOther(e.target.value)} />}
-        <input placeholder={tr('Detalle (opcional)')} value={note} onChange={(e) => setNote(e.target.value)} />
+        {codes ? (
+          <>
+            {!reasonCodeOf(stop.reason) && <p className="rc-old">{trx('Causa de antes, sin código: {0}. Para guardar, elige su código.', <b>{tr(stop.reason)}</b>)}</p>}
+            <CodePicker value={code} setup={stop.lineId !== null} onPick={setCode} />
+          </>
+        ) : (
+          <>
+            <div className="chips">{[...reasons, 'Otra'].map((r) => <button key={r} type="button" className={'chip' + (reason === r ? ' on' : '')} onClick={() => setReason(r)}>{tr(r)}</button>)}</div>
+            {reason === 'Otra' && <input placeholder={tr('Escribe la razón')} value={other} onChange={(e) => setOther(e.target.value)} />}
+          </>
+        )}
+        <input placeholder={codes ? detailHint(code) : tr('Detalle (opcional)')} value={note} onChange={(e) => setNote(e.target.value)} />
         <div className="egrid">
           <label>{tr('Inicio')}{' '}<input type="time" value={start} onChange={(e) => setStart(e.target.value)} /></label>
           {stop.endedAt != null && <label>{tr('Fin')}{' '}<input type="time" value={end} onChange={(e) => setEnd(e.target.value)} /></label>}
@@ -350,7 +369,9 @@ export function StopEditor({ stop, mgr, onClose }: { stop: Stop; mgr: boolean; o
  * One stop, two causes: the manager says how many minutes belong to the reason it has, and which reason the rest was
  * for. The stopped time of the line stays the same; it is only told apart. A part can be divided again.
  */
+// (with the Reason Codes on, the rest takes a code of the list, chosen as when stopping: see CodePicker)
 function StopSplitter({ stop, onBack, onClose }: { stop: Stop; onBack: () => void; onClose: () => void }) {
+  const st = useSyncExternalStore(store.subscribe, store.get), codes = st.reasonCodes.on
   const reasons = CFG[stop.dept].reasons.filter((r) => r !== stop.reason)
   // the moment the box opened stands in for "now" on a stop still open: the numbers do not move while they are read
   const [end] = useState(() => stop.endedAt ?? clockNow())
@@ -361,24 +382,27 @@ function StopSplitter({ stop, onBack, onClose }: { stop: Stop; onBack: () => voi
   const [note, setNote] = useState('')
   const first = Number(mins)
   const cut = stop.startedAt + first * 60_000
-  const second = reason === 'Otra' ? other.trim() : reason
+  const second = codes ? reason : reason === 'Otra' ? other.trim() : reason
   const fits = Number.isInteger(first) && first >= 1 && cut < end
-  const ok = fits && !!second
+  const ok = fits && (codes ? codeReady(second, note) : !!second)
+  const own = reasonText(st, stop.reason)
   const go = () => { if (ok && splitStop(stop.id, cut, second, note)) onClose() }
   return (
     <div className="veil" onClick={onClose}>
-      <div className="dlg" onClick={(e) => e.stopPropagation()}>
+      <div className={'dlg' + (codes ? ' rc-dlg' : '')} onClick={(e) => e.stopPropagation()}>
         <h3>{trx('Dividir paro · {0}', stop.dept)}</h3>
         {total < 2 ? <p>{tr('Este paro dura menos de dos minutos: no hay tiempo que dividir.')}</p> : (
           <>
-            <p><b>{tr(stop.reason)}</b> · {fmtTime(stop.startedAt)} – {stop.endedAt ? fmtTime(stop.endedAt) : tr('en curso')} · {fmtDur(end - stop.startedAt)}</p>
-            <label className="splitmins">{trx('¿Cuántos minutos fueron por {0}?', <b>{tr(stop.reason)}</b>)}{' '}<input className="num" inputMode="numeric" value={mins} onChange={(e) => setMins(e.target.value.replace(/\D/g, ''))} /> <small>{trx('de {0}', total)}</small></label>
+            <p><b>{own}</b> · {fmtTime(stop.startedAt)} – {stop.endedAt ? fmtTime(stop.endedAt) : tr('en curso')} · {fmtDur(end - stop.startedAt)}</p>
+            <label className="splitmins">{trx('¿Cuántos minutos fueron por {0}?', <b>{own}</b>)}{' '}<input className="num" inputMode="numeric" value={mins} onChange={(e) => setMins(e.target.value.replace(/\D/g, ''))} /> <small>{trx('de {0}', total)}</small></label>
             <p>{tr('El resto fue por:')}</p>
-            <div className="chips">{[...reasons, 'Otra'].map((r) => <button key={r} type="button" className={'chip' + (reason === r ? ' on' : '')} onClick={() => setReason(r)}>{tr(r)}</button>)}</div>
-            {reason === 'Otra' && <input placeholder={tr('Escribe la razón')} value={other} onChange={(e) => setOther(e.target.value)} />}
-            <input placeholder={tr('Detalle (opcional)')} value={note} onChange={(e) => setNote(e.target.value)} />
+            {codes ? <CodePicker value={reason} setup={stop.lineId !== null} skip={reasonCodeOf(stop.reason)?.code} onPick={setReason} /> : <>
+              <div className="chips">{[...reasons, 'Otra'].map((r) => <button key={r} type="button" className={'chip' + (reason === r ? ' on' : '')} onClick={() => setReason(r)}>{tr(r)}</button>)}</div>
+              {reason === 'Otra' && <input placeholder={tr('Escribe la razón')} value={other} onChange={(e) => setOther(e.target.value)} />}
+            </>}
+            <input placeholder={codes ? detailHint(reason) : tr('Detalle (opcional)')} value={note} onChange={(e) => setNote(e.target.value)} />
             {fits
-              ? <p className="splitsum">{trx('Queda así: {0} {1} – {2} ({3} min) · {4} {5} – {6} ({7})', <b>{tr(stop.reason)}</b>, fmtTime(stop.startedAt), fmtTime(cut), first, <b>{second || '…'}</b>, fmtTime(cut), stop.endedAt ? fmtTime(stop.endedAt) : tr('en curso'), stop.endedAt ? total - first + ' min' : tr('sigue'))}</p>
+              ? <p className="splitsum">{trx('Queda así: {0} {1} – {2} ({3} min) · {4} {5} – {6} ({7})', <b>{own}</b>, fmtTime(stop.startedAt), fmtTime(cut), first, <b>{second ? (codes ? reasonText(st, second) : second) : '…'}</b>, fmtTime(cut), stop.endedAt ? fmtTime(stop.endedAt) : tr('en curso'), stop.endedAt ? total - first + ' min' : tr('sigue'))}</p>
               : <p className="err">{trx('Escribe un número entre 1 y {0}.', total - 1)}</p>}
           </>
         )}

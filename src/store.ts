@@ -4,6 +4,7 @@ import { drop, justSent, outbox, push, queued, rebase, rekey, type Row, type Tab
 import { storageFull } from './storage'
 import { clockNow } from './clock'
 import { lang, tr, trIn } from './i18n'
+import { codeReason, codeText, OTHER_CODE, reasonCodeOf, SETUP_CODE, typedCode } from './reasons'
 
 export type Dept = 'Kitchen' | 'RTE' | 'Spiral' | 'MFO' | 'Packing'
 export const DEPTS: Dept[] = ['Kitchen', 'RTE', 'Spiral', 'MFO', 'Packing']
@@ -220,6 +221,12 @@ export type DayShifts = { date: string; only: 1 | 2 | 3; updatedAt: number }
  * line off (no until said otherwise: a line is never "closed" by taking it off). Managers and the office always may.
  */
 export type LineRules = { add: boolean; remove: boolean; updatedAt: number }
+/**
+ * the plant's Reason Codes (see reasons.ts): on = every stop takes one code of the list and only of it. A manager's
+ * switch in Ajustes, for every device (Jose, 2026-10-20: "en ajuste yo pueda prender esta opción o apagarla"); off as
+ * it starts, and off is everything as it always was
+ */
+export type ReasonCodesOpt = { on: boolean; updatedAt: number }
 /** the goal of one line: so much per hour and/or in the whole day, in its room's quantity */
 export type LineTarget = { lineId: string; perHour: number | null; perDay: number | null; updatedAt: number }
 /**
@@ -303,7 +310,7 @@ function sealFrom(x: unknown): OrderSeal | null {
   // (a day by day an account may still carry is not read: see OrderSeal)
   return { id: e.id, sig: e.sig, upto: String(e.upto ?? ''), made, finishAt: numIn(e.finishAt), finishDay: String(e.finishDay ?? ''), completed, lots: Array.isArray(e.lots) ? e.lots.map(String).slice(0, 30) : [], updatedAt: numIn(e.updatedAt) }
 }
-export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Product[]; schedule: Schedule; changes: Change[]; targets: Target[]; shifts: ShiftPlan[]; shiftWeeks: ShiftWeek[]; dayShifts: DayShifts[]; lineRules: LineRules; lineTargets: LineTarget[]; orders: Order[]; turnGoals: TurnGoal[]; plans: Plan[]
+export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Product[]; schedule: Schedule; changes: Change[]; targets: Target[]; shifts: ShiftPlan[]; shiftWeeks: ShiftWeek[]; dayShifts: DayShifts[]; lineRules: LineRules; reasonCodes: ReasonCodesOpt; lineTargets: LineTarget[]; orders: Order[]; turnGoals: TurnGoal[]; plans: Plan[]
   /**
    * runs the device no longer keeps (older than its days) that hold pallets given to an order still open: an order's
    * "Hechas" counts every pallet it ever got, not only the days this device holds. They come from the server (see
@@ -399,10 +406,10 @@ function tidySchedule(sch: Schedule): Schedule {
 function isDay(text: string) { return /^\d{4}-\d{2}-\d{2}$/.test(text) }
 /** with a server the lines (and products) are shared and come from it; without one, each device starts with a line per room */
 const SERVER = !!import.meta.env.VITE_SUPABASE_URL
-function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [] } }
+function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, reasonCodes: { on: false, updatedAt: 0 }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [] } }
 function load(): State {
   try {
-    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[] }
+    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; reasonCodes?: Partial<ReasonCodesOpt>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[] }
     const s = JSON.parse(localStorage.getItem(KEY) || 'null') as Raw | null
     // rows saved by earlier versions: carts as plain timestamps, units without a tag or a name, products with one
     // pouches-per-cart number, nothing with an update time
@@ -431,6 +438,9 @@ function load(): State {
         shiftWeeks: (s.shiftWeeks ?? []).filter((x): x is ShiftWeek => !!x && isDay(String(x.from ?? '')) && weekOk(x.week)).map((x) => ({ from: x.from, week: x.week, updatedAt: x.updatedAt ?? 0 })),
         dayShifts: (s.dayShifts ?? []).filter((x): x is DayShifts => !!x && isDay(String(x.date ?? '')) && [1, 2, 3].includes(Number(x.only))).map((x) => ({ date: x.date, only: Number(x.only) as 1 | 2 | 3, updatedAt: x.updatedAt ?? 0 })),
         lineRules: { add: s.lineRules?.add !== false, remove: s.lineRules?.remove === true, updatedAt: Number(s.lineRules?.updatedAt) || 0 },
+        // the Reason Codes switch (2026-10-20): a copy saved before it reads off, as the plant starts. (Written inline, as
+        // above: nothing declared below `let state = load()` may be used in here)
+        reasonCodes: { on: s.reasonCodes?.on === true, updatedAt: Number(s.reasonCodes?.updatedAt) || 0 },
         lineTargets: (s.lineTargets ?? []).filter((t) => !!t && !!t.lineId && !isTurnKey(String(t.lineId))).map((t) => ({ lineId: String(t.lineId), perHour: t.perHour ?? null, perDay: t.perDay ?? null, updatedAt: t.updatedAt ?? 0 })),
         orders: (s.orders ?? []).map((o) => (o ? orderOf(String(o.id ?? ''), o, String(o.by ?? ''), o.updatedAt ?? 0) : null)).filter((o): o is Order => !!o),
         // (lot since 2026-10-19: a program saved before it reads ''. Written inline, as above: nothing below load())
@@ -773,6 +783,23 @@ export function setLineRules(patch: Partial<Pick<LineRules, 'add' | 'remove'>>) 
   set({ ...state, lineRules: next })
   push('act_targets', OPT_LINES, { dept: OPT_LINES, per_hour: next.add ? 1 : 0, per_shift: next.remove ? 1 : 0, updated_at: iso(next.updatedAt), updated_by: user.get() })
   logChange(null, 'Operadores y líneas', linesText(was), linesText(next), 'act_targets', OPT_LINES)
+}
+/**
+ * The key of the Reason Codes switch in act_targets (per_hour: 1 = on, 0 = off). An 'opt:' key, as the line rules':
+ * only the managers and the office write it (005's rules; 018 keeps it from the powers), and every version of the app
+ * reads it as no goal of anybody: it is no room, ends in no "@1" / "@2" and starts with no "line:" or "shift…:" (see
+ * applyRemote, where a key no branch knows falls into the room goals' branch and is let go there)
+ */
+const OPT_CODES = 'opt:reasoncodes'
+const codesText = (on: boolean) => (on ? 'encendidos' : 'apagados')
+/** a manager turns the Reason Codes on or off (Ajustes); every device sees it, and it goes to the history */
+export function setReasonCodes(on: boolean) {
+  const was = state.reasonCodes
+  if (was.on === on) return
+  const next: ReasonCodesOpt = { on, updatedAt: stamp(was) }
+  set({ ...state, reasonCodes: next })
+  push('act_targets', OPT_CODES, { dept: OPT_CODES, per_hour: on ? 1 : 0, per_shift: null, updated_at: iso(next.updatedAt), updated_by: user.get() })
+  logChange(null, 'Códigos de paro', codesText(was.on), codesText(on), 'act_targets', OPT_CODES)
 }
 /** the reason of the stop the app writes by itself when a line finishes a code and another one is coming */
 export const SETUP = 'Set up'
@@ -1264,9 +1291,33 @@ const plain = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').
  * A cause typed by hand ("Otra") that is one of the department's own written another way is saved with the list's
  * spelling: the report must not count "break", "Break" and "BREAK" as three causes, nor miss a typed "setup".
  */
-export const tidyReason = (dept: Dept, text: string) => { const t = text.replace(/\s+/g, ' ').trim(), k = plain(t); return (k && CFG[dept].reasons.find((r) => plain(r) === k || plain(trIn('en', r)) === k)) || t }
-export function startStop(dept: Dept, lineId: string | null, reason: string, note: string) {
-  putStop({ id: uid(), dept, lineId, reason: tidyReason(dept, reason), note, startedAt: clockNow(), endedAt: null, by: user.get(), updatedAt: 0 })
+// A Reason Code written by hand ("eqp-01", "EQP-01 Mechanical failure") is kept as the code's own reason, and PLN-03 as
+// the Set up it is (see reasons.ts, typedCode); a code followed by words of one's own is kept as typed
+export const tidyReason = (dept: Dept, text: string) => { const t = text.replace(/\s+/g, ' ').trim(), k = plain(t), c = typedCode(t); return c ? codeReason(c) : (k && CFG[dept].reasons.find((r) => plain(r) === k || plain(trIn('en', r)) === k)) || t }
+/**
+ * What is wrong with the cause of a stop as it would be saved ('' = nothing). With the Reason Codes on (see reasons.ts)
+ * it must be one of the list, and OTH-01 needs its detail ("explain in notes"); off, any cause that is not blank. The
+ * screens offer only what is allowed; this is the same rule for whatever calls the store (a stop of before the codes
+ * keeps its cause: only a cause being given is held to it, see updateStop)
+ */
+export function reasonProblem(s: State, dept: Dept, reason: string, note: string): string {
+  const r = tidyReason(dept, reason)
+  if (!r) return tr('Falta la razón del paro.')
+  if (!s.reasonCodes.on) return ''
+  const c = reasonCodeOf(r)
+  if (!c) return tr('Con los códigos de paro encendidos, la razón tiene que ser uno de la lista.')
+  return c.code === OTHER_CODE && !note.trim() ? tr('Con {0} hay que escribir el detalle.', OTHER_CODE) : ''
+}
+/**
+ * a stop's cause as the screens say it: a coded one with its code ("EQP-01 · Falla mecánica"), the Set up with PLN-03
+ * while the codes are on, any other as it was written (in the screen's language when it is one of the rooms' causes)
+ */
+export const reasonText = (s: State, reason: string) => { const c = reasonCodeOf(reason); return c && (c.code !== SETUP_CODE || s.reasonCodes.on) ? codeText(c) : tr(reason) }
+/** starts a stop; false = its cause is not one that may be given (see reasonProblem) */
+export function startStop(dept: Dept, lineId: string | null, reason: string, note: string): boolean {
+  if (reasonProblem(state, dept, reason, note)) return false
+  putStop({ id: uid(), dept, lineId, reason: tidyReason(dept, reason), note: note.trim(), startedAt: clockNow(), endedAt: null, by: user.get(), updatedAt: 0 })
+  return true
 }
 const stop = (id: string) => state.stops.find((x) => x.id === id)
 export function endStop(id: string) { const x = stop(id); if (x) putStop({ ...x, endedAt: Math.max(clockNow(), x.startedAt) }) }
@@ -1280,14 +1331,22 @@ export function switchToSetup(id: string) {
     putStop({ id: uid(), dept: x.dept, lineId: x.lineId, reason: SETUP, note: '', startedAt: at, endedAt: null, by: user.get(), updatedAt: 0 })
   })
 }
-export function updateStop(id: string, patch: Partial<Pick<Stop, 'reason' | 'note' | 'startedAt' | 'endedAt'>>) {
+/**
+ * Corrects a stop; false = not done (no such stop, or a cause that may not be given). With the Reason Codes on, a cause
+ * given here must be a code (and OTH-01 keeps its detail); a stop of before the codes, whose cause nobody changes here,
+ * keeps it as it was: the history is not rewritten (Jose's list, 2026-10-20)
+ */
+export function updateStop(id: string, patch: Partial<Pick<Stop, 'reason' | 'note' | 'startedAt' | 'endedAt'>>): boolean {
   const x = stop(id)
-  if (!x) return
+  if (!x) return false
   const n = { ...x, ...patch, ...(patch.reason != null ? { reason: tidyReason(x.dept, patch.reason) } : {}) }
+  const coded = reasonCodeOf(n.reason)
+  if ((patch.reason != null || (patch.note != null && coded?.code === OTHER_CODE)) && reasonProblem(state, x.dept, n.reason, n.note)) return false
   putStop(n)
   const pre = 'Paro ' + x.dept + ' ' + dayOf(x.startedAt) + ' ' + fmtTime(x.startedAt) + ' (' + stopLine(x) + ') · '
   const log = (what: string, a: string, b: string) => logChange(x.dept, pre + what, a, b, 'act_stops', x.id)
   log('Motivo', x.reason, n.reason); log('Detalle', x.note, n.note); log('Inicio', fmtTime(x.startedAt), fmtTime(n.startedAt)); log('Fin', endText(x.endedAt), endText(n.endedAt))
+  return true
 }
 /**
  * A stop that turned out to have two causes: the time up to `at` keeps its reason and the rest becomes another stop
@@ -1299,6 +1358,7 @@ export function splitStop(id: string, at: number, reason: string, note = ''): st
   const x = stop(id)
   if (!x || x.deleted || !reason.trim()) return ''
   if (!(at > x.startedAt && at < (x.endedAt ?? clockNow()))) return ''
+  if (reasonProblem(state, x.dept, reason, note)) return '' // (with the Reason Codes on, the rest takes a code too)
   const rest: Stop = { id: uid(), dept: x.dept, lineId: x.lineId, reason: tidyReason(x.dept, reason), note: note.trim(), startedAt: at, endedAt: x.endedAt, by: user.get(), updatedAt: 0 }
   batch(() => { putStop({ ...x, endedAt: at }); putStop(rest) })
   logChange(x.dept, 'Paro ' + x.dept + ' ' + dayOf(x.startedAt) + ' ' + fmtTime(x.startedAt) + ' (' + stopLine(x) + ') · Se dividió en dos causas',
@@ -3279,6 +3339,7 @@ function settingOf(table: 'act_plan' | 'act_targets' | 'act_work_orders', row: R
   if (table === 'act_plan') { const dept = row.dept as Dept; return { what: 'Programa ' + String(row.date ?? '').slice(0, 10) + ' · ' + dept + ' · ' + normCode(String(row.code ?? '')) + lotNote(planLot(row.lot)) + orderNote(isUuid(row.order_id) ? row.order_id : ''), text: num(row.qty), dept: roomKnown(dept) ? dept : null } }
   if (table === 'act_work_orders') { const dept = row.dept as Dept, known = roomKnown(dept); return { what: 'Pedido de producción ' + normCode(String(row.code ?? '')) + (row.wo ? ' WO ' + String(row.wo) : '') + ' (' + String(row.dept ?? '') + ')', text: num(row.qty) + ' ' + (known ? unitKept({ dept, unit: String(row.unit ?? '') }) : String(row.unit ?? '')) + (row.closed_at ? ' · cerrado' : '') + (row.deleted ? ' · borrado' : ''), dept: known ? dept : null } }
   const key = String(row.dept ?? '')
+  if (key === OPT_CODES) return { what: 'Códigos de paro', text: codesText(Number(row.per_hour) === 1), dept: null }
   if (key === OPT_LINES) return { what: 'Operadores y líneas', text: linesText({ add: row.per_hour == null || Number(row.per_hour) !== 0, remove: Number(row.per_shift) === 1, updatedAt: 0 }), dept: null }
   if (key.startsWith(WEEK_KEY)) { const w = row.per_hour == null ? '' : String(row.per_hour); return { what: 'Turnos de la semana desde el ' + key.slice(WEEK_KEY.length), text: weekOk(w) ? weekText(w) : '', dept: null } }
   if (key.startsWith(DAY_KEY)) { const n = Number(row.per_hour); return { what: 'Turnos del ' + key.slice(DAY_KEY.length), text: row.per_hour == null ? 'como dice su semana' : dayShiftsText(n === 1 || n === 2 ? n : undefined), dept: null } }
@@ -3376,6 +3437,10 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
     // what operators may do with their room's lines (a row without values: as at first, add yes, remove no)
     if (!newer(state.lineRules)) return
     set({ ...state, lineRules: { add: row.per_hour == null || Number(row.per_hour) !== 0, remove: Number(row.per_shift) === 1, updatedAt: at } })
+  } else if (table === 'act_targets' && String(row.dept ?? '') === OPT_CODES) {
+    // the Reason Codes switch (a row without its value: off, as at first)
+    if (!newer(state.reasonCodes)) return
+    set({ ...state, reasonCodes: { on: Number(row.per_hour) === 1, updatedAt: at } })
   } else if (table === 'act_targets' && String(row.dept ?? '').startsWith(WEEK_KEY)) {
     // which shifts work each day of the week, from a date on (a version without its digits was taken back)
     const from = String(row.dept).slice(WEEK_KEY.length), w = row.per_hour == null ? '' : String(row.per_hour)

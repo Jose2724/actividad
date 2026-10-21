@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore } from 'react'
-import { byLineName, CFG, dayShiftsText, DEPTS, lineLabel, lotFor, managerPin, nightText, openRun, removedLines, removeLine, reset, resetRecords, restoreLine, setDayShifts, setLineRules, shiftGoalOf, shiftHours, shiftSpan, shiftsOf, turnOf, uploadAll, weekOf, type Dept, type Line, type State, type WorkDay } from './store'
+import { byLineName, CFG, dayShiftsText, DEPTS, lineLabel, lotFor, managerPin, nightText, openRun, removedLines, removeLine, reset, resetRecords, restoreLine, setDayShifts, setLineRules, setReasonCodes, shiftGoalOf, shiftHours, shiftSpan, shiftsOf, turnOf, uploadAll, weekOf, type Dept, type Line, type State, type WorkDay } from './store'
 import { ConfirmDialog, LangSwitch, LineNameDialog, longDate, NoticeDialog, Products, QrLink, ShiftsDialog, StartDayDialog, TargetDialog, useCan } from './App'
 import { Employees } from './Employees'
 import { Devices } from './DevicesView'
@@ -9,6 +9,8 @@ import { BUILD } from './update'
 import { clockOffText, clockState } from './clock'
 import { fmtTime } from './clock-fmt'
 import { tr } from './i18n'
+import { CodeList } from './CodePicker'
+import { OTHER_CODE, REASON_CODES, SETUP_CODE } from './reasons'
 import { trx } from './trx'
 
 /**
@@ -17,7 +19,7 @@ import { trx } from './trx'
  * powers allow; the last one, this device, is everybody's. The dialogs that do the work are the same ones the floor
  * and the report already use, so one rule holds everywhere.
  */
-export type SettingsKey = 'shifts' | 'day' | 'lines' | 'products' | 'goals' | 'people' | 'devices' | 'device'
+export type SettingsKey = 'shifts' | 'day' | 'lines' | 'stops' | 'products' | 'goals' | 'people' | 'devices' | 'device'
 const fmtN = (x: number) => Math.round(x).toLocaleString('en-US')
 
 export function settingsSections(can: (p: 'shifts' | 'day' | 'products' | 'goals' | 'people') => boolean, mgr: boolean, viewOnly: boolean): { key: SettingsKey; title: string; sub: string }[] {
@@ -25,6 +27,8 @@ export function settingsSections(can: (p: 'shifts' | 'day' | 'products' | 'goals
     ...(can('shifts') ? [{ key: 'shifts' as const, title: tr('Turnos y calendario'), sub: tr('horas, semana, días aparte') }] : []),
     ...(can('day') ? [{ key: 'day' as const, title: tr('Día de trabajo'), sub: tr('fecha, hora de inicio, lote') }] : []),
     ...(mgr && !viewOnly ? [{ key: 'lines' as const, title: tr('Líneas'), sub: tr('las líneas de cada cuarto') }] : []),
+    // (whoever only looks sees the list and whether it is on, without the switch)
+    ...(mgr ? [{ key: 'stops' as const, title: tr('Códigos de paro'), sub: tr('Reason Codes: prender o apagar') }] : []),
     ...(can('products') || viewOnly ? [{ key: 'products' as const, title: tr('Productos'), sub: tr('la tabla maestra') }] : []),
     ...(can('goals') ? [{ key: 'goals' as const, title: tr('Metas'), sub: tr('por turno y por cuarto') }] : []),
     ...(can('people') && supabase ? [{ key: 'people' as const, title: tr('Empleados'), sub: tr('cuentas, roles y permisos') }] : []),
@@ -46,6 +50,7 @@ export function Settings({ s, now, day, name, home, mgr, admin, viewOnly, meId, 
         {sec === 'shifts' && <ShiftsSettings s={s} day={day} />}
         {sec === 'day' && <DaySettings s={s} now={now} day={day} />}
         {sec === 'lines' && <LinesSettings s={s} />}
+        {sec === 'stops' && <StopCodesSettings s={s} viewOnly={viewOnly} />}
         {sec === 'products' && <div className="setcard wide"><div className="sethead"><h3>{tr('Productos')}</h3></div><p className="hint">{tr('La tabla maestra de la oficina: con ella las mezclas se vuelven pouches, cajas y pallets esperados, y cada cuarto sabe cuánto lleva un carro, un pallet o una caja.')}</p><Products s={s} readOnly={!can('products')} /></div>}
         {sec === 'goals' && <GoalsSettings s={s} now={now} day={day} />}
         {sec === 'people' && <Employees meId={meId} admin={admin} />}
@@ -186,6 +191,39 @@ function LinesSettings({ s }: { s: State }) {
       {adding && <LineNameDialog s={s} dept={adding} onClose={() => setAdding(null)} />}
       {renaming && <LineNameDialog s={s} dept={renaming.dept} line={renaming} onClose={() => setRenaming(null)} />}
       {removing && <ConfirmDialog title={tr('¿Quitar {0} de {1}', lineLabel(removing.name), removing.dept) + '?'} text={tr('Se puede volver a agregar cuando haga falta.')} yes={tr('Quitar')} danger onYes={() => { removeLine(removing.id); setRemoving(null) }} onNo={() => setRemoving(null)} />}
+    </>
+  )
+}
+
+/**
+ * The plant's Reason Codes (Jose, 2026-10-20: his new boss's list, "estas son las únicas razones por la que pueden
+ * parar"; "en ajuste yo pueda prender esta opción o apagarla"). Off as it starts: every stop is as it always was. On:
+ * every stop of every room takes one code of the list (see reasons.ts). The whole list can be seen here while it is
+ * off, to show it before it is turned on. Only the managers and the office turn it on or off (the server's rule for
+ * the 'opt:' keys); every device sees it, and it goes to the history.
+ */
+function StopCodesSettings({ s, viewOnly }: { s: State; viewOnly: boolean }) {
+  const [seeing, setSeeing] = useState(false)
+  const on = s.reasonCodes.on
+  return (
+    <>
+      <div className="setcard">
+        <div className="sethead"><h3>{tr('Códigos de paro (Reason Codes)')}</h3><span className={'rc-state' + (on ? ' on' : '')}>{on ? tr('Encendidos') : tr('Apagados')}</span></div>
+        <label className="switch"><span>{tr('Pedir un código de la lista en cada paro')}</span><input type="checkbox" role="switch" checked={on} disabled={viewOnly} onChange={(e) => setReasonCodes(e.target.checked)} /></label>
+        <p className="hint">{tr('Encendidos: cada paro (Parar, Parar todo, Corregir y Dividir) tiene que llevar uno de los {0} códigos de la lista, y solo de la lista: no hay "Otra". El detalle es opcional, menos con {1}, que lo pide. {2} es el Set up.', REASON_CODES.length, OTHER_CODE, SETUP_CODE)}</p>
+        <p className="hint">{tr('Apagados: todo como siempre (las tres causas de cada cuarto y "Otra"). Los paros de antes se quedan con su causa; el reporte los cuenta como "Sin código".')}</p>
+        <div className="btns"><button type="button" className="btn soft" onClick={() => setSeeing(true)}>{tr('📋 Ver la lista de códigos')}</button></div>
+      </div>
+      {seeing && (
+        <div className="veil" onClick={() => setSeeing(false)}>
+          <div className="dlg wide rc-dlg" onClick={(e) => e.stopPropagation()}>
+            <h3>{tr('Códigos de paro · {0}', REASON_CODES.length)}</h3>
+            <p>{on ? tr('Encendidos: así se eligen al parar.') : tr('Apagados: así se verían al parar cuando se enciendan.')}</p>
+            <CodeList />
+            <div className="dbtns"><button type="button" className="btn primary" onClick={() => setSeeing(false)}>{tr('Cerrar')}</button></div>
+          </div>
+        </div>
+      )}
     </>
   )
 }

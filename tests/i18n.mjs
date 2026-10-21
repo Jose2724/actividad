@@ -20,6 +20,9 @@ for (const f of readdirSync(resolve(here, '../src')).filter((f) => /\.tsx?$/.tes
 // what is data and is shown through tr(): the causes of the stops, and "Otra"
 for (const d of m.DEPTS) for (const r of [...m.CFG[d].reasons, ...m.CFG[d].quick]) if (!used.has(r)) used.set(r, 'causes of ' + d)
 used.set('Otra', 'causes')
+// the Reason Codes (2026-10-20): each code's reason as a stop keeps it (its English is the boss's), its definition, its category
+for (const c of m.REASON_CODES) for (const t of [c.code + ' ' + c.label, c.def]) if (!used.has(t)) used.set(t, 'reason codes')
+for (const k of m.REASON_CATS) if (!used.has(k.label)) used.set(k.label, 'reason code categories')
 
 const pieces = (t) => [...new Set([...t.matchAll(/\{(\d+)\}/g)].map((x) => Number(x[1])))].sort((a, b) => a - b)
 const missing = [...used].filter(([k]) => !(k in m.EN))
@@ -45,6 +48,8 @@ eq('el idioma se lee al cargar', [m.lang, en.lang], ['es', 'en'])
 eq('las palabras de cada departamento', [en.CFG.RTE.unit, en.CFG.RTE.plural, en.CFG.RTE.done, en.CFG.Kitchen.unit, en.CFG.Packing.qtyUnit, en.CFG.Packing.refLabel, en.CFG.RTE.lineWord], ['Cart', 'Carts', 'Cart done', 'Mix', 'cases', 'Tag no.', 'Line'])
 eq('las causas de paro se guardan como siempre y solo se muestran traducidas', [en.CFG.RTE.quick, en.CFG.RTE.quick.map((r) => en.tr(r)), en.SETUP], [m.CFG.RTE.quick, ['Mechanical issue', 'Out of plastic', 'Break'], 'Set up'])
 eq('una causa escrita en inglés es la misma causa, en cualquiera de los dos idiomas', [en.tidyReason('RTE', 'mechanical issue'), m.tidyReason('RTE', 'Out of Plastic'), en.tidyReason('RTE', 'sin plastico'), en.tidyReason('RTE', 'something else')], ['Problema mecánico', 'Sin plástico', 'Sin plástico', 'something else'])
+eq('un código de paro se guarda en español y se muestra en el inglés del jefe; escrito en inglés es el mismo código', [en.tr('EQP-01 Falla mecánica'), en.codeText(en.REASON_CODES.find((c) => c.code === 'OTH-01')), en.tidyReason('RTE', 'EQP-01 Mechanical failure'), en.tidyReason('Packing', 'oth-01'), en.tr(en.REASON_CODES.find((c) => c.code === 'PLN-06').def), m.codeText(en.REASON_CODES.find((c) => c.code === 'EQP-01'))], ['EQP-01 Mechanical failure', 'OTH-01 · Other coded loss', 'EQP-01 Falla mecánica', 'OTH-01 Otro (explicar en el detalle)', 'Line available but production not scheduled', 'EQP-01 · Falla mecánica'])
+eq('la hoja Paros en inglés: su código, planeado o no, familia y categoría', [en.CODE_HEADS(), en.codeCells('PLN-01 Break / comida'), en.codeCells('QAL-01 Scrap (desperdicio)'), en.codeCells('Break')], [['Code', 'Planned / Unplanned', 'Family', 'Category'], ['PLN-01', 'Planned', 'Availability', 'Planned stop'], ['QAL-01', 'Unplanned', 'Quality', 'Quality'], ['No code', '', '', '']])
 eq('cajas y sueltos', [en.casesText({ cases: 3, loose: 1 }), en.casesText({ cases: 1, loose: 0 }), en.casesText({ cases: 1188, loose: 4 }), m.casesText({ cases: 3, loose: 1 })], ['3 cases and 1 loose', '1 case', '1,188 cases and 4 loose', '3 cajas y 1 suelto'])
 eq('los nombres de las líneas se guardan igual: "Línea 3" se lee "Line 3", y quien escribe "Line 4" guarda "Línea 4"', [en.lineLabel('Línea 3'), en.lineLabel('Braiser 2'), en.lineLabel('Empaque A'), en.tidyLineName('Line 4'), en.tidyLineName(' line  7 '), m.lineLabel('Línea 3'), m.tidyLineName('Line 4'), en.freeLineNames(en.store.get(), 'RTE', 2)], ['Line 3', 'Braiser 2', 'Empaque A', 'Línea 4', 'Línea 7', 'Línea 3', 'Line 4', ['Línea 1', 'Línea 2']])
 eq('la nota de un Set up se guarda igual y se lee en inglés; una nota escrita a mano no se toca', [en.noteLabel('Después de 0100'), en.noteLabel('De 0100 a 0215'), en.noteLabel('selladora'), m.noteLabel('De 0100 a 0215')], ['After 0100', 'From 0100 to 0215', 'selladora', 'De 0100 a 0215'])

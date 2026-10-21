@@ -1,11 +1,12 @@
 import { Fragment, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { apartLabel, apartWord, binWord, cameFrom, carriedOver, casesText, CFG, cfgFor, cfgOf, csvCell, DEPTS, fmtDur, roomKnown, fmtN, fmtTime, inCases, kindClass, lineLabel, lineNameOf, looksLikeTwoLots, madeText, measureName, measureUnit, normCode, noteLabel, noteOf, orderLabel, orderOfId, plainDay, plainText, productOf, purgesOf, restorePurged, runStats, SETUP, shiftAt, shiftHours, shiftSpan, shiftsOf, stopTime, unitQty, user, whoText, workDay, type Dept, type State } from './store'
+import { apartLabel, apartWord, binWord, cameFrom, carriedOver, casesText, CFG, cfgFor, cfgOf, csvCell, DEPTS, fmtDur, roomKnown, fmtN, fmtTime, inCases, kindClass, lineLabel, lineNameOf, looksLikeTwoLots, madeText, measureName, measureUnit, normCode, noteLabel, noteOf, orderLabel, orderOfId, plainDay, plainText, productOf, purgesOf, reasonText, restorePurged, runStats, SETUP, shiftAt, shiftHours, shiftSpan, shiftsOf, stopTime, unitQty, user, whoText, workDay, type Dept, type State } from './store'
 import { avanceRows, mfoText, mfoWord, pending } from './avance'
+import { codeLabel, FAMILY_SHOWN, reasonCodeOf } from './reasons'
 import { cellText, loadZip, xDur, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 import { buildPdf, loadPdf } from './pdf'
 import { homeScreenApple, type Kind } from './send'
-import { filterFile, filterTitle, hitKey, palletsSheet, reportOf, runLots, runsSheet, searchReport, spanShifts, unitParts, unitsSheet, type Hit, type HitKind, type Report as ReportData, type ReportFilter, type Scope as SearchScope } from './report'
+import { CODE_HEADS, codeCells, hasCodedStops, paretoOf, filterFile, filterTitle, hitKey, palletsSheet, reportOf, runLots, runsSheet, searchReport, spanShifts, unitParts, unitsSheet, type Hit, type HitKind, type Report as ReportData, type ReportFilter, type Scope as SearchScope } from './report'
 import { canShift, writesIn } from './powers'
 import { AddRunDialog, AddUnitDialog, RunEditor, StopEditor } from './editors'
 import { supabase } from './supabase'
@@ -259,8 +260,10 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
       ...byCode.flatMap((c) => c.lots.map((l): Cell[] => [c.dept, c.code, l.lot, cw(c).unit, l.units, CFG[c.dept].qty !== 'none' ? l.qty : '', CFG[c.dept].qty !== 'none' ? cw(c).qtyUnit : '', ...(l.byShift ? shiftCols.map((k) => (l.byShift as [number, number])[k - 1]) : [])]))]
     // the units and the pallets, each with its comment last: made in report.ts, where the checks read them too
     const unidades = unitsSheet(s, rep)
-    const paros: Cell[][] = [[tr('Departamento'), tr('Línea'), tr('Razón'), tr('Detalle'), tr('Inicio'), tr('Fin'), tr('Duración'), tr('Registró'), tr('Turno')],
-      ...stops.map((x): Cell[] => [x.dept, lineName(x), tr(x.reason), noteLabel(x.note), T(x.startedAt), x.endedAt ? T(x.endedAt) : tr('en curso'), D(x.ms), x.by, spanShifts(rep.plan, x.startedAt, x.endedAt ?? now)])]
+    // (each stop's Reason Code, planned or not, its OEE family and its category last, 2026-10-20: the columns the office
+    // already reads keep their places; a stop of before the codes says "Sin código". The Set up is PLN-03)
+    const paros: Cell[][] = [[tr('Departamento'), tr('Línea'), tr('Razón'), tr('Detalle'), tr('Inicio'), tr('Fin'), tr('Duración'), tr('Registró'), tr('Turno'), ...CODE_HEADS()],
+      ...stops.map((x): Cell[] => [x.dept, lineName(x), tr(x.reason), noteLabel(x.note), T(x.startedAt), x.endedAt ? T(x.endedAt) : tr('en curso'), D(x.ms), x.by, spanShifts(rep.plan, x.startedAt, x.endedAt ?? now), ...codeCells(x.reason)])]
     // the whole day first and each shift under it (not when the report is of one shift only); what a room filled in bins
     // goes under it, word by word: its bins and what they hold
     const binRows = (d: (typeof rep.byShift)[number]) => [...new Set(d.day.bins.map((y) => y.word))].flatMap((w) => [d.day, ...shiftCols.map((k) => (k === 1 ? d.first : d.second))].map((x): Cell[] => { const y = x.bins.find((z) => z.word === w); return [d.dept, x.shift ? tr('Turno {0}', x.shift) : tr('Total del día'), '', '', '', '', '', '', '', y?.units ?? 0, cfgFor(d.dept, w).unit, y?.qty ?? 0, apartWord(d.dept, w), '', '', '', ''] }))
@@ -749,7 +752,7 @@ function HitCard({ k, h }: { k: Kit; h: Hit }) {
   } else if (h.kind === 'stop') {
     const x = stops.find((y) => hitKey.stop(y.id) === h.key)
     if (!x) return null
-    title = <>{hl(tr(x.reason), toks)} · {hl(lineName(x), toks)}</>
+    title = <>{hl(reasonText(s, x.reason), toks)} · {hl(lineName(x), toks)}</>
     sub = joined([x.note ? hl(noteLabel(x.note), toks) : null, <>{at(x.startedAt)} – {x.endedAt ? fmtTime(x.endedAt) : tr('en curso')}</>, fmtDur(x.ms), turn(spanOf(x)), by(x.by)])
     btns = fixBtn(spanOf(x), x.dept, () => setEditStop(x.id))
   } else {
@@ -802,13 +805,55 @@ function GeneralView({ k }: { k: Kit }) {
           <div className="reasons">
             {rep.reasons.map((x) => (
               <div key={x.reason} className="reason">
-                <button type="button" className="drill" onClick={() => go('rec', { rec: 'stops', cause: x.reason })}>{tr(x.reason)}</button><span>{fmtDur(x.ms)}</span><span className="pct">{down > 0 ? Math.round((x.ms / down) * 100) + '%' : ''}</span>
+                <button type="button" className="drill" onClick={() => go('rec', { rec: 'stops', cause: x.reason })}>{reasonText(s, x.reason)}</button><span>{fmtDur(x.ms)}</span><span className="pct">{down > 0 ? Math.round((x.ms / down) * 100) + '%' : ''}</span>
                 <div className="rbar"><i style={{ width: Math.max(2, Math.round((x.ms / rep.reasons[0].ms) * 100)) + '%' }} /></div>
               </div>
             ))}
           </div>
         </>
       )}
+      {(s.reasonCodes.on || hasCodedStops(rep)) && <CodePareto k={k} />}
+    </>
+  )
+}
+
+/**
+ * The stops by Reason Code (Jose, 2026-10-20): while the codes are on, or when the day in view has coded stops. A
+ * Pareto, the most time first: each code with its reason, how many stops and how long (the Parado by cause and the Set
+ * up, PLN-03); then planned against not planned and each OEE family. A stop of before the codes is "Sin código". Each
+ * code opens its stops.
+ */
+function CodePareto({ k }: { k: Kit }) {
+  const { rep, go } = k
+  const p = paretoOf(rep)
+  if (!p.rows.length) return null
+  const top = p.rows[0].ms || 1, pct = (ms: number) => (p.total > 0 ? Math.round((ms / p.total) * 100) + '%' : '')
+  return (
+    <>
+      <h3>{tr('Paros por código (Reason Codes)')}</h3>
+      <div className="rc-totals">
+        <span className="rc-tot plan"><small>{tr('Planeado')}</small><b>{fmtDur(p.planned)}</b><i>{pct(p.planned)}</i></span>
+        <span className="rc-tot unplan"><small>{tr('No planeado')}</small><b>{fmtDur(p.unplanned)}</b><i>{pct(p.unplanned)}</i></span>
+        {p.uncoded > 0 && <span className="rc-tot none"><small>{tr('Sin código')}</small><b>{fmtDur(p.uncoded)}</b><i>{pct(p.uncoded)}</i></span>}
+        {p.families.map((f) => <span key={f.family} className="rc-tot fam"><small>{FAMILY_SHOWN[f.family]()}</small><b>{fmtDur(f.ms)}</b><i>{pct(f.ms)}</i></span>)}
+      </div>
+      <div className="twrap">
+        <table className="rc-pareto">
+          <thead><tr><th>{tr('Código')}</th><th>{tr('Razón')}</th><th>{tr('Veces')}</th><th>{tr('Tiempo')}</th><th>%</th></tr></thead>
+          <tbody>{p.rows.map((r) => {
+            const c = r.code ? reasonCodeOf(r.reason) : undefined
+            return (
+              <tr key={r.code || '-'} className={r.planned ? 'planned' : ''}>
+                <td><b>{r.code || '—'}</b>{r.planned && <span className="rc-tag plan">{tr('Planeado')}</span>}</td>
+                <td>{c ? <button type="button" className="drill" onClick={() => go('rec', { rec: 'stops', cause: r.reason })}>{codeLabel(c)}</button> : tr('Sin código')}</td>
+                <td>{r.times}</td>
+                <td>{fmtDur(r.ms)}<div className="rbar"><i style={{ width: Math.max(2, Math.round((r.ms / top) * 100)) + '%' }} /></div></td>
+                <td>{pct(r.ms)}</td>
+              </tr>
+            )
+          })}</tbody>
+        </table>
+      </div>
     </>
   )
 }
@@ -1215,7 +1260,7 @@ function StopsTable({ k }: { k: Kit }) {
   const chosen = cause && cause !== '!setup' && cause !== SETUP && !causes.includes(cause) ? [cause] : []
   return (
     <>
-      <QuickChips items={[{ key: '', label: tr('Todos'), n: c('') }, { key: '!setup', label: tr('Parado'), n: c('!setup') }, { key: SETUP, label: 'Set up', n: c(SETUP), cls: 'setupchip' }, ...[...causes, ...chosen].map((r) => ({ key: r, label: tr(r), n: c(r) }))]} on={cause} onPick={setCause} />
+      <QuickChips items={[{ key: '', label: tr('Todos'), n: c('') }, { key: '!setup', label: tr('Parado'), n: c('!setup') }, { key: SETUP, label: 'Set up', n: c(SETUP), cls: 'setupchip' }, ...[...causes, ...chosen].map((r) => ({ key: r, label: reasonText(k.s, r), n: c(r) }))]} on={cause} onPick={setCause} />
       {!stopsShown.length ? <p className="hint">{tr('Nada registrado con estos filtros.')}</p> : <div className="twrap rp-cardlist">
         <table>
           <thead><tr>{can('fix') && <th className="rp-act"></th>}{manyRooms && <th>{tr('Depto')}</th>}<th>{tr('Línea')}</th><th>{tr('Razón')}</th><th>{tr('Detalle')}</th><th>{tr('Turno')}</th><th>{tr('Inicio')}</th><th>{tr('Fin')}</th><th>{tr('Duración')}</th><th>{tr('Registró')}</th></tr></thead>
@@ -1226,7 +1271,7 @@ function StopsTable({ k }: { k: Kit }) {
                 {can('fix') && <td className="rp-act"><div className="btns">{fixBtn(spanOf(x), x.dept, () => setEditStop(x.id))}</div></td>}
                 {manyRooms && <td className="c-head"><DeptBadge d={x.dept} /></td>}
                 <td data-label={tr('Línea')}>{hl(lineName(x), toks)}</td>
-                <td data-label={tr('Razón')} className={manyRooms ? undefined : 'c-head'}><b>{hl(tr(x.reason), toks)}</b></td>
+                <td data-label={tr('Razón')} className={manyRooms ? undefined : 'c-head'}><b>{hl(reasonText(k.s, x.reason), toks)}</b></td>
                 <td data-label={tr('Detalle')} className={none(note)}>{note === '—' ? note : hl(note, toks)}</td>
                 <td data-label={tr('Turno')}>{spanOf(x)}</td>
                 <td data-label={tr('Inicio')}>{hl(fmtTime(x.startedAt), toks)}</td>
@@ -1360,7 +1405,7 @@ export function RunDetail({ s, runId, at, now, mgr, fix, fixable, onFix, onFixSt
                   const sh = spanShifts(plan, x.startedAt, x.endedAt ?? now)
                   return (
                     <tr key={x.id} className={x.endedAt ? undefined : 'live'}>
-                      <td><b>{tr(x.reason)}</b>{x.note && <small> · {noteLabel(x.note)}</small>}</td><td>{fmtTime(x.startedAt)} – {x.endedAt ? fmtTime(x.endedAt) : tr('en curso')}</td><td>{fmtDur(stopTime(s, x, now))}</td>
+                      <td><b>{reasonText(s, x.reason)}</b>{x.note && <small> · {noteLabel(x.note)}</small>}</td><td>{fmtTime(x.startedAt)} – {x.endedAt ? fmtTime(x.endedAt) : tr('en curso')}</td><td>{fmtDur(stopTime(s, x, now))}</td>
                       {canFixAny && <td>{fix(sh, x.dept) ? <button type="button" className="btn xs soft" aria-label={tr('Corregir')} onClick={() => onFixStop(x.id)}>✎</button> : <small className="rp-lock">🔒 {tr('Otro turno')}</small>}</td>}
                     </tr>
                   )
