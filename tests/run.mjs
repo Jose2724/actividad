@@ -4973,6 +4973,49 @@ section('Códigos de paro (Reason Codes): apagados todo como siempre; encendidos
   })
 }
 
+section('Asistencia: cada supervisor anota a su gente, saca a quien se va, y el % de faltas sale solo (Santiago, 2026-10-20)')
+{
+  const at = await device('attendance', { user: 'Santiago' })
+  await at.use(async (m) => {
+    const st = () => m.store.get(), D = '2026-10-20'
+    eq('sin cambiar nada, cada cuarto espera lo de la hoja de Santiago', m.DEPTS.map((d) => m.attExpectedOf(st(), d, 1)), [6, 18, 11, 10, 21])
+    clock = T0 + 5 * M
+    const ids = ['Juan Pérez', 'María', '105', 'Pedro'].map((n) => m.attAdd(D, 'Kitchen', 1, n))
+    eq('cuatro anotados en Kitchen turno 1: 4 de 6, faltan 2 (33%)', [ids.every(Boolean), m.attendanceOf(st(), D, 1, ['Kitchen']).rows[0]], [true, { dept: 'Kitchen', expected: 6, actual: 4, miss: 2, pct: 2 / 6, over: 0, gone: 0 }])
+    eq('el mismo nombre otra vez (con otros espacios y acentos) no se anota dos veces', m.attAdd(D, 'Kitchen', 1, '  juan   perez '), '')
+    const up = m.outbox.items().find((i) => i.table === 'act_changes' && i.key === 'att:' + ids[0])
+    eq('cada persona sube a la historia del servidor, aparte (act_attendance), con su cuarto', [up?.row.dept, up?.row.ref_table, JSON.parse(up?.row.after ?? '{}').name, st().changes.some((c) => c.refTable === 'act_attendance')], ['Kitchen', 'act_attendance', 'Juan Pérez', false])
+    clock = T0 + 60 * M
+    m.attRemove(ids[3], 'casa')
+    eq('Pedro se fue a su casa: sigue en la lista, marcado, y ya no cuenta: 3 de 6 (50%)', [m.attOf(st(), D, 'Kitchen', 1).find((x) => x.id === ids[3]).gone.why, m.attendanceOf(st(), D, 1, ['Kitchen']).rows[0].actual, m.attendanceOf(st(), D, 1, ['Kitchen']).rows[0].pct], ['casa', 3, 0.5])
+    m.attRemove(ids[1], 'otro', 'RTE', true)
+    eq('María pasó a cubrir RTE: sale de Kitchen y queda anotada en RTE, diciendo de dónde viene', [m.attendanceOf(st(), D, 1, ['Kitchen']).rows[0].actual, m.attOf(st(), D, 'RTE', 1).map((x) => [x.name, x.from])], [2, [['María', 'Kitchen']]])
+    m.attBack(ids[3])
+    eq('sacado por error: vuelve y cuenta otra vez', m.attendanceOf(st(), D, 1, ['Kitchen']).rows[0].actual, 3)
+    m.attDelete(ids[2])
+    eq('anotado por error: se quita de la lista (en el servidor queda marcado)', [m.attOf(st(), D, 'Kitchen', 1).map((x) => x.name), m.outbox.items().find((i) => i.key === 'att:' + ids[2])?.row.deleted], [['Juan Pérez', 'María', 'Pedro'], true])
+    m.setAttExpected('Kitchen', 1, 5)
+    const t = m.outbox.items().find((i) => i.table === 'act_targets' && i.key === 'opt:att:Kitchen:1')
+    eq('el manager cambia los esperados de Kitchen turno 1 a 5: sube, queda en el historial, y el % se rehace (2 de 5: faltan 3, 60%)', [t?.row.per_hour, st().changes.some((c) => c.what.includes('personas esperadas') && c.before === '6' && c.after === '5'), m.attendanceOf(st(), D, 1, ['Kitchen']).rows[0].pct], [5, true, 0.6])
+    eq('los esperados no son la meta de nadie', [st().targets, st().turnGoals, st().lineTargets], [[], [], []])
+    const tot = m.attendanceOf(st(), D, 1).total
+    eq('el total de la planta en el turno 1: lo de cada cuarto sumado (María cuenta en RTE)', [tot.expected, tot.actual, tot.gone], [5 + 18 + 11 + 10 + 21, 3, 1])
+    // what another tablet writes arrives; an older version does not change it
+    m.applyRemote('act_changes', { id: 'att:R1', at: iso(T0 + 70 * M), by_name: 'Edgar', dept: 'Packing', what: 'Asistencia', before: '', after: JSON.stringify({ date: D, shift: 2, name: 'Luis', gone: null, from: '' }), ref_table: 'act_attendance', ref_key: 'R1', deleted: false, updated_at: iso(T0 + 70 * M), updated_by: 'Edgar' })
+    m.applyRemote('act_targets', { dept: 'opt:att:Packing:2', per_hour: 19, per_shift: null, updated_at: iso(T0 + 70 * M), updated_by: 'Edgar' })
+    m.applyRemote('act_targets', { dept: 'opt:att:Packing:2', per_hour: 30, per_shift: null, updated_at: iso(T0 + 65 * M), updated_by: 'Edgar' })
+    eq('lo que anota otra tablet llega (Luis en Packing turno 2, 19 esperados; una versión vieja no lo cambia)', [m.attOf(st(), D, 'Packing', 2).map((x) => [x.name, x.by]), m.attExpectedOf(st(), 'Packing', 2), st().changes.some((c) => c.id === 'att:R1')], [[['Luis', 'Edgar']], 19, false])
+    // the Excel: a sheet with its own bar chart, the % as percents
+    const z = await m.loadZip()
+    const rows = [['Cuarto', 'Esperados', 'Vinieron', '% Falta'], ['KITCHEN', 6, 5, m.xPct(1 / 6)], ['SPIRAL', 11, 6, m.xPct(5 / 11)]]
+    const files = z.unzipSync(await m.xlsxBytes([{ name: 'Resumen', rows: [['a']] }, { name: 'Asistencia', rows, chart: { title: '% de faltas', series: '% Falta', cat: 0, val: 3, from: 2, to: 3, at: 6, pct: true } }]))
+    const chart = z.strFromU8(files['xl/charts/chart2.xml'] ?? new Uint8Array())
+    eq('el Excel lleva la gráfica de barras de la hoja Asistencia, de sus propias celdas, en %', [!!files['xl/drawings/drawing2.xml'], chart.includes("<c:f>'Asistencia'!$D$2:$D$3</c:f>"), chart.includes('<c:barDir val="bar"/>'), chart.includes('formatCode="0%"'), z.strFromU8(files['xl/worksheets/sheet2.xml']).includes('<drawing r:id="rId1"/>'), z.strFromU8(files['[Content_Types].xml']).includes('/xl/charts/chart2.xml'), !files['xl/charts/chart1.xml']], [true, true, true, true, true, true, true])
+    eq('el % va como número con formato de porcentaje', z.strFromU8(files['xl/worksheets/sheet2.xml']).includes('<c r="D2" s="5"><v>0.1667</v></c>'), true)
+  })
+  const back = await device('attendance-again', { seed: JSON.parse(disks.get('attendance').get('act_v1')), user: 'Santiago' })
+  eq('al volver a abrir: la gente anotada y los esperados siguen', back.use((m) => [m.attOf(m.store.get(), '2026-10-20', 'Kitchen', 1).length, m.attExpectedOf(m.store.get(), 'Kitchen', 1), m.attExpectedOf(m.store.get(), 'Packing', 2)]), [3, 5, 19])
+}
 section('Programa del día: la pestaña del admin, prendida para todos desde Ajustes (Jose, 2026-10-20)')
 {
   const pv = await device('program-view', { user: 'Jose' })

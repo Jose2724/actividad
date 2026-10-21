@@ -22,6 +22,7 @@ import { Settings, type SettingsKey } from './Settings'
 import { DEPT_LOOK, deptVars } from './look'
 import { Report, reportOpenAt, type ReportAt } from './ReportView'
 import { ProgramToday, programRooms } from './ProgramToday'
+import { AttendanceCard } from './Attendance'
 import { Flujo, flujoOpenAt } from './FlujoView'
 import { daysBetween, daysText, OpenOrders, OrderDetail, OrderHistory, revealAbove, shortOf, startText, WoNavCtx, woName, WorkOrderDialog, WoStateTag, type WoNav } from './WorkOrders'
 import { availOn, woN } from './woSum'
@@ -1979,6 +1980,8 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
       {shown === 'live' && (
         <>
           <TodayCard s={s} dept={dept} now={now} mgr={can('goals')} date={day.date} />
+          {/* who came to work in the room this shift (Santiago, 2026-10-20) */}
+          <AttendanceCard s={s} dept={dept} date={day.date} shift={(turnOf(s, day.date, now).shift || 1) as 1 | 2} edit={!viewOnly} />
           <div className="lines">{lines.map((l) => <LineCard key={l.id} s={s} line={l} now={now} mgr={can('fix')} day={day} />)}</div>
         </>
       )}

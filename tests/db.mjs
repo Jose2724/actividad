@@ -188,6 +188,8 @@ today['Pia (products): la historia del programa de su cuarto'] = await twice(pia
   today['Pia (products): un pedido de producción de su cuarto, y lo cambia (020)'] = await twice(pia, 'act_work_orders', woRow(order, 'RTE', '889', 24000, { unit: 'pouches' }), 'id', { qty: 25000 })
   today['Pia (products): su historia (020)'] = await twice(pia, 'act_changes', chg(uuid(), 'RTE', 'act_work_orders', order), 'id', { after: 'b' })
   today['Pia (products): el programa de su cuarto con su pedido (020)'] = await twice(pia, 'act_plan', { date: '2026-12-07', dept: 'RTE', code: '0889', qty: 3, lot: '', order_id: order, updated_at: iso(NOW), updated_by: 'Pia' }, 'date,dept,code,lot', { qty: 4 })
+  // (2026-10-20) the attendance of her room: each person a row of the history, apart (act_attendance)
+  today['Ana (op): una persona de la asistencia de su cuarto'] = await twice(ana, 'act_changes', chg('att:' + uuid(), 'Packing', 'act_attendance', 'k'), 'id', { after: 'b' })
   today['Ana (op): la cuenta cerrada de un pedido terminado de su cuarto (020)'] = await twice(ana, 'act_changes', chg('wodone:' + uuid(), 'Packing', 'act_work_orders:done', 'k'), 'id', { after: 'b' })
 }
 for (const key of ['shifts:2026-12-03', 'shiftweek:2026-12-03', 'shiftday:2026-12-04']) today['Gina (shifts): act_targets ' + key] = await twice(gina, 'act_targets', target(key), 'dept', { per_hour: 3 })

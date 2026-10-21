@@ -3,7 +3,9 @@ import type { ReactNode } from 'react'
 import { apartLabel, apartWord, binWord, cameFrom, carriedOver, casesText, CFG, cfgFor, cfgOf, csvCell, DEPTS, fmtDur, roomKnown, fmtN, fmtTime, inCases, kindClass, lineLabel, lineNameOf, looksLikeTwoLots, madeText, measureName, measureUnit, normCode, noteLabel, noteOf, orderLabel, orderOfId, plainDay, plainText, productOf, purgesOf, reasonText, restorePurged, runStats, SETUP, shiftAt, shiftHours, shiftSpan, shiftsOf, stopTime, unitQty, user, whoText, workDay, type Dept, type State } from './store'
 import { avanceRows, mfoText, mfoWord, pending } from './avance'
 import { codeLabel, FAMILY_SHOWN, reasonCodeOf } from './reasons'
-import { cellText, loadZip, xDur, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
+import { cellText, loadZip, xDur, xPct, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
+import { attendanceOf, attOf, attShifts } from './store'
+import { pctText } from './Attendance'
 import { buildPdf, loadPdf } from './pdf'
 import { homeScreenApple, type Kind } from './send'
 import { CODE_HEADS, codeCells, hasCodedStops, paretoOf, filterFile, filterTitle, hitKey, palletsSheet, reportOf, runLots, runsSheet, searchReport, spanShifts, unitParts, unitsSheet, type Hit, type HitKind, type Report as ReportData, type ReportFilter, type Scope as SearchScope } from './report'
@@ -303,10 +305,24 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
       ...rep.bins.map((b): Cell[] => [b.n, lineNameOf(s, b.r.lineId, b.r.line), b.r.code, b.lot, b.qty ?? '', binWord(b.word), b.ref, T(b.at), b.shift, b.by])]
     return { resumen, porTurno, porCodigo, porLote, pallets, bins, unidades, paros, cambios, avance }
   }
+  /**
+   * Asistencia (Santiago, 2026-10-20), as his own sheet: each room's people expected, those who came, the % missing and
+   * the total, with Excel's own bar chart of the % under it; then every person written, with who wrote them and when,
+   * and who left, why and when. The room in view, or every room; the shift in view, or the day's shifts added up
+   */
+  const attSheets = (): Sheet[] => {
+    const rooms = dept ? [dept] : only ? [only] : DEPTS, a = attendanceOf(s, date, rep.shift, rooms)
+    const rows: Cell[][] = [[tr('Cuarto'), tr('Esperados'), tr('Vinieron'), tr('% Falta'), tr('Faltan')], ...a.rows.map((r): Cell[] => [r.dept, r.expected, r.actual, xPct(r.pct), r.miss]), [tr('TOTAL'), a.total.expected, a.total.actual, xPct(a.total.pct), a.total.miss]]
+    const people = (rep.shift ? [rep.shift] : attShifts(s, date)).flatMap((k) => rooms.flatMap((d) => attOf(s, date, d, k)))
+    const T = (ms: number) => xTime(ms, fmtTime(ms))
+    const names: Cell[][] = [[tr('Fecha'), tr('Turno'), tr('Cuarto'), tr('Persona'), tr('Anotó'), tr('Hora'), tr('Estado'), tr('Pasó a'), tr('Hora de salida'), tr('Viene de')],
+      ...people.map((x): Cell[] => [date, x.shift, x.dept, x.name, x.by, T(x.at), !x.gone ? tr('trabajando') : x.gone.why === 'casa' ? tr('se fue a su casa') : tr('pasó a otro cuarto'), x.gone?.to ?? '', x.gone ? T(x.gone.at) : '', x.from])]
+    return [{ name: tr('Asistencia'), rows, chart: { title: tr('% de faltas por cuarto'), series: tr('% Falta'), cat: 0, val: 3, from: 2, to: 1 + a.rows.length, at: a.rows.length + 4, pct: true } }, ...(people.length ? [{ name: tr('Asistencia · personas'), rows: names }] : [])]
+  }
   /** the Excel file's sheets: one per table (Cambios and Avance only for the manager and the office) */
   const sheets = (): Sheet[] => {
     const b = blocks()
-    return [{ name: tr('Resumen'), rows: b.resumen }, ...(b.porTurno.length > 1 ? [{ name: tr('Por turno'), rows: b.porTurno }] : []), { name: tr('Por código'), rows: b.porCodigo }, { name: tr('Por lote'), rows: b.porLote }, ...(b.pallets.length > 1 ? [{ name: tr('Pallets'), rows: b.pallets }] : []), ...(b.bins.length > 1 ? [{ name: tr('Bins'), rows: b.bins }] : []), { name: tr('Unidades'), rows: b.unidades }, { name: tr('Paros'), rows: b.paros }, ...(mgr ? [{ name: tr('Cambios'), rows: b.cambios }] : []), ...(b.avance.length > 1 ? [{ name: tr('Avance'), rows: b.avance }] : [])]
+    return [{ name: tr('Resumen'), rows: b.resumen }, ...attSheets(), ...(b.porTurno.length > 1 ? [{ name: tr('Por turno'), rows: b.porTurno }] : []), { name: tr('Por código'), rows: b.porCodigo }, { name: tr('Por lote'), rows: b.porLote }, ...(b.pallets.length > 1 ? [{ name: tr('Pallets'), rows: b.pallets }] : []), ...(b.bins.length > 1 ? [{ name: tr('Bins'), rows: b.bins }] : []), { name: tr('Unidades'), rows: b.unidades }, { name: tr('Paros'), rows: b.paros }, ...(mgr ? [{ name: tr('Cambios'), rows: b.cambios }] : []), ...(b.avance.length > 1 ? [{ name: tr('Avance'), rows: b.avance }] : [])]
   }
   const excel = async () => {
     try {
@@ -834,8 +850,41 @@ function GeneralView({ k }: { k: Kit }) {
           </div>
         </>
       )}
+      <AttendanceWhere k={k} />
       <StopsWhere k={k} />
       {(s.reasonCodes.on || hasCodedStops(rep)) && <CodePareto k={k} />}
+    </>
+  )
+}
+
+/**
+ * Asistencia (Santiago, 2026-10-20): each room's people expected, those who came and the % missing, as his sheet, with
+ * a bar of the % for each room (red from a quarter up), the total, and each room's names a tap away. The shift in
+ * view, or the day's shifts added up; the room in view, or every room
+ */
+function AttendanceWhere({ k }: { k: Kit }) {
+  const { s, rep, date, dept, only } = k
+  const [names, setNames] = useState<Dept | ''>('')
+  const rooms = dept ? [dept] : only ? [only] : DEPTS, a = attendanceOf(s, date, rep.shift, rooms)
+  const people = (d: Dept) => (rep.shift ? [rep.shift] : attShifts(s, date)).flatMap((x) => attOf(s, date, d, x))
+  return (
+    <>
+      <h3>{tr('Asistencia')}{rep.shift ? ' · ' + tr('Turno {0}', rep.shift) : ''}</h3>
+      <div className="att-rep">
+        <div className="att-row head"><span>{tr('Cuarto')}</span><span>{tr('Esperados')}</span><span>{tr('Vinieron')}</span><span>{tr('% Falta')}</span><span className="att-barcol" /></div>
+        {a.rows.map((r) => (
+          <Fragment key={r.dept}>
+            <div className="att-row" style={deptVars(r.dept)}>
+              <span><button type="button" className="drill" onClick={() => setNames(names === r.dept ? '' : r.dept)}>{DEPT_LOOK[r.dept].emoji} {r.dept}</button></span>
+              <span>{r.expected}</span><span>{r.actual}</span><b className={r.pct >= 0.25 ? 'red' : r.miss ? 'amber' : 'ok'}>{pctText(r.pct)}</b>
+              <span className="att-barcol"><i className={r.pct >= 0.25 ? 'red' : ''} style={{ width: Math.round(r.pct * 100) + '%' }} /></span>
+            </div>
+            {names === r.dept && <div className="att-names">{people(r.dept).length ? people(r.dept).map((x) => <span key={x.id} className={x.gone ? 'gone' : ''}>{x.name}{x.gone && <small> · {x.gone.why === 'casa' ? tr('se fue a su casa') : tr('pasó a {0}', x.gone.to || tr('otro cuarto'))}</small>}</span>) : <i>{tr('Nadie anotado.')}</i>}</div>}
+          </Fragment>
+        ))}
+        <div className="att-row total"><b>{tr('TOTAL')}</b><b>{a.total.expected}</b><b>{a.total.actual}</b><b>{pctText(a.total.pct)}</b><span className="att-barcol"><i style={{ width: Math.round(a.total.pct * 100) + '%' }} /></span></div>
+      </div>
+      <p className="hint">{tr('Toca un cuarto para ver sus nombres. En el Excel va esta tabla con su gráfica y la lista de personas.')}</p>
     </>
   )
 }

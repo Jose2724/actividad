@@ -271,6 +271,28 @@ export const WO_DONE_REF = 'act_work_orders:done'
  * = the room's own); createdAt = when it was typed, on the shared clock (two orders of one start day go in this order)
  */
 export type WorkOrder = { id: string; dept: Dept; code: string; lot: string; wo: string; qty: number; unit: string; startDate: string; note: string; createdAt: number; createdBy: string; closedAt: number | null; closedBy: string; deleted?: boolean; updatedAt: number; syncedAt?: number }
+/**
+ * Attendance (Santiago, 2026-10-20: "que cada supervisor registre las personas ... y según la cantidad muestre" the
+ * room's people expected, those who came and the % missing). A supervisor writes each person by name (or number) for
+ * the room and shift; the count of those still there is the actual. A person who went to cover another room or went
+ * home is taken out (gone), not erased: the % is worked out again and the list says when and why. A person written by
+ * mistake is deleted. from = the room they came from (taken out of another room to cover this one).
+ */
+export type AttGone = { why: 'otro' | 'casa'; to: Dept | ''; at: number; by: string }
+export type AttEntry = { id: string; date: string; dept: Dept; shift: 1 | 2; name: string; by: string; at: number; gone: AttGone | null; from: Dept | ''; deleted?: boolean; updatedAt: number; syncedAt?: number }
+/** the people a room expects on a shift (a fixed number the managers change: see ATT_DEFAULT) */
+export type AttExpected = { dept: Dept; shift: 1 | 2; n: number; updatedAt: number }
+function attFrom(x: Partial<AttEntry> | null | undefined): AttEntry | null {
+  if (!x || typeof x !== 'object' || typeof x.id !== 'string' || !x.id || !(DEPTS as unknown[]).includes(x.dept) || !isDay(String(x.date ?? '')) || (x.shift !== 1 && x.shift !== 2)) return null
+  const name = String(x.name ?? '').replace(/\s+/g, ' ').trim().slice(0, 60)
+  if (!name) return null
+  const g = x.gone && typeof x.gone === 'object' && (x.gone.why === 'otro' || x.gone.why === 'casa') ? { why: x.gone.why, to: (DEPTS as unknown[]).includes(x.gone.to) ? (x.gone.to as Dept) : ('' as const), at: Number(x.gone.at) || 0, by: String(x.gone.by ?? '') } : null
+  return { id: x.id, date: String(x.date), dept: x.dept as Dept, shift: x.shift, name, by: String(x.by ?? ''), at: Number(x.at) || 0, gone: g, from: (DEPTS as unknown[]).includes(x.from) ? (x.from as Dept) : '', ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
+}
+function attExpectedFrom(x: Partial<AttExpected> | null | undefined): AttExpected | null {
+  if (!x || !(DEPTS as unknown[]).includes(x.dept) || (x.shift !== 1 && x.shift !== 2) || !(Number(x.n) >= 0)) return null
+  return { dept: x.dept as Dept, shift: x.shift, n: Math.round(Number(x.n)), updatedAt: Number(x.updatedAt) || 0 }
+}
 /** one unit (a mezcla, a cart, a bin, a pallet) as it counted for an order: k = its place in its run (1, 2…), day = its run's work day */
 export type OrderUnitRef = { runId: string; k: number; at: number; day: string; shift: 1 | 2; n: number; by: string; line: string }
 /**
@@ -320,7 +342,7 @@ export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Produ
    */
   orderRuns: Run[]
   /** the production orders of every room (deleted ones kept with their flag), and the closed accounts of finished ones */
-  workOrders: WorkOrder[]; orderSeals: OrderSeal[] }
+  workOrders: WorkOrder[]; orderSeals: OrderSeal[]; attendance: AttEntry[]; attExpected: AttExpected[] }
 /**
  * An order to fill in Packing: so many cases of one product for a customer, to ship by a date. Most carry the
  * customer's purchase order number (PO); some never do and some get it later. See "the orders Packing fills".
@@ -406,10 +428,10 @@ function tidySchedule(sch: Schedule): Schedule {
 function isDay(text: string) { return /^\d{4}-\d{2}-\d{2}$/.test(text) }
 /** with a server the lines (and products) are shared and come from it; without one, each device starts with a line per room */
 const SERVER = !!import.meta.env.VITE_SUPABASE_URL
-function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, reasonCodes: { on: false, updatedAt: 0 }, programView: { on: false, updatedAt: 0 }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [] } }
+function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, reasonCodes: { on: false, updatedAt: 0 }, programView: { on: false, updatedAt: 0 }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [], attendance: [], attExpected: [] } }
 function load(): State {
   try {
-    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; reasonCodes?: Partial<ReasonCodesOpt>; programView?: Partial<ReasonCodesOpt>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[] }
+    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; reasonCodes?: Partial<ReasonCodesOpt>; programView?: Partial<ReasonCodesOpt>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[]; attendance?: Partial<AttEntry>[]; attExpected?: Partial<AttExpected>[] }
     const s = JSON.parse(localStorage.getItem(KEY) || 'null') as Raw | null
     // rows saved by earlier versions: carts as plain timestamps, units without a tag or a name, products with one
     // pouches-per-cart number, nothing with an update time
@@ -451,6 +473,9 @@ function load(): State {
         // note at `let state = load()`): a stored field nothing reads back is a field lost on every reload
         workOrders: (s.workOrders ?? []).map(workOrderFrom).filter((o): o is WorkOrder => !!o),
         orderSeals: (s.orderSeals ?? []).map(sealFrom).filter((x): x is OrderSeal => !!x),
+        // attendance (2026-10-20): read with function declarations only, as the orders
+        attendance: (s.attendance ?? []).map(attFrom).filter((x): x is AttEntry => !!x),
+        attExpected: (s.attExpected ?? []).map(attExpectedFrom).filter((x): x is AttExpected => !!x),
         turnGoals: (s.turnGoals ?? []).filter((g) => !!g && isTurnKey(String(g.key ?? ''))).map((g) => ({ key: String(g.key), perHour: g.perHour ?? null, total: g.total ?? null, updatedAt: g.updatedAt ?? 0 })),
       }
     }
@@ -505,14 +530,16 @@ function pruned(s: State): State {
   const forWork = (p: Plan) => { const f = p.orderId ? liveFrom.get(p.orderId) : undefined; return f !== undefined && p.date >= f }
   // (a program row by its code and its lot, as it waits in the queue: see planKey)
   const plans = s.plans.filter((p) => p.date >= from || opened.has(p.date) || waiting.has('act_plan|' + planKey(p.date, p.dept, p.code, p.lot)) || forWork(p))
+  // (attendance goes with its day, as everything else: kept while it waits to go up)
+  const attendance = (s.attendance ?? []).filter((x) => x.date >= from || opened.has(x.date) || waiting.has('act_changes|att:' + x.id))
   // a run that goes with its day keeps counting for the order its pallets went to, as long as that order is open
   const kept = new Set(runs.map((r) => r.id)), openIds = new Set(s.orders.filter((o) => !o.closed).map((o) => o.id))
   const forOrder = (r: Run) => r.units.some((u) => !!u.po && openIds.has(u.po)) || needed(r)
   const gone = s.runs.filter((r) => !kept.has(r.id) && forOrder(r))
   const orderRuns = [...(s.orderRuns ?? []).filter((r) => !kept.has(r.id) && !gone.some((g) => g.id === r.id) && forOrder(r)), ...gone]
   const sameOrderRuns = orderRuns.length === (s.orderRuns ?? []).length && orderRuns.every((r, k) => r === s.orderRuns[k])
-  if (runs.length === s.runs.length && stops.length === s.stops.length && changes.length === s.changes.length && days.length === Object.keys(s.schedule).length && plans.length === s.plans.length && sameOrderRuns) return s
-  return { ...s, runs, orderRuns, stops, changes, schedule: Object.fromEntries(days.map((d) => [d, s.schedule[d]])), plans }
+  if (runs.length === s.runs.length && stops.length === s.stops.length && changes.length === s.changes.length && days.length === Object.keys(s.schedule).length && plans.length === s.plans.length && attendance.length === (s.attendance ?? []).length && sameOrderRuns) return s
+  return { ...s, runs, orderRuns, stops, changes, schedule: Object.fromEntries(days.map((d) => [d, s.schedule[d]])), plans, attendance }
 }
 // ---- what this device holds of the days of each production order (2026-10-19) ----
 /** this page has brought the plant from the server at least once (sync.ts says so after every pull that went well) */
@@ -817,6 +844,89 @@ export function setProgramView(on: boolean) {
   set({ ...state, programView: next })
   push('act_targets', OPT_PROGRAM, { dept: OPT_PROGRAM, per_hour: on ? 1 : 0, per_shift: null, updated_at: iso(next.updatedAt), updated_by: user.get() })
   logChange(null, 'Programa del día', programText(was.on), programText(on), 'act_targets', OPT_PROGRAM)
+}
+// ---- attendance (Santiago, 2026-10-20: see AttEntry) ----
+/**
+ * The people each room expects on a shift until a manager says otherwise (Santiago's sheet of 2026-10-20). Each room
+ * and shift can be changed (setAttExpected): it travels in act_targets under 'opt:att:<room>:<shift>' (an 'opt:' key:
+ * only managers and the office write it, and no build reads it as a goal)
+ */
+export const ATT_DEFAULT: Record<Dept, number> = { Kitchen: 6, Spiral: 11, RTE: 18, MFO: 10, Packing: 21 }
+const ATT_KEY = 'opt:att:', ATT_ID = 'att:', ATT_REF = 'act_attendance'
+export const attExpectedOf = (s: State, dept: Dept, shift: 1 | 2) => (s.attExpected ?? []).find((x) => x.dept === dept && x.shift === shift)?.n ?? ATT_DEFAULT[dept]
+export function setAttExpected(dept: Dept, shift: 1 | 2, n: number) {
+  const k = Math.round(n)
+  if (!(k >= 0) || !roomKnown(dept)) return
+  const was = (state.attExpected ?? []).find((x) => x.dept === dept && x.shift === shift), before = attExpectedOf(state, dept, shift)
+  if (before === k && was) return
+  const next: AttExpected = { dept, shift, n: k, updatedAt: stamp(was) }
+  set({ ...state, attExpected: [...(state.attExpected ?? []).filter((x) => x !== was), next] })
+  push('act_targets', ATT_KEY + dept + ':' + shift, { dept: ATT_KEY + dept + ':' + shift, per_hour: k, per_shift: null, updated_at: iso(next.updatedAt), updated_by: user.get() })
+  logChange(dept, 'Asistencia · ' + dept + ' · Turno ' + shift + ' · personas esperadas', String(before), String(k), 'act_targets', ATT_KEY + dept + ':' + shift)
+}
+/** a name as two writings of it are compared ("juan  pérez" and "Juan Perez" are one person) */
+const attKey = (x: string) => plain(x.replace(/\s+/g, ' ').trim())
+/** the people written for a room and shift of a day (the deleted ones out; the gone ones in, marked) */
+export const attOf = (s: State, date: string, dept: Dept, shift: 1 | 2) => (s.attendance ?? []).filter((x) => !x.deleted && x.date === date && x.dept === dept && x.shift === shift).sort((a, b) => a.at - b.at)
+const rowOfAtt = (x: AttEntry) => ({ id: ATT_ID + x.id, at: iso(x.at), by_name: x.by, dept: x.dept, what: 'Asistencia', before: '', after: JSON.stringify({ date: x.date, shift: x.shift, name: x.name, gone: x.gone, from: x.from }), ref_table: ATT_REF, ref_key: x.id, deleted: !!x.deleted, updated_at: iso(x.updatedAt), updated_by: user.get() })
+function putAtt(x: AttEntry) {
+  set({ ...state, attendance: [...(state.attendance ?? []).filter((y) => y.id !== x.id), x] })
+  push('act_changes', ATT_ID + x.id, rowOfAtt(x))
+}
+/** a person written for a room and shift; '' = not written (no name, or that name is already there and not gone) */
+export function attAdd(date: string, dept: Dept, shift: 1 | 2, name: string, from: Dept | '' = ''): string {
+  const n = name.replace(/\s+/g, ' ').trim().slice(0, 60)
+  if (!n || !isDay(date) || !roomKnown(dept) || (shift !== 1 && shift !== 2)) return ''
+  if (attOf(state, date, dept, shift).some((x) => !x.gone && attKey(x.name) === attKey(n))) return ''
+  const x: AttEntry = { id: uid(), date, dept, shift, name: n, by: user.get(), at: clockNow(), gone: null, from, updatedAt: 0 }
+  putAtt({ ...x, updatedAt: stamp(undefined) })
+  return x.id
+}
+/**
+ * a person taken out of the room: gone to cover another room (to), or gone home. Kept, marked, with when and who; the
+ * % is worked out again. With addThere, one gone to another room is written there too (the same shift), unless that
+ * room already has the name: the screen asks for it only where this person may write in that room
+ */
+export function attRemove(id: string, why: 'otro' | 'casa', to: Dept | '' = '', addThere = false): boolean {
+  const x = (state.attendance ?? []).find((y) => y.id === id)
+  if (!x || x.deleted || x.gone) return false
+  batch(() => {
+    putAtt({ ...x, gone: { why, to: why === 'otro' ? to : '', at: clockNow(), by: user.get() }, updatedAt: stamp(x) })
+    if (why === 'otro' && to && to !== x.dept && addThere) attAdd(x.date, to, x.shift, x.name, x.dept)
+  })
+  return true
+}
+/** a person taken out by mistake comes back (what was written in the other room for them stays: it is that room's) */
+export function attBack(id: string): boolean {
+  const x = (state.attendance ?? []).find((y) => y.id === id)
+  if (!x || x.deleted || !x.gone) return false
+  putAtt({ ...x, gone: null, updatedAt: stamp(x) })
+  return true
+}
+/** a person written by mistake is taken away (kept on the server, marked, as everything) */
+export function attDelete(id: string): boolean {
+  const x = (state.attendance ?? []).find((y) => y.id === id)
+  if (!x || x.deleted) return false
+  putAtt({ ...x, deleted: true, updatedAt: stamp(x) })
+  return true
+}
+/** the shifts a day works (a day of one shift: that one alone) */
+export const attShifts = (s: State, date: string): (1 | 2)[] => { const o = shiftsOf(s, date).only; return o === 1 || o === 2 ? [o] : [1, 2] }
+/**
+ * Each room's attendance of a day, for one shift (or the day's shifts added up: 0), as Santiago's sheet: expected,
+ * actual (written and not gone), missing and its share (never below 0; more people than expected is 0% and said apart)
+ */
+export type AttRow = { dept: Dept; expected: number; actual: number; miss: number; pct: number; over: number; gone: number }
+export function attendanceOf(s: State, date: string, shift: 0 | 1 | 2, rooms: Dept[] = DEPTS): { rows: AttRow[]; total: AttRow } {
+  const shifts = shift ? [shift] : attShifts(s, date)
+  const rows = rooms.map((dept) => {
+    let expected = 0, actual = 0, gone = 0
+    for (const k of shifts) { expected += attExpectedOf(s, dept, k); const l = attOf(s, date, dept, k); actual += l.filter((x) => !x.gone).length; gone += l.filter((x) => !!x.gone).length }
+    const miss = Math.max(0, expected - actual)
+    return { dept, expected, actual, miss, pct: expected ? miss / expected : 0, over: Math.max(0, actual - expected), gone }
+  })
+  const e = rows.reduce((t, r) => t + r.expected, 0), a = rows.reduce((t, r) => t + r.actual, 0), m = rows.reduce((t, r) => t + r.miss, 0)
+  return { rows, total: { dept: 'Kitchen', expected: e, actual: a, miss: m, pct: e ? m / e : 0, over: rows.reduce((t, r) => t + r.over, 0), gone: rows.reduce((t, r) => t + r.gone, 0) } }
 }
 /** the reason of the stop the app writes by itself when a line finishes a code and another one is coming */
 export const SETUP = 'Set up'
@@ -3364,6 +3474,7 @@ function settingOf(table: 'act_plan' | 'act_targets' | 'act_work_orders', row: R
   if (table === 'act_work_orders') { const dept = row.dept as Dept, known = roomKnown(dept); return { what: 'Pedido de producción ' + normCode(String(row.code ?? '')) + (row.wo ? ' WO ' + String(row.wo) : '') + ' (' + String(row.dept ?? '') + ')', text: num(row.qty) + ' ' + (known ? unitKept({ dept, unit: String(row.unit ?? '') }) : String(row.unit ?? '')) + (row.closed_at ? ' · cerrado' : '') + (row.deleted ? ' · borrado' : ''), dept: known ? dept : null } }
   const key = String(row.dept ?? '')
   if (key === OPT_CODES) return { what: 'Códigos de paro', text: codesText(Number(row.per_hour) === 1), dept: null }
+  if (key.startsWith(ATT_KEY)) return { what: 'Asistencia · personas esperadas · ' + key.slice(ATT_KEY.length).replace(':', ' · Turno '), text: num(row.per_hour), dept: null }
   if (key === OPT_PROGRAM) return { what: 'Programa del día', text: programText(Number(row.per_hour) === 1), dept: null }
   if (key === OPT_LINES) return { what: 'Operadores y líneas', text: linesText({ add: row.per_hour == null || Number(row.per_hour) !== 0, remove: Number(row.per_shift) === 1, updatedAt: 0 }), dept: null }
   if (key.startsWith(WEEK_KEY)) { const w = row.per_hour == null ? '' : String(row.per_hour); return { what: 'Turnos de la semana desde el ' + key.slice(WEEK_KEY.length), text: weekOk(w) ? weekText(w) : '', dept: null } }
@@ -3445,6 +3556,21 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
     const seal = row.deleted ? null : sealFrom({ ...(body && typeof body === 'object' ? body : {}), id, updatedAt: at })
     if (!seal && !row.deleted) return
     set({ ...state, orderSeals: [...state.orderSeals.filter((x) => x.id !== id), ...(seal ? [seal] : [])] })
+  } else if (table === 'act_changes' && row.ref_table === ATT_REF && String(row.id ?? '').startsWith(ATT_ID)) {
+    // a person of a room's attendance (2026-10-20): kept apart from the history
+    const id = String(row.id).slice(ATT_ID.length), cur = (state.attendance ?? []).find((x) => x.id === id)
+    if (!newer(cur)) return
+    let x: Partial<AttEntry> = {}
+    try { x = JSON.parse(String(row.after ?? '')) as Partial<AttEntry> } catch { /* not one */ }
+    const e = attFrom({ ...x, id, dept: row.dept as Dept, by: String(row.by_name ?? ''), at: fromIso(row.at) ?? 0, deleted: !!row.deleted, updatedAt: at, ...syncedOf(row) })
+    if (e) set({ ...state, attendance: [...(state.attendance ?? []).filter((y) => y.id !== id), e] })
+  } else if (table === 'act_targets' && String(row.dept ?? '').startsWith(ATT_KEY)) {
+    // a room's people expected on a shift (2026-10-20)
+    const [dept, k] = String(row.dept).slice(ATT_KEY.length).split(':'), shift = Number(k)
+    if (!roomKnown(dept as Dept) || (shift !== 1 && shift !== 2)) return
+    const cur = (state.attExpected ?? []).find((x) => x.dept === dept && x.shift === shift)
+    if (!newer(cur) || !(Number(row.per_hour) >= 0)) return
+    set({ ...state, attExpected: [...(state.attExpected ?? []).filter((x) => x !== cur), { dept: dept as Dept, shift: shift as 1 | 2, n: Math.round(Number(row.per_hour)), updatedAt: at }] })
   } else if (table === 'act_changes' && row.ref_table === ORDER_REF && String(row.id ?? '').startsWith(ORDER_ID)) {
     // an order (see "the orders Packing fills"): kept apart from the history
     const id = String(row.id).slice(ORDER_ID.length)
