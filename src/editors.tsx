@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
-import { addRunLater, lineTimes, runsOnLine, shiftAt, shiftsOf, turnOf, addUnit, applyDraft, draftChecks, draftUnitOf, NOTE_MAX, usualFor, usualOf, wasteProblem, BIN_WORDS, binOf, binWord, byLineName, cfgFor, checkLaterPallets, DEPTS, fmtN, kindClass, LATER_MAX, laterPalletUnits, laterPoFits, laterStart, laterToOrder, MFO_WORDS, tagTwice, unitStartPo, type LaterPalletRow, plainDay, planRows, SPIRAL_UNITS, type Dept, byShip, CFG, cfgOf, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, reasonText, setUnitOrder, splitStop, store, updateRun, updateStop, type Order, type Run, type State, type Stop, lineLabel } from './store'
+import { addRunLater, dayBefore, lineTimes, runsOnLine, shiftAt, shiftsOf, turnOf, addUnit, applyDraft, draftChecks, draftUnitOf, NOTE_MAX, usualFor, usualOf, wasteProblem, BIN_WORDS, binOf, binWord, byLineName, cfgFor, checkLaterPallets, DEPTS, fmtN, kindClass, LATER_MAX, laterPalletUnits, laterPoFits, laterStart, laterToOrder, MFO_WORDS, tagTwice, unitStartPo, type LaterPalletRow, plainDay, planRows, SPIRAL_UNITS, type Dept, byShip, CFG, cfgOf, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, reasonText, setUnitOrder, splitStop, store, updateRun, updateStop, type Order, type Run, type State, type Stop, lineLabel } from './store'
 import { clockNow } from './clock'
 import { unitStartLot } from './report'
 import { ConfirmDialog, LotsDialog, useCan, useSure, useWho, type SureBox } from './App'
@@ -481,7 +481,11 @@ export function AddRunDialog({ s, date, dept: first, order, onClose, onAdded }: 
   const base = new Date(day + 'T15:30:00').getTime()
   const startAt = from && day ? nearDay(base, from) : NaN
   const endAt = to && day ? nearDay(base, to) : null
-  const startOk = Number.isFinite(startAt) && plainDay(s, startAt) === day
+  // (an hour that has not come yet is not a record of something done: a night's 1:03 AM typed on today's date is
+  // tonight's, and on 2026-10-21 two carts of the night before landed in today's second shift. It is said, with the
+  // day before one tap away)
+  const future = Number.isFinite(startAt) && startAt > clockNow() + 5 * 60_000
+  const startOk = Number.isFinite(startAt) && plainDay(s, startAt) === day && !future
   const endOk = endAt == null || (endAt >= startAt && plainDay(s, endAt) === day)
   const n = count.trim() ? Number(count) : 0
   // a quantity per unit typed with no units is a record of nothing: on 2026-10-18 Packing typed 36 cases and left
@@ -598,9 +602,10 @@ export function AddRunDialog({ s, date, dept: first, order, onClose, onAdded }: 
             casilla para poner comentarios por favor"): typed or left blank, never filled in by the app */}
         <NoteBox value={note} onChange={setNote} />
         {!byPallet && countMissing && <span className="err">{cfg.saved.endsWith('a') ? tr('Escribe cuántas {0} se hicieron: sin eso el registro queda en 0.', plural) : tr('Escribe cuántos {0} se hicieron: sin eso el registro queda en 0.', plural)}</span>}
-        {from && !startOk && <span className="err">{tr('Esa hora cae en otro día de trabajo.')}</span>}
+        {from && !startOk && !future && <span className="err">{tr('Esa hora cae en otro día de trabajo.')}</span>}
         {to && !endOk && <span className="err">{tr('Termina antes de empezar, o en otro día de trabajo.')}</span>}
         {wasteBad && <span className="err">{wasteBad}</span>}
+        {future && <p className="err">{trx('Esa hora todavía no llega: {0} del {1}. Si fue anoche, es del día de trabajo anterior.', fmtTime(startAt), day)} <button type="button" className="btn soft sm" onClick={() => { setDay(dayBefore(day)); setProblem('') }}>{tr('Usar el día anterior ({0})', dayBefore(day))}</button></p>}
         {problem && <span className="err">{problem}</span>}
         {problem && sameRun && <p className="hint">{tr('Si es una unidad de esa misma corrida de {0} que no se registró, agrégala a ella:', sameRun.code)} <button type="button" className="btn soft sm" onClick={() => setIntoRun(sameRun)}>{tr('+ Agregar a la corrida de {0} ({1} – {2})', sameRun.code, fmtTime(sameRun.startedAt), sameRun.endedAt ? fmtTime(sameRun.endedAt) : tr('sigue en curso'))}</button></p>}
         {intoRun && <AddUnitDialog s={s} run={intoRun} onClose={() => setIntoRun(null)} onAdded={(_at, more) => { if (!more) { const id = intoRun.id; setIntoRun(null); onAdded(id) } }} />}

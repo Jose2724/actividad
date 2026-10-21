@@ -2121,4 +2121,6 @@ export const EN: Record<string, string> = {
   "sigue en curso": "still running",
   "Si es una unidad de esa misma corrida de {0} que no se registró, agrégala a ella:": "If it is a unit of that same {0} run that was not recorded, add it to that run:",
   "+ Agregar a la corrida de {0} ({1} – {2})": "+ Add to the {0} run ({1} – {2})",
+  "Esa hora todavía no llega: {0} del {1}. Si fue anoche, es del día de trabajo anterior.": "That time has not come yet: {0} of {1}. If it was last night, it belongs to the work day before.",
+  "Usar el día anterior ({0})": "Use the day before ({0})",
 }
