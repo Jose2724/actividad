@@ -2119,4 +2119,6 @@ export const EN: Record<string, string> = {
   "Ocupada: {0}": "Busy: {0}",
   "desde el {0} ": "since {0} ",
   "sigue en curso": "still running",
+  "Si es una unidad de esa misma corrida de {0} que no se registró, agrégala a ella:": "If it is a unit of that same {0} run that was not recorded, add it to that run:",
+  "+ Agregar a la corrida de {0} ({1} – {2})": "+ Add to the {0} run ({1} – {2})",
 }

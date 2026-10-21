@@ -5063,6 +5063,9 @@ section('Agregar un registro: qué tenía la línea a esa hora y sus horas libre
     eq('a las 10:00 cabe un registro: no se cruza con nada', m.runsOnLine(st(), 'FL3', at(10), at(11)).length, 0)
     const id = m.addRunLater({ dept: 'RTE', lineId: 'FL3', code: '7777', date: D, startedAt: at(10), endedAt: at(11), units: [{ qty: 240 }] })
     eq('y se agrega en ese rato libre', !!id, true)
+    m.applyRemote('act_runs', runRow({ id: 'fr-c', dept: 'RTE', lineId: 'FL3', line: 'Línea 3', code: '4928', date: D, startedAt: at(11, 10), endedAt: at(11, 20) + 40_000 }))
+    eq('el 4928 terminó a las 11:20 y 40 segundos: un registro desde las 11:20 entra (solo se tocan esos segundos)', !!m.addRunLater({ dept: 'RTE', lineId: 'FL3', code: '4980', date: D, startedAt: at(11, 20), endedAt: at(11, 40), units: [{ qty: 182 }] }), true)
+    eq('pero desde las 11:15 no: ahí corría el 4928', m.addRunLater({ dept: 'RTE', lineId: 'FL3', code: '4980', date: D, startedAt: at(11, 15), endedAt: at(11, 18), units: [{ qty: 182 }] }), '')
     eq('el Turno 2 todavía no empieza (son las 2:00 PM): no tiene horas libres para agregar', m.lineTimes(st(), 'FL3', D, 'RTE', 2, clock).free.length, 0)
   })
 }

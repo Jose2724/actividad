@@ -1328,7 +1328,18 @@ export function reopenRun(id: string): boolean {
  * hora ... sería bueno que la app diga la hora disponible y para qué turno la quiero agregar"): the runs of the line
  * in those hours. A run still going (one left open, even from another day) takes the line up to now and beyond.
  */
-export const runsOnLine = (s: State, lineId: string, a: number, b: number) => s.runs.filter((r) => !r.deleted && r.lineId === lineId && r.startedAt < b && (r.endedAt ?? Infinity) > a).sort((x, y) => x.startedAt - y.startedAt)
+export const runsOnLine = (s: State, lineId: string, a: number, b: number) => s.runs.filter((r) => !r.deleted && r.lineId === lineId && clash(r, a, b)).sort((x, y) => x.startedAt - y.startedAt)
+/**
+ * a run in the way of [a, b): it overlaps, and not only by the seconds of the minute where one ends and the other
+ * begins (Jose, 2026-10-21: 2286 ended at 2:27 and some seconds, the box says 2:27, and the free 2:27 PM was refused)
+ */
+function clash(r: Run, a: number, b: number) {
+  const end = r.endedAt ?? Infinity
+  if (!(r.startedAt < b && end > a)) return false
+  if (r.startedAt <= a && end - a < 60_000) return false
+  if (r.startedAt >= a && end >= b && b - r.startedAt < 60_000) return false
+  return true
+}
 /** a shift's stretch of a day of work, by its room's own hours (its hand-over, see ShiftMark) */
 export function shiftWindow(s: State, date: string, dept: Dept, k: 1 | 2): { from: number; to: number } {
   const h = shiftsOf(s, date, dept), { toFirst, toSecond } = shiftCuts(h), d0 = new Date(date + 'T00:00:00').getTime(), at = (m: number) => d0 + Math.round(m * 60_000)
@@ -1359,7 +1370,7 @@ export function addRunLater(x: LaterRun): string {
   const end = told ?? start + (n ? (n - 1) * 60_000 : 0)
   // each unit at its moment: spread over the hours told, else one per minute; never two on the same instant
   const atOf = (i: number) => (told == null ? start + i * 60_000 : end - start >= n * 1000 ? start + Math.round(((i + 1) * (end - start)) / n) : start + i)
-  if (state.runs.some((r) => !r.deleted && r.lineId === line.id && r.startedAt < end && (r.endedAt ?? Infinity) > start)) return ''
+  if (runsOnLine(state, line.id, start, Math.max(end, start + 1)).length) return ''
   const by = (x.madeBy ?? '').trim() || user.get()
   const kind: RunExtra | undefined = (line.dept === 'Packing' || line.dept === 'MFO') && x.bin?.trim() ? { bin: x.bin.trim().slice(0, 30) } : line.dept === 'Spiral' && x.measure ? { measure: x.measure } : undefined
   // the comment typed in the window (Jose, 2026-10-18: "una casilla para poner comentarios"), only when there is one

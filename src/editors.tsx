@@ -452,6 +452,9 @@ export function AddRunDialog({ s, date, dept: first, order, onClose, onAdded }: 
   const [problem, setProblem] = useState('')
   // the shift the record is for (Jose, 2026-10-21): it says the line's free hours in it, and a tap puts them in the boxes
   const [shiftPick, setShiftPick] = useState<1 | 2 | null>(null)
+  // the run of the same code that had the line then: the cart that was missed goes into it (2026-10-21)
+  const [intoRun, setIntoRun] = useState<Run | null>(null)
+  const [sameRun, setSameRun] = useState<Run | null>(null)
   const formId = useId()
   // Packing's pallets one by one, and the order its quick bar gives to the ones it adds (see LaterPallets). Their
   // keys are counted here, with the list, and not in LaterPallets: the list stays when Bins (or another room) is
@@ -524,7 +527,7 @@ export function AddRunDialog({ s, date, dept: first, order, onClose, onAdded }: 
       : cfg.qty === 'none' || per == null ? [] : [{ key: 'each', n: per, usual, unit: cfg.qtyUnit, per: unit }]
     sure.check(checks, () => {
       const id = addRunLater({ dept, lineId: line.id, code, lot, date: day, startedAt: startAt, endedAt: endAt, units, perUnit, waste: cfg.waste ? waste : 0, bin: dept === 'Spiral' ? '' : word, measure: dept === 'Spiral' && (word === 'lb' || word === 'cajas') ? word : '', madeBy, note })
-      if (!id) { const c = runsOnLine(s, line.id, startAt, endAt ?? startAt + Math.max(0, units.length - 1) * 60_000); setProblem(c.length ? tr('A esas horas {0} tenía {1}. Escoge una hora libre de abajo, u otra línea.', lineLabel(line.name), c.map(busyText).join(' · ')) : tr('A esas horas la línea tenía otro código. Cambia la línea o las horas.')); return }
+      if (!id) { const c = runsOnLine(s, line.id, startAt, endAt ?? startAt + Math.max(0, units.length - 1) * 60_000); setSameRun(c.find((r) => normCode(r.code) === normCode(code)) ?? null); setProblem(c.length ? tr('A esas horas {0} tenía {1}. Escoge una hora libre de abajo, u otra línea.', lineLabel(line.name), c.map(busyText).join(' · ')) : tr('A esas horas la línea tenía otro código. Cambia la línea o las horas.')); return }
       onAdded(id)
     })
   }
@@ -578,7 +581,7 @@ export function AddRunDialog({ s, date, dept: first, order, onClose, onAdded }: 
               <div className="later-free">
                 <div className="chips"><span className="lab">{tr('¿Para qué turno?')}</span>{([1, 2] as const).map((k) => <button key={k} type="button" className={'chip' + (shownShift === k ? ' on' : '')} aria-pressed={shownShift === k} onClick={() => setShiftPick(k)}>{tr('Turno {0}', k)}</button>)}</div>
                 <small>{trx('{0} en el Turno {1} ({2} – {3}):', <b>{lineLabel(line.name)}</b>, shownShift, fmtTime(times.window.from), fmtTime(times.window.to))}</small>
-                {times.free.length ? <div className="chips">{times.free.map((x) => <button key={x.from} type="button" className="chip free" onClick={() => { setFrom(hm(x.from)); setTo(hm(x.to)); setProblem('') }}>{tr('Libre {0} – {1}', fmtTime(x.from), fmtTime(x.to))}</button>)}</div> : <small className="red">{tr('No tuvo ningún rato libre en ese turno.')}</small>}
+                {times.free.length ? <div className="chips">{times.free.map((x) => <button key={x.from} type="button" className="chip free" onClick={() => { setFrom(hm(Math.ceil(x.from / 60_000) * 60_000)); setTo(hm(Math.floor(x.to / 60_000) * 60_000)); setProblem(''); setSameRun(null) }}>{tr('Libre {0} – {1}', fmtTime(x.from), fmtTime(x.to))}</button>)}</div> : <small className="red">{tr('No tuvo ningún rato libre en ese turno.')}</small>}
                 {times.busy.length > 0 && <small>{tr('Ocupada: {0}', times.busy.map(busyText).join(' · '))}</small>}
               </div>
             )}
@@ -599,6 +602,8 @@ export function AddRunDialog({ s, date, dept: first, order, onClose, onAdded }: 
         {to && !endOk && <span className="err">{tr('Termina antes de empezar, o en otro día de trabajo.')}</span>}
         {wasteBad && <span className="err">{wasteBad}</span>}
         {problem && <span className="err">{problem}</span>}
+        {problem && sameRun && <p className="hint">{tr('Si es una unidad de esa misma corrida de {0} que no se registró, agrégala a ella:', sameRun.code)} <button type="button" className="btn soft sm" onClick={() => setIntoRun(sameRun)}>{tr('+ Agregar a la corrida de {0} ({1} – {2})', sameRun.code, fmtTime(sameRun.startedAt), sameRun.endedAt ? fmtTime(sameRun.endedAt) : tr('sigue en curso'))}</button></p>}
+        {intoRun && <AddUnitDialog s={s} run={intoRun} onClose={() => setIntoRun(null)} onAdded={(_at, more) => { if (!more) { const id = intoRun.id; setIntoRun(null); onAdded(id) } }} />}
         <div className="dbtns">
           <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
           <button type="submit" form={formId} className="btn primary" disabled={!ok}>{tr('✓ Agregar')}</button>
