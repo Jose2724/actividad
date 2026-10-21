@@ -5029,9 +5029,16 @@ section('Programa del día: la pestaña del admin, prendida para todos desde Aju
     eq('lo que dice otro manager llega, y una versión vieja no lo cambia', [st().programView.on, (m.applyRemote('act_targets', { dept: 'opt:programview', per_hour: 1, per_shift: null, updated_at: iso(T0 + 15 * M), updated_by: 'Edgar' }), st().programView.on)], [false, false])
     eq('la fila no es la meta de nadie ni toca los códigos de paro', [st().targets, st().turnGoals, st().lineTargets, st().reasonCodes.on], [[], [], [], false])
     clock = T0 + 30 * M; m.setProgramView(true)
+    // the attendance switch (2026-10-21): the same, under its own key
+    eq('la asistencia empieza apagada (solo el admin)', st().attView.on, false)
+    clock = T0 + 31 * M; m.setAttView(true)
+    eq('se prende: sube opt:attview con 1, queda en el historial, y no toca el Programa', [m.outbox.items().find((i) => i.key === 'opt:attview')?.row.per_hour, st().changes.some((c) => c.refKey === 'opt:attview' && c.after === 'para todos'), st().programView.on], [1, true, true])
+    m.applyRemote('act_targets', { dept: 'opt:attview', per_hour: 0, per_shift: null, updated_at: iso(T0 + 40 * M), updated_by: 'Edgar' })
+    eq('otro manager la apaga: llega', st().attView.on, false)
   })
   const back = await device('program-view-again', { seed: JSON.parse(disks.get('program-view').get('act_v1')), user: 'Jose' })
   eq('al volver a abrir sigue prendido, con su hora', back.use((m) => m.store.get().programView.on), true)
+  eq('y la asistencia sigue como quedó (apagada)', back.use((m) => m.store.get().attView.on), false)
 }
 
 // =====================================================================================================================

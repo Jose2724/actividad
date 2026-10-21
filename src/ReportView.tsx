@@ -246,7 +246,7 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
   const reasonsText = (x: (typeof rows)[number]) => Object.entries(x.st.reasons).map(([k, v]) => tr(k) + ' ' + fmtDur(v)).join(', ')
   const lineName = (x: { lineId: string | null; dept: Dept }) => (x.lineId === null ? tr('Todo {0}', x.dept) : lineLabel(s.lines.find((l) => l.id === x.lineId)?.name ?? s.runs.find((r) => r.lineId === x.lineId)?.line ?? tr('línea')))
   // there is something to put in a file: a code, a stop, or somebody written in the attendance (a day of only that)
-  const any = rows.length > 0 || rep.stops.length > 0 || (s.attendance ?? []).some((x) => !x.deleted && x.date === date && (!dept || x.dept === dept))
+  const any = rows.length > 0 || rep.stops.length > 0 || ((s.attView.on || admin) && (s.attendance ?? []).some((x) => !x.deleted && x.date === date && (!dept || x.dept === dept)))
   const lineChosen = rep.line ? rep.lineChoices.find((l) => l.id === rep.line)?.name ?? '' : ''
   const fileName = 'actividad-' + (dept ? dept.toLowerCase() + '-' : '') + date + filterFile(rep.code, rep.lot, rep.shift, lineChosen)
   // the history of that day (corrections, products, program, lines): the manager's and the office's
@@ -859,7 +859,7 @@ function GeneralView({ k }: { k: Kit }) {
           </div>
         </>
       )}
-      <AttendanceWhere k={k} />
+      {(s.attView.on || k.admin) && <AttendanceWhere k={k} />}
       <StopsWhere k={k} />
       {(s.reasonCodes.on || hasCodedStops(rep)) && <CodePareto k={k} />}
     </>
@@ -879,7 +879,7 @@ function PartsDialog({ k, mode, onClose, onGo }: { k: Kit; mode: 'xlsx' | 'pdf' 
   const offered: { p: Part; label: string; sub: string }[] = [
     { p: 'resumen', label: tr('Resumen y corridas'), sub: tr('lo hecho por cuarto y turno, cada código en su línea') },
     ...(rep.byCode.length ? [{ p: 'codigo' as const, label: tr('Por código y lote'), sub: tr('cuánto de cada código y lote') }] : []),
-    { p: 'asistencia', label: tr('Asistencia'), sub: tr('esperados, vinieron y % de faltas (en Excel, con su gráfica y los nombres)') },
+    ...(k.s.attView.on || k.admin ? [{ p: 'asistencia' as const, label: tr('Asistencia'), sub: tr('esperados, vinieron y % de faltas (en Excel, con su gráfica y los nombres)') }] : []),
     ...(rep.stops.length ? [{ p: 'paros' as const, label: tr('Paros'), sub: tr('cada paro con su razón y duración') }] : []),
     ...(rep.unitRows.length ? [{ p: 'unidades' as const, label: tr('Detalle por unidad'), sub: tr('cada carro, mezcla, bin o pallet con su hora') }] : []),
     ...(rep.pallets.length ? [{ p: 'pallets' as const, label: tr('Pallets'), sub: tr('cada pallet con sus lotes, tags y PO') }] : []),
@@ -897,7 +897,7 @@ function PartsDialog({ k, mode, onClose, onGo }: { k: Kit; mode: 'xlsx' | 'pdf' 
         <h3>{mode === 'xlsx' ? tr('¿Qué incluir en el Excel?') : mode === 'pdf' ? tr('¿Qué incluir en el PDF?') : tr('¿Qué incluir en lo que se envía?')}</h3>
         <div className="chips">
           <button type="button" className="chip" onClick={() => setOn(new Set(offered.map((x) => x.p)))}>{tr('Todo')}</button>
-          <button type="button" className="chip" onClick={() => only1('asistencia')}>{tr('Solo asistencia')}</button>
+          {(k.s.attView.on || k.admin) && <button type="button" className="chip" onClick={() => only1('asistencia')}>{tr('Solo asistencia')}</button>}
           {rep.stops.length > 0 && <button type="button" className="chip" onClick={() => only1('paros')}>{tr('Solo paros')}</button>}
           <button type="button" className="chip" onClick={() => setOn(new Set())}>{tr('Nada')}</button>
         </div>

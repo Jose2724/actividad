@@ -5,7 +5,7 @@ import { Employees } from './Employees'
 import { Devices } from './DevicesView'
 import { supabase } from './supabase'
 import { syncStore } from './sync'
-import { ATT_DEFAULT, attExpectedOf, attShifts, setAttExpected } from './store'
+import { ATT_DEFAULT, attExpectedOf, attShifts, setAttExpected, setAttView } from './store'
 import { BUILD } from './update'
 import { clockOffText, clockState } from './clock'
 import { fmtTime } from './clock-fmt'
@@ -23,14 +23,14 @@ import { trx } from './trx'
 export type SettingsKey = 'shifts' | 'day' | 'lines' | 'stops' | 'program' | 'attendance' | 'products' | 'goals' | 'people' | 'devices' | 'device'
 const fmtN = (x: number) => Math.round(x).toLocaleString('en-US')
 
-export function settingsSections(can: (p: 'shifts' | 'day' | 'products' | 'goals' | 'people') => boolean, mgr: boolean, viewOnly: boolean, admin = false): { key: SettingsKey; title: string; sub: string }[] {
+export function settingsSections(can: (p: 'shifts' | 'day' | 'products' | 'goals' | 'people') => boolean, mgr: boolean, viewOnly: boolean, admin = false, attOn = false): { key: SettingsKey; title: string; sub: string }[] {
   return [
     ...(can('shifts') ? [{ key: 'shifts' as const, title: tr('Turnos y calendario'), sub: tr('horas, semana, días aparte') }] : []),
     ...(can('day') ? [{ key: 'day' as const, title: tr('Día de trabajo'), sub: tr('fecha, hora de inicio, lote') }] : []),
     ...(mgr && !viewOnly ? [{ key: 'lines' as const, title: tr('Líneas'), sub: tr('las líneas de cada cuarto') }] : []),
     // (whoever only looks sees the list and whether it is on, without the switch)
     ...(mgr ? [{ key: 'stops' as const, title: tr('Códigos de paro'), sub: tr('Reason Codes: prender o apagar') }] : []),
-    ...(mgr ? [{ key: 'attendance' as const, title: tr('Asistencia'), sub: tr('personas esperadas por cuarto y turno') }] : []),
+    ...(mgr && (admin || attOn) ? [{ key: 'attendance' as const, title: tr('Asistencia'), sub: tr('personas esperadas por cuarto y turno') }] : []),
     ...(admin ? [{ key: 'program' as const, title: tr('Programa del día'), sub: tr('la pestaña: solo tú o todos') }] : []),
     ...(can('products') || viewOnly ? [{ key: 'products' as const, title: tr('Productos'), sub: tr('la tabla maestra') }] : []),
     ...(can('goals') ? [{ key: 'goals' as const, title: tr('Metas'), sub: tr('por turno y por cuarto') }] : []),
@@ -42,7 +42,7 @@ export function settingsSections(can: (p: 'shifts' | 'day' | 'products' | 'goals
 
 export function Settings({ s, now, day, name, home, mgr, admin, viewOnly, meId, section, onSection, onLeave }: { s: State; now: number; day: WorkDay; name: string; home: Dept; mgr: boolean; admin: boolean; viewOnly: boolean; meId: string; section: SettingsKey; onSection: (k: SettingsKey) => void; onLeave: () => void }) {
   const can = useCan()
-  const items = settingsSections(can, mgr, viewOnly, admin)
+  const items = settingsSections(can, mgr, viewOnly, admin, s.attView.on)
   const sec: SettingsKey = items.some((i) => i.key === section) ? section : items[0].key
   return (
     <div className="settings">
@@ -55,7 +55,7 @@ export function Settings({ s, now, day, name, home, mgr, admin, viewOnly, meId, 
         {sec === 'lines' && <LinesSettings s={s} />}
         {sec === 'stops' && <StopCodesSettings s={s} viewOnly={viewOnly} />}
         {sec === 'program' && <ProgramViewSettings s={s} />}
-        {sec === 'attendance' && <AttendanceSettings s={s} date={day.date} viewOnly={viewOnly} />}
+        {sec === 'attendance' && <AttendanceSettings s={s} date={day.date} viewOnly={viewOnly} admin={admin} />}
         {sec === 'products' && <div className="setcard wide"><div className="sethead"><h3>{tr('Productos')}</h3></div><p className="hint">{tr('La tabla maestra de la oficina: con ella las mezclas se vuelven pouches, cajas y pallets esperados, y cada cuarto sabe cuánto lleva un carro, un pallet o una caja.')}</p><Products s={s} readOnly={!can('products')} /></div>}
         {sec === 'goals' && <GoalsSettings s={s} now={now} day={day} />}
         {sec === 'people' && <Employees meId={meId} admin={admin} />}
@@ -216,7 +216,8 @@ function LinesSettings({ s }: { s: State }) {
  * history, as from the attendance window on the floor). The managers and the office write it; "Solo ver" reads it.
  * The plant's number of the shift is the rooms' added up, as the attendance total.
  */
-function AttendanceSettings({ s, date, viewOnly }: { s: State; date: string; viewOnly: boolean }) {
+function AttendanceSettings({ s, date, viewOnly, admin }: { s: State; date: string; viewOnly: boolean; admin: boolean }) {
+  const [asking, setAsking] = useState(false)
   const now = (d: Dept, k: 1 | 2) => String(attExpectedOf(s, d, k))
   const [typed, setTyped] = useState<Record<string, string>>({})
   const [saved, setSaved] = useState(false)
@@ -225,7 +226,18 @@ function AttendanceSettings({ s, date, viewOnly }: { s: State; date: string; vie
   const total = (k: 1 | 2) => DEPTS.reduce((t, d) => t + (Number(val(d, k)) || 0), 0)
   const save = () => { for (const x of changed) setAttExpected(x.d, x.k, x.n); setTyped({}); setSaved(true) }
   const one = attShifts(s, date).length === 1
+  const on = s.attView.on
   return (
+    <>
+    {admin && (
+      <div className="setcard">
+        <div className="sethead"><h3>{tr('Asistencia')}</h3><span className={'rc-state' + (on ? ' on' : '')}>{on ? tr('Para todos') : tr('Solo tú')}</span></div>
+        <label className="switch"><span>{tr('Que todos vean la asistencia')}</span><input type="checkbox" role="switch" checked={on} onChange={(e) => (e.target.checked ? setAsking(true) : setAttView(false))} /></label>
+        <p className="hint">{tr('Apagado: solo tú ves la asistencia (la tarjeta del piso, el reporte, el Excel y esta tabla), para probarla y enseñarla. Lo anotado no se pierde.')}</p>
+        <p className="hint">{tr('Prendido: cada supervisor anota a su gente en su cuarto, y el reporte la muestra a todos.')}</p>
+      </div>
+    )}
+    {asking && <ConfirmDialog title={tr('¿Que todos vean la asistencia?')} text={tr('Desde ahora la tarjeta de asistencia sale en el piso de todos los cuartos, y en el reporte y sus archivos. Se puede apagar aquí mismo cuando quieras.')} yes={tr('Prender para todos')} onYes={() => { setAttView(true); setAsking(false) }} onNo={() => setAsking(false)} />}
     <div className="setcard">
       <div className="sethead"><h3>{tr('Asistencia · personas esperadas')}</h3></div>
       <p className="hint">{tr('Cuántas personas espera cada cuarto en cada turno. Con esto la tarjeta de asistencia del piso y el reporte sacan el % de faltas. Se quedan así hasta que alguien las cambie otra vez.')}</p>
@@ -247,6 +259,7 @@ function AttendanceSettings({ s, date, viewOnly }: { s: State; date: string; vie
       {saved && !changed.length && <p className="hint ok">{tr('✓ Guardado: ya lo ven todas las tablets.')}</p>}
       {!viewOnly && <div className="btns"><button type="button" className="btn" disabled={!changed.length} onClick={() => setTyped({})}>{tr('Deshacer cambios')}</button><button type="button" className="btn primary" disabled={!changed.length} onClick={save}>{!changed.length ? tr('✓ Guardar') : changed.length === 1 ? tr('✓ Guardar 1 cambio') : tr('✓ Guardar {0} cambios', changed.length)}</button></div>}
     </div>
+    </>
   )
 }
 

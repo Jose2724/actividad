@@ -2088,4 +2088,10 @@ export const EN: Record<string, string> = {
   "Deshacer cambios": "Undo changes",
   "✓ Guardar 1 cambio": "✓ Save 1 change",
   "✓ Guardar {0} cambios": "✓ Save {0} changes",
+  // the attendance switch (Jose, 2026-10-21)
+  "Que todos vean la asistencia": "Everybody sees attendance",
+  "Apagado: solo tú ves la asistencia (la tarjeta del piso, el reporte, el Excel y esta tabla), para probarla y enseñarla. Lo anotado no se pierde.": "Off: only you see attendance (the floor's card, the report, the Excel file and this table), to try it and show it. Nothing written is lost.",
+  "Prendido: cada supervisor anota a su gente en su cuarto, y el reporte la muestra a todos.": "On: each supervisor writes their people down in their room, and the report shows it to everybody.",
+  "¿Que todos vean la asistencia?": "Let everybody see attendance?",
+  "Desde ahora la tarjeta de asistencia sale en el piso de todos los cuartos, y en el reporte y sus archivos. Se puede apagar aquí mismo cuando quieras.": "From now on the attendance card shows on the floor of every room, and in the report and its files. It can be turned off right here whenever you want.",
 }

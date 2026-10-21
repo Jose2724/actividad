@@ -332,7 +332,7 @@ function sealFrom(x: unknown): OrderSeal | null {
   // (a day by day an account may still carry is not read: see OrderSeal)
   return { id: e.id, sig: e.sig, upto: String(e.upto ?? ''), made, finishAt: numIn(e.finishAt), finishDay: String(e.finishDay ?? ''), completed, lots: Array.isArray(e.lots) ? e.lots.map(String).slice(0, 30) : [], updatedAt: numIn(e.updatedAt) }
 }
-export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Product[]; schedule: Schedule; changes: Change[]; targets: Target[]; shifts: ShiftPlan[]; shiftWeeks: ShiftWeek[]; dayShifts: DayShifts[]; lineRules: LineRules; reasonCodes: ReasonCodesOpt; programView: ReasonCodesOpt; lineTargets: LineTarget[]; orders: Order[]; turnGoals: TurnGoal[]; plans: Plan[]
+export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Product[]; schedule: Schedule; changes: Change[]; targets: Target[]; shifts: ShiftPlan[]; shiftWeeks: ShiftWeek[]; dayShifts: DayShifts[]; lineRules: LineRules; reasonCodes: ReasonCodesOpt; programView: ReasonCodesOpt; attView: ReasonCodesOpt; lineTargets: LineTarget[]; orders: Order[]; turnGoals: TurnGoal[]; plans: Plan[]
   /**
    * runs the device no longer keeps (older than its days) that hold pallets given to an order still open: an order's
    * "Hechas" counts every pallet it ever got, not only the days this device holds. They come from the server (see
@@ -428,10 +428,10 @@ function tidySchedule(sch: Schedule): Schedule {
 function isDay(text: string) { return /^\d{4}-\d{2}-\d{2}$/.test(text) }
 /** with a server the lines (and products) are shared and come from it; without one, each device starts with a line per room */
 const SERVER = !!import.meta.env.VITE_SUPABASE_URL
-function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, reasonCodes: { on: false, updatedAt: 0 }, programView: { on: false, updatedAt: 0 }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [], attendance: [], attExpected: [] } }
+function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, reasonCodes: { on: false, updatedAt: 0 }, programView: { on: false, updatedAt: 0 }, attView: { on: false, updatedAt: 0 }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [], attendance: [], attExpected: [] } }
 function load(): State {
   try {
-    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; reasonCodes?: Partial<ReasonCodesOpt>; programView?: Partial<ReasonCodesOpt>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[]; attendance?: Partial<AttEntry>[]; attExpected?: Partial<AttExpected>[] }
+    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; reasonCodes?: Partial<ReasonCodesOpt>; programView?: Partial<ReasonCodesOpt>; attView?: Partial<ReasonCodesOpt>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[]; attendance?: Partial<AttEntry>[]; attExpected?: Partial<AttExpected>[] }
     const s = JSON.parse(localStorage.getItem(KEY) || 'null') as Raw | null
     // rows saved by earlier versions: carts as plain timestamps, units without a tag or a name, products with one
     // pouches-per-cart number, nothing with an update time
@@ -464,6 +464,7 @@ function load(): State {
         // above: nothing declared below `let state = load()` may be used in here)
         reasonCodes: { on: s.reasonCodes?.on === true, updatedAt: Number(s.reasonCodes?.updatedAt) || 0 },
         programView: { on: s.programView?.on === true, updatedAt: Number(s.programView?.updatedAt) || 0 },
+        attView: { on: s.attView?.on === true, updatedAt: Number(s.attView?.updatedAt) || 0 },
         lineTargets: (s.lineTargets ?? []).filter((t) => !!t && !!t.lineId && !isTurnKey(String(t.lineId))).map((t) => ({ lineId: String(t.lineId), perHour: t.perHour ?? null, perDay: t.perDay ?? null, updatedAt: t.updatedAt ?? 0 })),
         orders: (s.orders ?? []).map((o) => (o ? orderOf(String(o.id ?? ''), o, String(o.by ?? ''), o.updatedAt ?? 0) : null)).filter((o): o is Order => !!o),
         // (lot since 2026-10-19: a program saved before it reads ''. Written inline, as above: nothing below load())
@@ -927,6 +928,21 @@ export function attendanceOf(s: State, date: string, shift: 0 | 1 | 2, rooms: De
   })
   const e = rows.reduce((t, r) => t + r.expected, 0), a = rows.reduce((t, r) => t + r.actual, 0), m = rows.reduce((t, r) => t + r.miss, 0)
   return { rows, total: { dept: 'Kitchen', expected: e, actual: a, miss: m, pct: e ? m / e : 0, over: rows.reduce((t, r) => t + r.over, 0), gone: rows.reduce((t, r) => t + r.gone, 0) } }
+}
+/**
+ * Attendance for everybody (Jose, 2026-10-21: "que la parte de attendance esté oculta por ahora, y que yo pueda
+ * activarla más luego"). Off: only the admin sees it (the floor's card, the report's table, its files and its Ajustes),
+ * to try it and show it; on: every room. Off or on, nothing written is lost. As the Programa del día switch.
+ */
+const OPT_ATT = 'opt:attview'
+const attText = (on: boolean) => (on ? 'para todos' : 'solo el admin')
+export function setAttView(on: boolean) {
+  const was = state.attView
+  if (was.on === on) return
+  const next: ReasonCodesOpt = { on, updatedAt: stamp(was) }
+  set({ ...state, attView: next })
+  push('act_targets', OPT_ATT, { dept: OPT_ATT, per_hour: on ? 1 : 0, per_shift: null, updated_at: iso(next.updatedAt), updated_by: user.get() })
+  logChange(null, 'Asistencia', attText(was.on), attText(on), 'act_targets', OPT_ATT)
 }
 /** the reason of the stop the app writes by itself when a line finishes a code and another one is coming */
 export const SETUP = 'Set up'
@@ -3475,6 +3491,7 @@ function settingOf(table: 'act_plan' | 'act_targets' | 'act_work_orders', row: R
   const key = String(row.dept ?? '')
   if (key === OPT_CODES) return { what: 'Códigos de paro', text: codesText(Number(row.per_hour) === 1), dept: null }
   if (key.startsWith(ATT_KEY)) return { what: 'Asistencia · personas esperadas · ' + key.slice(ATT_KEY.length).replace(':', ' · Turno '), text: num(row.per_hour), dept: null }
+  if (key === OPT_ATT) return { what: 'Asistencia', text: attText(Number(row.per_hour) === 1), dept: null }
   if (key === OPT_PROGRAM) return { what: 'Programa del día', text: programText(Number(row.per_hour) === 1), dept: null }
   if (key === OPT_LINES) return { what: 'Operadores y líneas', text: linesText({ add: row.per_hour == null || Number(row.per_hour) !== 0, remove: Number(row.per_shift) === 1, updatedAt: 0 }), dept: null }
   if (key.startsWith(WEEK_KEY)) { const w = row.per_hour == null ? '' : String(row.per_hour); return { what: 'Turnos de la semana desde el ' + key.slice(WEEK_KEY.length), text: weekOk(w) ? weekText(w) : '', dept: null } }
@@ -3588,6 +3605,10 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
     // what operators may do with their room's lines (a row without values: as at first, add yes, remove no)
     if (!newer(state.lineRules)) return
     set({ ...state, lineRules: { add: row.per_hour == null || Number(row.per_hour) !== 0, remove: Number(row.per_shift) === 1, updatedAt: at } })
+  } else if (table === 'act_targets' && String(row.dept ?? '') === OPT_ATT) {
+    // the attendance switch (a row without its value: off, as at first)
+    if (!newer(state.attView)) return
+    set({ ...state, attView: { on: Number(row.per_hour) === 1, updatedAt: at } })
   } else if (table === 'act_targets' && String(row.dept ?? '') === OPT_PROGRAM) {
     // the Programa del día switch (a row without its value: off, as at first)
     if (!newer(state.programView)) return

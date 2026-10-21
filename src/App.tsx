@@ -1984,7 +1984,7 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
         <>
           <TodayCard s={s} dept={dept} now={now} mgr={can('goals')} date={day.date} />
           {/* who came to work in the room this shift (Santiago, 2026-10-20) */}
-          <AttendanceCard s={s} dept={dept} date={day.date} shift={(turnOf(s, day.date, now).shift || 1) as 1 | 2} edit={!viewOnly} />
+          {(s.attView.on || !!who.admin) && <AttendanceCard s={s} dept={dept} date={day.date} shift={(turnOf(s, day.date, now).shift || 1) as 1 | 2} edit={!viewOnly} />}
           <div className="lines">{lines.map((l) => <LineCard key={l.id} s={s} line={l} now={now} mgr={can('fix')} day={day} />)}</div>
         </>
       )}
