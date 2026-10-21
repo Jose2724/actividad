@@ -1,4 +1,4 @@
-import { apartLabel, apartWord, binWord, casesText, CFG, cfgFor, cfgOf, fmtDur, fmtTime, inCases, lineLabel, lineNameOf, madeText, noteLabel, shiftHours, whoText, type DeptCfg, type State } from './store'
+import { apartLabel, apartWord, binWord, casesText, CFG, cfgFor, cfgOf, fmtDur, fmtTime, inCases, lineLabel, lineNameOf, madeText, noteLabel, shiftHours, whoText, type DeptCfg, type State, attendanceOf, DEPTS } from './store'
 import { filterTitle, reportOf, spanShifts, type ReportFilter } from './report'
 import { avanceRows, n1, pending, mfoText } from './avance'
 import { tr } from './i18n'
@@ -11,7 +11,13 @@ export const loadPdf = () => (libs ? Promise.resolve(libs) : Promise.all([import
 const fmtDate = (d: string) => { const [y, m, dd] = d.split('-'); return m + '/' + dd + '/' + y }
 
 /** the day's report as the tables on screen: codes first, then the stops. null until the libraries are loaded */
-export function buildPdf(s: State, date: string, now: number, by: string, f: ReportFilter = {}) {
+/**
+ * The parts of the report a file may carry (Jose, 2026-10-21: "escoger si quiero solo descargar la asistencia o otra
+ * cosa en específica y no todo de una vez"): every part by default
+ */
+export type Part = 'resumen' | 'codigo' | 'pallets' | 'bins' | 'unidades' | 'paros' | 'asistencia' | 'avance' | 'cambios'
+export function buildPdf(s: State, date: string, now: number, by: string, f: ReportFilter = {}, parts?: Set<Part>) {
+  const has = (p: Part) => !parts || parts.has(p)
   if (!libs) return null
   const { jsPDF, autoTable } = libs
   const rep = reportOf(s, date, now, f), { rows, unitRows, stops, working, down } = rep, only = f.only
@@ -31,10 +37,11 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
   doc.setFont('helvetica', 'normal'); doc.setFontSize(11); doc.setTextColor(91, 107, 122)
   doc.text(tr('{0}   ·   {1}{2} en {3}{4}   ·   trabajando {5}   ·   parado {6}{7}   ({8}', fmtDate(date), rep.distinct, (rep.distinct === 1 ? ' ' + tr('código') : ' ' + tr('códigos')), rows.length, (rows.length === 1 ? ' ' + tr('corrida') : ' ' + tr('corridas')), fmtDur(working), fmtDur(down), (rep.setup ? '   ' + tr('·   set up {0}', fmtDur(rep.setup)) : ''), (rep.lines === 1 ? tr('una línea') : tr('suma de {0} líneas', rep.lines))) + ')', 40, 62)
   doc.text(rep.plan.only ? tr('Turno {0}   ·   el único del día', rep.plan.only) : tr('Turno 1: {0}   ·   Turno 2: {1}', shiftHours(rep.plan, 1), shiftHours(rep.plan, 2)), 40, 78)
-  const after = () => (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY
+  // (where the last table ended; with the first parts left out, where the page's heading ends)
+  const after = () => (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? 80
   let top = 94
   // what was made, room by room, said first and in bold: it is what the report is read for
-  if (rep.byDept.length) {
+  if (rep.byDept.length && has('resumen')) {
     doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(15, 118, 110)
     const made = rep.byDept.map((d) => d.dept + ': ' + (CFG[d.dept].qty !== 'none' ? qtyOf(d.dept, d.qty) + ' (' + unitsOf(d.dept, d.units) + ')' : unitsOf(d.dept, d.units)) + (d.bins.length ? ' + ' + (d.dept === 'Spiral' ? tr('aparte: {0}', binsOf(d.dept, d.bins)) : tr('en bins: {0}', binsOf(d.dept, d.bins))) : ''))
     const lines = doc.splitTextToSize(tr('Hecho   {0}', made.join('   ·   ')), doc.internal.pageSize.getWidth() - 80) as string[]
@@ -42,7 +49,7 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
     top += 4 + lines.length * 15 + 6
   }
   // the whole day first and each shift under it (not when the report is of one shift only)
-  if (rep.byShift.length) {
+  if (rep.byShift.length && has('resumen')) {
     const made = (dept: keyof typeof CFG, x: { units: number; qty: number; bins: { word: string; units: number; qty: number }[] }) => x.units + ' ' + (x.units === 1 ? CFG[dept].unit : CFG[dept].plural).toLowerCase() + (CFG[dept].qty !== 'none' ? ' · ' + Math.round(x.qty).toLocaleString('en-US') + ' ' + CFG[dept].qtyUnit : '') + (x.bins.length ? ' + ' + binsOf(dept, x.bins) : '')
     autoTable(doc, {
       startY: top, theme: 'grid', styles: { font: 'helvetica', fontSize: 9, cellPadding: 5, textColor: [22, 32, 42] }, headStyles: { fillColor: [22, 32, 42], textColor: 255, fontStyle: 'bold' },
@@ -55,7 +62,7 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
   const sh = !rep.shift // a column says the shift of each line when the report is the whole day's
   const shiftCols = ([1, 2] as const).filter((k) => !rep.plan.only || rep.plan.only === k) // the shifts of the day, side by side: both, or the only one
   // each code with its lots under it, and the total of each room: what was made of what
-  if (rep.byCode.length) {
+  if (rep.byCode.length && has('codigo')) {
     doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(22, 32, 42)
     doc.text(tr('Por código y lote'), 40, top + 6)
     const body: string[][] = [], kind: ('code' | 'lot' | 'total')[] = []
@@ -85,14 +92,27 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
     })
     top = after() + 18
   }
-  autoTable(doc, {
+  // Asistencia (Santiago, 2026-10-20): each room's people expected, those who came and the % missing
+  if (has('asistencia')) {
+    const rooms = only ? [only] : DEPTS, a = attendanceOf(s, date, rep.shift ?? 0, rooms), pc = (x: number) => Math.round(x * 100) + '%'
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(22, 32, 42)
+    doc.text(tr('Asistencia') + (rep.shift ? ' · ' + tr('Turno {0}', rep.shift) : ''), 40, top + 6)
+    autoTable(doc, {
+      startY: top + 14, theme: 'grid', styles: { font: 'helvetica', fontSize: 10, cellPadding: 5, textColor: [22, 32, 42] }, headStyles: { fillColor: teal, textColor: 255, fontStyle: 'bold' }, tableWidth: 420,
+      head: [[tr('Cuarto'), tr('Esperados'), tr('Vinieron'), tr('% Falta'), tr('Faltan')]],
+      body: a.rows.map((r) => [r.dept, String(r.expected), String(r.actual), pc(r.pct), String(r.miss)]),
+      foot: [[tr('TOTAL'), String(a.total.expected), String(a.total.actual), pc(a.total.pct), String(a.total.miss)]],
+    })
+    top = after() + 18
+  }
+  if (has('resumen')) autoTable(doc, {
     startY: top, theme: 'grid', styles: { font: 'helvetica', fontSize: 9, cellPadding: 5, textColor: [22, 32, 42] }, headStyles: { fillColor: teal, textColor: 255, fontStyle: 'bold' },
     head: [[tr('Depto'), tr('Línea'), tr('Código'), tr('Lote'), ...(sh ? [tr('Turno')] : []), tr('Inicio'), tr('Fin'), tr('Hecho'), tr('Waste lb'), tr('Trabajando'), tr('Prom. / unidad'), tr('Parado'), 'Set up', tr('Razones de paro'), tr('Registró')]],
     body: rows.map((x) => [x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.lots, ...(sh ? [x.shifts] : []), fmtTime(x.r.startedAt), x.r.endedAt ? fmtTime(x.r.endedAt) : tr('en curso'), madeText(x.view, x.qty, true), x.waste ? String(x.waste) : '—', fmtDur(x.st.working), x.timed ? fmtDur(x.st.avg) : '—', fmtDur(x.st.down), x.st.setup ? fmtDur(x.st.setup) : '—', Object.entries(x.st.reasons).map(([k, v]) => tr(k) + ' ' + fmtDur(v)).join(', ') || '—', whoText(x.r)]),
     foot: [[tr('Total'), '', '', '', ...(sh ? [''] : []), '', '', '', String(Math.round(rows.reduce((t, x) => t + (x.waste || 0), 0) * 100) / 100), fmtDur(working), '', fmtDur(down), rep.setup ? fmtDur(rep.setup) : '—', '', '']], footStyles: { fillColor: [243, 246, 249], textColor: [22, 32, 42], fontStyle: 'bold' },
   })
   // Packing's pallets one by one: the lots each one holds with their cases and their tag, its total and its PO (2/12)
-  if (rep.pallets.length) {
+  if (rep.pallets.length && has('pallets')) {
     const y = after() + 28
     doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(22, 32, 42)
     doc.text(tr('Pallets'), 40, y)
@@ -109,7 +129,7 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
     })
   }
   // Packing's bins one by one, apart from its pallets
-  if (rep.bins.length) {
+  if (rep.bins.length && has('bins')) {
     const y = after() + 28
     doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(22, 32, 42)
     doc.text(tr('Bins'), 40, y)
@@ -120,8 +140,8 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
     })
   }
   // one line per cart, mezcla, bin or pallet with its time, as the office's sheets are filled (a pallet with two lots: two lines)
-  if (unitRows.length) {
-    const y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 28
+  if (unitRows.length && has('unidades')) {
+    const y = after() + 28
     doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(22, 32, 42)
     doc.text(tr('Detalle por unidad'), 40, y)
     autoTable(doc, {
@@ -130,8 +150,8 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
       body: unitRows.map((x) => [fmtTime(x.u.at), ...(sh ? [String(x.shift)] : []), x.r.dept, lineNameOf(s, x.r.lineId, x.r.line), x.r.code, x.lot, String(x.i + 1), cfgOf(x.r).unit, x.qty != null ? x.qty + ' ' + cfgOf(x.r).qtyUnit : '—', x.tag || '—', fmtDur(x.gap), x.u.by || '—']),
     })
   }
-  if (stops.length) {
-    const y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 28
+  if (stops.length && has('paros')) {
+    const y = after() + 28
     doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(22, 32, 42)
     doc.text(tr('Paros'), 40, y)
     autoTable(doc, {
@@ -141,7 +161,7 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
     })
   }
   // the day's progress, as the office's AVANCE sheet (the manager's report only)
-  const av = only || rep.filtered ? [] : avanceRows(s, date)
+  const av = only || rep.filtered || !has('avance') ? [] : avanceRows(s, date)
   if (av.length) {
     doc.addPage()
     doc.setFont('helvetica', 'bold'); doc.setFontSize(16); doc.setTextColor(22, 32, 42)

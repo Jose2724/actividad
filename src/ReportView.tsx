@@ -6,7 +6,7 @@ import { codeLabel, FAMILY_SHOWN, reasonCodeOf } from './reasons'
 import { cellText, loadZip, xDur, xPct, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 import { attendanceOf, attOf, attShifts } from './store'
 import { pctText } from './Attendance'
-import { buildPdf, loadPdf } from './pdf'
+import { buildPdf, loadPdf, type Part } from './pdf'
 import { homeScreenApple, type Kind } from './send'
 import { CODE_HEADS, codeCells, hasCodedStops, paretoOf, filterFile, filterTitle, hitKey, palletsSheet, reportOf, runLots, runsSheet, searchReport, spanShifts, unitParts, unitsSheet, type Hit, type HitKind, type Report as ReportData, type ReportFilter, type Scope as SearchScope } from './report'
 import { canShift, writesIn } from './powers'
@@ -205,6 +205,8 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
   const [shows, setShows] = useState(0) // how many drills and tabs tapped so far: each one brings what it opened into view (below)
   const [page, setPage] = useState<Record<string, number>>({})
   const [detail, setDetail] = useState<{ runId: string; at?: number } | null>(null)
+  // "¿Qué incluir?" open for a file (Jose, 2026-10-21): the Excel, the PDF, or what is sent
+  const [picking, setPicking] = useState<'xlsx' | 'pdf' | 'send' | null>(null)
   // the sheet of one stop (Jose, 2026-10-20: "para ellos es importante investigar sobre los paros"): its id
   const [stopSheet, setStopSheet] = useState<string | null>(null)
   const [help, setHelp] = useState(false)
@@ -217,11 +219,11 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
   /** no button of the report fails without a word: what went wrong, and what to do */
   const failed = (what: string, e?: unknown) => { console.warn('actividad report', what, e); setNotice({ title: tr('No se pudo {0}', what), text: MISSING }) }
   /** opens the PDF in a new tab (to look at, share or print); where a tab cannot show it, it downloads */
-  const pdf = async () => {
+  const pdf = async (parts?: Set<Part>) => {
     try {
       const name = fileName + '.pdf'
-      let doc = buildPdf(s, date, now, user.get(), filter)
-      if (!doc) { await loadPdf(); doc = buildPdf(s, date, now, user.get(), filter); if (!doc) throw new Error('pdf'); doc.save(name); return }
+      let doc = buildPdf(s, date, now, user.get(), filter, parts)
+      if (!doc) { await loadPdf(); doc = buildPdf(s, date, now, user.get(), filter, parts); if (!doc) throw new Error('pdf'); doc.save(name); return }
       if (homeScreenApple(navigator as Parameters<typeof homeScreenApple>[0])) { doc.save(name); return }
       const win = window.open(doc.output('bloburl'), '_blank')
       if (!win) doc.save(name)
@@ -243,13 +245,15 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
   const cw = (c: { dept: Dept; bin: string }) => cfgFor(c.dept, c.bin)
   const reasonsText = (x: (typeof rows)[number]) => Object.entries(x.st.reasons).map(([k, v]) => tr(k) + ' ' + fmtDur(v)).join(', ')
   const lineName = (x: { lineId: string | null; dept: Dept }) => (x.lineId === null ? tr('Todo {0}', x.dept) : lineLabel(s.lines.find((l) => l.id === x.lineId)?.name ?? s.runs.find((r) => r.lineId === x.lineId)?.line ?? tr('línea')))
+  // there is something to put in a file: a code, a stop, or somebody written in the attendance (a day of only that)
+  const any = rows.length > 0 || rep.stops.length > 0 || (s.attendance ?? []).some((x) => !x.deleted && x.date === date && (!dept || x.dept === dept))
   const lineChosen = rep.line ? rep.lineChoices.find((l) => l.id === rep.line)?.name ?? '' : ''
   const fileName = 'actividad-' + (dept ? dept.toLowerCase() + '-' : '') + date + filterFile(rep.code, rep.lot, rep.shift, lineChosen)
   // the history of that day (corrections, products, program, lines): the manager's and the office's
   const changes = mgr && !rep.filtered ? s.changes.filter((c) => !c.deleted && plainDay(s, c.at) === date && (!dept || c.dept === dept)).sort((a, b) => a.at - b.at) : []
   /** the report's three files, made at once; null while what makes them has not come down yet */
-  const filesNow = (): Record<Kind, File> | null => {
-    const doc = buildPdf(s, date, now, user.get(), filter), bytes = xlsxNow(sheets())
+  const filesNow = (parts?: Set<Part>): Record<Kind, File> | null => {
+    const doc = buildPdf(s, date, now, user.get(), filter, parts), bytes = xlsxNow(sheets(parts))
     if (!doc || !bytes) return null
     return { pdf: new File([doc.output('blob')], fileName + '.pdf', { type: 'application/pdf' }), xlsx: new File([bytes], fileName + '.xlsx', { type: XLSX_TYPE }), csv: new File([csvText()], fileName + '.csv', { type: 'text/csv' }) }
   }
@@ -258,10 +262,10 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
    * them, open a mail). The sharing itself is a button of that box: a browser only opens its share sheet for a tap,
    * and by then the files are ready. Nothing here happens without the person seeing it.
    */
-  const send = async () => {
+  const send = async (parts?: Set<Part>) => {
     try {
-      let files = filesNow()
-      if (!files) { setPreparing(true); try { await libraries() } finally { setPreparing(false) } files = filesNow() }
+      let files = filesNow(parts)
+      if (!files) { setPreparing(true); try { await libraries() } finally { setPreparing(false) } files = filesNow(parts) }
       if (!files) throw new Error('files')
       setSending(files)
     } catch (e) { failed(tr('preparar el reporte'), e) }
@@ -320,13 +324,17 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
     return [{ name: tr('Asistencia'), rows, chart: { title: tr('% de faltas por cuarto'), series: tr('% Falta'), cat: 0, val: 3, from: 2, to: 1 + a.rows.length, at: a.rows.length + 4, pct: true } }, ...(people.length ? [{ name: tr('Asistencia · personas'), rows: names }] : [])]
   }
   /** the Excel file's sheets: one per table (Cambios and Avance only for the manager and the office) */
-  const sheets = (): Sheet[] => {
+  const sheets = (parts?: Set<Part>): Sheet[] => {
     const b = blocks()
-    return [{ name: tr('Resumen'), rows: b.resumen }, ...attSheets(), ...(b.porTurno.length > 1 ? [{ name: tr('Por turno'), rows: b.porTurno }] : []), { name: tr('Por código'), rows: b.porCodigo }, { name: tr('Por lote'), rows: b.porLote }, ...(b.pallets.length > 1 ? [{ name: tr('Pallets'), rows: b.pallets }] : []), ...(b.bins.length > 1 ? [{ name: tr('Bins'), rows: b.bins }] : []), { name: tr('Unidades'), rows: b.unidades }, { name: tr('Paros'), rows: b.paros }, ...(mgr ? [{ name: tr('Cambios'), rows: b.cambios }] : []), ...(b.avance.length > 1 ? [{ name: tr('Avance'), rows: b.avance }] : [])]
+    // (the parts chosen in "¿Qué incluir?", 2026-10-21: each sheet goes with its part; none chosen = all of them)
+    const part: Record<string, Part> = { [tr('Resumen')]: 'resumen', [tr('Por turno')]: 'resumen', [tr('Por código')]: 'codigo', [tr('Por lote')]: 'codigo', [tr('Pallets')]: 'pallets', [tr('Bins')]: 'bins', [tr('Unidades')]: 'unidades', [tr('Paros')]: 'paros', [tr('Cambios')]: 'cambios', [tr('Avance')]: 'avance', [tr('Asistencia')]: 'asistencia', [tr('Asistencia · personas')]: 'asistencia' }
+    const all: Sheet[] = [{ name: tr('Resumen'), rows: b.resumen }, ...attSheets(), ...(b.porTurno.length > 1 ? [{ name: tr('Por turno'), rows: b.porTurno }] : []), { name: tr('Por código'), rows: b.porCodigo }, { name: tr('Por lote'), rows: b.porLote }, ...(b.pallets.length > 1 ? [{ name: tr('Pallets'), rows: b.pallets }] : []), ...(b.bins.length > 1 ? [{ name: tr('Bins'), rows: b.bins }] : []), { name: tr('Unidades'), rows: b.unidades }, { name: tr('Paros'), rows: b.paros }, ...(mgr ? [{ name: tr('Cambios'), rows: b.cambios }] : []), ...(b.avance.length > 1 ? [{ name: tr('Avance'), rows: b.avance }] : [])]
+    return parts ? all.filter((x) => parts.has(part[x.name] ?? 'resumen')) : all
   }
-  const excel = async () => {
+
+  const excel = async (parts?: Set<Part>) => {
     try {
-      const bytes = xlsxNow(sheets()) ?? (await loadZip(), xlsxNow(sheets()))
+      const bytes = xlsxNow(sheets(parts)) ?? (await loadZip(), xlsxNow(sheets(parts)))
       if (!bytes) throw new Error('xlsx')
       download(new File([bytes], fileName + '.xlsx', { type: XLSX_TYPE }))
     } catch (e) { failed(tr('hacer el Excel'), e) }
@@ -485,7 +493,7 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
     s, now, only, mgr, admin, viewOnly, can, who, date, pickDate, today, day, rep, rows, unitRows, stops, byCode, runs, working, down, setup,
     dept, fDept, setFDept, fShift, shiftPick, setFShift, fCode, setFCode, fLot, setFLot, setFLine, lineChosen, lineChoiceText, active, clear,
     purges, recovering, recover, tookText, sending, setSending, preparing, send, pdf, excel, csv, shiftsOpen, setShiftsOpen, wiping, setWiping,
-    notice, setNotice, editRun, setEditRun, runToEdit, stopToEdit, setEditStop, addFor, setAddFor, detail, setDetail, stopSheet, setStopSheet, help, setHelp,
+    notice, setNotice, editRun, setEditRun, runToEdit, stopToEdit, setEditStop, addFor, setAddFor, detail, setDetail, stopSheet, setStopSheet, picking, setPicking, any, help, setHelp,
     q, qs, setQ, toks, searching, found, shownN, hitsOf, scopes, applyScope, scopeText, wholeN, searchWholeDay,
     views, v, tabs, setView, pickView, scopeRef, recSub, setRecSub, palSub, setPalSub, cause, setCause, runChip, setRunChip, palF, setPalF, back, go, goBack,
     codesShown, palletsFound, palletsShown, palCount, binsShown, runsFound, runsShown, runIs, unitsShown, stopsFound, stopsShown, stopIs, changes, changesShown,
@@ -496,18 +504,19 @@ type Kit = ReturnType<typeof useReport>
 
 export function Report(props: ReportProps) {
   const k = useReport(props)
-  const { s, now, only, mgr, admin, can, date, pickDate, today, day, rep, rows, dept, lineChosen, purges, recovering, recover, tookText, sending, setSending, preparing, send, pdf, excel, csv, shiftsOpen, setShiftsOpen, wiping, setWiping, notice, setNotice, editRun, setEditRun, runToEdit, stopToEdit, setEditStop, addFor, setAddFor, detail, setDetail, stopSheet, setStopSheet, help, setHelp, v, tabs, pickView, setFShift, hrs, setFCode, setFLot, fix, fixable } = k
+  const { s, now, only, mgr, admin, can, date, pickDate, today, day, rep, rows, dept, lineChosen, purges, recovering, recover, tookText, sending, setSending, preparing, send, pdf, excel, csv, shiftsOpen, setShiftsOpen, wiping, setWiping, notice, setNotice, editRun, setEditRun, runToEdit, stopToEdit, setEditStop, addFor, setAddFor, detail, setDetail, stopSheet, setStopSheet, picking, setPicking, any, help, setHelp, v, tabs, pickView, setFShift, hrs, setFCode, setFLot, fix, fixable } = k
   return (
     <section className="report">
       <div className="rhead">
         <div className="rtitle"><h2>{tr('Reporte del día')}{only && <> <DeptBadge d={only} /></>}</h2><span>{longDate(date)}</span></div>
         <div className="racts">
-          <button type="button" className="btn primary" onClick={() => void send()} disabled={!rows.length || preparing}>{preparing ? tr('Preparando…') : <>{tr('✉ Enviar')}<span className="opt"> {' '}{tr('reporte')}</span></>}</button>
-          <button type="button" className="btn" onClick={() => void pdf()} disabled={!rows.length}>{tr('📄 PDF')}<span className="opt"> {' '}{tr('/ imprimir')}</span></button>
-          <button type="button" className="btn" onClick={() => void excel()} disabled={!rows.length}>{tr('⬇ Excel')}</button>
+          <button type="button" className="btn primary" onClick={() => setPicking('send')} disabled={!any || preparing}>{preparing ? tr('Preparando…') : <>{tr('✉ Enviar')}<span className="opt"> {' '}{tr('reporte')}</span></>}</button>
+          <button type="button" className="btn" onClick={() => setPicking('pdf')} disabled={!any}>{tr('📄 PDF')}<span className="opt"> {' '}{tr('/ imprimir')}</span></button>
+          <button type="button" className="btn" onClick={() => setPicking('xlsx')} disabled={!any}>{tr('⬇ Excel')}</button>
           <button type="button" className="btn" onClick={csv} disabled={!rows.length}>CSV</button>
         </div>
       </div>
+      {picking && <PartsDialog k={k} mode={picking} onClose={() => setPicking(null)} onGo={(parts) => { const m = picking; setPicking(null); if (m === 'xlsx') void excel(parts); else if (m === 'pdf') void pdf(parts); else void send(parts) }} />}
       {sending && <SendDialog files={sending} subject={tr('Actividad · Reporte {0}', date) + (dept ? ' · ' + dept : '') + filterTitle(rep.code, rep.lot, rep.shift, lineChosen)} onClose={() => setSending(null)} />}
       {/* what to look at: the search first, then the day, the shift, the room, the line, the code and the lot. They add up.
           (On a phone the captions marked rf-cap are left out: the box, the date and the rooms already say what they are) */}
@@ -854,6 +863,59 @@ function GeneralView({ k }: { k: Kit }) {
       <StopsWhere k={k} />
       {(s.reasonCodes.on || hasCodedStops(rep)) && <CodePareto k={k} />}
     </>
+  )
+}
+
+/**
+ * "¿Qué incluir?" (Jose, 2026-10-21: "escoger si quiero solo descargar la asistencia o otra cosa en específica y no
+ * todo de una vez ... si solo quieren datos específicos para mandar por excel o imprimir"): before the Excel, the PDF
+ * or what is sent is made, each part of the report with a box, ticked as the last time (all of them the first time).
+ * Only the parts the day has are offered; the quick chips choose all, or only the attendance, or only the stops. The
+ * filters of the report (day, shift, room, line, code, lot) still decide what each part holds.
+ */
+let partsKept: Part[] | null = null
+function PartsDialog({ k, mode, onClose, onGo }: { k: Kit; mode: 'xlsx' | 'pdf' | 'send'; onClose: () => void; onGo: (parts: Set<Part>) => void }) {
+  const { rep, mgr, only } = k
+  const offered: { p: Part; label: string; sub: string }[] = [
+    { p: 'resumen', label: tr('Resumen y corridas'), sub: tr('lo hecho por cuarto y turno, cada código en su línea') },
+    ...(rep.byCode.length ? [{ p: 'codigo' as const, label: tr('Por código y lote'), sub: tr('cuánto de cada código y lote') }] : []),
+    { p: 'asistencia', label: tr('Asistencia'), sub: tr('esperados, vinieron y % de faltas (en Excel, con su gráfica y los nombres)') },
+    ...(rep.stops.length ? [{ p: 'paros' as const, label: tr('Paros'), sub: tr('cada paro con su razón y duración') }] : []),
+    ...(rep.unitRows.length ? [{ p: 'unidades' as const, label: tr('Detalle por unidad'), sub: tr('cada carro, mezcla, bin o pallet con su hora') }] : []),
+    ...(rep.pallets.length ? [{ p: 'pallets' as const, label: tr('Pallets'), sub: tr('cada pallet con sus lotes, tags y PO') }] : []),
+    ...(rep.bins.length ? [{ p: 'bins' as const, label: tr('Bins'), sub: tr('cada bin de Packing') }] : []),
+    ...(mgr && !only && !rep.filtered ? [{ p: 'avance' as const, label: tr('Avance'), sub: tr('el avance del día, como la hoja de la oficina') }] : []),
+    ...(mgr && mode !== 'pdf' ? [{ p: 'cambios' as const, label: tr('Cambios'), sub: tr('correcciones y cambios del día') }] : []),
+  ]
+  const [on, setOn] = useState<Set<Part>>(() => new Set((partsKept ?? offered.map((x) => x.p)).filter((p) => offered.some((x) => x.p === p))))
+  const flip = (p: Part) => setOn((cur) => { const n = new Set(cur); if (n.has(p)) n.delete(p); else n.add(p); return n })
+  const only1 = (p: Part) => setOn(new Set([p]))
+  const go = () => { partsKept = [...on]; onGo(on) }
+  return (
+    <div className="veil rc-veil" onClick={onClose}>
+      <div className="dlg" onClick={(e) => e.stopPropagation()}>
+        <h3>{mode === 'xlsx' ? tr('¿Qué incluir en el Excel?') : mode === 'pdf' ? tr('¿Qué incluir en el PDF?') : tr('¿Qué incluir en lo que se envía?')}</h3>
+        <div className="chips">
+          <button type="button" className="chip" onClick={() => setOn(new Set(offered.map((x) => x.p)))}>{tr('Todo')}</button>
+          <button type="button" className="chip" onClick={() => only1('asistencia')}>{tr('Solo asistencia')}</button>
+          {rep.stops.length > 0 && <button type="button" className="chip" onClick={() => only1('paros')}>{tr('Solo paros')}</button>}
+          <button type="button" className="chip" onClick={() => setOn(new Set())}>{tr('Nada')}</button>
+        </div>
+        <div className="parts">
+          {offered.map((x) => (
+            <label key={x.p} className={'part' + (on.has(x.p) ? ' on' : '')}>
+              <input type="checkbox" checked={on.has(x.p)} onChange={() => flip(x.p)} />
+              <span><b>{x.label}</b><small>{x.sub}</small></span>
+            </label>
+          ))}
+        </div>
+        <p className="hint">{tr('Lo que salga sigue los filtros de arriba: el día, el turno, el cuarto, la línea, el código y el lote.')}</p>
+        <div className="dbtns">
+          <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
+          <button type="button" className="btn primary" disabled={!on.size} onClick={go}>{mode === 'xlsx' ? tr('⬇ Descargar Excel') : mode === 'pdf' ? tr('📄 Hacer el PDF') : tr('✉ Preparar para enviar')}</button>
+        </div>
+      </div>
+    </div>
   )
 }
 
