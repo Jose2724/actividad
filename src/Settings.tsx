@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore } from 'react'
-import { byLineName, CFG, dayShiftsText, DEPTS, lineLabel, lotFor, managerPin, nightText, openRun, removedLines, removeLine, reset, resetRecords, restoreLine, setDayShifts, setLineRules, setReasonCodes, shiftGoalOf, shiftHours, shiftSpan, shiftsOf, turnOf, uploadAll, weekOf, type Dept, type Line, type State, type WorkDay } from './store'
+import { byLineName, CFG, dayShiftsText, DEPTS, lineLabel, lotFor, managerPin, nightText, openRun, removedLines, removeLine, reset, resetRecords, restoreLine, setDayShifts, setLineRules, setProgramView, setReasonCodes, shiftGoalOf, shiftHours, shiftSpan, shiftsOf, turnOf, uploadAll, weekOf, type Dept, type Line, type State, type WorkDay } from './store'
 import { ConfirmDialog, LangSwitch, LineNameDialog, longDate, NoticeDialog, Products, QrLink, ShiftsDialog, StartDayDialog, StopDialog, TargetDialog, useCan } from './App'
 import { Employees } from './Employees'
 import { Devices } from './DevicesView'
@@ -19,16 +19,17 @@ import { trx } from './trx'
  * powers allow; the last one, this device, is everybody's. The dialogs that do the work are the same ones the floor
  * and the report already use, so one rule holds everywhere.
  */
-export type SettingsKey = 'shifts' | 'day' | 'lines' | 'stops' | 'products' | 'goals' | 'people' | 'devices' | 'device'
+export type SettingsKey = 'shifts' | 'day' | 'lines' | 'stops' | 'program' | 'products' | 'goals' | 'people' | 'devices' | 'device'
 const fmtN = (x: number) => Math.round(x).toLocaleString('en-US')
 
-export function settingsSections(can: (p: 'shifts' | 'day' | 'products' | 'goals' | 'people') => boolean, mgr: boolean, viewOnly: boolean): { key: SettingsKey; title: string; sub: string }[] {
+export function settingsSections(can: (p: 'shifts' | 'day' | 'products' | 'goals' | 'people') => boolean, mgr: boolean, viewOnly: boolean, admin = false): { key: SettingsKey; title: string; sub: string }[] {
   return [
     ...(can('shifts') ? [{ key: 'shifts' as const, title: tr('Turnos y calendario'), sub: tr('horas, semana, días aparte') }] : []),
     ...(can('day') ? [{ key: 'day' as const, title: tr('Día de trabajo'), sub: tr('fecha, hora de inicio, lote') }] : []),
     ...(mgr && !viewOnly ? [{ key: 'lines' as const, title: tr('Líneas'), sub: tr('las líneas de cada cuarto') }] : []),
     // (whoever only looks sees the list and whether it is on, without the switch)
     ...(mgr ? [{ key: 'stops' as const, title: tr('Códigos de paro'), sub: tr('Reason Codes: prender o apagar') }] : []),
+    ...(admin ? [{ key: 'program' as const, title: tr('Programa del día'), sub: tr('la pestaña: solo tú o todos') }] : []),
     ...(can('products') || viewOnly ? [{ key: 'products' as const, title: tr('Productos'), sub: tr('la tabla maestra') }] : []),
     ...(can('goals') ? [{ key: 'goals' as const, title: tr('Metas'), sub: tr('por turno y por cuarto') }] : []),
     ...(can('people') && supabase ? [{ key: 'people' as const, title: tr('Empleados'), sub: tr('cuentas, roles y permisos') }] : []),
@@ -39,7 +40,7 @@ export function settingsSections(can: (p: 'shifts' | 'day' | 'products' | 'goals
 
 export function Settings({ s, now, day, name, home, mgr, admin, viewOnly, meId, section, onSection, onLeave }: { s: State; now: number; day: WorkDay; name: string; home: Dept; mgr: boolean; admin: boolean; viewOnly: boolean; meId: string; section: SettingsKey; onSection: (k: SettingsKey) => void; onLeave: () => void }) {
   const can = useCan()
-  const items = settingsSections(can, mgr, viewOnly)
+  const items = settingsSections(can, mgr, viewOnly, admin)
   const sec: SettingsKey = items.some((i) => i.key === section) ? section : items[0].key
   return (
     <div className="settings">
@@ -51,6 +52,7 @@ export function Settings({ s, now, day, name, home, mgr, admin, viewOnly, meId, 
         {sec === 'day' && <DaySettings s={s} now={now} day={day} />}
         {sec === 'lines' && <LinesSettings s={s} />}
         {sec === 'stops' && <StopCodesSettings s={s} viewOnly={viewOnly} />}
+        {sec === 'program' && <ProgramViewSettings s={s} />}
         {sec === 'products' && <div className="setcard wide"><div className="sethead"><h3>{tr('Productos')}</h3></div><p className="hint">{tr('La tabla maestra de la oficina: con ella las mezclas se vuelven pouches, cajas y pallets esperados, y cada cuarto sabe cuánto lleva un carro, un pallet o una caja.')}</p><Products s={s} readOnly={!can('products')} /></div>}
         {sec === 'goals' && <GoalsSettings s={s} now={now} day={day} />}
         {sec === 'people' && <Employees meId={meId} admin={admin} />}
@@ -205,6 +207,27 @@ function LinesSettings({ s }: { s: State }) {
  * shifts at once. "Probar cómo se ve al parar" opens the very stop box the operators will get, tiles and codes, while it
  * is off too, and saves nothing: to show it to the boss without turning it on for the plant.
  */
+/**
+ * The Programa del día tab (Jose, 2026-10-20: "que lo vea yo solamente ... y cuando ellos digan está bien, entonces en
+ * ajuste lo prendo para que lo vean todos"): only the admin sees this card. Off, the tab is the admin's alone (marked
+ * 🔒); on, everybody has it, each with the rooms they see. Turning it on asks first, as the codes do.
+ */
+function ProgramViewSettings({ s }: { s: State }) {
+  const [asking, setAsking] = useState(false)
+  const on = s.programView.on
+  return (
+    <>
+      <div className="setcard">
+        <div className="sethead"><h3>{tr('Programa del día')}</h3><span className={'rc-state' + (on ? ' on' : '')}>{on ? tr('Para todos') : tr('Solo tú')}</span></div>
+        <label className="switch"><span>{tr('Que todos vean la pestaña Programa')}</span><input type="checkbox" role="switch" checked={on} onChange={(e) => (e.target.checked ? setAsking(true) : setProgramView(false))} /></label>
+        <p className="hint">{tr('Apagado: la pestaña Programa la ves solo tú (sale con 🔒), para enseñarla y ajustarla antes.')}</p>
+        <p className="hint">{tr('Prendido: la ven todos: los managers y la oficina con todos los cuartos, cada operador con el suyo.')}</p>
+      </div>
+      {asking && <ConfirmDialog title={tr('¿Que todos vean el Programa del día?')} text={tr('Desde ahora la pestaña Programa sale en todas las tablets y computadoras. Se puede apagar aquí mismo cuando quieras.')} yes={tr('Prender para todos')} onYes={() => { setProgramView(true); setAsking(false) }} onNo={() => setAsking(false)} />}
+    </>
+  )
+}
+
 function StopCodesSettings({ s, viewOnly }: { s: State; viewOnly: boolean }) {
   const [seeing, setSeeing] = useState(false)
   const [asking, setAsking] = useState(false)

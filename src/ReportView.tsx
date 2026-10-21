@@ -45,6 +45,20 @@ let shiftChosen: 0 | 1 | 2 | null = null
 let deptChosen: Dept | '' = ''
 /** the part of the report, the list of Registros and of Pallets, and the search: kept the same way, so going to the floor and back finds them as they were */
 let viewChosen: View = 'gen', recChosen: RecSub = 'runs', palChosen: PalSub = 'pallets', searchKept = ''
+/**
+ * Where another tab sends the report (the Programa del día, the floor's numbers: Jose, 2026-10-20 "que tengan link
+ * todo"): the day, room, shift, line, code, lot, part and list to open on. Read once when the report opens.
+ */
+export type ReportAt = { date?: string; dept?: Dept; shift?: 0 | 1 | 2; line?: string; code?: string; lot?: string; view?: View; rec?: RecSub; cause?: string }
+let openAt: ReportAt | null = null
+export function reportOpenAt(x: ReportAt) {
+  openAt = x
+  if (x.dept !== undefined) deptChosen = x.dept
+  if (x.shift !== undefined) shiftChosen = x.shift
+  if (x.view) viewChosen = x.view
+  if (x.rec) recChosen = x.rec
+  searchKept = ''
+}
 /** a long list shows this many rows a page: the report redraws every second for its live clocks, and 50 rows a second is light on a phone (the files always carry everything) */
 const PAGE = 50
 
@@ -126,7 +140,9 @@ export function useFixers() {
 
 function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
   const can = useCan(), who = useWho(), viewOnly = who.role === 'viewer'
-  const [date, setDate] = useState(() => workDay(s).date)
+  // (what another tab asked for, taken once: see reportOpenAt)
+  const [at] = useState(() => { const x = openAt; openAt = null; return x })
+  const [date, setDate] = useState(() => at?.date ?? workDay(s).date)
   const [wiping, setWiping] = useState(false)
   // a run opened to correct it, at the unit the person came from (a pallet, a cart); and a stop
   const [editRun, setEditRun] = useState<{ id: string; at?: number } | null>(null)
@@ -134,9 +150,9 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
   const [notice, setNotice] = useState<{ title: string; text?: string } | null>(null)
   const [sending, setSending] = useState<Record<Kind, File> | null>(null)
   const [preparing, setPreparing] = useState(false)
-  const [fCode, setFCode] = useState('')
-  const [fLine, setFLine] = useState('') // one line of the day alone (its id)
-  const [fLot, setFLot] = useState('')
+  const [fCode, setFCode] = useState(at?.code ?? '')
+  const [fLine, setFLine] = useState(at?.line ?? '') // one line of the day alone (its id)
+  const [fLot, setFLot] = useState(at?.lot ?? '')
   // the room a manager looks at (the people of one room see only theirs)
   const [fDept, setDeptPick] = useState<Dept | ''>(only ? '' : deptChosen)
   // a code that ran and nobody recorded, put on its line after the fact: only the room tapped comes preset, nothing is guessed
@@ -180,7 +196,7 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
   // search never holds the typing up (the box itself always shows what is typed).
   const qs = useDeferredValue(q)
   // the quick chips of Registros: a cause of stop (or every stop but Set up: '!setup'), and the runs still going or with waste
-  const [cause, setCause] = useState('')
+  const [cause, setCause] = useState(at?.cause ?? '')
   const [runChip, setRunChip] = useState<'' | 'live' | 'waste'>('')
   const [palF, setPalF] = useState<PalletFilter>('') // the pallets by their state: without a tag, without or with a PO, full, short, being built
   const [back, setBack] = useState<Snap | null>(null)

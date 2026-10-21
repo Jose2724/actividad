@@ -1779,3 +1779,43 @@ table.rc-pareto .rc-narrow{display:none}
 table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-numeric:tabular-nums}
 @media (max-width:520px){table.rc-pareto .rc-wide{display:none}table.rc-pareto .rc-narrow{display:block}table.rc-pareto .rc-tag{display:table;margin:3px 0 0}table.rc-pareto td:nth-child(2){white-space:normal;min-width:120px}}
 @media (max-width:520px){.rc-cats{grid-template-columns:1fr 1fr}.rc-codes{grid-template-columns:1fr}.rc-cat{min-height:60px}.rc-cat b{font-size:15.5px}}
+
+/* Programa del día (Jose and the office, 2026-10-20): a tile per room on top, then a card per room, a row per code and lot */
+.pt{display:grid;gap:12px}
+.pt-head{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline;justify-content:space-between}
+.pt-head h2{margin:0;font-size:22px}.pt-head small{color:var(--muted)}
+.pt-live{display:inline-flex;gap:6px;align-items:center;background:var(--soft);color:var(--accent);font-weight:700;border-radius:999px;padding:4px 12px;font-size:14px}
+.pt-live i{width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.pt-only{font-size:11px}
+.pt-strip{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}
+.pt-tile{display:grid;gap:2px;text-align:left;background:var(--surface);border:1px solid var(--line);border-top:5px solid var(--d);border-radius:12px;padding:10px 12px;color:var(--ink);font:inherit;cursor:pointer}
+.pt-tile b{font-size:22px}.pt-tile small{color:var(--muted)}
+.pt-legend{display:flex;flex-wrap:wrap;gap:12px;font-size:13px;color:var(--muted)}
+.pt-legend .t1::before,.pt-legend .t2::before,.pt-legend .left::before{content:"";display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:-2px;background:var(--accent)}
+.pt-legend .t2::before{background:#14b8a6}.pt-legend .left::before{background:#cbd5e1}
+.pt-cards{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(min(100%,560px),1fr));align-items:start}
+.pt-card{background:var(--surface);border:1px solid var(--line);border-left:6px solid var(--d);border-radius:14px;padding:14px;display:grid;gap:10px;scroll-margin-top:12px}
+.pt-chead{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center}
+.pt-chead .pt-sum{color:var(--muted);flex:1}
+.pt-bar{height:10px;background:#cbd5e1;border-radius:6px;overflow:hidden;display:flex}
+.pt-bar .t1{background:var(--accent)}.pt-bar .t2{background:#14b8a6}
+.pt-row{border-top:1px solid var(--line);padding-top:10px;display:grid;gap:6px}
+.pt-rtop{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline}
+.pt-code{font:800 22px ui-monospace,Consolas,monospace}
+.pt-lot{color:var(--muted)}.pt-lot b{color:var(--ink);font-size:17px}
+.pt-pname{color:var(--muted);font-size:13px;width:100%}
+.pt-st{margin-left:auto;font-size:13px;font-weight:700;border-radius:999px;padding:3px 10px;border:1px solid transparent;font-family:inherit;background:#f1f5f9;color:#475569}
+.pt-st.done{background:#dcfce7;color:#166534}.pt-st.run{background:var(--soft);color:var(--accent)}.pt-st.setup{background:#fef3c7;color:#92400e}
+.pt-st.stop{background:#fee2e2;color:#b91c1c;border-color:#fca5a5;cursor:pointer;text-decoration:underline}
+.pt-nums{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.pt-n{display:block;text-align:left;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:6px 8px;color:var(--ink);font:inherit;cursor:pointer}
+.pt-n label{display:block;font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--muted);text-transform:uppercase;cursor:pointer}
+.pt-n b{font-size:19px}.pt-n small{color:var(--muted)}
+.pt-n.now{border-color:var(--accent)}
+.pt-n.left{background:#fff4e5}.pt-n.left b{color:#b45309}
+.pt-n.ok{background:#dcfce7}.pt-n.ok b{color:#166534}
+.pt-tags{display:flex;flex-wrap:wrap;gap:6px}
+.pt-tag{font-size:12.5px;border-radius:8px;padding:2px 8px;background:var(--bg);color:var(--muted);border:0;font-family:inherit}
+.pt-tag.carry{background:#ede9fe;color:#5b21b6;font-weight:700}
+.pt-tag.order{background:#e0f2fe;color:#075985}
+@media (max-width:560px){.pt-nums{grid-template-columns:repeat(2,minmax(0,1fr))}.pt-code{font-size:20px}}

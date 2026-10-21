@@ -4973,6 +4973,24 @@ section('Códigos de paro (Reason Codes): apagados todo como siempre; encendidos
   })
 }
 
+section('Programa del día: la pestaña del admin, prendida para todos desde Ajustes (Jose, 2026-10-20)')
+{
+  const pv = await device('program-view', { user: 'Jose' })
+  pv.use((m) => {
+    const st = () => m.store.get()
+    eq('al principio solo el admin la ve (apagado)', st().programView, { on: false, updatedAt: 0 })
+    clock = T0 + 10 * M; m.setProgramView(true)
+    const up = m.outbox.items().filter((i) => i.table === 'act_targets' && i.key === 'opt:programview')
+    eq('se prende: sube a act_targets con 1 y queda en el historial', [st().programView.on, up.map((i) => i.row.per_hour), st().changes.filter((c) => c.refKey === 'opt:programview').map((c) => [c.what, c.before, c.after])], [true, [1], [['Programa del día', 'solo el admin', 'para todos']]])
+    m.applyRemote('act_targets', { dept: 'opt:programview', per_hour: 0, per_shift: null, updated_at: iso(T0 + 20 * M), updated_by: 'Edgar' })
+    eq('lo que dice otro manager llega, y una versión vieja no lo cambia', [st().programView.on, (m.applyRemote('act_targets', { dept: 'opt:programview', per_hour: 1, per_shift: null, updated_at: iso(T0 + 15 * M), updated_by: 'Edgar' }), st().programView.on)], [false, false])
+    eq('la fila no es la meta de nadie ni toca los códigos de paro', [st().targets, st().turnGoals, st().lineTargets, st().reasonCodes.on], [[], [], [], false])
+    clock = T0 + 30 * M; m.setProgramView(true)
+  })
+  const back = await device('program-view-again', { seed: JSON.parse(disks.get('program-view').get('act_v1')), user: 'Jose' })
+  eq('al volver a abrir sigue prendido, con su hora', back.use((m) => m.store.get().programView.on), true)
+}
+
 // =====================================================================================================================
 console.log('')
 if (failed.length) { console.log(failed.length + ' FALLARON de ' + (passed + failed.length) + ':\n'); for (const f of failed) console.log('  ✗ ' + f + '\n'); process.exit(1) }
