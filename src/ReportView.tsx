@@ -187,6 +187,8 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
   const [shows, setShows] = useState(0) // how many drills and tabs tapped so far: each one brings what it opened into view (below)
   const [page, setPage] = useState<Record<string, number>>({})
   const [detail, setDetail] = useState<{ runId: string; at?: number } | null>(null)
+  // the sheet of one stop (Jose, 2026-10-20: "para ellos es importante investigar sobre los paros"): its id
+  const [stopSheet, setStopSheet] = useState<string | null>(null)
   const [help, setHelp] = useState(false)
   const scopeRef = useRef<HTMLDivElement>(null) // the "Viendo" line, just above the part in view
   const day = useDay(date)
@@ -451,7 +453,7 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
     s, now, only, mgr, admin, viewOnly, can, who, date, pickDate, today, day, rep, rows, unitRows, stops, byCode, runs, working, down, setup,
     dept, fDept, setFDept, fShift, shiftPick, setFShift, fCode, setFCode, fLot, setFLot, setFLine, lineChosen, lineChoiceText, active, clear,
     purges, recovering, recover, tookText, sending, setSending, preparing, send, pdf, excel, csv, shiftsOpen, setShiftsOpen, wiping, setWiping,
-    notice, setNotice, editRun, setEditRun, runToEdit, stopToEdit, setEditStop, addFor, setAddFor, detail, setDetail, help, setHelp,
+    notice, setNotice, editRun, setEditRun, runToEdit, stopToEdit, setEditStop, addFor, setAddFor, detail, setDetail, stopSheet, setStopSheet, help, setHelp,
     q, qs, setQ, toks, searching, found, shownN, hitsOf, scopes, applyScope, scopeText, wholeN, searchWholeDay,
     views, v, tabs, setView, pickView, scopeRef, recSub, setRecSub, palSub, setPalSub, cause, setCause, runChip, setRunChip, palF, setPalF, back, go, goBack,
     codesShown, palletsFound, palletsShown, palCount, binsShown, runsFound, runsShown, runIs, unitsShown, stopsFound, stopsShown, stopIs, changes, changesShown,
@@ -462,7 +464,7 @@ type Kit = ReturnType<typeof useReport>
 
 export function Report(props: ReportProps) {
   const k = useReport(props)
-  const { s, now, only, mgr, admin, can, date, pickDate, today, day, rep, rows, dept, lineChosen, purges, recovering, recover, tookText, sending, setSending, preparing, send, pdf, excel, csv, shiftsOpen, setShiftsOpen, wiping, setWiping, notice, setNotice, editRun, setEditRun, runToEdit, stopToEdit, setEditStop, addFor, setAddFor, detail, setDetail, help, setHelp, v, tabs, pickView, setFShift, hrs, setFCode, setFLot, fix, fixable } = k
+  const { s, now, only, mgr, admin, can, date, pickDate, today, day, rep, rows, dept, lineChosen, purges, recovering, recover, tookText, sending, setSending, preparing, send, pdf, excel, csv, shiftsOpen, setShiftsOpen, wiping, setWiping, notice, setNotice, editRun, setEditRun, runToEdit, stopToEdit, setEditStop, addFor, setAddFor, detail, setDetail, stopSheet, setStopSheet, help, setHelp, v, tabs, pickView, setFShift, hrs, setFCode, setFLot, fix, fixable } = k
   return (
     <section className="report">
       <div className="rhead">
@@ -538,6 +540,7 @@ export function Report(props: ReportProps) {
       <p className="hint foot">{supabase ? tr('Todo se guarda en el servidor y se ve en vivo desde la oficina, el teléfono o la PC.') : tr('Demo guardado en este dispositivo. La versión completa manda todo en vivo al manager (oficina, teléfono o PC) y exporta a Excel, PDF y Google Sheets como la Hoja de Freezer RTE.')}</p>
       {detail && <RunDetail s={s} runId={detail.runId} at={detail.at} now={now} mgr={mgr} fix={fix} fixable={fixable} onFix={(at) => setEditRun({ id: detail.runId, at })} onFixStop={setEditStop} onCode={(c) => { setFCode(c); setDetail(null) }} onLot={(l) => { setFLot(l); setDetail(null) }} onClose={() => setDetail(null)} />}
       {runToEdit && <RunEditor s={s} run={runToEdit} mgr={can('fix')} focusAt={editRun?.at} onClose={() => setEditRun(null)} />}
+      {stopSheet && <StopSheet k={k} id={stopSheet} onClose={() => setStopSheet(null)} />}
       {addFor && <AddRunDialog s={s} date={date} dept={addFor.dept ?? dept} onClose={() => setAddFor(null)} onAdded={(id) => { setAddFor(null); setDetail({ runId: id }) }} />}
       {stopToEdit && <StopEditor stop={stopToEdit} mgr={can('fix')} onClose={() => setEditStop(null)} />}
       {wiping && <WipeDayDialog s={s} date={date} onClose={() => setWiping(false)} onDone={setNotice} />}
@@ -815,8 +818,106 @@ function GeneralView({ k }: { k: Kit }) {
           </div>
         </>
       )}
+      <StopsWhere k={k} />
       {(s.reasonCodes.on || hasCodedStops(rep)) && <CodePareto k={k} />}
     </>
+  )
+}
+
+/**
+ * "¿Dónde están los paros?" (Jose, 2026-10-20: "que sea sencillo de ver dónde están los paros de cada departamento y
+ * líneas ... dar click ahí para que nos dé más detalle"): each room with its stops (Set up apart, as in Parado), and
+ * under it each line, the longest first, with its two longest causes. Every number opens the stops behind it in
+ * Registros › Paros (the room's, the line's, or the line's of that cause), and each stop there has "Ver", its sheet.
+ * It sums the stops as Registros lists them (the whole stop), not the Parado of the cards (only while a code was on).
+ */
+function StopsWhere({ k }: { k: Kit }) {
+  const { s, stops, go, lineName } = k
+  const down = stops.filter((x) => x.reason !== SETUP && x.ms > 0)
+  if (!down.length) return null
+  type Line = { lineId: string | null; name: string; ms: number; n: number; causes: Map<string, number> }
+  const rooms = DEPTS.map((d) => {
+    const mine = down.filter((x) => x.dept === d), lines = new Map<string, Line>()
+    for (const x of mine) {
+      const key = x.lineId ?? '*', e = lines.get(key) ?? { lineId: x.lineId, name: lineName(x), ms: 0, n: 0, causes: new Map<string, number>() }
+      e.ms += x.ms; e.n++; e.causes.set(x.reason, (e.causes.get(x.reason) ?? 0) + x.ms); lines.set(key, e)
+    }
+    return { dept: d, ms: mine.reduce((t, x) => t + x.ms, 0), n: mine.length, lines: [...lines.values()].sort((a, b) => b.ms - a.ms) }
+  }).filter((r) => r.n > 0).sort((a, b) => b.ms - a.ms)
+  const nText = (n: number) => (n === 1 ? tr('1 paro') : tr('{0} paros', n))
+  // (a stop of the whole room has no line to filter by: it opens the room's stops)
+  const toLine = (d: Dept, l: Line, cause = '!setup') => go('rec', { rec: 'stops', dept: d, line: l.lineId ?? '', cause })
+  return (
+    <>
+      <h3>{tr('¿Dónde están los paros?')}</h3>
+      <div className="rp-where">
+        {rooms.map((r) => (
+          <div key={r.dept} className="rp-where-room" style={deptVars(r.dept)}>
+            <div className="rp-where-head"><DeptBadge d={r.dept} /><button type="button" className="drill red" onClick={() => go('rec', { rec: 'stops', dept: r.dept, cause: '!setup' })}>{fmtDur(r.ms)}</button><small>{nText(r.n)}</small></div>
+            {r.lines.map((l) => (
+              <div key={l.lineId ?? '*'} className="rp-where-line">
+                <button type="button" className="drill" onClick={() => toLine(r.dept, l)}>{l.name}</button>
+                <b className="red">{fmtDur(l.ms)}</b><small>{nText(l.n)}</small>
+                <div className="rp-where-causes">{[...l.causes].sort((a, b) => b[1] - a[1]).slice(0, 2).map(([c, ms]) => <button key={c} type="button" className="drill" onClick={() => toLine(r.dept, l, c)}>{reasonText(s, c)} · {fmtDur(ms)}</button>)}</div>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+      <p className="hint">{tr('Toca un número para ver esos paros; en cada paro, "Ver" da todo su detalle.')}</p>
+    </>
+  )
+}
+
+/**
+ * The sheet of one stop, to investigate it (Jose, 2026-10-20: "saber qué es lo que hay que solucionar según el paro"):
+ * where and when, its cause with its code (what the code means, planned or not), the detail typed, who registered it,
+ * what the line was making then (its code and lot, which opens that run), every change made to it, and the other
+ * stops of that line the same day (each opens its own sheet). Read from the store, as the run's sheet.
+ */
+function StopSheet({ k, id, onClose }: { k: Kit; id: string; onClose: () => void }) {
+  const { s, now, stops, lineName, spanOf, fix, setEditStop, setDetail, can } = k
+  const x = s.stops.find((y) => y.id === id && !y.deleted)
+  if (!x) return null
+  const ms = stops.find((y) => y.id === id)?.ms ?? (x.endedAt ?? now) - x.startedAt
+  const c = x.reason === SETUP ? undefined : reasonCodeOf(x.reason)
+  const run = x.lineId === null ? undefined : s.runs.find((r) => !r.deleted && r.lineId === x.lineId && r.startedAt <= x.startedAt && (r.endedAt ?? now) > x.startedAt)
+  const changes = s.changes.filter((y) => !y.deleted && y.refTable === 'act_stops' && y.refKey === x.id).sort((a, b) => a.at - b.at)
+  const others = stops.filter((y) => y.id !== x.id && y.dept === x.dept && y.lineId === x.lineId)
+  return (
+    <div className="veil" onClick={onClose}>
+      <div className="dlg wide" onClick={(e) => e.stopPropagation()}>
+        <h3>{tr('Detalle del paro')}</h3>
+        <p><DeptBadge d={x.dept} /> <b>{lineName(x)}</b></p>
+        <div className="setfacts">
+          <Fact label={tr('Razón')} value={reasonText(s, x.reason)} cls={x.reason === SETUP ? 'amber' : 'red'} />
+          <Fact label={tr('Duración')} value={fmtDur(ms)} />
+          <Fact label={tr('Inicio')} value={fmtTime(x.startedAt)} />
+          <Fact label={tr('Fin')} value={x.endedAt ? fmtTime(x.endedAt) : tr('en curso')} />
+          <Fact label={tr('Turno')} value={spanOf(x)} />
+          <Fact label={tr('Registró')} value={x.by || '—'} />
+        </div>
+        {c && <p className="rc-chosen"><b>{c.code}</b>{' · ' + codeLabel(c)} <small>{(c.planned ? tr('Planeado') : tr('No planeado')) + ' · ' + FAMILY_SHOWN[c.family]()}</small><br /><small>{tr(c.def)}</small></p>}
+        <p><b>{tr('Detalle')}:</b> {noteLabel(x.note) || <i>{tr('sin detalle')}</i>}</p>
+        {run && <p>{tr('La línea estaba haciendo')} <button type="button" className="drill code" onClick={() => { onClose(); setDetail({ runId: run.id }) }}>{run.code}{run.lot ? ' · ' + tr('lote {0}', run.lot) : ''}</button></p>}
+        {changes.length > 0 && (
+          <>
+            <h4>{tr('Cambios a este paro')}</h4>
+            <ul className="rp-stop-changes">{changes.map((y) => <li key={y.id}>{fmtTime(y.at)} · {y.by}: {y.what}{y.before ? ' · ' + y.before : ''}{' → '}<b>{y.after || '—'}</b></li>)}</ul>
+          </>
+        )}
+        {others.length > 0 && (
+          <>
+            <h4>{tr('Otros paros de esta línea este día')}</h4>
+            <ul className="rp-stop-others">{others.map((y) => <li key={y.id}><button type="button" className="drill" onClick={() => k.setStopSheet(y.id)}>{fmtTime(y.startedAt)} · {reasonText(s, y.reason)}</button> <span>{fmtDur(y.ms)}</span></li>)}</ul>
+          </>
+        )}
+        <div className="dbtns">
+          {can('fix') && fix(spanOf(x), x.dept) && <button type="button" className="btn soft" onClick={() => { onClose(); setEditStop(x.id) }}>{tr('✎ Corregir')}</button>}
+          <button type="button" className="btn primary" onClick={onClose}>{tr('Cerrar')}</button>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -1268,12 +1369,12 @@ function StopsTable({ k }: { k: Kit }) {
       <QuickChips items={[{ key: '', label: tr('Todos'), n: c('') }, { key: '!setup', label: tr('Parado'), n: c('!setup') }, { key: SETUP, label: 'Set up', n: c(SETUP), cls: 'setupchip' }, ...[...causes, ...chosen].map((r) => ({ key: r, label: reasonText(k.s, r), n: c(r) }))]} on={cause} onPick={setCause} />
       {!stopsShown.length ? <p className="hint">{tr('Nada registrado con estos filtros.')}</p> : <div className="twrap rp-cardlist">
         <table>
-          <thead><tr>{can('fix') && <th className="rp-act"></th>}{manyRooms && <th>{tr('Depto')}</th>}<th>{tr('Línea')}</th><th>{tr('Razón')}</th><th>{tr('Detalle')}</th><th>{tr('Turno')}</th><th>{tr('Inicio')}</th><th>{tr('Fin')}</th><th>{tr('Duración')}</th><th>{tr('Registró')}</th></tr></thead>
+          <thead><tr><th className="rp-act"></th>{manyRooms && <th>{tr('Depto')}</th>}<th>{tr('Línea')}</th><th>{tr('Razón')}</th><th>{tr('Detalle')}</th><th>{tr('Turno')}</th><th>{tr('Inicio')}</th><th>{tr('Fin')}</th><th>{tr('Duración')}</th><th>{tr('Registró')}</th></tr></thead>
           <tbody>{pageOf('stops', stopsShown).map((x) => {
             const note = noteLabel(x.note) || '—'
             return (
               <tr key={x.id} className={x.endedAt ? '' : 'live'} style={deptVars(x.dept)}>
-                {can('fix') && <td className="rp-act"><div className="btns">{fixBtn(spanOf(x), x.dept, () => setEditStop(x.id))}</div></td>}
+                <td className="rp-act"><div className="btns">{k.seeBtn(() => k.setStopSheet(x.id))}{can('fix') && fixBtn(spanOf(x), x.dept, () => setEditStop(x.id))}</div></td>
                 {manyRooms && <td className="c-head"><DeptBadge d={x.dept} /></td>}
                 <td data-label={tr('Línea')}>{hl(lineName(x), toks)}</td>
                 <td data-label={tr('Razón')} className={manyRooms ? undefined : 'c-head'}><b>{hl(reasonText(k.s, x.reason), toks)}</b></td>

@@ -1957,4 +1957,15 @@ export const EN: Record<string, string> = {
   'Prueba: así se ve al parar con los códigos encendidos. No se guarda nada.': 'Test: this is how stopping looks with the codes on. Nothing is saved.',
   'Era una prueba': 'It was a test',
   'No se guardó ningún paro. Así lo eligen los operadores cuando los códigos están encendidos.': 'No stop was saved. This is how the operators choose it when the codes are on.',
+  // ¿Dónde están los paros? and the stop's sheet (Jose, 2026-10-20)
+  '1 paro': '1 stop',
+  '{0} paros': '{0} stops',
+  '¿Dónde están los paros?': 'Where are the stops?',
+  'Toca un número para ver esos paros; en cada paro, "Ver" da todo su detalle.': 'Tap a number to see those stops; on each stop, "See" gives all its detail.',
+  'Detalle del paro': 'Stop detail',
+  'sin detalle': 'no detail',
+  'La línea estaba haciendo': 'The line was making',
+  'Cambios a este paro': 'Changes to this stop',
+  'Otros paros de esta línea este día': 'Other stops of this line this day',
+  '✎ Corregir': '✎ Correct',
 }
