@@ -1885,3 +1885,25 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 .later-free{grid-column:1/-1;display:grid;gap:6px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px}
 .later-free .lab{font-weight:700;margin-right:4px}
 .later-free .chip.free{background:#dcfce7;border-color:#86efac;color:#166534;font-weight:700}
+
+/* the columns' filters of the report, as in Excel (the office, 2026-10-21) */
+.cf-head{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+.cf-btn{border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:6px;width:22px;height:22px;padding:0;font-size:12px;line-height:1;cursor:pointer}
+.cf-btn.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.cf-menu{position:fixed;z-index:40;overflow:auto;width:min(300px,calc(100vw - 16px));background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.18);padding:10px;display:grid;gap:8px;text-transform:none;letter-spacing:0;font-weight:400;color:var(--ink)}
+.cf-menu input:not([type]){min-height:38px;font-size:15px;padding:0 10px}
+.cf-list{max-height:none;overflow:visible;display:grid;gap:2px;border-top:1px solid var(--line);padding-top:6px}
+.cf-item{display:flex;align-items:center;gap:8px;padding:4px 2px;cursor:pointer;font-size:14px}
+.cf-item input{width:18px;height:18px;accent-color:var(--accent);flex:none}
+.cf-item span{flex:1;word-break:break-word}.cf-item small{color:var(--muted)}
+.cf-item.all{font-weight:700}
+.cf-foot{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
+.cf-none{color:var(--muted)}
+.cf-bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0;font-size:14px}
+.cf-bar small{color:var(--muted)}
+.cf-item.one{border:0;background:none;text-align:left;font:inherit;color:inherit;border-radius:6px;padding:6px 4px}
+.cf-item.one:hover,.cf-item.one.on{background:var(--soft)}
+.cf-tools{display:none;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0;font-size:14px}
+.cf-tool{border:1px solid var(--line);border-radius:999px;padding:3px 6px 3px 10px;background:var(--surface)}
+.cf-tool.on{border-color:var(--accent);background:var(--soft)}
+@media (max-width:720px){.cf-tools{display:flex}}

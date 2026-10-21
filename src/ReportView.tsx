@@ -15,6 +15,7 @@ import { supabase } from './supabase'
 import { fetchPurged } from './sync'
 import { addDays, DayNote, download, howMany, libraries, longDate, MISSING, NoticeDialog, SendDialog, shortDay, ShiftsDialog, useCan, useDay, useWho, WipeDayDialog } from './App'
 import { DEPT_LOOK, deptVars } from './look'
+import { ColMenu, useColFilters } from './ColFilter'
 import { tr } from './i18n'
 import { trx } from './trx'
 
@@ -1174,7 +1175,7 @@ function CodesView({ k }: { k: Kit }) {
       {searching && !codesShown.length ? <Nothing k={k} /> : (
         <div className="twrap">
           <table className="bycode">
-            <thead><tr><th className="rp-code">{tr('Código')}</th><th>{tr('Lote')}</th><th className="num">{tr('Hechas')}</th><th className="num">{tr('Cantidad')}</th>{!rep.shift && shiftCols.map((n) => <th key={n} className="num">{tr('Turno {0}', n)}</th>)}<th>{tr('En cajas')}</th><th className="num">Waste</th><th>{tr('Líneas')}</th></tr></thead>
+            <thead><tr><th className="rp-code"><span className="cf-head">{tr('Código')}<ColMenu single label={tr('Código')} values={rep.codes} chosen={rep.code ? [rep.code] : null} onPick={(l) => setFCode(l ? l[0] : '')} /></span></th><th><span className="cf-head">{tr('Lote')}<ColMenu single label={tr('Lote')} values={rep.lots} chosen={rep.lot ? [rep.lot] : null} onPick={(l) => setFLot(l ? l[0] : '')} /></span></th><th className="num">{tr('Hechas')}</th><th className="num">{tr('Cantidad')}</th>{!rep.shift && shiftCols.map((n) => <th key={n} className="num">{tr('Turno {0}', n)}</th>)}<th>{tr('En cajas')}</th><th className="num">Waste</th><th>{tr('Líneas')}</th></tr></thead>
             <tbody>
               {rooms.map((d) => {
                 const cfg = CFG[d.dept], q = cfg.qty !== 'none', b = rep.byShift.find((x) => x.dept === d.dept)
@@ -1286,6 +1287,9 @@ function ShiftsView({ k }: { k: Kit }) {
 /** 📦 Pallets: Packing's pallets one by one (each with its lots, cases and tags, its total and its PO), and its bins apart */
 function PalletsView({ k }: { k: Kit }) {
   const { s, rep, dept, go, searching, palletsFound, palletsShown, palCount, palF, setPalF, binsShown, palSub, setPalSub, addIn, setAddFor, acts, spanOf, setDetail, setEditRun, pageOf, pageBar, ofText, toks } = k
+  // the columns' filters, as in Excel (the office, 2026-10-21): see ColFilter (before the returns below: hooks)
+  const f = useColFilters('pallets', palletsShown, [{ key: 'code', label: tr('Código'), get: (p) => p.r.code }, { key: 'lot', label: tr('Lote'), get: (p) => p.parts.map((x) => x.lot) }, { key: 'cases', label: tr('Cajas'), get: (p) => p.parts.map((x) => (x.qty != null ? String(x.qty) : '')) }, { key: 'tag', label: tr('Tag'), get: (p) => p.parts.map((x) => x.tag) }, { key: 'total', label: tr('Total'), get: (p) => String(p.total) }, { key: 'po', label: 'PO', get: (p) => p.order }, { key: 'line', label: tr('Línea'), get: (p) => lineNameOf(s, p.r.lineId, p.r.line) }, { key: 'shift', label: tr('Turno'), get: (p) => String(p.shift) }, { key: 'by', label: tr('Registró'), get: (p) => p.by }])
+  const g = useColFilters('bins', binsShown, [{ key: 'code', label: tr('Código'), get: (b) => b.r.code }, { key: 'lot', label: tr('Lote'), get: (b) => b.lot }, { key: 'qty', label: tr('Cantidad'), get: (b) => (b.qty != null ? String(b.qty) : '') }, { key: 'ref', label: tr('N° de bin'), get: (b) => b.ref }, { key: 'line', label: tr('Línea'), get: (b) => lineNameOf(s, b.r.lineId, b.r.line) }, { key: 'shift', label: tr('Turno'), get: (b) => String(b.shift) }, { key: 'by', label: tr('Registró'), get: (b) => b.by }])
   if (dept && dept !== 'Packing') return <p className="hint rp-elsewhere">{tr('Los pallets y los bins son de Packing.')} <button type="button" className="btn sm" onClick={() => go('pal', { dept: 'Packing' })}>📦 {tr('Ver solo {0}', 'Packing')}</button></p>
   if (!rep.pallets.length && !rep.bins.length) return <div className="rp-list"><p className="hint">{tr('Ningún pallet ni bin en lo que estás viendo.')}</p>{addIn('Packing') && <p><button type="button" className="btn sm soft" onClick={() => setAddFor({ dept: 'Packing' })}>{tr('+ Agregar registro')}</button></p>}</div>
   // the list chosen, or the other one when it has nothing
@@ -1312,10 +1316,11 @@ function PalletsView({ k }: { k: Kit }) {
               <button key={f} type="button" className={'chip sm' + (palF === f ? ' on' : '')} aria-pressed={palF === f} onClick={() => setPalF(f)}>{f === '' ? tr('Todos') : f === 'notag' ? tr('Sin tag') : f === 'nopo' ? tr('Sin PO') : f === 'po' ? tr('Con PO') : f === 'full' ? tr('Completos') : f === 'short' ? tr('Incompletos') : tr('En armado')}<small>{palCount(f)}</small></button>
             ))}
           </div>
+          {f.bar}
           <div className="twrap">
             <table className="pallets">
-              <thead><tr><th className="rp-act"></th><th>{tr('Pallet')}</th><th>{tr('Código')}</th><th>{tr('Lote')}</th><th className="num">{tr('Cajas')}</th><th>{tr('Tag')}</th><th className="num">{tr('Total')}</th><th>PO</th><th>{tr('Línea')}</th><th>{tr('Hora')}</th>{!rep.shift && <th>{tr('Turno')}</th>}<th>{tr('Registró')}</th>{notes && <th>{tr('Comentario')}</th>}</tr></thead>
-              {pageOf('pallets', palletsShown).map((p) => {
+              <thead><tr><th className="rp-act"></th><th>{tr('Pallet')}</th><th>{f.head('code', tr('Código'))}</th><th>{f.head('lot', tr('Lote'))}</th><th className="num">{f.head('cases', tr('Cajas'))}</th><th>{f.head('tag', tr('Tag'))}</th><th className="num">{f.head('total', tr('Total'))}</th><th>{f.head('po', 'PO')}</th><th>{f.head('line', tr('Línea'))}</th><th>{tr('Hora')}</th>{!rep.shift && <th>{f.head('shift', tr('Turno'))}</th>}<th>{f.head('by', tr('Registró'))}</th>{notes && <th>{tr('Comentario')}</th>}</tr></thead>
+              {pageOf('pallets', f.shown).map((p) => {
                 const span = p.parts.length, unitAt = p.open ? undefined : p.at
                 return (
                   <tbody key={p.r.id + ':' + p.n} className={(p.open ? 'live' : '') + (span > 1 ? ' multi' : '')}>
@@ -1343,16 +1348,17 @@ function PalletsView({ k }: { k: Kit }) {
           </div>
           {palletsShown.length === 0 && <p className="hint">{tr('Ningún pallet de este día está así.')}</p>}
           {palletsShown.some((p) => p.parts.some((x) => looksLikeTwoLots(x.lot))) && <p className="hint">{tr('Un lote escrito como "6168-6216" parece dos lotes en uno, y así sus cajas no se pueden repartir entre los dos. Se separa desde Corregir, con ✎ en ese pallet, poniendo las cajas de cada lote. En la línea, un pallet con dos lotes se registra con "➕ Otro lote en este pallet".')}</p>}
-          {pageBar('pallets', palletsShown.length)}
+          {pageBar('pallets', f.shown.length)}
         </>
       ) : (
         <>
           {/* Packing's bins one by one, apart from its pallets and in the colour of the bin cards */}
+          {g.bar}
           <div className="twrap">
             <table className="pallets binlist">
-              <thead><tr><th className="rp-act"></th><th>{tr('Bin')}</th><th>{tr('Código')}</th><th>{tr('Lote')}</th><th className="num">{tr('Cantidad')}</th><th>{tr('N° de bin')}</th><th>{tr('Línea')}</th><th>{tr('Hora')}</th>{!rep.shift && <th>{tr('Turno')}</th>}<th>{tr('Registró')}</th></tr></thead>
+              <thead><tr><th className="rp-act"></th><th>{tr('Bin')}</th><th>{g.head('code', tr('Código'))}</th><th>{g.head('lot', tr('Lote'))}</th><th className="num">{g.head('qty', tr('Cantidad'))}</th><th>{g.head('ref', tr('N° de bin'))}</th><th>{g.head('line', tr('Línea'))}</th><th>{tr('Hora')}</th>{!rep.shift && <th>{g.head('shift', tr('Turno'))}</th>}<th>{g.head('by', tr('Registró'))}</th></tr></thead>
               <tbody>
-                {pageOf('bins', binsShown).map((b) => (
+                {pageOf('bins', g.shown).map((b) => (
                   <tr key={b.r.id + ':' + b.n}>
                     {acts(spanOf(b.r), b.r.dept, () => setDetail({ runId: b.r.id, at: b.at }), () => setEditRun({ id: b.r.id, at: b.at }))}
                     <td><b>{hl(b.n, toks)}</b></td>
@@ -1369,7 +1375,7 @@ function PalletsView({ k }: { k: Kit }) {
               </tbody>
             </table>
           </div>
-          {pageBar('bins', binsShown.length)}
+          {pageBar('bins', g.shown.length)}
         </>
       )}
     </div>
@@ -1410,16 +1416,19 @@ function QuickChips<T extends string>({ items, on, onPick }: { items: { key: T; 
 /** Registros › Corridas: a code on a line from its start to its end */
 function RunsTable({ k }: { k: Kit }) {
   const { s, rep, runsFound, runsShown, runIs, runChip, setRunChip, manyRooms, acts, setDetail, setEditRun, pageOf, pageBar, reasonsText, toks } = k
+  // the columns' filters, as in Excel (the office, 2026-10-21): see ColFilter
+  const f = useColFilters('runs', runsShown, [{ key: 'dept', label: tr('Depto'), get: (x) => x.r.dept }, { key: 'line', label: tr('Línea'), get: (x) => lineNameOf(s, x.r.lineId, x.r.line) }, { key: 'code', label: tr('Código'), get: (x) => x.r.code }, { key: 'lot', label: tr('Lote'), get: (x) => (x.lots ? x.lots.split(', ') : '') }, { key: 'shift', label: tr('Turno'), get: (x) => x.shifts }, { key: 'by', label: tr('Registró'), get: (x) => x.r.by }])
   const c = (x: '' | 'live' | 'waste') => runsFound.filter((y) => runIs(y, x)).length
   // the comments of the records (Jose, 2026-10-18): a column of their own, last, while a run in view has one
   const notes = runsShown.some((x) => !!noteOf(x.r))
   return (
     <>
       <QuickChips items={[{ key: '' as const, label: tr('Todas'), n: c('') }, { key: 'live' as const, label: tr('En curso'), n: c('live') }, { key: 'waste' as const, label: tr('Con waste'), n: c('waste') }]} on={runChip} onPick={setRunChip} />
+      {f.bar}
       {!runsShown.length ? <p className="hint">{tr('Nada registrado con estos filtros.')}</p> : <div className="twrap rp-cardlist">
         <table>
-          <thead><tr><th className="rp-act"></th>{manyRooms && <th>{tr('Depto')}</th>}<th>{tr('Línea')}</th><th>{tr('Código')}</th><th>{tr('Lote')}</th>{!rep.shift && <th>{tr('Turno')}</th>}<th>{tr('Inicio')}</th><th>{tr('Fin')}</th><th>{tr('Hecho')}</th><th>Waste</th><th>{tr('Trabajando')}</th><th>{tr('Prom./unidad')}</th><th>{tr('Parado')}</th><th>Set up</th><th>{tr('Razones')}</th><th>{tr('Registró')}</th>{notes && <th>{tr('Comentario')}</th>}</tr></thead>
-          <tbody>{pageOf('runs', runsShown).map((x) => {
+          <thead><tr><th className="rp-act"></th>{manyRooms && <th>{f.head('dept', tr('Depto'))}</th>}<th>{f.head('line', tr('Línea'))}</th><th>{f.head('code', tr('Código'))}</th><th>{f.head('lot', tr('Lote'))}</th>{!rep.shift && <th>{f.head('shift', tr('Turno'))}</th>}<th>{tr('Inicio')}</th><th>{tr('Fin')}</th><th>{tr('Hecho')}</th><th>Waste</th><th>{tr('Trabajando')}</th><th>{tr('Prom./unidad')}</th><th>{tr('Parado')}</th><th>Set up</th><th>{tr('Razones')}</th><th>{f.head('by', tr('Registró'))}</th>{notes && <th>{tr('Comentario')}</th>}</tr></thead>
+          <tbody>{pageOf('runs', f.shown).map((x) => {
             const product = productOf(s, x.r.code)?.name, waste = x.waste ? x.waste + ' lb' : '—', avg = x.timed ? fmtDur(x.st.avg) : '—', set = x.st.setup ? fmtDur(x.st.setup) : '—', why = reasonsText(x) || '—'
             return (
               <tr key={x.r.id} className={x.r.endedAt ? '' : 'live'} style={deptVars(x.r.dept)}>
@@ -1445,7 +1454,7 @@ function RunsTable({ k }: { k: Kit }) {
           })}</tbody>
         </table>
       </div>}
-      {pageBar('runs', runsShown.length)}
+      {pageBar('runs', f.shown.length)}
     </>
   )
 }
@@ -1453,13 +1462,15 @@ function RunsTable({ k }: { k: Kit }) {
 /** Registros › Unidades: every unit recorded (a pallet with two lots, one row for each lot) */
 function UnitsTable({ k }: { k: Kit }) {
   const { s, rep, unitsShown, withOrders, manyRooms, acts, spanOf, setDetail, setEditRun, pageOf, pageBar, toks } = k
+  const f = useColFilters('units', unitsShown, [{ key: 'shift', label: tr('Turno'), get: (x) => String(x.shift) }, { key: 'dept', label: tr('Depto'), get: (x) => x.r.dept }, { key: 'line', label: tr('Línea'), get: (x) => lineNameOf(s, x.r.lineId, x.r.line) }, { key: 'code', label: tr('Código'), get: (x) => x.r.code }, { key: 'lot', label: tr('Lote'), get: (x) => x.lot }, { key: 'unit', label: tr('Unidad'), get: (x) => cfgOf(x.r).unit }, { key: 'qty', label: tr('Cantidad'), get: (x) => (x.qty != null ? x.qty + ' ' + cfgOf(x.r).qtyUnit : '') }, { key: 'tag', label: tr('Tag / bin'), get: (x) => x.tag }, { key: 'order', label: tr('Pedido'), get: (x) => x.order ?? '' }, { key: 'by', label: tr('Registró'), get: (x) => x.u.by }])
   const notes = unitsShown.some((x) => !!x.u.note) // (a unit's comment, Jose 2026-10-18: a column only when one has it)
   return (
     <>
+      {f.bar}
       {!unitsShown.length ? <p className="hint">{tr('Nada registrado con estos filtros.')}</p> : <div className="twrap rp-cardlist">
         <table>
-          <thead><tr><th className="rp-act"></th><th>{tr('Hora')}</th>{!rep.shift && <th>{tr('Turno')}</th>}{manyRooms && <th>{tr('Depto')}</th>}<th>{tr('Línea')}</th><th>{tr('Código')}</th><th>{tr('Lote')}</th><th>#</th><th>{tr('Unidad')}</th><th>{tr('Cantidad')}</th><th>{tr('Tag / bin')}</th>{withOrders && <th>{tr('Pedido')}</th>}<th>{tr('Desde la anterior')}</th><th>{tr('Registró')}</th>{notes && <th>{tr('Comentario')}</th>}</tr></thead>
-          <tbody>{pageOf('units', unitsShown).map((x) => (
+          <thead><tr><th className="rp-act"></th><th>{tr('Hora')}</th>{!rep.shift && <th>{f.head('shift', tr('Turno'))}</th>}{manyRooms && <th>{f.head('dept', tr('Depto'))}</th>}<th>{f.head('line', tr('Línea'))}</th><th>{f.head('code', tr('Código'))}</th><th>{f.head('lot', tr('Lote'))}</th><th>#</th><th>{f.head('unit', tr('Unidad'))}</th><th>{f.head('qty', tr('Cantidad'))}</th><th>{f.head('tag', tr('Tag / bin'))}</th>{withOrders && <th>{f.head('order', tr('Pedido'))}</th>}<th>{tr('Desde la anterior')}</th><th>{f.head('by', tr('Registró'))}</th>{notes && <th>{tr('Comentario')}</th>}</tr></thead>
+          <tbody>{pageOf('units', f.shown).map((x) => (
             <tr key={x.r.id + ':' + x.i + ':' + x.lot} style={deptVars(x.r.dept)}>
               {acts(spanOf(x.r), x.r.dept, () => setDetail({ runId: x.r.id, at: x.u.at }), () => setEditRun({ id: x.r.id, at: x.u.at }))}
               <td data-label={tr('Hora')}>{hl(fmtTime(x.u.at), toks)}</td>{!rep.shift && <td data-label={tr('Turno')}>{x.shift}</td>}
@@ -1479,7 +1490,7 @@ function UnitsTable({ k }: { k: Kit }) {
           ))}</tbody>
         </table>
       </div>}
-      {pageBar('units', unitsShown.length)}
+      {pageBar('units', f.shown.length)}
     </>
   )
 }
@@ -1487,6 +1498,7 @@ function UnitsTable({ k }: { k: Kit }) {
 /** Registros › Paros: each stop whole, with its cause chips (every stop, the stopped time but Set up, Set up, each cause) */
 function StopsTable({ k }: { k: Kit }) {
   const { can, stops, stopsFound, stopsShown, stopIs, cause, setCause, manyRooms, fixBtn, spanOf, setEditStop, pageOf, pageBar, lineName, toks } = k
+  const f = useColFilters('stops', stopsShown, [{ key: 'dept', label: tr('Depto'), get: (x) => x.dept }, { key: 'line', label: tr('Línea'), get: (x) => lineName(x) }, { key: 'reason', label: tr('Razón'), get: (x) => reasonText(k.s, x.reason) }, { key: 'shift', label: tr('Turno'), get: (x) => spanOf(x) }, { key: 'by', label: tr('Registró'), get: (x) => x.by }])
   const c = (x: string) => stopsFound.filter((y) => stopIs(y, x)).length
   // the causes of the stops in view, the longest first (and the one chosen, when a drill brought one that has none here)
   const causes = [...stops.filter((x) => x.reason !== SETUP).reduce((m, x) => m.set(x.reason, (m.get(x.reason) ?? 0) + x.ms), new Map<string, number>())].sort((a, b) => b[1] - a[1]).map(([r]) => r)
@@ -1494,10 +1506,11 @@ function StopsTable({ k }: { k: Kit }) {
   return (
     <>
       <QuickChips items={[{ key: '', label: tr('Todos'), n: c('') }, { key: '!setup', label: tr('Parado'), n: c('!setup') }, { key: SETUP, label: 'Set up', n: c(SETUP), cls: 'setupchip' }, ...[...causes, ...chosen].map((r) => ({ key: r, label: reasonText(k.s, r), n: c(r) }))]} on={cause} onPick={setCause} />
+      {f.bar}
       {!stopsShown.length ? <p className="hint">{tr('Nada registrado con estos filtros.')}</p> : <div className="twrap rp-cardlist">
         <table>
-          <thead><tr><th className="rp-act"></th>{manyRooms && <th>{tr('Depto')}</th>}<th>{tr('Línea')}</th><th>{tr('Razón')}</th><th>{tr('Detalle')}</th><th>{tr('Turno')}</th><th>{tr('Inicio')}</th><th>{tr('Fin')}</th><th>{tr('Duración')}</th><th>{tr('Registró')}</th></tr></thead>
-          <tbody>{pageOf('stops', stopsShown).map((x) => {
+          <thead><tr><th className="rp-act"></th>{manyRooms && <th>{f.head('dept', tr('Depto'))}</th>}<th>{f.head('line', tr('Línea'))}</th><th>{f.head('reason', tr('Razón'))}</th><th>{tr('Detalle')}</th><th>{f.head('shift', tr('Turno'))}</th><th>{tr('Inicio')}</th><th>{tr('Fin')}</th><th>{tr('Duración')}</th><th>{f.head('by', tr('Registró'))}</th></tr></thead>
+          <tbody>{pageOf('stops', f.shown).map((x) => {
             const note = noteLabel(x.note) || '—'
             return (
               <tr key={x.id} className={x.endedAt ? '' : 'live'} style={deptVars(x.dept)}>
@@ -1517,7 +1530,7 @@ function StopsTable({ k }: { k: Kit }) {
         </table>
       </div>}
       <p className="hint">{STOPS_NOTE()}</p>
-      {pageBar('stops', stopsShown.length)}
+      {pageBar('stops', f.shown.length)}
     </>
   )
 }

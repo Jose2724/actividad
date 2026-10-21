@@ -2123,4 +2123,17 @@ export const EN: Record<string, string> = {
   "+ Agregar a la corrida de {0} ({1} – {2})": "+ Add to the {0} run ({1} – {2})",
   "Esa hora todavía no llega: {0} del {1}. Si fue anoche, es del día de trabajo anterior.": "That time has not come yet: {0} of {1}. If it was last night, it belongs to the work day before.",
   "Usar el día anterior ({0})": "Use the day before ({0})",
+  // the columns' filters (the office, 2026-10-21)
+  "Filtrado por columna:": "Filtered by column:",
+  "✕ Quitar filtros de columna": "✕ Clear column filters",
+  "{0} de {1} renglones": "{0} of {1} rows",
+  "(vacío)": "(blank)",
+  "Filtrar {0}": "Filter {0}",
+  "Buscar…": "Search…",
+  "(Seleccionar lo que se encontró)": "(Select what was found)",
+  "(Seleccionar todo)": "(Select all)",
+  "Nada con eso.": "Nothing with that.",
+  "Solo estos": "Only these",
+  "Quitar filtro": "Clear filter",
+  'Filtrar:': 'Filter:',
 }
