@@ -4886,6 +4886,9 @@ section('Códigos de paro (Reason Codes): apagados todo como siempre; encendidos
     clock = T0 + 30 * M
     const n0 = st().stops.length
     eq('encendidos: una causa que no es de la lista no para la línea, ni escrita a mano ("Otra")', [m.startStop('RTE', line.id, 'Break', ''), m.startStop('RTE', line.id, 'se trabó la banda', ''), m.startStop('RTE', line.id, '', ''), st().stops.length], [false, false, false, n0])
+    eq('encendidos: un código seguido de palabras propias no es un código de la lista (no se guarda)', [m.startStop('RTE', line.id, 'EQP-01 se trabó la banda', ''), m.reasonProblem(st(), 'RTE', 'EQP-01 se trabó la banda', ''), st().stops.length], [false, 'Con los códigos de paro encendidos, la razón tiene que ser uno de la lista.', n0])
+    eq('una causa así, escrita antes con los códigos apagados, se dice como se escribió (no se tapa con el nombre del código)', [m.reasonText(st(), 'EQP-01 se trabó la banda'), m.reasonCodeOf('EQP-01 se trabó la banda')?.code], ['EQP-01 se trabó la banda', 'EQP-01'])
+    eq('la categoría de los SCH es Programación (Programa es el programa del día)', m.catOf('sch').label, 'Programación')
     eq('con un código sí, y el detalle es opcional', [m.startStop('RTE', line.id, 'EQP-01 Falla mecánica', '  banda rota '), st().stops.at(-1).reason, st().stops.at(-1).note], [true, 'EQP-01 Falla mecánica', 'banda rota'])
     clock = T0 + 50 * M; m.endStop(st().stops.at(-1).id)
     clock = T0 + 60 * M

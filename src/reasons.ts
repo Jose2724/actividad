@@ -74,7 +74,8 @@ export const REASON_CATS: { key: ReasonCat; label: string; tone: string }[] = [
   { key: 'eqp', label: 'Equipo', tone: 'rc-eqp' },
   { key: 'mat', label: 'Material', tone: 'rc-mat' },
   { key: 'lab', label: 'Personal', tone: 'rc-lab' },
-  { key: 'sch', label: 'Programa', tone: 'rc-sch' },
+  // (not "Programa": in this app that is the day's production program, its own tab; the boss's SCH codes are the schedule)
+  { key: 'sch', label: 'Programación', tone: 'rc-sch' },
   { key: 'qal', label: 'Calidad', tone: 'rc-qal' },
   { key: 'per', label: 'Velocidad', tone: 'rc-per' },
   { key: 'log', label: 'Logística', tone: 'rc-log' },

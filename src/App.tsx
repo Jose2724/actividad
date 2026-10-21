@@ -10,7 +10,7 @@ import { sharePick, shareProblem, type Kind } from './send'
 import { runLots, spanShifts, unitParts } from './report'
 import { canDo, canShift, keepsPin, writesIn, type Power, type Who } from './powers'
 import { AddRunDialog, AddUnitDialog, NoteBox, RunEditor, StopEditor } from './editors'
-import { CodePicker, codeReady, detailHint } from './CodePicker'
+import { CodePicker, codeReady, DetailNeeded, detailHint } from './CodePicker'
 import { fetchMe, finishSignOut, loginEmail, rememberedMe, rememberedUser, rememberMe, rememberUser, signedOut, signOutHere, supabase, type Me } from './supabase'
 import { checkLineName, leaveAsk, loadDay, STALE_MS, startSync, syncStore, syncNow, unreachable } from './sync'
 import { storageFull } from './storage'
@@ -2003,7 +2003,7 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
       )}
       {editing && <RunEditor s={s} run={editing} mgr={can('fix')} onClose={() => setEditRun(null)} />}
       {addingRun && <AddRunDialog s={s} date={day.date} dept={dept} order={addingRun.po ? s.orders.find((o) => o.id === addingRun.po) : undefined} onClose={() => setAddingRun(null)} onAdded={() => setAddingRun(null)} />}
-      {stopAll && <StopDialog title={tr('Parar todo {0}', dept)} reasons={CFG[dept].quick} codes={s.reasonCodes.on} onClose={() => setStopAll(false)} onPick={(reason, note) => { startStop(dept, null, reason, note); setStopAll(false) }} />}
+      {stopAll && <StopDialog title={tr('Parar todo {0}', dept)} reasons={CFG[dept].quick} codes={s.reasonCodes.on} onClose={() => setStopAll(false)} onPick={(reason, note) => startStop(dept, null, reason, note) && setStopAll(false)} />}
     </section>
   )
 }
@@ -2481,7 +2481,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
           <div className="setupbar">
             <small>{trx('Esperando el código siguiente desde las {0}. Si no viene otro, no cuenta.', fmtTime(idle.startedAt))}</small>
             {!quiet && <><span className="btns two">
-              <button type="button" className="btn sm" onClick={() => endStop(idle.id)}>{trx('■ Terminar {0}', reasonText(s, idle.reason))}</button>
+              <button type="button" className="btn sm" onClick={() => endStop(idle.id)}>{trx('■ Terminar {0}', tr(idle.reason))}</button>
               <button type="button" className="btn sm" onClick={() => dropSetup(idle.id)}>{tr('No viene otro código: quitarlo')}</button>
             </span>
             <button type="button" className="lnk sm" onClick={() => setFixingStop(true)}>{mgr ? tr('Corregir o dividir') : tr('Corregir')}</button></>}
@@ -2709,7 +2709,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         summary={tr('Lleva {0} · trabajando {1}{2}', madeText(run, st.qty), fmtDur(st.working), (st.down ? ' ' + tr('· parado {0}', fmtDur(st.down)) : '')) + '.'}
         onClose={() => setEnding(false)} onDone={(next) => { endRun(run.id, next); setEnding(false) }}
         onMissing={(next) => { setEnding(false); if (pallets) { setEndAfter(next); setPacking('done') } else if (rc.qty === 'ask') { setEndAfter(next); setCounting(true) } else { record(rc.qty === 'auto' ? run.perUnit : null); endRun(run.id, next) } }} />}
-      {asking && <StopDialog title={tr('Parar {0} · {1}', lineLabel(line.name), run.code)} reasons={cfg.quick} setup codes={s.reasonCodes.on} onClose={() => setAsking(false)} onPick={(reason, note) => { startStop(line.dept, line.id, reason, note); setAsking(false) }} />}
+      {asking && <StopDialog title={tr('Parar {0} · {1}', lineLabel(line.name), run.code)} reasons={cfg.quick} setup codes={s.reasonCodes.on} onClose={() => setAsking(false)} onPick={(reason, note) => startStop(line.dept, line.id, reason, note) && setAsking(false)} />}
       {fillUi}
       {counting && (rc.lots
         ? <LotsDialog title={rc.qtyQ} unit={rc.qtyUnit} refLabel={rc.refLabel} lot={run.lot} qty={run.perUnit} usual={usualOf(s, run)} per={runWord} orders={orderOptions} order={nextOrder} onClose={() => { setCounting(false); setEndAfter(null) }} onPick={(q, ref, lots, po, note) => { record(q, ref, lots, po, note); setCounting(false); if (endAfter !== null) { setEndAfter(null); endRun(run.id, endAfter) } }} />
@@ -2765,7 +2765,7 @@ function EndDialog({ cfg, code, line, summary, lastAt, onMissing, onDone, onClos
  * Codes on (Ajustes; Jose, 2026-10-20) only a code of the plant's list, chosen by category (see CodePicker), and no
  * "Otra": the detail stays optional, except with OTH-01. PLN-03 is the Set up, offered where the Set up is (a line)
  */
-function StopDialog({ title, reasons, setup, codes, onClose, onPick }: { title: string; reasons: string[]; setup?: boolean; codes?: boolean; onClose: () => void; onPick: (reason: string, note: string) => void }) {
+export function StopDialog({ title, intro, reasons, setup, codes, onClose, onPick }: { title: string; intro?: string; reasons: string[]; setup?: boolean; codes?: boolean; onClose: () => void; onPick: (reason: string, note: string) => void }) {
   const [reason, setReason] = useState('')
   const [note, setNote] = useState('')
   const other = !codes && reason === 'Otra', isSetup = reason === SETUP
@@ -2774,6 +2774,7 @@ function StopDialog({ title, reasons, setup, codes, onClose, onPick }: { title: 
     <div className="veil" onClick={onClose}>
       <div className={'dlg' + (codes ? ' rc-dlg' : '')} onClick={(e) => e.stopPropagation()}>
         <h3>{title}</h3>
+        {intro && <p className="rc-try">{intro}</p>}
         <p>{codes ? tr('¿Por qué se para? Elige el código de paro: primero la categoría, después el código.') : tr('¿Por qué se para? La app cuenta el tiempo parado con esta razón.')}</p>
         {codes ? <CodePicker value={reason} setup={setup} onPick={setReason} /> : (
         <div className="chips big">
@@ -2784,6 +2785,7 @@ function StopDialog({ title, reasons, setup, codes, onClose, onPick }: { title: 
         )}
         {isSetup && <p className="setuphint">{tr('El Set up no cuenta como parado: se ve en amarillo y en el reporte sale aparte.')}</p>}
         <input placeholder={codes ? detailHint(reason) : other ? tr('Escribe la razón') : tr('Detalle (opcional)')} value={note} onChange={(e) => setNote(e.target.value)} />
+        {codes && <DetailNeeded reason={reason} note={note} />}
         <div className="dbtns">
           <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
           <button type="button" className={'btn ' + (isSetup ? 'setupgo' : 'danger')} disabled={!ok} onClick={() => onPick(other ? note.trim() : reason, other ? '' : note.trim())}>{isSetup ? tr('⏱ Empezar Set up') : tr('⏸ Confirmar paro')}</button>

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { catOf, codeLabel, codeReason, OTHER_CODE, REASON_CATS, REASON_CODES, reasonCodeOf, SETUP_CODE, type ReasonCat, type ReasonCode } from './reasons'
+import { catOf, codeLabel, codeReason, FAMILY_SHOWN, OTHER_CODE, REASON_CATS, REASON_CODES, reasonCodeOf, SETUP_CODE, type ReasonCat, type ReasonCode } from './reasons'
 import { tr } from './i18n'
 
 /**
@@ -35,17 +35,28 @@ export function CodePicker({ value, setup, skip, onPick }: { value: string; setu
           </div>
         </>
       )}
-      {chosen && <p className="rc-chosen">{'✓ '}<b>{chosen.code}</b>{' · ' + codeLabel(chosen)}{chosen.planned && <span className="rc-tag plan">{tr('Planeado')}</span>}<small>{' · ' + tr(catOf(chosen.cat).label)}</small></p>}
+      {chosen && <p className="rc-chosen">{'✓ '}<b>{chosen.code}</b>{' · ' + codeLabel(chosen)}{chosen.planned && <span className="rc-tag rc-planned">{tr('Planeado')}</span>}{chosen.cat !== 'oth' && <small>{' · ' + tr(catOf(chosen.cat).label)}</small>}</p>}
     </div>
   )
 }
-/** one code as a big button: its code in bold, its label, its definition small, and "Planeado" when it is one */
+/**
+ * one code as a big button: its code in bold, its label, its definition small, and "Planeado" when it is one. In the
+ * list to read (no onClick) it is flat, not a button (nothing happens on a tap), and says too whether it is planned or
+ * not and its OEE family, as the boss's table does
+ */
 function CodeButton({ x, on, onClick }: { x: ReasonCode; on: boolean; onClick?: () => void }) {
-  const body = <><span className="rc-top"><b className="rc-code-id">{x.code}</b>{x.planned && <span className="rc-tag plan">{tr('Planeado')}</span>}{on && <span className="rc-tick">✓</span>}</span><span className="rc-label">{codeLabel(x)}</span><small>{tr(x.def)}</small></>
+  const body = <><span className="rc-top"><b className="rc-code-id">{x.code}</b>{x.planned && <span className="rc-tag rc-planned">{tr('Planeado')}</span>}{on && <span className="rc-tick">✓</span>}</span><span className="rc-label">{codeLabel(x)}</span><small>{tr(x.def)}</small>{!onClick && <small className="rc-fam">{(x.planned ? tr('Planeado') : tr('No planeado')) + ' · ' + FAMILY_SHOWN[x.family]()}</small>}</>
   return onClick ? <button type="button" className={'rc-code' + (on ? ' on' : '') + (x.planned ? ' planned' : '')} aria-pressed={on} onClick={onClick}>{body}</button> : <div className={'rc-code ro' + (x.planned ? ' planned' : '')}>{body}</div>
 }
 /** the detail's box of a coded stop: OTH-01 needs it (its placeholder says so), any other code takes it if they want */
 export const detailHint = (reason: string) => (reasonCodeOf(reason)?.code === OTHER_CODE ? tr('Explica la razón (obligatorio con {0})', OTHER_CODE) : tr('Detalle (opcional)'))
+/**
+ * under the detail's box while OTH-01 is chosen and its detail is still blank: the placeholder alone is cut on a phone
+ * and goes away at the first letter, and "Confirmar" stays grey with nothing saying why (floor review, 2026-10-20)
+ */
+export function DetailNeeded({ reason, note }: { reason: string; note: string }) {
+  return reasonCodeOf(reason)?.code === OTHER_CODE && !note.trim() ? <p className="rc-need">{tr('Con {0} hay que escribir la razón en el detalle para poder guardar.', OTHER_CODE)}</p> : null
+}
 /** a coded cause is ready to be saved: a code, and the detail OTH-01 needs */
 export const codeReady = (reason: string, note: string) => { const c = reasonCodeOf(reason); return !!c && (c.code !== OTHER_CODE || note.trim().length > 0) }
 /** the whole list, to read (Ajustes): by category, every code with its definition, planned or not */

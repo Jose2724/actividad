@@ -4,7 +4,7 @@ import { clockNow } from './clock'
 import { unitStartLot } from './report'
 import { ConfirmDialog, LotsDialog, useCan, useSure, useWho, type SureBox } from './App'
 import { writesIn } from './powers'
-import { CodePicker, codeReady, detailHint } from './CodePicker'
+import { CodePicker, codeReady, DetailNeeded, detailHint } from './CodePicker'
 import { reasonCodeOf } from './reasons'
 import { tr } from './i18n'
 import { trx } from './trx'
@@ -326,7 +326,8 @@ export function StopEditor({ stop, mgr, onClose }: { stop: Stop; mgr: boolean; o
     // the end: a new time, or cleared to reopen the stop
     if (stop.endedAt != null && end !== opened.end) patch.endedAt = end ? Math.max(startedAt, nearDay(stop.endedAt, end)) : null
     else if (stop.endedAt != null && stop.endedAt < startedAt) patch.endedAt = startedAt
-    if (Object.keys(patch).length) updateStop(stop.id, patch)
+    // (the store refuses a cause the codes do not allow: the box stays open, as nothing was saved)
+    if (Object.keys(patch).length && !updateStop(stop.id, patch)) return
     onClose()
   }
   return (
@@ -345,6 +346,7 @@ export function StopEditor({ stop, mgr, onClose }: { stop: Stop; mgr: boolean; o
           </>
         )}
         <input placeholder={codes ? detailHint(code) : tr('Detalle (opcional)')} value={note} onChange={(e) => setNote(e.target.value)} />
+        {codes && <DetailNeeded reason={code} note={note} />}
         <div className="egrid">
           <label>{tr('Inicio')}{' '}<input type="time" value={start} onChange={(e) => setStart(e.target.value)} /></label>
           {stop.endedAt != null && <label>{tr('Fin')}{' '}<input type="time" value={end} onChange={(e) => setEnd(e.target.value)} /></label>}
@@ -401,6 +403,7 @@ function StopSplitter({ stop, onBack, onClose }: { stop: Stop; onBack: () => voi
               {reason === 'Otra' && <input placeholder={tr('Escribe la razón')} value={other} onChange={(e) => setOther(e.target.value)} />}
             </>}
             <input placeholder={codes ? detailHint(reason) : tr('Detalle (opcional)')} value={note} onChange={(e) => setNote(e.target.value)} />
+            {codes && <DetailNeeded reason={reason} note={note} />}
             {fits
               ? <p className="splitsum">{trx('Queda así: {0} {1} – {2} ({3} min) · {4} {5} – {6} ({7})', <b>{own}</b>, fmtTime(stop.startedAt), fmtTime(cut), first, <b>{second ? (codes ? reasonText(st, second) : second) : '…'}</b>, fmtTime(cut), stop.endedAt ? fmtTime(stop.endedAt) : tr('en curso'), stop.endedAt ? total - first + ' min' : tr('sigue'))}</p>
               : <p className="err">{trx('Escribe un número entre 1 y {0}.', total - 1)}</p>}

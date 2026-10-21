@@ -1304,15 +1304,18 @@ export function reasonProblem(s: State, dept: Dept, reason: string, note: string
   const r = tidyReason(dept, reason)
   if (!r) return tr('Falta la razón del paro.')
   if (!s.reasonCodes.on) return ''
+  // the code exactly as the list keeps it: a code followed by words of one's own ("EQP-01 se trabó la banda") is not one
   const c = reasonCodeOf(r)
-  if (!c) return tr('Con los códigos de paro encendidos, la razón tiene que ser uno de la lista.')
+  if (!c || r !== codeReason(c)) return tr('Con los códigos de paro encendidos, la razón tiene que ser uno de la lista.')
   return c.code === OTHER_CODE && !note.trim() ? tr('Con {0} hay que escribir el detalle.', OTHER_CODE) : ''
 }
 /**
  * a stop's cause as the screens say it: a coded one with its code ("EQP-01 · Falla mecánica"), the Set up with PLN-03
  * while the codes are on, any other as it was written (in the screen's language when it is one of the rooms' causes)
  */
-export const reasonText = (s: State, reason: string) => { const c = reasonCodeOf(reason); return c && (c.code !== SETUP_CODE || s.reasonCodes.on) ? codeText(c) : tr(reason) }
+// (a cause that only begins with a code, typed in "Otra" while the codes were off, "EQP-01 se trabó la banda", is said as it
+// was typed: the operator's own words are not hidden behind the code's label; the report still counts it under its code)
+export const reasonText = (s: State, reason: string) => { const c = reasonCodeOf(reason); return c && reason === codeReason(c) && (c.code !== SETUP_CODE || s.reasonCodes.on) ? codeText(c) : tr(reason) }
 /** starts a stop; false = its cause is not one that may be given (see reasonProblem) */
 export function startStop(dept: Dept, lineId: string | null, reason: string, note: string): boolean {
   if (reasonProblem(state, dept, reason, note)) return false

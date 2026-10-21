@@ -1720,9 +1720,9 @@ table.pctable td,table.wotable td{vertical-align:top}
 .rc-eqp{--tone:#fde8e6;--tone-line:#df9a93;--tone-edge:#f0c2bd;--tone-ink:#9b1f19}
 .rc-mat{--tone:#e6f3f1;--tone-line:#6fb3aa;--tone-edge:#b9ddd7;--tone-ink:#0b5a54}
 .rc-lab{--tone:#f1e8fb;--tone-line:#b597dc;--tone-edge:#d9c7ef;--tone-ink:#55288f}
-.rc-sch{--tone:#e8eefb;--tone-line:#97a8d6;--tone-edge:#c8d2ec;--tone-ink:#2f3f7d}
+.rc-sch{--tone:#ddf3fb;--tone-line:#5fb2d3;--tone-edge:#ade0f0;--tone-ink:#0b4f6c}
 .rc-qal{--tone:#fdeaf3;--tone-line:#dc93b6;--tone-edge:#f0c4d9;--tone-ink:#8a1d51}
-.rc-per{--tone:#fff4e0;--tone-line:#e0a865;--tone-edge:#f2d3ab;--tone-ink:#7d4300}
+.rc-per{--tone:#f0f6d8;--tone-line:#a3ba4f;--tone-edge:#d3e0a0;--tone-ink:#45560a}
 .rc-log{--tone:#e7f4ea;--tone-line:#7dba8d;--tone-edge:#bfe0c7;--tone-ink:#1b5e30}
 .rc-ext{--tone:#eceff3;--tone-line:#9cadbe;--tone-edge:#c9d3dd;--tone-ink:#34414e}
 .rc-oth{--tone:#f3f0ea;--tone-line:#b5a88f;--tone-edge:#ddd4c3;--tone-ink:#54482f}
@@ -1732,16 +1732,19 @@ table.pctable td,table.wotable td{vertical-align:top}
 .rc-code{display:grid;gap:3px;text-align:left;min-height:64px;padding:9px 12px;border-radius:12px;border:1.5px solid var(--btn-line);background:var(--btn);color:var(--ink);box-shadow:0 2px 0 var(--btn-edge);font:inherit;cursor:pointer}
 .rc-code:active:not(.ro){transform:translateY(1px);box-shadow:0 1px 0 var(--btn-edge)}
 .rc-code.on{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 2px 0 #0a4f4a}
-.rc-code.ro{cursor:default}
+.rc-code.ro{cursor:default;box-shadow:none;border-style:dashed;border-color:var(--line);background:var(--surface);min-height:0}
+.rc-code .rc-fam{font-weight:700;font-size:11.5px;letter-spacing:.02em}
+.rc-need{margin:0;color:var(--warn) !important;font-weight:700;font-size:14px}
+.rc-try{margin:0;padding:8px 12px;border-radius:10px;background:#fff7e6;color:var(--amber) !important;font-weight:700;border:1.5px dashed #dcae58}
 .rc-code .rc-top{display:flex;align-items:center;gap:8px}
 .rc-code-id{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:15px;font-weight:800}
 .rc-label{font-weight:700;font-size:16px;line-height:1.2}
 .rc-code small{font-size:12.5px;color:var(--muted);line-height:1.25}
 .rc-code.on small{color:#e6f3f1}
 .rc-tick{margin-left:auto;font-weight:800}
-.rc-tag{border-radius:999px;padding:2px 8px;font-size:11.5px;font-weight:800;margin-left:6px;white-space:nowrap}
-.rc-tag.plan{background:#e3edff;color:#1d3f7a;border:1px solid #8fb0e8}
-.rc-code.on .rc-tag.plan{background:#fff}
+.rc-tag{display:inline-block;border-radius:999px;padding:2px 8px;font-size:11.5px;font-weight:800;margin-left:6px;white-space:nowrap}
+.rc-tag.rc-planned{background:#e3edff;color:#1d3f7a;border:1px solid #8fb0e8}
+.rc-code.on .rc-tag.rc-planned{background:#fff}
 .rc-chosen{margin:0;padding:8px 12px;border-radius:10px;background:var(--soft);color:#0b5a54 !important;font-weight:600;border:1.5px solid #6fb3aa}
 .rc-chosen small{color:#0b5a54}
 .rc-old{background:#fff7e6;color:var(--amber) !important;border-radius:10px;padding:8px 12px;font-weight:600}
@@ -1755,10 +1758,13 @@ table.pctable td,table.wotable td{vertical-align:top}
 .rc-tot small{color:var(--muted);font-weight:700;font-size:12.5px}
 .rc-tot b{font-size:18px;font-variant-numeric:tabular-nums}
 .rc-tot i{font-style:normal;color:var(--muted);font-size:12.5px;font-weight:700}
-.rc-tot.plan{border-color:#8fb0e8;background:#f2f6ff}
-.rc-tot.unplan{border-color:#df9a93;background:#fff6f5}
+.rc-tot.rc-planned{border-color:#8fb0e8;background:#f2f6ff}
+.rc-tot.rc-unplanned{border-color:#df9a93;background:#fff6f5}
 table.rc-pareto{max-width:760px}
 table.rc-pareto td{vertical-align:top}
 table.rc-pareto .rbar{margin-top:4px;min-width:80px}
 table.rc-pareto tr.planned .rbar i{background:#5b84c9}
+table.rc-pareto .rc-narrow{display:none}
+table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-numeric:tabular-nums}
+@media (max-width:520px){table.rc-pareto .rc-wide{display:none}table.rc-pareto .rc-narrow{display:block}table.rc-pareto .rc-tag{display:table;margin:3px 0 0}table.rc-pareto td:nth-child(2){white-space:normal;min-width:120px}}
 @media (max-width:520px){.rc-cats{grid-template-columns:1fr 1fr}.rc-codes{grid-template-columns:1fr}.rc-cat{min-height:60px}.rc-cat b{font-size:15.5px}}

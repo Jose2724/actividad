@@ -1,6 +1,6 @@
 import { useState, useSyncExternalStore } from 'react'
 import { byLineName, CFG, dayShiftsText, DEPTS, lineLabel, lotFor, managerPin, nightText, openRun, removedLines, removeLine, reset, resetRecords, restoreLine, setDayShifts, setLineRules, setReasonCodes, shiftGoalOf, shiftHours, shiftSpan, shiftsOf, turnOf, uploadAll, weekOf, type Dept, type Line, type State, type WorkDay } from './store'
-import { ConfirmDialog, LangSwitch, LineNameDialog, longDate, NoticeDialog, Products, QrLink, ShiftsDialog, StartDayDialog, TargetDialog, useCan } from './App'
+import { ConfirmDialog, LangSwitch, LineNameDialog, longDate, NoticeDialog, Products, QrLink, ShiftsDialog, StartDayDialog, StopDialog, TargetDialog, useCan } from './App'
 import { Employees } from './Employees'
 import { Devices } from './DevicesView'
 import { supabase } from './supabase'
@@ -201,19 +201,27 @@ function LinesSettings({ s }: { s: State }) {
  * every stop of every room takes one code of the list (see reasons.ts). The whole list can be seen here while it is
  * off, to show it before it is turned on. Only the managers and the office turn it on or off (the server's rule for
  * the 'opt:' keys); every device sees it, and it goes to the history.
+ * Turning it on asks first (floor review, 2026-10-20): one tap changes the stop box of every tablet of every room on both
+ * shifts at once. "Probar cómo se ve al parar" opens the very stop box the operators will get, tiles and codes, while it
+ * is off too, and saves nothing: to show it to the boss without turning it on for the plant.
  */
 function StopCodesSettings({ s, viewOnly }: { s: State; viewOnly: boolean }) {
   const [seeing, setSeeing] = useState(false)
+  const [asking, setAsking] = useState(false)
+  const [trying, setTrying] = useState<'' | 'box' | 'done'>('')
   const on = s.reasonCodes.on
   return (
     <>
       <div className="setcard">
         <div className="sethead"><h3>{tr('Códigos de paro (Reason Codes)')}</h3><span className={'rc-state' + (on ? ' on' : '')}>{on ? tr('Encendidos') : tr('Apagados')}</span></div>
-        <label className="switch"><span>{tr('Pedir un código de la lista en cada paro')}</span><input type="checkbox" role="switch" checked={on} disabled={viewOnly} onChange={(e) => setReasonCodes(e.target.checked)} /></label>
+        <label className="switch"><span>{tr('Pedir un código de la lista en cada paro')}</span><input type="checkbox" role="switch" checked={on} disabled={viewOnly} onChange={(e) => (e.target.checked ? setAsking(true) : setReasonCodes(false))} /></label>
         <p className="hint">{tr('Encendidos: cada paro (Parar, Parar todo, Corregir y Dividir) tiene que llevar uno de los {0} códigos de la lista, y solo de la lista: no hay "Otra". El detalle es opcional, menos con {1}, que lo pide. {2} es el Set up.', REASON_CODES.length, OTHER_CODE, SETUP_CODE)}</p>
         <p className="hint">{tr('Apagados: todo como siempre (las tres causas de cada cuarto y "Otra"). Los paros de antes se quedan con su causa; el reporte los cuenta como "Sin código".')}</p>
-        <div className="btns"><button type="button" className="btn soft" onClick={() => setSeeing(true)}>{tr('📋 Ver la lista de códigos')}</button></div>
+        <div className="btns"><button type="button" className="btn soft" onClick={() => setSeeing(true)}>{tr('📋 Ver la lista de códigos')}</button><button type="button" className="btn soft" onClick={() => setTrying('box')}>{tr('▶ Probar cómo se ve al parar')}</button></div>
       </div>
+      {asking && <ConfirmDialog title={tr('¿Encender los códigos de paro?')} text={tr('Desde ahora todas las tablets de todos los cuartos, en los dos turnos, piden un código de la lista en cada paro. Se puede apagar aquí mismo cuando quieras.')} yes={tr('Encender')} onYes={() => { setReasonCodes(true); setAsking(false) }} onNo={() => setAsking(false)} />}
+      {trying === 'box' && <StopDialog title={tr('Parar {0} · {1}', lineLabel('Línea 1'), tr('Prueba'))} intro={tr('Prueba: así se ve al parar con los códigos encendidos. No se guarda nada.')} reasons={[]} setup codes onClose={() => setTrying('')} onPick={() => setTrying('done')} />}
+      {trying === 'done' && <NoticeDialog title={tr('Era una prueba')} text={tr('No se guardó ningún paro. Así lo eligen los operadores cuando los códigos están encendidos.')} onClose={() => setTrying('')} />}
       {seeing && (
         <div className="veil" onClick={() => setSeeing(false)}>
           <div className="dlg wide rc-dlg" onClick={(e) => e.stopPropagation()}>

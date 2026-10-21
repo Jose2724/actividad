@@ -261,9 +261,12 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
     // the units and the pallets, each with its comment last: made in report.ts, where the checks read them too
     const unidades = unitsSheet(s, rep)
     // (each stop's Reason Code, planned or not, its OEE family and its category last, 2026-10-20: the columns the office
-    // already reads keep their places; a stop of before the codes says "Sin código". The Set up is PLN-03)
-    const paros: Cell[][] = [[tr('Departamento'), tr('Línea'), tr('Razón'), tr('Detalle'), tr('Inicio'), tr('Fin'), tr('Duración'), tr('Registró'), tr('Turno'), ...CODE_HEADS()],
-      ...stops.map((x): Cell[] => [x.dept, lineName(x), tr(x.reason), noteLabel(x.note), T(x.startedAt), x.endedAt ? T(x.endedAt) : tr('en curso'), D(x.ms), x.by, spanShifts(rep.plan, x.startedAt, x.endedAt ?? now), ...codeCells(x.reason)])]
+    // already reads keep their places; a stop of before the codes says "Sin código". The Set up is PLN-03). Only when the
+    // Reporte shows its Pareto too (the codes on, or coded stops in view): with the codes off the sheet is as it always
+    // was, with no code the floor never chose (review, 2026-10-20)
+    const coded = s.reasonCodes.on || hasCodedStops(rep)
+    const paros: Cell[][] = [[tr('Departamento'), tr('Línea'), tr('Razón'), tr('Detalle'), tr('Inicio'), tr('Fin'), tr('Duración'), tr('Registró'), tr('Turno'), ...(coded ? CODE_HEADS() : [])],
+      ...stops.map((x): Cell[] => [x.dept, lineName(x), tr(x.reason), noteLabel(x.note), T(x.startedAt), x.endedAt ? T(x.endedAt) : tr('en curso'), D(x.ms), x.by, spanShifts(rep.plan, x.startedAt, x.endedAt ?? now), ...(coded ? codeCells(x.reason) : [])])]
     // the whole day first and each shift under it (not when the report is of one shift only); what a room filled in bins
     // goes under it, word by word: its bins and what they hold
     const binRows = (d: (typeof rep.byShift)[number]) => [...new Set(d.day.bins.map((y) => y.word))].flatMap((w) => [d.day, ...shiftCols.map((k) => (k === 1 ? d.first : d.second))].map((x): Cell[] => { const y = x.bins.find((z) => z.word === w); return [d.dept, x.shift ? tr('Turno {0}', x.shift) : tr('Total del día'), '', '', '', '', '', '', '', y?.units ?? 0, cfgFor(d.dept, w).unit, y?.qty ?? 0, apartWord(d.dept, w), '', '', '', ''] }))
@@ -821,7 +824,8 @@ function GeneralView({ k }: { k: Kit }) {
  * The stops by Reason Code (Jose, 2026-10-20): while the codes are on, or when the day in view has coded stops. A
  * Pareto, the most time first: each code with its reason, how many stops and how long (the Parado by cause and the Set
  * up, PLN-03); then planned against not planned and each OEE family. A stop of before the codes is "Sin código". Each
- * code opens its stops.
+ * code opens its stops. On a phone the time and its % go under the reason (the table would hide them past the edge,
+ * and the time is what it is sorted by).
  */
 function CodePareto({ k }: { k: Kit }) {
   const { rep, go } = k
@@ -832,23 +836,24 @@ function CodePareto({ k }: { k: Kit }) {
     <>
       <h3>{tr('Paros por código (Reason Codes)')}</h3>
       <div className="rc-totals">
-        <span className="rc-tot plan"><small>{tr('Planeado')}</small><b>{fmtDur(p.planned)}</b><i>{pct(p.planned)}</i></span>
-        <span className="rc-tot unplan"><small>{tr('No planeado')}</small><b>{fmtDur(p.unplanned)}</b><i>{pct(p.unplanned)}</i></span>
+        <span className="rc-tot rc-planned"><small>{tr('Planeado')}</small><b>{fmtDur(p.planned)}</b><i>{pct(p.planned)}</i></span>
+        <span className="rc-tot rc-unplanned"><small>{tr('No planeado')}</small><b>{fmtDur(p.unplanned)}</b><i>{pct(p.unplanned)}</i></span>
         {p.uncoded > 0 && <span className="rc-tot none"><small>{tr('Sin código')}</small><b>{fmtDur(p.uncoded)}</b><i>{pct(p.uncoded)}</i></span>}
         {p.families.map((f) => <span key={f.family} className="rc-tot fam"><small>{FAMILY_SHOWN[f.family]()}</small><b>{fmtDur(f.ms)}</b><i>{pct(f.ms)}</i></span>)}
       </div>
       <div className="twrap">
         <table className="rc-pareto">
-          <thead><tr><th>{tr('Código')}</th><th>{tr('Razón')}</th><th>{tr('Veces')}</th><th>{tr('Tiempo')}</th><th>%</th></tr></thead>
+          <thead><tr><th>{tr('Código')}</th><th>{tr('Razón')}</th><th>{tr('Veces')}</th><th className="rc-wide">{tr('Tiempo')}</th><th className="rc-wide">%</th></tr></thead>
           <tbody>{p.rows.map((r) => {
             const c = r.code ? reasonCodeOf(r.reason) : undefined
+            const bar = <i style={{ width: Math.max(2, Math.round((r.ms / top) * 100)) + '%' }} />
             return (
               <tr key={r.code || '-'} className={r.planned ? 'planned' : ''}>
-                <td><b>{r.code || '—'}</b>{r.planned && <span className="rc-tag plan">{tr('Planeado')}</span>}</td>
-                <td>{c ? <button type="button" className="drill" onClick={() => go('rec', { rec: 'stops', cause: r.reason })}>{codeLabel(c)}</button> : tr('Sin código')}</td>
+                <td><b>{r.code || '—'}</b>{r.planned && <span className="rc-tag rc-planned">{tr('Planeado')}</span>}</td>
+                <td>{c ? <button type="button" className="drill" onClick={() => go('rec', { rec: 'stops', cause: r.reason })}>{codeLabel(c)}</button> : tr('Sin código')}<small className="rc-narrow">{fmtDur(r.ms) + (pct(r.ms) && ' · ' + pct(r.ms))}</small><div className="rbar rc-narrow">{bar}</div></td>
                 <td>{r.times}</td>
-                <td>{fmtDur(r.ms)}<div className="rbar"><i style={{ width: Math.max(2, Math.round((r.ms / top) * 100)) + '%' }} /></div></td>
-                <td>{pct(r.ms)}</td>
+                <td className="rc-wide">{fmtDur(r.ms)}<div className="rbar">{bar}</div></td>
+                <td className="rc-wide">{pct(r.ms)}</td>
               </tr>
             )
           })}</tbody>
