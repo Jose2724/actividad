@@ -5016,6 +5016,38 @@ section('Asistencia: cada supervisor anota a su gente, saca a quien se va, y el 
   const back = await device('attendance-again', { seed: JSON.parse(disks.get('attendance').get('act_v1')), user: 'Santiago' })
   eq('al volver a abrir: la gente anotada y los esperados siguen', back.use((m) => [m.attOf(m.store.get(), '2026-10-20', 'Kitchen', 1).length, m.attExpectedOf(m.store.get(), 'Kitchen', 1), m.attExpectedOf(m.store.get(), 'Packing', 2)]), [3, 5, 19])
 }
+section('Cada cuarto cambia de turno por su cuenta: RTE se queda hasta las 3:30, Packing empieza el Turno 2 a las 2:40 (Jose, 2026-10-21)')
+{
+  const rc = await device('roomcut', { user: 'Jose' })
+  rc.use((m) => {
+    const st = () => m.store.get(), D = '2026-10-21', at = (h, mi) => oct(21, h, mi)
+    const put = (id, dept, ats, qty) => m.applyRemote('act_runs', runRow({ id, dept, lineId: 'RC-' + dept, line: 'Línea 1', code: 'C' + dept.slice(0, 2), date: D, startedAt: at(13, 0), units: ats.map(([h, mi]) => unit(at(h, mi), qty)) }))
+    put('rc-rte', 'RTE', [[14, 50], [15, 20], [15, 25]], 240)
+    put('rc-pk', 'Packing', [[14, 50], [15, 0]], 50)
+    put('rc-ki', 'Kitchen', [[14, 50]], null)
+    const by = (d) => m.planRows(st(), D, d)[0].byShift
+    eq('sin que nadie diga nada, todos cambian con la planta (3:15 PM)', [by('RTE'), by('Packing'), by('Kitchen')], [[240, 480], [100, 0], [1, 0]])
+    clock = at(14, 40)
+    eq('a las 2:40 Packing toca "Empezar Turno 2"', m.startSecondShift('Packing'), true)
+    eq('lo de Packing desde las 2:40 es del Turno 2; Kitchen sigue con la planta', [by('Packing'), by('Kitchen')], [[0, 100], [1, 0]])
+    clock = at(15, 30)
+    m.endShift('RTE', 1)
+    eq('a las 3:30 se va el Turno 1 de RTE: sus carros de las 3:20 y 3:25 son del Turno 1', by('RTE'), [720, 0])
+    eq('el Reporte del Turno 1 cuenta los tres carros de RTE y ninguno de Packing', [m.reportOf(st(), D, clock, { shift: 1 }).rows.filter((x) => x.r.dept === 'RTE').reduce((t, x) => t + x.units, 0), m.reportOf(st(), D, clock, { shift: 1 }).rows.filter((x) => x.r.dept === 'Packing').reduce((t, x) => t + x.units, 0)], [3, 0])
+    eq('la tarjeta del piso: a las 3:20 RTE estaba en el Turno 1, Spiral (sin cambio propio) ya en el 2', [m.turnOf(st(), D, at(15, 20), 'RTE').shift, m.turnOf(st(), D, at(15, 20), 'Spiral').shift, m.turnOf(st(), D, at(15, 20)).shift], [1, 2, 2])
+    const up = m.outbox.items().filter((i) => i.table === 'act_changes' && String(i.key).startsWith('cut:'))
+    eq('cada cambio sube a la historia del servidor, aparte (act_shiftcut), con su cuarto, y queda en Cambios', [up.map((i) => [i.row.dept, i.row.ref_table, JSON.parse(i.row.after).how]).sort(), st().changes.filter((c) => c.what.startsWith('Cambio de turno de ')).length], [[['Packing', 'act_shiftcut', 'inicio'], ['RTE', 'act_shiftcut', 'fin']], 2])
+    eq('muy lejos del cambio de la planta (9:00 AM) no se toma', m.setShiftMark(D, 'MFO', at(9, 0), 'manual'), false)
+    // another tablet's word arrives
+    m.applyRemote('act_changes', { id: 'cut:' + D + ':Kitchen', at: iso(at(14, 45)), by_name: 'Edgar', dept: 'Kitchen', what: 'Cambio de turno', before: '', after: JSON.stringify({ date: D, at: at(14, 45), how: 'inicio' }), ref_table: 'act_shiftcut', ref_key: D + ':Kitchen', deleted: false, updated_at: iso(at(15, 31)), updated_by: 'Edgar' })
+    eq('lo que dice otra tablet llega: Kitchen empezó el Turno 2 a las 2:45, su mezcla de las 2:50 es del 2', by('Kitchen'), [0, 1])
+    m.clearShiftMark(D, 'Packing')
+    eq('un manager regresa Packing al cambio de la planta: todo vuelve al Turno 1', by('Packing'), [100, 0])
+    eq('lo de otro día no cambia: el cambio es del día que se dijo', m.turnOf(st(), '2026-10-22', oct(22, 15, 20), 'RTE').shift, 2)
+  })
+  const again = await device('roomcut-again', { seed: JSON.parse(disks.get('roomcut').get('act_v1')), user: 'Jose' })
+  eq('al volver a abrir: el cambio de RTE sigue (3:30) y el de Packing quitado', again.use((m) => [m.roomMark(m.store.get(), '2026-10-21', 'RTE')?.how, m.roomMark(m.store.get(), '2026-10-21', 'Packing')]), ['fin', undefined])
+}
 section('Programa del día: la pestaña del admin, prendida para todos desde Ajustes (Jose, 2026-10-20)')
 {
   const pv = await device('program-view', { user: 'Jose' })

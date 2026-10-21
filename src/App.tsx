@@ -1,6 +1,6 @@
 import { Component, createContext, Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
-import { addLine, addWaste, awayDay, batch, byPlanLot, planLot, cameFrom, carriedOver, dayAfter, dayBefore, orderUnitDefault, programOrderChoices, ordersOf, orderStatus, orderUnitWord, prevPending, workOrderOf, type WorkOrder, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, noteOf, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderAddRuns, orderOfId, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, PLAN_LOT_MAX, productOf, productsCsv, purgeDay, reasonText, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay } from './store'
+import { addLine, plantCut, roomMark, CUT_WINDOW, startSecondShift, addWaste, awayDay, batch, byPlanLot, planLot, cameFrom, carriedOver, dayAfter, dayBefore, orderUnitDefault, programOrderChoices, ordersOf, orderStatus, orderUnitWord, prevPending, workOrderOf, type WorkOrder, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, noteOf, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderAddRuns, orderOfId, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, PLAN_LOT_MAX, productOf, productsCsv, purgeDay, reasonText, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay } from './store'
 import { avanceLots, avanceRange, avanceRows, datesBetween, lotAcrossDays, lotRows, lotsKnown, mfoList, mfoText, mfoWord, n1, pending, type AvancePart, type AvanceRow, type MfoMade } from './avance'
 import { loadZip, type Cell } from './xlsx'
 
@@ -576,7 +576,7 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
                 const lines = s.lines.filter((l) => l.dept === d)
                 const running = lines.filter((l) => openRun(s, l.id) && !openStop(s, d, l.id)).length
                 const stopped = lines.filter((l) => openRun(s, l.id) && openStop(s, d, l.id)).length
-                const goal = shiftGoalOf(s, d, turnOf(s, day.date, now).shift).total, td = goal ? deptToday(s, d, day.date, now) : null
+                const goal = shiftGoalOf(s, d, turnOf(s, day.date, now, d).shift).total, td = goal ? deptToday(s, d, day.date, now) : null
                 return (
                   <button key={d} type="button" className={'dept' + (dept === d ? ' on' : '')} style={deptVars(d)} onClick={() => setDept(d)}>
                     <span className="dname"><span className="dtitle"><i className="demoji" aria-hidden="true">{DEPT_LOOK[d].emoji}</i>{d}</span>{td && goal && <small className="goalmini">{fmtN(td.shiftQty)} / {fmtN(goal)} {td.unitLabel}</small>}</span>
@@ -1399,7 +1399,7 @@ function OrderAddChooser({ s, order, onPick, onNew, onClose }: { s: State; order
   const who = useWho()
   const [shown, setShown] = useState(CHOOSER_PAGE)
   const now = clockNow(), runs = orderAddRuns(s, order)
-  const may = runs.filter((x) => canShift(who, spanShifts(shiftsOf(s, x.r.date), x.r.startedAt, x.r.endedAt ?? now)))
+  const may = runs.filter((x) => canShift(who, spanShifts(shiftsOf(s, x.r.date, x.r.dept), x.r.startedAt, x.r.endedAt ?? now)))
   const others = runs.length - may.length
   const code = <b className="code">{order.code}</b>
   return (
@@ -1910,7 +1910,15 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
   const anyRunning = lines.some((l) => openRun(s, l.id))
   const doneToday = s.runs.filter((r) => r.dept === dept && r.endedAt && r.date === day.date).sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0))
   // what ended in the shift in course is its list; what the shift before ended is one line, opened by whoever wants it
-  const turn = turnOf(s, day.date, now)
+  const turn = turnOf(s, day.date, now, dept)
+  // Each room hands over on its own (2026-10-21, see ShiftMark). Near the plant's hand-over: "Empezar Turno 2" while
+  // the room is still in its first shift (its second came in early), and "Terminar turno" asks which shift is leaving
+  const pc = plantCut(s, day.date), mark = roomMark(s, day.date, dept)
+  const nearCut = pc != null && day.date === workDay(s, now).date && Math.abs(now - pc) <= CUT_WINDOW
+  const canStart2 = nearCut && turn.shift === 1 && now < (pc ?? 0) + CUT_WINDOW
+  const [starting2, setStarting2] = useState(false)
+  const [leavingShift, setLeavingShift] = useState<1 | 2>(1)
+  const openLeaving = () => { setLeavingShift(nearCut && now <= (pc ?? 0) + 2 * 3_600_000 && mark?.how !== 'inicio' ? 1 : turn.shift); setLeaving(true) }
   const doneNow = doneToday.filter((r) => (r.endedAt ?? 0) > turn.since), doneBefore = doneToday.filter((r) => (r.endedAt ?? 0) <= turn.since)
   const doneRow = (r: Run) => {
     const st = runStats(s, r, now), mine = runSince(s, r, turn.since, now)
@@ -1942,7 +1950,8 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
           {ds
             ? <button type="button" className="btn danger" onClick={() => endStop(ds.id)}>{trx('▶ Reanudar departamento · {0}', fmtDur(now - ds.startedAt))}</button>
             : <button type="button" className="btn stopbtn" disabled={!anyRunning} onClick={() => setStopAll(true)}>{tr('⏸ Parar departamento')}</button>}
-          <button type="button" className="btn" disabled={!left.runs.length && !left.setups.length && !left.stops.length} onClick={() => setLeaving(true)}>{tr('🏁 Terminar turno')}</button>
+          {canStart2 && <button type="button" className="btn soft" onClick={() => setStarting2(true)}>{tr('▶ Empezar Turno 2')}</button>}
+          <button type="button" className="btn" disabled={!left.runs.length && !left.setups.length && !left.stops.length} onClick={openLeaving}>{tr('🏁 Terminar turno')}</button>
           {(can('fix') || s.lineRules.add) && <button type="button" className="btn soft" onClick={() => setAdding(true)}>{trx('+ Agregar {0}', CFG[dept].lineWord.toLowerCase())}</button>}
         </div>}
       </div>
@@ -1956,14 +1965,23 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
               {left.setups.map((x) => <li key={x.id}>{trx('{0} · Set up desde {1} · {2}', <b>{lineNameOf(s, x.lineId)}</b>, fmtTime(x.startedAt), <i>{tr('se quita: no vino otro código')}</i>)}</li>)}
               {left.stops.map((x) => <li key={x.id}>{trx('{0} · parado por {1} desde {2} · {3}', <b>{x.lineId === null ? tr('Todo {0}', dept) : lineNameOf(s, x.lineId)}</b>, reasonText(s, x.reason), fmtTime(x.startedAt), <i>{tr('se cierra')}</i>)}</li>)}
             </ul>
+            {nearCut && (
+              <div className="leaveshift">
+                <span className="lab">{tr('¿Qué turno se va?')}</span>
+                <div className="chips">{([1, 2] as const).map((k) => <button key={k} type="button" className={'chip' + (leavingShift === k ? ' on' : '')} aria-pressed={leavingShift === k} onClick={() => setLeavingShift(k)}>{tr('Turno {0}', k)}</button>)}</div>
+                {leavingShift === 1 && <small>{trx('Lo que {0} hizo hasta ahora ({1}) cuenta para el Turno 1; lo que venga después, para el Turno 2.', dept, fmtTime(now))}</small>}
+              </div>
+            )}
             <p className="hint">{trx('Si falta registrar {0}{1} de alguna línea, regístral{2} antes. Si el otro turno va a seguir con estos mismos códigos, no hace falta terminar: déjalos corriendo.', CFG[dept].saved.endsWith('a') ? tr('la última') + ' ' : tr('el último') + ' ', CFG[dept].unit.toLowerCase(), CFG[dept].saved.endsWith('a') ? 'a' : 'o')}</p>
             <div className="dbtns">
               <button type="button" className="btn" onClick={() => setLeaving(false)}>{tr('Cancelar')}</button>
-              <button type="button" className="btn primary" onClick={() => { endShift(dept); setLeaving(false) }}>{tr('🏁 Terminar turno')}</button>
+              <button type="button" className="btn primary" onClick={() => { endShift(dept, nearCut ? leavingShift : undefined); setLeaving(false) }}>{tr('🏁 Terminar turno')}</button>
             </div>
           </div>
         </div>
       )}
+      {starting2 && <ConfirmDialog title={tr('¿Empieza el Turno 2 en {0}?', dept)} text={tr('Desde ahora ({0}) lo que {1} registre cuenta para el Turno 2; lo de antes queda en el Turno 1. Los demás cuartos siguen con su propio cambio de turno. Si fue un error, un manager lo corrige en Ajustes › Día de trabajo.', fmtTime(now), dept)} yes={tr('▶ Empezar Turno 2')} onYes={() => { startSecondShift(dept); setStarting2(false) }} onNo={() => setStarting2(false)} />}
+      {mark && nearCut && <p className="hint shiftmark">{trx('Cambio de turno de {0} hoy: {1} ({2}).', dept, <b>{fmtTime(mark.at)}</b>, mark.how === 'fin' ? tr('Terminar turno') : mark.how === 'inicio' ? tr('Empezar Turno 2') : tr('puesto a mano'))}</p>}
       {ds && <div className="deptstop">{trx('⏸ Todo {0} parado · {1}{2} · desde {3} · {4}', dept, <b>{reasonText(s, ds.reason)}</b>, ds.note && ' · ' + noteLabel(ds.note), fmtTime(ds.startedAt), ds.by)} {can('fix') && <button type="button" className="lnk" onClick={() => setEditStop(true)}>{tr('Corregir')}</button>}</div>}
       {editStop && ds && <StopEditor stop={ds} mgr={can('fix')} onClose={() => setEditStop(false)} />}
       {!viewOnly && can('fix') && duplicateLines(s, dept).map((g) => (
@@ -1984,7 +2002,7 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
         <>
           <TodayCard s={s} dept={dept} now={now} mgr={can('goals')} date={day.date} />
           {/* who came to work in the room this shift (Santiago, 2026-10-20) */}
-          {(s.attView.on || !!who.admin) && <AttendanceCard s={s} dept={dept} date={day.date} shift={(turnOf(s, day.date, now).shift || 1) as 1 | 2} edit={!viewOnly} />}
+          {(s.attView.on || !!who.admin) && <AttendanceCard s={s} dept={dept} date={day.date} shift={(turnOf(s, day.date, now, dept).shift || 1) as 1 | 2} edit={!viewOnly} />}
           <div className="lines">{lines.map((l) => <LineCard key={l.id} s={s} line={l} now={now} mgr={can('fix')} day={day} />)}</div>
         </>
       )}
@@ -2331,7 +2349,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   // the newest, says so, and a manager ends the others with one tap (what each one made stays)
   const twice = openRuns(s, line.id)
   const [closingOld, setClosingOld] = useState(false)
-  const turn = turnOf(s, day.date, now) // the shift in course: its numbers start from zero at the hand-over
+  const turn = turnOf(s, day.date, now, line.dept) // the shift in course (the room's): its numbers start from zero at the hand-over
   // the units the shift before made of the code that is running: this shift numbers its own from one
   const brought = run && run.startedAt < turn.since ? run.units.filter((u) => u.at < turn.since).length : 0
   const noOf = (x: Short) => (run && x.run.id === run.id && x.index >= brought ? x.index + 1 - brought : x.index + 1)
@@ -2623,7 +2641,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   const toRep = useContext(ReportLinkCtx)
   const goLine = (x: Partial<ReportAt>) => (toRep ? () => toRep({ date: run.date, dept: line.dept, shift: turn.shift, line: line.id, code: run.code, ...x }) : null)
   const tap = toRep ? ' tap' : ''
-  const cameFrom = shiftAt(shiftsOf(s, run.date), run.startedAt)
+  const cameFrom = shiftAt(shiftsOf(s, run.date, run.dept), run.startedAt)
   const last = Math.max(run.units.length ? run.units[run.units.length - 1].at : run.startedAt, mineNow.carried ? turn.since : 0)
   const current = workedSince(s, run, last, now)
   /** records a unit from this screen. A second tap in the same instant (a finger that bounces) is not another unit */

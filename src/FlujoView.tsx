@@ -429,7 +429,7 @@ function FlujoDetail({ s, r, onLot, onSearch, onPickLot, onClose }: { s: State; 
   const rec = useMemo(() => flujoRecords(s, r.lot, r.code), [s, r.lot, r.code])
   const runToEdit = edit ? s.runs.find((x) => x.id === edit.id) : undefined
   const stopToEdit = stop ? s.stops.find((x) => x.id === stop) : undefined
-  const shiftsOfRun = (x: FlujoRun) => spanShifts(shiftsOf(s, x.run.date), x.run.startedAt, x.run.endedAt ?? now)
+  const shiftsOfRun = (x: FlujoRun) => spanShifts(shiftsOf(s, x.run.date, x.run.dept), x.run.startedAt, x.run.endedAt ?? now)
   // (a Comentario column only when one record has it: the report's rule, Jose 2026-10-18)
   const runNotes = rec.runs.some((x) => !!x.note), palNotes = rec.pallets.some((p) => !!p.note)
   return (
@@ -502,7 +502,7 @@ function FlujoDetail({ s, r, onLot, onSearch, onPickLot, onClose }: { s: State; 
                   const at = p.open ? undefined : p.at
                   return (
                     <tr key={p.run.id + ':' + p.at} className={p.open ? 'live' : undefined} style={deptVars('Packing')}>
-                      <td className="rp-act"><div className="btns">{seeBtn(() => setSee({ runId: p.run.id, at }))}{fixBtn(spanShifts(shiftsOf(s, p.run.date), p.run.startedAt, p.run.endedAt ?? now), 'Packing', () => setEdit({ id: p.run.id, at }))}</div></td>
+                      <td className="rp-act"><div className="btns">{seeBtn(() => setSee({ runId: p.run.id, at }))}{fixBtn(spanShifts(shiftsOf(s, p.run.date, p.run.dept), p.run.startedAt, p.run.endedAt ?? now), 'Packing', () => setEdit({ id: p.run.id, at }))}</div></td>
                       <td className="c-head"><span className="fl-ponly">{tr('Pallet')}</span><b>{p.n}</b>{p.open && <small className="building">{tr('en armado')}</small>}{p.parts.length > 1 && <small className="manylots">{trx('{0} lotes', p.parts.length)}</small>}</td>
                       <td data-label={tr('Fecha')}>{shortDay(p.run.date)}</td>
                       <td data-label={tr('Línea')}>{lineNameOf(s, p.run.lineId, p.run.line)}</td>

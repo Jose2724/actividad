@@ -126,7 +126,6 @@ export function avanceRows(s: State, date: string, keep?: Set<string>, lot = '')
     // mezclas (the carry notes say so), and "0 expected" would call them "de más" and an empty room "complete"
     const casesExp = mixesDone > 0 ? cases(mixesDone) : null, casesPlan = scheduled ? cases(scheduled) : null
     // the same, shift by shift and lot by lot; the mezclas are the ones of the room that makes the code (mixRoom)
-    const hours = shiftsOf(s, date)
     const byShift: [AvancePart, AvancePart] = [part(), part()], lotMap = new Map<string, AvancePart>()
     const lotPart = (l: string) => { let x = lotMap.get(l); if (!x) { x = part(); lotMap.set(l, x) } return x }
     const kitchenBy: [number, number] = [0, 0], kitchenLot = new Map<string, number>()
@@ -134,7 +133,7 @@ export function avanceRows(s: State, date: string, keep?: Set<string>, lot = '')
     const put = (dept: string, x: AvancePart, q: number, w = '', whole = true) => { if (dept === 'Spiral') x.spiral++; else if (dept === 'RTE') x.pouches += q; else if (dept === 'Packing') { x.cases += q; if (whole) x.pallets++ } else if (dept === 'MFO') x.mfo[w] = (x.mfo[w] ?? 0) + q }
     for (const dept of ['Kitchen', 'Spiral', 'RTE', 'Packing', 'MFO'] as const) for (const r of of(dept)) for (const u of r.units) {
       if (!has(r, u)) continue
-      const k = shiftAt(hours, u.at) - 1
+      const k = shiftAt(shiftsOf(s, date, dept), u.at) - 1
       if (dept === 'Kitchen') kitchenBy[k]++; else put(dept, byShift[k], ofLot(r, u), mfoWordOf(r))
       const parts = unitParts(s, r, u), owner = palletOwner(parts)
       for (const p of parts) { if (lot && p.lot !== lot) continue; if (dept === 'Kitchen') kitchenLot.set(p.lot, (kitchenLot.get(p.lot) ?? 0) + 1); else put(dept, lotPart(p.lot), p.qty ?? 0, mfoWordOf(r), !!lot || parts.length < 2 || p.lot === owner) }

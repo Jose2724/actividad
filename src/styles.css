@@ -1872,3 +1872,11 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 .att-set input.chg{border-color:var(--accent);background:var(--soft);font-weight:700}
 .att-set tfoot td{font-weight:800}
 .att-set small{color:var(--muted)}
+
+/* each room's hand-over (2026-10-21): which shift leaves, and the room's own hand-over said under its header */
+.leaveshift{display:grid;gap:6px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px}
+.leaveshift .lab{font-weight:700}
+.leaveshift small{color:var(--muted)}
+.hint.shiftmark{margin:4px 0 0}
+.cut-set input[type=time]{min-height:38px;font-size:16px}
+.cut-set small{color:var(--muted)}

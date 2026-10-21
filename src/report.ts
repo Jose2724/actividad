@@ -45,6 +45,8 @@ export function spanShifts(h: ShiftHours, a: number, b: number) {
 
 export function reportOf(s: State, date: string, now: number, f: ReportFilter = {}) {
   const plan = shiftsOf(s, date)
+  // each room's own hours of the day: its own hand-over when it said one (2026-10-21, see ShiftMark), else the plant's
+  const planOf = (d: Dept) => shiftsOf(s, date, d)
   // a day with one shift has no other shift to look at: asking for it gives the whole day
   const shift: 0 | 1 | 2 = (f.shift === 1 || f.shift === 2) && !(plan.only && plan.only !== f.shift) ? f.shift : 0
   const day = s.runs.filter((r) => r.date === date && (!f.only || r.dept === f.only)).sort((a, b) => a.startedAt - b.startedAt)
@@ -61,7 +63,7 @@ export function reportOf(s: State, date: string, now: number, f: ReportFilter = 
   const kept = day.filter((r) => (!code || normCode(r.code) === normCode(code)) && (!lot || runLots(s, r).has(lot)) && (!line || r.lineId === line))
   /** one line of the report for a run: all of it (k = 0), or only what one shift did of it */
   const rowOf = (r: Run, k: 0 | 1 | 2) => {
-    const whole = runStats(s, r, now)
+    const whole = runStats(s, r, now), plan = planOf(r.dept)
     const inK = (u: Unit) => !k || shiftAt(plan, u.at) === k
     const mine = r.units.map((u, i) => ({ u, i })).filter((x) => inK(x.u))
     // with a lot chosen, only the units (and the part of each) that belong to it
@@ -103,9 +105,9 @@ export function reportOf(s: State, date: string, now: number, f: ReportFilter = 
   // (with a line chosen, that line's stops and the room's, whether or not a code was on the line)
   const ofRuns = code || lot || line ? dayStops.filter((x) => (!line || x.lineId === line || (x.lineId === null && kept.some((r) => r.dept === x.dept))) && (!(code || lot) || kept.some((r) => x.dept === r.dept && (x.lineId === r.lineId || x.lineId === null) && x.startedAt < (r.endedAt ?? now) && (x.endedAt ?? now) > r.startedAt))) : dayStops
   /** how long a stop counts (only the time somebody was there: see awayOn), in one shift or in the whole day */
-  const inShift = (x: (typeof s.stops)[number], k: 0 | 1 | 2) => stopSpans(s, x, now).reduce((t, p) => t + (!k ? p.to - p.from : shiftPieces(plan, p.from, p.to).filter((q) => q.shift === k).reduce((a, q) => a + (q.to - q.from), 0)), 0)
+  const inShift = (x: (typeof s.stops)[number], k: 0 | 1 | 2) => stopSpans(s, x, now).reduce((t, p) => t + (!k ? p.to - p.from : shiftPieces(planOf(x.dept), p.from, p.to).filter((q) => q.shift === k).reduce((a, q) => a + (q.to - q.from), 0)), 0)
   // a stop is of a shift when it counts time in it (one that counts none at all, of the shift it started in)
-  const touches = (x: (typeof s.stops)[number], k: 1 | 2) => inShift(x, k) > 0 || (inShift(x, 0) === 0 && shiftAt(plan, x.startedAt) === k)
+  const touches = (x: (typeof s.stops)[number], k: 1 | 2) => inShift(x, k) > 0 || (inShift(x, 0) === 0 && shiftAt(planOf(x.dept), x.startedAt) === k)
   const stops = (shift ? ofRuns.filter((x) => touches(x, shift)) : ofRuns).map((x) => ({ ...x, ms: inShift(x, shift) }))
   // The time the lines spent between one code and the next. Two set ups open at once on one line (two tablets that had
   // not yet seen each other's, both later closed by the next code) are one stretch of time, not two: the minutes of a
@@ -115,7 +117,7 @@ export function reportOf(s: State, date: string, now: number, f: ReportFilter = 
     const byLine = new Map<string, { from: number; to: number }[]>()
     for (const x of ofRuns) {
       if (x.reason !== SETUP || (dept && x.dept !== dept)) continue
-      const pieces = stopSpans(s, x, now).flatMap((p) => (!k ? [p] : shiftPieces(plan, p.from, p.to).filter((q) => q.shift === k)))
+      const pieces = stopSpans(s, x, now).flatMap((p) => (!k ? [p] : shiftPieces(planOf(x.dept), p.from, p.to).filter((q) => q.shift === k)))
       const key = x.dept + '|' + (x.lineId ?? '*'), list = byLine.get(key) ?? []
       list.push(...pieces.map((p) => ({ from: p.from, to: p.to })))
       byLine.set(key, list)
@@ -147,7 +149,7 @@ export function reportOf(s: State, date: string, now: number, f: ReportFilter = 
       const l = lotLine(piece.lot), n = none ? 1 : piece.qty ?? 0, all = unitParts(s, x.r, p.u)
       if (lot || all.length < 2 || piece.lot === palletOwner(all)) l.units++ // (one lot in view: its pallets, whole)
       if (!none) l.qty += n
-      if (l.byShift) l.byShift[shiftAt(plan, p.u.at) - 1] += n
+      if (l.byShift) l.byShift[shiftAt(planOf(x.r.dept), p.u.at) - 1] += n
     }
     return m.set(k, e)
   }, new Map<string, { dept: Dept; code: string; bin: string; units: number; qty: number; waste: number; lines: string[]; byShift: [number, number] | null; lots: LotLine[] }>()).values()].map((c) => ({ ...c, lots: c.lots.sort((a, b) => a.lot.localeCompare(b.lot)) }))
@@ -178,23 +180,23 @@ export function reportOf(s: State, date: string, now: number, f: ReportFilter = 
   const palletOf = (r: Run, n: number, at: number, parts: { lot: string; qty: number | null; tag: string }[], po: string | undefined, by: string, open: boolean, note = '') => {
     const o = orderOfId(s, po), seq = o ? orderPallets(s, o.id, r.perUnit) : null
     const of: [number, number | null] | null = seq ? [open ? seq.done.length + 1 : seq.done.indexOf(at) + 1, seq.need] : null
-    return { r, n, at, parts, total: parts.reduce((t, p) => t + (p.qty ?? 0), 0), order: o ? orderLabel(o) : '', of, shift: shiftAt(plan, at), by, open, note }
+    return { r, n, at, parts, total: parts.reduce((t, p) => t + (p.qty ?? 0), 0), order: o ? orderLabel(o) : '', of, shift: shiftAt(planOf(r.dept), at), by, open, note }
   }
   const pallets = rows.filter((x) => x.r.dept === 'Packing' && !binOf(x.r)).flatMap((x) => {
     const done = x.view.units.map((u) => palletOf(x.r, x.r.units.indexOf(u) + 1, u.at, unitParts(s, x.r, u), u.po, u.by, false, u.note ?? ''))
     const o = x.r.endedAt ? null : x.r.extra?.open, last = o?.parts.length ? o.parts[o.parts.length - 1] : null
-    const building = o && last && (!lot || o.parts.some((p) => p.lot === lot)) && (!shift || o.parts.some((p) => shiftAt(plan, p.at) === shift)) ? [palletOf(x.r, x.r.units.length + 1, last.at, o.parts, palletPo(s, x.r), last.by, true)] : []
+    const building = o && last && (!lot || o.parts.some((p) => p.lot === lot)) && (!shift || o.parts.some((p) => shiftAt(planOf(x.r.dept), p.at) === shift)) ? [palletOf(x.r, x.r.units.length + 1, last.at, o.parts, palletPo(s, x.r), last.by, true)] : []
     return [...done, ...building]
   }).sort((a, b) => a.at - b.at)
   // Packing's bins one by one, apart from its pallets (the office asked for them in their own list, 2026-10-17):
   // each with its lot, what it holds (platos, copas…) and the number written on it. With a lot chosen, the bins of that lot.
   const bins = rows.filter((x) => x.r.dept === 'Packing' && !!binOf(x.r)).flatMap((x) => x.view.units.map((u) => {
     const part = unitParts(s, x.r, u)[0]
-    return { r: x.r, n: x.r.units.indexOf(u) + 1, at: u.at, word: binOf(x.r), qty: part?.qty ?? null, lot: part?.lot ?? x.r.lot, ref: u.ref, by: u.by, shift: shiftAt(plan, u.at) }
+    return { r: x.r, n: x.r.units.indexOf(u) + 1, at: u.at, word: binOf(x.r), qty: part?.qty ?? null, lot: part?.lot ?? x.r.lot, ref: u.ref, by: u.by, shift: shiftAt(planOf(x.r.dept), u.at) }
   })).sort((a, b) => a.at - b.at)
   // a code is a product; a run is a code on a line from its start to its end (the same code on two lines is two runs)
   const distinct = new Set(rows.map((x) => normCode(x.r.code))).size, lines = new Set(rows.map((x) => x.r.lineId)).size
-  return { runs, rows, unitRows, pallets, bins, stops, byCode, byShift, byDept, reasons, distinct, lines, working: rows.reduce((t, x) => t + x.st.working, 0), down: rows.reduce((t, x) => t + x.st.down, 0), setup: setupOf(shift), codes, lots, code, lot, shift, plan, filtered, line, lineChoices }
+  return { runs, rows, unitRows, pallets, bins, stops, byCode, byShift, byDept, reasons, distinct, lines, working: rows.reduce((t, x) => t + x.st.working, 0), down: rows.reduce((t, x) => t + x.st.down, 0), setup: setupOf(shift), codes, lots, code, lot, shift, plan, planOf, filtered, line, lineChoices }
 }
 // ---- the stops by Reason Code (Jose, 2026-10-20: the plant's standard list, see reasons.ts) ----
 /**

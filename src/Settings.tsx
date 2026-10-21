@@ -1,11 +1,11 @@
 import { useState, useSyncExternalStore } from 'react'
 import { byLineName, CFG, dayShiftsText, DEPTS, lineLabel, lotFor, managerPin, nightText, openRun, removedLines, removeLine, reset, resetRecords, restoreLine, setDayShifts, setLineRules, setProgramView, setReasonCodes, shiftGoalOf, shiftHours, shiftSpan, shiftsOf, turnOf, uploadAll, weekOf, type Dept, type Line, type State, type WorkDay } from './store'
-import { ConfirmDialog, LangSwitch, LineNameDialog, longDate, NoticeDialog, Products, QrLink, ShiftsDialog, StartDayDialog, StopDialog, TargetDialog, useCan } from './App'
+import { ConfirmDialog, LangSwitch, LineNameDialog, longDate, NoticeDialog, Products, QrLink, ShiftsDialog, StartDayDialog, StopDialog, TargetDialog, useCan, useWho } from './App'
 import { Employees } from './Employees'
 import { Devices } from './DevicesView'
 import { supabase } from './supabase'
 import { syncStore } from './sync'
-import { ATT_DEFAULT, attExpectedOf, attShifts, setAttExpected, setAttView } from './store'
+import { ATT_DEFAULT, attExpectedOf, attShifts, clearShiftMark, plantCut, roomMark, setAttExpected, setAttView, setShiftMark } from './store'
 import { BUILD } from './update'
 import { clockOffText, clockState } from './clock'
 import { fmtTime } from './clock-fmt'
@@ -141,9 +141,55 @@ function DaySettings({ s, now, day }: { s: State; now: number; day: WorkDay }) {
           <Fact label={tr('Turnos de hoy')} value={dayShiftsText(plan.only)} note={tr('en curso: turno {0}', turnOf(s, day.date, now).shift)} />
         </div>
       </div>
+      <RoomCuts s={s} day={day} />
       {open && <StartDayDialog s={s} now={now} day={day} onClose={() => setOpen(false)} onDone={setNotice} />}
       {notice && <NoticeDialog title={notice.title} text={notice.text} onClose={() => setNotice(null)} />}
     </>
+  )
+}
+
+/**
+ * Each room's hand-over today (Jose, 2026-10-21): the plant's, or the room's own when it tapped "Terminar turno" or
+ * "Empezar Turno 2". A manager puts the right hour when a tap was forgotten or wrong, or takes it back to the plant's.
+ * Up to four hours from the plant's hand-over (store.ts, CUT_WINDOW); what was recorded is counted again from there.
+ */
+function RoomCuts({ s, day }: { s: State; day: WorkDay }) {
+  const who = useWho(), boss = !!who.admin || who.role === 'mgr' || who.role === 'office'
+  const [typed, setTyped] = useState<Partial<Record<Dept, string>>>({})
+  const [bad, setBad] = useState<Dept | null>(null)
+  const pc = plantCut(s, day.date)
+  if (pc == null) return null
+  const hm = (at: number) => { const d = new Date(at); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') }
+  const save = (d: Dept) => {
+    const v = typed[d]; if (!v) return
+    const [h, m] = v.split(':').map(Number), at = new Date(day.date + 'T00:00:00').getTime() + (h * 60 + m) * 60_000
+    if (!setShiftMark(day.date, d, at, 'manual')) { setBad(d); return }
+    setBad(null); setTyped({ ...typed, [d]: undefined })
+  }
+  return (
+    <div className="setcard">
+      <div className="sethead"><h3>{tr('Cambio de turno de hoy, por cuarto')}</h3></div>
+      <p className="hint">{tr('Cada cuarto cambia de turno cuando su gente toca "Terminar turno" (se va el Turno 1) o "Empezar Turno 2" (llegó antes). Sin eso, cambia con la planta, a las {0}. Lo registrado cuenta para el turno de su cuarto.', fmtTime(pc))}</p>
+      <div className="twrap">
+        <table className="cut-set">
+          <thead><tr><th>{tr('Cuarto')}</th><th>{tr('Cambio de turno')}</th>{boss && <th />}</tr></thead>
+          <tbody>{DEPTS.map((d) => {
+            const m = roomMark(s, day.date, d)
+            return (
+              <tr key={d}>
+                <td><b>{d}</b></td>
+                <td>{m ? <><b>{fmtTime(m.at)}</b> <small>{m.how === 'fin' ? tr('Terminar turno') : m.how === 'inicio' ? tr('Empezar Turno 2') : tr('puesto a mano')}{m.by ? ' · ' + m.by : ''}</small></> : <span>{fmtTime(pc)} <small>{tr('el de la planta')}</small></span>}</td>
+                {boss && <td><div className="btns">
+                  <input type="time" value={typed[d] ?? hm(m?.at ?? pc)} aria-label={tr('Cambio de turno') + ' · ' + d} onChange={(e) => setTyped({ ...typed, [d]: e.target.value })} />
+                  <button type="button" className="btn sm primary" disabled={!typed[d]} onClick={() => save(d)}>{tr('Guardar')}</button>
+                  {m && <button type="button" className="btn sm" onClick={() => clearShiftMark(day.date, d)}>{tr('El de la planta')}</button>}
+                </div>{bad === d && <small className="red">{tr('Tiene que ser a menos de 4 horas del cambio de la planta.')}</small>}</td>}
+              </tr>
+            )
+          })}</tbody>
+        </table>
+      </div>
+    </div>
   )
 }
 

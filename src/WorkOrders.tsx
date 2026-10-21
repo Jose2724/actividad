@@ -484,7 +484,7 @@ export const OrderDetail = memo(function OrderDetail({ s, id, today, edit, onClo
   const done = st.completedBy, closed = o.closedAt != null
   const runToFix = fixing ? s.runs.find((r) => r.id === fixing.id) : undefined
   const stopToFix = stop ? s.stops.find((x) => x.id === stop) : undefined
-  const shiftsOfRun = (r: Run) => spanShifts(shiftsOf(s, r.date), r.startedAt, r.endedAt ?? now)
+  const shiftsOfRun = (r: Run) => spanShifts(shiftsOf(s, r.date, r.dept), r.startedAt, r.endedAt ?? now)
   const lots = st.lots
   const toFlujo = nav.openFlujo ? () => nav.openFlujo!(o.code, o.startDate, st.finishDay && st.finishDay < today ? st.finishDay : today) : undefined
   const tile = (label: string, value: ReactNode, sub: ReactNode, cls: string) => <div className={'wotile ' + cls}><label>{label}</label><b>{value}</b><small>{sub}</small></div>

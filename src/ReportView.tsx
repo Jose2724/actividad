@@ -484,7 +484,7 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
   /** a "+ Agregar" of one room (none = whatever room the box opens on: the person's own, see AddRunDialog) */
   const addIn = (room?: string) => canAdd && (!room || writesIn(who, room))
   /** the shifts a run or a stop touched ("1", "2" or "1 y 2"): who may correct it */
-  const spanOf = (x: { startedAt: number; endedAt: number | null }) => spanShifts(rep.plan, x.startedAt, x.endedAt ?? now)
+  const spanOf = (x: { startedAt: number; endedAt: number | null; dept?: Dept }) => spanShifts(x.dept ? rep.planOf(x.dept) : rep.plan, x.startedAt, x.endedAt ?? now)
   /** the first cell of a record's row: see it, and correct it (or why not) */
   const acts = (shifts: string, room: string, onSee: (() => void) | null, onFix: () => void, rowSpan?: number) => <td className="rp-act" rowSpan={rowSpan}><div className="btns">{onSee && seeBtn(onSee)}{fixBtn(shifts, room, onFix)}</div></td>
   // a run that is gone (deleted from its correction) closes its sheet
@@ -1580,7 +1580,7 @@ export function RunDetail({ s, runId, at, now, mgr, fix, fixable, onFix, onFixSt
   const [focus, setFocus] = useState(at)
   const r = s.runs.find((x) => x.id === runId)
   if (!r) return null
-  const st = runStats(s, r, now), plan = shiftsOf(s, r.date), shifts = spanShifts(plan, r.startedAt, r.endedAt ?? now)
+  const st = runStats(s, r, now), plan = shiftsOf(s, r.date, r.dept), shifts = spanShifts(plan, r.startedAt, r.endedAt ?? now)
   const canFixAny = fixable(r.dept) // (a run of a room this person does not write shows no correction at all)
   const cfg = cfgOf(r), lots = [...runLots(s, r)].filter(Boolean), product = productOf(s, r.code)?.name
   const reasons = Object.entries(st.reasons).map(([key, v]) => tr(key) + ' ' + fmtDur(v)).join(', ')

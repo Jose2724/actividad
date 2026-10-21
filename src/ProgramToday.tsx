@@ -59,7 +59,7 @@ export function ProgramToday({ s, date, now, rooms, onReport }: { s: State; date
           </div>
           <div className="pt-legend"><span className="t1">{tr('Turno 1')}</span><span className="t2">{tr('Turno 2')}</span><span className="left">{tr('Falta')}</span><span>{tr('Toca un número para ver sus registros')}</span></div>
           <div className="pt-cards">
-            {shown.map((c) => <Card key={c.dept} {...c} date={date} shiftNow={shiftNow} onReport={onReport} />)}
+            {shown.map((c) => <Card key={c.dept} {...c} date={date} shiftNow={shiftAt(shiftsOf(s, date, c.dept), now)} onReport={onReport} />)}
           </div>
         </>
       )}
