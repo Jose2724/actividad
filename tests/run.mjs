@@ -5070,6 +5070,38 @@ section('Reporte KPI del día: el plan de Costco del planner, lo real del 0889 y
   const back = await device('kpi-again', { seed: JSON.parse(disks.get('kpi').get('act_v1')), user: 'Jose' })
   eq('al volver a abrir: el plan, la lista, las notas y el temporal siguen', back.use((m) => [Object.keys(m.costcoPlan(m.store.get()).days).length, m.kpiNames(m.store.get()), m.kpiNote(m.store.get(), DAY, 'costco'), m.store.get().attendance.filter((x) => x.temp).length]), [60, ['Edgar Carhuapoma'], 'Corrió todo el turno sin cambio de código', 1])
 }
+section('Pesos en RTE: el operador escribe el peso de cada pouch, se guarda al momento, y dice bajo o sobre (Jose, 2026-10-22)')
+{
+  const wt = await device('weights', { user: 'Operador RTE' })
+  wt.use((m) => {
+    const st = () => m.store.get()
+    clock = T0
+    if (!st().lines.some((l) => l.dept === 'RTE')) m.addLine('RTE', 'Línea 1')
+    m.startRun(st().lines.find((l) => l.dept === 'RTE'), '0889', '6292', DAY, 240)
+    const run = st().runs.find((r) => r.code === '0889')
+    const t = m.weightNew(run)
+    eq('una prueba nueva no se guarda hasta su primer peso', [st().weights.length, (m.weightSave(t, []), st().weights.length)], [0, 0])
+    clock = T0 + 5 * M
+    m.weightSave(t, [3.04])
+    const up = m.outbox.items().find((i) => i.key === 'wt:' + t.id)
+    eq('el primer peso ya se guarda y sube al servidor, aparte (act_weights), con su cuarto, línea, código y lote', [st().weights.length, up?.row.ref_table, up?.row.dept, JSON.parse(up?.row.after ?? '{}').weights, JSON.parse(up?.row.after ?? '{}').lot, st().changes.some((c) => c.refTable === 'act_weights')], [1, 'act_weights', 'RTE', [3.04], '6292', false])
+    m.weightSave(t, [3.04, 3.24, 2.95, 3.01])
+    eq('cada peso que sigue escribe la misma prueba otra vez (no una nueva)', [st().weights.length, st().weights[0].weights], [1, [3.04, 3.24, 2.95, 3.01]])
+    eq('sin objetivo no dice bajo ni sobre', m.weightClass(3.24, m.weightTarget(st(), '0889')), '')
+    m.setWeightTarget('0889', 3.01, 0.05)
+    const tg = m.weightTarget(st(), '889')
+    eq('con el objetivo 3.01 ± 0.05: 2.95 es bajo, 3.04 bien, 3.24 sobre; y vale para 889 y 0889', [tg, [2.95, 3.04, 3.24, 2.96, 3.06].map((w) => m.weightClass(w, tg))], [{ pouch: 3.01, tol: 0.05 }, ['bajo', 'ok', 'sobre', 'ok', 'ok']])
+    const w = m.weightsOf(st(), DAY)
+    eq('el reporte KPI: por código, pruebas, pesados, promedio, mínimo, máximo, bajos y sobre', w.map((x) => [x.code, x.tests.length, x.n, x.avg, x.min, x.max, x.under, x.over]), [['0889', 1, 4, 3.06, 2.95, 3.24, 1, 1]])
+    m.weightSave(t, [])
+    eq('quitar todos los pesos deja la prueba borrada (marcada en el servidor)', [m.weightTestsOf(st(), DAY).length, m.outbox.items().find((i) => i.key === 'wt:' + t.id)?.row.deleted], [0, true])
+    m.weightSave(t, [3.1, 3.2])
+    m.applyRemote('act_changes', { id: 'wt:R1', at: iso(T0 + 60 * M), by_name: 'Otro', dept: 'RTE', what: 'Peso', before: '', after: JSON.stringify({ date: DAY, lineId: 'x', line: 'Línea 2', code: '0889', lot: '6292', runId: 'r2', kind: 'pouch', weights: [3.0, 2.9] }), ref_table: 'act_weights', ref_key: 'R1', deleted: false, updated_at: iso(T0 + 60 * M), updated_by: 'Otro' })
+    eq('la prueba de otra tablet llega', m.weightTestsOf(st(), DAY).map((x) => [x.line, x.weights]), [['Línea 1', [3.1, 3.2]], ['Línea 2', [3, 2.9]]])
+  })
+  const back = await device('weights-again', { seed: JSON.parse(disks.get('weights').get('act_v1')), user: 'Operador RTE' })
+  eq('al volver a abrir: las pruebas y sus pesos siguen', back.use((m) => m.weightTestsOf(m.store.get(), DAY).map((x) => x.weights)), [[3.1, 3.2], [3, 2.9]])
+}
 section('Reporte: el total de cada línea, en su departamento (Jose, 2026-10-22)')
 {
   const lt = await device('line-totals', { user: 'Jose' })

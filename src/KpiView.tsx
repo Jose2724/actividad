@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { awayDay, dayBefore, fmtTime, kpiGet, kpiPut, type Dept, type State } from './store'
+import { awayDay, dayBefore, fmtTime, kpiGet, kpiPut, weightClass, type Dept, type State } from './store'
 import { loadDay } from './sync'
-import { COSTCO_CODE, costcoLast, costcoMonth, costcoPlan, kpiNames, kpiNote, laborOf, parsePlanner, type KpiPart } from './kpi'
+import { COSTCO_CODE, costcoLast, costcoMonth, costcoPlan, kpiNames, kpiNote, laborOf, parsePlanner, weightsOf, type KpiPart } from './kpi'
 import { download, useViewOnly } from './App'
 import { xlsxBytes, XLSX_TYPE, type Cell } from './xlsx'
 import { DEPT_LOOK } from './look'
@@ -31,11 +31,14 @@ export function KpiView({ s, now, today, admin }: { s: State; now: number; today
   const last = useMemo(() => costcoLast(s, date, now, 7), [s, date, now])
   const lab = useMemo(() => laborOf(s, date, now), [s, date, now])
   const day = last[last.length - 1]
+  const wts = useMemo(() => weightsOf(s, date), [s, date])
+  const outW = wts.reduce((t, w) => t + w.under + w.over, 0), allW = wts.reduce((t, w) => t + w.n, 0)
+  const nTests = wts.reduce((t, w) => t + w.tests.length, 0)
   const excel = async () => {
     const notes = (p: KpiPart) => kpiNote(s, date, p)
     const head: Cell[][] = [[tr('Reporte KPI del día · ER'), date], []]
     const resumen: Cell[][] = [...head, [tr('Parte'), tr('Resultado'), tr('Qué vimos · causa · acción')],
-      [tr('1 · Pesos'), tr('Esperando los pesos objetivo de QA'), notes('weights')],
+      [tr('1 · Pesos'), allW ? tr('{0} de {1} pouches fuera de peso', outW, allW) : tr('Sin pruebas de peso'), notes('weights')],
       [tr('2 · Cortes'), tr('Esperando los pedidos de Julio'), notes('cuts')],
       [tr('3 · Productividad'), lab.total.perHour == null ? '—' : tr('{0} cajas por hora-persona', lab.total.perHour), notes('labor')],
       [tr('4 · Costco MVM'), tr('{0} cajas de {1} planeadas ({2})', n0(day.cases), n0(day.planCases), pc(day.pct)), notes('costco')],
@@ -46,11 +49,11 @@ export function KpiView({ s, now, today, admin }: { s: State; now: number; today
     const labor: Cell[][] = [...head, [tr('Cuarto'), tr('Programados'), tr('Vinieron'), tr('Temporales'), tr('Horas-persona'), tr('Producción'), tr('Unidad'), tr('Por hora-persona')],
       ...lab.rows.map((r): Cell[] => [r.dept, r.scheduled, r.showed, r.temps, r.hours, r.made, r.unit, r.perHour ?? '']),
       [tr('TOTAL'), lab.total.scheduled, lab.total.showed, lab.total.temps, lab.total.hours, lab.total.cases, tr('cajas'), lab.total.perHour ?? '']]
-    const bytes = await xlsxBytes([{ name: tr('Resumen'), rows: resumen }, { name: tr('Pesos'), rows: [...head, [tr('Esperando los pesos objetivo de QA')], [notes('weights')]] }, { name: tr('Cortes'), rows: [...head, [tr('Esperando los pedidos de Julio')], [notes('cuts')]] }, { name: tr('Productividad'), rows: labor }, { name: 'Costco MVM', rows: costco }, { name: tr('Grill y freidora'), rows: [...head, [notes('grill')]] }])
+    const bytes = await xlsxBytes([{ name: tr('Resumen'), rows: resumen }, { name: tr('Pesos'), rows: [...head, [tr('Hora'), tr('Línea'), tr('Código'), tr('Lote'), tr('Pesados'), tr('Promedio (lb)'), tr('Mínimo'), tr('Máximo'), tr('Objetivo (lb)'), tr('Bajos'), tr('Sobre'), tr('Anotó'), tr('Pesos')], ...wts.flatMap((w) => w.tests.map((t): Cell[] => { const avg = t.weights.reduce((a, b) => a + b, 0) / t.weights.length; return [fmtTime(t.at), t.line, t.code, t.lot, t.weights.length, Math.round(avg * 1000) / 1000, Math.min(...t.weights), Math.max(...t.weights), w.target ? w.target.pouch + ' ± ' + w.target.tol : '', w.target ? t.weights.filter((x) => weightClass(x, w.target) === 'bajo').length : '', w.target ? t.weights.filter((x) => weightClass(x, w.target) === 'sobre').length : '', t.by, t.weights.join(', ')] })), [], [notes('weights')]] }, { name: tr('Cortes'), rows: [...head, [tr('Esperando los pedidos de Julio')], [notes('cuts')]] }, { name: tr('Productividad'), rows: labor }, { name: 'Costco MVM', rows: costco }, { name: tr('Grill y freidora'), rows: [...head, [notes('grill')]] }])
     download(new File([bytes], 'kpi-er-' + date + '.xlsx', { type: XLSX_TYPE }))
   }
   const tiles: { part: string; cls: string; big: string; small: string }[] = [
-    { part: tr('1 · Pesos'), cls: 'grey', big: tr('pendiente'), small: tr('esperando los pesos objetivo de QA') },
+    { part: tr('1 · Pesos'), cls: !allW ? 'grey' : !wts.some((w) => w.target) ? 'go' : outW / allW > 0.1 ? 'bad' : outW ? 'warn' : 'ok', big: allW ? tr('{0} de {1} fuera', outW, allW) : tr('sin pruebas'), small: allW ? (nTests === 1 ? tr('1 prueba') : tr('{0} pruebas', nTests)) + ' · ' + (wts.length === 1 ? tr('1 código') : tr('{0} códigos', wts.length)) : tr('RTE anota los pesos con ⚖ Peso') },
     { part: tr('2 · Cortes'), cls: 'grey', big: tr('pendiente'), small: tr('esperando los pedidos de Julio') },
     { part: tr('3 · Productividad'), cls: lab.total.written ? 'go' : 'grey', big: lab.total.perHour == null ? '—' : tr('{0} cajas/h-p', lab.total.perHour), small: lab.total.written ? tr('{0} de {1} vinieron · {2} temporales', lab.total.showed, lab.total.scheduled, lab.total.temps) : tr('nadie anotado en la asistencia') },
     { part: tr('4 · Costco MVM'), cls: !plan ? 'grey' : day.pct == null ? 'grey' : day.pct >= 1 ? 'ok' : day.pct >= 0.9 ? 'warn' : 'bad', big: tr('{0} cajas', n0(day.cases)), small: plan ? tr('plan {0} · {1}', n0(day.planCases), pc(day.pct)) : tr('falta cargar el planner') },
@@ -72,7 +75,11 @@ export function KpiView({ s, now, today, admin }: { s: State; now: number; today
 
       <article className="kpi-sec">
         <h3>{tr('1 · Pesos y rendimiento')}</h3>
-        <p className="hint">{tr('Peso crudo y cocido contra su objetivo (Costco MBs 0889, WFM MBs, Sam\'s Italian Herb Chicken, Sam\'s Panko, WMT 4ct). Se construye cuando QA mande los códigos y los pesos objetivo; mientras, escribe aquí lo que reportó QC.')}</p>
+        <p className="hint">{tr('Los pesos que RTE anota con el botón ⚖ Peso de cada línea, contra el objetivo de cada código (lo pone un manager con el peso que diga QA). Crudo y cocido se agregan cuando QA mande sus objetivos.')}</p>
+        {wts.length > 0 ? <div className="scroll"><table className="kpi-tbl">
+          <thead><tr><th>{tr('Código')}</th><th className="n">{tr('Pruebas')}</th><th className="n">{tr('Pesados')}</th><th className="n">{tr('Promedio (lb)')}</th><th className="n">{tr('Mín · Máx')}</th><th className="n">{tr('Objetivo (lb)')}</th><th className="n">{tr('Bajos')}</th><th className="n">{tr('Sobre')}</th></tr></thead>
+          <tbody>{wts.map((w) => <tr key={w.code}><td>{w.code}</td><td className="n">{w.tests.length}</td><td className="n">{w.n}</td><td className="n">{w.avg}{w.avgPct != null && <small className={Math.abs(w.avgPct) > 0.02 ? 'red' : ''}> ({(w.avgPct > 0 ? '+' : '') + Math.round(w.avgPct * 1000) / 10}%)</small>}</td><td className="n">{w.min} · {w.max}</td><td className="n">{w.target ? w.target.pouch + ' ± ' + w.target.tol : '—'}</td><td className={'n' + (w.under ? ' red' : '')}>{w.target ? w.under : '—'}</td><td className={'n' + (w.over ? ' red' : '')}>{w.target ? w.over : '—'}</td></tr>)}</tbody>
+        </table></div> : <p className="hint">{tr('No hay pruebas de peso este día.')}</p>}
         <Note s={s} date={date} part="weights" ro={viewOnly} />
       </article>
 

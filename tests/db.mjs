@@ -193,6 +193,8 @@ today['Pia (products): la historia del programa de su cuarto'] = await twice(pia
   // (2026-10-20) the attendance of her room: each person a row of the history, apart (act_attendance)
   // (2026-10-21) her room's own shift change: a row of the history, apart (act_shiftcut)
   today['Ana (op): el cambio de turno de su cuarto'] = await twice(ana, 'act_changes', chg('cut:2026-12-07:Packing', 'Packing', 'act_shiftcut', '2026-12-07:Packing'), 'id', { after: 'b' })
+  // (2026-10-22) a weight test of her room's line (act_weights)
+  today['Ana (op): una prueba de peso de su cuarto'] = await twice(ana, 'act_changes', chg('wt:' + uuid(), 'Packing', 'act_weights', 'k'), 'id', { after: 'b' })
   today['Ana (op): una persona de la asistencia de su cuarto'] = await twice(ana, 'act_changes', chg('att:' + uuid(), 'Packing', 'act_attendance', 'k'), 'id', { after: 'b' })
   today['Ana (op): la cuenta cerrada de un pedido terminado de su cuarto (020)'] = await twice(ana, 'act_changes', chg('wodone:' + uuid(), 'Packing', 'act_work_orders:done', 'k'), 'id', { after: 'b' })
 }

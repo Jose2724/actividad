@@ -2004,3 +2004,11 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 .kpi-month label{font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase}.kpi-month b{font-size:20px}.kpi-month b.red{color:#b91c1c}.kpi-month small{color:var(--muted)}
 .kpi-access ul{margin:0;padding-left:18px}.kpi-access form{display:flex;gap:8px}.kpi-access input{flex:1;min-height:38px}
 .att-temp{color:#7c3aed;font-weight:700}
+
+/* weight tests on RTE (2026-10-22) */
+.wt-dlg{max-width:560px}
+.wt-add{display:flex;gap:8px}.wt-add input{flex:1;min-height:52px;font-size:24px;font-variant-numeric:tabular-nums}
+.wt-list{margin:0;padding-left:28px;display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:4px 12px;font-size:18px;font-variant-numeric:tabular-nums}
+.wt-list li.bajo{color:#b91c1c;font-weight:700}.wt-list li.sobre{color:#b45309;font-weight:700}.wt-list li.ok small{color:#166534}
+.wt-sum{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;font-weight:700}.wt-sum .red{color:#b91c1c}.wt-sum .amber{color:#b45309}
+.wt-earlier{margin:0;padding-left:18px;color:var(--muted);display:grid;gap:2px}

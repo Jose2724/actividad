@@ -1,4 +1,4 @@
-import { attExpectedOf, attOf, attShifts, CFG, dayBefore, DEPTS, kpiGet, shiftsOf, type AttEntry, type Dept, type State } from './store'
+import { attExpectedOf, attOf, attShifts, CFG, dayBefore, DEPTS, kpiGet, shiftsOf, weightClass, weightTarget, weightTestsOf, type AttEntry, type Dept, type State } from './store'
 import { reportOf } from './report'
 
 /**
@@ -147,6 +147,17 @@ export function laborOf(s: State, date: string, now: number) {
   const hours = Math.round(rows.reduce((t, r) => t + r.hours, 0) * 10) / 10
   const cases = rows.find((r) => r.dept === 'Packing')?.made ?? 0
   return { rows, total: { scheduled: rows.reduce((t, r) => t + r.scheduled, 0), showed: rows.reduce((t, r) => t + r.showed, 0), temps: rows.reduce((t, r) => t + r.temps, 0), hours, cases, perHour: hours > 0 ? Math.round((cases / hours) * 100) / 100 : null, written: rows.some((r) => r.written) } }
+}
+
+// ---- item weights ----
+/** each code's weight tests of a day: how many tests and pouches, average, lightest, heaviest, its target, under and over */
+export function weightsOf(s: State, date: string) {
+  const tests = weightTestsOf(s, date), codes = [...new Set(tests.map((t) => t.code))]
+  return codes.map((code) => {
+    const mine = tests.filter((t) => t.code === code), all = mine.flatMap((t) => t.weights), target = weightTarget(s, code)
+    const avg = all.reduce((a, b) => a + b, 0) / all.length
+    return { code, tests: mine, n: all.length, avg: Math.round(avg * 1000) / 1000, min: Math.min(...all), max: Math.max(...all), target, under: all.filter((w) => weightClass(w, target) === 'bajo').length, over: all.filter((w) => weightClass(w, target) === 'sobre').length, avgPct: target ? (avg - target.pouch) / target.pouch : null }
+  })
 }
 
 // ---- the notes of a day ----

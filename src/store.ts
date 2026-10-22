@@ -369,7 +369,7 @@ export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Produ
    */
   orderRuns: Run[]
   /** the production orders of every room (deleted ones kept with their flag), and the closed accounts of finished ones */
-  workOrders: WorkOrder[]; orderSeals: OrderSeal[]; attendance: AttEntry[]; attExpected: AttExpected[]; shiftMarks: ShiftMark[]; kpi: KpiRec[] }
+  workOrders: WorkOrder[]; orderSeals: OrderSeal[]; attendance: AttEntry[]; attExpected: AttExpected[]; shiftMarks: ShiftMark[]; kpi: KpiRec[]; weights: WeightTest[] }
 /**
  * An order to fill in Packing: so many cases of one product for a customer, to ship by a date. Most carry the
  * customer's purchase order number (PO); some never do and some get it later. See "the orders Packing fills".
@@ -455,10 +455,10 @@ function tidySchedule(sch: Schedule): Schedule {
 function isDay(text: string) { return /^\d{4}-\d{2}-\d{2}$/.test(text) }
 /** with a server the lines (and products) are shared and come from it; without one, each device starts with a line per room */
 const SERVER = !!import.meta.env.VITE_SUPABASE_URL
-function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, reasonCodes: { on: false, updatedAt: 0 }, programView: { on: false, updatedAt: 0 }, attView: { on: false, updatedAt: 0 }, viewOpts: { lotes: { on: false, updatedAt: 0 }, flujo: { on: false, updatedAt: 0 } }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [], attendance: [], attExpected: [], shiftMarks: [], kpi: [] } }
+function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, reasonCodes: { on: false, updatedAt: 0 }, programView: { on: false, updatedAt: 0 }, attView: { on: false, updatedAt: 0 }, viewOpts: { lotes: { on: false, updatedAt: 0 }, flujo: { on: false, updatedAt: 0 } }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [], attendance: [], attExpected: [], shiftMarks: [], kpi: [], weights: [] } }
 function load(): State {
   try {
-    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; reasonCodes?: Partial<ReasonCodesOpt>; programView?: Partial<ReasonCodesOpt>; attView?: Partial<ReasonCodesOpt>; viewOpts?: Partial<Record<ViewOpt, Partial<ReasonCodesOpt>>>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[]; attendance?: Partial<AttEntry>[]; attExpected?: Partial<AttExpected>[]; shiftMarks?: Partial<ShiftMark>[]; kpi?: Partial<KpiRec>[] }
+    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; reasonCodes?: Partial<ReasonCodesOpt>; programView?: Partial<ReasonCodesOpt>; attView?: Partial<ReasonCodesOpt>; viewOpts?: Partial<Record<ViewOpt, Partial<ReasonCodesOpt>>>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[]; attendance?: Partial<AttEntry>[]; attExpected?: Partial<AttExpected>[]; shiftMarks?: Partial<ShiftMark>[]; kpi?: Partial<KpiRec>[]; weights?: Partial<WeightTest>[] }
     const s = JSON.parse(localStorage.getItem(KEY) || 'null') as Raw | null
     // rows saved by earlier versions: carts as plain timestamps, units without a tag or a name, products with one
     // pouches-per-cart number, nothing with an update time
@@ -507,6 +507,7 @@ function load(): State {
         attendance: (s.attendance ?? []).map(attFrom).filter((x): x is AttEntry => !!x),
         // the Daily KPI Report's records (2026-10-22): read with a function declaration (see the TDZ rule above)
         kpi: (s.kpi ?? []).map(kpiFrom).filter((x): x is KpiRec => !!x),
+        weights: (s.weights ?? []).map(wtFrom).filter((x): x is WeightTest => !!x),
         attExpected: (s.attExpected ?? []).map(attExpectedFrom).filter((x): x is AttExpected => !!x),
         // each room's hand-over of a day (2026-10-21): a function declaration, as above
         shiftMarks: (s.shiftMarks ?? []).map(shiftMarkFrom).filter((x): x is ShiftMark => !!x),
@@ -1023,6 +1024,48 @@ export function kpiPut(key: string, data: Record<string, unknown>, deleted = fal
   set({ ...state, kpi: [...(state.kpi ?? []).filter((y) => y.key !== key), x] })
   push('act_changes', KPI_ID + key, { id: KPI_ID + key, at: iso(x.at), by_name: x.by, dept: null, what: 'KPI', before: '', after: JSON.stringify(data), ref_table: KPI_REF, ref_key: key, deleted, updated_at: iso(x.updatedAt), updated_by: user.get() })
 }
+// ---- weight tests (2026-10-22: "botones en RTE para que los operadores registren la que está baja y subida de weight") ----
+/**
+ * A weight test on a line: every hour or at each changeover the operator weighs several finished pouches and types each
+ * weight (lb, gross with the plastic, as Joshua's sheet). Each typed weight is saved at once (the test is one record,
+ * written again with every weight), so nothing typed is lost. Against the code's target (pouch ± tolerance, set by a
+ * manager) each weight is under, ok or over. In act_changes with the run's room (an RTE operator writes her room), apart
+ * from the history, as the attendance; the server never erases.
+ */
+export type WeightTest = { id: string; date: string; dept: Dept; lineId: string; line: string; code: string; lot: string; runId: string; kind: 'pouch'; weights: number[]; at: number; by: string; deleted?: boolean; updatedAt: number; syncedAt?: number }
+const WT_ID = 'wt:'
+export const WT_REF = 'act_weights'
+function wtFrom(x: Partial<WeightTest> | null | undefined): WeightTest | null {
+  if (!x || typeof x !== 'object' || typeof x.id !== 'string' || !x.id || !(DEPTS as unknown[]).includes(x.dept) || !isDay(String(x.date ?? '')) || !normCode(String(x.code ?? ''))) return null
+  const weights = Array.isArray(x.weights) ? x.weights.map(Number).filter((w) => Number.isFinite(w) && w > 0 && w < 1000).slice(0, 200) : []
+  return { id: x.id, date: String(x.date), dept: x.dept as Dept, lineId: String(x.lineId ?? ''), line: String(x.line ?? ''), code: String(x.code).trim().toUpperCase(), lot: String(x.lot ?? ''), runId: String(x.runId ?? ''), kind: 'pouch', weights, at: Number(x.at) || 0, by: String(x.by ?? ''), ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
+}
+const rowOfWt = (x: WeightTest) => ({ id: WT_ID + x.id, at: iso(x.at), by_name: x.by, dept: x.dept, what: 'Peso', before: '', after: JSON.stringify({ date: x.date, lineId: x.lineId, line: x.line, code: x.code, lot: x.lot, runId: x.runId, kind: x.kind, weights: x.weights }), ref_table: WT_REF, ref_key: x.id, deleted: !!x.deleted, updated_at: iso(x.updatedAt), updated_by: user.get() })
+/** a new test on a run (nothing is saved until its first weight) */
+export const weightNew = (run: Run): WeightTest => ({ id: uid(), date: run.date, dept: run.dept, lineId: run.lineId, line: run.line, code: run.code, lot: lotNowOf(run), runId: run.id, kind: 'pouch', weights: [], at: clockNow(), by: user.get(), updatedAt: 0 })
+/** a test saved with the weights it has now (the first one saves it; each next one writes it again); none = taken away */
+export function weightSave(t: WeightTest, weights: number[]) {
+  const was = (state.weights ?? []).find((y) => y.id === t.id)
+  const ws = weights.filter((w) => Number.isFinite(w) && w > 0 && w < 1000)
+  if (!was && !ws.length) return
+  // (a test emptied and then weighed again comes back: the deleted mark goes with the last weight only)
+  const { deleted: _gone, ...base } = was ?? t
+  const x: WeightTest = { ...base, weights: ws, ...(ws.length ? {} : { deleted: true }), updatedAt: stamp(was) }
+  set({ ...state, weights: [...(state.weights ?? []).filter((y) => y.id !== t.id), x] })
+  push('act_changes', WT_ID + x.id, rowOfWt(x))
+}
+/** the weight tests of a day (one code, or all), oldest first */
+export const weightTestsOf = (s: State, date: string, code = '') => (s.weights ?? []).filter((x) => !x.deleted && x.date === date && x.weights.length > 0 && (!code || normCode(x.code) === normCode(code))).sort((a, b) => a.at - b.at)
+/** a code's target: the finished pouch's weight and how much it may be off (lb), set by a manager or the office */
+export type WeightTarget = { pouch: number; tol: number }
+export function weightTarget(s: State, code: string): WeightTarget | null {
+  const d = kpiGet(s, 'target:' + normCode(code))?.data
+  const pouch = Number(d?.pouch), tol = Number(d?.tol)
+  return pouch > 0 ? { pouch, tol: tol >= 0 ? tol : 0 } : null
+}
+export const setWeightTarget = (code: string, pouch: number, tol: number) => kpiPut('target:' + normCode(code), { code: code.trim().toUpperCase(), pouch, tol })
+/** a weight against the target: under, ok or over ('' without a target) */
+export const weightClass = (w: number, t: WeightTarget | null): '' | 'bajo' | 'ok' | 'sobre' => (!t ? '' : w < t.pouch - t.tol - 1e-9 ? 'bajo' : w > t.pouch + t.tol + 1e-9 ? 'sobre' : 'ok')
 /** the shifts a day works (a day of one shift: that one alone) */
 export const attShifts = (s: State, date: string): (1 | 2)[] => { const o = shiftsOf(s, date).only; return o === 1 || o === 2 ? [o] : [1, 2] }
 /**
@@ -3864,6 +3907,14 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
     try { data = JSON.parse(String(row.after ?? '')) as Record<string, unknown> } catch { /* not one */ }
     const e = kpiFrom({ key, data: data ?? {}, by: String(row.by_name ?? ''), at: fromIso(row.at) ?? 0, deleted: !!row.deleted, updatedAt: at, ...syncedOf(row) })
     if (e) set({ ...state, kpi: [...(state.kpi ?? []).filter((y) => y.key !== key), e] })
+  } else if (table === 'act_changes' && row.ref_table === WT_REF && String(row.id ?? '').startsWith(WT_ID)) {
+    // a weight test (2026-10-22): kept apart from the history
+    const id = String(row.id).slice(WT_ID.length), cur = (state.weights ?? []).find((x) => x.id === id)
+    if (!newer(cur)) return
+    let x: Partial<WeightTest> = {}
+    try { x = JSON.parse(String(row.after ?? '')) as Partial<WeightTest> } catch { /* not one */ }
+    const e = wtFrom({ ...x, id, dept: row.dept as Dept, by: String(row.by_name ?? ''), at: fromIso(row.at) ?? 0, deleted: !!row.deleted, updatedAt: at, ...syncedOf(row) })
+    if (e) set({ ...state, weights: [...(state.weights ?? []).filter((y) => y.id !== id), e] })
   } else if (table === 'act_changes' && row.ref_table === ATT_REF && String(row.id ?? '').startsWith(ATT_ID)) {
     // a person of a room's attendance (2026-10-20): kept apart from the history
     const id = String(row.id).slice(ATT_ID.length), cur = (state.attendance ?? []).find((x) => x.id === id)

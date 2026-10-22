@@ -24,6 +24,7 @@ import { Report, reportOpenAt, type ReportAt } from './ReportView'
 import { ProgramToday, programRooms } from './ProgramToday'
 import { LotesView } from './LotesView'
 import { KpiView } from './KpiView'
+import { WeightButton } from './Weights'
 import { seesKpi } from './kpi'
 import { AttendanceCard } from './Attendance'
 import { useColFilters } from './ColFilter'
@@ -2869,6 +2870,8 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
             : <button type="button" className="btn stopbtn" onClick={() => setAsking(true)}>{tr('⏸ Parar')}</button>}
         {/* the set up is one tap away at any moment: from running, or from a stop that turns out to be a set up */}
         {!inSetup && (!stop || stop.lineId === line.id) && <button type="button" className="btn setupbtn" onClick={() => (stop ? switchToSetup(stop.id) : startStop(line.dept, line.id, SETUP, ''))}>{tr('⏱ Set up')}</button>}
+        {/* RTE weighs its pouches (2026-10-22): each weight typed, saved at once */}
+        {line.dept === 'RTE' && <WeightButton s={s} run={run} />}
         {cfg.waste && <button type="button" className="btn" onClick={() => setWasting(true)}>Waste{run.waste ? <b className="red"> {run.waste} lb</b> : ' (lb)'}</button>}
         <button type="button" className="btn" disabled={!!stop && !inSetup} onClick={() => setEnding(true)}>{tr('■ Terminar')}<span className="opt"> {' '}{tr('código')}</span></button>
       </div>
