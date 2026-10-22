@@ -5109,6 +5109,31 @@ section('Pesos en RTE: el operador escribe el peso de cada pouch, se guarda al m
   const back = await device('weights-again', { seed: JSON.parse(disks.get('weights').get('act_v1')), user: 'Operador RTE' })
   eq('al volver a abrir: las pruebas, sus pesos y sus marcas siguen (en onzas, sin volver a multiplicar)', back.use((m) => m.weightTestsOf(m.store.get(), DAY).map((x) => x.entries)), [[{ w: 3.1 }, { k: 'bajo' }], [{ w: 48 }, { w: 46.4 }]])
 }
+section('MFO: el roaster va en bags de libras, y la línea dice Bag en vez de bin (Jose, 2026-10-22)')
+{
+  const bg = await device('mfo-bags', { user: 'Operador MFO' })
+  bg.use((m) => {
+    const st = () => m.store.get()
+    clock = T0
+    m.addLine('MFO', 'Línea 9')
+    const line = st().lines.find((l) => l.name === 'Línea 9')
+    m.startRun(line, 'ROASTER', '6295', DAY, null, 'lb', '', 'bag')
+    const run = () => st().runs.find((r) => r.code === 'ROASTER')
+    const c = m.cfgOf(run())
+    eq('la corrida guarda libras con la marca de bag, y la pantalla dice Bag, "Bag lista" y pide libras', [run().extra, c.unit, c.plural, c.done, c.qtyQ, c.qtyUnit, c.refLabel, m.mfoChoiceOf(run())], [{ bin: 'lb', pack: 'bag' }, 'Bag', 'Bags', 'Bag lista', '¿Cuántas libras lleva esta bag?', 'lb', 'N° de bag', 'bags'])
+    clock = T0 + 10 * M; m.unitDone(run().id, 42.5, '1')
+    clock = T0 + 20 * M; m.unitDone(run().id, 40, '2')
+    eq('va al servidor con la marca de bag', m.outbox.items().filter((i) => i.table === 'act_runs').pop().row.extra, { bin: 'lb', pack: 'bag' })
+    const rep = m.reportOf(st(), DAY, clock)
+    const mfo = rep.byDept.find((d) => d.dept === 'MFO')
+    eq('en el reporte cuenta como libras (lo mismo que un bin de libras), y sabe cuántas son bags', mfo.bins.map((b) => [b.word, b.units, b.qty, b.bags]), [['lb', 2, 82.5, 2]])
+    m.startRun(st().lines.find((l) => l.dept === 'MFO' && l.name !== 'Línea 9') ?? (m.addLine('MFO', 'Línea 8'), st().lines.find((l) => l.name === 'Línea 8')), '4495', '6295', DAY, null, 'lb')
+    eq('un bin de libras sigue siendo bin (sin la marca)', [m.cfgOf(st().runs.find((r) => r.code === '4495')).unit, st().runs.find((r) => r.code === '4495').extra], ['Bin', { bin: 'lb' }])
+    eq('una marca que llega del servidor se guarda; una que no es bag no', [m.cleanExtra({ bin: 'lb', pack: 'bag' }), m.cleanExtra({ bin: 'lb', pack: 'caja' })], [{ bin: 'lb', pack: 'bag' }, { bin: 'lb' }])
+  })
+  const back = await device('mfo-bags-again', { seed: JSON.parse(disks.get('mfo-bags').get('act_v1')), user: 'Operador MFO' })
+  eq('al volver a abrir: sigue siendo bag', back.use((m) => m.cfgOf(m.store.get().runs.find((r) => r.code === 'ROASTER')).unit), 'Bag')
+}
 section('Reporte: el total de cada línea, en su departamento (Jose, 2026-10-22)')
 {
   const lt = await device('line-totals', { user: 'Jose' })

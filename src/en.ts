@@ -2418,4 +2418,15 @@ export const EN: Record<string, string> = {
   "Escribe el peso en onzas, por ejemplo 48.5": "Type the weight in ounces, for example 48.5",
   "Promedio (oz)": "Average (oz)",
   "Objetivo (oz)": "Target (oz)",
+  // MFO bags (2026-10-22)
+  "¿En qué se llena y qué lleva?": "What is filled, and with what?",
+  "Bags": "Bags",
+  "bags de libras (roaster)": "bags of pounds (roaster)",
+  "1 bag": "1 bag",
+  "{0} bags": "{0} bags",
+  "Bag": "Bag",
+  "Bag lista": "Bag done",
+  "¿Cuántas libras lleva esta bag?": "How many pounds in this bag?",
+  "N° de bag": "Bag #",
+  "BAGS · {0}": "BAGS · {0}",
 }

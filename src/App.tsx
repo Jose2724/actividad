@@ -1,6 +1,6 @@
 import { Component, createContext, Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
-import { addLine, plantCut, roomMark, CUT_WINDOW, startSecondShift, addWaste, awayDay, batch, byPlanLot, planLot, cameFrom, carriedOver, dayAfter, dayBefore, orderUnitDefault, programOrderChoices, ordersOf, orderStatus, orderUnitWord, prevPending, workOrderOf, type WorkOrder, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, noteOf, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderAddRuns, orderOfId, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, PLAN_LOT_MAX, productOf, productsCsv, purgeDay, reasonText, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay, orderFull, orderFullText } from './store'
+import { addLine, plantCut, roomMark, CUT_WINDOW, startSecondShift, addWaste, awayDay, batch, byPlanLot, planLot, cameFrom, carriedOver, dayAfter, dayBefore, orderUnitDefault, programOrderChoices, ordersOf, orderStatus, orderUnitWord, prevPending, workOrderOf, type WorkOrder, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, MFO_CHOICES, mfoChoiceOf, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, noteOf, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderAddRuns, orderOfId, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, PLAN_LOT_MAX, productOf, productsCsv, purgeDay, reasonText, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay, orderFull, orderFullText } from './store'
 import { avanceLots, avanceRange, avanceRows, datesBetween, lotAcrossDays, lotRows, lotsKnown, mfoList, mfoText, mfoWord, n1, pending, type AvancePart, type AvanceRow, type MfoMade } from './avance'
 import { loadZip, type Cell } from './xlsx'
 
@@ -1568,7 +1568,7 @@ function TodayCard({ s, dept, now, mgr, date }: { s: State; dept: Dept; now: num
           <label>{tr('Hecho en el turno')}</label>
           <b>{fmtN(t.shiftQty)} <span>{label(t.shiftQty)}</span></b>
           <small>{cfg.qty !== 'none' ? t.shiftUnits + ' ' + unitWord(t.shiftUnits) : t.shiftCodes.length === 1 ? tr('1 código') : t.shiftCodes.length ? tr('{0} códigos', t.shiftCodes.length) : '\u00a0'}</small>
-          {t.shiftBins.length > 0 && <small className="tc-bins">{dept === 'Spiral' ? tr('Además: {0}', t.shiftBins.map((b) => unitsText(dept, b.units, b.qty, cfgFor(dept, b.word))).join(' · ')) : tr('Además, en bins: {0}', t.shiftBins.map((b) => tr('{0} con {1} {2}', b.units === 1 ? tr('1 bin') : tr('{0} bins', b.units), fmtN(b.qty), binWord(b.word))).join(' · '))}</small>}
+          {t.shiftBins.length > 0 && <small className="tc-bins">{dept === 'Spiral' ? tr('Además: {0}', t.shiftBins.map((b) => unitsText(dept, b.units, b.qty, cfgFor(dept, b.word))).join(' · ')) : tr('Además: {0}', t.shiftBins.map((b) => { const bags = b.bags ?? 0, bins = b.units - bags, cnt = [...(bins > 0 ? [bins === 1 ? tr('1 bin') : tr('{0} bins', bins)] : []), ...(bags > 0 ? [bags === 1 ? tr('1 bag') : tr('{0} bags', bags)] : [])].join(' + '); return tr('{0} con {1} {2}', cnt, fmtN(b.qty), binWord(b.word)) }).join(' · '))}</small>}
         </div>
         <div className={'tct goal' + (goal.total ? (pct >= 100 ? ' ok' : '') : ' none')}>
           <label>{tr('Meta del turno')}</label>
@@ -2611,7 +2611,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
     // MFO: its bins hold platos or copas (so many to a case) or are weighed in pounds: as tapped; else as this code was
     // counted last (on this device); else as this line did last; else platos
     const mfoLast = isMfo && code.trim() ? s.runs.filter((r) => r.dept === 'MFO' && normCode(r.code) === normCode(code) && !!binOf(r)).sort((a, b) => b.startedAt - a.startedAt)[0] : undefined
-    const mfoWord = !isMfo ? '' : (MFO_WORDS.includes(binText) ? binText : '') || (mfoLast ? binOf(mfoLast) : '') || (lastRun ? binOf(lastRun) : '') || MFO_WORDS[0]
+    const mfoWord = !isMfo ? '' : (MFO_CHOICES.includes(binText) ? binText : '') || (mfoLast ? mfoChoiceOf(mfoLast) : '') || (lastRun ? mfoChoiceOf(lastRun) : '') || MFO_WORDS[0]
     const suggested = needPer ? lastPerUnit(s, line.dept, code) : null
     // Spiral: mezcla by mezcla, or each mezcla weighed in pounds or counted in cases: the products table's word for the
     // code, else the way it was started last on this device, else mezcla by mezcla
@@ -2679,7 +2679,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
           // only a quantity typed is asked about (the one the line proposes is the usual); RTE's is crates × pouches
           const typedPer = needPer && perUnit != null && (!!per.trim() || (isCart && !!crates.trim()))
           sure.check(typedPer ? [{ key: 'per', n: perUnit, usual: usualFor(s, line.dept, code, ''), unit: cfg.qtyUnit, per: cfg.unit.toLowerCase(), total: isCart }] : [], () => {
-            startRun(line, code.trim().toUpperCase(), lot.trim(), date, needPer ? perUnit : null, isPack && makes === 'bin' ? word : mfoWord, isSpiral && spiralNow !== 'mezclas' ? spiralNow : ''); setDateText(null); setLotText(null); setEditDate(false); setMaking(null); setBinText(''); setMeasure(null)
+            startRun(line, code.trim().toUpperCase(), lot.trim(), date, needPer ? perUnit : null, isPack && makes === 'bin' ? word : mfoWord === 'bags' ? 'lb' : mfoWord, isSpiral && spiralNow !== 'mezclas' ? spiralNow : '', mfoWord === 'bags' ? 'bag' : ''); setDateText(null); setLotText(null); setEditDate(false); setMaking(null); setBinText(''); setMeasure(null)
           })
         }}>
           {isSpiral && (
@@ -2708,9 +2708,9 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
           )}
           {isMfo && (
             <div className="makes">
-              <span className="lab">{tr('¿Qué llevan los bins?')}</span>
-              <div className="seg" role="group" aria-label={tr('¿Qué llevan los bins?')}>
-                {MFO_WORDS.map((w) => <button key={w} type="button" className={kindClass('MFO', w) + (mfoWord === w ? ' on' : '')} aria-pressed={mfoWord === w} onClick={() => setBinText(w)}>{w === 'lb' ? tr('Libras') : w === 'copas' ? tr('Copas') : tr('Platos')}<small>{w === 'lb' ? tr('cada bin se pesa') : w === 'copas' ? tr('cada bin dice cuántas') : tr('cada bin dice cuántos')}</small></button>)}
+              <span className="lab">{tr('¿En qué se llena y qué lleva?')}</span>
+              <div className="seg" role="group" aria-label={tr('¿En qué se llena y qué lleva?')}>
+                {MFO_CHOICES.map((w) => <button key={w} type="button" className={(w === 'bags' ? 'c-blue' : kindClass('MFO', w)) + (mfoWord === w ? ' on' : '')} aria-pressed={mfoWord === w} onClick={() => setBinText(w)}>{w === 'bags' ? tr('Bags') : w === 'lb' ? tr('Libras') : w === 'copas' ? tr('Copas') : tr('Platos')}<small>{w === 'bags' ? tr('bags de libras (roaster)') : w === 'lb' ? tr('cada bin se pesa') : w === 'copas' ? tr('cada bin dice cuántas') : tr('cada bin dice cuántos')}</small></button>)}
               </div>
             </div>
           )}
@@ -2805,7 +2805,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       {/* what runs here, big: the code and the lot going on now; a Packing line says first whether it makes pallets or fills bins */}
       <div className={'hero' + (packBins ? ' bin' : pallets ? ' pal' : '')}>
         {run.dept === 'Packing' && <span className="mode">{binOf(run) ? trx('BINS · {0}', binWord(binOf(run))) : tr('PALLETS')}</span>}
-        {run.dept === 'MFO' && binOf(run) && <span className={'mode ' + kindClass('MFO', binOf(run))}>{trx('BINS · {0}', binWord(binOf(run)))}</span>}
+        {run.dept === 'MFO' && binOf(run) && <span className={'mode ' + (run.extra?.pack === 'bag' ? 'c-blue' : kindClass('MFO', binOf(run)))}>{run.extra?.pack === 'bag' ? trx('BAGS · {0}', binWord(binOf(run))) : trx('BINS · {0}', binWord(binOf(run)))}</span>}
         <div className="hero-main"><b className="code">{run.code}</b><span className="lot">{trx('lote {0}', <b>{lotNowOf(run)}</b>)}</span></div>
         {productOf(s, run.code)?.name && <div className="hero-name">{productOf(s, run.code)?.name}</div>}
         {/* the facts of the run, each with its name: when it started, what a unit carries, and what is not the usual */}

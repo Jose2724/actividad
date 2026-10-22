@@ -37,6 +37,8 @@ export function cfgOf(r: Pick<Run, 'dept' | 'extra'>): DeptCfg {
   // MFO: every line fills bins, and each bin says what it holds as the operators type it: platos (the room's usual),
   // copas, or pounds for the products that are weighed. Nothing is turned into cases (Jose, 2026-10-17). A run of
   // before that day has no word: its bins counted cases
+  // (bags, 2026-10-22: the roaster chicken goes in bags of pounds: a "Bag lista" asks its pounds)
+  if (r.dept === 'MFO' && r.extra?.pack === 'bag') return { ...CFG.MFO, unit: tr('Bag'), plural: tr('Bags'), done: tr('Bag lista'), saved: tr('guardada'), qtyQ: tr('¿Cuántas libras lleva esta bag?'), qtyUnit: tr('lb'), refLabel: tr('N° de bag'), refWord: 'bag' }
   if (r.dept === 'MFO') { const w = r.extra?.bin || 'cajas'; return w === 'platos' ? CFG.MFO : { ...CFG.MFO, qtyQ: binQ(w), qtyUnit: w === 'lb' ? tr('lb') : binWord(w) } }
   const word = binOf(r)
   if (!word) return CFG[r.dept]
@@ -91,7 +93,9 @@ export type Run = { id: string; dept: Dept; lineId: string; line: string; code: 
  * It travels in act_runs.extra (supabase/migrations/008_run_extra.sql).
  */
 export type PalletPart = { lot: string; qty: number; tag: string; at: number; by: string }
-export type RunExtra = { bin?: string; lotNow?: string; open?: { parts: PalletPart[]; po?: string }; measure?: Measure; removed?: number[]; note?: string }
+export type RunExtra = { bin?: string; lotNow?: string; open?: { parts: PalletPart[]; po?: string }; measure?: Measure; removed?: number[]
+  /** MFO filling bags instead of bins (Jose, 2026-10-22: the ROASTER chicken, "que en vez de bin diga bags"): bin is 'lb' then, so every sum counts pounds as before; only the words change */
+  pack?: 'bag'; note?: string }
 // removed = the moments of the units taken off this run on purpose (a cart recorded twice): kept on the row, so that no
 // merge, on any device, brings one back (see updateRun, mergeRun)
 /**
@@ -107,6 +111,10 @@ export const spiralUnitOfText = (t: unknown): SpiralUnit | undefined => { const 
 export const BIN_WORDS = ['platos', 'copas', 'pouches']
 /** what MFO's bins hold: platos or copas, counted as typed, or pounds, each bin weighed; nothing is turned into cases */
 export const MFO_WORDS = ['platos', 'copas', 'lb']
+/** what an MFO line may fill, as chosen when a code starts: its bin words, and bags of pounds (2026-10-22) */
+export const MFO_CHOICES = [...MFO_WORDS, 'bags']
+/** the choice a run was started with */
+export const mfoChoiceOf = (r: Pick<Run, 'dept' | 'extra'>) => (r.dept === 'MFO' && r.extra?.pack === 'bag' ? 'bags' : binOf(r))
 /** the question a bin asks when it is done, with the word of what it holds in its place */
 const binQ = (word: string) => (word === 'lb' ? tr('¿Cuántas libras lleva este bin?') : word === 'copas' ? tr('¿Cuántas copas lleva este bin?') : word === 'cajas' ? tr('¿Cuántas cajas lleva este bin?') : tr('¿Cuántos {0} lleva este bin?', binWord(word)))
 const cleanPart = (x: unknown): PalletPart | null => {
@@ -136,6 +144,7 @@ export function cleanExtra(x: unknown): RunExtra | undefined {
   if (typeof e.bin === 'string' && e.bin.trim()) out.bin = e.bin.trim().slice(0, 30)
   if (typeof e.lotNow === 'string' && e.lotNow.trim()) out.lotNow = e.lotNow.trim().slice(0, 30)
   if (e.measure === 'lb' || e.measure === 'cajas') out.measure = e.measure
+  if (e.pack === 'bag') out.pack = 'bag'
   if (Array.isArray(e.removed)) { const dead = [...new Set(e.removed.map(Number).filter((n) => Number.isFinite(n) && n > 0))].sort((a, b) => a - b); if (dead.length) out.removed = dead.slice(-500) }
   const o = e.open as { parts?: unknown; po?: unknown } | undefined
   if (o && typeof o === 'object') {
@@ -1160,7 +1169,7 @@ export const idleStop = (s: State, lineId: string, now: number) =>
  * was divided into) ends at this moment, and from this moment it counts. A set up of seconds is not one, and neither
  * is what was left open for hours on a line nobody was using, or since the day before: those are dropped.
  */
-export function startRun(line: Line, code: string, lot: string, date: string, perUnit: number | null, bin = '', measure: Measure | '' = '') {
+export function startRun(line: Line, code: string, lot: string, date: string, perUnit: number | null, bin = '', measure: Measure | '' = '', pack: '' | 'bag' = '') {
   const at = clockNow()
   batch(() => {
     for (const x of state.stops.filter((y) => y.lineId === line.id && !y.endedAt)) {
@@ -1168,7 +1177,7 @@ export function startRun(line: Line, code: string, lot: string, date: string, pe
       if (age > SETUP_MAX_MS || fromOtherDay(state, x, at) || (x.reason === SETUP && age < 60_000)) putStop({ ...x, deleted: true })
       else putStop({ ...x, endedAt: Math.max(at, x.startedAt), note: x.reason === SETUP && x.note.startsWith(AFTER) ? 'De ' + x.note.slice(AFTER.length) + ' a ' + code : x.note })
     }
-    putRun({ id: uid(), dept: line.dept, lineId: line.id, line: line.name, code, lot, date, startedAt: at, endedAt: null, units: [], perUnit, waste: 0, by: user.get(), updatedAt: 0, ...((line.dept === 'Packing' || line.dept === 'MFO') && bin.trim() ? { extra: { bin: bin.trim().slice(0, 30) } } : line.dept === 'Spiral' && measure ? { extra: { measure } } : {}) })
+    putRun({ id: uid(), dept: line.dept, lineId: line.id, line: line.name, code, lot, date, startedAt: at, endedAt: null, units: [], perUnit, waste: 0, by: user.get(), updatedAt: 0, ...((line.dept === 'Packing' || line.dept === 'MFO') && bin.trim() ? { extra: { bin: bin.trim().slice(0, 30), ...(line.dept === 'MFO' && pack === 'bag' ? { pack } : {}) } } : line.dept === 'Spiral' && measure ? { extra: { measure } } : {}) })
   })
 }
 const run = (id: string) => state.runs.find((r) => r.id === id)
@@ -3441,8 +3450,9 @@ export const runQty = (s: State, r: Run) => r.units.reduce((t, u) => t + unitQty
 /** what a room made on a day with all its lines together: in total, per code, and the pace (made ÷ hours since the first start of the day) */
 /** the bins of some runs, word by word: how many bins and how much they hold (only the units that pass `keep`) */
 function binTotals(s: State, runs: Run[], keep: (u: Unit) => boolean) {
-  const by = new Map<string, { word: string; units: number; qty: number }>()
-  for (const r of runs) { const word = apartOf(r), e = by.get(word) ?? { word, units: 0, qty: 0 }, mine = r.units.filter(keep); e.units += mine.length; e.qty += mine.reduce((t, u) => t + unitQty(s, r, u), 0); by.set(word, e) }
+  // (bags: MFO's bags of pounds, told apart in how many, 2026-10-22)
+  const by = new Map<string, { word: string; units: number; qty: number; bags?: number }>()
+  for (const r of runs) { const word = apartOf(r), e = by.get(word) ?? { word, units: 0, qty: 0 }, mine = r.units.filter(keep); e.units += mine.length; e.qty += mine.reduce((t, u) => t + unitQty(s, r, u), 0); if (r.extra?.pack === 'bag' && mine.length) e.bags = (e.bags ?? 0) + mine.length; by.set(word, e) }
   return [...by.values()].filter((b) => b.units > 0)
 }
 

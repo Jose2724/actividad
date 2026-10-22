@@ -1126,7 +1126,9 @@ function RoomCard({ k, d }: { k: Kit; d: ReportData['byDept'][number] }) {
   const kinds = first ? d.bins.slice(1) : d.bins
   const kc = (word: string) => (d.dept === 'Packing' ? 'c-indigo' : kindClass(d.dept, word))
   const kindLabel = (word: string) => (d.dept === 'Packing' ? tr('en bins') : apartLabel(d.dept, word))
-  const kindCount = (n: number) => (d.dept === 'Spiral' ? unitsText(d.dept, n) : binsN(n))
+  // (MFO's bags of pounds are said as bags: 2026-10-22)
+  const bagsN = (n: number) => (n === 1 ? tr('1 bag') : tr('{0} bags', n))
+  const kindCount = (n: number, bags = 0) => (d.dept === 'Spiral' ? unitsText(d.dept, n) : bags >= n ? bagsN(n) : bags > 0 ? binsN(n - bags) + ' · ' + bagsN(bags) : binsN(n))
   const toUnits = () => go('rec', { rec: 'units', dept: d.dept })
   const toRuns = () => go('rec', { rec: 'runs', dept: d.dept })
   const toKind = () => (d.dept === 'Packing' ? go('pal', { pal: 'bins', dept: 'Packing' }) : toUnits())
@@ -1145,7 +1147,7 @@ function RoomCard({ k, d }: { k: Kit; d: ReportData['byDept'][number] }) {
           {first ? <>{fmtN(first.qty)} <span className={'k ' + kc(first.word)}>{apartWord(d.dept, first.word)}</span></> : <>{fmtN(q ? d.qty : d.units)} <span>{q ? cfg.qtyUnit : (d.units === 1 ? cfg.unit : cfg.plural).toLowerCase()}</span></>}
         </button>
         <div className="rp-links">
-          {first && <span>{kindLabel(first.word)} · {kindCount(first.units)}</span>}
+          {first && <span>{kindLabel(first.word)} · {kindCount(first.units, first.bags)}</span>}
           {q && !first && <button type="button" className="drill" onClick={toUnits}>{unitsText(d.dept, d.units)}</button>}
           {q && !first && rep.code && cfg.qtyUnit === 'pouches' && casesText(inCases(s, rep.code, d.qty)) && <span>{casesText(inCases(s, rep.code, d.qty))}</span>}
           {d.waste > 0 && <button type="button" className="drill red" onClick={() => go('rec', { rec: 'runs', dept: d.dept, runChip: 'waste' })}>{'waste ' + d.waste + ' lb'}</button>}
@@ -1154,7 +1156,7 @@ function RoomCard({ k, d }: { k: Kit; d: ReportData['byDept'][number] }) {
         </div>
         {kinds.length > 0 && (
           <div className="rp-kinds">
-            {kinds.map((y) => <button key={y.word} type="button" className={'rp-ktag ' + kc(y.word)} onClick={toKind}><span>{kindLabel(y.word)}</span> <b>{fmtN(y.qty)} {apartWord(d.dept, y.word)}</b> <small>{kindCount(y.units)}</small></button>)}
+            {kinds.map((y) => <button key={y.word} type="button" className={'rp-ktag ' + kc(y.word)} onClick={toKind}><span>{kindLabel(y.word)}</span> <b>{fmtN(y.qty)} {apartWord(d.dept, y.word)}</b> <small>{kindCount(y.units, y.bags)}</small></button>)}
           </div>
         )}
         {!rep.shift && b && shiftCols.length === 2 && (

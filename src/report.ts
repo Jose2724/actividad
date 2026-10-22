@@ -159,7 +159,8 @@ export function reportOf(s: State, date: string, now: number, f: ReportFilter = 
   const sum = (list: ReturnType<typeof rowsOf>, k: 0 | 1 | 2, dept: Dept) => {
     const mine = list.filter((x) => x.r.dept === dept)
     // what a line made filling bins (platos, copas, pouches) is not cases nor pallets: told apart, word by word
-    const counted = mine.filter((x) => !apartOf(x.r)), bins = [...mine.filter((x) => !!apartOf(x.r)).reduce((m, x) => { const w = apartOf(x.r), e = m.get(w) ?? { word: w, units: 0, qty: 0 }; e.units += x.units; e.qty += x.qty; return m.set(w, e) }, new Map<string, { word: string; units: number; qty: number }>()).values()].filter((b) => b.units > 0)
+    // (bags: MFO's roaster in bags of pounds, 2026-10-22, counted with the pounds and told apart in how many: see RunExtra.pack)
+    const counted = mine.filter((x) => !apartOf(x.r)), bins = [...mine.filter((x) => !!apartOf(x.r)).reduce((m, x) => { const w = apartOf(x.r), e = m.get(w) ?? { word: w, units: 0, qty: 0 }; e.units += x.units; e.qty += x.qty; if (x.r.extra?.pack === 'bag') e.bags = (e.bags ?? 0) + x.units; return m.set(w, e) }, new Map<string, { word: string; units: number; qty: number; bags?: number }>()).values()].filter((b) => b.units > 0)
     // The clock time of the room: from its first code's start to its last code's end (in this shift, when it is one).
     // "working" and "down" are another thing: the sum of every line's time, so three lines for five hours are fifteen.
     const timed = mine.filter((x) => x.to > x.from)
