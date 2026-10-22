@@ -2161,4 +2161,17 @@ export const EN: Record<string, string> = {
   "Es un bin": "It is a bin",
   "Sí, es un pallet de {0}": "Yes, it is a pallet of {0}",
   "La línea termina este código en Pallets (lo registrado se queda) y lo empieza otra vez en Bins, con el mismo lote. ¿Bins de qué?": "The line ends this code in Pallets (what was recorded stays) and starts it again in Bins, with the same lot. Bins of what?",
+  // short pallets (Jose, 2026-10-21)
+  "¿Por qué va corto este pallet?": "Why is this pallet short?",
+  "Lleva {0} cajas y un pallet lleno de {1} lleva {2}: le faltan {3}.": "It has {0} cases and a full pallet of {1} has {2}: it lacks {3}.",
+  "Se acabó el lote: lo completan con otro lote": "The lot ran out: fill it with another lot",
+  "Es el último pallet de {0}": "It is the last pallet of {0}",
+  "Es el último pallet del {0}": "It is the last pallet of {0}",
+  "Otro motivo…": "Another reason…",
+  "¿Por qué va corto?": "Why is it short?",
+  "ej. se dañaron cajas": "e.g. cases were damaged",
+  "✓ Guardar pallet corto": "✓ Save short pallet",
+  "Un pallet sale lleno. Si se acabó el lote, se completa con otro lote del mismo código en este mismo pallet. El motivo de un pallet corto queda escrito en él y se ve en el Reporte.": "A pallet leaves full. If the lot ran out, it is filled with another lot of the same code on this same pallet. A short pallet's reason is written on it and shows in the Report.",
+  "Pallet corto: último del código": "Short pallet: last of the code",
+  "Pallet corto: último del PO": "Short pallet: last of the PO",
 }
