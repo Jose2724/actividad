@@ -1285,8 +1285,14 @@ export const palletPo = (s: State, r: Run) => (typeof r.extra?.open?.po === 'str
 export function orderPallets(s: State, orderId: string, perPallet?: number | null) {
   const o = s.orders.find((x) => x.id === orderId)
   const done = orderRunsOf(s, orderId).flatMap((r) => r.units.filter((u) => u.po === orderId).map((u) => u.at)).sort((a, b) => a - b)
-  const per = perPallet || (o ? productOf(s, o.code)?.casesPerPallet : 0) || 0
-  return { done, need: o?.cases != null && per > 0 ? Math.ceil(o.cases / per) : null }
+  if (o?.cases == null) return { done, need: null }
+  // the pallets it needs: those made, and what its cases still left take (Packing, 2026-10-22: PO 117953991 of 100
+  // cases in pallets of 50 read "2 pallets de 13", from Productos' 8 cases per pallet). Complete by its cases: the
+  // pallets made. Else the cases left over the size of its pallets: the line's, or the ones made for it, or Productos'
+  const made = orderMade(s, orderId), left = o.cases - made
+  if (left <= 0 && done.length) return { done, need: done.length }
+  const per = perPallet || (done.length && made > 0 ? made / done.length : 0) || productOf(s, o.code)?.casesPerPallet || 0
+  return { done, need: per > 0 ? done.length + Math.ceil(Math.max(0, left) / per - 1e-9) : null }
 }
 /**
  * An order that takes no more pallets (the office, 2026-10-21: "que restrinja cuando están haciendo un PO en exceso:

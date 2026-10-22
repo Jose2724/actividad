@@ -3259,7 +3259,7 @@ section('Un registro de Packing agregado después: sus pallets uno por uno, con 
     const short = m.laterPalletUnits(st(), 'P800', '6290', [{ qty: '30', tag: '3500', po: po8 }])
     const sid = m.addRunLater({ dept: 'Packing', lineId: p1.id, code: 'P800', lot: '6290', date: DAY, startedAt: oct(10, 12, 0), endedAt: oct(10, 12, 10), units: short.units, perUnit: short.perUnit })
     const sp = m.reportOf(st(), DAY, clock, { only: 'Packing' }).pallets.filter((p) => p.r.id === sid)
-    eq('un pallet corto agregado después queda corto: la corrida lleva las cajas por pallet del código, y su lugar en el PO es 1 de 4', [st().runs.find((x) => x.id === sid).perUnit, sp.map((p) => [p.total, p.total < p.r.perUnit, p.of])], [60, [[30, true, [1, 4]]]])
+    eq('un pallet corto agregado después queda corto: la corrida lleva las cajas por pallet del código, y su lugar en el PO es 1 de 5 (2026-10-22: el corto deja 210 cajas, 4 pallets más de 60)', [st().runs.find((x) => x.id === sid).perUnit, sp.map((p) => [p.total, p.total < p.r.perUnit, p.of])], [60, [[30, true, [1, 5]]]])
     // what the window checks before it saves
     const ck = (list) => { const c = m.checkLaterPallets(list.map((x) => (typeof x === 'string' ? { qty: x, tag: '', po: '' } : { po: '', ...x }))); return [c.ok, c.missing, c.twice] }
     eq('sin pallets no se guarda', ck([]), [false, [], []])
@@ -5133,6 +5133,26 @@ section('MFO: el roaster va en bags de libras, y la línea dice Bag en vez de bi
   })
   const back = await device('mfo-bags-again', { seed: JSON.parse(disks.get('mfo-bags').get('act_v1')), user: 'Operador MFO' })
   eq('al volver a abrir: sigue siendo bag', back.use((m) => m.cfgOf(m.store.get().runs.find((r) => r.code === 'ROASTER')).unit), 'Bag')
+}
+section('Los pallets de un PO salen de lo que llevan sus pallets, no solo de Productos (Packing, 2026-10-22: PO de 100 cajas, "2 pallets de 13")')
+{
+  const pp = await device('po-pallets', { user: 'Ingrid' })
+  pp.use((m) => {
+    const st = () => m.store.get()
+    clock = T0
+    m.saveProduct(st().products.length, { code: '2010', name: 'Meatballs', pouchesPerCase: 8, casesPerMix: 14, cratesPerCart: 24, pouchesPerCrate: 0, casesPerPallet: 8, updatedAt: 0 })
+    const oid = m.saveOrder(null, { customer: 'BJ', po: '117953991', code: '2010', cases: 100, shipBy: '2026-10-28', dest: '' })
+    const o = st().orders.find((x) => x.id === oid)
+    eq('sin pallets todavía, con lo de Productos (8 por pallet): 13', m.orderPallets(st(), o.id).need, 13)
+    m.addLine('Packing', 'Línea 1')
+    m.startRun(st().lines.find((l) => l.dept === 'Packing'), '2010', '6292', DAY, 50)
+    const run = () => st().runs.find((r) => r.code === '2010')
+    eq('con la línea en pallets de 50: 2', m.orderPallets(st(), o.id, run().perUnit).need, 2)
+    clock = T0 + 10 * M; m.unitDone(run().id, 50, '1532', undefined, o.id)
+    eq('un pallet de 50 hecho: le falta 1 (aunque Productos diga 8)', [m.orderPallets(st(), o.id).done.length, m.orderPallets(st(), o.id).need], [1, 2])
+    clock = T0 + 20 * M; m.unitDone(run().id, 50, '1533', undefined, o.id)
+    eq('completo por cajas: 2 de 2 pallets', [m.orderPallets(st(), o.id).need, m.orderFullText(st(), o.id)], [2, '2 de 2 pallets · 100 de 100 cajas'])
+  })
 }
 section('Reporte: el total de cada línea, en su departamento (Jose, 2026-10-22)')
 {
