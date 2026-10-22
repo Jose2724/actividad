@@ -2154,4 +2154,11 @@ export const EN: Record<string, string> = {
   "Un PO completo ya no lleva más pallets.": "A complete PO takes no more pallets.",
   "El {0} ya está completo, o estos pallets lo pasan ({1}): quita pallets de ese PO o ponlos en otro, o sin PO.": "{0} is already complete, or these pallets go beyond it ({1}): take pallets off that PO, or give them another one, or none.",
   "{0} de {1} pallets": "{0} of {1} pallets",
+  // ¿Es un bin? (Jose, 2026-10-21)
+  "¿Es un pallet o un bin?": "Is it a pallet or a bin?",
+  "Escribiste {0} cajas, y un pallet de {1} lleva {2}.": "You typed {0} cases, and a pallet of {1} holds {2}.",
+  "Los bins llevan pouches, platos o copas, y se registran en Bins, no en Pallets.": "Bins hold pouches, plates or cups, and are recorded in Bins, not in Pallets.",
+  "Es un bin": "It is a bin",
+  "Sí, es un pallet de {0}": "Yes, it is a pallet of {0}",
+  "La línea termina este código en Pallets (lo registrado se queda) y lo empieza otra vez en Bins, con el mismo lote. ¿Bins de qué?": "The line ends this code in Pallets (what was recorded stays) and starts it again in Bins, with the same lot. Bins of what?",
 }

@@ -2174,8 +2174,16 @@ function PalletDoneDialog({ s, run, onClose, onSaved }: { s: State; run: Run; on
   const lastRow = rows[rows.length - 1], fill = per > onIt && !lastRow.qty && lastRow.lot.trim() ? per - onIt : 0
   // a pallet of more than twice the usual cases is asked about first (Jose, 2026-10-18): the cases typed for its lots
   const sure = useSure(), lots = rows.filter((_, i) => nums[i] > 0).length
-  const save = () => { if (ok) sure.check([{ key: 'pallet', n: total, usual: usualOf(s, run), unit: tr('cajas'), per: 'pallet', total: lots > 1 }], () => { if (palletDone(run.id, rows.map((r, i) => ({ lot: r.lot, qty: nums[i], tag: r.tag })), po, note)) { const now = store.get(); if (po && orderFull(now, po, run.perUnit)) setDoneNote(tr('Con este pallet el {0} quedó completo ({1}). Ya no se le pueden poner más pallets.', pick?.label.split(' · ')[0] ?? '', orderFullText(now, po, run.perUnit))); else onSaved() } }) }
+  // A number far above what a pallet holds is likely a bin put on a pallet's card (Jose, 2026-10-21: "están usando a
+  // veces pallets para poner bins ... que detecte que esto es una paleta y ese número es muy grande y quizás
+  // preguntarle si es un bin"): asked first, with the way to the bins one tap away. Once answered "it is a pallet" the
+  // "¿Seguro?" does not ask about the same number again
+  const [binAsk, setBinAsk] = useState(false), [isPallet, setIsPallet] = useState(0)
+  const usualPallet = usualOf(s, run), tooBig = !!usualPallet && total > usualPallet * 1.5 && isPallet !== total
+  const record = () => { if (palletDone(run.id, rows.map((r, i) => ({ lot: r.lot, qty: nums[i], tag: r.tag })), po, note)) { const now = store.get(); if (po && orderFull(now, po, run.perUnit)) setDoneNote(tr('Con este pallet el {0} quedó completo ({1}). Ya no se le pueden poner más pallets.', pick?.label.split(' · ')[0] ?? '', orderFullText(now, po, run.perUnit))); else onSaved() } }
+  const save = () => { if (!ok) return; if (tooBig) { setBinAsk(true); return } if (isPallet === total) { record(); return } sure.check([{ key: 'pallet', n: total, usual: usualPallet, unit: tr('cajas'), per: 'pallet', total: lots > 1 }], record) }
   if (doneNote) return <NoticeDialog title={tr('✓ PO completo')} text={doneNote} onClose={onSaved} />
+  if (binAsk) return <BinAskDialog s={s} run={run} n={total} usual={usualPallet ?? 0} onBack={() => setBinAsk(false)} onPallet={() => { setIsPallet(total); setBinAsk(false); record() }} onBin={onSaved} />
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
@@ -2306,6 +2314,44 @@ function PartDialog({ run, index, onClose }: { run: Run; index: number; onClose:
             <button type="submit" className="btn primary" disabled={!ok}>{tr('✓ Guardar')}</button>
           </div>
         </form>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * "¿Es un bin?": a pallet typed with far more cases than a pallet of the code holds (Jose, 2026-10-21). Corregir goes
+ * back to the number; "Sí, es un pallet" saves it as it is; "Es un bin" ends the code on the line (what it recorded
+ * stays) and starts it again in Bins of the word they tap, with the same lot, so the bin is recorded where bins go
+ */
+function BinAskDialog({ s, run, n, usual, onBack, onPallet, onBin }: { s: State; run: Run; n: number; usual: number; onBack: () => void; onPallet: () => void; onBin: () => void }) {
+  const [asBin, setAsBin] = useState(false)
+  const line = s.lines.find((l) => l.id === run.lineId)
+  const toBins = (word: string) => {
+    if (!line) return
+    batch(() => { endRun(run.id); startRun(line, run.code, lotNowOf(run), workDay(s).date, null, word) })
+    onBin()
+  }
+  return (
+    <div className="veil" onClick={onBack}>
+      <div className="dlg" onClick={(e) => e.stopPropagation()}>
+        <h3>{tr('¿Es un pallet o un bin?')}</h3>
+        <p>{trx('Escribiste {0} cajas, y un pallet de {1} lleva {2}.', <b>{fmtN(n)}</b>, <b>{run.code}</b>, <b>{fmtN(usual)}</b>)} {tr('Los bins llevan pouches, platos o copas, y se registran en Bins, no en Pallets.')}</p>
+        {!asBin ? (
+          <div className="dbtns spread">
+            <button type="button" className="btn" autoFocus onClick={onBack}>{tr('Corregir')}</button>
+            <div className="btns">
+              <button type="button" className="btn soft" onClick={() => setAsBin(true)}>{tr('Es un bin')}</button>
+              <button type="button" className="btn primary" onClick={onPallet}>{tr('Sí, es un pallet de {0}', fmtN(n))}</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <p className="hint">{tr('La línea termina este código en Pallets (lo registrado se queda) y lo empieza otra vez en Bins, con el mismo lote. ¿Bins de qué?')}</p>
+            <div className="endchoices">{BIN_WORDS.map((w) => <button key={w} type="button" className="btn soft" onClick={() => toBins(w)}>{tr('Bins de {0}', binWord(w))}</button>)}</div>
+            <div className="dbtns"><button type="button" className="btn" onClick={() => setAsBin(false)}>{tr('← Atrás')}</button></div>
+          </>
+        )}
       </div>
     </div>
   )
