@@ -5018,6 +5018,58 @@ section('Asistencia: cada supervisor anota a su gente, saca a quien se va, y el 
   const back = await device('attendance-again', { seed: JSON.parse(disks.get('attendance').get('act_v1')), user: 'Santiago' })
   eq('al volver a abrir: la gente anotada y los esperados siguen', back.use((m) => [m.attOf(m.store.get(), '2026-10-20', 'Kitchen', 1).length, m.attExpectedOf(m.store.get(), 'Kitchen', 1), m.attExpectedOf(m.store.get(), 'Packing', 2)]), [3, 5, 19])
 }
+section('Reporte KPI del día: el plan de Costco del planner, lo real del 0889 y la productividad (Edgar, 2026-10-22)')
+{
+  // a planner shaped as Yasbelth's (made-up numbers): two months side by side, Day / Mixes / Cases / Actual cs
+  const csv = ['Costco MVM Planner,,,,,Case,Trays', 'East Rutherford,,,,,1,8', 'October 2026 - November 2026,,,,,Batches,Pallets,Cases', ',,,,,60,30,1080',
+    'October,,,,November,,,', 'Day,Mixes,Cases,Actual cs,Day,Mixes,Cases,Actual cs',
+    ...Array.from({ length: 31 }, (_, i) => [i + 1, 100, '"1,800"', i === 0 ? '"1,679"' : '', i < 30 ? i + 1 : '', i < 30 ? (i === 25 ? '' : 60) : '', i < 30 ? (i === 25 ? '' : '"1,080"') : '', ''].join(',')),
+    'Total,"3,100","55,800",0,Total,"1,740","31,320",0', 'Forecast,"1,409","25,356","25,356",Forecast,"1,753","31,545","31,545"', 'INSTRUCTIONS:'].join('\r\n')
+  const kp = await device('kpi', { user: 'Jose' })
+  kp.use((m) => {
+    const st = () => m.store.get()
+    const p = m.parsePlanner(csv, 'planner.csv')
+    eq('el planner se lee: cada día con sus mezclas y cajas, el año del título, 18 cajas por mezcla, y el forecast de cada mes', [Object.keys(p.days).length, p.days['2026-10-10'], p.days['2026-11-30'], p.days['2026-11-26'], p.perMix, p.forecast], [31 + 29, { mixes: 100, cases: 1800 }, { mixes: 60, cases: 1080 }, undefined, 18, { '2026-10': 25356, '2026-11': 31545 }])
+    eq('lo real escrito a mano en el planner no se lee (lo tiene Actividad)', JSON.stringify(p).includes('1679'), false)
+    eq('un archivo que no es el planner se dice', typeof m.parsePlanner('a,b\n1,2'), 'string')
+    eq('un planner de enero después de diciembre: enero es del año siguiente', Object.keys(m.parsePlanner(['Plan,December 2026 - January 2027', 'December,,,,January,,,', 'Day,Mixes,Cases,Actual cs,Day,Mixes,Cases,Actual cs', '1,80,"1,440",,1,60,"1,080",'].join('\n')).days), ['2026-12-01', '2027-01-01'])
+    m.kpiPut('plan:0889', p)
+    eq('el plan se guarda en el servidor aparte (act_kpi)', [m.outbox.items().find((i) => i.key === 'kpi:plan:0889')?.row.ref_table, !!m.costcoPlan(st())], ['act_kpi', true])
+    clock = T0
+    for (const d of ['Spiral', 'Packing']) if (!st().lines.some((l) => l.dept === d)) m.addLine(d, 'Línea 1')
+    const line = (d) => st().lines.find((l) => l.dept === d)
+    m.startRun(line('Spiral'), '0889', '6292', DAY, null)
+    m.startRun(line('Packing'), '0889', '6292', DAY, 36)
+    const run = (d) => st().runs.find((r) => r.dept === d && r.code === '0889')
+    for (let k = 1; k <= 5; k++) { clock = T0 + k * 10 * M; m.unitDone(run('Spiral').id, null) }
+    for (let k = 1; k <= 3; k++) { clock = T0 + k * 20 * M; m.unitDone(run('Packing').id, 36) }
+    const day = m.costcoDay(st(), DAY, clock)
+    eq('el día de Costco: lo planeado y lo hecho (mezclas de Spiral, cajas de Packing)', [day.planMixes, day.planCases, day.mixes, day.cases, day.diff], [100, 1800, 5, 108, -1692])
+    const mo = m.costcoMonth(st(), DAY, clock)
+    eq('el mes: plan y real hasta ese día, el plan del mes, y lo que hace falta por día para cumplirlo', [mo.monthPlan, mo.planToDate, mo.actualToDate, mo.left, mo.perDay, mo.forecast], [55800, 18000, 108, 21, Math.ceil((55800 - 108) / 21), 25356])
+    // productivity: the attendance and what each room made
+    const a = m.attAdd(DAY, 'Packing', 1, 'Ana', '', '', true), b = m.attAdd(DAY, 'Packing', 1, 'Beto')
+    eq('una persona se anota como temporal, y se puede cambiar', [st().attendance.find((x) => x.id === a).temp, m.attSetTemp(b, true), st().attendance.find((x) => x.id === b).temp, m.attSetTemp(b, false), st().attendance.find((x) => x.id === b).temp], [true, true, true, true, undefined])
+    eq('el temporal viaja al servidor con la persona', JSON.parse(m.outbox.items().find((i) => i.key === 'att:' + a).row.after).temp, true)
+    const lab = m.laborOf(st(), DAY, clock), pk = lab.rows.find((r) => r.dept === 'Packing')
+    const w = m.workSpan(st(), DAY, 'Packing', 1), h = Math.max(0, Math.min(w.to, clock) - w.from) / 3600000
+    eq('Packing: programados, vinieron, temporales, horas-persona, lo que hizo y por hora-persona', [pk.scheduled, pk.showed, pk.temps, pk.hours, pk.made, pk.unit, pk.perHour], [m.attExpectedOf(st(), 'Packing', 1) + (m.attShifts(st(), DAY).length > 1 ? m.attExpectedOf(st(), 'Packing', 2) : 0), 2, 1, Math.round(2 * h * 10) / 10, 108, 'cajas', Math.round((108 / (Math.round(2 * h * 10) / 10)) * 100) / 100])
+    eq('el total de la planta: las cajas de Packing sobre las horas de todos', [lab.total.cases, lab.total.hours], [108, pk.hours])
+    eq('las horas del turno son las de su horario (de su hora de empezar a la de terminar), no el corte entre turnos', [new Date(w.from).getHours() + ':' + new Date(w.from).getMinutes(), w.to > w.from], [m.shiftsOf(st(), DAY, 'Packing').first.replace(/^0/, '').replace(':00', ':0'), true])
+    // who sees it, and the notes
+    eq('lo ve el admin; otro, solo si su nombre está en la lista', [m.seesKpi(st(), true, 'Jose'), m.seesKpi(st(), false, 'Edgar Carhuapoma')], [true, false])
+    m.kpiPut('access', { names: ['Edgar Carhuapoma'] })
+    eq('con Edgar en la lista lo ve (sin importar mayúsculas ni acentos); otro manager no', [m.seesKpi(st(), false, 'edgar carhuapoma'), m.seesKpi(st(), false, 'Mike')], [true, false])
+    m.kpiPut('note:' + DAY + ':costco', { text: 'Corrió todo el turno sin cambio de código' })
+    eq('la nota del día se guarda por parte', [m.kpiNote(st(), DAY, 'costco'), m.kpiNote(st(), DAY, 'labor')], ['Corrió todo el turno sin cambio de código', ''])
+    m.applyRemote('act_changes', { id: 'kpi:note:' + DAY + ':labor', at: iso(T0 + 90 * M), by_name: 'Edgar', dept: null, what: 'KPI', before: '', after: JSON.stringify({ text: 'Faltaron temporales' }), ref_table: 'act_kpi', ref_key: 'note:' + DAY + ':labor', deleted: false, updated_at: iso(T0 + 90 * M), updated_by: 'Edgar' })
+    m.applyRemote('act_changes', { id: 'kpi:access', at: iso(T0 + 95 * M), by_name: 'Ana', dept: 'Packing', what: 'KPI', before: '', after: JSON.stringify({ names: ['Ana'] }), ref_table: 'act_kpi', ref_key: 'access', deleted: false, updated_at: iso(T0 + 95 * M), updated_by: 'Ana' })
+    eq('un registro del reporte con cuarto (lo que un operador podría escribir) no se toma', m.kpiNames(st()), ['Edgar Carhuapoma'])
+    eq('la nota que escribe Edgar en otro aparato llega, y no se mete en la historia', [m.kpiNote(st(), DAY, 'labor'), st().changes.some((c) => c.id.startsWith('kpi:'))], ['Faltaron temporales', false])
+  })
+  const back = await device('kpi-again', { seed: JSON.parse(disks.get('kpi').get('act_v1')), user: 'Jose' })
+  eq('al volver a abrir: el plan, la lista, las notas y el temporal siguen', back.use((m) => [Object.keys(m.costcoPlan(m.store.get()).days).length, m.kpiNames(m.store.get()), m.kpiNote(m.store.get(), DAY, 'costco'), m.store.get().attendance.filter((x) => x.temp).length]), [60, ['Edgar Carhuapoma'], 'Corrió todo el turno sin cambio de código', 1])
+}
 section('Reporte: el total de cada línea, en su departamento (Jose, 2026-10-22)')
 {
   const lt = await device('line-totals', { user: 'Jose' })

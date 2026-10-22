@@ -154,6 +154,8 @@ for (const [nm, who] of [['Jose', jose], ['Edgar (oficina)', edgar], ['Mara (man
   today[nm + ': marca de registros borrados'] = await twice(who, 'act_changes', chg(uuid(), null, 'act_days:purge', date), 'id', { deleted: true })
   today[nm + ': marca de registros recuperados'] = await twice(who, 'act_changes', chg(uuid(), null, 'act_days:restore', 'x'), 'id', { after: 'b' })
   today[nm + ': un pedido y lo borra'] = await twice(who, 'act_changes', chg('po:o' + k, null, 'act_orders', 'o' + k), 'id', { deleted: true })
+  // (2026-10-22) the Daily KPI Report's records: the plan, who sees it, a day's note (act_kpi, without a room)
+  today[nm + ': un registro del Reporte KPI (act_kpi)'] = await twice(who, 'act_changes', chg('kpi:note:' + date + ':costco', null, 'act_kpi', 'note:' + date + ':costco'), 'id', { after: 'b' })
   for (const ref of ['act_orders_log', 'act_products', 'act_schedule', 'act_targets']) today[nm + ': historia sin cuarto ' + ref] = await twice(who, 'act_changes', chg(uuid(), null, ref, 'k'), 'id', { after: 'b' })
   for (const d of ['Packing', 'Kitchen']) for (const ref of ['act_runs', 'act_plan', 'act_targets']) today[nm + ': historia de ' + d + ' ' + ref + ' (y borrarla, como el borrado de un día)'] = await twice(who, 'act_changes', chg(uuid(), d, ref, 'k'), 'id', { deleted: true })
   for (const key of ['shifts:' + date, 'shiftweek:' + date, 'shiftday:' + date, 'opt:oplines', 'Packing@1', 'line:' + K1 + '@2', 'line:' + K1, 'Kitchen']) today[nm + ': act_targets ' + key.replace(date, '<fecha>')] = await twice(who, 'act_targets', target(key), 'dept', { per_hour: 2 })
@@ -201,6 +203,9 @@ today['Olga (goals): la historia de la meta de su cuarto'] = await twice(olga, '
 // (the goal of another room: the app files its history without a room, see goalRoom in store.ts, 2026-10-18)
 today['Olga (goals): la meta de otro cuarto y su historia, sin cuarto'] = (await twice(olga, 'act_targets', target('RTE@1'), 'dept', { per_hour: 5 })) + '|' + (await twice(olga, 'act_changes', chg(uuid(), null, 'act_targets', 'RTE@1'), 'id', { after: 'b' }))
 eq(Object.keys(today).length + ' escrituras de hoy, por cada papel y poder: ninguna se rechaza', Object.entries(today).filter(([, got]) => got.replace(/\|/g, '') !== ''), [])
+
+section('Reporte KPI (2026-10-22): un operador no escribe sus registros (no tienen cuarto)')
+eq('Ana (op) no escribe el plan de Costco sin cuarto (con su cuarto sí entra, pero la app no lo toma: ver run.mjs)', [await code(as(db, ana, (tx) => upsert(tx, 'act_changes', chg('kpi:plan:0889', null, 'act_kpi', 'plan:0889')))), await code(as(db, ana, (tx) => upsert(tx, 'act_changes', chg('kpi:note:x', 'Packing', 'act_kpi', 'note:x'))))], ['42501', ''])
 
 section('018: una fila de un cuarto no se hace pasar por una marca de la planta (el día, un borrado, un pedido)')
 const mine = uuid()

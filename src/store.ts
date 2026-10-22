@@ -301,7 +301,9 @@ export type WorkOrder = { id: string; dept: Dept; code: string; lot: string; wo:
  */
 export type AttGone = { why: 'otro' | 'casa'; to: Dept | ''; at: number; by: string; line?: string }
 export type AttMove = { from: string; to: string; at: number; by: string }
-export type AttEntry = { id: string; date: string; dept: Dept; shift: 1 | 2; name: string; by: string; at: number; gone: AttGone | null; from: Dept | ''; line: string; moves: AttMove[]; deleted?: boolean; updatedAt: number; syncedAt?: number
+export type AttEntry = { id: string; date: string; dept: Dept; shift: 1 | 2; name: string; by: string; at: number; gone: AttGone | null; from: Dept | ''; line: string; moves: AttMove[]
+  /** a temp (agency) worker (2026-10-22, the COO's Daily KPI: "who shows up ... especially TEMPS") */
+  temp?: boolean; deleted?: boolean; updatedAt: number; syncedAt?: number
   /** a person who came from another room and is not written here: shown from that room's record (never stored) */
   via?: string }
 /** the people a room expects on a shift (a fixed number the managers change: see ATT_DEFAULT) */
@@ -312,7 +314,7 @@ function attFrom(x: Partial<AttEntry> | null | undefined): AttEntry | null {
   if (!name) return null
   const g = x.gone && typeof x.gone === 'object' && (x.gone.why === 'otro' || x.gone.why === 'casa') ? { why: x.gone.why, to: (DEPTS as unknown[]).includes(x.gone.to) ? (x.gone.to as Dept) : ('' as const), at: Number(x.gone.at) || 0, by: String(x.gone.by ?? ''), ...(typeof x.gone.line === 'string' && x.gone.line ? { line: x.gone.line.slice(0, 64) } : {}) } : null
   const moves = Array.isArray(x.moves) ? x.moves.filter((m) => m && typeof m === 'object').map((m) => ({ from: String(m.from ?? '').slice(0, 64), to: String(m.to ?? '').slice(0, 64), at: Number(m.at) || 0, by: String(m.by ?? '') })).slice(-50) : []
-  return { id: x.id, date: String(x.date), dept: x.dept as Dept, shift: x.shift, name, by: String(x.by ?? ''), at: Number(x.at) || 0, gone: g, from: (DEPTS as unknown[]).includes(x.from) ? (x.from as Dept) : '', line: typeof x.line === 'string' ? x.line.slice(0, 64) : '', moves, ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
+  return { id: x.id, date: String(x.date), dept: x.dept as Dept, shift: x.shift, name, by: String(x.by ?? ''), at: Number(x.at) || 0, gone: g, from: (DEPTS as unknown[]).includes(x.from) ? (x.from as Dept) : '', line: typeof x.line === 'string' ? x.line.slice(0, 64) : '', moves, ...(x.temp === true ? { temp: true } : {}), ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
 }
 function attExpectedFrom(x: Partial<AttExpected> | null | undefined): AttExpected | null {
   if (!x || !(DEPTS as unknown[]).includes(x.dept) || (x.shift !== 1 && x.shift !== 2) || !(Number(x.n) >= 0)) return null
@@ -367,7 +369,7 @@ export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Produ
    */
   orderRuns: Run[]
   /** the production orders of every room (deleted ones kept with their flag), and the closed accounts of finished ones */
-  workOrders: WorkOrder[]; orderSeals: OrderSeal[]; attendance: AttEntry[]; attExpected: AttExpected[]; shiftMarks: ShiftMark[] }
+  workOrders: WorkOrder[]; orderSeals: OrderSeal[]; attendance: AttEntry[]; attExpected: AttExpected[]; shiftMarks: ShiftMark[]; kpi: KpiRec[] }
 /**
  * An order to fill in Packing: so many cases of one product for a customer, to ship by a date. Most carry the
  * customer's purchase order number (PO); some never do and some get it later. See "the orders Packing fills".
@@ -453,10 +455,10 @@ function tidySchedule(sch: Schedule): Schedule {
 function isDay(text: string) { return /^\d{4}-\d{2}-\d{2}$/.test(text) }
 /** with a server the lines (and products) are shared and come from it; without one, each device starts with a line per room */
 const SERVER = !!import.meta.env.VITE_SUPABASE_URL
-function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, reasonCodes: { on: false, updatedAt: 0 }, programView: { on: false, updatedAt: 0 }, attView: { on: false, updatedAt: 0 }, viewOpts: { lotes: { on: false, updatedAt: 0 }, flujo: { on: false, updatedAt: 0 } }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [], attendance: [], attExpected: [], shiftMarks: [] } }
+function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, reasonCodes: { on: false, updatedAt: 0 }, programView: { on: false, updatedAt: 0 }, attView: { on: false, updatedAt: 0 }, viewOpts: { lotes: { on: false, updatedAt: 0 }, flujo: { on: false, updatedAt: 0 } }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [], attendance: [], attExpected: [], shiftMarks: [], kpi: [] } }
 function load(): State {
   try {
-    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; reasonCodes?: Partial<ReasonCodesOpt>; programView?: Partial<ReasonCodesOpt>; attView?: Partial<ReasonCodesOpt>; viewOpts?: Partial<Record<ViewOpt, Partial<ReasonCodesOpt>>>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[]; attendance?: Partial<AttEntry>[]; attExpected?: Partial<AttExpected>[]; shiftMarks?: Partial<ShiftMark>[] }
+    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; reasonCodes?: Partial<ReasonCodesOpt>; programView?: Partial<ReasonCodesOpt>; attView?: Partial<ReasonCodesOpt>; viewOpts?: Partial<Record<ViewOpt, Partial<ReasonCodesOpt>>>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[]; attendance?: Partial<AttEntry>[]; attExpected?: Partial<AttExpected>[]; shiftMarks?: Partial<ShiftMark>[]; kpi?: Partial<KpiRec>[] }
     const s = JSON.parse(localStorage.getItem(KEY) || 'null') as Raw | null
     // rows saved by earlier versions: carts as plain timestamps, units without a tag or a name, products with one
     // pouches-per-cart number, nothing with an update time
@@ -503,6 +505,8 @@ function load(): State {
         orderSeals: (s.orderSeals ?? []).map(sealFrom).filter((x): x is OrderSeal => !!x),
         // attendance (2026-10-20): read with function declarations only, as the orders
         attendance: (s.attendance ?? []).map(attFrom).filter((x): x is AttEntry => !!x),
+        // the Daily KPI Report's records (2026-10-22): read with a function declaration (see the TDZ rule above)
+        kpi: (s.kpi ?? []).map(kpiFrom).filter((x): x is KpiRec => !!x),
         attExpected: (s.attExpected ?? []).map(attExpectedFrom).filter((x): x is AttExpected => !!x),
         // each room's hand-over of a day (2026-10-21): a function declaration, as above
         shiftMarks: (s.shiftMarks ?? []).map(shiftMarkFrom).filter((x): x is ShiftMark => !!x),
@@ -920,18 +924,18 @@ function attHere(id: string): AttEntry | null {
   putAtt(x)
   return x
 }
-const rowOfAtt = (x: AttEntry) => ({ id: ATT_ID + x.id, at: iso(x.at), by_name: x.by, dept: x.dept, what: 'Asistencia', before: '', after: JSON.stringify({ date: x.date, shift: x.shift, name: x.name, gone: x.gone, from: x.from, line: x.line, moves: x.moves }), ref_table: ATT_REF, ref_key: x.id, deleted: !!x.deleted, updated_at: iso(x.updatedAt), updated_by: user.get() })
+const rowOfAtt = (x: AttEntry) => ({ id: ATT_ID + x.id, at: iso(x.at), by_name: x.by, dept: x.dept, what: 'Asistencia', before: '', after: JSON.stringify({ date: x.date, shift: x.shift, name: x.name, gone: x.gone, from: x.from, line: x.line, moves: x.moves, ...(x.temp ? { temp: true } : {}) }), ref_table: ATT_REF, ref_key: x.id, deleted: !!x.deleted, updated_at: iso(x.updatedAt), updated_by: user.get() })
 function putAtt(x: AttEntry) {
   if (x.via) return
   set({ ...state, attendance: [...(state.attendance ?? []).filter((y) => y.id !== x.id), x] })
   push('act_changes', ATT_ID + x.id, rowOfAtt(x))
 }
 /** a person written for a room and shift; '' = not written (no name, or that name is already there and not gone) */
-export function attAdd(date: string, dept: Dept, shift: 1 | 2, name: string, from: Dept | '' = '', line = ''): string {
+export function attAdd(date: string, dept: Dept, shift: 1 | 2, name: string, from: Dept | '' = '', line = '', temp = false): string {
   const n = name.replace(/\s+/g, ' ').trim().slice(0, 60)
   if (!n || !isDay(date) || !roomKnown(dept) || (shift !== 1 && shift !== 2)) return ''
   if (attOf(state, date, dept, shift).some((x) => !x.gone && attKey(x.name) === attKey(n))) return ''
-  const x: AttEntry = { id: uid(), date, dept, shift, name: n, by: user.get(), at: clockNow(), gone: null, from, line, moves: [], updatedAt: 0 }
+  const x: AttEntry = { id: uid(), date, dept, shift, name: n, by: user.get(), at: clockNow(), gone: null, from, line, moves: [], ...(temp ? { temp: true } : {}), updatedAt: 0 }
   putAtt({ ...x, updatedAt: stamp(undefined) })
   return x.id
 }
@@ -947,6 +951,18 @@ export function attRemove(id: string, why: 'otro' | 'casa', to: Dept | '' = '', 
     if (!x || x.deleted || x.gone || (why === 'otro' && to === x.dept)) return
     putAtt({ ...x, gone: { why, to: why === 'otro' ? to : '', at: clockNow(), by: user.get(), ...(why === 'otro' && toLine ? { line: toLine } : {}) }, updatedAt: stamp(x) })
     if (why === 'otro' && to && to !== x.dept && addThere) attAdd(x.date, to, x.shift, x.name, x.dept, toLine)
+    ok = true
+  })
+  return ok
+}
+/** a person marked (or unmarked) as a temp (agency) worker */
+export function attSetTemp(id: string, temp: boolean): boolean {
+  let ok = false
+  batch(() => {
+    const x = attHere(id)
+    if (!x || x.deleted || !!x.temp === temp) return
+    const { temp: _was, ...rest } = x
+    putAtt({ ...rest, ...(temp ? { temp: true } : {}), updatedAt: stamp(x) })
     ok = true
   })
   return ok
@@ -987,6 +1003,26 @@ export function attMovesText(s: State, x: AttEntry) {
 }
 /** what a person is doing, as said in the report and its files */
 export const attStateText = (s: State, x: AttEntry) => (!x.gone ? tr('trabajando') : x.gone.why === 'casa' ? tr('se fue a su casa') : tr('pasó a {0}', (x.gone.to || tr('otro cuarto')) + (x.gone.line ? ' · ' + attLineText(s, x.gone.line) : '')))
+// ---- the Daily KPI Report (2026-10-22: the COO's "New Expectations - Daily KPI Reporting", for Jose and Edgar) ----
+/**
+ * What the report keeps that is not production: who may see it (key 'access': names), the Costco MVM plan loaded from
+ * Yasbelth's planner (key 'plan:<code>'), and each day's "what we saw · root cause · action" (key 'note:<date>:<part>').
+ * In act_changes with their own ref_table, as the attendance: no SQL needed; the server never erases (deleted marks).
+ */
+export type KpiRec = { key: string; data: Record<string, unknown>; by: string; at: number; deleted?: boolean; updatedAt: number; syncedAt?: number }
+const KPI_ID = 'kpi:'
+export const KPI_REF = 'act_kpi'
+function kpiFrom(x: Partial<KpiRec> | null | undefined): KpiRec | null {
+  if (!x || typeof x !== 'object' || typeof x.key !== 'string' || !x.key || !x.data || typeof x.data !== 'object') return null
+  return { key: x.key.slice(0, 120), data: x.data as Record<string, unknown>, by: String(x.by ?? ''), at: Number(x.at) || 0, ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
+}
+export const kpiGet = (s: State, key: string) => (s.kpi ?? []).find((x) => x.key === key && !x.deleted) ?? null
+export function kpiPut(key: string, data: Record<string, unknown>, deleted = false) {
+  const was = (state.kpi ?? []).find((x) => x.key === key)
+  const x: KpiRec = { key, data, by: user.get(), at: clockNow(), ...(deleted ? { deleted: true } : {}), updatedAt: stamp(was) }
+  set({ ...state, kpi: [...(state.kpi ?? []).filter((y) => y.key !== key), x] })
+  push('act_changes', KPI_ID + key, { id: KPI_ID + key, at: iso(x.at), by_name: x.by, dept: null, what: 'KPI', before: '', after: JSON.stringify(data), ref_table: KPI_REF, ref_key: key, deleted, updated_at: iso(x.updatedAt), updated_by: user.get() })
+}
 /** the shifts a day works (a day of one shift: that one alone) */
 export const attShifts = (s: State, date: string): (1 | 2)[] => { const o = shiftsOf(s, date).only; return o === 1 || o === 2 ? [o] : [1, 2] }
 /**
@@ -3818,6 +3854,16 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
     const cur = (state.shiftMarks ?? []).find((y) => y.date === m.date && y.dept === m.dept)
     if (!newer(cur)) return
     set({ ...state, shiftMarks: [...(state.shiftMarks ?? []).filter((y) => y !== cur), m] })
+  } else if (table === 'act_changes' && row.ref_table === KPI_REF && String(row.id ?? '').startsWith(KPI_ID)) {
+    // a record of the Daily KPI Report (2026-10-22): kept apart from the history. Only rows without a room count: the
+    // server lets an operator write a row of her own room, never one without a room (managers and the office)
+    if (row.dept != null) return
+    const key = String(row.id).slice(KPI_ID.length), cur = (state.kpi ?? []).find((x) => x.key === key)
+    if (!newer(cur)) return
+    let data: Record<string, unknown> | null = null
+    try { data = JSON.parse(String(row.after ?? '')) as Record<string, unknown> } catch { /* not one */ }
+    const e = kpiFrom({ key, data: data ?? {}, by: String(row.by_name ?? ''), at: fromIso(row.at) ?? 0, deleted: !!row.deleted, updatedAt: at, ...syncedOf(row) })
+    if (e) set({ ...state, kpi: [...(state.kpi ?? []).filter((y) => y.key !== key), e] })
   } else if (table === 'act_changes' && row.ref_table === ATT_REF && String(row.id ?? '').startsWith(ATT_ID)) {
     // a person of a room's attendance (2026-10-20): kept apart from the history
     const id = String(row.id).slice(ATT_ID.length), cur = (state.attendance ?? []).find((x) => x.id === id)

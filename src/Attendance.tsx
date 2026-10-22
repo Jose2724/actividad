@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { attAdd, attBack, attDelete, attendanceOf, attExpectedOf, attLineText, attMoveLine, attOf, attRemove, byLineName, DEPTS, fmtTime, setAttExpected, type AttEntry, type Dept, type State } from './store'
+import { attAdd, attBack, attDelete, attendanceOf, attExpectedOf, attLineText, attMoveLine, attOf, attRemove, attSetTemp, byLineName, DEPTS, fmtTime, setAttExpected, type AttEntry, type Dept, type State } from './store'
 import { useWho } from './App'
 import { DEPT_LOOK, deptVars } from './look'
 import { tr } from './i18n'
@@ -43,6 +43,8 @@ function AttendanceDialog({ s, dept, date, shift: inCourse, edit, onClose }: { s
   const [out, setOut] = useState<{ id: string; mode: 'out' | 'move'; to?: Dept } | null>(null)
   const lines = roomLines(s, dept)
   const [addLine, setAddLine] = useState('')
+  // a temp (agency) worker (2026-10-22, the Daily KPI: "who shows up ... especially TEMPS"): kept for the next one written
+  const [addTemp, setAddTemp] = useState(false)
   const [said, setSaid] = useState('')
   const [editingN, setEditingN] = useState<string | null>(null)
   const box = useRef<HTMLInputElement>(null)
@@ -51,7 +53,7 @@ function AttendanceDialog({ s, dept, date, shift: inCourse, edit, onClose }: { s
   const add = () => {
     const n = name.trim()
     if (!n) return
-    if (!attAdd(date, dept, shift, n, '', lines.some((l) => l.id === addLine) ? addLine : '')) { setTwice(n); return }
+    if (!attAdd(date, dept, shift, n, '', lines.some((l) => l.id === addLine) ? addLine : '', addTemp)) { setTwice(n); return }
     setName(''); setTwice(''); setSaid('')
     box.current?.focus()
   }
@@ -87,6 +89,7 @@ function AttendanceDialog({ s, dept, date, shift: inCourse, edit, onClose }: { s
         {edit && (
           <>
           {lines.length > 0 && <div className="chips att-lines"><span className="att-lab">{tr('Línea:')}</span>{[{ id: '', name: tr('Sin línea') }, ...lines.map((l) => ({ id: l.id, name: attLineText(s, l.id) }))].map((l) => <button key={l.id || '-'} type="button" className={'chip' + (addLine === l.id ? ' on' : '')} onClick={() => { setAddLine(l.id); box.current?.focus() }}>{l.name}</button>)}</div>}
+          <div className="chips att-lines"><span className="att-lab">{tr('Es:')}</span><button type="button" className={'chip' + (!addTemp ? ' on' : '')} onClick={() => { setAddTemp(false); box.current?.focus() }}>{tr('De la compañía')}</button><button type="button" className={'chip' + (addTemp ? ' on' : '')} onClick={() => { setAddTemp(true); box.current?.focus() }}>{tr('Temporal (agencia)')}</button></div>
           <form className="att-add" onSubmit={(e) => { e.preventDefault(); add() }}>
             <input ref={box} value={name} maxLength={60} placeholder={tr('Nombre o número de la persona')} autoComplete="off" aria-label={tr('Nombre o número de la persona')} onChange={(e) => { setName(e.target.value); setTwice('') }} />
             <button type="submit" className="btn primary" disabled={!name.trim()}>{tr('+ Anotar')}</button>
@@ -101,11 +104,12 @@ function AttendanceDialog({ s, dept, date, shift: inCourse, edit, onClose }: { s
             <ol className="att-list">
               {g.people.map((x) => (
                 <li key={x.id}>
-                  <span className="att-name">{x.name}{x.from && <small> · {tr('viene de {0}', x.from)}</small>}{x.moves.length > 0 && <small> · {tr('antes en {0}', attLineText(s, x.moves[x.moves.length - 1].from) || tr('sin línea'))}</small>}</span>
+                  <span className="att-name">{x.name}{x.temp && <small className="att-temp"> {tr('temporal')}</small>}{x.from && <small> · {tr('viene de {0}', x.from)}</small>}{x.moves.length > 0 && <small> · {tr('antes en {0}', attLineText(s, x.moves[x.moves.length - 1].from) || tr('sin línea'))}</small>}</span>
                   <small className="att-at">{fmtTime(x.at)}</small>
                   {edit && out?.id !== x.id && <>
                     <button type="button" className="btn xs soft" onClick={() => { setOut({ id: x.id, mode: 'move' }); setSaid('') }}>{tr('⇄ Trasladar')}</button>
                     <button type="button" className="btn xs" onClick={() => { setOut({ id: x.id, mode: 'out' }); setSaid('') }}>{tr('✕ Sacar')}</button>
+                    <button type="button" className="lnk sm" onClick={() => attSetTemp(x.id, !x.temp)}>{x.temp ? tr('No es temporal') : tr('Es temporal')}</button>
                   </>}
                   {out?.id === x.id && out.mode === 'out' && (
                     <div className="att-out">

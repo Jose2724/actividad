@@ -23,6 +23,8 @@ import { DEPT_LOOK, deptVars } from './look'
 import { Report, reportOpenAt, type ReportAt } from './ReportView'
 import { ProgramToday, programRooms } from './ProgramToday'
 import { LotesView } from './LotesView'
+import { KpiView } from './KpiView'
+import { seesKpi } from './kpi'
 import { AttendanceCard } from './Attendance'
 import { useColFilters } from './ColFilter'
 import { Flujo, flujoOpenAt } from './FlujoView'
@@ -487,7 +489,7 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
   const kept = viewKept<{ dept?: string; tab?: string; sec?: string }>()
   const [dept, setDept] = useState<Dept>(kept?.dept && isDept(kept.dept) ? kept.dept : home)
   // Empleados and Tablets live in Ajustes now: a view kept from before opens there, on its section
-  const [tab, setTab] = useState<'act' | 'pt' | 'av' | 'lt' | 'fl' | 'rep' | 'set'>(kept?.tab === 'av' || kept?.tab === 'fl' || kept?.tab === 'rep' || kept?.tab === 'pt' || kept?.tab === 'lt' ? kept.tab : kept?.tab === 'set' || kept?.tab === 'emp' || kept?.tab === 'dev' ? 'set' : 'act')
+  const [tab, setTab] = useState<'act' | 'pt' | 'av' | 'lt' | 'fl' | 'kpi' | 'rep' | 'set'>(kept?.tab === 'av' || kept?.tab === 'fl' || kept?.tab === 'rep' || kept?.tab === 'pt' || kept?.tab === 'lt' || kept?.tab === 'kpi' ? kept.tab : kept?.tab === 'set' || kept?.tab === 'emp' || kept?.tab === 'dev' ? 'set' : 'act')
   // a lot tapped in Flujo de datos opens in Avance, over all its days (2026-10-18); the Avance tab itself opens plain.
   // (The callback is made once: Flujo is a memo, so the clock's tick every second does not draw it again)
   const [avLot, setAvLot] = useState('')
@@ -498,6 +500,8 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
   // and stays the admin's (it comes back for the others with its switch in Ajustes)
   const seesLotes = (can('products') || viewOnly || admin) && (admin || s.viewOpts.lotes.on)
   const seesFlujo = (can('products') || viewOnly) && (admin || s.viewOpts.flujo.on)
+  // the Daily KPI Report (2026-10-22): the admin and the names on its list (Edgar)
+  const seesKpiTab = seesKpi(s, admin, name)
   const toReport = useCallback((x: ReportAt) => { reportOpenAt(x); setTab('rep') }, [])
   const openLot = useCallback((lot: string) => { setAvLot(lot); setTab('av') }, [])
   // a production order's window leads to Flujo on its code over its days, and to Avance on one of its lots (Jose,
@@ -561,6 +565,7 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
           {seesProgram && <button type="button" className={tab === 'pt' ? 'on' : ''} title={tr('Programa del día')} onClick={() => setTab('pt')}>{tr('Programa')}{!s.programView.on && <small className="pt-only"> 🔒</small>}</button>}
           {(can('products') || viewOnly) && <button type="button" className={tab === 'av' ? 'on' : ''} onClick={() => { setAvLot(''); setTab('av') }}>{tr('Avance')}</button>}
           {seesLotes && <button type="button" className={tab === 'lt' ? 'on' : ''} title={tr('Lotes: de las mezclas a Packing')} onClick={() => setTab('lt')}>{tr('Lotes')}{!s.viewOpts.lotes.on && <small className="pt-only"> 🔒</small>}</button>}
+          {seesKpiTab && <button type="button" className={tab === 'kpi' ? 'on' : ''} title={tr('Reporte KPI del día')} onClick={() => setTab('kpi')}>KPI<small className="pt-only"> 🔒</small></button>}
           {seesFlujo && <button type="button" className={tab === 'fl' ? 'on' : ''} title={tr('Flujo de datos')} onClick={() => setTab('fl')}>{tr('Flujo')}{!s.viewOpts.flujo.on && <small className="pt-only"> 🔒</small>}</button>}
           <button type="button" className={tab === 'rep' ? 'on' : ''} onClick={() => setTab('rep')}>{tr('Reporte')}</button>
           <button type="button" className={'settab' + (tab === 'set' ? ' on' : '')} onClick={() => setTab('set')} aria-label={tr('Ajustes')}><span className="gear">⚙</span><span className="word">{tr('Ajustes')}</span></button>
@@ -606,7 +611,7 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
           </WhoCtx.Provider>
         </div>
         </>
-      ) : tab === 'pt' && seesProgram ? <ProgramToday s={s} date={day.date} now={now} rooms={programRooms(can('depts'), home)} onReport={toReport} /> : tab === 'av' && (can('products') || viewOnly) ? <Avance s={s} startLot={avLot} /> : tab === 'lt' && seesLotes ? <LotesView s={s} today={day.date} onReport={toReport} /> : tab === 'fl' && seesFlujo ? <Flujo s={s} today={day.date} onLot={openLot} /> : tab === 'set' ? <Settings s={s} now={now} day={day} name={name} home={home} mgr={mgr} admin={admin} viewOnly={viewOnly} meId={meId ?? ''} section={sec} onSection={setSec} onLeave={() => setLeaving(true)} /> : <Report s={s} now={now} only={can('depts') ? undefined : home} mgr={can('depts')} admin={admin} wholeDay={!!wholeDay} />}
+      ) : tab === 'pt' && seesProgram ? <ProgramToday s={s} date={day.date} now={now} rooms={programRooms(can('depts'), home)} onReport={toReport} /> : tab === 'av' && (can('products') || viewOnly) ? <Avance s={s} startLot={avLot} /> : tab === 'lt' && seesLotes ? <LotesView s={s} today={day.date} onReport={toReport} /> : tab === 'kpi' && seesKpiTab ? <KpiView s={s} now={now} today={day.date} admin={admin} />: tab === 'fl' && seesFlujo ? <Flujo s={s} today={day.date} onLot={openLot} /> : tab === 'set' ? <Settings s={s} now={now} day={day} name={name} home={home} mgr={mgr} admin={admin} viewOnly={viewOnly} meId={meId ?? ''} section={sec} onSection={setSec} onLeave={() => setLeaving(true)} /> : <Report s={s} now={now} only={can('depts') ? undefined : home} mgr={can('depts')} admin={admin} wholeDay={!!wholeDay} />}
       </ViewGuard>
       </ReportLinkCtx.Provider>
       </WoNavCtx.Provider>

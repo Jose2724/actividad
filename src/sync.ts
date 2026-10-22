@@ -1,7 +1,7 @@
 import { noSignal, passExpired, rememberedMe, renewSession, supabase } from './supabase'
 import { clockNow, startClock } from './clock'
 import { afterFlush, beforeFlush, flush, outbox, setMayGo, setOwnRow, type Item, type Row, type Table } from './outbox'
-import { applyRemote, awayDay, batch, closeDay, codeVariants, DEPTS, firstKeptDay, keepServerPlans, markFetched, markPulled, myDept, onlyTakesOff, openDay, orderGroup, planHeardMark, planKeyOfRow, planRefKeys, prune, queueHeld, role, sameName, shareLocalLines, store, viewOnly, WO_DONE_REF, workNeeds, type Dept, type WorkOrder } from './store'
+import { KPI_REF, applyRemote, awayDay, batch, closeDay, codeVariants, DEPTS, firstKeptDay, keepServerPlans, markFetched, markPulled, myDept, onlyTakesOff, openDay, orderGroup, planHeardMark, planKeyOfRow, planRefKeys, prune, queueHeld, role, sameName, shareLocalLines, store, viewOnly, WO_DONE_REF, workNeeds, type Dept, type WorkOrder } from './store'
 import { canDo } from './powers'
 import { tr } from './i18n'
 import { BUILD } from './update'
@@ -244,6 +244,10 @@ async function bringOrderRuns() {
  * so on a pull of everything they are asked for apart. A failure here never fails the pull: without them the device
  * brings those orders' records instead (fetchWorkRuns)
  */
+/** the Daily KPI Report's records (2026-10-22): the plan and who sees it are older than the days kept, so asked apart */
+async function bringKpi() {
+  try { await pages(listing('act_changes', (q) => q.eq('ref_table', KPI_REF)), (rows) => batch(() => { for (const row of rows) applyRemote('act_changes', row) })) } catch { /* the next full pull tries again */ }
+}
 async function bringSeals() {
   try { await pages(listing('act_changes', (q) => q.eq('ref_table', WO_DONE_REF)), (rows) => batch(() => { for (const row of rows) applyRemote('act_changes', row) })) } catch { /* the records are brought instead */ }
 }
@@ -351,7 +355,7 @@ async function pullNow(): Promise<boolean> {
     // moved forward only makes the next pull read a little more again)
     if (newest) { setSince(newest); try { localStorage.setItem(SPAN, String(Math.round(Math.max(performance.now() - began, Date.now() - beganAt)))) } catch { /* full */ } }
     try { localStorage.setItem(PULLED_WITH, scope) } catch { /* private */ }
-    if (!cursor) await bringSeals()
+    if (!cursor) { await bringSeals(); await bringKpi() }
     await bringOrderRuns()
     await fetchWorkRuns()
     // the plant is on this device now: the accounts of finished orders can be closed with it (see prune in store.ts)
