@@ -5154,6 +5154,35 @@ section('Los pallets de un PO salen de lo que llevan sus pallets, no solo de Pro
     eq('completo por cajas: 2 de 2 pallets', [m.orderPallets(st(), o.id).need, m.orderFullText(st(), o.id)], [2, '2 de 2 pallets · 100 de 100 cajas'])
   })
 }
+section('Pedidos: urgente para que Packing le dé prioridad, y el comentario de Packing de por qué no se puede (la oficina, 2026-10-22)')
+{
+  const ur = await device('order-urgent', { user: 'Oficina' })
+  ur.use((m) => {
+    const st = () => m.store.get()
+    clock = T0
+    const a = m.saveOrder(null, { customer: 'BJ', po: '1001', code: '2010', cases: 100, shipBy: '2026-10-25', dest: '' })
+    const b = m.saveOrder(null, { customer: 'LIDL', po: '1002', code: '2010', cases: 90, shipBy: '2026-10-28', dest: '' })
+    eq('sin urgentes: primero el que sale antes', m.openOrdersFor(st(), '2010').map((o) => o.po), ['1001', '1002'])
+    m.setOrderUrgent(b, true)
+    eq('marcado urgente: sale primero, sube al servidor y queda en el historial', [m.openOrdersFor(st(), '2010').map((o) => o.po), JSON.parse(m.outbox.items().find((i) => i.key === 'po:' + b).row.after).urgent, st().changes.some((c) => c.what === 'Pedido urgente')], [['1002', '1001'], true, true])
+    m.addLine('Packing', 'Línea 1')
+    m.startRun(st().lines.find((l) => l.dept === 'Packing'), '2010', '6292', DAY, 50)
+    eq('al hacer un pallet de ese código, se le propone primero el urgente', m.nextOrderFor(st(), st().runs.find((r) => r.code === '2010')), b)
+    m.saveOrder(b, { customer: 'LIDL', po: '1002', code: '2010', cases: 90, shipBy: '2026-10-28', dest: 'Norte' })
+    eq('editar el pedido sin tocar urgente lo deja urgente', st().orders.find((o) => o.id === b).urgent, true)
+    m.setOrderUrgent(b, false)
+    eq('ya no urgente: vuelve a su lugar', m.openOrdersFor(st(), '2010').map((o) => o.po), ['1001', '1002'])
+    m.setOrderNote(a, '  Falta producto de RTE; sale mañana  ')
+    const up = m.outbox.items().find((i) => i.key === 'ponote:' + a)
+    eq('el comentario de Packing se guarda, con el cuarto Packing (un operador de Packing lo puede escribir), aparte de la historia', [m.orderNoteOf(st(), a).text, up.row.dept, up.row.ref_table, st().changes.some((c) => c.refTable === 'act_order_notes')], ['Falta producto de RTE; sale mañana', 'Packing', 'act_order_notes', false])
+    m.applyRemote('act_changes', { id: 'ponote:' + b, at: iso(T0 + 30 * M), by_name: 'Ingrid', dept: 'Packing', what: 'Comentario del pedido', before: '', after: JSON.stringify({ text: 'Esperando bins de MFO' }), ref_table: 'act_order_notes', ref_key: b, deleted: false, updated_at: iso(T0 + 30 * M), updated_by: 'Ingrid' })
+    eq('el comentario de otra tablet llega', [m.orderNoteOf(st(), b).text, m.orderNoteOf(st(), b).by], ['Esperando bins de MFO', 'Ingrid'])
+    m.setOrderNote(b, '')
+    eq('quitar el comentario lo deja borrado (marcado en el servidor)', [m.orderNoteOf(st(), b), m.outbox.items().find((i) => i.key === 'ponote:' + b)?.row.deleted], [null, true])
+  })
+  const back = await device('order-urgent-again', { seed: JSON.parse(disks.get('order-urgent').get('act_v1')), user: 'Oficina' })
+  eq('al volver a abrir: el comentario sigue', back.use((m) => m.orderNoteOf(m.store.get(), m.store.get().orders.find((o) => o.po === '1001').id)?.text), 'Falta producto de RTE; sale mañana')
+}
 section('Reporte: el total de cada línea, en su departamento (Jose, 2026-10-22)')
 {
   const lt = await device('line-totals', { user: 'Jose' })

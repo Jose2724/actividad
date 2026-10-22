@@ -1,6 +1,6 @@
 import { Component, createContext, Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
-import { addLine, plantCut, roomMark, CUT_WINDOW, startSecondShift, addWaste, awayDay, batch, byPlanLot, planLot, cameFrom, carriedOver, dayAfter, dayBefore, orderUnitDefault, programOrderChoices, ordersOf, orderStatus, orderUnitWord, prevPending, workOrderOf, type WorkOrder, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, MFO_CHOICES, mfoChoiceOf, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, noteOf, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderAddRuns, orderOfId, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, PLAN_LOT_MAX, productOf, productsCsv, purgeDay, reasonText, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay, orderFull, orderFullText } from './store'
+import { addLine, plantCut, roomMark, CUT_WINDOW, startSecondShift, addWaste, awayDay, batch, byPlanLot, planLot, cameFrom, carriedOver, dayAfter, dayBefore, orderUnitDefault, programOrderChoices, ordersOf, orderStatus, orderUnitWord, prevPending, workOrderOf, type WorkOrder, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, MFO_CHOICES, mfoChoiceOf, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, noteOf, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderAddRuns, orderOfId, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, PLAN_LOT_MAX, productOf, productsCsv, purgeDay, reasonText, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay, orderFull, orderFullText, orderNoteOf, setOrderNote, setOrderUrgent } from './store'
 import { avanceLots, avanceRange, avanceRows, datesBetween, lotAcrossDays, lotRows, lotsKnown, mfoList, mfoText, mfoWord, n1, pending, type AvancePart, type AvanceRow, type MfoMade } from './avance'
 import { loadZip, type Cell } from './xlsx'
 
@@ -1222,6 +1222,11 @@ function OrdersCard({ s, mgr, onAdd }: { s: State; mgr: boolean; onAdd?: (o: Ord
   const [shown, setShown] = useState(ORDERS_PAGE)
   // when they ship (Jose, 2026-10-21: "filtrar la fecha más cercana que va a salir"): late, today, this week
   const [when, setWhen] = useState<'' | 'late' | 'today' | 'week'>('')
+  // urgent orders (2026-10-22) and Packing's comment on each one
+  const [onlyUrgent, setOnlyUrgent] = useState(false)
+  const [noting, setNoting] = useState<string | null>(null)
+  const who = useWho()
+  const writesNote = mgr || writesIn(who, 'Packing')
   const open = s.orders.filter((o) => !o.closed).sort(byShip), closed = s.orders.filter((o) => o.closed).sort(byShip)
   // each order with what has been packed for it, and its state: not started, started, complete (or no cases said)
   const rowOf = (o: Order) => { const made = orderMade(s, o.id), left = o.cases != null ? o.cases - made : null; return { o, made, left, seq: orderPallets(s, o.id), st: (left == null ? 'open' : left <= 0 ? 'done' : made > 0 ? 'going' : 'todo') as OrderState } }
@@ -1237,7 +1242,8 @@ function OrdersCard({ s, mgr, onAdd }: { s: State; mgr: boolean; onAdd?: (o: Ord
   const today = dayOf(clockNow()), weekEnd = dayOf(clockNow() + 6 * 86_400_000)
   const isWhen = (o: Order, k: '' | 'late' | 'today' | 'week') => !k || (!!o.shipBy && (k === 'late' ? o.shipBy < today : k === 'today' ? o.shipBy === today : o.shipBy >= today && o.shipBy <= weekEnd))
   const whenCount = (k: 'late' | 'today' | 'week') => ofCode.filter((x) => isState(x, only) && isWhen(x.o, k)).length
-  const picked = ofCode.filter((x) => isState(x, only) && isWhen(x.o, when))
+  const urgentN = ofCode.filter((x) => x.o.urgent).length
+  const picked = ofCode.filter((x) => isState(x, only) && isWhen(x.o, when) && (!onlyUrgent || !!x.o.urgent))
   // the columns' filters, as in Excel (Jose and the office, 2026-10-21): PO, code, customer, ship date (the nearest
   // first), destination, how it goes; they add up with the search, the code and the chips above
   const shipLabel = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' }) + (d === today ? ' · ' + tr('hoy') : d < today ? ' · ' + tr('ya pasó') : '')
@@ -1245,8 +1251,8 @@ function OrdersCard({ s, mgr, onAdd }: { s: State; mgr: boolean; onAdd?: (o: Ord
   const list = f.shown
   if (!s.orders.length && !mgr) return null
   const closedHits = needle ? closed.filter(hits).length : 0
-  const active = [needle ? '"' + q.trim() + '"' : '', codeNow ? tr('Código {0}', codes.find(([k]) => k === codeNow)?.[1] ?? codeNow) : '', only ? stateText(only) : '', when === 'late' ? tr('Envío ya pasó') : when === 'today' ? tr('Sale hoy') : when === 'week' ? tr('Sale esta semana') : ''].filter(Boolean)
-  const clear = () => { setQ(''); setFCode(''); setOnly(''); setWhen(''); f.clear(); setShown(ORDERS_PAGE) }
+  const active = [needle ? '"' + q.trim() + '"' : '', codeNow ? tr('Código {0}', codes.find(([k]) => k === codeNow)?.[1] ?? codeNow) : '', only ? stateText(only) : '', onlyUrgent ? tr('🔥 Urgentes') : '', when === 'late' ? tr('Envío ya pasó') : when === 'today' ? tr('Sale hoy') : when === 'week' ? tr('Sale esta semana') : ''].filter(Boolean)
+  const clear = () => { setQ(''); setFCode(''); setOnly(''); setWhen(''); setOnlyUrgent(false); f.clear(); setShown(ORDERS_PAGE) }
   /** what is seen, added up: the foot of the table */
   const sums = (list: ReturnType<typeof rowOf>[]) => ({ asked: list.reduce((t, x) => t + (x.o.cases ?? 0), 0), made: list.reduce((t, x) => t + x.made, 0), left: list.reduce((t, x) => t + Math.max(0, x.left ?? 0), 0), pallets: list.reduce((t, x) => t + x.seq.done.length, 0), need: list.reduce((t, x) => t + (x.seq.need ?? 0), 0), unknown: list.some((x) => x.o.cases == null) })
   // "+ Pallets" comes first in its row, as the report's buttons do, and stays in sight while the table slides on a
@@ -1258,16 +1264,17 @@ function OrdersCard({ s, mgr, onAdd }: { s: State; mgr: boolean; onAdd?: (o: Ord
         <tbody>{list.map(({ o, made, left, seq, st }) => {
           const name = productOf(s, o.code)?.name
           return (
-            <tr key={o.id} className={'o-' + st}>
+            <tr key={o.id} className={'o-' + st + (o.urgent && !o.closed ? ' o-urgent' : '')}>
               {adds && <td className="oact">{onAdd && !o.closed && <button type="button" className="btn soft xs" title={tr('Agregar pallets al pedido {0}', orderLabel(o))} aria-label={tr('Agregar pallets al pedido {0}', orderLabel(o))} onClick={() => onAdd(o)}>{tr('+ Pallets')}</button>}</td>}
-              <td><button type="button" className="drill" title={tr('Ver sus pallets')} onClick={() => setViewing(o.id)}>{o.po || <i>{tr('sin PO')}</i>}</button></td>
+              <td><button type="button" className="drill" title={tr('Ver sus pallets')} onClick={() => setViewing(o.id)}>{o.po || <i>{tr('sin PO')}</i>}</button>{o.urgent && !o.closed && <b className="o-urg">{tr('🔥 URGENTE')}</b>}
+                {(() => { const n = orderNoteOf(s, o.id); return n ? <button type="button" className="o-note" disabled={!writesNote} title={tr('{0} · {1}', n.by, fmtTime(n.at))} onClick={() => setNoting(o.id)}>💬 {n.text}</button> : writesNote && !o.closed ? <button type="button" className="lnk sm o-addnote" onClick={() => setNoting(o.id)}>{tr('💬 Comentario')}</button> : null })()}</td>
               <td><b className="code">{o.code}</b>{name && <small className="pname">{name}</small>}</td>
               <td>{o.customer || '—'}</td><td>{o.shipBy ? shipText(o.shipBy) : '—'}</td>
               <td className="num">{o.cases != null ? fmtN(o.cases) : '—'}</td><td className="num"><b>{fmtN(made)}</b></td>
               <td className="num">{left == null ? '—' : left > 0 ? <span className={'ost st-' + st}>{trx('faltan {0}', fmtN(left))}</span> : <span className="ost st-done">{tr('✓ completo')}{left < 0 ? ' (+' + fmtN(-left) + ')' : ''}</span>}</td>
               <td className="obar">{o.cases != null && o.cases > 0 && <div className="bar"><i className={'st-' + st} style={{ width: Math.min(100, Math.round((made / o.cases) * 100)) + '%' }} /></div>}<small>{seq.need ? trx('{0} de {1}', seq.done.length, seq.need) : seq.done.length ? (seq.done.length === 1 ? tr('1 pallet') : trx('{0} pallets', seq.done.length)) : ''}</small></td>
               <td className="dest">{o.dest || '—'}</td>
-              {mgr && <td><button type="button" className="lnk" onClick={() => setEditing(o.id)}>{tr('Editar')}</button></td>}
+              {mgr && <td><button type="button" className="lnk" onClick={() => setEditing(o.id)}>{tr('Editar')}</button>{!o.closed && <button type="button" className={'lnk sm o-urgbtn' + (o.urgent ? ' on' : '')} title={o.urgent ? tr('Quitar urgente') : tr('Marcar urgente')} aria-label={o.urgent ? tr('Quitar urgente') : tr('Marcar urgente')} onClick={() => setOrderUrgent(o.id, !o.urgent)}>{o.urgent ? tr('Quitar 🔥') : tr('🔥 Urgente')}</button>}</td>}
             </tr>
           )
         })}</tbody>
@@ -1302,6 +1309,7 @@ function OrdersCard({ s, mgr, onAdd }: { s: State; mgr: boolean; onAdd?: (o: Ord
           </div>
           <div className="ofilters">
             <button type="button" className={'chip sm' + (!only ? ' on' : '')} aria-pressed={!only} onClick={() => { setOnly(''); setShown(ORDERS_PAGE) }}>{tr('Todos')}<small>{ofCode.length}</small></button>
+            {urgentN > 0 && <button type="button" className={'chip sm warn' + (onlyUrgent ? ' on' : '')} aria-pressed={onlyUrgent} onClick={() => { setOnlyUrgent(!onlyUrgent); setShown(ORDERS_PAGE) }}>{tr('🔥 Urgentes')}<small>{urgentN}</small></button>}
             {(['todo', 'going', 'left', 'done', 'open'] as const).filter((k) => count(k) > 0 && (k !== 'left' || (count('todo') > 0 && count('going') > 0))).map((k) => <button key={k} type="button" className={'chip sm st-' + (k === 'left' ? 'going' : k) + (only === k ? ' on' : '')} aria-pressed={only === k} onClick={() => { setOnly(k); setShown(ORDERS_PAGE) }}><i className="dotst" />{stateText(k)}<small>{count(k)}</small></button>)}
           </div>
           {active.length > 0 && (
@@ -1332,6 +1340,7 @@ function OrdersCard({ s, mgr, onAdd }: { s: State; mgr: boolean; onAdd?: (o: Ord
       {closed.length > 0 && <button type="button" className="lnk" onClick={() => setShowClosed(!showClosed)}>{trx('{0} los marcados completos ({1})', showClosed ? tr('Ocultar') : tr('Ver'), closed.length)}</button>}
       {showClosed && closed.length > 0 && table(closed.filter(hits).map(rowOf))}
       {editing && <OrderDialog key={editing} s={s} order={s.orders.find((o) => o.id === editing)} onClose={() => setEditing(null)} />}
+      {noting && (() => { const o = s.orders.find((x) => x.id === noting); return o ? <OrderNoteDialog s={s} order={o} onClose={() => setNoting(null)} /> : null })()}
       {/* an open order's pallets window adds pallets too, for the same people who see "+ Pallets" (onAdd) */}
       {order && <OrderPalletsDialog s={s} order={order} onAdd={onAdd && !order.closed ? () => onAdd(order) : undefined} onClose={() => setViewing(null)} />}
     </div>
@@ -1472,6 +1481,26 @@ function OrderAddChooser({ s, order, onPick, onNew, onClose }: { s: State; order
  * An order is written or changed. What matters is the PO number and the product it is for; a new one can name several
  * products at once (one order each, with the same PO). Everything else is optional, the PO too: it can come later.
  */
+/** Packing's comment on an order (2026-10-22): why it cannot be done, or anything to say of it; cleared = taken away */
+function OrderNoteDialog({ s, order, onClose }: { s: State; order: Order; onClose: () => void }) {
+  const now = orderNoteOf(s, order.id)
+  const [text, setText] = useState(now?.text ?? '')
+  return (
+    <div className="veil" onClick={onClose}>
+      <form className="dlg" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); setOrderNote(order.id, text); onClose() }}>
+        <h3>{tr('💬 Comentario · {0} · {1}', orderLabel(order), order.code)}</h3>
+        <p className="hint">{tr('Por qué no se puede hacer, o lo que haya que saber de este pedido. Lo ven la oficina y Packing.')}</p>
+        <textarea rows={4} maxLength={500} autoFocus value={text} placeholder={tr('ej. Falta producto de RTE; sale mañana en el turno 1')} onChange={(e) => setText(e.target.value)} />
+        {now && <small className="hint">{tr('Último: {0} · {1}', now.by, fmtTime(now.at))}</small>}
+        <div className="dbtns spread">
+          <div className="btns">{now && <button type="button" className="btn" onClick={() => { setOrderNote(order.id, ''); onClose() }}>{tr('Quitar el comentario')}</button>}</div>
+          <div className="btns"><button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button><button type="submit" className="btn primary">{tr('✓ Guardar')}</button></div>
+        </div>
+      </form>
+    </div>
+  )
+}
+
 function OrderDialog({ s, order, onClose }: { s: State; order: Order | undefined; onClose: () => void }) {
   const [customer, setCustomer] = useState(order?.customer ?? '')
   const [po, setPo] = useState(order?.po ?? '')
@@ -1479,6 +1508,7 @@ function OrderDialog({ s, order, onClose }: { s: State; order: Order | undefined
   const [cases, setCases] = useState(order?.cases != null ? String(order.cases) : '')
   const [shipBy, setShipBy] = useState(order?.shipBy ?? '')
   const [dest, setDest] = useState(order?.dest ?? '')
+  const [urgent, setUrgent] = useState(!!order?.urgent)
   const [dropping, setDropping] = useState(false)
   const customers = [...new Set(s.orders.map((o) => o.customer).filter(Boolean))].sort()
   const codes = orderCodes(code), many = codes.length > 1
@@ -1488,7 +1518,7 @@ function OrderDialog({ s, order, onClose }: { s: State; order: Order | undefined
   const ok = codes.length > 0 && !(order && many)
   const save = () => {
     if (!ok) return
-    const rest = { customer, po, shipBy, dest }
+    const rest = { customer, po, shipBy, dest, urgent }
     if (order) saveOrder(order.id, { ...rest, code: codes[0], cases: Number(cases) > 0 ? Number(cases) : null })
     else for (const c of codes) saveOrder(null, { ...rest, code: c, cases: !many && Number(cases) > 0 ? Number(cases) : null })
     onClose()
@@ -1508,6 +1538,7 @@ function OrderDialog({ s, order, onClose }: { s: State; order: Order | undefined
           <datalist id="order-customers">{customers.map((c) => <option key={c} value={c} />)}</datalist>
           <label>{trx('Fecha de envío {0}', <small>{tr('(opcional)')}</small>)} <input type="date" value={shipBy} onChange={(e) => setShipBy(e.target.value)} /></label>
           <label>{trx('Destino {0}', <small>{tr('(opcional)')}</small>)} <input value={dest} onChange={(e) => setDest(e.target.value)} placeholder={tr('ej. Almacén Norte')} autoComplete="off" /></label>
+          <label className="switch o-urgsw"><span>{tr('🔥 Urgente: Packing le da prioridad')}<small>{tr('Sale primero en la lista y se le propone primero a cada pallet de este código.')}</small></span><input type="checkbox" role="switch" checked={urgent} onChange={(e) => setUrgent(e.target.checked)} /></label>
           <div className="dbtns spread">
             <div className="btns">
               {order && <button type="button" className="btn" onClick={() => { closeOrder(order.id, !order.closed); onClose() }}>{order.closed ? tr('Abrir otra vez') : tr('✓ Marcar completo')}</button>}

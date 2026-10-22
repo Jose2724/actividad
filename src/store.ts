@@ -378,18 +378,20 @@ export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Produ
    */
   orderRuns: Run[]
   /** the production orders of every room (deleted ones kept with their flag), and the closed accounts of finished ones */
-  workOrders: WorkOrder[]; orderSeals: OrderSeal[]; attendance: AttEntry[]; attExpected: AttExpected[]; shiftMarks: ShiftMark[]; kpi: KpiRec[]; weights: WeightTest[] }
+  workOrders: WorkOrder[]; orderSeals: OrderSeal[]; attendance: AttEntry[]; attExpected: AttExpected[]; shiftMarks: ShiftMark[]; kpi: KpiRec[]; weights: WeightTest[]; orderNotes: OrderNote[] }
 /**
  * An order to fill in Packing: so many cases of one product for a customer, to ship by a date. Most carry the
  * customer's purchase order number (PO); some never do and some get it later. See "the orders Packing fills".
  */
-export type Order = { id: string; customer: string; po: string; code: string; cases: number | null; shipBy: string; dest: string; closed: boolean; createdAt: number; by: string; updatedAt: number }
+export type Order = { id: string; customer: string; po: string; code: string; cases: number | null; shipBy: string; dest: string; closed: boolean; createdAt: number; by: string; updatedAt: number
+  /** marked urgent by the office (2026-10-22: "ponerlo como urgente para que Packing pueda darle prioridad"): first in every list, and proposed first */
+  urgent?: boolean }
 /** an order as it is kept, whatever arrives (null = not one: it has no product code) */
 function orderOf(id: string, x: Partial<Order> | null | undefined, by: string, updatedAt: number): Order | null {
   if (!id || !x || typeof x !== 'object') return null
   const code = String(x.code ?? '').trim().toUpperCase(), cases = Number(x.cases), ship = String(x.shipBy ?? '')
   if (!code) return null
-  return { id, customer: String(x.customer ?? '').trim(), po: String(x.po ?? '').trim(), code, cases: x.cases != null && Number.isFinite(cases) && cases > 0 ? cases : null, shipBy: /^\d{4}-\d{2}-\d{2}$/.test(ship) ? ship : '', dest: String(x.dest ?? '').trim(), closed: !!x.closed, createdAt: Number(x.createdAt) || 0, by, updatedAt }
+  return { id, customer: String(x.customer ?? '').trim(), po: String(x.po ?? '').trim(), code, cases: x.cases != null && Number.isFinite(cases) && cases > 0 ? cases : null, shipBy: /^\d{4}-\d{2}-\d{2}$/.test(ship) ? ship : '', dest: String(x.dest ?? '').trim(), closed: !!x.closed, createdAt: Number(x.createdAt) || 0, by, updatedAt, ...(x.urgent === true ? { urgent: true } : {}) }
 }
 /** the hours the plant works while nobody has set others (see "the shifts" below; these few lines sit here because load() needs them) */
 export const SHIFTS_DEFAULT: ShiftHours = { first: '06:00', firstEnd: '15:00', second: '15:30', secondEnd: '01:00' }
@@ -464,10 +466,10 @@ function tidySchedule(sch: Schedule): Schedule {
 function isDay(text: string) { return /^\d{4}-\d{2}-\d{2}$/.test(text) }
 /** with a server the lines (and products) are shared and come from it; without one, each device starts with a line per room */
 const SERVER = !!import.meta.env.VITE_SUPABASE_URL
-function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, reasonCodes: { on: false, updatedAt: 0 }, programView: { on: false, updatedAt: 0 }, attView: { on: false, updatedAt: 0 }, viewOpts: { lotes: { on: false, updatedAt: 0 }, flujo: { on: false, updatedAt: 0 } }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [], attendance: [], attExpected: [], shiftMarks: [], kpi: [], weights: [] } }
+function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, reasonCodes: { on: false, updatedAt: 0 }, programView: { on: false, updatedAt: 0 }, attView: { on: false, updatedAt: 0 }, viewOpts: { lotes: { on: false, updatedAt: 0 }, flujo: { on: false, updatedAt: 0 } }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [], attendance: [], attExpected: [], shiftMarks: [], kpi: [], weights: [], orderNotes: [] } }
 function load(): State {
   try {
-    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; reasonCodes?: Partial<ReasonCodesOpt>; programView?: Partial<ReasonCodesOpt>; attView?: Partial<ReasonCodesOpt>; viewOpts?: Partial<Record<ViewOpt, Partial<ReasonCodesOpt>>>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[]; attendance?: Partial<AttEntry>[]; attExpected?: Partial<AttExpected>[]; shiftMarks?: Partial<ShiftMark>[]; kpi?: Partial<KpiRec>[]; weights?: Partial<WeightTest>[] }
+    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; reasonCodes?: Partial<ReasonCodesOpt>; programView?: Partial<ReasonCodesOpt>; attView?: Partial<ReasonCodesOpt>; viewOpts?: Partial<Record<ViewOpt, Partial<ReasonCodesOpt>>>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[]; attendance?: Partial<AttEntry>[]; attExpected?: Partial<AttExpected>[]; shiftMarks?: Partial<ShiftMark>[]; kpi?: Partial<KpiRec>[]; weights?: Partial<WeightTest>[]; orderNotes?: Partial<OrderNote>[] }
     const s = JSON.parse(localStorage.getItem(KEY) || 'null') as Raw | null
     // rows saved by earlier versions: carts as plain timestamps, units without a tag or a name, products with one
     // pouches-per-cart number, nothing with an update time
@@ -517,6 +519,7 @@ function load(): State {
         // the Daily KPI Report's records (2026-10-22): read with a function declaration (see the TDZ rule above)
         kpi: (s.kpi ?? []).map(kpiFrom).filter((x): x is KpiRec => !!x),
         weights: (s.weights ?? []).map(wtFrom).filter((x): x is WeightTest => !!x),
+        orderNotes: (s.orderNotes ?? []).map(orderNoteFrom).filter((x): x is OrderNote => !!x),
         attExpected: (s.attExpected ?? []).map(attExpectedFrom).filter((x): x is AttExpected => !!x),
         // each room's hand-over of a day (2026-10-21): a function declaration, as above
         shiftMarks: (s.shiftMarks ?? []).map(shiftMarkFrom).filter((x): x is ShiftMark => !!x),
@@ -1922,16 +1925,16 @@ export function nearDay(base: number, hm: string) {
  */
 const ORDER_REF = 'act_orders', ORDER_ID = 'po:', ORDER_LOG = 'act_orders_log'
 const ORDER_AT = Date.UTC(2099, 0, 1, 12)
-const rowOfOrder = (o: Order, deleted = false) => ({ id: ORDER_ID + o.id, at: iso(ORDER_AT), by_name: o.by, dept: null, what: 'Pedido', before: '', after: JSON.stringify({ customer: o.customer, po: o.po, code: o.code, cases: o.cases, shipBy: o.shipBy, dest: o.dest, closed: o.closed, createdAt: o.createdAt }), ref_table: ORDER_REF, ref_key: o.id, deleted, updated_at: iso(o.updatedAt), updated_by: user.get() })
+const rowOfOrder = (o: Order, deleted = false) => ({ id: ORDER_ID + o.id, at: iso(ORDER_AT), by_name: o.by, dept: null, what: 'Pedido', before: '', after: JSON.stringify({ customer: o.customer, po: o.po, code: o.code, cases: o.cases, shipBy: o.shipBy, dest: o.dest, closed: o.closed, createdAt: o.createdAt, ...(o.urgent ? { urgent: true } : {}) }), ref_table: ORDER_REF, ref_key: o.id, deleted, updated_at: iso(o.updatedAt), updated_by: user.get() })
 const putOrder = (o: Order) => { set({ ...state, orders: [...state.orders.filter((x) => x.id !== o.id), o] }); push('act_changes', ORDER_ID + o.id, rowOfOrder(o)) }
 export const orderOfId = (s: State, id: string | undefined) => (id ? s.orders.find((o) => o.id === id) : undefined)
 /** "Cliente · PO 123", or "Cliente · sin PO" while it has no number */
 export const orderLabel = (o: Order) => [o.customer, o.po ? 'PO ' + o.po : tr('sin PO')].filter(Boolean).join(' · ')
 /** an order as the history keeps it: always in the same words, whatever language the screen is in */
 const orderLabelKept = (o: Order) => [o.customer, o.po ? 'PO ' + o.po : 'sin PO'].filter(Boolean).join(' · ')
-const orderText = (o: Order) => [orderLabelKept(o), 'código ' + o.code, o.cases != null ? o.cases + ' cajas' : '', o.shipBy ? 'envío ' + o.shipBy : '', o.dest, o.closed ? 'completo' : ''].filter(Boolean).join(' · ')
-/** the one that ships first on top; those without a date, last */
-export const byShip = (a: Order, b: Order) => (a.shipBy || '9999').localeCompare(b.shipBy || '9999') || a.createdAt - b.createdAt
+const orderText = (o: Order) => [orderLabelKept(o), 'código ' + o.code, o.cases != null ? o.cases + ' cajas' : '', o.shipBy ? 'envío ' + o.shipBy : '', o.dest, o.urgent ? 'urgente' : '', o.closed ? 'completo' : ''].filter(Boolean).join(' · ')
+/** the urgent ones first (2026-10-22), then the one that ships first; those without a date, last */
+export const byShip = (a: Order, b: Order) => (b.urgent ? 1 : 0) - (a.urgent ? 1 : 0) || (a.shipBy || '9999').localeCompare(b.shipBy || '9999') || a.createdAt - b.createdAt
 /** the orders still open for a product */
 export const openOrdersFor = (s: State, code: string) => s.orders.filter((o) => !o.closed && normCode(o.code) === normCode(code)).sort(byShip)
 /**
@@ -1958,13 +1961,41 @@ export const orderCodes = (text: string) => [...new Set(text.split(/[\s,;]+/).ma
  * writes an order, or changes one (its PO number can come later). '' when it has no product code. The same PO number
  * can be on as many orders as the office wants (one per product, or the same product again): it is theirs to say.
  */
-export function saveOrder(id: string | null, x: { customer: string; po: string; code: string; cases: number | null; shipBy: string; dest: string }): string {
+export function saveOrder(id: string | null, x: { customer: string; po: string; code: string; cases: number | null; shipBy: string; dest: string; urgent?: boolean }): string {
   const old = id ? state.orders.find((o) => o.id === id) : undefined
-  const o = orderOf(old?.id ?? uid(), { ...x, closed: old?.closed ?? false, createdAt: old?.createdAt ?? clockNow() }, old?.by ?? user.get(), stamp(old))
+  const o = orderOf(old?.id ?? uid(), { ...x, urgent: x.urgent ?? old?.urgent ?? false, closed: old?.closed ?? false, createdAt: old?.createdAt ?? clockNow() }, old?.by ?? user.get(), stamp(old))
   if (!o) return ''
   putOrder(o)
   logChange(null, old ? 'Pedido cambiado' : 'Pedido nuevo', old ? orderText(old) : '', orderText(o), ORDER_LOG, o.id)
   return o.id
+}
+/** an order marked urgent (Packing gives it priority), or not any more */
+export function setOrderUrgent(id: string, urgent: boolean) {
+  const o = state.orders.find((x) => x.id === id)
+  if (!o || !!o.urgent === urgent) return
+  const { urgent: _was, ...rest } = o
+  putOrder({ ...rest, ...(urgent ? { urgent: true } : {}), updatedAt: stamp(o) })
+  logChange(null, urgent ? 'Pedido urgente' : 'Pedido ya no urgente', '', orderText({ ...rest }), ORDER_LOG, o.id + (urgent ? ':u' : ':n'))
+}
+// ---- Packing's comment on an order (2026-10-22: "un espacio para que dé comentario de por qué no se pueda hacer") ----
+/**
+ * One comment per order, written by Packing (its room: an operator of Packing writes it, the order itself is the
+ * office's): why it cannot be done, or anything to say of it. Cleared = marked deleted. In act_changes, apart.
+ */
+export type OrderNote = { orderId: string; text: string; by: string; at: number; deleted?: boolean; updatedAt: number; syncedAt?: number }
+const ONOTE_ID = 'ponote:'
+export const ONOTE_REF = 'act_order_notes'
+function orderNoteFrom(x: Partial<OrderNote> | null | undefined): OrderNote | null {
+  if (!x || typeof x !== 'object' || typeof x.orderId !== 'string' || !x.orderId) return null
+  return { orderId: x.orderId, text: String(x.text ?? '').trim().slice(0, 500), by: String(x.by ?? ''), at: Number(x.at) || 0, ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
+}
+export const orderNoteOf = (s: State, orderId: string) => (s.orderNotes ?? []).find((x) => x.orderId === orderId && !x.deleted && x.text) ?? null
+export function setOrderNote(orderId: string, text: string) {
+  const was = (state.orderNotes ?? []).find((x) => x.orderId === orderId), t = text.trim().slice(0, 500)
+  if ((was && !was.deleted ? was.text : '') === t) return
+  const x: OrderNote = { orderId, text: t, by: user.get(), at: clockNow(), ...(t ? {} : { deleted: true }), updatedAt: stamp(was) }
+  set({ ...state, orderNotes: [...(state.orderNotes ?? []).filter((y) => y.orderId !== orderId), x] })
+  push('act_changes', ONOTE_ID + orderId, { id: ONOTE_ID + orderId, at: iso(x.at), by_name: x.by, dept: 'Packing', what: 'Comentario del pedido', before: '', after: JSON.stringify({ text: t }), ref_table: ONOTE_REF, ref_key: orderId, deleted: !t, updated_at: iso(x.updatedAt), updated_by: user.get() })
 }
 /** an order is complete (Packing is no longer offered it), or is opened again */
 export function closeOrder(id: string, closed: boolean) {
@@ -3942,6 +3973,14 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
     try { data = JSON.parse(String(row.after ?? '')) as Record<string, unknown> } catch { /* not one */ }
     const e = kpiFrom({ key, data: data ?? {}, by: String(row.by_name ?? ''), at: fromIso(row.at) ?? 0, deleted: !!row.deleted, updatedAt: at, ...syncedOf(row) })
     if (e) set({ ...state, kpi: [...(state.kpi ?? []).filter((y) => y.key !== key), e] })
+  } else if (table === 'act_changes' && row.ref_table === ONOTE_REF && String(row.id ?? '').startsWith(ONOTE_ID)) {
+    // Packing's comment on an order (2026-10-22): kept apart from the history
+    const orderId = String(row.id).slice(ONOTE_ID.length), cur = (state.orderNotes ?? []).find((x) => x.orderId === orderId)
+    if (!newer(cur)) return
+    let x: Partial<OrderNote> = {}
+    try { x = JSON.parse(String(row.after ?? '')) as Partial<OrderNote> } catch { /* not one */ }
+    const e = orderNoteFrom({ ...x, orderId, by: String(row.by_name ?? ''), at: fromIso(row.at) ?? 0, deleted: !!row.deleted, updatedAt: at, ...syncedOf(row) })
+    if (e) set({ ...state, orderNotes: [...(state.orderNotes ?? []).filter((y) => y.orderId !== orderId), e] })
   } else if (table === 'act_changes' && row.ref_table === WT_REF && String(row.id ?? '').startsWith(WT_ID)) {
     // a weight test (2026-10-22): kept apart from the history
     const id = String(row.id).slice(WT_ID.length), cur = (state.weights ?? []).find((x) => x.id === id)
