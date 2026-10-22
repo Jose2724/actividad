@@ -2012,3 +2012,9 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 .wt-list li.bajo{color:#b91c1c;font-weight:700}.wt-list li.sobre{color:#b45309;font-weight:700}.wt-list li.ok small{color:#166534}
 .wt-sum{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;font-weight:700}.wt-sum .red{color:#b91c1c}.wt-sum .amber{color:#b45309}
 .wt-earlier{margin:0;padding-left:18px;color:var(--muted);display:grid;gap:2px}
+
+/* the two big buttons of a weight test (2026-10-22): over amber, under red, as the marks */
+.wt-big{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.wt-big .btn{min-height:64px;font-size:20px;font-weight:800}
+.wt-over{background:#fff4e5;border-color:#f59e0b;color:#b45309;box-shadow:0 3px 0 #f59e0b}
+.wt-under{background:#fee2e2;border-color:#dc2626;color:#b91c1c;box-shadow:0 3px 0 #dc2626}

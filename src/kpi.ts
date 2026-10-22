@@ -1,4 +1,4 @@
-import { attExpectedOf, attOf, attShifts, CFG, dayBefore, DEPTS, kpiGet, shiftsOf, weightClass, weightTarget, weightTestsOf, type AttEntry, type Dept, type State } from './store'
+import { attExpectedOf, attOf, attShifts, CFG, dayBefore, DEPTS, entryClass, kpiGet, shiftsOf, weightTarget, weightTestsOf, wtWeights, type AttEntry, type Dept, type State } from './store'
 import { reportOf } from './report'
 
 /**
@@ -154,9 +154,10 @@ export function laborOf(s: State, date: string, now: number) {
 export function weightsOf(s: State, date: string) {
   const tests = weightTestsOf(s, date), codes = [...new Set(tests.map((t) => t.code))]
   return codes.map((code) => {
-    const mine = tests.filter((t) => t.code === code), all = mine.flatMap((t) => t.weights), target = weightTarget(s, code)
-    const avg = all.reduce((a, b) => a + b, 0) / all.length
-    return { code, tests: mine, n: all.length, avg: Math.round(avg * 1000) / 1000, min: Math.min(...all), max: Math.max(...all), target, under: all.filter((w) => weightClass(w, target) === 'bajo').length, over: all.filter((w) => weightClass(w, target) === 'sobre').length, avgPct: target ? (avg - target.pouch) / target.pouch : null }
+    // checked = every pouch (a weight, a call, or both); weighed = the ones with a weight (the average, min and max)
+    const mine = tests.filter((t) => t.code === code), entries = mine.flatMap((t) => t.entries), all = mine.flatMap(wtWeights), target = weightTarget(s, code)
+    const avg = all.length ? all.reduce((a, b) => a + b, 0) / all.length : null
+    return { code, tests: mine, checked: entries.length, n: all.length, avg: avg == null ? null : Math.round(avg * 1000) / 1000, min: all.length ? Math.min(...all) : null, max: all.length ? Math.max(...all) : null, target, under: entries.filter((e) => entryClass(e, target) === 'bajo').length, over: entries.filter((e) => entryClass(e, target) === 'sobre').length, avgPct: target && avg != null ? (avg - target.pouch) / target.pouch : null }
   })
 }
 

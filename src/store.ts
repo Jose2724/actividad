@@ -1026,36 +1026,50 @@ export function kpiPut(key: string, data: Record<string, unknown>, deleted = fal
 }
 // ---- weight tests (2026-10-22: "botones en RTE para que los operadores registren la que está baja y subida de weight") ----
 /**
- * A weight test on a line: every hour or at each changeover the operator weighs several finished pouches and types each
- * weight (lb, gross with the plastic, as Joshua's sheet). Each typed weight is saved at once (the test is one record,
- * written again with every weight), so nothing typed is lost. Against the code's target (pouch ± tolerance, set by a
- * manager) each weight is under, ok or over. In act_changes with the run's room (an RTE operator writes her room), apart
- * from the history, as the attendance; the server never erases.
+ * A weight test on a line: every hour or at each changeover the operator checks several finished pouches. Each pouch is
+ * an entry: its weight typed (lb, gross with the plastic, as Joshua's sheet), and/or the operator's own call with the
+ * two buttons, "▲ Sobre peso" or "▼ Bajo peso" (Jose, 2026-10-22: "dos botones, uno para arriba y otro para abajo, y que
+ * el peso sea opcional"). A weight without a call is judged against the code's target (pouch ± tolerance, set by a
+ * manager). Each entry is saved at once (the test is one record, written again with every entry), so nothing is lost.
+ * In act_changes with the run's room (an RTE operator writes her room), apart from the history; the server never erases.
+ * (The first build of the same day kept only weights: a record with "weights" and no "entries" reads as those weights.)
  */
-export type WeightTest = { id: string; date: string; dept: Dept; lineId: string; line: string; code: string; lot: string; runId: string; kind: 'pouch'; weights: number[]; at: number; by: string; deleted?: boolean; updatedAt: number; syncedAt?: number }
+export type WtEntry = { w?: number; k?: 'sobre' | 'bajo' }
+export type WeightTest = { id: string; date: string; dept: Dept; lineId: string; line: string; code: string; lot: string; runId: string; kind: 'pouch'; entries: WtEntry[]; at: number; by: string; deleted?: boolean; updatedAt: number; syncedAt?: number }
 const WT_ID = 'wt:'
 export const WT_REF = 'act_weights'
-function wtFrom(x: Partial<WeightTest> | null | undefined): WeightTest | null {
-  if (!x || typeof x !== 'object' || typeof x.id !== 'string' || !x.id || !(DEPTS as unknown[]).includes(x.dept) || !isDay(String(x.date ?? '')) || !normCode(String(x.code ?? ''))) return null
-  const weights = Array.isArray(x.weights) ? x.weights.map(Number).filter((w) => Number.isFinite(w) && w > 0 && w < 1000).slice(0, 200) : []
-  return { id: x.id, date: String(x.date), dept: x.dept as Dept, lineId: String(x.lineId ?? ''), line: String(x.line ?? ''), code: String(x.code).trim().toUpperCase(), lot: String(x.lot ?? ''), runId: String(x.runId ?? ''), kind: 'pouch', weights, at: Number(x.at) || 0, by: String(x.by ?? ''), ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
+// (a function declaration, as everything load() reaches: a const here is not there yet when the device opens, see the TDZ rule)
+function okWeight(w: unknown) { return Number.isFinite(Number(w)) && Number(w) > 0 && Number(w) < 1000 }
+function wtEntries(x: { entries?: unknown; weights?: unknown }): WtEntry[] {
+  const raw = Array.isArray(x.entries) ? x.entries : Array.isArray(x.weights) ? x.weights.map((w) => ({ w })) : []
+  return raw.map((e): WtEntry | null => {
+    if (!e || typeof e !== 'object') return null
+    const o = e as { w?: unknown; k?: unknown }, w = okWeight(o.w) ? Number(o.w) : undefined, k = o.k === 'sobre' || o.k === 'bajo' ? o.k : undefined
+    return w == null && !k ? null : { ...(w != null ? { w } : {}), ...(k ? { k } : {}) }
+  }).filter((e): e is WtEntry => !!e).slice(0, 300)
 }
-const rowOfWt = (x: WeightTest) => ({ id: WT_ID + x.id, at: iso(x.at), by_name: x.by, dept: x.dept, what: 'Peso', before: '', after: JSON.stringify({ date: x.date, lineId: x.lineId, line: x.line, code: x.code, lot: x.lot, runId: x.runId, kind: x.kind, weights: x.weights }), ref_table: WT_REF, ref_key: x.id, deleted: !!x.deleted, updated_at: iso(x.updatedAt), updated_by: user.get() })
-/** a new test on a run (nothing is saved until its first weight) */
-export const weightNew = (run: Run): WeightTest => ({ id: uid(), date: run.date, dept: run.dept, lineId: run.lineId, line: run.line, code: run.code, lot: lotNowOf(run), runId: run.id, kind: 'pouch', weights: [], at: clockNow(), by: user.get(), updatedAt: 0 })
-/** a test saved with the weights it has now (the first one saves it; each next one writes it again); none = taken away */
-export function weightSave(t: WeightTest, weights: number[]) {
+function wtFrom(x: (Partial<WeightTest> & { weights?: unknown }) | null | undefined): WeightTest | null {
+  if (!x || typeof x !== 'object' || typeof x.id !== 'string' || !x.id || !(DEPTS as unknown[]).includes(x.dept) || !isDay(String(x.date ?? '')) || !normCode(String(x.code ?? ''))) return null
+  return { id: x.id, date: String(x.date), dept: x.dept as Dept, lineId: String(x.lineId ?? ''), line: String(x.line ?? ''), code: String(x.code).trim().toUpperCase(), lot: String(x.lot ?? ''), runId: String(x.runId ?? ''), kind: 'pouch', entries: wtEntries(x), at: Number(x.at) || 0, by: String(x.by ?? ''), ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
+}
+/** the weights typed in a test (the entries with a number) */
+export const wtWeights = (t: WeightTest) => t.entries.flatMap((e) => (e.w != null ? [e.w] : []))
+const rowOfWt = (x: WeightTest) => ({ id: WT_ID + x.id, at: iso(x.at), by_name: x.by, dept: x.dept, what: 'Peso', before: '', after: JSON.stringify({ date: x.date, lineId: x.lineId, line: x.line, code: x.code, lot: x.lot, runId: x.runId, kind: x.kind, entries: x.entries, weights: wtWeights(x) }), ref_table: WT_REF, ref_key: x.id, deleted: !!x.deleted, updated_at: iso(x.updatedAt), updated_by: user.get() })
+/** a new test on a run (nothing is saved until its first entry) */
+export const weightNew = (run: Run): WeightTest => ({ id: uid(), date: run.date, dept: run.dept, lineId: run.lineId, line: run.line, code: run.code, lot: lotNowOf(run), runId: run.id, kind: 'pouch', entries: [], at: clockNow(), by: user.get(), updatedAt: 0 })
+/** a test saved with the entries it has now (the first one saves it; each next one writes it again); none = taken away */
+export function weightSave(t: WeightTest, entries: WtEntry[]) {
   const was = (state.weights ?? []).find((y) => y.id === t.id)
-  const ws = weights.filter((w) => Number.isFinite(w) && w > 0 && w < 1000)
-  if (!was && !ws.length) return
-  // (a test emptied and then weighed again comes back: the deleted mark goes with the last weight only)
+  const es = wtEntries({ entries })
+  if (!was && !es.length) return
+  // (a test emptied and then checked again comes back: the deleted mark goes with the last entry only)
   const { deleted: _gone, ...base } = was ?? t
-  const x: WeightTest = { ...base, weights: ws, ...(ws.length ? {} : { deleted: true }), updatedAt: stamp(was) }
+  const x: WeightTest = { ...base, entries: es, ...(es.length ? {} : { deleted: true }), updatedAt: stamp(was) }
   set({ ...state, weights: [...(state.weights ?? []).filter((y) => y.id !== t.id), x] })
   push('act_changes', WT_ID + x.id, rowOfWt(x))
 }
 /** the weight tests of a day (one code, or all), oldest first */
-export const weightTestsOf = (s: State, date: string, code = '') => (s.weights ?? []).filter((x) => !x.deleted && x.date === date && x.weights.length > 0 && (!code || normCode(x.code) === normCode(code))).sort((a, b) => a.at - b.at)
+export const weightTestsOf = (s: State, date: string, code = '') => (s.weights ?? []).filter((x) => !x.deleted && x.date === date && x.entries.length > 0 && (!code || normCode(x.code) === normCode(code))).sort((a, b) => a.at - b.at)
 /** a code's target: the finished pouch's weight and how much it may be off (lb), set by a manager or the office */
 export type WeightTarget = { pouch: number; tol: number }
 export function weightTarget(s: State, code: string): WeightTarget | null {
@@ -1066,6 +1080,8 @@ export function weightTarget(s: State, code: string): WeightTarget | null {
 export const setWeightTarget = (code: string, pouch: number, tol: number) => kpiPut('target:' + normCode(code), { code: code.trim().toUpperCase(), pouch, tol })
 /** a weight against the target: under, ok or over ('' without a target) */
 export const weightClass = (w: number, t: WeightTarget | null): '' | 'bajo' | 'ok' | 'sobre' => (!t ? '' : w < t.pouch - t.tol - 1e-9 ? 'bajo' : w > t.pouch + t.tol + 1e-9 ? 'sobre' : 'ok')
+/** an entry: the operator's call when they made one, else its weight against the target */
+export const entryClass = (e: WtEntry, t: WeightTarget | null): '' | 'bajo' | 'ok' | 'sobre' => e.k ?? (e.w != null ? weightClass(e.w, t) : '')
 /** the shifts a day works (a day of one shift: that one alone) */
 export const attShifts = (s: State, date: string): (1 | 2)[] => { const o = shiftsOf(s, date).only; return o === 1 || o === 2 ? [o] : [1, 2] }
 /**

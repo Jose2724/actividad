@@ -2394,4 +2394,18 @@ export const EN: Record<string, string> = {
   "Lo dice QA. Con 3.01 y 0.05: menos de 2.96 es bajo, más de 3.06 es sobre.": "QA sets it. With 3.01 and 0.05: below 2.96 is under, above 3.06 is over.",
   "1 prueba": "1 test",
   "{0} pruebas": "{0} tests",
+  // the weight buttons (2026-10-22)
+  "Revisados": "Checked",
+  "Cada pouch": "Each pouch",
+  "Lo que RTE anota con el botón ⚖ Peso de cada línea: los pouches sobre o bajo de peso, y los pesos que escribieron contra el objetivo de cada código (lo pone un manager con el peso que diga QA). Crudo y cocido se agregan cuando QA mande sus objetivos.": "What RTE records with each line's ⚖ Weight button: the pouches over or under weight, and the weights typed against each code's target (set by a manager with QA's weight). Raw and cooked come once QA sends their targets.",
+  "1 pouch": "1 pouch",
+  "{0} pouches": "{0} pouches",
+  "promedio {0} lb": "average {0} lb",
+  "▲ Sobre peso": "▲ Overweight",
+  "▼ Bajo peso": "▼ Underweight",
+  "Toca el botón por cada pouch fuera de peso. El peso es opcional: si lo pesaste, escríbelo antes de tocar el botón.": "Tap the button for each pouch off weight. The weight is optional: if you weighed it, type it before tapping the button.",
+  "Peso del pouch (lb), opcional": "Pouch weight (lb), optional",
+  "Este código todavía no tiene peso objetivo: un peso escrito con \"+ Agregar\" se guarda sin decir bajo o sobre.": "This code has no target weight yet: a weight typed with \"+ Add\" is saved without saying under or over.",
+  "Cada uno ya quedó guardado.": "Each one is already saved.",
+  "Antes en este código": "Earlier on this code",
 }
