@@ -10,7 +10,7 @@ import { tr } from './i18n'
  * goes with it, and "+ Agregar" keeps a weight on its own (judged against the code's target). Each entry is saved at
  * once. A manager or the office sets the target (pouch weight and tolerance) here.
  */
-const lb = (w: number) => (Math.round(w * 1000) / 1000).toString()
+const oz = (w: number) => (Math.round(w * 100) / 100).toString()
 const MARK = { bajo: '▼', ok: '✓', sobre: '▲', '': '' } as const
 const avgOf = (ws: number[]) => (ws.length ? ws.reduce((a, b) => a + b, 0) / ws.length : null)
 
@@ -29,7 +29,7 @@ export function WeightButton({ s, run }: { s: State; run: Run }) {
 function testText(x: WeightTest, t: ReturnType<typeof weightTarget>) {
   const ws = wtWeights(x), avg = avgOf(ws)
   const under = x.entries.filter((e) => entryClass(e, t) === 'bajo').length, over = x.entries.filter((e) => entryClass(e, t) === 'sobre').length
-  return [x.entries.length === 1 ? tr('1 pouch') : tr('{0} pouches', x.entries.length), tr('▼ {0} · ▲ {1}', under, over), ...(avg != null ? [tr('promedio {0} lb', lb(avg))] : [])].join(' · ')
+  return [x.entries.length === 1 ? tr('1 pouch') : tr('{0} pouches', x.entries.length), tr('▼ {0} · ▲ {1}', under, over), ...(avg != null ? [tr('promedio {0} oz', oz(avg))] : [])].join(' · ')
 }
 
 function WeightDialog({ s, run, onClose }: { s: State; run: Run; onClose: () => void }) {
@@ -47,7 +47,7 @@ function WeightDialog({ s, run, onClose }: { s: State; run: Run; onClose: () => 
   // a weight typed is optional with the buttons, needed with "+ Agregar"
   const add = (k?: 'sobre' | 'bajo') => {
     const typed = text.trim(), w = Number(typed.replace(',', '.'))
-    if (typed && !(w > 0 && w < 100)) { setBad(true); return }
+    if (typed && !(w > 0 && w < 2000)) { setBad(true); return }
     if (!typed && !k) { setBad(true); return }
     const e: WtEntry = { ...(typed ? { w } : {}), ...(k ? { k } : {}) }
     weightSave(test, [...entries, e]); setText(''); setBad(false)
@@ -64,17 +64,17 @@ function WeightDialog({ s, run, onClose }: { s: State; run: Run; onClose: () => 
         </div>
         <p className="hint">{tr('Toca el botón por cada pouch fuera de peso. El peso es opcional: si lo pesaste, escríbelo antes de tocar el botón.')}</p>
         <form className="wt-add" onSubmit={(e) => { e.preventDefault(); add() }}>
-          <input ref={box} inputMode="decimal" value={text} placeholder={tr('Peso del pouch (lb), opcional')} aria-label={tr('Peso del pouch (lb), opcional')} onChange={(e) => { setText(e.target.value.replace(/[^\d.,]/g, '')); setBad(false) }} />
+          <input ref={box} inputMode="decimal" value={text} placeholder={tr('Peso del pouch (oz), opcional')} aria-label={tr('Peso del pouch (oz), opcional')} onChange={(e) => { setText(e.target.value.replace(/[^\d.,]/g, '')); setBad(false) }} />
           <button type="submit" className="btn soft" disabled={!text}>{tr('+ Agregar')}</button>
         </form>
-        <p className="hint">{t ? tr('Objetivo: {0} lb por pouch (± {1} lb), con el plástico.', lb(t.pouch), lb(t.tol)) : tr('Este código todavía no tiene peso objetivo: un peso escrito con "+ Agregar" se guarda sin decir bajo o sobre.')}
+        <p className="hint">{t ? tr('Objetivo: {0} oz por pouch (± {1} oz), con el plástico.', oz(t.pouch), oz(t.tol)) : tr('Este código todavía no tiene peso objetivo: un peso escrito con "+ Agregar" se guarda sin decir bajo o sobre.')}
           {boss && <> <button type="button" className="lnk sm" onClick={() => setTargeting(true)}>{tr('✎ Objetivo')}</button></>}</p>
-        {bad && <p className="hint red">{tr('Escribe el peso en libras, por ejemplo 3.15')}</p>}
+        {bad && <p className="hint red">{tr('Escribe el peso en onzas, por ejemplo 48.5')}</p>}
         {entries.length > 0 && (
           <>
-            <ol className="wt-list">{entries.map((e, i) => { const k = entryClass(e, t); return <li key={i} className={k}>{e.w != null ? lb(e.w) : '—'} <small>{MARK[k]} {k === 'bajo' ? tr('bajo') : k === 'sobre' ? tr('sobre') : ''}</small></li> })}</ol>
+            <ol className="wt-list">{entries.map((e, i) => { const k = entryClass(e, t); return <li key={i} className={k}>{e.w != null ? oz(e.w) : '—'} <small>{MARK[k]} {k === 'bajo' ? tr('bajo') : k === 'sobre' ? tr('sobre') : ''}</small></li> })}</ol>
             <div className="wt-sum">
-              <span>{entries.length === 1 ? tr('1 pouch') : tr('{0} pouches', entries.length)}{avg != null ? ' · ' + tr('promedio {0} lb', lb(avg)) : ''}</span>
+              <span>{entries.length === 1 ? tr('1 pouch') : tr('{0} pouches', entries.length)}{avg != null ? ' · ' + tr('promedio {0} oz', oz(avg)) : ''}</span>
               <span className={count('bajo') ? 'red' : ''}>{tr('▼ {0} bajos', count('bajo'))}</span>
               <span className={count('sobre') ? 'amber' : ''}>{tr('▲ {0} sobre', count('sobre'))}</span>
               <button type="button" className="lnk sm" onClick={() => weightSave(test, entries.slice(0, -1))}>{tr('Quitar el último')}</button>
@@ -96,16 +96,16 @@ function WeightDialog({ s, run, onClose }: { s: State; run: Run; onClose: () => 
 }
 
 function TargetDialog({ code, now, onClose }: { code: string; now: { pouch: number; tol: number } | null; onClose: () => void }) {
-  const [pouch, setPouch] = useState(now ? lb(now.pouch) : '')
-  const [tol, setTol] = useState(now ? lb(now.tol) : '')
+  const [pouch, setPouch] = useState(now ? oz(now.pouch) : '')
+  const [tol, setTol] = useState(now ? oz(now.tol) : '')
   const p = Number(pouch.replace(',', '.')), d = Number((tol || '0').replace(',', '.'))
   return (
     <div className="veil rc-veil" onClick={onClose}>
       <form className="dlg" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); if (p > 0 && d >= 0) { setWeightTarget(code, p, d); onClose() } }}>
         <h3>{tr('Peso objetivo de {0}', code)}</h3>
-        <label>{tr('Pouch terminado, con el plástico (lb)')}<input autoFocus inputMode="decimal" value={pouch} onChange={(e) => setPouch(e.target.value.replace(/[^\d.,]/g, ''))} /></label>
-        <label>{tr('Cuánto puede variar, más o menos (lb)')}<input inputMode="decimal" value={tol} placeholder="0.05" onChange={(e) => setTol(e.target.value.replace(/[^\d.,]/g, ''))} /></label>
-        <p className="hint">{tr('Lo dice QA. Con 3.01 y 0.05: menos de 2.96 es bajo, más de 3.06 es sobre.')}</p>
+        <label>{tr('Pouch terminado, con el plástico (oz)')}<input autoFocus inputMode="decimal" value={pouch} onChange={(e) => setPouch(e.target.value.replace(/[^\d.,]/g, ''))} /></label>
+        <label>{tr('Cuánto puede variar, más o menos (oz)')}<input inputMode="decimal" value={tol} placeholder="1" onChange={(e) => setTol(e.target.value.replace(/[^\d.,]/g, ''))} /></label>
+        <p className="hint">{tr('Lo dice QA. Con 48 y 1: menos de 47 es bajo, más de 49 es sobre.')}</p>
         <div className="dbtns"><button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button><button type="submit" className="btn primary" disabled={!(p > 0)}>{tr('Guardar')}</button></div>
       </form>
     </div>

@@ -2408,4 +2408,14 @@ export const EN: Record<string, string> = {
   "Este código todavía no tiene peso objetivo: un peso escrito con \"+ Agregar\" se guarda sin decir bajo o sobre.": "This code has no target weight yet: a weight typed with \"+ Add\" is saved without saying under or over.",
   "Cada uno ya quedó guardado.": "Each one is already saved.",
   "Antes en este código": "Earlier on this code",
+  // weights in ounces (2026-10-22)
+  "promedio {0} oz": "average {0} oz",
+  "Peso del pouch (oz), opcional": "Pouch weight (oz), optional",
+  "Objetivo: {0} oz por pouch (± {1} oz), con el plástico.": "Target: {0} oz per pouch (± {1} oz), with the plastic.",
+  "Pouch terminado, con el plástico (oz)": "Finished pouch, with the plastic (oz)",
+  "Cuánto puede variar, más o menos (oz)": "How much it may vary, up or down (oz)",
+  "Lo dice QA. Con 48 y 1: menos de 47 es bajo, más de 49 es sobre.": "QA sets it. With 48 and 1: below 47 is under, above 49 is over.",
+  "Escribe el peso en onzas, por ejemplo 48.5": "Type the weight in ounces, for example 48.5",
+  "Promedio (oz)": "Average (oz)",
+  "Objetivo (oz)": "Target (oz)",
 }

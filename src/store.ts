@@ -1035,32 +1035,35 @@ export function kpiPut(key: string, data: Record<string, unknown>, deleted = fal
  * (The first build of the same day kept only weights: a record with "weights" and no "entries" reads as those weights.)
  */
 export type WtEntry = { w?: number; k?: 'sobre' | 'bajo' }
-export type WeightTest = { id: string; date: string; dept: Dept; lineId: string; line: string; code: string; lot: string; runId: string; kind: 'pouch'; entries: WtEntry[]; at: number; by: string; deleted?: boolean; updatedAt: number; syncedAt?: number }
+export type WeightTest = { id: string; date: string; dept: Dept; lineId: string; line: string; code: string; lot: string; runId: string; kind: 'pouch'; unit: 'oz'
+  /** in ounces (Jose, 2026-10-22: "aquí es oz, no lb"); the first builds of that day wrote pounds and no unit: read ×16 */
+  entries: WtEntry[]; at: number; by: string; deleted?: boolean; updatedAt: number; syncedAt?: number }
 const WT_ID = 'wt:'
 export const WT_REF = 'act_weights'
 // (a function declaration, as everything load() reaches: a const here is not there yet when the device opens, see the TDZ rule)
-function okWeight(w: unknown) { return Number.isFinite(Number(w)) && Number(w) > 0 && Number(w) < 1000 }
-function wtEntries(x: { entries?: unknown; weights?: unknown }): WtEntry[] {
+function okWeight(w: unknown) { return Number.isFinite(Number(w)) && Number(w) > 0 && Number(w) < 2000 }
+function wtEntries(x: { entries?: unknown; weights?: unknown; unit?: unknown }): WtEntry[] {
   const raw = Array.isArray(x.entries) ? x.entries : Array.isArray(x.weights) ? x.weights.map((w) => ({ w })) : []
+  const per = x.unit === 'oz' ? 1 : 16
   return raw.map((e): WtEntry | null => {
     if (!e || typeof e !== 'object') return null
-    const o = e as { w?: unknown; k?: unknown }, w = okWeight(o.w) ? Number(o.w) : undefined, k = o.k === 'sobre' || o.k === 'bajo' ? o.k : undefined
+    const o = e as { w?: unknown; k?: unknown }, w = okWeight(o.w) ? Math.round(Number(o.w) * per * 1000) / 1000 : undefined, k = o.k === 'sobre' || o.k === 'bajo' ? o.k : undefined
     return w == null && !k ? null : { ...(w != null ? { w } : {}), ...(k ? { k } : {}) }
   }).filter((e): e is WtEntry => !!e).slice(0, 300)
 }
-function wtFrom(x: (Partial<WeightTest> & { weights?: unknown }) | null | undefined): WeightTest | null {
+function wtFrom(x: (Partial<WeightTest> & { weights?: unknown; unit?: unknown }) | null | undefined): WeightTest | null {
   if (!x || typeof x !== 'object' || typeof x.id !== 'string' || !x.id || !(DEPTS as unknown[]).includes(x.dept) || !isDay(String(x.date ?? '')) || !normCode(String(x.code ?? ''))) return null
-  return { id: x.id, date: String(x.date), dept: x.dept as Dept, lineId: String(x.lineId ?? ''), line: String(x.line ?? ''), code: String(x.code).trim().toUpperCase(), lot: String(x.lot ?? ''), runId: String(x.runId ?? ''), kind: 'pouch', entries: wtEntries(x), at: Number(x.at) || 0, by: String(x.by ?? ''), ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
+  return { id: x.id, date: String(x.date), dept: x.dept as Dept, lineId: String(x.lineId ?? ''), line: String(x.line ?? ''), code: String(x.code).trim().toUpperCase(), lot: String(x.lot ?? ''), runId: String(x.runId ?? ''), kind: 'pouch', unit: 'oz', entries: wtEntries(x), at: Number(x.at) || 0, by: String(x.by ?? ''), ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
 }
 /** the weights typed in a test (the entries with a number) */
 export const wtWeights = (t: WeightTest) => t.entries.flatMap((e) => (e.w != null ? [e.w] : []))
-const rowOfWt = (x: WeightTest) => ({ id: WT_ID + x.id, at: iso(x.at), by_name: x.by, dept: x.dept, what: 'Peso', before: '', after: JSON.stringify({ date: x.date, lineId: x.lineId, line: x.line, code: x.code, lot: x.lot, runId: x.runId, kind: x.kind, entries: x.entries, weights: wtWeights(x) }), ref_table: WT_REF, ref_key: x.id, deleted: !!x.deleted, updated_at: iso(x.updatedAt), updated_by: user.get() })
+const rowOfWt = (x: WeightTest) => ({ id: WT_ID + x.id, at: iso(x.at), by_name: x.by, dept: x.dept, what: 'Peso', before: '', after: JSON.stringify({ date: x.date, lineId: x.lineId, line: x.line, code: x.code, lot: x.lot, runId: x.runId, kind: x.kind, unit: 'oz', entries: x.entries, weights: wtWeights(x) }), ref_table: WT_REF, ref_key: x.id, deleted: !!x.deleted, updated_at: iso(x.updatedAt), updated_by: user.get() })
 /** a new test on a run (nothing is saved until its first entry) */
-export const weightNew = (run: Run): WeightTest => ({ id: uid(), date: run.date, dept: run.dept, lineId: run.lineId, line: run.line, code: run.code, lot: lotNowOf(run), runId: run.id, kind: 'pouch', entries: [], at: clockNow(), by: user.get(), updatedAt: 0 })
+export const weightNew = (run: Run): WeightTest => ({ id: uid(), date: run.date, dept: run.dept, lineId: run.lineId, line: run.line, code: run.code, lot: lotNowOf(run), runId: run.id, kind: 'pouch', unit: 'oz', entries: [], at: clockNow(), by: user.get(), updatedAt: 0 })
 /** a test saved with the entries it has now (the first one saves it; each next one writes it again); none = taken away */
 export function weightSave(t: WeightTest, entries: WtEntry[]) {
   const was = (state.weights ?? []).find((y) => y.id === t.id)
-  const es = wtEntries({ entries })
+  const es = wtEntries({ entries, unit: 'oz' })
   if (!was && !es.length) return
   // (a test emptied and then checked again comes back: the deleted mark goes with the last entry only)
   const { deleted: _gone, ...base } = was ?? t
@@ -1070,14 +1073,14 @@ export function weightSave(t: WeightTest, entries: WtEntry[]) {
 }
 /** the weight tests of a day (one code, or all), oldest first */
 export const weightTestsOf = (s: State, date: string, code = '') => (s.weights ?? []).filter((x) => !x.deleted && x.date === date && x.entries.length > 0 && (!code || normCode(x.code) === normCode(code))).sort((a, b) => a.at - b.at)
-/** a code's target: the finished pouch's weight and how much it may be off (lb), set by a manager or the office */
+/** a code's target: the finished pouch's weight and how much it may be off (oz), set by a manager or the office (one saved in pounds, before the change to ounces, reads ×16) */
 export type WeightTarget = { pouch: number; tol: number }
 export function weightTarget(s: State, code: string): WeightTarget | null {
   const d = kpiGet(s, 'target:' + normCode(code))?.data
-  const pouch = Number(d?.pouch), tol = Number(d?.tol)
-  return pouch > 0 ? { pouch, tol: tol >= 0 ? tol : 0 } : null
+  const per = d?.unit === 'oz' ? 1 : 16, pouch = Number(d?.pouch) * per, tol = Number(d?.tol) * per
+  return pouch > 0 ? { pouch: Math.round(pouch * 1000) / 1000, tol: tol >= 0 ? Math.round(tol * 1000) / 1000 : 0 } : null
 }
-export const setWeightTarget = (code: string, pouch: number, tol: number) => kpiPut('target:' + normCode(code), { code: code.trim().toUpperCase(), pouch, tol })
+export const setWeightTarget = (code: string, pouch: number, tol: number) => kpiPut('target:' + normCode(code), { code: code.trim().toUpperCase(), pouch, tol, unit: 'oz' })
 /** a weight against the target: under, ok or over ('' without a target) */
 export const weightClass = (w: number, t: WeightTarget | null): '' | 'bajo' | 'ok' | 'sobre' => (!t ? '' : w < t.pouch - t.tol - 1e-9 ? 'bajo' : w > t.pouch + t.tol + 1e-9 ? 'sobre' : 'ok')
 /** an entry: the operator's call when they made one, else its weight against the target */

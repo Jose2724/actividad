@@ -5101,10 +5101,13 @@ section('Pesos en RTE: el operador escribe el peso de cada pouch, se guarda al m
     eq('quitar todos los pesos deja la prueba borrada (marcada en el servidor)', [m.weightTestsOf(st(), DAY).length, m.outbox.items().find((i) => i.key === 'wt:' + t.id)?.row.deleted], [0, true])
     m.weightSave(t, [{ w: 3.1 }, { k: 'bajo' }])
     m.applyRemote('act_changes', { id: 'wt:R1', at: iso(T0 + 60 * M), by_name: 'Otro', dept: 'RTE', what: 'Peso', before: '', after: JSON.stringify({ date: DAY, lineId: 'x', line: 'Línea 2', code: '0889', lot: '6292', runId: 'r2', kind: 'pouch', weights: [3.0, 2.9] }), ref_table: 'act_weights', ref_key: 'R1', deleted: false, updated_at: iso(T0 + 60 * M), updated_by: 'Otro' })
-    eq('la prueba de otra tablet llega (una del primer build, con solo pesos, se lee igual)', m.weightTestsOf(st(), DAY).map((x) => [x.line, x.entries]), [['Línea 1', [{ w: 3.1 }, { k: 'bajo' }]], ['Línea 2', [{ w: 3 }, { w: 2.9 }]]])
+    eq('la prueba de otra tablet llega; una de los primeros builds (solo pesos, en libras, sin unidad) se lee en onzas (× 16)', m.weightTestsOf(st(), DAY).map((x) => [x.line, x.entries]), [['Línea 1', [{ w: 3.1 }, { k: 'bajo' }]], ['Línea 2', [{ w: 48 }, { w: 46.4 }]]])
+    eq('lo que sube ya dice que es en onzas', JSON.parse(m.outbox.items().find((i) => i.key === 'wt:' + t.id).row.after).unit, 'oz')
+    m.applyRemote('act_changes', { id: 'kpi:target:4928', at: iso(T0 + 61 * M), by_name: 'Jose', dept: null, what: 'KPI', before: '', after: JSON.stringify({ code: '4928', pouch: 3, tol: 0.05 }), ref_table: 'act_kpi', ref_key: 'target:4928', deleted: false, updated_at: iso(T0 + 61 * M), updated_by: 'Jose' })
+    eq('un objetivo puesto en libras (antes de las onzas) se lee en onzas; uno nuevo queda en onzas', [m.weightTarget(st(), '4928'), (m.setWeightTarget('4929', 48, 1), m.weightTarget(st(), '4929'))], [{ pouch: 48, tol: 0.8 }, { pouch: 48, tol: 1 }])
   })
   const back = await device('weights-again', { seed: JSON.parse(disks.get('weights').get('act_v1')), user: 'Operador RTE' })
-  eq('al volver a abrir: las pruebas, sus pesos y sus marcas siguen', back.use((m) => m.weightTestsOf(m.store.get(), DAY).map((x) => x.entries)), [[{ w: 3.1 }, { k: 'bajo' }], [{ w: 3 }, { w: 2.9 }]])
+  eq('al volver a abrir: las pruebas, sus pesos y sus marcas siguen (en onzas, sin volver a multiplicar)', back.use((m) => m.weightTestsOf(m.store.get(), DAY).map((x) => x.entries)), [[{ w: 3.1 }, { k: 'bajo' }], [{ w: 48 }, { w: 46.4 }]])
 }
 section('Reporte: el total de cada línea, en su departamento (Jose, 2026-10-22)')
 {
