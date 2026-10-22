@@ -1070,6 +1070,7 @@ export function setLotNow(runId: string, lot: string): boolean {
 export function palletOrder(runId: string, po: string): boolean {
   const r = run(runId)
   if (!r || binOf(r) || r.dept !== 'Packing') return false
+  if (po && orderFull(state, po, r.perUnit)) return false
   const open = r.extra?.open ?? { parts: [] }
   putRun({ ...r, extra: withOpen(r, { ...open, po }) })
   return true
@@ -1081,6 +1082,7 @@ export function palletOrder(runId: string, po: string): boolean {
 export function palletDone(runId: string, parts: { lot: string; qty: number; tag: string }[], po: string, note?: string): boolean {
   const r = run(runId)
   if (!r || binOf(r) || r.dept !== 'Packing') return false
+  if (po && orderFull(state, po, r.perUnit)) return false
   const unit = palletUnit(parts, po, Math.max(clockNow(), after(r)), note)
   if (!unit.lots?.length) return false
   const rest: RunExtra = r.extra ? (({ open: _o, ...x }) => x)(r.extra) : {}
@@ -1091,6 +1093,8 @@ export function palletDone(runId: string, parts: { lot: string; qty: number; tag
   const o = po ? state.orders.find((x) => x.id === po && !x.closed) : undefined
   const extra: RunExtra = o && (o.cases == null || o.cases - orderMade(state, o.id) - (unit.qty ?? 0) > 0) ? { ...rest, open: { parts: [], po } } : rest
   putRun({ ...r, units: [...r.units, unit], extra: Object.keys(extra).length ? extra : undefined })
+  // (once complete, the next pallet is not proposed for it: see nextOrderFor)
+  if (o && orderFull(state, o.id, r.perUnit) && state.runs.find((x) => x.id === runId)?.extra?.open?.po === o.id) { const now = run(runId)!; putRun({ ...now, extra: withOpen(now, { ...(now.extra?.open ?? { parts: [] }), po: '' }) }) }
   return true
 }
 /** the order the pallet being built goes to: the one they chose ('' = none), or else the one the app proposes */
@@ -1101,6 +1105,49 @@ export function orderPallets(s: State, orderId: string, perPallet?: number | nul
   const done = orderRunsOf(s, orderId).flatMap((r) => r.units.filter((u) => u.po === orderId).map((u) => u.at)).sort((a, b) => a - b)
   const per = perPallet || (o ? productOf(s, o.code)?.casesPerPallet : 0) || 0
   return { done, need: o?.cases != null && per > 0 ? Math.ceil(o.cases / per) : null }
+}
+/**
+ * An order that takes no more pallets (the office, 2026-10-21: "que restrinja cuando están haciendo un PO en exceso:
+ * el PO tiene 10 paletas y a partir de eso ya no permita aceptar una paleta número 11, y que alerte que ya completó el
+ * PO"): it has as many pallets as it needs (its cases ÷ cases per pallet), or all its cases. One that does not say its
+ * cases has no end. `but` = a pallet already given to it that is being corrected (it does not count against itself).
+ * The pallet that completes it may carry a few cases more: that one is taken; the next one is not.
+ */
+export function orderFull(s: State, orderId: string, perPallet?: number | null, but?: { runId: string; at: number }): boolean {
+  const o = s.orders.find((x) => x.id === orderId)
+  if (!o || o.cases == null) return false
+  const seq = orderPallets(s, orderId, perPallet)
+  const mine = but ? orderRunsOf(s, orderId).find((r) => r.id === but.runId)?.units.find((u) => u.at === but.at && u.po === orderId) : undefined
+  const r = but ? orderRunsOf(s, orderId).find((x) => x.id === but.runId) : undefined
+  const pallets = seq.done.length - (mine ? 1 : 0), made = orderMade(s, orderId) - (mine && r ? unitQty(s, r, mine) : 0)
+  // (by its cases: a PO of short pallets needs more of them than its count says, and those are taken)
+  void pallets
+  return made >= o.cases
+}
+/**
+ * the first order a list of pallets to give would go beyond ('' = none): more pallets than it still needs, or cases
+ * after one that already completes it (the pallet that completes it may carry a few more). For a record added after
+ * the fact, and for what its window says
+ */
+export function orderOver(s: State, list: { po: string; qty: number | null }[], perPallet?: number | null): string {
+  const given = new Map<string, { n: number; cases: number }>()
+  for (const u of list) {
+    if (!u.po) continue
+    const o = s.orders.find((x) => x.id === u.po)
+    if (!o || o.cases == null) continue
+    const g = given.get(u.po) ?? { n: 0, cases: 0 }, seq = orderPallets(s, u.po, perPallet)
+    void seq
+    if (orderMade(s, u.po) + g.cases >= o.cases) return u.po
+    given.set(u.po, { n: g.n + 1, cases: g.cases + (u.qty ?? 0) })
+  }
+  return ''
+}
+/** how an order stands, said: "10 de 10 pallets", "480 de 480 cajas" */
+export function orderFullText(s: State, orderId: string, perPallet?: number | null): string {
+  const o = s.orders.find((x) => x.id === orderId)
+  if (!o) return ''
+  const seq = orderPallets(s, orderId, perPallet)
+  return (seq.need != null ? tr('{0} de {1} pallets', seq.done.length, seq.need) + ' · ' : '') + tr('{0} de {1} cajas', fmtN(orderMade(s, orderId)), fmtN(o.cases ?? 0))
 }
 /**
  * The line is put in set up by hand, while it has no code running: the same stop that ending a code opens. It ends
@@ -1264,6 +1311,7 @@ export function addUnit(runId: string, x: { at: number; qty: number | null; ref?
   while (taken.has(at)) at++
   const ref = (x.ref ?? '').trim() || (lots ? [...new Set(lots.map((l) => l.tag ?? '').filter(Boolean))].join(', ') : '')
   const o = orderOfId(state, x.po)
+  if (o && orderFull(state, o.id, r.perUnit)) return 0
   // (its comment, typed in the window: on the unit, and said in the history line, as the run's is in addRunLater)
   const u: Unit = { at, qty, ref, by: user.get(), ...(lots ? { lots } : {}), ...(o ? { po: o.id } : {}), ...noteKey(x.note) }
   const units = [...r.units, u].sort((a, b) => a.at - b.at)
@@ -1385,6 +1433,8 @@ export function addRunLater(x: LaterRun): string {
     const o = fills ? orderOfId(state, u.po) : undefined
     return { at: atOf(i), qty: typeof qty === 'number' && Number.isFinite(qty) ? qty : null, ref, by, ...(lots ? { lots } : {}), ...(o ? { po: o.id } : {}), ...noteKey(u.note) }
   })
+  // (no order takes more pallets than it needs, nor cases beyond the pallet that completes it: 2026-10-21)
+  if (fills && orderOver(state, units.map((u) => ({ po: u.po ?? '', qty: u.qty })), x.perUnit)) return ''
   const r: Run = { id: uid(), dept: line.dept, lineId: line.id, line: line.name, code, lot: (x.lot ?? '').trim(), date: x.date, startedAt: start, endedAt: end, units, perUnit: x.perUnit != null && Number.isFinite(x.perUnit) ? x.perUnit : null, waste: Math.round(waste * 100) / 100 || 0, by, updatedAt: 0, ...(extra ? { extra } : {}) }
   batch(() => {
     // a set up left open on the line before those hours ends where the code started, as when a code starts on the line
@@ -1702,7 +1752,7 @@ export const openOrdersFor = (s: State, code: string) => s.orders.filter((o) => 
  * the last unit without an order, that choice stands, unless an order has been typed since: a new one is proposed.
  */
 export function nextOrderFor(s: State, r: Run): string {
-  const lacking = openOrdersFor(s, r.code).filter((o) => o.cases == null || o.cases - orderMade(s, o.id) > 0)
+  const lacking = openOrdersFor(s, r.code).filter((o) => o.cases == null || (o.cases - orderMade(s, o.id) > 0 && !orderFull(s, o.id, r.perUnit)))
   const last = r.units[r.units.length - 1]
   if (last && !last.po) return lacking.find((o) => o.createdAt > last.at)?.id ?? ''
   return (lacking.find((o) => o.id === last?.po) ?? lacking[0])?.id ?? ''
@@ -1744,13 +1794,15 @@ export function deleteOrder(id: string) {
   logChange(null, 'Pedido borrado', orderText(o), '', ORDER_LOG, id + ':d')
 }
 /** which order a unit already recorded goes to ('' = none): a correction */
-export function setUnitOrder(runId: string, at: number, orderId: string) {
+export function setUnitOrder(runId: string, at: number, orderId: string): boolean {
   const r = run(runId), i = r ? r.units.findIndex((u) => u.at === at) : -1
-  if (!r || i < 0) return
+  if (!r || i < 0) return false
   const was = orderOfId(state, r.units[i].po), to = orderOfId(state, orderId)
-  if ((was?.id ?? '') === (to?.id ?? '') && !!r.units[i].po === !!to) return
+  if ((was?.id ?? '') === (to?.id ?? '') && !!r.units[i].po === !!to) return true
+  if (to && orderFull(state, to.id, r.perUnit, { runId, at })) return false
   putRun({ ...r, units: r.units.map((u) => { if (u.at !== at) return u; const { po: _was, ...bare } = u; return to ? { ...bare, po: to.id } : bare }) })
   logChange(r.dept, 'Corrida ' + r.code + ' del ' + r.date + ' (' + r.dept + ', ' + lineNameOf(state, r.lineId, r.line) + ') · ' + CFG[r.dept].unit + ' ' + (i + 1) + ' · pedido', was ? orderLabelKept(was) : '', to ? orderLabelKept(to) : '', 'act_runs', r.id)
+  return true
 }
 // ---- the shifts ----
 /**

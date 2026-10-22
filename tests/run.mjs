@@ -3267,6 +3267,8 @@ section('Un registro de Packing agregado después: sus pallets uno por uno, con 
     eq('un tag escrito dos veces en la lista se señala (con espacios o en minúsculas es el mismo); sin tag no cuenta', [ck([{ qty: '48', tag: ' 3001' }, { qty: '48', tag: '3001 ' }, '48', '48']), ck([{ qty: '1', tag: 'a1' }, { qty: '1', tag: 'A1' }]), m.tagTwice(['A1'], ' a1 ')], [[false, [], ['3001']], [false, [], ['A1']], true])
     eq('hasta 500 pallets por registro', [ck(Array.from({ length: 500 }, () => '1'))[0], ck(Array.from({ length: 501 }, () => '1'))[0], m.LATER_MAX], [true, false, 500])
     // "Agregar y otro" on a run: three pallets found together, added one after the other at the hour they chose, with its PO
+    // (the PO is made bigger first: a complete PO takes no more pallets since 2026-10-21, and it already has 240 of 240)
+    m.saveOrder(po1, { customer: 'Cliente Seis', po: '6001', code: 'P700', cases: 400, shipBy: '', dest: '' })
     const ats = ['3101', '3102', '3103'].map((tag) => m.addUnit(lr().id, { at: oct(10, 6, 45), qty: null, lots: [{ lot: '6283', qty: 48, tag }], po: po1 }))
     eq('tres pallets seguidos a la misma hora: cada uno en su instante, en el orden en que se agregaron, cada uno con su PO', [ats.map((a) => a - oct(10, 6, 45)), lr().units.map((u) => [u.ref, u.po === po1])], [[0, 1, 2], [['3100', true], ['3101', true], ['3102', true], ['3103', true]]])
     eq('el PO los suma y cada uno queda en el historial con su PO', [m.orderMade(st(), po1), st().changes.filter((c) => c.refKey === lr().id && c.what.includes('Se agregó pallet')).map((c) => c.after)], [144 + 36 + 144, ['48 cajas · 6283: 48 (tag 3101) · Cliente Seis · PO 6001', '48 cajas · 6283: 48 (tag 3102) · Cliente Seis · PO 6001', '48 cajas · 6283: 48 (tag 3103) · Cliente Seis · PO 6001']])
@@ -5068,6 +5070,32 @@ section('Agregar un registro: qué tenía la línea a esa hora y sus horas libre
     eq('pero desde las 11:15 no: ahí corría el 4928', m.addRunLater({ dept: 'RTE', lineId: 'FL3', code: '4980', date: D, startedAt: at(11, 15), endedAt: at(11, 18), units: [{ qty: 182 }] }), '')
     eq('la 1:03 AM escrita con la fecha de hoy es la de esta noche (la ventana lo dice y ofrece el día anterior)', m.nearDay(new Date(D + 'T15:30:00').getTime(), '01:03') > clock, true)
     eq('el Turno 2 todavía no empieza (son las 2:00 PM): no tiene horas libres para agregar', m.lineTimes(st(), 'FL3', D, 'RTE', 2, clock).free.length, 0)
+  })
+}
+section('Un PO completo ya no lleva más pallets: el de 3 pallets no acepta el 4 (la oficina, 2026-10-21)')
+{
+  const pk = await device('po-limit', { user: 'Jose' })
+  pk.use((m) => {
+    const st = () => m.store.get(), D = '2026-10-22', at = (h, mi = 0) => oct(22, h, mi)
+    clock = at(8)
+    m.applyRemote('act_lines', { id: 'PL1', dept: 'Packing', name: 'Línea 1', deleted: false, updated_at: iso(at(6)), updated_by: 'x' })
+    m.applyRemote('act_runs', runRow({ id: 'pl-run', dept: 'Packing', lineId: 'PL1', line: 'Línea 1', code: '0889', lot: '6293', date: D, startedAt: at(7), endedAt: null, perUnit: 40 }))
+    const po = m.saveOrder(null, { customer: 'Costco', po: '45821', code: '0889', cases: 120, shipBy: D, dest: 'NJ' })
+    const po2 = m.saveOrder(null, { customer: 'Walmart', po: '45822', code: '0889', cases: 400, shipBy: '2026-10-25', dest: 'PA' })
+    const pallet = (k) => { clock = at(9, k); return m.palletDone('pl-run', [{ lot: '6293', qty: 40, tag: 'T' + k }], po) }
+    eq('el PO de 120 cajas a 40 por pallet lleva 3 pallets: los tres entran', [pallet(1), pallet(2), pallet(3)], [true, true, true])
+    eq('ya está completo: 3 de 3 pallets, 120 de 120 cajas', [m.orderFull(st(), po, 40), m.orderFullText(st(), po, 40)], [true, '3 de 3 pallets · 120 de 120 cajas'])
+    eq('el cuarto pallet para ese PO no se acepta', pallet(4), false)
+    eq('el pallet que se arma ya no se le puede poner a ese PO, y la app propone el siguiente PO del código', [m.palletOrder('pl-run', po), m.nextOrderFor(st(), m.store.get().runs.find((r) => r.id === 'pl-run'))], [false, po2])
+    clock = at(9, 10)
+    m.palletDone('pl-run', [{ lot: '6293', qty: 40, tag: 'T5' }], '')
+    const free = st().runs.find((r) => r.id === 'pl-run').units.at(-1).at
+    eq('en Corregir, un pallet sin PO tampoco se puede pasar a ese PO completo', m.setUnitOrder('pl-run', free, po), false)
+    const first = st().runs.find((r) => r.id === 'pl-run').units[0].at
+    eq('pero uno que ya era suyo se puede dejar en él (no cuenta contra sí mismo)', m.orderFull(st(), po, 40, { runId: 'pl-run', at: first }), false)
+    eq('un registro agregado después con un pallet más para ese PO no se agrega', m.addRunLater({ dept: 'Packing', lineId: 'PL1', code: '0889', date: D, startedAt: at(5), endedAt: at(5, 30), units: [{ qty: 40, po }], perUnit: 40 }), '')
+    eq('y uno para el otro PO sí', !!m.addRunLater({ dept: 'Packing', lineId: 'PL1', code: '0889', date: D, startedAt: at(5), endedAt: at(5, 30), units: [{ qty: 40, po: po2 }], perUnit: 40 }), true)
+    eq('al otro PO (400 cajas, ya con 40) le caben nueve pallets de 40: un registro con diez lo pasa', [m.orderOver(st(), Array.from({ length: 9 }, () => ({ po: po2, qty: 40 })), 40), m.orderOver(st(), Array.from({ length: 10 }, () => ({ po: po2, qty: 40 })), 40)], ['', po2])
   })
 }
 section('Programa del día: la pestaña del admin, prendida para todos desde Ajustes (Jose, 2026-10-20)')

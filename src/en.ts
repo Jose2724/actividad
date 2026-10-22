@@ -2144,4 +2144,14 @@ export const EN: Record<string, string> = {
   "Cualquier día": "Any day",
   "Ya pasó la fecha": "Date passed",
   "Esta semana": "This week",
+  // a complete PO takes no more pallets (the office, 2026-10-21)
+  "✓ completo ({0})": "✓ complete ({0})",
+  "Con este pallet el {0} quedó completo ({1}). Ya no se le pueden poner más pallets.": "With this pallet {0} is complete ({1}). No more pallets can be given to it.",
+  "✓ PO completo": "✓ PO complete",
+  "El {0} ya está completo ({1}): este pallet ya no se le puede poner. Escoge otro PO o déjalo sin PO.": "{0} is already complete ({1}): this pallet cannot go to it. Pick another PO or leave it without one.",
+  "Este PO ya está completo: no lleva más pallets": "This PO is complete: it takes no more pallets",
+  "Ese PO ya está completo ({0}): no lleva más pallets.": "That PO is already complete ({0}): it takes no more pallets.",
+  "Un PO completo ya no lleva más pallets.": "A complete PO takes no more pallets.",
+  "El {0} ya está completo, o estos pallets lo pasan ({1}): quita pallets de ese PO o ponlos en otro, o sin PO.": "{0} is already complete, or these pallets go beyond it ({1}): take pallets off that PO, or give them another one, or none.",
+  "{0} de {1} pallets": "{0} of {1} pallets",
 }

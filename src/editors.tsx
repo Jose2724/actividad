@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
-import { addRunLater, dayBefore, lineTimes, runsOnLine, shiftAt, shiftsOf, turnOf, addUnit, applyDraft, draftChecks, draftUnitOf, NOTE_MAX, usualFor, usualOf, wasteProblem, BIN_WORDS, binOf, binWord, byLineName, cfgFor, checkLaterPallets, DEPTS, fmtN, kindClass, LATER_MAX, laterPalletUnits, laterPoFits, laterStart, laterToOrder, MFO_WORDS, tagTwice, unitStartPo, type LaterPalletRow, plainDay, planRows, SPIRAL_UNITS, type Dept, byShip, CFG, cfgOf, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, reasonText, setUnitOrder, splitStop, store, updateRun, updateStop, type Order, type Run, type State, type Stop, lineLabel } from './store'
+import { addRunLater, dayBefore, lineTimes, runsOnLine, shiftAt, shiftsOf, turnOf, addUnit, applyDraft, draftChecks, draftUnitOf, NOTE_MAX, usualFor, usualOf, wasteProblem, BIN_WORDS, binOf, binWord, byLineName, cfgFor, checkLaterPallets, DEPTS, fmtN, kindClass, LATER_MAX, laterPalletUnits, laterPoFits, laterStart, laterToOrder, MFO_WORDS, tagTwice, unitStartPo, type LaterPalletRow, plainDay, planRows, SPIRAL_UNITS, type Dept, byShip, CFG, cfgOf, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, reasonText, setUnitOrder, splitStop, store, updateRun, updateStop, type Order, type Run, type State, type Stop, lineLabel, orderFull, orderFullText, orderOver } from './store'
 import { clockNow } from './clock'
 import { unitStartLot } from './report'
 import { ConfirmDialog, LotsDialog, useCan, useSure, useWho, type SureBox } from './App'
@@ -107,7 +107,7 @@ export function RunEditor({ s, run, mgr, focusAt, onClose }: { s: State; run: Ru
                   {cfg.refLabel && !tagsInLots && <td><input className="num" value={u.ref} onChange={(e) => setUnits(units.map((x, k) => (k === i ? { ...x, ref: e.target.value } : x)))} autoComplete="off" /></td>}
                   {withOrders && (() => {
                     const po = run.units.find((x) => x.at === u.at)?.po, known = po && s.orders.some((o) => o.id === po) ? po : ''
-                    return <td><select value={known} onChange={(e) => setUnitOrder(run.id, u.at, e.target.value)}><option value="">{tr('Sin pedido')}</option>{ordersFor(po).map((o) => <option key={o.id} value={o.id}>{orderLabel(o)}</option>)}</select></td>
+                    return <td><select value={known} onChange={(e) => { if (!setUnitOrder(run.id, u.at, e.target.value)) setProblem(tr('Ese PO ya está completo ({0}): no lleva más pallets.', orderFullText(s, e.target.value, run.perUnit))) }}><option value="">{tr('Sin pedido')}</option>{ordersFor(po).map((o) => <option key={o.id} value={o.id} disabled={o.id !== known && orderFull(s, o.id, run.perUnit, { runId: run.id, at: u.at })}>{orderLabel(o)}</option>)}</select></td>
                   })()}
                   <td>{u.by || '—'}</td>
                   <td className="unote">{u.note && <span>💬 {u.note}</span>} <button type="button" className="lnk" title={tr('Cambiar el comentario de esta unidad')} onClick={() => (cfg.lots ? setLotsOf(i) : setNoting(i))}>{u.note ? '✎' : tr('+ Comentario')}</button></td>
@@ -269,7 +269,7 @@ export function AddUnitDialog({ s, run, startPo, onClose, onAdded }: { s: State;
             </>
           )}
           {orders.length > 0 && (
-            <label>{tr('Pedido')}{' '}<select value={po} onChange={(e) => { hold(false); setPo(e.target.value) }}><option value="">{tr('Sin pedido')}</option>{orders.map((o) => <option key={o.id} value={o.id}>{orderLabel(o)}</option>)}</select></label>
+            <label>{tr('Pedido')}{' '}<select value={po} onChange={(e) => { hold(false); setPo(e.target.value) }}><option value="">{tr('Sin pedido')}</option>{orders.map((o) => <option key={o.id} value={o.id} disabled={orderFull(s, o.id, run.perUnit)}>{orderLabel(o)}{orderFull(s, o.id, run.perUnit) ? ' · ' + tr('✓ completo') : ''}</option>)}</select></label>
           )}
           <NoteBox value={note} onChange={(v) => { hold(false); setNote(v) }} />
           {/* how many were added from this window: its place is kept from the start (empty until then), so the
@@ -531,6 +531,8 @@ export function AddRunDialog({ s, date, dept: first, order, onClose, onAdded }: 
       : cfg.qty === 'none' || per == null ? [] : [{ key: 'each', n: per, usual, unit: cfg.qtyUnit, per: unit }]
     sure.check(checks, () => {
       const id = addRunLater({ dept, lineId: line.id, code, lot, date: day, startedAt: startAt, endedAt: endAt, units, perUnit, waste: cfg.waste ? waste : 0, bin: dept === 'Spiral' ? '' : word, measure: dept === 'Spiral' && (word === 'lb' || word === 'cajas') ? word : '', madeBy, note })
+      const over = byPallet ? orderOver(s, units.map((u) => ({ po: 'po' in u ? String(u.po ?? '') : '', qty: u.qty })), perUnit) : ''
+      if (!id && over) { setProblem(tr('El {0} ya está completo, o estos pallets lo pasan ({1}): quita pallets de ese PO o ponlos en otro, o sin PO.', orderLabel(s.orders.find((o) => o.id === over)!), orderFullText(s, over, perUnit))); return }
       if (!id) { const c = runsOnLine(s, line.id, startAt, endAt ?? startAt + Math.max(0, units.length - 1) * 60_000); setSameRun(c.find((r) => normCode(r.code) === normCode(code)) ?? null); setProblem(c.length ? tr('A esas horas {0} tenía {1}. Escoge una hora libre de abajo, u otra línea.', lineLabel(line.name), c.map(busyText).join(' · ')) : tr('A esas horas la línea tenía otro código. Cambia la línea o las horas.')); return }
       onAdded(id)
     })

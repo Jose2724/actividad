@@ -1,6 +1,6 @@
 import { Component, createContext, Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
-import { addLine, plantCut, roomMark, CUT_WINDOW, startSecondShift, addWaste, awayDay, batch, byPlanLot, planLot, cameFrom, carriedOver, dayAfter, dayBefore, orderUnitDefault, programOrderChoices, ordersOf, orderStatus, orderUnitWord, prevPending, workOrderOf, type WorkOrder, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, noteOf, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderAddRuns, orderOfId, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, PLAN_LOT_MAX, productOf, productsCsv, purgeDay, reasonText, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay } from './store'
+import { addLine, plantCut, roomMark, CUT_WINDOW, startSecondShift, addWaste, awayDay, batch, byPlanLot, planLot, cameFrom, carriedOver, dayAfter, dayBefore, orderUnitDefault, programOrderChoices, ordersOf, orderStatus, orderUnitWord, prevPending, workOrderOf, type WorkOrder, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, noteOf, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderAddRuns, orderOfId, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, PLAN_LOT_MAX, productOf, productsCsv, purgeDay, reasonText, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay, orderFull, orderFullText } from './store'
 import { avanceLots, avanceRange, avanceRows, datesBetween, lotAcrossDays, lotRows, lotsKnown, mfoList, mfoText, mfoWord, n1, pending, type AvancePart, type AvanceRow, type MfoMade } from './avance'
 import { loadZip, type Cell } from './xlsx'
 
@@ -2139,7 +2139,9 @@ function PalletPanel({ s, run, saved, readOnly, canReopen, onDone, onLot, onLotN
 function poChoices(s: State, run: Run) {
   return openOrdersFor(s, run.code).map((o) => {
     const seq = orderPallets(s, o.id, run.perUnit), n = seq.done.length + 1, left = o.cases != null ? o.cases - orderMade(s, o.id) : null
-    return { id: o.id, n, need: seq.need, label: orderLabel(o) + ' · ' + (left != null && left <= 0 ? tr('completo') : seq.need ? tr('pallet {0} de {1}', n, seq.need) : tr('pallet {0}', n)) }
+    // (a complete order takes no more pallets, 2026-10-21: it is shown, ticked off, and cannot be chosen)
+    const full = orderFull(s, o.id, run.perUnit)
+    return { id: o.id, n, need: seq.need, full, label: orderLabel(o) + ' · ' + (full ? tr('✓ completo ({0})', orderFullText(s, o.id, run.perUnit)) : left != null && left <= 0 ? tr('completo') : seq.need ? tr('pallet {0} de {1}', n, seq.need) : tr('pallet {0}', n)) }
   })
 }
 
@@ -2155,7 +2157,10 @@ function PalletDoneDialog({ s, run, onClose, onSaved }: { s: State; run: Run; on
   const [added, setAdded] = useState(false) // a lot they forgot to say when it ran out: typed here
   // only an open PO can take the pallet: the one it was going to, unless the office closed it meanwhile
   const choices = poChoices(s, run)
-  const [po, setPo] = useState(() => { const p = palletPo(s, run); return choices.some((x) => x.id === p) ? p : '' })
+  const [po, setPo] = useState(() => { const p = palletPo(s, run); return choices.some((x) => x.id === p && !x.full) ? p : '' })
+  // the PO this pallet was going to filled up meanwhile (another line finished its last one): said, and the pallet goes without it
+  const wentFull = (() => { const p = palletPo(s, run); return choices.find((x) => x.id === p && x.full) })()
+  const [doneNote, setDoneNote] = useState('') // "✓ el PO quedó completo", said once the pallet that completes it is saved
   const pick = choices.find((x) => x.id === po)
   // a comment on this pallet (Jose, 2026-10-18: "comentarios a cada registro con lotes combinados"), typed or not
   const [note, setNote] = useState('')
@@ -2169,12 +2174,14 @@ function PalletDoneDialog({ s, run, onClose, onSaved }: { s: State; run: Run; on
   const lastRow = rows[rows.length - 1], fill = per > onIt && !lastRow.qty && lastRow.lot.trim() ? per - onIt : 0
   // a pallet of more than twice the usual cases is asked about first (Jose, 2026-10-18): the cases typed for its lots
   const sure = useSure(), lots = rows.filter((_, i) => nums[i] > 0).length
-  const save = () => { if (ok) sure.check([{ key: 'pallet', n: total, usual: usualOf(s, run), unit: tr('cajas'), per: 'pallet', total: lots > 1 }], () => { if (palletDone(run.id, rows.map((r, i) => ({ lot: r.lot, qty: nums[i], tag: r.tag })), po, note)) onSaved() }) }
+  const save = () => { if (ok) sure.check([{ key: 'pallet', n: total, usual: usualOf(s, run), unit: tr('cajas'), per: 'pallet', total: lots > 1 }], () => { if (palletDone(run.id, rows.map((r, i) => ({ lot: r.lot, qty: nums[i], tag: r.tag })), po, note)) { const now = store.get(); if (po && orderFull(now, po, run.perUnit)) setDoneNote(tr('Con este pallet el {0} quedó completo ({1}). Ya no se le pueden poner más pallets.', pick?.label.split(' · ')[0] ?? '', orderFullText(now, po, run.perUnit))); else onSaved() } }) }
+  if (doneNote) return <NoticeDialog title={tr('✓ PO completo')} text={doneNote} onClose={onSaved} />
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
         <h3>{trx('Pallet listo · {0}', run.code)}</h3>
         {sure.ui}
+        {wentFull && <p className="hint red">{tr('El {0} ya está completo ({1}): este pallet ya no se le puede poner. Escoge otro PO o déjalo sin PO.', wentFull.label.split(' · ')[0], orderFullText(s, wentFull.id, run.perUnit))}</p>}
         <form className="qform" onSubmit={(e) => { e.preventDefault(); save() }}>
           <div className="palrows">
             <div className="palrow head"><span>{tr('Lote')}</span><span>{tr('Cajas')}</span><span>{tr('Tag')}</span></div>
@@ -2193,7 +2200,7 @@ function PalletDoneDialog({ s, run, onClose, onSaved }: { s: State; run: Run; on
           {choices.length > 0 && (
             <div className="pochoice" role="group" aria-label={tr('¿Para qué PO es este pallet?')}>
               <span className="lab">{tr('¿Para qué PO es este pallet?')}</span>
-              {choices.map((o) => <button key={o.id} type="button" className={'btn' + (po === o.id ? ' on' : '')} aria-pressed={po === o.id} onClick={() => setPo(o.id)}>{po === o.id ? '✓ ' : ''}{o.label}</button>)}
+              {choices.map((o) => <button key={o.id} type="button" className={'btn' + (po === o.id ? ' on' : '') + (o.full ? ' full' : '')} aria-pressed={po === o.id} disabled={o.full} title={o.full ? tr('Este PO ya está completo: no lleva más pallets') : undefined} onClick={() => setPo(o.id)}>{po === o.id ? '✓ ' : ''}{o.label}</button>)}
               <button type="button" className={'btn' + (!po ? ' on' : '')} aria-pressed={!po} onClick={() => setPo('')}>{!po ? '✓ ' : ''}{tr('Sin PO')}</button>
             </div>
           )}
@@ -2308,16 +2315,18 @@ function PartDialog({ run, index, onClose }: { run: Run; index: number; onClose:
 function PalletOrderDialog({ s, run, onClose }: { s: State; run: Run; onClose: () => void }) {
   const now = palletPo(s, run)
   const choices = poChoices(s, run)
-  const pick = (id: string) => { palletOrder(run.id, id); onClose() }
+  const [refused, setRefused] = useState('')
+  const pick = (id: string) => { if (!palletOrder(run.id, id)) { setRefused(tr('Ese PO ya está completo ({0}): no lleva más pallets.', orderFullText(s, id, run.perUnit))); return } onClose() }
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
         <h3>{tr('¿Para qué PO es este pallet?')}</h3>
         <div className="endchoices">
-          {choices.map((o) => <button key={o.id} type="button" className={'btn' + (o.id === now ? ' primary' : '')} onClick={() => pick(o.id)}>{o.id === now ? '✓ ' : ''}{o.label}</button>)}
+          {choices.map((o) => <button key={o.id} type="button" className={'btn' + (o.id === now ? ' primary' : '') + (o.full ? ' full' : '')} disabled={o.full} onClick={() => pick(o.id)}>{o.id === now ? '✓ ' : ''}{o.label}</button>)}
           <button type="button" className={'btn' + (!now ? ' primary' : '')} onClick={() => pick('')}>{!now ? '✓ ' : ''}{tr('Sin PO')}</button>
         </div>
-        <p className="hint">{tr('Cada PO cuenta solo los pallets que se le dan. Un pallet que va para otro PO, o sin PO, no se le suma.')}</p>
+        {refused && <p className="hint red">{refused}</p>}
+        <p className="hint">{tr('Cada PO cuenta solo los pallets que se le dan. Un pallet que va para otro PO, o sin PO, no se le suma.')} {tr('Un PO completo ya no lleva más pallets.')}</p>
         <div className="dbtns"><button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button></div>
       </div>
     </div>
@@ -2672,7 +2681,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   // (see nextOrderFor); the person can always say another, or none.
   const openOrders = rc.orders ? openOrdersFor(s, run.code) : []
   const nextOrder = rc.orders ? nextOrderFor(s, run) : ''
-  const orderOptions = openOrders.map((o) => ({ id: o.id, label: orderLabel(o) + leftText(s, o) + (o.shipBy ? ' ' + tr('· envío {0}', shipText(o.shipBy)) : '') }))
+  const orderOptions = openOrders.filter((o) => !orderFull(s, o.id, run.perUnit)).map((o) => ({ id: o.id, label: orderLabel(o) + leftText(s, o) + (o.shipBy ? ' ' + tr('· envío {0}', shipText(o.shipBy)) : '') }))
   const done = () => {
     if (just) return
     if (pallets) setPacking('done')
