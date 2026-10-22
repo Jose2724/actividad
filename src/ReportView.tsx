@@ -1,10 +1,10 @@
 import { Fragment, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { apartLabel, apartWord, binWord, cameFrom, carriedOver, casesText, CFG, cfgFor, cfgOf, csvCell, DEPTS, fmtDur, roomKnown, fmtN, fmtTime, inCases, kindClass, lineLabel, lineNameOf, looksLikeTwoLots, madeText, measureName, measureUnit, normCode, noteLabel, noteOf, orderLabel, orderOfId, plainDay, plainText, productOf, purgesOf, reasonText, restorePurged, runStats, SETUP, shiftAt, shiftHours, shiftSpan, shiftsOf, stopTime, unitQty, user, whoText, workDay, type Dept, type State } from './store'
+import { apartLabel, apartWord, binWord, cameFrom, carriedOver, casesText, CFG, cfgFor, cfgOf, csvCell, DEPTS, fmtDur, roomKnown, fmtN, fmtTime, inCases, kindClass, lineLabel, lineNameOf, looksLikeTwoLots, madeText, measureName, measureUnit, normCode, noteLabel, noteOf, orderLabel, orderOfId, plainDay, plainText, productOf, purgesOf, reasonText, restorePurged, runStats, SETUP, shiftAt, shiftHours, shiftSpan, shiftsOf, stopTime, unitQty, user, whoText, workDay, type Dept, type State, type AttEntry } from './store'
 import { avanceRows, mfoText, mfoWord, pending } from './avance'
 import { codeLabel, FAMILY_SHOWN, reasonCodeOf } from './reasons'
 import { cellText, loadZip, xDur, xPct, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
-import { attendanceOf, attOf, attShifts } from './store'
+import { attendanceOf, attLineText, attMovesText, attOf, attShifts, attStateText } from './store'
 import { pctText } from './Attendance'
 import { buildPdf, loadPdf, type Part } from './pdf'
 import { homeScreenApple, type Kind } from './send'
@@ -320,8 +320,9 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
     const rows: Cell[][] = [[tr('Cuarto'), tr('Esperados'), tr('Vinieron'), tr('% Falta'), tr('Faltan')], ...a.rows.map((r): Cell[] => [r.dept, r.expected, r.actual, xPct(r.pct), r.miss]), [tr('TOTAL'), a.total.expected, a.total.actual, xPct(a.total.pct), a.total.miss]]
     const people = (rep.shift ? [rep.shift] : attShifts(s, date)).flatMap((k) => rooms.flatMap((d) => attOf(s, date, d, k)))
     const T = (ms: number) => xTime(ms, fmtTime(ms))
-    const names: Cell[][] = [[tr('Fecha'), tr('Turno'), tr('Cuarto'), tr('Persona'), tr('Anotó'), tr('Hora'), tr('Estado'), tr('Pasó a'), tr('Hora de salida'), tr('Viene de')],
-      ...people.map((x): Cell[] => [date, x.shift, x.dept, x.name, x.by, T(x.at), !x.gone ? tr('trabajando') : x.gone.why === 'casa' ? tr('se fue a su casa') : tr('pasó a otro cuarto'), x.gone?.to ?? '', x.gone ? T(x.gone.at) : '', x.from])]
+    // with the line each one is on and their moves (Jose, 2026-10-22: "que los nombres de las personas salgan también en el excel")
+    const names: Cell[][] = [[tr('Fecha'), tr('Turno'), tr('Cuarto'), tr('Línea'), tr('Persona'), tr('Anotó'), tr('Hora'), tr('Estado'), tr('Pasó a'), tr('Línea allá'), tr('Hora de salida'), tr('Viene de'), tr('Traslados')],
+      ...people.map((x): Cell[] => [date, x.shift, x.dept, attLineText(s, x.line), x.name, x.by, T(x.at), !x.gone ? tr('trabajando') : x.gone.why === 'casa' ? tr('se fue a su casa') : tr('pasó a otro cuarto'), x.gone?.to ?? '', attLineText(s, x.gone?.line), x.gone ? T(x.gone.at) : '', x.from, attMovesText(s, x)])]
     return [{ name: tr('Asistencia'), rows, chart: { title: tr('% de faltas por cuarto'), series: tr('% Falta'), cat: 0, val: 3, from: 2, to: 1 + a.rows.length, at: a.rows.length + 4, pct: true } }, ...(people.length ? [{ name: tr('Asistencia · personas'), rows: names }] : [])]
   }
   /** the Excel file's sheets: one per table (Cambios and Avance only for the manager and the office) */
@@ -927,7 +928,7 @@ function PartsDialog({ k, mode, onClose, onGo }: { k: Kit; mode: 'xlsx' | 'pdf' 
  */
 function AttendanceWhere({ k }: { k: Kit }) {
   const { s, rep, date, dept, only } = k
-  const [names, setNames] = useState<Dept | ''>('')
+  const [names, setNames] = useState(true)
   const rooms = dept ? [dept] : only ? [only] : DEPTS, a = attendanceOf(s, date, rep.shift, rooms)
   const people = (d: Dept) => (rep.shift ? [rep.shift] : attShifts(s, date)).flatMap((x) => attOf(s, date, d, x))
   return (
@@ -938,17 +939,37 @@ function AttendanceWhere({ k }: { k: Kit }) {
         {a.rows.map((r) => (
           <Fragment key={r.dept}>
             <div className="att-row" style={deptVars(r.dept)}>
-              <span><button type="button" className="drill" onClick={() => setNames(names === r.dept ? '' : r.dept)}>{DEPT_LOOK[r.dept].emoji} {r.dept}</button></span>
+              <span><b>{DEPT_LOOK[r.dept].emoji} {r.dept}</b></span>
               <span>{r.expected}</span><span>{r.actual}</span><b className={r.pct >= 0.25 ? 'red' : r.miss ? 'amber' : 'ok'}>{pctText(r.pct)}</b>
               <span className="att-barcol"><i className={r.pct >= 0.25 ? 'red' : ''} style={{ width: Math.round(r.pct * 100) + '%' }} /></span>
             </div>
-            {names === r.dept && <div className="att-names">{people(r.dept).length ? people(r.dept).map((x) => <span key={x.id} className={x.gone ? 'gone' : ''}>{x.name}{x.gone && <small> · {x.gone.why === 'casa' ? tr('se fue a su casa') : tr('pasó a {0}', x.gone.to || tr('otro cuarto'))}</small>}</span>) : <i>{tr('Nadie anotado.')}</i>}</div>}
+            {names && <AttNames k={k} people={people(r.dept)} />}
           </Fragment>
         ))}
         <div className="att-row total"><b>{tr('TOTAL')}</b><b>{a.total.expected}</b><b>{a.total.actual}</b><b>{pctText(a.total.pct)}</b><span className="att-barcol"><i style={{ width: Math.round(a.total.pct * 100) + '%' }} /></span></div>
       </div>
-      <p className="hint">{tr('Toca un cuarto para ver sus nombres. En el Excel va esta tabla con su gráfica y la lista de personas.')}</p>
+      <div className="att-namesbar"><button type="button" className="btn sm" onClick={() => setNames(!names)}>{names ? tr('Ocultar nombres') : tr('Ver nombres')}</button><span className="hint">{tr('En el Excel va esta tabla con su gráfica y la hoja con cada persona, su línea y sus traslados; en el PDF, la lista de personas.')}</span></div>
     </>
+  )
+}
+/**
+ * A room's people in the report (Jose, 2026-10-22: the names in the report too), by line: those working, those who came
+ * from another room, and those who left (crossed out, with where they went)
+ */
+function AttNames({ k, people }: { k: Kit; people: AttEntry[] }) {
+  const { s } = k
+  if (!people.length) return <div className="att-names"><i>{tr('Nadie anotado.')}</i></div>
+  const keys = [...new Set(people.map((x) => x.line))].sort((a, b) => (!a ? 1 : !b ? -1 : attLineText(s, a).localeCompare(attLineText(s, b), 'es', { numeric: true })))
+  const many = keys.length > 1 || !!keys[0]
+  return (
+    <div className="att-names">
+      {keys.map((l) => (
+        <div key={l || '-'} className="att-nl">
+          {many && <b>{attLineText(s, l) || tr('Sin línea')}:</b>}
+          {people.filter((x) => x.line === l).map((x) => <span key={x.id} className={x.gone ? 'gone' : ''}>{x.name}{x.from && <small> · {tr('viene de {0}', x.from)}</small>}{x.gone && <small> · {attStateText(s, x)}</small>}</span>)}
+        </div>
+      ))}
+    </div>
   )
 }
 

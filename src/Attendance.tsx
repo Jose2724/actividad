@@ -1,6 +1,5 @@
 import { useRef, useState } from 'react'
-import { attAdd, attBack, attDelete, attendanceOf, attExpectedOf, attOf, attRemove, DEPTS, fmtTime, setAttExpected, type AttEntry, type Dept, type State } from './store'
-import { writesIn } from './powers'
+import { attAdd, attBack, attDelete, attendanceOf, attExpectedOf, attLineText, attMoveLine, attOf, attRemove, byLineName, DEPTS, fmtTime, setAttExpected, type AttEntry, type Dept, type State } from './store'
 import { useWho } from './App'
 import { DEPT_LOOK, deptVars } from './look'
 import { tr } from './i18n'
@@ -14,6 +13,8 @@ import { tr } from './i18n'
  * change here (store.ts, ATT_DEFAULT and setAttExpected).
  */
 export const pctText = (x: number) => Math.round(x * 100) + '%'
+/** a room's lines, in order (the removed ones out) */
+export const roomLines = (s: State, dept: Dept) => s.lines.filter((l) => l.dept === dept && !l.deleted).sort(byLineName)
 
 export function AttendanceCard({ s, dept, date, shift, edit }: { s: State; dept: Dept; date: string; shift: 1 | 2; edit: boolean }) {
   const [open, setOpen] = useState(false)
@@ -38,7 +39,10 @@ function AttendanceDialog({ s, dept, date, shift: inCourse, edit, onClose }: { s
   const [shift, setShift] = useState<1 | 2>(inCourse)
   const [name, setName] = useState('')
   const [twice, setTwice] = useState('')
-  const [out, setOut] = useState<{ id: string; why?: 'otro'; to?: Dept } | null>(null)
+  // the person being acted on: taken out (home, by mistake) or moved (to another line here, or another room and its line)
+  const [out, setOut] = useState<{ id: string; mode: 'out' | 'move'; to?: Dept } | null>(null)
+  const lines = roomLines(s, dept)
+  const [addLine, setAddLine] = useState('')
   const [said, setSaid] = useState('')
   const [editingN, setEditingN] = useState<string | null>(null)
   const box = useRef<HTMLInputElement>(null)
@@ -47,17 +51,25 @@ function AttendanceDialog({ s, dept, date, shift: inCourse, edit, onClose }: { s
   const add = () => {
     const n = name.trim()
     if (!n) return
-    if (!attAdd(date, dept, shift, n)) { setTwice(n); return }
+    if (!attAdd(date, dept, shift, n, '', lines.some((l) => l.id === addLine) ? addLine : '')) { setTwice(n); return }
     setName(''); setTwice(''); setSaid('')
     box.current?.focus()
   }
-  const take = (x: AttEntry, why: 'otro' | 'casa', to: Dept | '' = '') => {
-    const there = why === 'otro' && !!to && writesIn(who, to)
-    attRemove(x.id, why, to, there)
+  // gone to another room: they show up there by themselves ("viene de"), on the line chosen; nobody there has to write them
+  const take = (x: AttEntry, why: 'otro' | 'casa', to: Dept | '' = '', toLine = '') => {
+    attRemove(x.id, why, to, false, toLine)
     setOut(null)
-    setSaid(why === 'casa' ? tr('{0} salió: se fue a su casa.', x.name) : there ? tr('{0} pasó a {1}: ya quedó anotado allá.', x.name, to) : tr('{0} pasó a {1}: avísale al supervisor de {1} para que lo anote.', x.name, to))
+    setSaid(why === 'casa' ? tr('{0} salió: se fue a su casa.', x.name) : tr('{0} pasó a {1}: ya aparece en la lista de {2}.', x.name, to + (toLine ? ' · ' + attLineText(s, toLine) : ''), to))
   }
-  const goneText = (x: AttEntry) => (x.gone?.why === 'casa' ? tr('se fue a su casa') : tr('pasó a {0}', x.gone?.to || tr('otro cuarto'))) + ' · ' + fmtTime(x.gone?.at ?? 0)
+  const move = (x: AttEntry, line: string) => {
+    attMoveLine(x.id, line)
+    setOut(null)
+    setSaid(tr('{0} pasó a {1}.', x.name, attLineText(s, line) || tr('sin línea')))
+  }
+  const goneText = (x: AttEntry) => (x.gone?.why === 'casa' ? tr('se fue a su casa') : tr('pasó a {0}', (x.gone?.to || tr('otro cuarto')) + (x.gone?.line ? ' · ' + attLineText(s, x.gone.line) : ''))) + ' · ' + fmtTime(x.gone?.at ?? 0)
+  // the people here, by line (the room's lines in order, then those on no line in particular)
+  const groups = [...lines.map((l) => ({ id: l.id, name: attLineText(s, l.id), people: here.filter((x) => x.line === l.id) })), { id: '', name: tr('Sin línea'), people: here.filter((x) => !x.line || !lines.some((l) => l.id === x.line)) }].filter((g) => g.people.length > 0)
+  const byLine = lines.length > 0 && here.some((x) => !!x.line)
   return (
     <div className="veil rc-veil" onClick={onClose}>
       <div className="dlg att-dlg" onClick={(e) => e.stopPropagation()} style={deptVars(dept)}>
@@ -73,43 +85,58 @@ function AttendanceDialog({ s, dept, date, shift: inCourse, edit, onClose }: { s
           <div className={r.miss ? 'miss' : 'ok'}><label>{tr('% Falta')}</label><b>{pctText(r.pct)}</b><small>{r.miss ? tr('faltan {0}', r.miss) : r.over ? tr('+{0} de más', r.over) : tr('✓ completos')}</small></div>
         </div>
         {edit && (
+          <>
+          {lines.length > 0 && <div className="chips att-lines"><span className="att-lab">{tr('Línea:')}</span>{[{ id: '', name: tr('Sin línea') }, ...lines.map((l) => ({ id: l.id, name: attLineText(s, l.id) }))].map((l) => <button key={l.id || '-'} type="button" className={'chip' + (addLine === l.id ? ' on' : '')} onClick={() => { setAddLine(l.id); box.current?.focus() }}>{l.name}</button>)}</div>}
           <form className="att-add" onSubmit={(e) => { e.preventDefault(); add() }}>
             <input ref={box} value={name} maxLength={60} placeholder={tr('Nombre o número de la persona')} autoComplete="off" aria-label={tr('Nombre o número de la persona')} onChange={(e) => { setName(e.target.value); setTwice('') }} />
             <button type="submit" className="btn primary" disabled={!name.trim()}>{tr('+ Anotar')}</button>
           </form>
+          </>
         )}
         {twice && <p className="hint amber">{tr('{0} ya está anotado en este turno.', twice)}</p>}
         {said && <p className="hint ok">{said}</p>}
-        {!list.length ? <p className="hint">{tr('Nadie anotado todavía en este turno.')}</p> : (
-          <ol className="att-list">
-            {here.map((x) => (
-              <li key={x.id}>
-                <span className="att-name">{x.name}{x.from && <small> · {tr('viene de {0}', x.from)}</small>}</span>
-                <small className="att-at">{fmtTime(x.at)}</small>
-                {edit && out?.id !== x.id && <button type="button" className="btn xs" onClick={() => { setOut({ id: x.id }); setSaid('') }}>{tr('✕ Sacar')}</button>}
-                {out?.id === x.id && (
-                  <div className="att-out">
-                    {!out.why ? (
-                      <>
-                        <span>{tr('¿Por qué sale {0}?', x.name)}</span>
-                        <button type="button" className="btn sm soft" onClick={() => setOut({ id: x.id, why: 'otro' })}>{tr('Pasó a otro cuarto')}</button>
-                        <button type="button" className="btn sm soft" onClick={() => take(x, 'casa')}>{tr('Se fue a su casa')}</button>
-                        <button type="button" className="btn sm danger" onClick={() => { attDelete(x.id); setOut(null) }}>{tr('Anotado por error')}</button>
-                        <button type="button" className="btn sm" onClick={() => setOut(null)}>{tr('Cancelar')}</button>
-                      </>
-                    ) : (
-                      <>
-                        <span>{tr('¿A qué cuarto pasó?')}</span>
-                        {DEPTS.filter((d) => d !== dept).map((d) => <button key={d} type="button" className="btn sm soft" onClick={() => take(x, 'otro', d)}>{DEPT_LOOK[d].emoji} {d}</button>)}
-                        <button type="button" className="btn sm" onClick={() => setOut({ id: x.id })}>{tr('← Atrás')}</button>
-                      </>
-                    )}
-                  </div>
-                )}
-              </li>
-            ))}
-          </ol>
-        )}
+        {!list.length ? <p className="hint">{tr('Nadie anotado todavía en este turno.')}</p> : groups.map((g) => (
+          <div key={g.id || '-'} className="att-group">
+            {byLine && <h4 className="att-gh">{g.name} <small>· {g.people.length}</small></h4>}
+            <ol className="att-list">
+              {g.people.map((x) => (
+                <li key={x.id}>
+                  <span className="att-name">{x.name}{x.from && <small> · {tr('viene de {0}', x.from)}</small>}{x.moves.length > 0 && <small> · {tr('antes en {0}', attLineText(s, x.moves[x.moves.length - 1].from) || tr('sin línea'))}</small>}</span>
+                  <small className="att-at">{fmtTime(x.at)}</small>
+                  {edit && out?.id !== x.id && <>
+                    <button type="button" className="btn xs soft" onClick={() => { setOut({ id: x.id, mode: 'move' }); setSaid('') }}>{tr('⇄ Trasladar')}</button>
+                    <button type="button" className="btn xs" onClick={() => { setOut({ id: x.id, mode: 'out' }); setSaid('') }}>{tr('✕ Sacar')}</button>
+                  </>}
+                  {out?.id === x.id && out.mode === 'out' && (
+                    <div className="att-out">
+                      <span>{tr('¿Por qué sale {0}?', x.name)}</span>
+                      <button type="button" className="btn sm soft" onClick={() => take(x, 'casa')}>{tr('Se fue a su casa')}</button>
+                      {!x.via && <button type="button" className="btn sm danger" onClick={() => { attDelete(x.id); setOut(null) }}>{tr('Anotado por error')}</button>}
+                      <button type="button" className="btn sm" onClick={() => setOut(null)}>{tr('Cancelar')}</button>
+                      {x.via && <small className="hint">{tr('Si vino por error, deshazlo en {0}, de donde salió.', x.from)}</small>}
+                    </div>
+                  )}
+                  {out?.id === x.id && out.mode === 'move' && !out.to && (
+                    <div className="att-out">
+                      <span>{tr('¿A dónde pasa {0}?', x.name)}</span>
+                      {lines.length > 0 && <div className="att-row2"><small>{tr('Otra línea de {0}:', dept)}</small>{[...lines.map((l) => l.id), ''].filter((l) => l !== (lines.some((y) => y.id === x.line) ? x.line : '')).map((l) => <button key={l || '-'} type="button" className="btn sm soft" onClick={() => move(x, l)}>{attLineText(s, l) || tr('Sin línea')}</button>)}</div>}
+                      <div className="att-row2"><small>{tr('Otro cuarto:')}</small>{DEPTS.filter((d) => d !== dept).map((d) => <button key={d} type="button" className="btn sm soft" onClick={() => (roomLines(s, d).length ? setOut({ id: x.id, mode: 'move', to: d }) : take(x, 'otro', d))}>{DEPT_LOOK[d].emoji} {d}</button>)}</div>
+                      <button type="button" className="btn sm" onClick={() => setOut(null)}>{tr('Cancelar')}</button>
+                    </div>
+                  )}
+                  {out?.id === x.id && out.mode === 'move' && out.to && (
+                    <div className="att-out">
+                      <span>{tr('¿A qué línea de {0} pasa {1}?', out.to, x.name)}</span>
+                      {roomLines(s, out.to).map((l) => <button key={l.id} type="button" className="btn sm soft" onClick={() => take(x, 'otro', out.to, l.id)}>{attLineText(s, l.id)}</button>)}
+                      <button type="button" className="btn sm soft" onClick={() => take(x, 'otro', out.to)}>{tr('Sin línea / no sé')}</button>
+                      <button type="button" className="btn sm" onClick={() => setOut({ id: x.id, mode: 'move' })}>{tr('← Atrás')}</button>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ol>
+          </div>
+        ))}
         {gone.length > 0 && (
           <>
             <h4>{tr('Salieron · no cuentan')}</h4>

@@ -1,4 +1,4 @@
-import { apartLabel, apartWord, binWord, casesText, CFG, cfgFor, cfgOf, fmtDur, fmtTime, inCases, lineLabel, lineNameOf, madeText, noteLabel, shiftHours, whoText, type DeptCfg, type State, attendanceOf, DEPTS } from './store'
+import { apartLabel, apartWord, binWord, casesText, CFG, cfgFor, cfgOf, fmtDur, fmtTime, inCases, lineLabel, lineNameOf, madeText, noteLabel, shiftHours, whoText, type DeptCfg, type State, attendanceOf, attLineText, attOf, attShifts, attStateText, DEPTS } from './store'
 import { filterTitle, reportOf, spanShifts, type ReportFilter } from './report'
 import { avanceRows, n1, pending, mfoText } from './avance'
 import { tr } from './i18n'
@@ -104,6 +104,16 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
       foot: [[tr('TOTAL'), String(a.total.expected), String(a.total.actual), pc(a.total.pct), String(a.total.miss)]],
     })
     top = after() + 18
+    // the people, by room and line (Jose, 2026-10-22: the names in the report)
+    const people = (rep.shift ? [rep.shift] : attShifts(s, date)).flatMap((k) => rooms.flatMap((d) => attOf(s, date, d, k)))
+    if (people.length) {
+      autoTable(doc, {
+        startY: top, theme: 'grid', styles: { font: 'helvetica', fontSize: 9, cellPadding: 4, textColor: [22, 32, 42] }, headStyles: { fillColor: teal, textColor: 255, fontStyle: 'bold' },
+        head: [[tr('Cuarto'), tr('Turno'), tr('Línea'), tr('Persona'), tr('Hora'), tr('Estado'), tr('Viene de')]],
+        body: people.map((x) => [x.dept, String(x.shift), attLineText(s, x.line), x.name, fmtTime(x.at), attStateText(s, x) + (x.gone ? ' · ' + fmtTime(x.gone.at) : ''), x.from]),
+      })
+      top = after() + 18
+    }
   }
   if (has('resumen')) autoTable(doc, {
     startY: top, theme: 'grid', styles: { font: 'helvetica', fontSize: 9, cellPadding: 5, textColor: [22, 32, 42] }, headStyles: { fillColor: teal, textColor: 255, fontStyle: 'bold' },

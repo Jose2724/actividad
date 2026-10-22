@@ -1955,3 +1955,10 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 .lt-howbtn{justify-self:start}
 .lt-how{background:#eef2ff;border:1px solid #c7d2fe;color:#3730a3;border-radius:10px;padding:10px 12px;font-size:14px;display:grid;gap:6px}.lt-how p{margin:0}
 @media (max-width:640px){.lt-chain{grid-template-columns:1fr}.lt-vstep{grid-template-columns:1fr}.lt-vdown{margin-left:10px}.lt-vnums{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* moving people between lines and rooms (Jose, 2026-10-22) */
+.att-lines{align-items:center}.att-lab{font-weight:700;color:var(--muted);margin-right:4px}
+.att-group{display:grid;gap:4px}.att-gh{margin:8px 0 0;font-size:15px}.att-gh small{color:var(--muted);font-weight:400}
+.att-row2{width:100%;display:flex;flex-wrap:wrap;gap:6px;align-items:center}.att-row2>small{font-weight:700;color:var(--muted);min-width:110px}
+.att-nl{display:flex;flex-wrap:wrap;gap:4px 12px;width:100%}.att-nl>b{color:var(--muted);font-size:13px}
+.att-namesbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px}

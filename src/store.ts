@@ -292,16 +292,27 @@ export type WorkOrder = { id: string; dept: Dept; code: string; lot: string; wo:
  * home is taken out (gone), not erased: the % is worked out again and the list says when and why. A person written by
  * mistake is deleted. from = the room they came from (taken out of another room to cover this one).
  */
-export type AttGone = { why: 'otro' | 'casa'; to: Dept | ''; at: number; by: string }
-export type AttEntry = { id: string; date: string; dept: Dept; shift: 1 | 2; name: string; by: string; at: number; gone: AttGone | null; from: Dept | ''; deleted?: boolean; updatedAt: number; syncedAt?: number }
+/**
+ * Moving people (Jose, 2026-10-22: "que los supervisores de cuartos o departamentos puedan trasladar personal a otro
+ * cuarto o líneas"): line = the line of the room the person works on ('' = the room, no line in particular); moves =
+ * each change of line in the room (from, to, when, who). Sent to another room, the person leaves this room (gone, with
+ * the line there) and shows up in that room by itself (attOf: "viene de"), without its supervisor writing them
+ * (an operator writes only their own room's records): see attOf
+ */
+export type AttGone = { why: 'otro' | 'casa'; to: Dept | ''; at: number; by: string; line?: string }
+export type AttMove = { from: string; to: string; at: number; by: string }
+export type AttEntry = { id: string; date: string; dept: Dept; shift: 1 | 2; name: string; by: string; at: number; gone: AttGone | null; from: Dept | ''; line: string; moves: AttMove[]; deleted?: boolean; updatedAt: number; syncedAt?: number
+  /** a person who came from another room and is not written here: shown from that room's record (never stored) */
+  via?: string }
 /** the people a room expects on a shift (a fixed number the managers change: see ATT_DEFAULT) */
 export type AttExpected = { dept: Dept; shift: 1 | 2; n: number; updatedAt: number }
 function attFrom(x: Partial<AttEntry> | null | undefined): AttEntry | null {
   if (!x || typeof x !== 'object' || typeof x.id !== 'string' || !x.id || !(DEPTS as unknown[]).includes(x.dept) || !isDay(String(x.date ?? '')) || (x.shift !== 1 && x.shift !== 2)) return null
   const name = String(x.name ?? '').replace(/\s+/g, ' ').trim().slice(0, 60)
   if (!name) return null
-  const g = x.gone && typeof x.gone === 'object' && (x.gone.why === 'otro' || x.gone.why === 'casa') ? { why: x.gone.why, to: (DEPTS as unknown[]).includes(x.gone.to) ? (x.gone.to as Dept) : ('' as const), at: Number(x.gone.at) || 0, by: String(x.gone.by ?? '') } : null
-  return { id: x.id, date: String(x.date), dept: x.dept as Dept, shift: x.shift, name, by: String(x.by ?? ''), at: Number(x.at) || 0, gone: g, from: (DEPTS as unknown[]).includes(x.from) ? (x.from as Dept) : '', ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
+  const g = x.gone && typeof x.gone === 'object' && (x.gone.why === 'otro' || x.gone.why === 'casa') ? { why: x.gone.why, to: (DEPTS as unknown[]).includes(x.gone.to) ? (x.gone.to as Dept) : ('' as const), at: Number(x.gone.at) || 0, by: String(x.gone.by ?? ''), ...(typeof x.gone.line === 'string' && x.gone.line ? { line: x.gone.line.slice(0, 64) } : {}) } : null
+  const moves = Array.isArray(x.moves) ? x.moves.filter((m) => m && typeof m === 'object').map((m) => ({ from: String(m.from ?? '').slice(0, 64), to: String(m.to ?? '').slice(0, 64), at: Number(m.at) || 0, by: String(m.by ?? '') })).slice(-50) : []
+  return { id: x.id, date: String(x.date), dept: x.dept as Dept, shift: x.shift, name, by: String(x.by ?? ''), at: Number(x.at) || 0, gone: g, from: (DEPTS as unknown[]).includes(x.from) ? (x.from as Dept) : '', line: typeof x.line === 'string' ? x.line.slice(0, 64) : '', moves, ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
 }
 function attExpectedFrom(x: Partial<AttExpected> | null | undefined): AttExpected | null {
   if (!x || !(DEPTS as unknown[]).includes(x.dept) || (x.shift !== 1 && x.shift !== 2) || !(Number(x.n) >= 0)) return null
@@ -886,35 +897,70 @@ export function setAttExpected(dept: Dept, shift: 1 | 2, n: number) {
 }
 /** a name as two writings of it are compared ("juan  pérez" and "Juan Perez" are one person) */
 const attKey = (x: string) => plain(x.replace(/\s+/g, ' ').trim())
-/** the people written for a room and shift of a day (the deleted ones out; the gone ones in, marked) */
-export const attOf = (s: State, date: string, dept: Dept, shift: 1 | 2) => (s.attendance ?? []).filter((x) => !x.deleted && x.date === date && x.dept === dept && x.shift === shift).sort((a, b) => a.at - b.at)
-const rowOfAtt = (x: AttEntry) => ({ id: ATT_ID + x.id, at: iso(x.at), by_name: x.by, dept: x.dept, what: 'Asistencia', before: '', after: JSON.stringify({ date: x.date, shift: x.shift, name: x.name, gone: x.gone, from: x.from }), ref_table: ATT_REF, ref_key: x.id, deleted: !!x.deleted, updated_at: iso(x.updatedAt), updated_by: user.get() })
+const ATT_VIA = 'via:'
+/**
+ * the people of a room and shift of a day (the deleted ones out; the gone ones in, marked), and those another room sent
+ * here (2026-10-22), shown from that room's record until somebody here writes them (then the written one counts alone)
+ */
+export function attOf(s: State, date: string, dept: Dept, shift: 1 | 2): AttEntry[] {
+  const day = (s.attendance ?? []).filter((x) => !x.deleted && x.date === date && x.shift === shift)
+  const mine = day.filter((x) => x.dept === dept), names = new Set(mine.map((x) => attKey(x.name)))
+  const came = day.filter((x) => x.dept !== dept && x.gone?.why === 'otro' && x.gone.to === dept && !names.has(attKey(x.name)))
+    .map((x): AttEntry => ({ ...x, id: ATT_VIA + x.id, dept, line: x.gone?.line ?? '', moves: [], from: x.dept, by: x.gone?.by ?? x.by, at: x.gone?.at ?? x.at, gone: null, via: x.id }))
+  return [...mine, ...came].sort((a, b) => a.at - b.at)
+}
+/** a person shown here from another room's record is written here first (with the hour they came), to act on them */
+function attHere(id: string): AttEntry | null {
+  if (!id.startsWith(ATT_VIA)) return (state.attendance ?? []).find((y) => y.id === id) ?? null
+  const src = (state.attendance ?? []).find((y) => y.id === id.slice(ATT_VIA.length))
+  if (!src || src.deleted || src.gone?.why !== 'otro' || !src.gone.to) return null
+  const there = attOf(state, src.date, src.gone.to, src.shift).find((y) => y.id === id)
+  if (!there) return (state.attendance ?? []).find((y) => !y.deleted && y.date === src.date && y.shift === src.shift && y.dept === src.gone?.to && attKey(y.name) === attKey(src.name)) ?? null
+  const x: AttEntry = { id: uid(), date: src.date, dept: src.gone.to, shift: src.shift, name: src.name, by: user.get(), at: there.at, gone: null, from: src.dept, line: there.line, moves: [], updatedAt: stamp(undefined) }
+  putAtt(x)
+  return x
+}
+const rowOfAtt = (x: AttEntry) => ({ id: ATT_ID + x.id, at: iso(x.at), by_name: x.by, dept: x.dept, what: 'Asistencia', before: '', after: JSON.stringify({ date: x.date, shift: x.shift, name: x.name, gone: x.gone, from: x.from, line: x.line, moves: x.moves }), ref_table: ATT_REF, ref_key: x.id, deleted: !!x.deleted, updated_at: iso(x.updatedAt), updated_by: user.get() })
 function putAtt(x: AttEntry) {
+  if (x.via) return
   set({ ...state, attendance: [...(state.attendance ?? []).filter((y) => y.id !== x.id), x] })
   push('act_changes', ATT_ID + x.id, rowOfAtt(x))
 }
 /** a person written for a room and shift; '' = not written (no name, or that name is already there and not gone) */
-export function attAdd(date: string, dept: Dept, shift: 1 | 2, name: string, from: Dept | '' = ''): string {
+export function attAdd(date: string, dept: Dept, shift: 1 | 2, name: string, from: Dept | '' = '', line = ''): string {
   const n = name.replace(/\s+/g, ' ').trim().slice(0, 60)
   if (!n || !isDay(date) || !roomKnown(dept) || (shift !== 1 && shift !== 2)) return ''
   if (attOf(state, date, dept, shift).some((x) => !x.gone && attKey(x.name) === attKey(n))) return ''
-  const x: AttEntry = { id: uid(), date, dept, shift, name: n, by: user.get(), at: clockNow(), gone: null, from, updatedAt: 0 }
+  const x: AttEntry = { id: uid(), date, dept, shift, name: n, by: user.get(), at: clockNow(), gone: null, from, line, moves: [], updatedAt: 0 }
   putAtt({ ...x, updatedAt: stamp(undefined) })
   return x.id
 }
 /**
  * a person taken out of the room: gone to cover another room (to), or gone home. Kept, marked, with when and who; the
- * % is worked out again. With addThere, one gone to another room is written there too (the same shift), unless that
- * room already has the name: the screen asks for it only where this person may write in that room
+ * % is worked out again. Gone to another room (on one of its lines, or none), they show up there by themselves (attOf);
+ * with addThere they are written there too (the same shift), unless that room already has the name
  */
-export function attRemove(id: string, why: 'otro' | 'casa', to: Dept | '' = '', addThere = false): boolean {
-  const x = (state.attendance ?? []).find((y) => y.id === id)
-  if (!x || x.deleted || x.gone) return false
+export function attRemove(id: string, why: 'otro' | 'casa', to: Dept | '' = '', addThere = false, toLine = ''): boolean {
+  let ok = false
   batch(() => {
-    putAtt({ ...x, gone: { why, to: why === 'otro' ? to : '', at: clockNow(), by: user.get() }, updatedAt: stamp(x) })
-    if (why === 'otro' && to && to !== x.dept && addThere) attAdd(x.date, to, x.shift, x.name, x.dept)
+    const x = attHere(id)
+    if (!x || x.deleted || x.gone || (why === 'otro' && to === x.dept)) return
+    putAtt({ ...x, gone: { why, to: why === 'otro' ? to : '', at: clockNow(), by: user.get(), ...(why === 'otro' && toLine ? { line: toLine } : {}) }, updatedAt: stamp(x) })
+    if (why === 'otro' && to && to !== x.dept && addThere) attAdd(x.date, to, x.shift, x.name, x.dept, toLine)
+    ok = true
   })
-  return true
+  return ok
+}
+/** a person moved to another line of the same room ('' = no line in particular): the line before is kept in moves */
+export function attMoveLine(id: string, line: string): boolean {
+  let ok = false
+  batch(() => {
+    const x = attHere(id)
+    if (!x || x.deleted || x.gone || x.line === line) return
+    putAtt({ ...x, line, moves: [...x.moves, { from: x.line, to: line, at: clockNow(), by: user.get() }], updatedAt: stamp(x) })
+    ok = true
+  })
+  return ok
 }
 /** a person taken out by mistake comes back (what was written in the other room for them stays: it is that room's) */
 export function attBack(id: string): boolean {
@@ -925,11 +971,22 @@ export function attBack(id: string): boolean {
 }
 /** a person written by mistake is taken away (kept on the server, marked, as everything) */
 export function attDelete(id: string): boolean {
-  const x = (state.attendance ?? []).find((y) => y.id === id)
+  const x = id.startsWith(ATT_VIA) ? null : (state.attendance ?? []).find((y) => y.id === id)
   if (!x || x.deleted) return false
   putAtt({ ...x, deleted: true, updatedAt: stamp(x) })
   return true
 }
+/** the line a person works on, as said ('' = none in particular) */
+export const attLineText = (s: State, line: string | undefined) => (line ? lineNameOf(s, line, '') : '')
+/** each move of a person, as said: "Línea 1 → Línea 2 · 10:30", then the move to another room */
+export function attMovesText(s: State, x: AttEntry) {
+  const name = (l: string) => attLineText(s, l) || tr('sin línea')
+  const out = x.moves.map((m) => name(m.from) + ' → ' + name(m.to) + ' · ' + fmtTime(m.at))
+  if (x.gone?.why === 'otro') out.push(x.dept + (x.line ? ' ' + name(x.line) : '') + ' → ' + (x.gone.to || tr('otro cuarto')) + (x.gone.line ? ' ' + name(x.gone.line) : '') + ' · ' + fmtTime(x.gone.at))
+  return out.join(' · ')
+}
+/** what a person is doing, as said in the report and its files */
+export const attStateText = (s: State, x: AttEntry) => (!x.gone ? tr('trabajando') : x.gone.why === 'casa' ? tr('se fue a su casa') : tr('pasó a {0}', (x.gone.to || tr('otro cuarto')) + (x.gone.line ? ' · ' + attLineText(s, x.gone.line) : '')))
 /** the shifts a day works (a day of one shift: that one alone) */
 export const attShifts = (s: State, date: string): (1 | 2)[] => { const o = shiftsOf(s, date).only; return o === 1 || o === 2 ? [o] : [1, 2] }
 /**

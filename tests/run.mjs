@@ -5018,6 +5018,43 @@ section('Asistencia: cada supervisor anota a su gente, saca a quien se va, y el 
   const back = await device('attendance-again', { seed: JSON.parse(disks.get('attendance').get('act_v1')), user: 'Santiago' })
   eq('al volver a abrir: la gente anotada y los esperados siguen', back.use((m) => [m.attOf(m.store.get(), '2026-10-20', 'Kitchen', 1).length, m.attExpectedOf(m.store.get(), 'Kitchen', 1), m.attExpectedOf(m.store.get(), 'Packing', 2)]), [3, 5, 19])
 }
+section('Trasladar personal a otra línea o a otro cuarto, y los nombres en el Excel (Jose, 2026-10-22)')
+{
+  const mv = await device('att-move', { user: 'Supervisor RTE' })
+  await mv.use(async (m) => {
+    const st = () => m.store.get(), D = '2026-10-22'
+    for (const d of ['RTE', 'Packing']) for (const n of ['Línea 1', 'Línea 2']) if (!st().lines.some((l) => l.dept === d && l.name === n)) m.addLine(d, n)
+    const L = (d, n) => st().lines.find((l) => l.dept === d && l.name === n && !l.deleted).id
+    clock = T0 + 5 * M
+    const ana = m.attAdd(D, 'RTE', 1, 'Ana', '', L('RTE', 'Línea 1')), beto = m.attAdd(D, 'RTE', 1, 'Beto', '', L('RTE', 'Línea 1'))
+    eq('anotados en RTE Línea 1', m.attOf(st(), D, 'RTE', 1).map((x) => [x.name, m.attLineText(st(), x.line)]), [['Ana', 'Línea 1'], ['Beto', 'Línea 1']])
+    clock = T0 + 30 * M
+    eq('Ana pasa a la Línea 2 de RTE: sigue contando en RTE, y queda de qué línea vino', [m.attMoveLine(ana, L('RTE', 'Línea 2')), m.attLineText(st(), m.attOf(st(), D, 'RTE', 1).find((x) => x.id === ana).line), m.attendanceOf(st(), D, 1, ['RTE']).rows[0].actual, m.attMovesText(st(), m.attOf(st(), D, 'RTE', 1).find((x) => x.id === ana))], [true, 'Línea 2', 2, 'Línea 1 → Línea 2 · ' + m.fmtTime(T0 + 30 * M)])
+    eq('la línea viaja al servidor con la persona', JSON.parse(m.outbox.items().find((i) => i.key === 'att:' + ana).row.after).line, L('RTE', 'Línea 2'))
+    eq('pasarla a la línea donde ya está no hace nada', m.attMoveLine(ana, L('RTE', 'Línea 2')), false)
+    clock = T0 + 60 * M
+    m.attRemove(beto, 'otro', 'Packing', false, L('Packing', 'Línea 2'))
+    const pk = m.attOf(st(), D, 'Packing', 1)
+    eq('Beto pasa a Packing Línea 2: sale de RTE y aparece solo en Packing, en esa línea, diciendo de dónde viene (nadie en Packing tuvo que anotarlo)', [m.attendanceOf(st(), D, 1, ['RTE']).rows[0].actual, pk.map((x) => [x.name, x.from, m.attLineText(st(), x.line), !!x.via]), m.attendanceOf(st(), D, 1, ['Packing']).rows[0].actual], [1, [['Beto', 'RTE', 'Línea 2', true]], 1])
+    eq('lo que aparece en Packing no se guarda dos veces: es el registro de RTE', st().attendance.filter((x) => x.name === 'Beto').length, 1)
+    eq('el total de la planta no cambia por trasladar', m.attendanceOf(st(), D, 1).total.actual, 2)
+    // Packing's supervisor acts on him: he is written in Packing first (with the hour he came), then moved
+    clock = T0 + 90 * M
+    eq('Packing lo pasa a su Línea 1: queda anotado en Packing, con la hora en que llegó', [m.attMoveLine(pk[0].id, L('Packing', 'Línea 1')), m.attOf(st(), D, 'Packing', 1).map((x) => [x.name, x.from, m.attLineText(st(), x.line), !!x.via, x.at]), m.attendanceOf(st(), D, 1, ['Packing']).rows[0].actual], [true, [['Beto', 'RTE', 'Línea 1', false, T0 + 60 * M]], 1])
+    eq('deshacer en RTE: vuelve a contar en RTE; lo que Packing ya anotó es de Packing y se queda', [m.attBack(beto), m.attendanceOf(st(), D, 1, ['RTE']).rows[0].actual], [true, 2])
+    // undone before Packing touched him: he leaves Packing by himself
+    const cata = m.attAdd(D, 'RTE', 1, 'Cata')
+    m.attRemove(cata, 'otro', 'MFO')
+    eq('Cata aparece en MFO', m.attOf(st(), D, 'MFO', 1).map((x) => x.name), ['Cata'])
+    m.attBack(cata)
+    eq('se deshace en RTE: ya no aparece en MFO', m.attOf(st(), D, 'MFO', 1).length, 0)
+    eq('de un traslado no se puede borrar "por error" en el cuarto que lo recibe', (() => { m.attRemove(cata, 'otro', 'MFO'); return m.attDelete(m.attOf(st(), D, 'MFO', 1)[0].id) })(), false)
+    eq('se puede mandar a su casa desde el cuarto que lo recibió', [m.attRemove(m.attOf(st(), D, 'MFO', 1)[0].id, 'casa'), m.attOf(st(), D, 'MFO', 1).map((x) => [x.name, x.gone?.why, x.from])], [true, [['Cata', 'casa', 'RTE']]])
+    eq('una tablet vieja (sin línea) se lee igual: sin línea', m.attOf(st(), D, 'Kitchen', 1).length === 0 && (m.applyRemote('act_changes', { id: 'att:OLD', at: iso(T0), by_name: 'X', dept: 'Kitchen', what: 'Asistencia', before: '', after: JSON.stringify({ date: D, shift: 1, name: 'Vieja', gone: null, from: '' }), ref_table: 'act_attendance', ref_key: 'OLD', deleted: false, updated_at: iso(T0 + M), updated_by: 'X' }), m.attOf(st(), D, 'Kitchen', 1).map((x) => [x.name, x.line, x.moves])), [['Vieja', '', []]])
+  })
+  const back = await device('att-move-again', { seed: JSON.parse(disks.get('att-move').get('act_v1')), user: 'Supervisor RTE' })
+  eq('al volver a abrir: la línea y los traslados siguen', back.use((m) => { const st = m.store.get(), a = st.attendance.find((x) => x.name === 'Ana'); return [m.attLineText(st, a.line), a.moves.length, m.attOf(st, '2026-10-22', 'Packing', 1).map((x) => m.attLineText(st, x.line))] }), ['Línea 2', 1, ['Línea 1']])
+}
 section('Cada cuarto cambia de turno por su cuenta: RTE se queda hasta las 3:30, Packing empieza el Turno 2 a las 2:40 (Jose, 2026-10-21)')
 {
   const rc = await device('roomcut', { user: 'Jose' })
