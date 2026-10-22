@@ -23,6 +23,7 @@ import { DEPT_LOOK, deptVars } from './look'
 import { Report, reportOpenAt, type ReportAt } from './ReportView'
 import { ProgramToday, programRooms } from './ProgramToday'
 import { AttendanceCard } from './Attendance'
+import { useColFilters } from './ColFilter'
 import { Flujo, flujoOpenAt } from './FlujoView'
 import { daysBetween, daysText, OpenOrders, OrderDetail, OrderHistory, revealAbove, shortOf, startText, WoNavCtx, woName, WorkOrderDialog, WoStateTag, type WoNav } from './WorkOrders'
 import { availOn, woN } from './woSum'
@@ -1207,7 +1208,8 @@ function OrdersCard({ s, mgr, onAdd }: { s: State; mgr: boolean; onAdd?: (o: Ord
   const [q, setQ] = useState('')
   const [fCode, setFCode] = useState('')
   const [shown, setShown] = useState(ORDERS_PAGE)
-  if (!s.orders.length && !mgr) return null
+  // when they ship (Jose, 2026-10-21: "filtrar la fecha más cercana que va a salir"): late, today, this week
+  const [when, setWhen] = useState<'' | 'late' | 'today' | 'week'>('')
   const open = s.orders.filter((o) => !o.closed).sort(byShip), closed = s.orders.filter((o) => o.closed).sort(byShip)
   // each order with what has been packed for it, and its state: not started, started, complete (or no cases said)
   const rowOf = (o: Order) => { const made = orderMade(s, o.id), left = o.cases != null ? o.cases - made : null; return { o, made, left, seq: orderPallets(s, o.id), st: (left == null ? 'open' : left <= 0 ? 'done' : made > 0 ? 'going' : 'todo') as OrderState } }
@@ -1219,19 +1221,28 @@ function OrdersCard({ s, mgr, onAdd }: { s: State; mgr: boolean; onAdd?: (o: Ord
   const codeNow = codes.some(([k]) => k === fCode) ? fCode : ''
   const ofCode = rows.filter((x) => !codeNow || normCode(x.o.code) === codeNow)
   const count = (k: OrderState | 'left') => ofCode.filter((x) => isState(x, k)).length
-  const list = ofCode.filter((x) => isState(x, only))
   const stateText = (k: OrderState | 'left') => (k === 'todo' ? tr('Sin empezar') : k === 'going' ? tr('Empezados') : k === 'done' ? tr('Completos') : k === 'left' ? tr('Faltan') : tr('Sin cantidad'))
+  const today = dayOf(clockNow()), weekEnd = dayOf(clockNow() + 6 * 86_400_000)
+  const isWhen = (o: Order, k: '' | 'late' | 'today' | 'week') => !k || (!!o.shipBy && (k === 'late' ? o.shipBy < today : k === 'today' ? o.shipBy === today : o.shipBy >= today && o.shipBy <= weekEnd))
+  const whenCount = (k: 'late' | 'today' | 'week') => ofCode.filter((x) => isState(x, only) && isWhen(x.o, k)).length
+  const picked = ofCode.filter((x) => isState(x, only) && isWhen(x.o, when))
+  // the columns' filters, as in Excel (Jose and the office, 2026-10-21): PO, code, customer, ship date (the nearest
+  // first), destination, how it goes; they add up with the search, the code and the chips above
+  const shipLabel = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' }) + (d === today ? ' · ' + tr('hoy') : d < today ? ' · ' + tr('ya pasó') : '')
+  const f = useColFilters('orders', picked, [{ key: 'po', label: 'PO', get: (x) => x.o.po }, { key: 'code', label: tr('Código'), get: (x) => x.o.code }, { key: 'customer', label: tr('Cliente'), get: (x) => x.o.customer }, { key: 'ship', label: tr('Envío'), get: (x) => x.o.shipBy, show: shipLabel }, { key: 'state', label: tr('Faltan'), get: (x) => stateText(x.st) }, { key: 'dest', label: tr('Destino'), get: (x) => x.o.dest }])
+  const list = f.shown
+  if (!s.orders.length && !mgr) return null
   const closedHits = needle ? closed.filter(hits).length : 0
-  const active = [needle ? '"' + q.trim() + '"' : '', codeNow ? tr('Código {0}', codes.find(([k]) => k === codeNow)?.[1] ?? codeNow) : '', only ? stateText(only) : ''].filter(Boolean)
-  const clear = () => { setQ(''); setFCode(''); setOnly(''); setShown(ORDERS_PAGE) }
+  const active = [needle ? '"' + q.trim() + '"' : '', codeNow ? tr('Código {0}', codes.find(([k]) => k === codeNow)?.[1] ?? codeNow) : '', only ? stateText(only) : '', when === 'late' ? tr('Envío ya pasó') : when === 'today' ? tr('Sale hoy') : when === 'week' ? tr('Sale esta semana') : ''].filter(Boolean)
+  const clear = () => { setQ(''); setFCode(''); setOnly(''); setWhen(''); f.clear(); setShown(ORDERS_PAGE) }
   /** what is seen, added up: the foot of the table */
   const sums = (list: ReturnType<typeof rowOf>[]) => ({ asked: list.reduce((t, x) => t + (x.o.cases ?? 0), 0), made: list.reduce((t, x) => t + x.made, 0), left: list.reduce((t, x) => t + Math.max(0, x.left ?? 0), 0), pallets: list.reduce((t, x) => t + x.seq.done.length, 0), need: list.reduce((t, x) => t + (x.seq.need ?? 0), 0), unknown: list.some((x) => x.o.cases == null) })
   // "+ Pallets" comes first in its row, as the report's buttons do, and stays in sight while the table slides on a
   // phone; only an open order has one (the table of the completed ones has no such column)
-  const table = (list: ReturnType<typeof rowOf>[], adds = false) => (
+  const table = (list: ReturnType<typeof rowOf>[], adds = false, heads = false) => (
     <div className="twrap">
       <table className="otable">
-        <thead><tr>{adds && <th className="oact"></th>}<th>PO</th><th>{tr('Código')}</th><th>{tr('Cliente')}</th><th>{tr('Envío')}</th><th className="num">{tr('Pedidas')}</th><th className="num">{tr('Hechas')}</th><th className="num">{tr('Faltan')}</th><th>{tr('Pallets')}</th><th>{tr('Destino')}</th>{mgr && <th></th>}</tr></thead>
+        <thead><tr>{adds && <th className="oact"></th>}<th>{heads ? f.head('po', 'PO') : 'PO'}</th><th>{heads ? f.head('code', tr('Código')) : tr('Código')}</th><th>{heads ? f.head('customer', tr('Cliente')) : tr('Cliente')}</th><th>{heads ? f.head('ship', tr('Envío')) : tr('Envío')}</th><th className="num">{tr('Pedidas')}</th><th className="num">{tr('Hechas')}</th><th className="num">{heads ? f.head('state', tr('Faltan')) : tr('Faltan')}</th><th>{tr('Pallets')}</th><th>{heads ? f.head('dest', tr('Destino')) : tr('Destino')}</th>{mgr && <th></th>}</tr></thead>
         <tbody>{list.map(({ o, made, left, seq, st }) => {
           const name = productOf(s, o.code)?.name
           return (
@@ -1289,7 +1300,14 @@ function OrdersCard({ s, mgr, onAdd }: { s: State; mgr: boolean; onAdd?: (o: Ord
           )}
         </>
       )}
-      {open.length ? (list.length ? table(list.slice(0, shown), !!onAdd) : <p className="hint">{tr('Ningún pedido abierto coincide con esos filtros.')}{closedHits > 0 && <> {trx('{0} de los marcados completos sí.', closedHits)} <button type="button" className="lnk sm" onClick={() => setShowClosed(true)}>{tr('Verlos')}</button></>}</p>) : <p className="hint">{mgr ? tr('No hay pedidos abiertos. Los que se agreguen aquí los ve Packing al registrar cada pallet de ese código.') : tr('No hay pedidos abiertos.')}</p>}
+      {open.length > 0 && (
+        <div className="chips ofwhen"><span className="lab">{tr('Envío')}</span>
+          <button type="button" className={'chip sm' + (!when ? ' on' : '')} aria-pressed={!when} onClick={() => setWhen('')}>{tr('Cualquier día')}</button>
+          {(['late', 'today', 'week'] as const).filter((k) => whenCount(k) > 0 || when === k).map((k) => <button key={k} type="button" className={'chip sm' + (when === k ? ' on' : '') + (k === 'late' ? ' warn' : '')} aria-pressed={when === k} onClick={() => { setWhen(when === k ? '' : k); setShown(ORDERS_PAGE) }}>{k === 'late' ? tr('Ya pasó la fecha') : k === 'today' ? tr('Sale hoy') : tr('Esta semana')}<small>{whenCount(k)}</small></button>)}
+        </div>
+      )}
+      {open.length > 0 && f.bar}
+      {open.length ? (list.length ? table(list.slice(0, shown), !!onAdd, true) : <p className="hint">{tr('Ningún pedido abierto coincide con esos filtros.')}{closedHits > 0 && <> {trx('{0} de los marcados completos sí.', closedHits)} <button type="button" className="lnk sm" onClick={() => setShowClosed(true)}>{tr('Verlos')}</button></>}</p>) : <p className="hint">{mgr ? tr('No hay pedidos abiertos. Los que se agreguen aquí los ve Packing al registrar cada pallet de ese código.') : tr('No hay pedidos abiertos.')}</p>}
       {list.length > ORDERS_PAGE && (
         <div className="morebar">
           <span>{trx('Se ven {0} de {1}', Math.min(shown, list.length), list.length)}</span>

@@ -1907,3 +1907,6 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 .cf-tool{border:1px solid var(--line);border-radius:999px;padding:3px 6px 3px 10px;background:var(--surface)}
 .cf-tool.on{border-color:var(--accent);background:var(--soft)}
 @media (max-width:720px){.cf-tools{display:flex}}
+/* Packing's orders by ship date (2026-10-21) */
+.ofwhen{margin:6px 0}.ofwhen .lab{font-weight:700;margin-right:4px}
+.ofwhen .chip.warn{border-color:#fca5a5;color:#b91c1c}

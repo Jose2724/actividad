@@ -10,7 +10,7 @@ import { tr } from './i18n'
  * left by the OTHER columns' filters have, as Excel does. Kept per table while the app is open.
  * A row may hold several values in one column (a pallet of two lots): it stays when any of them is ticked.
  */
-export type Col<T> = { key: string; label: string; get: (x: T) => string | string[] }
+export type Col<T> = { key: string; label: string; get: (x: T) => string | string[]; show?: (v: string) => string }
 const kept = new Map<string, Record<string, string[]>>()
 const EMPTY = '\u0000'
 const valuesOf = <T,>(c: Col<T>, x: T) => { const v = c.get(x); return (Array.isArray(v) ? v : [v]).map((y) => (y ?? '').trim() || EMPTY) }
@@ -28,7 +28,7 @@ export function useColFilters<T>(id: string, rows: T[], cols: Col<T>[]) {
     for (const x of rows) if (passes(x, key)) for (const v of new Set(valuesOf(c, x))) counts.set(v, (counts.get(v) ?? 0) + 1)
     const values = [...counts.keys()].sort((a, b) => (a === EMPTY ? 1 : b === EMPTY ? -1 : a.localeCompare(b, undefined, { numeric: true })))
     const pick = (list: string[] | null) => { const next = { ...sel }; if (list === null || list.length === values.length) delete next[key]; else next[key] = list; put(next) }
-    return <span className="cf-head">{label}<ColMenu label={c.label} values={values} counts={counts} chosen={sel[key] ?? null} onPick={pick} /></span>
+    return <span className="cf-head">{label}<ColMenu label={c.label} values={values} counts={counts} chosen={sel[key] ?? null} show={c.show ? (v) => (v === EMPTY ? show(v) : c.show!(v)) : undefined} onPick={pick} /></span>
   }
   const clear = () => put({})
   // (on a phone the tables are cards and their titles are hidden: the same menus in a row over the list)
@@ -36,7 +36,7 @@ export function useColFilters<T>(id: string, rows: T[], cols: Col<T>[]) {
   const bar = active.length > 0 && (
     <div className="cf-bar">
       <span>{tr('Filtrado por columna:')}</span>
-      {active.map((c) => <button key={c.key} type="button" className="chip sm on" onClick={() => { const next = { ...sel }; delete next[c.key]; put(next) }}>{c.label}: {sel[c.key].map(show).slice(0, 3).join(', ')}{sel[c.key].length > 3 ? ' +' + (sel[c.key].length - 3) : ''} ✕</button>)}
+      {active.map((c) => <button key={c.key} type="button" className="chip sm on" onClick={() => { const next = { ...sel }; delete next[c.key]; put(next) }}>{c.label}: {sel[c.key].map((v) => (c.show && v !== EMPTY ? c.show(v) : show(v))).slice(0, 3).join(', ')}{sel[c.key].length > 3 ? ' +' + (sel[c.key].length - 3) : ''} ✕</button>)}
       <button type="button" className="btn sm" onClick={clear}>{tr('✕ Quitar filtros de columna')}</button>
       <small>{tr('{0} de {1} renglones', shown.length, rows.length)}</small>
     </div>

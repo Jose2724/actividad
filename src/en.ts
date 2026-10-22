@@ -2136,4 +2136,12 @@ export const EN: Record<string, string> = {
   "Solo estos": "Only these",
   "Quitar filtro": "Clear filter",
   'Filtrar:': 'Filter:',
+  // Packing's orders: by ship date and by column (2026-10-21)
+  "ya pasó": "already passed",
+  "Envío ya pasó": "Ship date passed",
+  "Sale hoy": "Ships today",
+  "Sale esta semana": "Ships this week",
+  "Cualquier día": "Any day",
+  "Ya pasó la fecha": "Date passed",
+  "Esta semana": "This week",
 }
