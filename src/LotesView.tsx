@@ -28,7 +28,7 @@ export function LotesView({ s, today, onReport }: { s: State; today: string; onR
   const [open, setOpen] = useState<string | null>(null)
   const [how, setHow] = useState(false)
   const span = range === 'today' ? [today, today] : range === 'yesterday' ? [addDays(today, -1), addDays(today, -1)] : range === 'week' ? [addDays(today, -6), today] : [from <= to ? from : to, from <= to ? to : from]
-  const all = useMemo(() => lotChains(s, span[0], span[1]), [s, span[0], span[1]]) // eslint-disable-line react-hooks/exhaustive-deps
+  const all = useMemo(() => lotChains(s, span[0], span[1], today), [s, span[0], span[1], today]) // eslint-disable-line react-hooks/exhaustive-deps
   const found = all.filter((c) => chainMatch(c, q))
   const isShow = (c: LotChain, k: Show) => (!k ? true : k === 'bad' ? lossClass(c.totalPct) === 'bad' || c.steps.some((x) => x.state === 'loss' && lossClass(x.pct) === 'bad') : c.status === k)
   const list = found.filter((c) => isShow(c, show))
@@ -70,6 +70,7 @@ export function LotesView({ s, today, onReport }: { s: State; today: string; onR
           <p>{trx('{0}: sale de lo que de verdad hizo el cuarto anterior, con la tabla de Productos. Mezclas × cajas por mezcla = cajas; × pouches por caja = pouches (RTE) o × platos por caja = platos (MFO); lo que hizo RTE o MFO ÷ por caja = las cajas que le tocan a Packing; ÷ cajas por pallet = pallets.', <b>{tr('Esperado')}</b>)}</p>
           <p>{trx('{0}: mientras el cuarto sigue trabajando el lote. {1}: lo que no llegó cuando el cuarto ya lo terminó. El % es lo perdido ÷ lo esperado. Cada cuarto responde por lo que recibió; la pérdida total del lote va contra lo que dieron las mezclas.', <b>{tr('Falta')}</b>, <b>{tr('Pérdida')}</b>)}</p>
           <p>{tr('Colores: verde = completo o pérdida de 2% o menos · azul = en camino · amarillo = va atrás o pérdida de 2% a 5% · rojo = pérdida de más de 5%.')}</p>
+          <p>{tr('Un lote se trabaja en varios turnos y días: lo que le falta a un cuarto se cuenta como pérdida solo cuando pasan 2 días sin que ese cuarto registre nada de ese lote. Antes es "falta".')}</p>
         </div>
       )}
     </div>
@@ -86,6 +87,7 @@ function gapText(st: Step): { text: string; cls: string } {
   if (st.state === 'nocalc') return { text: tr('falta un dato en Productos'), cls: '' }
   if (st.state === 'wait') return { text: tr('no ha empezado'), cls: '' }
   if (st.state === 'run') return { text: st.gap != null && st.gap > 0 ? tr('faltan {0}', g) + (st.running ? ' · ' + tr('trabajando') : '') : tr('trabajando'), cls: 'go' }
+  if (st.state === 'pend') return { text: tr('faltan {0} · nadie lo trabaja ahora', g), cls: 'warn' }
   if (st.state === 'over') return { text: tr('{0} de más', g), cls: 'ok' }
   if (st.state === 'ok') return { text: tr('✓ completo'), cls: 'ok' }
   return { text: tr('pérdida {0} · {1}', g, pctText(st.pct)), cls: lossClass(st.pct) }
@@ -95,7 +97,7 @@ const barWidth = (st: Step) => (st.expected ? Math.max(0, Math.min(100, Math.rou
 function LotRow({ c, onOpen }: { c: LotChain; onOpen: () => void }) {
   return (
     <button type="button" className={'lt-lot ' + statusClass(c)} onClick={onOpen}>
-      <div className="lt-ltop"><b className="lt-code">{c.code}</b><span className="lt-lotn">{tr('lote')} <b>{c.lot}</b></span><span className={'lt-st ' + statusClass(c)}>{statusText(c)}</span><span className="lt-pname">{(c.name ? c.name + ' · ' : '') + route(c)}</span></div>
+      <div className="lt-ltop"><b className="lt-code">{c.code}</b><span className="lt-lotn">{tr('lote')} <b>{c.lot}</b></span><span className={'lt-st ' + statusClass(c)}>{statusText(c)}</span><span className="lt-pname">{(c.name ? c.name + ' · ' : '') + route(c)}{c.partial ? ' · ' + tr('más de 14 días: puede estar incompleto') : ''}</span></div>
       <div className="lt-chain">{c.steps.map((st, i) => {
         const gt = gapText(st)
         return (
@@ -115,6 +117,7 @@ function LotDetail({ c, onClose, onGo }: { c: LotChain; onClose: () => void; onG
   return (
     <div className={'lt-detail ' + statusClass(c)}>
       <div className="lt-ltop"><b className="lt-code">{c.code}</b><span className="lt-lotn">{tr('lote')} <b>{c.lot}</b></span><span className="lt-pname">{c.name}</span><span className={'lt-st ' + statusClass(c)}>{statusText(c)}</span><button type="button" className="btn xs" onClick={onClose}>{tr('Cerrar')}</button></div>
+      {c.partial && <p className="hint amber">{tr('Este lote empezó hace más de 14 días: este aparato no tiene sus primeros registros, así que no se dice pérdida. Sus números pueden estar incompletos.')}</p>}
       {c.missing.length > 0 && <p className="hint red">{tr('Para calcularlo falta en Productos: {0}.', c.missing.map((m) => tr(m)).join(', '))}</p>}
       <div className="lt-vchain">
         {c.steps.map((st, i) => {

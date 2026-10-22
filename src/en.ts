@@ -2235,4 +2235,8 @@ export const EN: Record<string, string> = {
   "platos por caja": "plates per case",
   "Terminado · {0} de más": "Finished · {0} over",
   "Del lote salieron {0} cajas más de las {1} esperadas · {2} de más": "The lot gave {0} cases more than the {1} expected · {2} over",
+  "faltan {0} · nadie lo trabaja ahora": "{0} missing · nobody is working it now",
+  "Este lote empezó hace más de 14 días: este aparato no tiene sus primeros registros, así que no se dice pérdida. Sus números pueden estar incompletos.": "This lot began more than 14 days ago: this device lacks its first records, so no loss is said. Its numbers may be incomplete.",
+  "más de 14 días: puede estar incompleto": "over 14 days: may be incomplete",
+  "Un lote se trabaja en varios turnos y días: lo que le falta a un cuarto se cuenta como pérdida solo cuando pasan 2 días sin que ese cuarto registre nada de ese lote. Antes es \"falta\".": "A lot is worked over several shifts and days: what a room lacks counts as a loss only after 2 days in which that room records nothing of the lot. Before that it is \"missing\".",
 }

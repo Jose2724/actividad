@@ -1,4 +1,4 @@
-import { normCode, type Dept, type State } from './store'
+import { firstKeptDay, normCode, type Dept, type State } from './store'
 import { flujoLots, type FlujoRow } from './flujo'
 
 /**
@@ -12,7 +12,15 @@ import { flujoLots, type FlujoRow } from './flujo'
  * mezclas give. The arithmetic is Flujo's (flujo.ts, checked against the office's sheet); this file only says it as a
  * chain. Nothing is typed here.
  */
-export type StepState = 'wait' | 'run' | 'ok' | 'loss' | 'over' | 'nocalc'
+/**
+ * run = a room is on it now (or the one before still sends); pend = nobody is on it now but the room worked it lately
+ * (Packing packs a lot over several shifts and days, ending the code each shift: Jose, 2026-10-22, the 889 · 6289 that
+ * read "88.8% lost" when Packing had not packed it yet). Only after QUIET_DAYS without anything of the lot in that room
+ * is what is missing a loss; reaching what was expected (within 2%) is complete at once
+ */
+export type StepState = 'wait' | 'run' | 'pend' | 'ok' | 'loss' | 'over' | 'nocalc'
+export const QUIET_DAYS = 2
+const daysBetween = (a: string, b: string) => Math.round((new Date(b + 'T12:00:00').getTime() - new Date(a + 'T12:00:00').getTime()) / 86_400_000)
 export type Step = {
   dept: Dept
   /** the unit it counts in: mezclas, pouches, platos / copas, cajas */
@@ -28,6 +36,8 @@ export type Step = {
   running: boolean
   /** Packing: its pallets, expected and made */
   pallets?: { expected: number | null; done: number }
+  /** the last day the room recorded something of the lot ('' = never) */
+  lastDay: string
 }
 export type LotStatus = 'run' | 'late' | 'done' | 'wait'
 export type LotChain = {
@@ -40,6 +50,8 @@ export type LotChain = {
   status: LotStatus
   /** what is missing in Productos to work the chain out */
   missing: string[]
+  /** the lot began before the days this device keeps: its first records may be missing (no loss is said then) */
+  partial: boolean
   days: string[]
   row: FlujoRow
 }
@@ -50,17 +62,21 @@ export const lossClass = (pct: number | null) => (pct == null ? '' : pct <= LOSS
 const round = (x: number) => Math.round(x * 100) / 100
 
 /** one room's step: what it should make, what it made, and whether what is missing is still to come or lost */
-function stepOf(dept: Dept, unit: string, expected: number | null, done: number, running: boolean, before: StepState | null): Step {
+function stepOf(dept: Dept, unit: string, expected: number | null, done: number, running: boolean, before: StepState | null, lastDay: string, today: string): Step {
   const gap = expected == null ? null : round(expected - done)
   const pct = expected == null || expected <= 0 || gap == null ? null : gap / expected
-  // not started: nothing made and nobody on it (and the room before it is not still making it). Still on it, or the
-  // room before still sends: what is missing is still to come. Finished: lost (or "de más")
-  const upstreamRuns = before === 'run'
-  const state: StepState = expected == null ? 'nocalc' : done <= 0 && !running ? 'wait' : running || upstreamRuns ? 'run' : gap != null && gap < 0 ? 'over' : pct != null && pct > 0.0005 ? 'loss' : 'ok'
-  return { dept, unit, expected: expected == null ? null : round(expected), done: round(done), gap, pct, state, running }
+  // not started: nothing made and nobody on it. On it now, or the room before still on it: still to come. More than
+  // expected, or within 2% of it: complete. Short, and nobody on it, but worked lately: still to come (pend). Short and
+  // quiet for QUIET_DAYS: lost
+  const upstream = before === 'run' || before === 'pend'
+  const quiet = !!lastDay && daysBetween(lastDay, today) >= QUIET_DAYS
+  const state: StepState = expected == null ? 'nocalc' : done <= 0 && !running ? 'wait' : running ? 'run' : gap != null && gap < 0 ? 'over' : pct != null && pct <= LOSS_OK ? 'ok' : upstream ? 'run' : quiet ? 'loss' : 'pend'
+  return { dept, unit, expected: expected == null ? null : round(expected), done: round(done), gap, pct, state, running, lastDay }
 }
+/** the last day a room recorded something of the lot */
+const lastOf = (r: FlujoRow, dept: Dept) => [...r.days].reverse().find((d) => (dept === 'Kitchen' || dept === 'Spiral' ? (r.mixRoom === dept ? d.mixes > 0 : false) : dept === 'RTE' ? d.pouches > 0 : dept === 'MFO' ? Object.values(d.mfo).some((q) => q > 0) : d.cases > 0))?.date ?? ''
 
-export function chainOf(r: FlujoRow): LotChain {
+export function chainOf(r: FlujoRow, today: string, keptFrom = ''): LotChain {
   const missing: string[] = []
   if (!r.product) missing.push('el código en Productos')
   else {
@@ -70,30 +86,36 @@ export function chainOf(r: FlujoRow): LotChain {
   }
   const originCases = r.yieldCs != null ? r.mixes * r.yieldCs : null
   const steps: Step[] = []
-  const origin: Step = { dept: r.mixRoom, unit: 'mezclas', expected: null, done: r.mixes, gap: null, pct: null, state: r.openIn.includes(r.mixRoom) ? 'run' : r.mixes > 0 ? 'ok' : 'wait', running: r.openIn.includes(r.mixRoom) }
+  const origin: Step = { dept: r.mixRoom, unit: 'mezclas', expected: null, done: r.mixes, gap: null, pct: null, state: r.openIn.includes(r.mixRoom) ? 'run' : r.mixes > 0 ? 'ok' : 'wait', running: r.openIn.includes(r.mixRoom), lastDay: lastOf(r, r.mixRoom) }
   steps.push(origin)
   // the pack room: RTE in pouches, or MFO in what its bins hold, expected from the mezclas
   const fromMixes = originCases != null && r.perCase != null ? originCases * r.perCase : null
   const packDone = r.route === 'RTE' ? r.pouches : r.mfoUnits + r.mfoCases * (r.perCase ?? 0)
-  const pack = stepOf(r.route, r.route === 'RTE' ? 'pouches' : r.mfoWordUsed && r.mfoWordUsed !== 'cajas' ? r.mfoWordUsed : 'platos', r.route === 'MFO' && r.mfoOnlyLb ? null : fromMixes, packDone, r.openIn.includes(r.route), origin.state)
+  const pack = stepOf(r.route, r.route === 'RTE' ? 'pouches' : r.mfoWordUsed && r.mfoWordUsed !== 'cajas' ? r.mfoWordUsed : 'platos', r.route === 'MFO' && r.mfoOnlyLb ? null : fromMixes, packDone, r.openIn.includes(r.route), origin.state, lastOf(r, r.route), today)
   steps.push(pack)
   // Packing: what the room before it handed over (segun, in cases), and its pallets
-  const packing = stepOf('Packing', 'cajas', r.segun, r.cases, r.openIn.includes('Packing'), pack.state)
+  const packing = stepOf('Packing', 'cajas', r.segun, r.cases, r.openIn.includes('Packing'), pack.state, lastOf(r, 'Packing'), today)
   packing.pallets = { expected: r.segun != null && r.perPallet ? Math.ceil(r.segun / r.perPallet - 1e-9) : null, done: r.pallets }
   steps.push(packing)
   const anyRunning = steps.some((x) => x.running)
-  const finished = !anyRunning && r.cases > 0
+  const partial = !!keptFrom && !!r.days[0]?.date && r.days[0].date < keptFrom
+  // finished: nobody on it and every room past it (complete, lost or over); a lot older than the device's days is never
+  // said finished with a loss: its first records may be on the server only
+  const settled = (x: Step) => x.state === 'ok' || x.state === 'loss' || x.state === 'over'
+  const finished = !anyRunning && r.cases > 0 && settled(pack) && settled(packing) && !partial
   const totalLoss = finished && originCases != null ? round(originCases - r.cases) : null
   const totalPct = totalLoss != null && originCases ? totalLoss / originCases : null
   // done: Packing packed it and nobody is on it any more; on its way: some room is on it; waiting: nobody is on it now
   // and it has not reached Packing (a room finished and the next has not started: it "goes behind")
-  const status: LotStatus = finished ? 'done' : anyRunning ? 'run' : r.mixes > 0 || packDone > 0 ? 'late' : 'wait'
-  return { lot: r.lot, code: r.code, name: r.name, route: r.route, mixRoom: r.mixRoom, mixes: r.mixes, originCases, steps, totalLoss, totalPct, status, missing, days: r.days.map((d) => d.date), row: r }
+  const pending = steps.some((x) => x.state === 'pend')
+  const status: LotStatus = finished ? 'done' : anyRunning || pending ? 'run' : r.mixes > 0 || packDone > 0 ? 'late' : 'wait'
+  return { lot: r.lot, code: r.code, name: r.name, route: r.route, mixRoom: r.mixRoom, mixes: r.mixes, originCases, steps, totalLoss, totalPct, status, missing, partial, days: r.days.map((d) => d.date), row: r }
 }
 
 /** every lot of every code touched between two days, as chains: the most lost first, then those on their way */
-export function lotChains(s: State, from: string, to: string): LotChain[] {
-  const out = flujoLots(s, from, to).flatMap((l) => l.rows.filter((r) => r.mixes > 0 || r.pouches > 0 || r.mfoUnits > 0 || r.cases > 0).map(chainOf))
+export function lotChains(s: State, from: string, to: string, today = to): LotChain[] {
+  const kept = firstKeptDay()
+  const out = flujoLots(s, from, to).flatMap((l) => l.rows.filter((r) => r.mixes > 0 || r.pouches > 0 || r.mfoUnits > 0 || r.cases > 0).map((r) => chainOf(r, today, kept)))
   const rank = (c: LotChain) => (c.status === 'done' ? 0 : c.status === 'late' ? 1 : c.status === 'run' ? 2 : 3)
   return out.sort((a, b) => rank(a) - rank(b) || (b.totalPct ?? -1) - (a.totalPct ?? -1) || a.code.localeCompare(b.code, undefined, { numeric: true }))
 }

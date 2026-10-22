@@ -5121,7 +5121,13 @@ section('Lotes: lo que dieron las mezclas, lo que cada cuarto debía hacer, lo q
     // ---- 0889 · 6294: Kitchen 8 mezclas, RTE todavía trabajando (2,340 pouches)
     run('lt-k2', 'Kitchen', '0889', '6294', mins(13, 8), { line: '2' })
     run('lt-r2', 'RTE', '0889', '6294', mins(15, 9), { qty: 260, open: true, line: '2' })
-    const list = m.lotChains(st(), D, D)
+    // the same day, with nobody on it any more: RTE and Packing may still go on with it (they end the code every shift):
+    // what is missing is "falta", not a loss (Jose, 2026-10-22: the 889 · 6289 that read "88.8% lost" at 1 AM)
+    const same = m.lotChains(st(), D, D, D).find((c) => c.code === '0889' && c.lot === '6293')
+    eq('el mismo día, sin nadie en él: lo que le falta a RTE es "falta" (pend) y Packing sigue en camino (RTE todavía le puede mandar), el lote va en camino y no se dice pérdida', [same.steps[1].state, same.steps[2].state, same.status, same.totalLoss], ['pend', 'run', 'run', null])
+    eq('un día después tampoco: hacen falta 2 días sin registros del lote en ese cuarto', m.lotChains(st(), D, D, '2026-10-23').find((c) => c.code === '0889' && c.lot === '6293').steps[1].state, 'pend')
+    // two days later with nothing more of it: now it is lost
+    const list = m.lotChains(st(), D, D, '2026-10-24')
     const one = (code, lot) => list.find((c) => c.code === code && c.lot === lot)
     const a = one('0889', '6293')
     eq('0889 · 6293: las 14 mezclas dan 280 cajas', [a.mixes, a.originCases, a.route, a.mixRoom], [14, 280, 'RTE', 'Kitchen'])
@@ -5141,7 +5147,7 @@ section('Lotes: lo que dieron las mezclas, lo que cada cuarto debía hacer, lo q
     eq('buscar por código, lote o producto', [list.filter((x) => m.chainMatch(x, '889')).length, list.filter((x) => m.chainMatch(x, '6292')).length, list.filter((x) => m.chainMatch(x, 'bowl')).length], [2, 1, 1])
     // a code with no numbers in Productos: said, never invented
     run('lt-x', 'Kitchen', 'ZZ1', '6293', mins(7, 3), { line: '9' })
-    const x = m.lotChains(st(), D, D).find((y) => y.code === 'ZZ1')
+    const x = m.lotChains(st(), D, D, '2026-10-24').find((y) => y.code === 'ZZ1')
     eq('un código que no está en Productos: no se inventa nada y dice qué falta', [x.originCases, x.steps[1].expected, x.steps[1].state, x.missing], [null, null, 'nocalc', ['el código en Productos']])
   })
 }
