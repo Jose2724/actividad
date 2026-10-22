@@ -2258,4 +2258,9 @@ export const EN: Record<string, string> = {
   "Ocultar nombres": "Hide names",
   "Ver nombres": "Show names",
   "En el Excel va esta tabla con su gráfica y la hoja con cada persona, su línea y sus traslados; en el PDF, la lista de personas.": "The Excel has this table with its chart and the sheet with each person, their line and their moves; the PDF, the list of people.",
+  // each line's total (Jose, 2026-10-22)
+  "En bins": "In bins",
+  "terminado": "finished",
+  "Por línea": "By line",
+  "POR LÍNEA": "BY LINE",
 }

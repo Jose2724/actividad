@@ -171,6 +171,14 @@ export function reportOf(s: State, date: string, now: number, f: ReportFilter = 
   const byShift = each ? here.map((d) => { const first = sum(each[0], 1, d), second = sum(each[1], 2, d); return { dept: d, day: { ...sum(rows, 0, d), span: first.span + second.span }, first, second } }) : []
   // what each room has made of what is in view (the day, or the shift chosen; the code and the lot chosen): the big numbers
   const byDept = here.map((d) => ({ dept: d, ...(byShift.find((x) => x.dept === d)?.day ?? sum(rows, shift, d)) }))
+  // each line's total (Jose, 2026-10-22: "que también se muestre aparte de lo detallado el total que hizo cada línea cada
+  // día o lo que lleva en el momento ... que se encuentre rápido"): the same sums as the room's, one line at a time, the
+  // day (or the shift in view) and each shift under it; open = it has a code on now
+  const byLine = lineChoices.filter((l) => rows.some((x) => x.r.lineId === l.id)).map((l) => {
+    const of = (list: ReturnType<typeof rowsOf>) => list.filter((x) => x.r.lineId === l.id)
+    const mine = of(rows)
+    return { ...l, day: sum(mine, shift, l.dept), first: each ? sum(of(each[0]), 1, l.dept) : null, second: each ? sum(of(each[1]), 2, l.dept) : null, codes: [...new Set(mine.map((x) => x.r.code))] }
+  })
   // what the lines were stopped for while they had a code, cause by cause: together they are the "Parado" total
   const reasons = [...rows.reduce((m, x) => { for (const [k, v] of Object.entries(x.st.reasons)) m.set(k, (m.get(k) ?? 0) + v); return m }, new Map<string, number>())].map(([reason, ms]) => ({ reason, ms })).filter((x) => x.ms > 0).sort((a, b) => b.ms - a.ms)
   // Packing's pallets one by one: every lot each one holds with its cases and its tag, its total, and its order with its
@@ -196,7 +204,7 @@ export function reportOf(s: State, date: string, now: number, f: ReportFilter = 
   })).sort((a, b) => a.at - b.at)
   // a code is a product; a run is a code on a line from its start to its end (the same code on two lines is two runs)
   const distinct = new Set(rows.map((x) => normCode(x.r.code))).size, lines = new Set(rows.map((x) => x.r.lineId)).size
-  return { runs, rows, unitRows, pallets, bins, stops, byCode, byShift, byDept, reasons, distinct, lines, working: rows.reduce((t, x) => t + x.st.working, 0), down: rows.reduce((t, x) => t + x.st.down, 0), setup: setupOf(shift), codes, lots, code, lot, shift, plan, planOf, filtered, line, lineChoices }
+  return { runs, rows, unitRows, pallets, bins, stops, byCode, byShift, byDept, byLine, reasons, distinct, lines, working: rows.reduce((t, x) => t + x.st.working, 0), down: rows.reduce((t, x) => t + x.st.down, 0), setup: setupOf(shift), codes, lots, code, lot, shift, plan, planOf, filtered, line, lineChoices }
 }
 // ---- the stops by Reason Code (Jose, 2026-10-20: the plant's standard list, see reasons.ts) ----
 /**

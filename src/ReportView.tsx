@@ -308,7 +308,11 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
     const pallets = palletsSheet(s, rep)
     const bins: Cell[][] = [[tr('Bin'), tr('Línea'), tr('Código'), tr('Lote'), tr('Cantidad'), tr('Unidad de cantidad'), tr('N° de bin'), tr('Hora'), tr('Turno'), tr('Registró')],
       ...rep.bins.map((b): Cell[] => [b.n, lineNameOf(s, b.r.lineId, b.r.line), b.r.code, b.lot, b.qty ?? '', binWord(b.word), b.ref, T(b.at), b.shift, b.by])]
-    return { resumen, porTurno, porCodigo, porLote, pallets, bins, unidades, paros, cambios, avance }
+    // each line's total (2026-10-22), as the room cards say it
+    const two = !rep.shift && shiftCols.length === 2
+    const porLinea: Cell[][] = [[tr('Departamento'), tr('Línea'), tr('Códigos'), tr('Hechas'), tr('Unidad'), tr('Cantidad'), tr('Unidad de cantidad'), tr('En bins'), ...(two ? shiftCols.map((k) => tr('Turno {0}', k)) : []), tr('Tiempo trabajando'), tr('Tiempo parado'), tr('Estado')],
+      ...rep.byLine.map((l): Cell[] => { const cfg = CFG[l.dept], q = cfg.qty !== 'none', x = l.day; return [l.dept, l.name, l.codes.join(', '), x.units, cfg.plural.toLowerCase(), q ? x.qty : '', q ? cfg.qtyUnit : '', x.bins.map((b) => fmtN(b.qty) + ' ' + apartWord(l.dept, b.word)).join(' · '), ...(two ? [l.first, l.second].map((y) => (!y || y.codes === 0 ? '' : lineMade(l.dept, y, unitsText))) : []), D(x.working), D(x.down), x.open ? tr('en curso') : tr('terminado')] })]
+    return { resumen, porTurno, porLinea, porCodigo, porLote, pallets, bins, unidades, paros, cambios, avance }
   }
   /**
    * Asistencia (Santiago, 2026-10-20), as his own sheet: each room's people expected, those who came, the % missing and
@@ -329,8 +333,8 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
   const sheets = (parts?: Set<Part>): Sheet[] => {
     const b = blocks()
     // (the parts chosen in "¿Qué incluir?", 2026-10-21: each sheet goes with its part; none chosen = all of them)
-    const part: Record<string, Part> = { [tr('Resumen')]: 'resumen', [tr('Por turno')]: 'resumen', [tr('Por código')]: 'codigo', [tr('Por lote')]: 'codigo', [tr('Pallets')]: 'pallets', [tr('Bins')]: 'bins', [tr('Unidades')]: 'unidades', [tr('Paros')]: 'paros', [tr('Cambios')]: 'cambios', [tr('Avance')]: 'avance', [tr('Asistencia')]: 'asistencia', [tr('Asistencia · personas')]: 'asistencia' }
-    const all: Sheet[] = [{ name: tr('Resumen'), rows: b.resumen }, ...attSheets(), ...(b.porTurno.length > 1 ? [{ name: tr('Por turno'), rows: b.porTurno }] : []), { name: tr('Por código'), rows: b.porCodigo }, { name: tr('Por lote'), rows: b.porLote }, ...(b.pallets.length > 1 ? [{ name: tr('Pallets'), rows: b.pallets }] : []), ...(b.bins.length > 1 ? [{ name: tr('Bins'), rows: b.bins }] : []), { name: tr('Unidades'), rows: b.unidades }, { name: tr('Paros'), rows: b.paros }, ...(mgr ? [{ name: tr('Cambios'), rows: b.cambios }] : []), ...(b.avance.length > 1 ? [{ name: tr('Avance'), rows: b.avance }] : [])]
+    const part: Record<string, Part> = { [tr('Resumen')]: 'resumen', [tr('Por turno')]: 'resumen', [tr('Por línea')]: 'resumen', [tr('Por código')]: 'codigo', [tr('Por lote')]: 'codigo', [tr('Pallets')]: 'pallets', [tr('Bins')]: 'bins', [tr('Unidades')]: 'unidades', [tr('Paros')]: 'paros', [tr('Cambios')]: 'cambios', [tr('Avance')]: 'avance', [tr('Asistencia')]: 'asistencia', [tr('Asistencia · personas')]: 'asistencia' }
+    const all: Sheet[] = [{ name: tr('Resumen'), rows: b.resumen }, ...attSheets(), ...(b.porTurno.length > 1 ? [{ name: tr('Por turno'), rows: b.porTurno }] : []), ...(b.porLinea.length > 1 ? [{ name: tr('Por línea'), rows: b.porLinea }] : []), { name: tr('Por código'), rows: b.porCodigo }, { name: tr('Por lote'), rows: b.porLote }, ...(b.pallets.length > 1 ? [{ name: tr('Pallets'), rows: b.pallets }] : []), ...(b.bins.length > 1 ? [{ name: tr('Bins'), rows: b.bins }] : []), { name: tr('Unidades'), rows: b.unidades }, { name: tr('Paros'), rows: b.paros }, ...(mgr ? [{ name: tr('Cambios'), rows: b.cambios }] : []), ...(b.avance.length > 1 ? [{ name: tr('Avance'), rows: b.avance }] : [])]
     return parts ? all.filter((x) => parts.has(part[x.name] ?? 'resumen')) : all
   }
 
@@ -347,7 +351,7 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
     const q = (c: Cell) => csvCell(c != null && typeof c === 'object' ? cellText(c) : c)
     const b = blocks()
     const tag = (title: string, t: Cell[][]) => t.map((r, i): Cell[] => (i === 0 ? ['', title, ...r] : ['', '', ...r]))
-    const all: Cell[][] = [...b.resumen, ...(b.porTurno.length > 1 ? [[], ...tag(tr('POR TURNO'), b.porTurno)] : []), [], ...tag(tr('POR CÓDIGO'), b.porCodigo), [], ...tag(tr('POR LOTE'), b.porLote), ...(b.pallets.length > 1 ? [[], ...tag('PALLETS', b.pallets)] : []), [], ...tag('UNIDADES', b.unidades), [], ...tag(tr('PAROS'), b.paros), ...(mgr ? [[], ...tag('CAMBIOS', b.cambios)] : []), ...(b.avance.length > 1 ? [[], ...tag('AVANCE', b.avance)] : [])]
+    const all: Cell[][] = [...b.resumen, ...(b.porTurno.length > 1 ? [[], ...tag(tr('POR TURNO'), b.porTurno)] : []), ...(b.porLinea.length > 1 ? [[], ...tag(tr('POR LÍNEA'), b.porLinea)] : []), [], ...tag(tr('POR CÓDIGO'), b.porCodigo), [], ...tag(tr('POR LOTE'), b.porLote), ...(b.pallets.length > 1 ? [[], ...tag('PALLETS', b.pallets)] : []), [], ...tag('UNIDADES', b.unidades), [], ...tag(tr('PAROS'), b.paros), ...(mgr ? [[], ...tag('CAMBIOS', b.cambios)] : []), ...(b.avance.length > 1 ? [[], ...tag('AVANCE', b.avance)] : [])]
     return '\ufeff' + all.map((r) => r.map(q).join(',')).join('\r\n')
   }
   // ---- what the screen needs besides the report itself ----
@@ -1167,6 +1171,7 @@ function RoomCard({ k, d }: { k: Kit; d: ReportData['byDept'][number] }) {
             })}
           </div>
         )}
+        <LineTotals k={k} d={d.dept} />
         <div className="rp-times">
           <span>{tr('Trabajando')} <button type="button" className="drill" onClick={toRuns}>{fmtDur(d.working)}</button></span>
           <span>{tr('Parado')} <button type="button" className={'drill' + (d.down > 0 ? ' red' : '')} onClick={() => go('rec', { rec: 'stops', dept: d.dept, cause: '!setup' })}>{fmtDur(d.down)}</button></span>
@@ -1181,6 +1186,38 @@ function RoomCard({ k, d }: { k: Kit; d: ReportData['byDept'][number] }) {
         {addIn(d.dept) && <button type="button" className="btn sm soft" onClick={() => setAddFor({ dept: d.dept })}>{tr('+ Agregar')}</button>}
       </div>
     </article>
+  )
+}
+
+/**
+ * Each line's total inside its room's card (Jose, 2026-10-22: "el total que hizo cada línea cada día o lo que lleva en el
+ * momento ... que se encuentre rápido ... y en su departamento"): what the line made in what is in view (the day, or
+ * the shift chosen), each shift apart when it is the whole day, its codes, and "en curso" while it has a code on. In the
+ * room's own unit, as the room's big number; bins (platos, copas…) said apart. A line opens its records
+ */
+type LineSum = ReportData['byLine'][number]['day']
+export function lineMade(d: Dept, x: LineSum, units: (d: Dept, n: number) => string) {
+  const cfg = CFG[d], q = cfg.qty !== 'none'
+  const main = x.units > 0 || !x.bins.length ? (q ? fmtN(x.qty) + ' ' + cfg.qtyUnit + (x.units ? ' · ' + units(d, x.units) : '') : units(d, x.units)) : ''
+  const bins = x.bins.map((b) => fmtN(b.qty) + ' ' + apartWord(d, b.word))
+  return [main, ...bins].filter(Boolean).join(' · ') || '—'
+}
+function LineTotals({ k, d }: { k: Kit; d: Dept }) {
+  const { rep, go, unitsText, shiftCols } = k
+  const lines = rep.byLine.filter((l) => l.dept === d)
+  if (!lines.length) return null
+  const two = !rep.shift && shiftCols.length === 2 && lines.some((l) => l.first && l.second)
+  const cell = (x: LineSum | null) => (!x || x.codes === 0 ? '—' : lineMade(d, x, unitsText))
+  return (
+    <div className="rp-lines">
+      <div className="rp-lrow head"><span>{tr('Por línea')}</span><span>{rep.shift ? tr('Turno {0}', rep.shift) : tr('Día')}</span></div>
+      {lines.map((l) => (
+        <div key={l.id} className="rp-lrow">
+          <span><button type="button" className="drill" onClick={() => go('rec', { rec: 'runs', dept: d, line: l.id })}>{l.name}</button>{l.day.open && <small className="run"> ● {tr('en curso')}</small>}<small className="rp-lcodes">{l.codes.join(', ')}</small></span>
+          <span><b>{cell(l.day)}</b>{two && <small className="rp-lsh">{shiftCols.map((n, i) => tr('Turno {0}', n) + ': ' + cell(i === 0 ? l.first : l.second)).join(' · ')}</small>}</span>
+        </div>
+      ))}
+    </div>
   )
 }
 

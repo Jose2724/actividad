@@ -1962,3 +1962,11 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 .att-row2{width:100%;display:flex;flex-wrap:wrap;gap:6px;align-items:center}.att-row2>small{font-weight:700;color:var(--muted);min-width:110px}
 .att-nl{display:flex;flex-wrap:wrap;gap:4px 12px;width:100%}.att-nl>b{color:var(--muted);font-size:13px}
 .att-namesbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px}
+
+/* each line's total in its room's card (Jose, 2026-10-22) */
+.rp-lines{border:1px solid var(--line);border-radius:10px;padding:2px 10px;background:var(--bg);min-width:0}
+.rp-lrow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:8px;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+.rp-lrow:last-child{border-bottom:0}
+.rp-lrow.head{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.rp-lrow b{font-size:16px}.rp-lrow small.run{color:var(--accent);font-weight:700;white-space:nowrap}
+.rp-lcodes,.rp-lsh{display:block;color:var(--muted);font-size:12px}

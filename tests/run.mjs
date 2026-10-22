@@ -5018,6 +5018,31 @@ section('Asistencia: cada supervisor anota a su gente, saca a quien se va, y el 
   const back = await device('attendance-again', { seed: JSON.parse(disks.get('attendance').get('act_v1')), user: 'Santiago' })
   eq('al volver a abrir: la gente anotada y los esperados siguen', back.use((m) => [m.attOf(m.store.get(), '2026-10-20', 'Kitchen', 1).length, m.attExpectedOf(m.store.get(), 'Kitchen', 1), m.attExpectedOf(m.store.get(), 'Packing', 2)]), [3, 5, 19])
 }
+section('Reporte: el total de cada línea, en su departamento (Jose, 2026-10-22)')
+{
+  const lt = await device('line-totals', { user: 'Jose' })
+  lt.use((m) => {
+    const st = () => m.store.get()
+    clock = T0
+    m.addLine('Packing', 'Línea 1'); m.addLine('Packing', 'Línea 2'); m.addLine('RTE', 'Línea 1')
+    const L = (d, n) => st().lines.find((l) => l.dept === d && l.name === n)
+    m.startRun(L('Packing', 'Línea 1'), 'A100', '6283', DAY, 36)
+    const r1 = () => st().runs.find((r) => r.code === 'A100')
+    clock = T0 + 10 * M; m.unitDone(r1().id, 36)
+    clock = T0 + 20 * M; m.unitDone(r1().id, 30)
+    m.endRun(r1().id)
+    m.startRun(L('Packing', 'Línea 1'), 'B200', '6283', DAY, 36)
+    clock = T0 + 30 * M; m.unitDone(st().runs.find((r) => r.code === 'B200').id, 36)
+    m.startRun(L('Packing', 'Línea 2'), 'A100', '6284', DAY, 36)
+    clock = T0 + 40 * M; m.unitDone(st().runs.find((r) => r.code === 'A100' && r.lot === '6284').id, 20)
+    const rep = m.reportOf(st(), DAY, clock)
+    const pk = rep.byLine.filter((l) => l.dept === 'Packing').map((l) => [l.name, l.day.units, l.day.qty, l.codes, l.day.open])
+    eq('cada línea de Packing con lo que lleva: pallets, cajas, sus códigos y si está en curso', pk, [['Línea 1', 3, 102, ['A100', 'B200'], true], ['Línea 2', 1, 20, ['A100'], true]])
+    eq('las líneas suman lo del cuarto', rep.byLine.filter((l) => l.dept === 'Packing').reduce((t, l) => t + l.day.qty, 0), rep.byDept.find((d) => d.dept === 'Packing').qty)
+    eq('una línea sin nada ese día no sale', rep.byLine.some((l) => l.dept === 'RTE'), false)
+    eq('con un código escogido, cada línea cuenta solo ese código', m.reportOf(st(), DAY, clock, { code: 'A100' }).byLine.map((l) => [l.name, l.day.qty]), [['Línea 1', 66], ['Línea 2', 20]])
+  })
+}
 section('Trasladar personal a otra línea o a otro cuarto, y los nombres en el Excel (Jose, 2026-10-22)')
 {
   const mv = await device('att-move', { user: 'Supervisor RTE' })
