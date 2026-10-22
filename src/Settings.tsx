@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore } from 'react'
-import { byLineName, CFG, dayShiftsText, DEPTS, lineLabel, lotFor, managerPin, nightText, openRun, removedLines, removeLine, reset, resetRecords, restoreLine, setDayShifts, setLineRules, setProgramView, setReasonCodes, shiftGoalOf, shiftHours, shiftSpan, shiftsOf, turnOf, uploadAll, weekOf, type Dept, type Line, type State, type WorkDay } from './store'
+import { type ViewOpt, byLineName, CFG, dayShiftsText, DEPTS, lineLabel, lotFor, managerPin, nightText, openRun, removedLines, removeLine, reset, resetRecords, restoreLine, setDayShifts, setLineRules, setProgramView, setReasonCodes, shiftGoalOf, shiftHours, shiftSpan, shiftsOf, turnOf, uploadAll, weekOf, type Dept, type Line, type State, type WorkDay, setViewOpt } from './store'
 import { ConfirmDialog, LangSwitch, LineNameDialog, longDate, NoticeDialog, Products, QrLink, ShiftsDialog, StartDayDialog, StopDialog, TargetDialog, useCan, useWho } from './App'
 import { Employees } from './Employees'
 import { Devices } from './DevicesView'
@@ -31,7 +31,7 @@ export function settingsSections(can: (p: 'shifts' | 'day' | 'products' | 'goals
     // (whoever only looks sees the list and whether it is on, without the switch)
     ...(mgr ? [{ key: 'stops' as const, title: tr('Códigos de paro'), sub: tr('Reason Codes: prender o apagar') }] : []),
     ...(mgr && (admin || attOn) ? [{ key: 'attendance' as const, title: tr('Asistencia'), sub: tr('personas esperadas por cuarto y turno') }] : []),
-    ...(admin ? [{ key: 'program' as const, title: tr('Programa del día'), sub: tr('la pestaña: solo tú o todos') }] : []),
+    ...(admin ? [{ key: 'program' as const, title: tr('Pestañas nuevas'), sub: tr('Programa, Lotes, Flujo: solo tú o todos') }] : []),
     ...(can('products') || viewOnly ? [{ key: 'products' as const, title: tr('Productos'), sub: tr('la tabla maestra') }] : []),
     ...(can('goals') ? [{ key: 'goals' as const, title: tr('Metas'), sub: tr('por turno y por cuarto') }] : []),
     ...(can('people') && supabase ? [{ key: 'people' as const, title: tr('Empleados'), sub: tr('cuentas, roles y permisos') }] : []),
@@ -54,7 +54,7 @@ export function Settings({ s, now, day, name, home, mgr, admin, viewOnly, meId, 
         {sec === 'day' && <DaySettings s={s} now={now} day={day} />}
         {sec === 'lines' && <LinesSettings s={s} />}
         {sec === 'stops' && <StopCodesSettings s={s} viewOnly={viewOnly} />}
-        {sec === 'program' && <ProgramViewSettings s={s} />}
+        {sec === 'program' && <><ProgramViewSettings s={s} /><ViewOptSettings s={s} name="lotes" /><ViewOptSettings s={s} name="flujo" /></>}
         {sec === 'attendance' && <AttendanceSettings s={s} date={day.date} viewOnly={viewOnly} admin={admin} />}
         {sec === 'products' && <div className="setcard wide"><div className="sethead"><h3>{tr('Productos')}</h3></div><p className="hint">{tr('La tabla maestra de la oficina: con ella las mezclas se vuelven pouches, cajas y pallets esperados, y cada cuarto sabe cuánto lleva un carro, un pallet o una caja.')}</p><Products s={s} readOnly={!can('products')} /></div>}
         {sec === 'goals' && <GoalsSettings s={s} now={now} day={day} />}
@@ -314,6 +314,26 @@ function AttendanceSettings({ s, date, viewOnly, admin }: { s: State; date: stri
  * ajuste lo prendo para que lo vean todos"): only the admin sees this card. Off, the tab is the admin's alone (marked
  * 🔒); on, everybody has it, each with the rooms they see. Turning it on asks first, as the codes do.
  */
+/**
+ * The switches of the Lotes and Flujo tabs (Jose, 2026-10-22): Lotes is the new chain of each lot (the admin's until
+ * turned on); Flujo, the office's old sheet nobody used, is off: only the admin sees it, and it comes back with a tap
+ */
+function ViewOptSettings({ s, name }: { s: State; name: ViewOpt }) {
+  const [asking, setAsking] = useState(false)
+  const on = s.viewOpts[name].on
+  const title = name === 'lotes' ? tr('Pestaña Lotes') : tr('Pestaña Flujo')
+  return (
+    <>
+      <div className="setcard">
+        <div className="sethead"><h3>{title}</h3><span className={'rc-state' + (on ? ' on' : '')}>{on ? tr('Para todos') : tr('Solo tú')}</span></div>
+        <label className="switch"><span>{name === 'lotes' ? tr('Que todos vean la pestaña Lotes') : tr('Que todos vean la pestaña Flujo')}</span><input type="checkbox" role="switch" checked={on} onChange={(e) => (e.target.checked ? setAsking(true) : setViewOpt(name, false))} /></label>
+        <p className="hint">{name === 'lotes' ? tr('Lotes sigue cada lote de las mezclas a Packing: lo que cada cuarto debía hacer, lo que falta y lo que se perdió. Apagada, solo la ves tú (con 🔒).') : tr('Flujo es la hoja de la oficina (WO PENDIENTES), con todas sus columnas. La reemplaza Lotes: apagada, solo la ves tú (con 🔒). Nada se borra.')}</p>
+      </div>
+      {asking && <ConfirmDialog title={name === 'lotes' ? tr('¿Que todos vean la pestaña Lotes?') : tr('¿Que todos vean la pestaña Flujo?')} text={tr('La ven los managers, la oficina y "Solo ver". Se puede apagar aquí mismo cuando quieras.')} yes={tr('Prender para todos')} onYes={() => { setViewOpt(name, true); setAsking(false) }} onNo={() => setAsking(false)} />}
+    </>
+  )
+}
+
 function ProgramViewSettings({ s }: { s: State }) {
   const [asking, setAsking] = useState(false)
   const on = s.programView.on

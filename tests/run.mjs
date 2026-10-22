@@ -5098,6 +5098,53 @@ section('Un PO completo ya no lleva más pallets: el de 3 pallets no acepta el 4
     eq('al otro PO (400 cajas, ya con 40) le caben nueve pallets de 40: un registro con diez lo pasa', [m.orderOver(st(), Array.from({ length: 9 }, () => ({ po: po2, qty: 40 })), 40), m.orderOver(st(), Array.from({ length: 10 }, () => ({ po: po2, qty: 40 })), 40)], ['', po2])
   })
 }
+section('Lotes: lo que dieron las mezclas, lo que cada cuarto debía hacer, lo que falta y lo que se perdió (Jose, 2026-10-22)')
+{
+  const lt = await device('lotes', { user: 'Jose' })
+  lt.use((m) => {
+    const st = () => m.store.get(), D = '2026-10-22', at = (h, mi = 0) => oct(22, h, mi)
+    clock = at(20)
+    // 0889: 20 cajas por mezcla, 24 pouches por caja, 36 cajas por pallet, a RTE
+    m.applyRemote('act_products', productRow('0889', 'Meatballs', 24, 20, 24, 0, 36, at(1)))
+    // 3310: 30 cajas por mezcla, 10 platos por caja, 40 cajas por pallet, a MFO
+    m.applyRemote('act_products', productRow('3310', 'Chicken bowl', 10, 30, 0, 0, 40, at(1)))
+    m.setPackRoom('3310', 'MFO')
+    const mins = (h, n, step = 2) => Array.from({ length: n }, (_, i) => at(h, i * step))
+    const run = (id, dept, code, lot, ats, o = {}) => m.applyRemote('act_runs', { ...runRow({ id, dept, lineId: 'LT-' + dept + (o.line ?? ''), line: 'Línea 1', code, lot, date: D, startedAt: ats[0] - 60_000, endedAt: o.open ? null : ats.at(-1) + 60_000, units: ats.map((t, i) => (o.units ? o.units(t, i) : unit(t, o.qty ?? null))) }), ...(o.extra ? { extra: o.extra } : {}) })
+    // ---- 0889 · 6293: Kitchen 14 mezclas → RTE 6,500 de 6,720 pouches → Packing 260 cajas en 8 pallets, todo terminado
+    run('lt-k', 'Kitchen', '0889', '6293', mins(6, 14))
+    run('lt-r', 'RTE', '0889', '6293', mins(8, 25), { qty: 260 })
+    run('lt-p', 'Packing', '0889', '6293', mins(11, 8), { units: (t, i) => ({ at: t, qty: i < 7 ? 36 : 8, ref: '', by: 'x', lots: [{ lot: '6293', qty: i < 7 ? 36 : 8, tag: 'T' + i }] }) })
+    // ---- 3310 · 6292: Spiral 6 mezclas → MFO 1,600 de 1,800 platos, terminado; Packing no ha empezado
+    run('lt-s', 'Spiral', '3310', '6292', mins(6, 6))
+    run('lt-m', 'MFO', '3310', '6292', mins(9, 16), { qty: 100, extra: { bin: 'platos' } })
+    // ---- 0889 · 6294: Kitchen 8 mezclas, RTE todavía trabajando (2,340 pouches)
+    run('lt-k2', 'Kitchen', '0889', '6294', mins(13, 8), { line: '2' })
+    run('lt-r2', 'RTE', '0889', '6294', mins(15, 9), { qty: 260, open: true, line: '2' })
+    const list = m.lotChains(st(), D, D)
+    const one = (code, lot) => list.find((c) => c.code === code && c.lot === lot)
+    const a = one('0889', '6293')
+    eq('0889 · 6293: las 14 mezclas dan 280 cajas', [a.mixes, a.originCases, a.route, a.mixRoom], [14, 280, 'RTE', 'Kitchen'])
+    eq('RTE debía hacer 6,720 pouches (280 × 24), hizo 6,500 y terminó: pérdida 220 (3.3%)', [a.steps[1].dept, a.steps[1].expected, a.steps[1].done, a.steps[1].gap, Math.round(a.steps[1].pct * 1000) / 10, a.steps[1].state], ['RTE', 6720, 6500, 220, 3.3, 'loss'])
+    eq('Packing se mide contra lo que RTE le pasó: 6,500 ÷ 24 = 270.83 cajas, hizo 260 en 8 pallets (de 8): pérdida 10.83', [a.steps[2].expected, a.steps[2].done, a.steps[2].gap, a.steps[2].state, a.steps[2].pallets], [270.83, 260, 10.83, 'loss', { expected: 8, done: 8 }])
+    eq('pérdida total del lote contra lo que dieron las mezclas: 280 − 260 = 20 cajas (7.1%), terminado', [a.totalLoss, Math.round(a.totalPct * 1000) / 10, a.status, m.lossClass(a.totalPct)], [20, 7.1, 'done', 'bad'])
+    const b = one('3310', '6292')
+    eq('3310 · 6292 va a MFO: 6 mezclas × 30 = 180 cajas × 10 platos = 1,800 platos; hizo 1,600: pérdida 200 (11.1%)', [b.route, b.mixRoom, b.originCases, b.steps[1].unit, b.steps[1].expected, b.steps[1].done, b.steps[1].gap, b.steps[1].state], ['MFO', 'Spiral', 180, 'platos', 1800, 1600, 200, 'loss'])
+    eq('Packing debe 1,600 ÷ 10 = 160 cajas (4 pallets) y no ha empezado: nadie lo trabaja, el lote va atrás, sin pérdida total todavía', [b.steps[2].expected, b.steps[2].pallets.expected, b.steps[2].state, b.status, b.totalLoss], [160, 4, 'wait', 'late', null])
+    const c = one('0889', '6294')
+    eq('0889 · 6294: RTE sigue trabajando: lo que no llega todavía es "falta", no pérdida', [c.steps[1].expected, c.steps[1].done, c.steps[1].gap, c.steps[1].state, c.status], [3840, 2340, 1500, 'run', 'run'])
+    eq('y Packing, sin nada todavía mientras RTE sigue, no ha empezado', c.steps[2].state, 'wait')
+    const sum = m.lotsSummary(list)
+    eq('el resumen: 2 en camino, 1 terminado, pérdida de lo terminado 20 de 280 cajas (7.1%), el peor es 0889 · 6293', [sum.running, sum.done, sum.lost, sum.expected, Math.round(sum.pct * 1000) / 10, sum.worst?.lot], [2, 1, 20, 280, 7.1, '6293'])
+    eq('dónde se pierde más: MFO 11.1%, Packing 4%, RTE 3.3% (cada uno en su unidad, de lo que terminó)', sum.byRoom.map((x) => [x.dept, Math.round(x.pct * 1000) / 10]), [['MFO', 11.1], ['Packing', 4], ['RTE', 3.3]])
+    eq('primero los terminados, el que más perdió arriba; luego los que van atrás y los que siguen', list.map((x) => x.code + '·' + x.lot), ['0889·6293', '3310·6292', '0889·6294'])
+    eq('buscar por código, lote o producto', [list.filter((x) => m.chainMatch(x, '889')).length, list.filter((x) => m.chainMatch(x, '6292')).length, list.filter((x) => m.chainMatch(x, 'bowl')).length], [2, 1, 1])
+    // a code with no numbers in Productos: said, never invented
+    run('lt-x', 'Kitchen', 'ZZ1', '6293', mins(7, 3), { line: '9' })
+    const x = m.lotChains(st(), D, D).find((y) => y.code === 'ZZ1')
+    eq('un código que no está en Productos: no se inventa nada y dice qué falta', [x.originCases, x.steps[1].expected, x.steps[1].state, x.missing], [null, null, 'nocalc', ['el código en Productos']])
+  })
+}
 section('Programa del día: la pestaña del admin, prendida para todos desde Ajustes (Jose, 2026-10-20)')
 {
   const pv = await device('program-view', { user: 'Jose' })
@@ -5117,10 +5164,17 @@ section('Programa del día: la pestaña del admin, prendida para todos desde Aju
     eq('se prende: sube opt:attview con 1, queda en el historial, y no toca el Programa', [m.outbox.items().find((i) => i.key === 'opt:attview')?.row.per_hour, st().changes.some((c) => c.refKey === 'opt:attview' && c.after === 'para todos'), st().programView.on], [1, true, true])
     m.applyRemote('act_targets', { dept: 'opt:attview', per_hour: 0, per_shift: null, updated_at: iso(T0 + 40 * M), updated_by: 'Edgar' })
     eq('otro manager la apaga: llega', st().attView.on, false)
+    // the Lotes and Flujo tabs (2026-10-22): both start off (Flujo, which nobody used, stays the admin's)
+    eq('Lotes y Flujo empiezan apagadas', [st().viewOpts.lotes.on, st().viewOpts.flujo.on], [false, false])
+    clock = T0 + 41 * M; m.setViewOpt('lotes', true)
+    eq('se prende Lotes: sube opt:view:lotes con 1 y queda en el historial; Flujo sigue apagada', [m.outbox.items().find((i) => i.key === 'opt:view:lotes')?.row.per_hour, st().changes.some((c) => c.what === 'Pestaña Lotes' && c.after === 'para todos'), st().viewOpts.flujo.on], [1, true, false])
+    m.applyRemote('act_targets', { dept: 'opt:view:flujo', per_hour: 1, per_shift: null, updated_at: iso(T0 + 50 * M), updated_by: 'Edgar' })
+    eq('otro manager prende Flujo: llega', st().viewOpts.flujo.on, true)
   })
   const back = await device('program-view-again', { seed: JSON.parse(disks.get('program-view').get('act_v1')), user: 'Jose' })
   eq('al volver a abrir sigue prendido, con su hora', back.use((m) => m.store.get().programView.on), true)
   eq('y la asistencia sigue como quedó (apagada)', back.use((m) => m.store.get().attView.on), false)
+  eq('y Lotes y Flujo siguen como quedaron', back.use((m) => [m.store.get().viewOpts.lotes.on, m.store.get().viewOpts.flujo.on]), [true, true])
 }
 
 // =====================================================================================================================
