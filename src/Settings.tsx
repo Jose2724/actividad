@@ -5,7 +5,7 @@ import { Employees } from './Employees'
 import { Devices } from './DevicesView'
 import { supabase } from './supabase'
 import { syncStore } from './sync'
-import { ATT_DEFAULT, attExpectedOf, attShifts, clearShiftMark, plantCut, roomMark, setAttExpected, setAttView, setShiftMark } from './store'
+import { ATT_DEFAULT, attExpectedOf, attShifts, clearShiftMark, plantCut, roomMark, setAttExpected, setAttView, setShiftMark, setWeightRule, weightRuleOf } from './store'
 import { BUILD } from './update'
 import { clockOffText, clockState } from './clock'
 import { fmtTime } from './clock-fmt'
@@ -20,7 +20,7 @@ import { trx } from './trx'
  * powers allow; the last one, this device, is everybody's. The dialogs that do the work are the same ones the floor
  * and the report already use, so one rule holds everywhere.
  */
-export type SettingsKey = 'shifts' | 'day' | 'lines' | 'stops' | 'program' | 'attendance' | 'products' | 'goals' | 'people' | 'devices' | 'device'
+export type SettingsKey = 'shifts' | 'day' | 'lines' | 'stops' | 'program' | 'attendance' | 'weights' | 'products' | 'goals' | 'people' | 'devices' | 'device'
 const fmtN = (x: number) => Math.round(x).toLocaleString('en-US')
 
 export function settingsSections(can: (p: 'shifts' | 'day' | 'products' | 'goals' | 'people') => boolean, mgr: boolean, viewOnly: boolean, admin = false, attOn = false): { key: SettingsKey; title: string; sub: string }[] {
@@ -30,6 +30,7 @@ export function settingsSections(can: (p: 'shifts' | 'day' | 'products' | 'goals
     ...(mgr && !viewOnly ? [{ key: 'lines' as const, title: tr('Líneas'), sub: tr('las líneas de cada cuarto') }] : []),
     // (whoever only looks sees the list and whether it is on, without the switch)
     ...(mgr ? [{ key: 'stops' as const, title: tr('Códigos de paro'), sub: tr('Reason Codes: prender o apagar') }] : []),
+    ...(mgr ? [{ key: 'weights' as const, title: tr('Pesos'), sub: tr('cada cuánto se pesa y cuántos') }] : []),
     ...(mgr && (admin || attOn) ? [{ key: 'attendance' as const, title: tr('Asistencia'), sub: tr('personas esperadas por cuarto y turno') }] : []),
     ...(admin ? [{ key: 'program' as const, title: tr('Pestañas nuevas'), sub: tr('Programa, Lotes, Flujo: solo tú o todos') }] : []),
     ...(can('products') || viewOnly ? [{ key: 'products' as const, title: tr('Productos'), sub: tr('la tabla maestra') }] : []),
@@ -55,6 +56,7 @@ export function Settings({ s, now, day, name, home, mgr, admin, viewOnly, meId, 
         {sec === 'lines' && <LinesSettings s={s} />}
         {sec === 'stops' && <StopCodesSettings s={s} viewOnly={viewOnly} />}
         {sec === 'program' && <><ProgramViewSettings s={s} /><ViewOptSettings s={s} name="lotes" /><ViewOptSettings s={s} name="flujo" /></>}
+        {sec === 'weights' && <WeightSettings s={s} viewOnly={viewOnly} />}
         {sec === 'attendance' && <AttendanceSettings s={s} date={day.date} viewOnly={viewOnly} admin={admin} />}
         {sec === 'products' && <div className="setcard wide"><div className="sethead"><h3>{tr('Productos')}</h3></div><p className="hint">{tr('La tabla maestra de la oficina: con ella las mezclas se vuelven pouches, cajas y pallets esperados, y cada cuarto sabe cuánto lleva un carro, un pallet o una caja.')}</p><Products s={s} readOnly={!can('products')} /></div>}
         {sec === 'goals' && <GoalsSettings s={s} now={now} day={day} />}
@@ -462,5 +464,34 @@ function DeviceTools() {
       {clearing && <ConfirmDialog title={tr('¿Reiniciar los registros?')} text={tr('Se borran las corridas, los paros y lo programado de todos los días. La tabla de productos y las líneas se quedan. No se puede deshacer.')} yes={tr('Reiniciar')} danger onYes={() => { resetRecords(); setClearing(false) }} onNo={() => setClearing(false)} />}
       {resetting && <ConfirmDialog title={supabase ? tr('¿Limpiar este aparato?') : tr('¿Borrar todos los datos de este dispositivo?')} text={supabase ? tr('Se vacía lo guardado en este aparato y se vuelve a bajar todo del servidor. Lo que esté en el servidor no se toca; lo que este aparato no haya subido todavía se pierde.') : tr('Se borran las líneas, los registros, los paros, lo programado y la tabla de productos. No se puede deshacer.')} yes={supabase ? tr('Limpiar y bajar') : tr('Borrar todo')} danger onYes={() => { reset(); setResetting(false) }} onNo={() => setResetting(false)} />}
     </div>
+  )
+}
+
+/**
+ * How often a room weighs and how many each time (2026-10-23: Spiral, "cada hora que pesen 8 bolas ... que se pueda
+ * ajustar en Ajustes"): minutes between tests (0 = no reminder) and how many per test, for Spiral and RTE
+ */
+function WeightSettings({ s, viewOnly }: { s: State; viewOnly: boolean }) {
+  const rooms: { dept: Dept; what: string }[] = [{ dept: 'Spiral', what: tr('bolas') }, { dept: 'RTE', what: tr('pouches') }]
+  return (
+    <div className="setcard">
+      <div className="sethead"><h3>{tr('Pesos')}</h3></div>
+      <p className="hint">{tr('Cada cuánto le sale a la línea el aviso de pesar, y cuántos se pesan cada vez. Con 0 minutos no sale aviso (el botón ⚖ Peso sigue ahí).')}</p>
+      {rooms.map((r) => <WeightRuleRow key={r.dept} s={s} dept={r.dept} what={r.what} viewOnly={viewOnly} />)}
+    </div>
+  )
+}
+function WeightRuleRow({ s, dept, what, viewOnly }: { s: State; dept: Dept; what: string; viewOnly: boolean }) {
+  const now = weightRuleOf(s, dept)
+  const [every, setEvery] = useState(String(now.every)), [count, setCount] = useState(String(now.count))
+  const changed = Number(every) !== now.every || Number(count) !== now.count
+  return (
+    <form className="wt-rule" onSubmit={(e) => { e.preventDefault(); setWeightRule(dept, Number(every) || 0, Number(count) || 0) }}>
+      <b>{dept}</b>
+      <label>{tr('Aviso cada')} <input inputMode="numeric" value={every} disabled={viewOnly} onChange={(e) => setEvery(e.target.value.replace(/\D/g, ''))} /> {tr('min')}</label>
+      <label>{tr('Pesar')} <input inputMode="numeric" value={count} disabled={viewOnly} onChange={(e) => setCount(e.target.value.replace(/\D/g, ''))} /> {what}</label>
+      {!viewOnly && <button type="submit" className="btn sm primary" disabled={!changed}>{tr('Guardar')}</button>}
+      <small>{now.every ? tr('Ahora: cada {0} min, {1} {2}', now.every, now.count, what) : tr('Ahora: sin aviso')}</small>
+    </form>
   )
 }

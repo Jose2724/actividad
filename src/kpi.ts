@@ -152,12 +152,14 @@ export function laborOf(s: State, date: string, now: number) {
 // ---- item weights ----
 /** each code's weight tests of a day: how many tests and pouches, average, lightest, heaviest, its target, under and over */
 export function weightsOf(s: State, date: string) {
-  const tests = weightTestsOf(s, date), codes = [...new Set(tests.map((t) => t.code))]
-  return codes.map((code) => {
+  // (each code and what was weighed: RTE's pouches, Spiral's meatballs, 2026-10-23)
+  const tests = weightTestsOf(s, date), keys = [...new Set(tests.map((t) => t.code + '|' + t.kind))]
+  return keys.map((k) => {
+    const [code, kind] = k.split('|') as [string, 'pouch' | 'ball']
     // checked = every pouch (a weight, a call, or both); weighed = the ones with a weight (the average, min and max)
-    const mine = tests.filter((t) => t.code === code), entries = mine.flatMap((t) => t.entries), all = mine.flatMap(wtWeights), target = weightTarget(s, code)
+    const mine = tests.filter((t) => t.code === code && t.kind === kind), entries = mine.flatMap((t) => t.entries), all = mine.flatMap(wtWeights), target = weightTarget(s, code, kind)
     const avg = all.length ? all.reduce((a, b) => a + b, 0) / all.length : null
-    return { code, tests: mine, checked: entries.length, n: all.length, avg: avg == null ? null : Math.round(avg * 1000) / 1000, min: all.length ? Math.min(...all) : null, max: all.length ? Math.max(...all) : null, target, under: entries.filter((e) => entryClass(e, target) === 'bajo').length, over: entries.filter((e) => entryClass(e, target) === 'sobre').length, avgPct: target && avg != null ? (avg - target.pouch) / target.pouch : null }
+    return { code, kind, tests: mine, checked: entries.length, n: all.length, avg: avg == null ? null : Math.round(avg * 1000) / 1000, min: all.length ? Math.min(...all) : null, max: all.length ? Math.max(...all) : null, target, under: entries.filter((e) => entryClass(e, target) === 'bajo').length, over: entries.filter((e) => entryClass(e, target) === 'sobre').length, avgPct: target && avg != null ? (avg - target.pouch) / target.pouch : null }
   })
 }
 

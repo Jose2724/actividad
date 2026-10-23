@@ -5222,6 +5222,38 @@ section('El programa del día pone tope a las mezclas de un código (la oficina,
     eq('Packing, RTE y MFO no llevan este tope', m.programCapOf(st(), DAY, 'Packing', '889', '6292'), null)
   })
 }
+section('Spiral pesa 8 bolas cada hora, en oz, y el aviso se ajusta en Ajustes (Jose, 2026-10-23)')
+{
+  const sw = await device('spiral-weights', { user: 'Supervisor Spiral' })
+  sw.use((m) => {
+    const st = () => m.store.get()
+    clock = T0
+    if (!st().lines.some((l) => l.dept === 'Spiral')) m.addLine('Spiral', 'Línea 1')
+    m.startRun(st().lines.find((l) => l.dept === 'Spiral'), '889', '6292', DAY, null)
+    const run = () => st().runs.find((r) => r.dept === 'Spiral')
+    eq('Spiral: cada hora y 8 bolas, sin que nadie lo ponga', m.weightRuleOf(st(), 'Spiral'), { every: 60, count: 8 })
+    eq('RTE y los demás: sin aviso', [m.weightRuleOf(st(), 'RTE').every, m.weightRuleOf(st(), 'Packing').every], [0, 0])
+    eq('el primer aviso, una hora después de empezar el código', m.weightDueAt(st(), run()), T0 + 60 * M)
+    clock = T0 + 70 * M
+    const t = m.weightNew(run())
+    eq('una prueba de Spiral es de bolas', t.kind, 'ball')
+    m.weightSave(t, [1.02, 0.98, 1.0, 1.01, 0.99, 1.03, 0.97, 1.0].map((w) => ({ w })))
+    eq('con la prueba hecha, el aviso vuelve una hora después de ella', m.weightDueAt(st(), run()), T0 + 130 * M)
+    m.setWeightTarget('889', 1.0, 0.02, 'ball')
+    eq('el objetivo de las bolas es aparte del de los pouches del mismo código', [m.weightTarget(st(), '889', 'ball'), m.weightTarget(st(), '889')], [{ pouch: 1, tol: 0.02 }, null])
+    const w = m.weightsOf(st(), DAY)
+    eq('el reporte KPI la cuenta como bolas del 889, con su objetivo: 8 pesadas, 1 bajo (0.97) y 1 sobre (1.03)', w.map((x) => [x.code, x.kind, x.n, x.under, x.over]), [['889', 'ball', 8, 1, 1]])
+    m.setWeightRule('Spiral', 30, 10)
+    const up = m.outbox.items().find((i) => i.key === 'opt:wt:Spiral')
+    eq('en Ajustes se cambia a cada 30 min y 10 bolas: sube y el aviso se mueve', [m.weightRuleOf(st(), 'Spiral'), up.row.per_hour, up.row.per_shift, m.weightDueAt(st(), run())], [{ every: 30, count: 10 }, 30, 10, T0 + 100 * M])
+    m.setWeightRule('Spiral', 0, 8)
+    eq('con 0 minutos no hay aviso', m.weightDueAt(st(), run()), null)
+    m.applyRemote('act_targets', { dept: 'opt:wt:RTE', per_hour: 120, per_shift: 5, updated_at: iso(T0 + 90 * M), updated_by: 'Jose' })
+    eq('lo que pone otra computadora llega', m.weightRuleOf(st(), 'RTE'), { every: 120, count: 5 })
+  })
+  const back = await device('spiral-weights-again', { seed: JSON.parse(disks.get('spiral-weights').get('act_v1')), user: 'Supervisor Spiral' })
+  eq('al volver a abrir: los ajustes y la prueba de bolas siguen', back.use((m) => [m.weightRuleOf(m.store.get(), 'Spiral'), m.weightRuleOf(m.store.get(), 'RTE'), m.store.get().weights.filter((x) => x.kind === 'ball').length]), [{ every: 0, count: 8 }, { every: 120, count: 5 }, 1])
+}
 section('Reporte: el total de cada línea, en su departamento (Jose, 2026-10-22)')
 {
   const lt = await device('line-totals', { user: 'Jose' })

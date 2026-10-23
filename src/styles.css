@@ -2045,3 +2045,11 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 .capdone{margin-top:6px;background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:700;border-radius:10px;padding:8px 10px}
 .capdlg h3{color:#b91c1c}.caplist{margin:0;padding-left:20px;display:grid;gap:4px}
 .capwarn{font-weight:700}
+
+/* Spiral's meatball tests and the hourly reminder (2026-10-23) */
+.wt-count{display:flex;gap:12px;align-items:baseline;font-size:18px}.wt-count b{font-size:26px}.wt-count .ok{color:#166534;font-weight:800}
+.wt-remind{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;justify-content:space-between;width:100%;margin-top:6px;text-align:left;font:inherit;font-weight:700;font-size:16px;color:#854d0e;background:#fef9c3;border:2px solid #eab308;border-radius:12px;padding:10px 12px;cursor:pointer;animation:wtpulse 2s ease-in-out infinite}
+.wt-remind b{background:#854d0e;color:#fff;border-radius:8px;padding:4px 10px}
+@keyframes wtpulse{0%,100%{box-shadow:0 0 0 0 rgba(234,179,8,.5)}50%{box-shadow:0 0 0 6px rgba(234,179,8,0)}}
+.btn.wt-due{border-color:#eab308;background:#fef9c3;color:#854d0e}
+.wt-rule{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;border-top:1px solid var(--line);padding:10px 0}.wt-rule b{min-width:70px}.wt-rule input{width:64px;min-height:38px;font-size:17px;text-align:right}.wt-rule small{width:100%;color:var(--muted)}
