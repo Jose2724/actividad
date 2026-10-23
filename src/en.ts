@@ -2466,4 +2466,13 @@ export const EN: Record<string, string> = {
   "faltan {0} personas · {1}": "{0} people missing · {1}",
   "falta 1 persona": "1 person missing",
   "faltan {0} personas": "{0} people missing",
+  // the program caps a code's mezclas (2026-10-23)
+  "✓ Programa completo: {0} de {1} {2} del {3}{4}. Si hay que hacer más, habla con la oficina.": "✓ Program complete: {0} of {1} {2} of {3}{4}. If more are needed, talk to the office.",
+  "Ya se hicieron todas las {0} del programa": "All the program's {0} are already made",
+  "Del {0}{1} estaban programadas {2} {3} hoy, y ya van {4}.": "{0}{1} had {2} {3} programmed today, and {4} are made.",
+  "¿Es otro código? Corrige el código de esta línea.": "Is it another code? Correct this line's code.",
+  "Si de verdad hay que hacer más, habla con la oficina: ellos suben la cantidad en el programa y la app deja seguir.": "If more really are needed, talk to the office: they raise the quantity in the program and the app lets you go on.",
+  "Registrar de todas formas (manager)": "Record anyway (manager)",
+  "Corregir el código": "Correct the code",
+  "⚠ El programa de hoy del {0}{1} ya está completo: {2} de {3} {4}. Si es otro código, revísalo; si hay que hacer más, habla con la oficina.": "⚠ Today's program of {0}{1} is already complete: {2} of {3} {4}. If it is another code, check it; if more are needed, talk to the office.",
 }

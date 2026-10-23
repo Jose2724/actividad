@@ -5202,6 +5202,26 @@ section('El mensaje de la oficina para Packing, arriba en todas sus tablets (la 
   const back = await device('room-msg-again', { seed: JSON.parse(disks.get('room-msg').get('act_v1')), user: 'Oficina' })
   eq('al volver a abrir: el mensaje sigue', back.use((m) => m.roomMsgOf(m.store.get(), 'Packing')?.text), 'Limpieza a las 2')
 }
+section('El programa del día pone tope a las mezclas de un código (la oficina, 2026-10-23: Spiral hizo más de lo programado)')
+{
+  const cp = await device('program-cap', { user: 'Supervisor Spiral' })
+  cp.use((m) => {
+    const st = () => m.store.get()
+    clock = T0
+    m.setPlan(DAY, 'Spiral', '889', 3, '6292')
+    if (!st().lines.some((l) => l.dept === 'Spiral')) m.addLine('Spiral', 'Línea 1')
+    m.startRun(st().lines.find((l) => l.dept === 'Spiral'), '0889', '6292', DAY, null)
+    const run = () => st().runs.find((r) => r.dept === 'Spiral')
+    eq('con 3 programadas y ninguna hecha: le faltan 3 (0889 es el mismo código que 889)', [m.programCap(st(), run()).planned, m.programCap(st(), run()).done, m.programCap(st(), run()).left], [3, 0, 3])
+    for (let k = 1; k <= 3; k++) { clock = T0 + k * 10 * M; m.unitDone(run().id, null) }
+    const c = m.programCap(st(), run())
+    eq('hechas las 3: el programa está completo (la línea pregunta antes de una más)', [c.done, c.done >= c.planned, c.unit], [3, true, 'mezclas'])
+    eq('otro lote del mismo código sin programa no tiene tope; un código sin programa tampoco', [m.programCapOf(st(), DAY, 'Spiral', '889', '6299'), m.programCapOf(st(), DAY, 'Spiral', '4928', '6292')], [null, null])
+    m.setPlan(DAY, 'Spiral', '889', 5, '6292')
+    eq('la oficina sube el programa a 5: le vuelven a faltar 2', m.programCap(st(), run()).left, 2)
+    eq('Packing, RTE y MFO no llevan este tope', m.programCapOf(st(), DAY, 'Packing', '889', '6292'), null)
+  })
+}
 section('Reporte: el total de cada línea, en su departamento (Jose, 2026-10-22)')
 {
   const lt = await device('line-totals', { user: 'Jose' })

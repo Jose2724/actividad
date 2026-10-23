@@ -2720,6 +2720,21 @@ export function planRows(s: State, date: string, dept: Dept): PlanRow[] {
   }
   return out.sort((a, b) => Number(b.planned > 0) - Number(a.planned > 0) || a.code.localeCompare(b.code, undefined, { numeric: true }) || byPlanLot(a, b))
 }
+/**
+ * A code's program of the day where the room counts mezclas one by one (Kitchen, and Spiral by the mezcla): what was
+ * programmed for it (its lot's row, else its row without a lot), what was made and what is left; null when the code
+ * has no program for that lot today (the office, 2026-10-23: a Spiral supervisor recorded more mezclas than the
+ * program because he started the same code for another one: "si están programadas 5 o 10, que no se pueda hacer más
+ * de esa cantidad; si hicieron de más, que vengan a hablar con la oficina")
+ */
+export function programCapOf(s: State, date: string, dept: Dept, code: string, lot: string) {
+  if ((dept !== 'Kitchen' && dept !== 'Spiral') || !normCode(code)) return null
+  const rows = planRows(s, date, dept).filter((r) => normCode(r.code) === normCode(code) && r.planned > 0 && !r.kind)
+  const row = rows.find((r) => !!r.lot && r.lot === lot.trim()) ?? rows.find((r) => !r.lot) ?? null
+  return row ? { planned: row.planned, done: row.done, left: row.left, unit: row.unit, code: row.code, lot: row.lot } : null
+}
+/** the program cap of a run's next mezcla (a run counted in pounds or cases is not capped) */
+export const programCap = (s: State, r: Run) => (apartOf(r) ? null : programCapOf(s, r.date, r.dept, r.code, lotNowOf(r)))
 // ---- a code and its lot that go on into the next day ----
 /** the day after / before a date (YYYY-MM-DD) */
 export const dayAfter = (d: string) => { const x = new Date(d + 'T00:00:00'); x.setDate(x.getDate() + 1); return dayOf(x.getTime()) }

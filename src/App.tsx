@@ -1,6 +1,6 @@
 import { Component, createContext, Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
-import { addLine, plantCut, roomMark, CUT_WINDOW, startSecondShift, addWaste, awayDay, batch, byPlanLot, planLot, cameFrom, carriedOver, dayAfter, dayBefore, orderUnitDefault, programOrderChoices, ordersOf, orderStatus, orderUnitWord, prevPending, workOrderOf, type WorkOrder, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, MFO_CHOICES, mfoChoiceOf, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, noteOf, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderAddRuns, orderOfId, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, PLAN_LOT_MAX, productOf, productsCsv, purgeDay, reasonText, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay, orderFull, orderFullText, orderNoteOf, setOrderNote, setOrderUrgent, roomMsgOf, setRoomMsg } from './store'
+import { addLine, plantCut, roomMark, CUT_WINDOW, startSecondShift, addWaste, awayDay, batch, byPlanLot, planLot, cameFrom, carriedOver, dayAfter, dayBefore, orderUnitDefault, programOrderChoices, ordersOf, orderStatus, orderUnitWord, prevPending, workOrderOf, type WorkOrder, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, MFO_CHOICES, mfoChoiceOf, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, noteOf, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderAddRuns, orderOfId, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, PLAN_LOT_MAX, productOf, productsCsv, purgeDay, reasonText, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay, orderFull, orderFullText, orderNoteOf, setOrderNote, setOrderUrgent, roomMsgOf, setRoomMsg, programCap, programCapOf } from './store'
 import { avanceLots, avanceRange, avanceRows, datesBetween, lotAcrossDays, lotRows, lotsKnown, mfoList, mfoText, mfoWord, n1, pending, type AvancePart, type AvanceRow, type MfoMade } from './avance'
 import { loadZip, type Cell } from './xlsx'
 
@@ -2550,7 +2550,7 @@ function LotNowDialog({ run, onClose }: { run: Run; onClose: () => void }) {
 
 function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: number; mgr: boolean; day: WorkDay }) {
   const cfg = CFG[line.dept]
-  const canGoal = useCan()('goals'), viewOnly = useViewOnly()
+  const can = useCan(), canGoal = can('goals'), viewOnly = useViewOnly()
   // a device that has not brought the server's rows for a while may show this line with an old code or lot (another
   // tablet changed it): the card says so and asks once before anything is recorded on it
   const sync = useSyncExternalStore(syncStore.subscribe, syncStore.get)
@@ -2612,6 +2612,8 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   const nameIt = !quiet && <button type="button" className="lnk pen" title={tr('Cambiar el nombre')} aria-label={tr('Cambiar el nombre de {0}', lineLabel(line.name))} onClick={() => setRenaming(true)}>✎</button>
   const naming = renaming && <LineNameDialog s={s} dept={line.dept} line={line} onClose={() => setRenaming(false)} />
   const [wasting, setWasting] = useState(false)
+  // (the program cap's question, 2026-10-23: kept with the other hooks, above the line's early return)
+  const [capAsk, setCapAsk] = useState(false)
   // A unit was just recorded on this run, here or on another tablet: for a moment the button says which one, the
   // counters light up and the card gets a green ring. So a tap is seen to have landed, on the line it landed on, and
   // nobody taps twice for the same cart (the button rests while it says so).
@@ -2781,6 +2783,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
             startRun(line, code.trim().toUpperCase(), lot.trim(), date, needPer ? perUnit : null, isPack && makes === 'bin' ? word : mfoWord === 'bags' ? 'lb' : mfoWord, isSpiral && spiralNow !== 'mezclas' ? spiralNow : '', mfoWord === 'bags' ? 'bag' : ''); setDateText(null); setLotText(null); setEditDate(false); setMaking(null); setBinText(''); setMeasure(null)
           })
         }}>
+          {(() => { const c = programCapOf(s, day.date, line.dept, code, lot); return c && c.done >= c.planned - 1e-9 ? <p className="hint red capwarn">{tr('⚠ El programa de hoy del {0}{1} ya está completo: {2} de {3} {4}. Si es otro código, revísalo; si hay que hacer más, habla con la oficina.', c.code, c.lot ? ' · ' + tr('lote {0}', c.lot) : '', fmtN(c.done), fmtN(c.planned), c.unit)}</p> : null })()}
           {isSpiral && (
             <div className="makes">
               <span className="lab">{tr('¿En qué se cuenta este código?')}</span>
@@ -2875,8 +2878,11 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   const openOrders = rc.orders ? openOrdersFor(s, run.code) : []
   const nextOrder = rc.orders ? nextOrderFor(s, run) : ''
   const orderOptions = openOrders.filter((o) => !orderFull(s, o.id, run.perUnit)).map((o) => ({ id: o.id, label: orderLabel(o) + leftText(s, o) + (o.shipBy ? ' ' + tr('· envío {0}', shipText(o.shipBy)) : '') }))
-  const done = () => {
+  // the program of the day caps the mezclas of a code (2026-10-23): once all are made, one more asks first
+  const cap = programCap(s, run), capFull = !!cap && cap.done >= cap.planned - 1e-9
+  const done = (forced = false) => {
     if (just) return
+    if (capFull && !forced) { setCapAsk(true); return }
     if (pallets) setPacking('done')
     else if (rc.qty === 'ask') setCounting(true)
     else record(rc.qty === 'auto' ? run.perUnit : null)
@@ -2954,7 +2960,17 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       </div>
       {pallets
         ? <PalletPanel s={s} run={run} readOnly={quiet} saved={just ? savedText(line.dept, just.n - brought, rc) : ''} onDone={done} onLot={() => setPacking('lot')} onLotNow={() => setPacking('binlot')} onPart={(i) => setPacking(i)} onOrder={() => setPacking('po')} onReopen={() => setPacking('reopen')} canReopen={run.units.length > brought && !run.extra?.open?.parts.length} />
-        : !quiet && <button type="button" className={'btn primary huge' + (just ? ' saved' : '')} disabled={!!just} onClick={done}>✓ {just ? savedText(line.dept, just.n - brought, rc) : rc.done}</button>}
+        : !quiet && <button type="button" className={'btn primary huge' + (just ? ' saved' : '')} disabled={!!just} onClick={() => done()}>✓ {just ? savedText(line.dept, just.n - brought, rc) : rc.done}</button>}
+      {!quiet && capFull && cap && <div className="capdone">{tr('✓ Programa completo: {0} de {1} {2} del {3}{4}. Si hay que hacer más, habla con la oficina.', fmtN(cap.done), fmtN(cap.planned), cap.unit, cap.code, cap.lot ? ' · ' + tr('lote {0}', cap.lot) : '')}</div>}
+      {capAsk && cap && <div className="veil" onClick={() => setCapAsk(false)}><div className="dlg capdlg" onClick={(e) => e.stopPropagation()}>
+        <h3>{tr('Ya se hicieron todas las {0} del programa', cap.unit)}</h3>
+        <p>{tr('Del {0}{1} estaban programadas {2} {3} hoy, y ya van {4}.', cap.code, cap.lot ? ' ' + tr('lote {0}', cap.lot) : '', fmtN(cap.planned), cap.unit, fmtN(cap.done))}</p>
+        <ul className="caplist"><li>{tr('¿Es otro código? Corrige el código de esta línea.')}</li><li>{tr('Si de verdad hay que hacer más, habla con la oficina: ellos suben la cantidad en el programa y la app deja seguir.')}</li></ul>
+        <div className="dbtns spread">
+          <div className="btns">{can('fix') && <button type="button" className="btn" onClick={() => { setCapAsk(false); done(true) }}>{tr('Registrar de todas formas (manager)')}</button>}</div>
+          <div className="btns"><button type="button" className="btn soft" onClick={() => { setCapAsk(false); setFixing(true) }}>{tr('Corregir el código')}</button><button type="button" className="btn primary" onClick={() => setCapAsk(false)}>{tr('Cerrar')}</button></div>
+        </div>
+      </div></div>}
       {!quiet && packBins && <button type="button" className="lnk sm binlot" onClick={() => setPacking('binlot')}>{tr('¿Cambió el lote?')}</button>}
       {!quiet && untagged.map((x) => <button key={x.u.at} type="button" className="lnk sm notag tagmiss" onClick={() => setTagging(x.i)}>{tr('Al pallet {0} le falta el tag: lote {1} · ponerlo', x.i + 1, x.lots.join(', '))}</button>)}
       {!quiet && own && <button type="button" className="btn slim" onClick={() => setFilling(own)}>{trx('➕ Completar {0} · tiene {1} de {2}', runWord + (own.run.id === run.id && own.index >= brought ? ' ' + noOf(own) : ' ' + tr('de antes')), own.unit.qty, own.usual)}</button>}
