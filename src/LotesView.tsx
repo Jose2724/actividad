@@ -83,7 +83,8 @@ const route = (c: LotChain) => c.steps.map((x) => x.dept).join(' → ')
 
 /** what a step says under its numbers: lost, still missing, not started, complete, more than expected */
 function gapText(st: Step): { text: string; cls: string } {
-  const g = st.gap != null ? fmtN(Math.abs(st.gap)) : ''
+  // (with its unit: "faltan 48 cajas", 2026-10-23: the office asked every "faltan" to say of what)
+  const g = st.gap != null ? fmtN(Math.abs(st.gap)) + ' ' + tr(st.unit) : ''
   if (st.state === 'nocalc') return { text: tr('falta un dato en Productos'), cls: '' }
   if (st.state === 'wait') return { text: tr('no ha empezado'), cls: '' }
   if (st.state === 'run') return { text: st.gap != null && st.gap > 0 ? tr('faltan {0}', g) + (st.running ? ' · ' + tr('trabajando') : '') : tr('trabajando'), cls: 'go' }

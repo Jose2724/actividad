@@ -453,7 +453,7 @@ export function flujoProgLines(list: FlujoProgSum[]): FlujoProgLine[] {
 /** "80 mezclas (Kitchen) · hechas 60 · faltan 20": one program of a lot against what the lot has (the fold) */
 export function progLine(p: FlujoProg): string {
   const m = p.word === 'pouches' || p.word === 'platos' // (hechos / hechas: the word's gender)
-  const rest = p.left > 0 ? tr('faltan {0}', n2(p.left)) : p.left < 0 ? tr('completo (+{0})', n2(-p.left)) : tr('completo')
+  const rest = p.left > 0 ? tr('faltan {0} {1}', n2(p.left), progWord(p)) : p.left < 0 ? tr('completo (+{0})', n2(-p.left)) : tr('completo')
   return fmtN(p.qty) + ' ' + progWord(p) + ' (' + p.dept + ') · ' + (m ? tr('hechos {0}', n2(p.made)) : tr('hechas {0}', n2(p.made))) + ' · ' + rest
 }
 /** a row "with inventory" (the chip "Con inventario"): something made and not packed, or cases without a PO */

@@ -635,8 +635,8 @@ function AvStat({ made, exp, plan, unit, lot, note }: { made: number; exp: numbe
     <div className={'avstat ' + cls}>
       <div className="avs-top"><b>{(Math.round(made * 10) / 10).toLocaleString('en-US')}</b><small>{exp != null ? trx('de {0} {1}', n1(exp), unit) : unit}</small>{note && <small className="avs-note">{note}</small>}</div>
       {exp != null && <div className="bar"><i className={cls} style={{ width: pct + '%' }} /></div>}
-      {pend != null && <small className="avs-pend">{pend > 0 ? trx('faltan {0}', n1(pend)) : pend < 0 ? trx('{0} de más', n1(-pend)) : tr('✓ completo')}</small>}
-      {left != null && plan !== exp && <small className="avs-plan">{trx('programa {0} · faltan {1}', n1(plan), n1(Math.max(0, left)))}</small>}
+      {pend != null && <small className="avs-pend">{pend > 0 ? trx('faltan {0} {1}', n1(pend), unit) : pend < 0 ? trx('{0} {1} de más', n1(-pend), unit) : tr('✓ completo')}</small>}
+      {left != null && plan !== exp && <small className="avs-plan">{trx('programa {0} · faltan {1} {2}', n1(plan), n1(Math.max(0, left)), unit)}</small>}
     </div>
   )
 }
@@ -737,7 +737,7 @@ function Avance({ s, startLot = '' }: { s: State; startLot?: string }) {
       <div className={'made' + (d ? ' dtile' : '')} key={label} style={d ? deptVars(d) : undefined}>
         <label>{d && <i className="demoji" aria-hidden="true">{DEPT_LOOK[d].emoji}</i>}{label}</label>
         <b>{fmtN(Math.round(made * 100) / 100)}</b>
-        <small>{exp != null ? trx('de {0} {1}', n1(exp), expWord) : '\u00a0'}{pend != null && pend !== 0 ? ' · ' + (pend > 0 ? tr('faltan {0}', n1(pend)) : tr('{0} de más', n1(-pend))) : ''}</small>
+        <small>{exp != null ? trx('de {0} {1}', n1(exp), expWord) : '\u00a0'}{pend != null && pend !== 0 ? ' · ' + (pend > 0 ? tr('faltan {0} {1}', n1(pend), expWord) : tr('{0} {1} de más', n1(-pend), expWord)) : ''}</small>
       </div>
     )
   }
@@ -1271,7 +1271,7 @@ function OrdersCard({ s, mgr, onAdd }: { s: State; mgr: boolean; onAdd?: (o: Ord
               <td><b className="code">{o.code}</b>{name && <small className="pname">{name}</small>}</td>
               <td>{o.customer || '—'}</td><td>{o.shipBy ? shipText(o.shipBy) : '—'}</td>
               <td className="num">{o.cases != null ? fmtN(o.cases) : '—'}</td><td className="num"><b>{fmtN(made)}</b></td>
-              <td className="num">{left == null ? '—' : left > 0 ? <span className={'ost st-' + st}>{trx('faltan {0}', fmtN(left))}</span> : <span className="ost st-done">{tr('✓ completo')}{left < 0 ? ' (+' + fmtN(-left) + ')' : ''}</span>}</td>
+              <td className="num">{left == null ? '—' : left > 0 ? <span className={'ost st-' + st}>{trx('faltan {0} {1}', fmtN(left), tr('cajas'))}</span> : <span className="ost st-done">{tr('✓ completo')}{left < 0 ? ' (+' + fmtN(-left) + ')' : ''}</span>}</td>
               <td className="obar">{o.cases != null && o.cases > 0 && <div className="bar"><i className={'st-' + st} style={{ width: Math.min(100, Math.round((made / o.cases) * 100)) + '%' }} /></div>}<small>{seq.need ? trx('{0} de {1}', seq.done.length, seq.need) : seq.done.length ? (seq.done.length === 1 ? tr('1 pallet') : trx('{0} pallets', seq.done.length)) : ''}</small></td>
               <td className="dest">{o.dest || '—'}</td>
               {mgr && <td><button type="button" className="lnk" onClick={() => setEditing(o.id)}>{tr('Editar')}</button>{!o.closed && <button type="button" className={'lnk sm o-urgbtn' + (o.urgent ? ' on' : '')} title={o.urgent ? tr('Quitar urgente') : tr('Marcar urgente')} aria-label={o.urgent ? tr('Quitar urgente') : tr('Marcar urgente')} onClick={() => setOrderUrgent(o.id, !o.urgent)}>{o.urgent ? tr('Quitar 🔥') : tr('🔥 Urgente')}</button>}</td>}
@@ -1283,7 +1283,7 @@ function OrdersCard({ s, mgr, onAdd }: { s: State; mgr: boolean; onAdd?: (o: Ord
             {adds && <td className="oact"></td>}
             <td colSpan={4}>{trx('Total de {0} pedidos', list.length)}{active.length > 0 && <small className="pname">{tr('de lo que se ve')}</small>}</td>
             <td className="num">{fmtN(t.asked)}{t.unknown && <small title={tr('Sin cantidad')}> +?</small>}</td><td className="num"><b>{fmtN(t.made)}</b></td>
-            <td className="num">{t.left > 0 ? <span className="ost st-going">{trx('faltan {0}', fmtN(t.left))}</span> : <span className="ost st-done">{tr('✓ completo')}</span>}</td>
+            <td className="num">{t.left > 0 ? <span className="ost st-going">{trx('faltan {0} {1}', fmtN(t.left), tr('cajas'))}</span> : <span className="ost st-done">{tr('✓ completo')}</span>}</td>
             <td className="obar"><small>{t.need ? trx('{0} de {1}', t.pallets, t.need) : t.pallets ? trx('{0} pallets', t.pallets) : ''}</small></td>
             <td className="dest"></td>{mgr && <td></td>}
           </tr></tfoot>
@@ -1374,7 +1374,7 @@ function OrderPalletsDialog({ s, order, onAdd, onClose }: { s: State; order: Ord
         <h3>{orderLabel(order)} · <span className="code">{order.code}</span></h3>
         <p className="osum">
           <b>{list.length === 1 ? tr('1 pallet') : trx('{0} pallets', list.length)}</b>{seq.need ? ' ' + tr('de {0}', seq.need) : ''} · <b>{fmtN(made)} {tr('cajas')}</b>
-          {left != null && (left > 0 ? <span className="ost st-going"> · {trx('faltan {0}', fmtN(left))}</span> : <span className="ost st-done"> · {tr('✓ completo')}</span>)}
+          {left != null && (left > 0 ? <span className="ost st-going"> · {trx('faltan {0} {1}', fmtN(left), tr('cajas'))}</span> : <span className="ost st-done"> · {tr('✓ completo')}</span>)}
           {order.shipBy && <> · {trx('envío {0}', shipText(order.shipBy))}</>}
         </p>
         {list.length === 0 ? <p className="hint">{tr('Todavía no se le ha dado ningún pallet.')}</p> : (
@@ -1516,7 +1516,7 @@ function PackingNotice({ s, onOrders }: { s: State; onOrders: () => void }) {
             <button key={o.id} type="button" className="pk-urgrow" onClick={onOrders}>
               <span className="code">{o.code}</span>
               <span>{orderLabel(o)}{productOf(s, o.code)?.name ? ' · ' + productOf(s, o.code)?.name : ''}</span>
-              <b>{left == null ? tr('sin cantidad') : trx('faltan {0}', fmtN(left))}</b>
+              <b>{left == null ? tr('sin cantidad') : trx('faltan {0} {1}', fmtN(left), tr('cajas'))}</b>
               {o.shipBy && <small>{tr('envío {0}', shipText(o.shipBy))}</small>}
               {n && <small className="pk-unote">💬 {n.text}</small>}
             </button>
@@ -1674,7 +1674,7 @@ function TodayCard({ s, dept, now, mgr, date }: { s: State; dept: Dept; now: num
             <>
               <b>{fmtN(t.shiftQty)} <span>/ {fmtN(goal.total)} {t.unitLabel}</span></b>
               <div className="bar"><i className={pct >= 100 ? 'ok' : ''} style={{ width: pct + '%' }} /></div>
-              <small>{left > 0 ? <>{trx('faltan {0}', fmtN(left))}{eta && <> · {etaText(eta, now)}</>}</> : <span className="ok">{tr('✓ cumplida')}</span>}</small>
+              <small>{left > 0 ? <>{trx('faltan {0} {1}', fmtN(left), t.unitLabel)}{eta && <> · {etaText(eta, now)}</>}</> : <span className="ok">{tr('✓ cumplida')}</span>}</small>
             </>
           ) : <><b>—</b><small>{mgr ? tr('sin meta del turno') : '\u00a0'}</small></>}
         </div>
@@ -2686,7 +2686,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
             <div className="lg-goal">
               <div className="lg-row"><span>{trx('Meta del turno {0} / {1}', <b>{fmtN(mine.shiftQty)}</b>, <b>{fmtN(goal.total)}</b>)} {goalUnit}</span><b className={goalPct >= 100 ? 'ok' : ''}>{goalPct}%</b></div>
               <div className="bar"><i className={goalPct >= 100 ? 'ok' : ''} style={{ width: goalPct + '%' }} /></div>
-              <div className="lg-sub">{goalLeft > 0 ? <>{trx('Faltan {0}', <b>{fmtN(goalLeft)}</b>)}{goalEta && <> {' '}{etaText(goalEta, now)}</>}</> : <b className="ok">{tr('✓ Meta del turno cumplida')}</b>}</div>
+              <div className="lg-sub">{goalLeft > 0 ? <>{trx('Faltan {0} {1}', <b>{fmtN(goalLeft)}</b>, goalUnit)}{goalEta && <> {' '}{etaText(goalEta, now)}</>}</> : <b className="ok">{tr('✓ Meta del turno cumplida')}</b>}</div>
             </div>
           ) : null}
           {goal.perHour ? <div className="lg-pace">{trx('Ritmo {0} {1}/h · meta {2}', <b className={linePaceCls}>{mine.shiftRate != null ? fmtN(mine.shiftRate) : '—'}</b>, goalUnit, <b>{fmtN(goal.perHour)}</b>)}{linePace != null && <> · <span className={linePaceCls}>{linePace >= 1 ? tr('al ritmo de la meta') : tr('por debajo de la meta')}</span></>}</div> : null}
@@ -2819,7 +2819,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
               {/* a chip without a lot gives back the day's lot when the field holds the lot of another chip (one tapped
                   before: review of 2026-10-20, the line started with 6290 for a code programmed without a lot); a lot
                   typed by hand stays */}
-              {todo.map((r) => <button key={r.code + '|' + r.lot} type="button" className={'chip sm' + (normCode(code) === normCode(r.code) && (r.lot ? lot.trim() === r.lot : !chipLot(r.code, lot.trim())) ? ' on' : '')} onClick={() => { setCode(r.code); if (r.lot) setLotText(r.lot); else if (lot.trim() && todo.some((x) => x.lot === lot.trim())) setLotText(null) }}><b>{r.code}</b>{r.lot && <> · {tr('lote {0}', r.lot)}</>} {trx('faltan {0}', fmtN(r.left) + (line.dept === 'Spiral' ? ' ' + r.unit : ''))}</button>)}
+              {todo.map((r) => <button key={r.code + '|' + r.lot} type="button" className={'chip sm' + (normCode(code) === normCode(r.code) && (r.lot ? lot.trim() === r.lot : !chipLot(r.code, lot.trim())) ? ' on' : '')} onClick={() => { setCode(r.code); if (r.lot) setLotText(r.lot); else if (lot.trim() && todo.some((x) => x.lot === lot.trim())) setLotText(null) }}><b>{r.code}</b>{r.lot && <> · {tr('lote {0}', r.lot)}</>} {trx('faltan {0}', fmtN(r.left) + ' ' + r.unit)}</button>)}
             </div>
           )}
           <label>{tr('Código')}{' '}<input value={code} onChange={(e) => setCode(e.target.value)} placeholder={tr('ej. 0100')} autoComplete="off" /></label>

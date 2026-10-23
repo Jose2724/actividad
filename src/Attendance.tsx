@@ -24,7 +24,7 @@ export function AttendanceCard({ s, dept, date, shift, edit }: { s: State; dept:
       <div className="att-line">
         <b>{tr('👥 Asistencia · Turno {0}', shift)}</b>
         <span className="att-n">{tr('{0} de {1}', r.actual, r.expected)}</span>
-        <span className={'att-miss' + (r.pct >= 0.25 ? ' red' : r.miss ? ' amber' : ' ok')}>{r.miss ? tr('faltan {0} · {1}', r.miss, pctText(r.pct)) : r.over ? tr('✓ completos (+{0})', r.over) : tr('✓ completos')}</span>
+        <span className={'att-miss' + (r.pct >= 0.25 ? ' red' : r.miss ? ' amber' : ' ok')}>{r.miss ? (r.miss === 1 ? tr('falta 1 persona · {0}', pctText(r.pct)) : tr('faltan {0} personas · {1}', r.miss, pctText(r.pct))) : r.over ? tr('✓ completos (+{0})', r.over) : tr('✓ completos')}</span>
         <button type="button" className={'btn sm ' + (edit ? 'soft' : '')} onClick={() => setOpen(true)}>{edit ? tr('Anotar personas') : tr('Ver personas')}</button>
       </div>
       <div className="att-bar"><i style={{ width: Math.min(100, r.expected ? Math.round((r.actual / r.expected) * 100) : 0) + '%' }} /></div>
@@ -84,7 +84,7 @@ function AttendanceDialog({ s, dept, date, shift: inCourse, edit, onClose }: { s
             </form>
           ) : <b>{r.expected}{boss && edit && <button type="button" className="lnk sm" onClick={() => setEditingN(String(attExpectedOf(s, dept, shift)))}>{tr('✎ Cambiar')}</button>}</b>}</div>
           <div><label>{tr('Vinieron')}</label><b>{r.actual}</b></div>
-          <div className={r.miss ? 'miss' : 'ok'}><label>{tr('% Falta')}</label><b>{pctText(r.pct)}</b><small>{r.miss ? tr('faltan {0}', r.miss) : r.over ? tr('+{0} de más', r.over) : tr('✓ completos')}</small></div>
+          <div className={r.miss ? 'miss' : 'ok'}><label>{tr('% Falta')}</label><b>{pctText(r.pct)}</b><small>{r.miss ? (r.miss === 1 ? tr('falta 1 persona') : tr('faltan {0} personas', r.miss)) : r.over ? tr('+{0} de más', r.over) : tr('✓ completos')}</small></div>
         </div>
         {edit && (
           <>

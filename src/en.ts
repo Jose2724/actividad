@@ -2458,4 +2458,12 @@ export const EN: Record<string, string> = {
   "ej. Hoy primero el 0889 para Costco, después el 2010": "e.g. Today 0889 for Costco first, then 2010",
   "Quitar el mensaje": "Remove the message",
   "📢 Mandar": "📢 Send",
+  // every 'faltan' says of what (2026-10-23)
+  "{0} {1} de más": "{0} {1} over",
+  "programa {0} · faltan {1} {2}": "program {0} · {1} {2} short",
+  "Faltan {0} {1}": "{0} {1} to go",
+  "falta 1 persona · {0}": "1 person missing · {0}",
+  "faltan {0} personas · {1}": "{0} people missing · {1}",
+  "falta 1 persona": "1 person missing",
+  "faltan {0} personas": "{0} people missing",
 }
