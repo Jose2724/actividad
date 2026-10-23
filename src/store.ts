@@ -378,7 +378,7 @@ export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Produ
    */
   orderRuns: Run[]
   /** the production orders of every room (deleted ones kept with their flag), and the closed accounts of finished ones */
-  workOrders: WorkOrder[]; orderSeals: OrderSeal[]; attendance: AttEntry[]; attExpected: AttExpected[]; shiftMarks: ShiftMark[]; kpi: KpiRec[]; weights: WeightTest[]; orderNotes: OrderNote[] }
+  workOrders: WorkOrder[]; orderSeals: OrderSeal[]; attendance: AttEntry[]; attExpected: AttExpected[]; shiftMarks: ShiftMark[]; kpi: KpiRec[]; weights: WeightTest[]; orderNotes: OrderNote[]; roomMsgs: RoomMsg[] }
 /**
  * An order to fill in Packing: so many cases of one product for a customer, to ship by a date. Most carry the
  * customer's purchase order number (PO); some never do and some get it later. See "the orders Packing fills".
@@ -466,10 +466,10 @@ function tidySchedule(sch: Schedule): Schedule {
 function isDay(text: string) { return /^\d{4}-\d{2}-\d{2}$/.test(text) }
 /** with a server the lines (and products) are shared and come from it; without one, each device starts with a line per room */
 const SERVER = !!import.meta.env.VITE_SUPABASE_URL
-function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, reasonCodes: { on: false, updatedAt: 0 }, programView: { on: false, updatedAt: 0 }, attView: { on: false, updatedAt: 0 }, viewOpts: { lotes: { on: false, updatedAt: 0 }, flujo: { on: false, updatedAt: 0 } }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [], attendance: [], attExpected: [], shiftMarks: [], kpi: [], weights: [], orderNotes: [] } }
+function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, reasonCodes: { on: false, updatedAt: 0 }, programView: { on: false, updatedAt: 0 }, attView: { on: false, updatedAt: 0 }, viewOpts: { lotes: { on: false, updatedAt: 0 }, flujo: { on: false, updatedAt: 0 } }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [], attendance: [], attExpected: [], shiftMarks: [], kpi: [], weights: [], orderNotes: [], roomMsgs: [] } }
 function load(): State {
   try {
-    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; reasonCodes?: Partial<ReasonCodesOpt>; programView?: Partial<ReasonCodesOpt>; attView?: Partial<ReasonCodesOpt>; viewOpts?: Partial<Record<ViewOpt, Partial<ReasonCodesOpt>>>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[]; attendance?: Partial<AttEntry>[]; attExpected?: Partial<AttExpected>[]; shiftMarks?: Partial<ShiftMark>[]; kpi?: Partial<KpiRec>[]; weights?: Partial<WeightTest>[]; orderNotes?: Partial<OrderNote>[] }
+    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; reasonCodes?: Partial<ReasonCodesOpt>; programView?: Partial<ReasonCodesOpt>; attView?: Partial<ReasonCodesOpt>; viewOpts?: Partial<Record<ViewOpt, Partial<ReasonCodesOpt>>>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[]; attendance?: Partial<AttEntry>[]; attExpected?: Partial<AttExpected>[]; shiftMarks?: Partial<ShiftMark>[]; kpi?: Partial<KpiRec>[]; weights?: Partial<WeightTest>[]; orderNotes?: Partial<OrderNote>[]; roomMsgs?: Partial<RoomMsg>[] }
     const s = JSON.parse(localStorage.getItem(KEY) || 'null') as Raw | null
     // rows saved by earlier versions: carts as plain timestamps, units without a tag or a name, products with one
     // pouches-per-cart number, nothing with an update time
@@ -520,6 +520,7 @@ function load(): State {
         kpi: (s.kpi ?? []).map(kpiFrom).filter((x): x is KpiRec => !!x),
         weights: (s.weights ?? []).map(wtFrom).filter((x): x is WeightTest => !!x),
         orderNotes: (s.orderNotes ?? []).map(orderNoteFrom).filter((x): x is OrderNote => !!x),
+        roomMsgs: (s.roomMsgs ?? []).map(roomMsgFrom).filter((x): x is RoomMsg => !!x),
         attExpected: (s.attExpected ?? []).map(attExpectedFrom).filter((x): x is AttExpected => !!x),
         // each room's hand-over of a day (2026-10-21): a function declaration, as above
         shiftMarks: (s.shiftMarks ?? []).map(shiftMarkFrom).filter((x): x is ShiftMark => !!x),
@@ -1996,6 +1997,28 @@ export function setOrderNote(orderId: string, text: string) {
   const x: OrderNote = { orderId, text: t, by: user.get(), at: clockNow(), ...(t ? {} : { deleted: true }), updatedAt: stamp(was) }
   set({ ...state, orderNotes: [...(state.orderNotes ?? []).filter((y) => y.orderId !== orderId), x] })
   push('act_changes', ONOTE_ID + orderId, { id: ONOTE_ID + orderId, at: iso(x.at), by_name: x.by, dept: 'Packing', what: 'Comentario del pedido', before: '', after: JSON.stringify({ text: t }), ref_table: ONOTE_REF, ref_key: orderId, deleted: !t, updated_at: iso(x.updatedAt), updated_by: user.get() })
+}
+// ---- the office's message to a room (2026-10-22: "añadir que le llegue mensaje, o cualquier parte de anuncio" to Packing) ----
+/**
+ * One message per room, written by the office or a manager, shown on top of that room's tablets (in every tab, "En
+ * vivo" too) until it is taken away. Each tablet may set it aside once read ("Entendido": on that device only, until a
+ * new message comes). In act_changes with the room, apart from the history; cleared = marked deleted.
+ */
+export type RoomMsg = { dept: Dept; text: string; by: string; at: number; deleted?: boolean; updatedAt: number; syncedAt?: number }
+const RMSG_ID = 'msg:'
+export const RMSG_REF = 'act_room_msg'
+function roomMsgFrom(x: Partial<RoomMsg> | null | undefined): RoomMsg | null {
+  if (!x || typeof x !== 'object' || !(DEPTS as unknown[]).includes(x.dept)) return null
+  return { dept: x.dept as Dept, text: String(x.text ?? '').trim().slice(0, 600), by: String(x.by ?? ''), at: Number(x.at) || 0, ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
+}
+export const roomMsgOf = (s: State, dept: Dept) => (s.roomMsgs ?? []).find((x) => x.dept === dept && !x.deleted && x.text) ?? null
+export function setRoomMsg(dept: Dept, text: string) {
+  const was = (state.roomMsgs ?? []).find((x) => x.dept === dept), t = text.trim().slice(0, 600)
+  if ((was && !was.deleted ? was.text : '') === t) return
+  const x: RoomMsg = { dept, text: t, by: user.get(), at: clockNow(), ...(t ? {} : { deleted: true }), updatedAt: stamp(was) }
+  set({ ...state, roomMsgs: [...(state.roomMsgs ?? []).filter((y) => y.dept !== dept), x] })
+  push('act_changes', RMSG_ID + dept, { id: RMSG_ID + dept, at: iso(x.at), by_name: x.by, dept, what: 'Mensaje para ' + dept, before: '', after: JSON.stringify({ text: t }), ref_table: RMSG_REF, ref_key: dept, deleted: !t, updated_at: iso(x.updatedAt), updated_by: user.get() })
+  logChange(dept, t ? 'Mensaje para ' + dept : 'Mensaje para ' + dept + ' quitado', was && !was.deleted ? was.text : '', t, RMSG_REF + ':log', dept + ':' + x.at)
 }
 /** an order is complete (Packing is no longer offered it), or is opened again */
 export function closeOrder(id: string, closed: boolean) {
@@ -3973,6 +3996,14 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
     try { data = JSON.parse(String(row.after ?? '')) as Record<string, unknown> } catch { /* not one */ }
     const e = kpiFrom({ key, data: data ?? {}, by: String(row.by_name ?? ''), at: fromIso(row.at) ?? 0, deleted: !!row.deleted, updatedAt: at, ...syncedOf(row) })
     if (e) set({ ...state, kpi: [...(state.kpi ?? []).filter((y) => y.key !== key), e] })
+  } else if (table === 'act_changes' && row.ref_table === RMSG_REF && String(row.id ?? '').startsWith(RMSG_ID)) {
+    // the office's message to a room (2026-10-22): kept apart from the history
+    const dept = String(row.id).slice(RMSG_ID.length) as Dept, cur = (state.roomMsgs ?? []).find((x) => x.dept === dept)
+    if (!(DEPTS as string[]).includes(dept) || !newer(cur)) return
+    let x: Partial<RoomMsg> = {}
+    try { x = JSON.parse(String(row.after ?? '')) as Partial<RoomMsg> } catch { /* not one */ }
+    const e = roomMsgFrom({ ...x, dept, by: String(row.by_name ?? ''), at: fromIso(row.at) ?? 0, deleted: !!row.deleted, updatedAt: at, ...syncedOf(row) })
+    if (e) set({ ...state, roomMsgs: [...(state.roomMsgs ?? []).filter((y) => y.dept !== dept), e] })
   } else if (table === 'act_changes' && row.ref_table === ONOTE_REF && String(row.id ?? '').startsWith(ONOTE_ID)) {
     // Packing's comment on an order (2026-10-22): kept apart from the history
     const orderId = String(row.id).slice(ONOTE_ID.length), cur = (state.orderNotes ?? []).find((x) => x.orderId === orderId)

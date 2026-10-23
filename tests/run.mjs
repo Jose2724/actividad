@@ -5183,6 +5183,25 @@ section('Pedidos: urgente para que Packing le dé prioridad, y el comentario de 
   const back = await device('order-urgent-again', { seed: JSON.parse(disks.get('order-urgent').get('act_v1')), user: 'Oficina' })
   eq('al volver a abrir: el comentario sigue', back.use((m) => m.orderNoteOf(m.store.get(), m.store.get().orders.find((o) => o.po === '1001').id)?.text), 'Falta producto de RTE; sale mañana')
 }
+section('El mensaje de la oficina para Packing, arriba en todas sus tablets (la oficina, 2026-10-22)')
+{
+  const ms = await device('room-msg', { user: 'Oficina' })
+  ms.use((m) => {
+    const st = () => m.store.get()
+    clock = T0
+    eq('sin mensaje', m.roomMsgOf(st(), 'Packing'), null)
+    m.setRoomMsg('Packing', '  Hoy primero el 0889 para Costco, después el 2010 ')
+    const up = m.outbox.items().find((i) => i.key === 'msg:Packing')
+    eq('el mensaje se guarda para Packing, sube con su cuarto, aparte, y queda en el historial', [m.roomMsgOf(st(), 'Packing').text, m.roomMsgOf(st(), 'Packing').by, up.row.dept, up.row.ref_table, st().changes.some((c) => c.what === 'Mensaje para Packing'), m.roomMsgOf(st(), 'RTE')], ['Hoy primero el 0889 para Costco, después el 2010', 'Oficina', 'Packing', 'act_room_msg', true, null])
+    m.applyRemote('act_changes', { id: 'msg:Packing', at: iso(T0 + 30 * M), by_name: 'Yasbelth', dept: 'Packing', what: 'Mensaje para Packing', before: '', after: JSON.stringify({ text: 'Cambio: primero el 4928' }), ref_table: 'act_room_msg', ref_key: 'Packing', deleted: false, updated_at: iso(T0 + 30 * M), updated_by: 'Yasbelth' })
+    eq('el mensaje nuevo de otra computadora llega a la tablet', [m.roomMsgOf(st(), 'Packing').text, m.roomMsgOf(st(), 'Packing').by], ['Cambio: primero el 4928', 'Yasbelth'])
+    m.setRoomMsg('Packing', '')
+    eq('quitado: ya no sale (marcado en el servidor)', [m.roomMsgOf(st(), 'Packing'), m.outbox.items().find((i) => i.key === 'msg:Packing').row.deleted], [null, true])
+    m.setRoomMsg('Packing', 'Limpieza a las 2')
+  })
+  const back = await device('room-msg-again', { seed: JSON.parse(disks.get('room-msg').get('act_v1')), user: 'Oficina' })
+  eq('al volver a abrir: el mensaje sigue', back.use((m) => m.roomMsgOf(m.store.get(), 'Packing')?.text), 'Limpieza a las 2')
+}
 section('Reporte: el total de cada línea, en su departamento (Jose, 2026-10-22)')
 {
   const lt = await device('line-totals', { user: 'Jose' })

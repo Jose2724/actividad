@@ -2444,4 +2444,18 @@ export const EN: Record<string, string> = {
   "Quitar el comentario": "Remove the comment",
   "🔥 Urgente: Packing le da prioridad": "🔥 Urgent: Packing gives it priority",
   "Sale primero en la lista y se le propone primero a cada pallet de este código.": "It goes first in the list and is offered first to each pallet of this code.",
+  // Packing notice and the office's message (2026-10-22)
+  "📢 Mensaje de la oficina": "📢 Message from the office",
+  "✓ Entendido": "✓ Got it",
+  "🔥 1 pedido urgente": "🔥 1 urgent order",
+  "🔥 {0} pedidos urgentes": "🔥 {0} urgent orders",
+  "sin cantidad": "no quantity",
+  "y {0} más en Pedidos": "and {0} more in Orders",
+  "📢 Escribir un mensaje para Packing": "📢 Write a message for Packing",
+  "📢 Mensaje para Packing (ya visto aquí) · ver o cambiar": "📢 Message for Packing (already seen here) · see or change",
+  "📢 Mensaje para Packing": "📢 Message for Packing",
+  "Sale arriba en todas las tablets de Packing, también en \"En vivo\", hasta que lo quites. Cada tablet lo puede marcar \"Entendido\".": "It shows on top of every Packing tablet, \"Live\" too, until you remove it. Each tablet can mark it \"Got it\".",
+  "ej. Hoy primero el 0889 para Costco, después el 2010": "e.g. Today 0889 for Costco first, then 2010",
+  "Quitar el mensaje": "Remove the message",
+  "📢 Mandar": "📢 Send",
 }
