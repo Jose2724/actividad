@@ -30,7 +30,7 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
   const lineName = (x: { lineId: string | null; dept: string }) => (x.lineId === null ? tr('Todo {0}', x.dept) : lineLabel(s.lines.find((l) => l.id === x.lineId)?.name ?? s.runs.find((r) => r.lineId === x.lineId)?.line ?? tr('línea')))
 
   const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' })
-  const teal: [number, number, number] = [15, 118, 110]
+  const teal: [number, number, number] = [88, 20, 71] // Mama's Creations' purple (2026-10-23)
   const indigo: [number, number, number] = [67, 56, 202] // the colour of the bin cards
   doc.setFont('helvetica', 'bold'); doc.setFontSize(18); doc.setTextColor(22, 32, 42)
   doc.text(tr('Actividad · Reporte del día') + (only ? ' · ' + only : '') + filterTitle(rep.code, rep.lot, rep.shift, rep.line ? rep.lineChoices.find((l) => l.id === rep.line)?.name ?? '' : ''), 40, 42)
@@ -42,7 +42,7 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
   let top = 94
   // what was made, room by room, said first and in bold: it is what the report is read for
   if (rep.byDept.length && has('resumen')) {
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(15, 118, 110)
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(88, 20, 71)
     const made = rep.byDept.map((d) => d.dept + ': ' + (CFG[d.dept].qty !== 'none' ? qtyOf(d.dept, d.qty) + ' (' + unitsOf(d.dept, d.units) + ')' : unitsOf(d.dept, d.units)) + (d.bins.length ? ' + ' + (d.dept === 'Spiral' ? tr('aparte: {0}', binsOf(d.dept, d.bins)) : tr('en bins: {0}', binsOf(d.dept, d.bins))) : ''))
     const lines = doc.splitTextToSize(tr('Hecho   {0}', made.join('   ·   ')), doc.internal.pageSize.getWidth() - 80) as string[]
     doc.text(lines, 40, top + 4)
