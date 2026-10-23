@@ -2475,4 +2475,5 @@ export const EN: Record<string, string> = {
   "Registrar de todas formas (manager)": "Record anyway (manager)",
   "Corregir el código": "Correct the code",
   "⚠ El programa de hoy del {0}{1} ya está completo: {2} de {3} {4}. Si es otro código, revísalo; si hay que hacer más, habla con la oficina.": "⚠ Today's program of {0}{1} is already complete: {2} of {3} {4}. If it is another code, check it; if more are needed, talk to the office.",
+  "Si necesitan hacer más, vengan a la oficina: solo la oficina lo autoriza, subiendo la cantidad en el programa. Entonces la app deja seguir.": "If you need to make more, come to the office: only the office authorizes it, raising the quantity in the program. Then the app lets you go on.",
 }

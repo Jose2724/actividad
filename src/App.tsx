@@ -2880,9 +2880,10 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   const orderOptions = openOrders.filter((o) => !orderFull(s, o.id, run.perUnit)).map((o) => ({ id: o.id, label: orderLabel(o) + leftText(s, o) + (o.shipBy ? ' ' + tr('· envío {0}', shipText(o.shipBy)) : '') }))
   // the program of the day caps the mezclas of a code (2026-10-23): once all are made, one more asks first
   const cap = programCap(s, run), capFull = !!cap && cap.done >= cap.planned - 1e-9
-  const done = (forced = false) => {
+  // (no one on the floor goes past it, a manager neither: only the office authorizes more, raising the program. Jose, 2026-10-23)
+  const done = () => {
     if (just) return
-    if (capFull && !forced) { setCapAsk(true); return }
+    if (capFull) { setCapAsk(true); return }
     if (pallets) setPacking('done')
     else if (rc.qty === 'ask') setCounting(true)
     else record(rc.qty === 'auto' ? run.perUnit : null)
@@ -2965,9 +2966,9 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       {capAsk && cap && <div className="veil" onClick={() => setCapAsk(false)}><div className="dlg capdlg" onClick={(e) => e.stopPropagation()}>
         <h3>{tr('Ya se hicieron todas las {0} del programa', cap.unit)}</h3>
         <p>{tr('Del {0}{1} estaban programadas {2} {3} hoy, y ya van {4}.', cap.code, cap.lot ? ' ' + tr('lote {0}', cap.lot) : '', fmtN(cap.planned), cap.unit, fmtN(cap.done))}</p>
-        <ul className="caplist"><li>{tr('¿Es otro código? Corrige el código de esta línea.')}</li><li>{tr('Si de verdad hay que hacer más, habla con la oficina: ellos suben la cantidad en el programa y la app deja seguir.')}</li></ul>
+        <ul className="caplist"><li>{tr('¿Es otro código? Corrige el código de esta línea.')}</li><li>{tr('Si necesitan hacer más, vengan a la oficina: solo la oficina lo autoriza, subiendo la cantidad en el programa. Entonces la app deja seguir.')}</li></ul>
         <div className="dbtns spread">
-          <div className="btns">{can('fix') && <button type="button" className="btn" onClick={() => { setCapAsk(false); done(true) }}>{tr('Registrar de todas formas (manager)')}</button>}</div>
+          <div className="btns"></div>
           <div className="btns"><button type="button" className="btn soft" onClick={() => { setCapAsk(false); setFixing(true) }}>{tr('Corregir el código')}</button><button type="button" className="btn primary" onClick={() => setCapAsk(false)}>{tr('Cerrar')}</button></div>
         </div>
       </div></div>}
