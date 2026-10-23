@@ -378,7 +378,7 @@ export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Produ
    */
   orderRuns: Run[]
   /** the production orders of every room (deleted ones kept with their flag), and the closed accounts of finished ones */
-  workOrders: WorkOrder[]; orderSeals: OrderSeal[]; attendance: AttEntry[]; attExpected: AttExpected[]; shiftMarks: ShiftMark[]; kpi: KpiRec[]; weights: WeightTest[]; orderNotes: OrderNote[]; roomMsgs: RoomMsg[]; weightRules: WeightRule[] }
+  workOrders: WorkOrder[]; orderSeals: OrderSeal[]; attendance: AttEntry[]; attExpected: AttExpected[]; shiftMarks: ShiftMark[]; kpi: KpiRec[]; weights: WeightTest[]; orderNotes: OrderNote[]; roomMsgs: RoomMsg[]; weightRules: WeightRule[]; meats: MeatEntry[] }
 /**
  * An order to fill in Packing: so many cases of one product for a customer, to ship by a date. Most carry the
  * customer's purchase order number (PO); some never do and some get it later. See "the orders Packing fills".
@@ -466,10 +466,10 @@ function tidySchedule(sch: Schedule): Schedule {
 function isDay(text: string) { return /^\d{4}-\d{2}-\d{2}$/.test(text) }
 /** with a server the lines (and products) are shared and come from it; without one, each device starts with a line per room */
 const SERVER = !!import.meta.env.VITE_SUPABASE_URL
-function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, reasonCodes: { on: false, updatedAt: 0 }, programView: { on: false, updatedAt: 0 }, attView: { on: false, updatedAt: 0 }, viewOpts: { lotes: { on: false, updatedAt: 0 }, flujo: { on: false, updatedAt: 0 } }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [], attendance: [], attExpected: [], shiftMarks: [], kpi: [], weights: [], orderNotes: [], roomMsgs: [], weightRules: [] } }
+function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, reasonCodes: { on: false, updatedAt: 0 }, programView: { on: false, updatedAt: 0 }, attView: { on: false, updatedAt: 0 }, viewOpts: { lotes: { on: false, updatedAt: 0 }, flujo: { on: false, updatedAt: 0 } }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [], attendance: [], attExpected: [], shiftMarks: [], kpi: [], weights: [], orderNotes: [], roomMsgs: [], weightRules: [], meats: [] } }
 function load(): State {
   try {
-    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; reasonCodes?: Partial<ReasonCodesOpt>; programView?: Partial<ReasonCodesOpt>; attView?: Partial<ReasonCodesOpt>; viewOpts?: Partial<Record<ViewOpt, Partial<ReasonCodesOpt>>>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[]; attendance?: Partial<AttEntry>[]; attExpected?: Partial<AttExpected>[]; shiftMarks?: Partial<ShiftMark>[]; kpi?: Partial<KpiRec>[]; weights?: Partial<WeightTest>[]; orderNotes?: Partial<OrderNote>[]; roomMsgs?: Partial<RoomMsg>[]; weightRules?: Partial<WeightRule>[] }
+    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; reasonCodes?: Partial<ReasonCodesOpt>; programView?: Partial<ReasonCodesOpt>; attView?: Partial<ReasonCodesOpt>; viewOpts?: Partial<Record<ViewOpt, Partial<ReasonCodesOpt>>>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[]; attendance?: Partial<AttEntry>[]; attExpected?: Partial<AttExpected>[]; shiftMarks?: Partial<ShiftMark>[]; kpi?: Partial<KpiRec>[]; weights?: Partial<WeightTest>[]; orderNotes?: Partial<OrderNote>[]; roomMsgs?: Partial<RoomMsg>[]; weightRules?: Partial<WeightRule>[]; meats?: Partial<MeatEntry>[] }
     const s = JSON.parse(localStorage.getItem(KEY) || 'null') as Raw | null
     // rows saved by earlier versions: carts as plain timestamps, units without a tag or a name, products with one
     // pouches-per-cart number, nothing with an update time
@@ -522,6 +522,7 @@ function load(): State {
         orderNotes: (s.orderNotes ?? []).map(orderNoteFrom).filter((x): x is OrderNote => !!x),
         roomMsgs: (s.roomMsgs ?? []).map(roomMsgFrom).filter((x): x is RoomMsg => !!x),
         // (inline, as above: nothing declared below load() may be used in here)
+        meats: (s.meats ?? []).map(meatFrom).filter((x): x is MeatEntry => !!x),
         weightRules: (s.weightRules ?? []).filter((x) => !!x && DEPTS.includes(x.dept as Dept) && Number(x.every) >= 0 && Number(x.count) >= 0).map((x) => ({ dept: x.dept as Dept, every: Math.round(Number(x.every)), count: Math.round(Number(x.count)), updatedAt: Number(x.updatedAt) || 0 })),
         attExpected: (s.attExpected ?? []).map(attExpectedFrom).filter((x): x is AttExpected => !!x),
         // each room's hand-over of a day (2026-10-21): a function declaration, as above
@@ -1088,6 +1089,41 @@ export function weightSave(t: WeightTest, entries: WtEntry[]) {
   set({ ...state, weights: [...(state.weights ?? []).filter((y) => y.id !== t.id), x] })
   push('act_changes', WT_ID + x.id, rowOfWt(x))
 }
+// ---- the meat Spiral uses (2026-10-23: "que ponga la cantidad de carne que usan para hacer esas mezclas, en libras, y su lote") ----
+/**
+ * Each time Spiral puts meat in, the line records how many pounds and the meat's lot (one kind of meat, one lot each
+ * time), apart from the mezclas; the report adds it up by code with the pounds of meat per mezcla, which is what the
+ * office wants to look at. Kept with the run it went to (code, lot) and the room, in act_changes apart from the
+ * history (an operator of Spiral writes her room); taken away = marked deleted, never erased
+ */
+export type MeatEntry = { id: string; date: string; dept: Dept; lineId: string; line: string; code: string; lot: string; runId: string; lb: number; meatLot: string; at: number; by: string; deleted?: boolean; updatedAt: number; syncedAt?: number }
+const MEAT_ID = 'meat:'
+export const MEAT_REF = 'act_meat'
+function meatFrom(x: Partial<MeatEntry> | null | undefined): MeatEntry | null {
+  if (!x || typeof x !== 'object' || typeof x.id !== 'string' || !x.id || !(DEPTS as unknown[]).includes(x.dept) || !isDay(String(x.date ?? '')) || !normCode(String(x.code ?? ''))) return null
+  const lb = Number(x.lb)
+  if (!(lb > 0 && lb < 100000)) return null
+  return { id: x.id, date: String(x.date), dept: x.dept as Dept, lineId: String(x.lineId ?? ''), line: String(x.line ?? ''), code: String(x.code).trim().toUpperCase(), lot: String(x.lot ?? ''), runId: String(x.runId ?? ''), lb: Math.round(lb * 100) / 100, meatLot: String(x.meatLot ?? '').trim().slice(0, 40), at: Number(x.at) || 0, by: String(x.by ?? ''), ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
+}
+const putMeat = (x: MeatEntry) => {
+  set({ ...state, meats: [...(state.meats ?? []).filter((y) => y.id !== x.id), x] })
+  push('act_changes', MEAT_ID + x.id, { id: MEAT_ID + x.id, at: iso(x.at), by_name: x.by, dept: x.dept, what: 'Carne', before: '', after: JSON.stringify({ date: x.date, lineId: x.lineId, line: x.line, code: x.code, lot: x.lot, runId: x.runId, lb: x.lb, meatLot: x.meatLot }), ref_table: MEAT_REF, ref_key: x.id, deleted: !!x.deleted, updated_at: iso(x.updatedAt), updated_by: user.get() })
+}
+/** the meat put in on a run now: its pounds and its lot ('' = not written); '' when the pounds make no sense */
+export function meatAdd(r: Run, lb: number, meatLot: string): string {
+  if (!(lb > 0 && lb < 100000)) return ''
+  const x: MeatEntry = { id: uid(), date: r.date, dept: r.dept, lineId: r.lineId, line: r.line, code: r.code, lot: lotNowOf(r), runId: r.id, lb: Math.round(lb * 100) / 100, meatLot: meatLot.trim().slice(0, 40), at: clockNow(), by: user.get(), updatedAt: stamp(undefined) }
+  putMeat(x)
+  return x.id
+}
+/** a meat entry written by mistake is taken away (kept on the server, marked) */
+export function meatDelete(id: string) {
+  const x = (state.meats ?? []).find((y) => y.id === id)
+  if (!x || x.deleted) return
+  putMeat({ ...x, deleted: true, updatedAt: stamp(x) })
+}
+/** the meat of a day (one code, or all), oldest first */
+export const meatsOf = (s: State, date: string, code = '') => (s.meats ?? []).filter((x) => !x.deleted && x.date === date && (!code || normCode(x.code) === normCode(code))).sort((a, b) => a.at - b.at)
 /** the weight tests of a day (one code, or all), oldest first */
 export const weightTestsOf = (s: State, date: string, code = '') => (s.weights ?? []).filter((x) => !x.deleted && x.date === date && x.entries.length > 0 && (!code || normCode(x.code) === normCode(code))).sort((a, b) => a.at - b.at)
 /** a code's target: the finished pouch's weight and how much it may be off (oz), set by a manager or the office (one saved in pounds, before the change to ounces, reads ×16) */
@@ -4057,6 +4093,14 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
     try { x = JSON.parse(String(row.after ?? '')) as Partial<OrderNote> } catch { /* not one */ }
     const e = orderNoteFrom({ ...x, orderId, by: String(row.by_name ?? ''), at: fromIso(row.at) ?? 0, deleted: !!row.deleted, updatedAt: at, ...syncedOf(row) })
     if (e) set({ ...state, orderNotes: [...(state.orderNotes ?? []).filter((y) => y.orderId !== orderId), e] })
+  } else if (table === 'act_changes' && row.ref_table === MEAT_REF && String(row.id ?? '').startsWith(MEAT_ID)) {
+    // Spiral's meat (2026-10-23): kept apart from the history
+    const id = String(row.id).slice(MEAT_ID.length), cur = (state.meats ?? []).find((x) => x.id === id)
+    if (!newer(cur)) return
+    let x: Partial<MeatEntry> = {}
+    try { x = JSON.parse(String(row.after ?? '')) as Partial<MeatEntry> } catch { /* not one */ }
+    const e = meatFrom({ ...x, id, dept: row.dept as Dept, by: String(row.by_name ?? ''), at: fromIso(row.at) ?? 0, deleted: !!row.deleted, updatedAt: at, ...syncedOf(row) })
+    if (e) set({ ...state, meats: [...(state.meats ?? []).filter((y) => y.id !== id), e] })
   } else if (table === 'act_changes' && row.ref_table === WT_REF && String(row.id ?? '').startsWith(WT_ID)) {
     // a weight test (2026-10-22): kept apart from the history
     const id = String(row.id).slice(WT_ID.length), cur = (state.weights ?? []).find((x) => x.id === id)

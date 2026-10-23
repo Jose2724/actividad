@@ -5254,6 +5254,34 @@ section('Spiral pesa 8 bolas cada hora, en oz, y el aviso se ajusta en Ajustes (
   const back = await device('spiral-weights-again', { seed: JSON.parse(disks.get('spiral-weights').get('act_v1')), user: 'Supervisor Spiral' })
   eq('al volver a abrir: los ajustes y la prueba de bolas siguen', back.use((m) => [m.weightRuleOf(m.store.get(), 'Spiral'), m.weightRuleOf(m.store.get(), 'RTE'), m.store.get().weights.filter((x) => x.kind === 'ball').length]), [{ every: 0, count: 8 }, { every: 120, count: 5 }, 1])
 }
+section('Spiral anota la carne que echa, en libras y con su lote, y el reporte la suma por código con las libras por mezcla (Jose, 2026-10-23)')
+{
+  const mt = await device('spiral-meat', { user: 'Supervisor Spiral' })
+  mt.use((m) => {
+    const st = () => m.store.get()
+    clock = T0
+    if (!st().lines.some((l) => l.dept === 'Spiral')) m.addLine('Spiral', 'Línea 1')
+    m.startRun(st().lines.find((l) => l.dept === 'Spiral'), '0889', '6292', DAY, null)
+    const run = () => st().runs.find((r) => r.dept === 'Spiral')
+    clock = T0 + 5 * M
+    const a = m.meatAdd(run(), 450, ' BF-1023 ')
+    const up = m.outbox.items().find((i) => i.key === 'meat:' + a)
+    eq('se guarda: libras, lote de la carne, el código y el lote del producto; sube con el cuarto Spiral, aparte de la historia', [st().meats[0].lb, st().meats[0].meatLot, st().meats[0].code, st().meats[0].lot, up.row.dept, up.row.ref_table, st().changes.some((c) => c.refTable === 'act_meat')], [450, 'BF-1023', '0889', '6292', 'Spiral', 'act_meat', false])
+    eq('libras que no tienen sentido no se guardan', [m.meatAdd(run(), 0, 'X'), m.meatAdd(run(), -5, 'X'), st().meats.length], ['', '', 1])
+    for (let k = 1; k <= 4; k++) { clock = T0 + k * 10 * M; m.unitDone(run().id, null) }
+    clock = T0 + 50 * M; const b = m.meatAdd(run(), 350.5, 'BF-1024')
+    const rep = m.reportOf(st(), DAY, clock), r = m.meatReport(st(), rep, DAY)
+    eq('el reporte: por código, 800.5 lb en 2 veces, sus 2 lotes, 4 mezclas, 200.13 lb por mezcla', r.byCode, [{ code: '0889', lb: 800.5, entries: 2, lots: ['BF-1023', 'BF-1024'], mixes: 4, perMix: 200.13 }])
+    eq('viendo otro cuarto no sale; viendo Spiral sí', [m.meatReport(st(), rep, DAY, 'Packing').list.length, m.meatReport(st(), rep, DAY, 'Spiral').list.length], [0, 2])
+    eq('con un turno escogido, la carne de ese turno: los dos turnos suman todo', [1, 2].map((k) => m.meatReport(st(), m.reportOf(st(), DAY, clock, { shift: k }), DAY).list.length).reduce((t, n) => t + n, 0), 2)
+    m.meatDelete(b)
+    eq('quitar una anotación: ya no cuenta (marcada en el servidor)', [m.meatsOf(st(), DAY).length, m.outbox.items().find((i) => i.key === 'meat:' + b).row.deleted], [1, true])
+    m.applyRemote('act_changes', { id: 'meat:R1', at: iso(T0 + 70 * M), by_name: 'Otro', dept: 'Spiral', what: 'Carne', before: '', after: JSON.stringify({ date: DAY, lineId: 'x', line: 'Línea 2', code: '0889', lot: '6292', runId: 'r2', lb: 300, meatLot: 'BF-2000' }), ref_table: 'act_meat', ref_key: 'R1', deleted: false, updated_at: iso(T0 + 70 * M), updated_by: 'Otro' })
+    eq('lo que anota otra tablet llega', m.meatsOf(st(), DAY).map((x) => [x.line, x.lb, x.meatLot]), [['Línea 1', 450, 'BF-1023'], ['Línea 2', 300, 'BF-2000']])
+  })
+  const back = await device('spiral-meat-again', { seed: JSON.parse(disks.get('spiral-meat').get('act_v1')), user: 'Supervisor Spiral' })
+  eq('al volver a abrir: la carne sigue', back.use((m) => m.meatsOf(m.store.get(), DAY).map((x) => [x.lb, x.meatLot])), [[450, 'BF-1023'], [300, 'BF-2000']])
+}
 section('Reporte: el total de cada línea, en su departamento (Jose, 2026-10-22)')
 {
   const lt = await device('line-totals', { user: 'Jose' })

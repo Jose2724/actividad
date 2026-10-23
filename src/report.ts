@@ -1,4 +1,4 @@
-import { apartOf, binOf, binWord, CFG, cfgOf, DEPTS, fmtDur, fmtTime, kindOf, lineLabel, lineNameOf, normCode, noteLabel, noteOf, orderLabel, orderOfId, orderPallets, palletPo, plainDay, plainText, runInShift, runStats, SETUP, shiftAt, shiftPieces, shiftsOf, stopSpans, unitQty, waitsForCode, whoText, type Change, type Dept, type Run, type ShiftHours, type State, type Unit } from './store'
+import { apartOf, binOf, binWord, CFG, cfgOf, DEPTS, fmtDur, fmtTime, kindOf, lineLabel, lineNameOf, normCode, noteLabel, noteOf, orderLabel, orderOfId, orderPallets, palletPo, plainDay, plainText, runInShift, runStats, SETUP, shiftAt, shiftPieces, shiftsOf, stopSpans, unitQty, waitsForCode, whoText, type Change, type Dept, type Run, type ShiftHours, type State, type Unit, meatsOf} from './store'
 import { clockNow } from './clock'
 import { xDay, xDur, xTime, type Cell } from './xlsx'
 import { phrase, tr } from './i18n'
@@ -350,4 +350,22 @@ export function searchReport(s: State, rep: Report, q: string, changes: Change[]
     ...(room && !(rep.byDept.length === 1 && rep.byDept[0].dept === room) ? [{ kind: 'dept' as const, value: room }] : []),
   ].slice(0, 3)
   return { hits, keys: new Set(hits.map((h) => h.key)), scopes }
+}
+
+/**
+ * Spiral's meat in what the report is looking at (2026-10-23: "esto tiene que estar guardado en el reporte porque es
+ * algo que ellos quieren analizar"): each entry under the report's filters (shift, room, line, code, lot), and by code
+ * its pounds, its meat lots and the pounds of meat per mezcla (over the mezclas the report counts of that code)
+ */
+export function meatReport(s: State, rep: ReturnType<typeof reportOf>, date: string, room: Dept | '' = '') {
+  if (room && room !== 'Spiral') return { list: [], byCode: [] }
+  const plan = rep.planOf('Spiral')
+  const list = meatsOf(s, date).filter((x) => x.dept === 'Spiral' && (!rep.code || normCode(x.code) === normCode(rep.code)) && (!rep.lot || x.lot === rep.lot) && (!rep.line || x.lineId === rep.line) && (!rep.shift || shiftAt(plan, x.at) === rep.shift))
+  const codes = [...new Set(list.map((x) => normCode(x.code)))]
+  const byCode = codes.map((k) => {
+    const mine = list.filter((x) => normCode(x.code) === k), lb = Math.round(mine.reduce((t, x) => t + x.lb, 0) * 100) / 100
+    const mixes = rep.rows.filter((x) => x.r.dept === 'Spiral' && normCode(x.r.code) === k).reduce((t, x) => t + x.units, 0)
+    return { code: mine[0].code, lb, entries: mine.length, lots: [...new Set(mine.map((x) => x.meatLot).filter(Boolean))], mixes, perMix: mixes > 0 ? Math.round((lb / mixes) * 100) / 100 : null }
+  })
+  return { list, byCode }
 }

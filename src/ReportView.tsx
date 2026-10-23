@@ -8,7 +8,7 @@ import { attendanceOf, attLineText, attMovesText, attOf, attShifts, attStateText
 import { pctText } from './Attendance'
 import { buildPdf, loadPdf, type Part } from './pdf'
 import { homeScreenApple, type Kind } from './send'
-import { CODE_HEADS, codeCells, hasCodedStops, paretoOf, filterFile, filterTitle, hitKey, palletsSheet, reportOf, runLots, runsSheet, searchReport, spanShifts, unitParts, unitsSheet, type Hit, type HitKind, type Report as ReportData, type ReportFilter, type Scope as SearchScope } from './report'
+import { meatReport, CODE_HEADS, codeCells, hasCodedStops, paretoOf, filterFile, filterTitle, hitKey, palletsSheet, reportOf, runLots, runsSheet, searchReport, spanShifts, unitParts, unitsSheet, type Hit, type HitKind, type Report as ReportData, type ReportFilter, type Scope as SearchScope } from './report'
 import { canShift, writesIn } from './powers'
 import { AddRunDialog, AddUnitDialog, RunEditor, StopEditor } from './editors'
 import { supabase } from './supabase'
@@ -329,12 +329,21 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
       ...people.map((x): Cell[] => [date, x.shift, x.dept, attLineText(s, x.line), x.name, x.by, T(x.at), !x.gone ? tr('trabajando') : x.gone.why === 'casa' ? tr('se fue a su casa') : tr('pasó a otro cuarto'), x.gone?.to ?? '', attLineText(s, x.gone?.line), x.gone ? T(x.gone.at) : '', x.from, attMovesText(s, x)])]
     return [{ name: tr('Asistencia'), rows, chart: { title: tr('% de faltas por cuarto'), series: tr('% Falta'), cat: 0, val: 3, from: 2, to: 1 + a.rows.length, at: a.rows.length + 4, pct: true } }, ...(people.length ? [{ name: tr('Asistencia · personas'), rows: names }] : [])]
   }
+  /** Spiral's meat as a sheet (2026-10-23): the summary by code (pounds, lots, pounds per mezcla), then every entry */
+  const meatSheets = (): Sheet[] => {
+    const m = meatReport(s, rep, date, dept || only || '')
+    if (!m.list.length) return []
+    const T = (ms: number) => xTime(ms, fmtTime(ms))
+    const rows: Cell[][] = [[tr('Código'), tr('Libras de carne'), tr('Veces'), tr('Lotes de carne'), tr('Mezclas'), tr('Libras por mezcla')], ...m.byCode.map((c): Cell[] => [c.code, c.lb, c.entries, c.lots.join(', '), c.mixes, c.perMix ?? '']), [],
+      [tr('Fecha'), tr('Hora'), tr('Línea'), tr('Código'), tr('Lote del producto'), tr('Libras de carne'), tr('Lote de la carne'), tr('Anotó')], ...m.list.map((x): Cell[] => [x.date, T(x.at), lineNameOf(s, x.lineId, x.line), x.code, x.lot, x.lb, x.meatLot, x.by])]
+    return [{ name: tr('Carne'), rows }]
+  }
   /** the Excel file's sheets: one per table (Cambios and Avance only for the manager and the office) */
   const sheets = (parts?: Set<Part>): Sheet[] => {
     const b = blocks()
     // (the parts chosen in "¿Qué incluir?", 2026-10-21: each sheet goes with its part; none chosen = all of them)
-    const part: Record<string, Part> = { [tr('Resumen')]: 'resumen', [tr('Por turno')]: 'resumen', [tr('Por línea')]: 'resumen', [tr('Por código')]: 'codigo', [tr('Por lote')]: 'codigo', [tr('Pallets')]: 'pallets', [tr('Bins')]: 'bins', [tr('Unidades')]: 'unidades', [tr('Paros')]: 'paros', [tr('Cambios')]: 'cambios', [tr('Avance')]: 'avance', [tr('Asistencia')]: 'asistencia', [tr('Asistencia · personas')]: 'asistencia' }
-    const all: Sheet[] = [{ name: tr('Resumen'), rows: b.resumen }, ...attSheets(), ...(b.porTurno.length > 1 ? [{ name: tr('Por turno'), rows: b.porTurno }] : []), ...(b.porLinea.length > 1 ? [{ name: tr('Por línea'), rows: b.porLinea }] : []), { name: tr('Por código'), rows: b.porCodigo }, { name: tr('Por lote'), rows: b.porLote }, ...(b.pallets.length > 1 ? [{ name: tr('Pallets'), rows: b.pallets }] : []), ...(b.bins.length > 1 ? [{ name: tr('Bins'), rows: b.bins }] : []), { name: tr('Unidades'), rows: b.unidades }, { name: tr('Paros'), rows: b.paros }, ...(mgr ? [{ name: tr('Cambios'), rows: b.cambios }] : []), ...(b.avance.length > 1 ? [{ name: tr('Avance'), rows: b.avance }] : [])]
+    const part: Record<string, Part> = { [tr('Resumen')]: 'resumen', [tr('Por turno')]: 'resumen', [tr('Por línea')]: 'resumen', [tr('Carne')]: 'codigo', [tr('Por código')]: 'codigo', [tr('Por lote')]: 'codigo', [tr('Pallets')]: 'pallets', [tr('Bins')]: 'bins', [tr('Unidades')]: 'unidades', [tr('Paros')]: 'paros', [tr('Cambios')]: 'cambios', [tr('Avance')]: 'avance', [tr('Asistencia')]: 'asistencia', [tr('Asistencia · personas')]: 'asistencia' }
+    const all: Sheet[] = [{ name: tr('Resumen'), rows: b.resumen }, ...attSheets(), ...(b.porTurno.length > 1 ? [{ name: tr('Por turno'), rows: b.porTurno }] : []), ...(b.porLinea.length > 1 ? [{ name: tr('Por línea'), rows: b.porLinea }] : []), { name: tr('Por código'), rows: b.porCodigo }, ...meatSheets(), { name: tr('Por lote'), rows: b.porLote }, ...(b.pallets.length > 1 ? [{ name: tr('Pallets'), rows: b.pallets }] : []), ...(b.bins.length > 1 ? [{ name: tr('Bins'), rows: b.bins }] : []), { name: tr('Unidades'), rows: b.unidades }, { name: tr('Paros'), rows: b.paros }, ...(mgr ? [{ name: tr('Cambios'), rows: b.cambios }] : []), ...(b.avance.length > 1 ? [{ name: tr('Avance'), rows: b.avance }] : [])]
     return parts ? all.filter((x) => parts.has(part[x.name] ?? 'resumen')) : all
   }
 
@@ -865,6 +874,7 @@ function GeneralView({ k }: { k: Kit }) {
           </div>
         </>
       )}
+      <MeatWhere k={k} />
       {(s.attView.on || k.admin) && <AttendanceWhere k={k} />}
       <StopsWhere k={k} />
       {(s.reasonCodes.on || hasCodedStops(rep)) && <CodePareto k={k} />}
@@ -974,6 +984,27 @@ function AttNames({ k, people }: { k: Kit; people: AttEntry[] }) {
         </div>
       ))}
     </div>
+  )
+}
+
+/** Spiral's meat in the report (2026-10-23): by code, its pounds, lots and pounds per mezcla; every entry a tap away */
+function MeatWhere({ k }: { k: Kit }) {
+  const { s, rep, date, dept, only } = k
+  const [open, setOpen] = useState(false)
+  const m = meatReport(s, rep, date, dept || only || '')
+  if (!m.list.length) return null
+  const lb = (n: number) => (Math.round(n * 100) / 100).toLocaleString('en-US')
+  return (
+    <>
+      <h3>{tr('🥩 Carne de Spiral')}{rep.shift ? ' · ' + tr('Turno {0}', rep.shift) : ''}</h3>
+      <div className="meat-rep">
+        <div className="meat-row head"><span>{tr('Código')}</span><span>{tr('Libras de carne')}</span><span>{tr('Mezclas')}</span><span>{tr('Libras por mezcla')}</span><span>{tr('Lotes de carne')}</span></div>
+        {m.byCode.map((c) => <div key={c.code} className="meat-row"><b>{c.code}</b><span>{lb(c.lb)} lb</span><span>{c.mixes}</span><b>{c.perMix == null ? '—' : lb(c.perMix) + ' lb'}</b><span>{c.lots.join(', ') || '—'}</span></div>)}
+      </div>
+      <button type="button" className="lnk sm" onClick={() => setOpen(!open)}>{open ? tr('Ocultar cada anotación') : tr('Ver cada anotación ({0})', m.list.length)}</button>
+      {open && <ul className="meat-each">{m.list.map((x) => <li key={x.id}>{fmtTime(x.at)} · {lineNameOf(s, x.lineId, x.line)} · <b>{x.code}</b> {tr('lote {0}', x.lot)} · <b>{lb(x.lb)} lb</b>{x.meatLot ? ' · ' + tr('carne lote {0}', x.meatLot) : ''} <small>· {x.by}</small></li>)}</ul>}
+      <p className="hint">{tr('Libras por mezcla = la carne anotada ÷ las mezclas de ese código en lo que estás viendo. En el Excel va la hoja "Carne".')}</p>
+    </>
   )
 }
 

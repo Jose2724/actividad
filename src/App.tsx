@@ -25,6 +25,7 @@ import { ProgramToday, programRooms } from './ProgramToday'
 import { LotesView } from './LotesView'
 import { KpiView } from './KpiView'
 import { WeightButton, WeightReminder } from './Weights'
+import { MeatButton } from './Meat'
 import { seesKpi } from './kpi'
 import { AttendanceCard } from './Attendance'
 import { useColFilters } from './ColFilter'
@@ -2989,6 +2990,8 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         {!inSetup && (!stop || stop.lineId === line.id) && <button type="button" className="btn setupbtn" onClick={() => (stop ? switchToSetup(stop.id) : startStop(line.dept, line.id, SETUP, ''))}>{tr('⏱ Set up')}</button>}
         {/* RTE weighs its pouches (2026-10-22): each weight typed, saved at once */}
         {(line.dept === 'RTE' || line.dept === 'Spiral') && <WeightButton s={s} run={run} now={now} />}
+        {/* Spiral's meat, apart from the mezclas (2026-10-23) */}
+        {line.dept === 'Spiral' && <MeatButton s={s} run={run} />}
         {cfg.waste && <button type="button" className="btn" onClick={() => setWasting(true)}>Waste{run.waste ? <b className="red"> {run.waste} lb</b> : ' (lb)'}</button>}
         <button type="button" className="btn" disabled={!!stop && !inSetup} onClick={() => setEnding(true)}>{tr('■ Terminar')}<span className="opt"> {' '}{tr('código')}</span></button>
       </div>
