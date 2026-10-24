@@ -201,6 +201,8 @@ today['Pia (products): la historia del programa de su cuarto'] = await twice(pia
   today['Ana (op): el mensaje para su cuarto'] = await twice(ana, 'act_changes', chg('msg:Packing', 'Packing', 'act_room_msg', 'Packing'), 'id', { after: 'b' })
   // (2026-10-23) the meat her room put in (act_meat)
   today['Ana (op): la carne de su cuarto'] = await twice(ana, 'act_changes', chg('meat:' + uuid(), 'Packing', 'act_meat', 'k'), 'id', { after: 'b' })
+  // (2026-10-23) a unit of her room on hold (act_hold)
+  today['Ana (op): una unidad de su cuarto en hold'] = await twice(ana, 'act_changes', chg('hold:' + uuid(), 'Packing', 'act_hold', 'k'), 'id', { after: 'b' })
   today['Ana (op): una persona de la asistencia de su cuarto'] = await twice(ana, 'act_changes', chg('att:' + uuid(), 'Packing', 'act_attendance', 'k'), 'id', { after: 'b' })
   today['Ana (op): la cuenta cerrada de un pedido terminado de su cuarto (020)'] = await twice(ana, 'act_changes', chg('wodone:' + uuid(), 'Packing', 'act_work_orders:done', 'k'), 'id', { after: 'b' })
 }

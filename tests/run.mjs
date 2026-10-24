@@ -5282,6 +5282,40 @@ section('Spiral anota la carne que echa, en libras y con su lote, y el reporte l
   const back = await device('spiral-meat-again', { seed: JSON.parse(disks.get('spiral-meat').get('act_v1')), user: 'Supervisor Spiral' })
   eq('al volver a abrir: la carne sigue', back.use((m) => m.meatsOf(m.store.get(), DAY).map((x) => [x.lb, x.meatLot])), [[450, 'BF-1023'], [300, 'BF-2000']])
 }
+section('On hold: un pallet o una mezcla en revisión, que cuenta o se descuenta según decida la oficina (Jose, 2026-10-23)')
+{
+  const hd = await device('on-hold', { user: 'Oficina' })
+  hd.use((m) => {
+    const st = () => m.store.get()
+    clock = T0
+    const oid = m.saveOrder(null, { customer: 'BJ', po: '777', code: '2010', cases: 100, shipBy: '', dest: '' })
+    if (!st().lines.some((l) => l.dept === 'Packing')) m.addLine('Packing', 'Línea 1')
+    m.startRun(st().lines.find((l) => l.dept === 'Packing'), '2010', '6292', DAY, 50)
+    const run = () => st().runs.find((r) => r.code === '2010')
+    clock = T0 + 10 * M; m.unitDone(run().id, 50, 'T1', undefined, oid)
+    clock = T0 + 20 * M; m.unitDone(run().id, 50, 'T2', undefined, oid)
+    eq('el PO completo: 2 de 2 pallets, 100 cajas', m.orderFullText(st(), oid), '2 de 2 pallets · 100 de 100 cajas')
+    const at2 = run().units[1].at
+    clock = T0 + 30 * M
+    const h = m.holdUnit(run().id, at2, true, 'revisar etiqueta')
+    eq('el pallet 2 en hold y descontado: sale de la cuenta y del PO (le vuelven a faltar 50), y está en la lista', [run().units.length, m.orderMade(st(), oid), m.holdsOpen(st(), 'Packing').map((x) => [x.code, x.n, x.discount, x.note, x.unit.ref])], [1, 50, [['2010', 2, true, 'revisar etiqueta', 'T2']]])
+    eq('el hold sube con el cuarto Packing, aparte, y queda en el historial', [m.outbox.items().find((i) => i.key === 'hold:' + h).row.dept, m.outbox.items().find((i) => i.key === 'hold:' + h).row.ref_table, st().changes.some((c) => c.what.startsWith('Hold · 2010'))], ['Packing', 'act_hold', true])
+    eq('no se pone dos veces en hold la misma unidad', m.holdUnit(run().id, run().units[0].at, false) !== '' && m.holdUnit(run().id, run().units[0].at, false) === '', true)
+    clock = T0 + 40 * M
+    eq('liberado: vuelve al PO con sus cajas y su tag', [m.holdRelease(h), run().units.length, m.orderMade(st(), oid), run().units[1].ref, run().units[1].po, m.holdsOpen(st(), 'Packing').length], [true, 2, 100, 'T2', oid, 1])
+    const h3 = m.holdsOpen(st(), 'Packing')[0].id
+    eq('el que seguía contando: rechazado sale de la cuenta', [m.holdReject(h3), run().units.length, m.orderMade(st(), oid), m.holdsOpen(st(), 'Packing').length], [true, 1, 50, 0])
+    // the office takes one off, they make another, and the one on hold is let back in: the PO keeps both (cases over)
+    clock = T0 + 50 * M
+    const at = run().units[0].at, h4 = m.holdUnit(run().id, at, true)
+    clock = T0 + 60 * M; m.unitDone(run().id, 50, 'T3', undefined, oid)
+    eq('hicieron otro pallet para el PO mientras el otro estaba en hold', m.orderMade(st(), oid), 50)
+    eq('cambiar de opinión: que siga contando lo devuelve al PO', [m.holdSetDiscount(h4, false), m.orderMade(st(), oid), m.holdsOpen(st(), 'Packing')[0].discount], [true, 100, false])
+    eq('y descontarlo otra vez lo saca', [m.holdSetDiscount(h4, true), m.orderMade(st(), oid)], [true, 50])
+  })
+  const back = await device('on-hold-again', { seed: JSON.parse(disks.get('on-hold').get('act_v1')), user: 'Oficina' })
+  eq('al volver a abrir: lo que está en hold sigue en la lista, descontado', back.use((m) => m.holdsOpen(m.store.get(), 'Packing').map((x) => [x.code, x.discount])), [['2010', true]])
+}
 section('Reporte: el total de cada línea, en su departamento (Jose, 2026-10-22)')
 {
   const lt = await device('line-totals', { user: 'Jose' })

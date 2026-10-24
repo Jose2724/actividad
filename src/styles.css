@@ -2065,3 +2065,18 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 .meat-row:last-child{border-bottom:0}.meat-row.head{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase}
 .meat-each{margin:4px 0;padding-left:18px;display:grid;gap:3px}.meat-each small{color:var(--muted)}
 @media (max-width:560px){.meat-row{grid-template-columns:70px 90px 60px 90px;font-size:14px}.meat-row span:last-child{grid-column:1/-1;color:var(--muted)}}
+
+/* units on hold (2026-10-23) */
+.hold-btn{margin-left:4px;padding:0 6px;min-height:26px;font-size:12px}
+.hold-tag{display:inline-block;margin-left:4px;font-size:11px;font-weight:800;color:#854d0e;background:#fef9c3;border:1px solid #eab308;border-radius:999px;padding:1px 7px;white-space:nowrap}
+.hold-dlg{max-width:540px}
+.hold-choice{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.hold-opt{display:grid;gap:4px;text-align:left;font:inherit;background:var(--surface);border:2px solid var(--line);border-radius:12px;padding:10px;cursor:pointer}
+.hold-opt.on{border-color:var(--accent);background:var(--soft)}.hold-opt small{color:var(--muted)}
+.hold-dlg label{display:grid;gap:4px;font-weight:700;margin-top:8px}.hold-dlg textarea{font:inherit;padding:8px;border-radius:8px;border:1px solid var(--line)}
+.hold-list{display:grid;gap:8px}
+.hold-row{background:var(--surface);border:1px solid var(--line);border-left:6px solid #eab308;border-radius:12px;padding:10px 12px;display:grid;gap:4px}
+.hold-row.off{border-left-color:#dc2626}.hold-row .code{font:800 18px ui-monospace,Consolas,monospace}
+.hold-state{color:var(--muted);font-size:14px}.hold-state .red{color:#b91c1c}.hold-note{color:#3730a3}
+.hold-row .btns{display:flex;flex-wrap:wrap;gap:6px}
+@media (max-width:560px){.hold-choice{grid-template-columns:1fr}}

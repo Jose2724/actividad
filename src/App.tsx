@@ -1,6 +1,6 @@
 import { Component, createContext, Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
-import { addLine, plantCut, roomMark, CUT_WINDOW, startSecondShift, addWaste, awayDay, batch, byPlanLot, planLot, cameFrom, carriedOver, dayAfter, dayBefore, orderUnitDefault, programOrderChoices, ordersOf, orderStatus, orderUnitWord, prevPending, workOrderOf, type WorkOrder, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, MFO_CHOICES, mfoChoiceOf, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, noteOf, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderAddRuns, orderOfId, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, PLAN_LOT_MAX, productOf, productsCsv, purgeDay, reasonText, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay, orderFull, orderFullText, orderNoteOf, setOrderNote, setOrderUrgent, roomMsgOf, setRoomMsg, programCap, programCapOf } from './store'
+import { addLine, plantCut, roomMark, CUT_WINDOW, startSecondShift, addWaste, awayDay, batch, byPlanLot, planLot, cameFrom, carriedOver, dayAfter, dayBefore, orderUnitDefault, programOrderChoices, ordersOf, orderStatus, orderUnitWord, prevPending, workOrderOf, type WorkOrder, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, MFO_CHOICES, mfoChoiceOf, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, noteOf, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderAddRuns, orderOfId, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, PLAN_LOT_MAX, productOf, productsCsv, purgeDay, reasonText, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay, orderFull, orderFullText, orderNoteOf, setOrderNote, setOrderUrgent, roomMsgOf, setRoomMsg, programCap, programCapOf, holdsOpen } from './store'
 import { avanceLots, avanceRange, avanceRows, datesBetween, lotAcrossDays, lotRows, lotsKnown, mfoList, mfoText, mfoWord, n1, pending, type AvancePart, type AvanceRow, type MfoMade } from './avance'
 import { loadZip, type Cell } from './xlsx'
 
@@ -26,6 +26,7 @@ import { LotesView } from './LotesView'
 import { KpiView } from './KpiView'
 import { WeightButton, WeightReminder } from './Weights'
 import { MeatButton } from './Meat'
+import { HoldList } from './Holds'
 import { seesKpi } from './kpi'
 import { AttendanceCard } from './Attendance'
 import { useColFilters } from './ColFilter'
@@ -1991,7 +1992,7 @@ function PlanDialog({ s, dept, today, unit, onClose }: { s: State; dept: Dept; t
  * day's program) and, where the room fills orders, "Pedidos". For every role: who may not change something sees it as it
  * is. The part chosen in each room stays through the reload a new version brings (this tablet's session only).
  */
-type DeptTab = 'live' | 'done' | 'plan' | 'orders'
+type DeptTab = 'live' | 'done' | 'plan' | 'orders' | 'hold'
 const DEPT_TAB_KEY = 'act_dept_tab'
 function deptTabOf(d: Dept): DeptTab {
   try { const t = (JSON.parse(sessionStorage.getItem(DEPT_TAB_KEY) || '{}') as Record<string, string>)[d]; return t === 'done' || t === 'plan' || t === 'orders' ? t : 'live' } catch { return 'live' }
@@ -2064,12 +2065,15 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
   // (codes, as its label says, not rows: since 2026-10-20 one code may have a row per lot, and 889 of two lots is one code)
   const planned = new Set(planOf(s, day.date, dept).filter((p) => p.qty > 0).map((p) => normCode(p.code))).size
   const openOrders = hasOrders ? s.orders.filter((o) => !o.closed).length : 0
-  const shown: DeptTab = part === 'orders' && !hasOrders ? 'live' : part
+  // units on hold (2026-10-23): a tab while the room has any
+  const held = holdsOpen(s, dept).length
+  const shown: DeptTab = (part === 'orders' && !hasOrders) || (part === 'hold' && !held) ? 'live' : part
   const parts: { t: DeptTab; label: string; n: number; sub: string }[] = [
     { t: 'live', label: tr('En vivo'), n: working, sub: working === 1 ? tr('1 línea trabajando') : tr('{0} líneas trabajando', working) },
     { t: 'done', label: tr('Terminados'), n: doneToday.length, sub: tr('códigos terminados hoy') },
     { t: 'plan', label: tr('Programa'), n: planned, sub: tr('códigos programados hoy') },
     ...(hasOrders ? [{ t: 'orders' as const, label: tr('Pedidos'), n: openOrders, sub: tr('pedidos abiertos') }] : []),
+    ...(held ? [{ t: 'hold' as const, label: tr('⏸ On hold'), n: held, sub: tr('en revisión') }] : []),
   ]
   return (
     <section className="panel" style={deptVars(dept)}>
@@ -2170,6 +2174,7 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
       )}
       {/* the pallets nobody recorded are added from the orders too, for the same people as from Terminados (Jose,
           2026-10-18: "también de agregar registro de pallet desde packing tab pedidos"); the order can be chosen in both */}
+      {shown === 'hold' && <HoldList s={s} dept={dept} />}
       {shown === 'orders' && hasOrders && (
         <>
           {can('fix') && !viewOnly && <div className="dp-tools"><button type="button" className="btn soft" onClick={() => setAddingRun({})}>{tr('+ Agregar un registro que nadie registró')}</button></div>}

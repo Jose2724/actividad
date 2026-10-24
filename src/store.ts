@@ -378,7 +378,7 @@ export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Produ
    */
   orderRuns: Run[]
   /** the production orders of every room (deleted ones kept with their flag), and the closed accounts of finished ones */
-  workOrders: WorkOrder[]; orderSeals: OrderSeal[]; attendance: AttEntry[]; attExpected: AttExpected[]; shiftMarks: ShiftMark[]; kpi: KpiRec[]; weights: WeightTest[]; orderNotes: OrderNote[]; roomMsgs: RoomMsg[]; weightRules: WeightRule[]; meats: MeatEntry[] }
+  workOrders: WorkOrder[]; orderSeals: OrderSeal[]; attendance: AttEntry[]; attExpected: AttExpected[]; shiftMarks: ShiftMark[]; kpi: KpiRec[]; weights: WeightTest[]; orderNotes: OrderNote[]; roomMsgs: RoomMsg[]; weightRules: WeightRule[]; meats: MeatEntry[]; holds: HoldRec[] }
 /**
  * An order to fill in Packing: so many cases of one product for a customer, to ship by a date. Most carry the
  * customer's purchase order number (PO); some never do and some get it later. See "the orders Packing fills".
@@ -466,10 +466,10 @@ function tidySchedule(sch: Schedule): Schedule {
 function isDay(text: string) { return /^\d{4}-\d{2}-\d{2}$/.test(text) }
 /** with a server the lines (and products) are shared and come from it; without one, each device starts with a line per room */
 const SERVER = !!import.meta.env.VITE_SUPABASE_URL
-function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, reasonCodes: { on: false, updatedAt: 0 }, programView: { on: false, updatedAt: 0 }, attView: { on: false, updatedAt: 0 }, viewOpts: { lotes: { on: false, updatedAt: 0 }, flujo: { on: false, updatedAt: 0 } }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [], attendance: [], attExpected: [], shiftMarks: [], kpi: [], weights: [], orderNotes: [], roomMsgs: [], weightRules: [], meats: [] } }
+function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, reasonCodes: { on: false, updatedAt: 0 }, programView: { on: false, updatedAt: 0 }, attView: { on: false, updatedAt: 0 }, viewOpts: { lotes: { on: false, updatedAt: 0 }, flujo: { on: false, updatedAt: 0 } }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [], attendance: [], attExpected: [], shiftMarks: [], kpi: [], weights: [], orderNotes: [], roomMsgs: [], weightRules: [], meats: [], holds: [] } }
 function load(): State {
   try {
-    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; reasonCodes?: Partial<ReasonCodesOpt>; programView?: Partial<ReasonCodesOpt>; attView?: Partial<ReasonCodesOpt>; viewOpts?: Partial<Record<ViewOpt, Partial<ReasonCodesOpt>>>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[]; attendance?: Partial<AttEntry>[]; attExpected?: Partial<AttExpected>[]; shiftMarks?: Partial<ShiftMark>[]; kpi?: Partial<KpiRec>[]; weights?: Partial<WeightTest>[]; orderNotes?: Partial<OrderNote>[]; roomMsgs?: Partial<RoomMsg>[]; weightRules?: Partial<WeightRule>[]; meats?: Partial<MeatEntry>[] }
+    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; reasonCodes?: Partial<ReasonCodesOpt>; programView?: Partial<ReasonCodesOpt>; attView?: Partial<ReasonCodesOpt>; viewOpts?: Partial<Record<ViewOpt, Partial<ReasonCodesOpt>>>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[]; attendance?: Partial<AttEntry>[]; attExpected?: Partial<AttExpected>[]; shiftMarks?: Partial<ShiftMark>[]; kpi?: Partial<KpiRec>[]; weights?: Partial<WeightTest>[]; orderNotes?: Partial<OrderNote>[]; roomMsgs?: Partial<RoomMsg>[]; weightRules?: Partial<WeightRule>[]; meats?: Partial<MeatEntry>[]; holds?: Partial<HoldRec>[] }
     const s = JSON.parse(localStorage.getItem(KEY) || 'null') as Raw | null
     // rows saved by earlier versions: carts as plain timestamps, units without a tag or a name, products with one
     // pouches-per-cart number, nothing with an update time
@@ -523,6 +523,7 @@ function load(): State {
         roomMsgs: (s.roomMsgs ?? []).map(roomMsgFrom).filter((x): x is RoomMsg => !!x),
         // (inline, as above: nothing declared below load() may be used in here)
         meats: (s.meats ?? []).map(meatFrom).filter((x): x is MeatEntry => !!x),
+        holds: (s.holds ?? []).map(holdFrom).filter((x): x is HoldRec => !!x),
         weightRules: (s.weightRules ?? []).filter((x) => !!x && DEPTS.includes(x.dept as Dept) && Number(x.every) >= 0 && Number(x.count) >= 0).map((x) => ({ dept: x.dept as Dept, every: Math.round(Number(x.every)), count: Math.round(Number(x.count)), updatedAt: Number(x.updatedAt) || 0 })),
         attExpected: (s.attExpected ?? []).map(attExpectedFrom).filter((x): x is AttExpected => !!x),
         // each room's hand-over of a day (2026-10-21): a function declaration, as above
@@ -1121,6 +1122,87 @@ export function meatDelete(id: string) {
   const x = (state.meats ?? []).find((y) => y.id === id)
   if (!x || x.deleted) return
   putMeat({ ...x, deleted: true, updatedAt: stamp(x) })
+}
+// ---- units on hold (2026-10-23: "que se pueda poner en hold registros y tener la opción de omitir el conteo") ----
+/**
+ * A mezcla, a pallet or any unit already recorded is put on hold while it is checked, by a manager or the office (Jose:
+ * "solo managers y oficina"), who also says whether it still counts or is taken off the count meanwhile (a pallet of a
+ * PO of 10/10 taken off leaves it 9/10, so another one can be made: "que sea decisión de la oficina"). Taken off, the
+ * unit leaves its run as a unit taken off in Corregir does (so every total, the PO, Avance and the program's cap see it
+ * at once), and the hold keeps a copy of it; released, it goes back on the run; rejected, it stays off (or is taken off
+ * then). The hold is one record in act_changes with the run's room, apart from the history; the server never erases.
+ */
+export type HoldRec = { id: string; dept: Dept; date: string; runId: string; lineId: string; line: string; code: string; lot: string; unit: Unit; n: number; discount: boolean; state: 'hold' | 'released' | 'rejected'; note: string; at: number; by: string; doneAt: number; doneBy: string; deleted?: boolean; updatedAt: number; syncedAt?: number }
+const HOLD_ID = 'hold:'
+export const HOLD_REF = 'act_hold'
+function holdFrom(x: Partial<HoldRec> | null | undefined): HoldRec | null {
+  if (!x || typeof x !== 'object' || typeof x.id !== 'string' || !x.id || !(DEPTS as unknown[]).includes(x.dept) || !isDay(String(x.date ?? '')) || !x.unit || typeof x.unit !== 'object') return null
+  const st = x.state === 'released' || x.state === 'rejected' ? x.state : 'hold'
+  return { id: x.id, dept: x.dept as Dept, date: String(x.date), runId: String(x.runId ?? ''), lineId: String(x.lineId ?? ''), line: String(x.line ?? ''), code: String(x.code ?? ''), lot: String(x.lot ?? ''), unit: unitOf(x.unit), n: Number(x.n) || 0, discount: !!x.discount, state: st, note: String(x.note ?? '').slice(0, 300), at: Number(x.at) || 0, by: String(x.by ?? ''), doneAt: Number(x.doneAt) || 0, doneBy: String(x.doneBy ?? ''), ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
+}
+const putHold = (x: HoldRec) => {
+  set({ ...state, holds: [...(state.holds ?? []).filter((y) => y.id !== x.id), x] })
+  const { id: _i, dept: _d, by: _b, at: _a, updatedAt: _u, syncedAt: _s, deleted: _x, ...rest } = x
+  push('act_changes', HOLD_ID + x.id, { id: HOLD_ID + x.id, at: iso(x.at), by_name: x.by, dept: x.dept, what: 'Hold', before: '', after: JSON.stringify(rest), ref_table: HOLD_REF, ref_key: x.id, deleted: !!x.deleted, updated_at: iso(x.updatedAt), updated_by: user.get() })
+}
+/** the units on hold now (a room, or all), the oldest first */
+export const holdsOpen = (s: State, dept?: Dept) => (s.holds ?? []).filter((x) => !x.deleted && x.state === 'hold' && (!dept || x.dept === dept)).sort((a, b) => a.at - b.at)
+/** the hold a unit of a run is in now (a unit that still counts is still on its run) */
+export const holdOf = (s: State, runId: string, at: number) => (s.holds ?? []).find((x) => !x.deleted && x.state === 'hold' && x.runId === runId && x.unit.at === at) ?? null
+const takeOff = (runId: string, at: number) => { const r = run(runId); if (r && r.units.some((u) => u.at === at)) updateRun(runId, { units: r.units.filter((u) => u.at !== at) }) }
+/** a unit held back on its run: with its PO when the PO still takes it, else without (the hold says so); its new moment */
+function putBack(h: HoldRec): number {
+  const u = h.unit, base = { at: u.at, qty: u.qty, ref: u.ref, ...(u.lots ? { lots: u.lots } : {}), ...(u.note ? { note: u.note } : {}) }
+  return (u.po ? addUnit(h.runId, { ...base, po: u.po }) : 0) || addUnit(h.runId, base)
+}
+/** a unit put on hold: still counting, or taken off the count meanwhile; '' when it cannot (no such unit, or already on hold) */
+export function holdUnit(runId: string, at: number, discount: boolean, note = ''): string {
+  const r = run(runId), i = r ? r.units.findIndex((u) => u.at === at) : -1
+  if (!r || i < 0 || holdOf(state, runId, at)) return ''
+  const u = r.units[i], cfg = cfgOf(r)
+  const h: HoldRec = { id: uid(), dept: r.dept, date: r.date, runId, lineId: r.lineId, line: r.line, code: r.code, lot: u.lots?.length ? [...new Set(u.lots.map((l) => l.lot))].join(', ') : r.lot, unit: u, n: i + 1, discount, state: 'hold', note: note.trim().slice(0, 300), at: clockNow(), by: user.get(), doneAt: 0, doneBy: '', updatedAt: stamp(undefined) }
+  batch(() => {
+    putHold(h)
+    if (discount) takeOff(runId, at)
+    logChange(r.dept, 'Hold · ' + r.code + ' · ' + cfg.unit.toLowerCase() + ' ' + (i + 1) + ' (' + fmtTime(at) + ')', '', (discount ? 'en hold, descontado' : 'en hold, sigue contando') + (h.note ? ' · ' + h.note : ''), HOLD_REF, h.id)
+  })
+  return h.id
+}
+/** the office changes its mind: the unit on hold counts again, or is taken off the count */
+export function holdSetDiscount(id: string, discount: boolean): boolean {
+  const h = (state.holds ?? []).find((x) => x.id === id)
+  if (!h || h.deleted || h.state !== 'hold' || h.discount === discount) return false
+  let ok = true
+  batch(() => {
+    if (discount) { takeOff(h.runId, h.unit.at); putHold({ ...h, discount, updatedAt: stamp(h) }) }
+    else { const at = putBack(h); if (!at) { ok = false; return } putHold({ ...h, discount, unit: { ...h.unit, at }, updatedAt: stamp(h) }) }
+    logChange(h.dept, 'Hold · ' + h.code, h.discount ? 'descontado' : 'sigue contando', discount ? 'descontado' : 'sigue contando', HOLD_REF, h.id + ':' + clockNow())
+  })
+  return ok
+}
+/** checked and good: it counts again (back on its run when it was taken off) */
+export function holdRelease(id: string): boolean {
+  const h = (state.holds ?? []).find((x) => x.id === id)
+  if (!h || h.deleted || h.state !== 'hold') return false
+  let ok = true
+  batch(() => {
+    const at = h.discount ? putBack(h) : h.unit.at
+    if (!at) { ok = false; return }
+    putHold({ ...h, unit: { ...h.unit, at }, state: 'released', doneAt: clockNow(), doneBy: user.get(), updatedAt: stamp(h) })
+    logChange(h.dept, 'Hold · ' + h.code, 'en hold', 'liberado: cuenta', HOLD_REF, h.id + ':r')
+  })
+  return ok
+}
+/** checked and not good: it does not count (taken off now if it still counted); the hold keeps what it was */
+export function holdReject(id: string): boolean {
+  const h = (state.holds ?? []).find((x) => x.id === id)
+  if (!h || h.deleted || h.state !== 'hold') return false
+  batch(() => {
+    if (!h.discount) takeOff(h.runId, h.unit.at)
+    putHold({ ...h, state: 'rejected', doneAt: clockNow(), doneBy: user.get(), updatedAt: stamp(h) })
+    logChange(h.dept, 'Hold · ' + h.code, 'en hold', 'rechazado: no cuenta', HOLD_REF, h.id + ':x')
+  })
+  return true
 }
 /** the meat of a day (one code, or all), oldest first */
 export const meatsOf = (s: State, date: string, code = '') => (s.meats ?? []).filter((x) => !x.deleted && x.date === date && (!code || normCode(x.code) === normCode(code))).sort((a, b) => a.at - b.at)
@@ -4093,6 +4175,14 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
     try { x = JSON.parse(String(row.after ?? '')) as Partial<OrderNote> } catch { /* not one */ }
     const e = orderNoteFrom({ ...x, orderId, by: String(row.by_name ?? ''), at: fromIso(row.at) ?? 0, deleted: !!row.deleted, updatedAt: at, ...syncedOf(row) })
     if (e) set({ ...state, orderNotes: [...(state.orderNotes ?? []).filter((y) => y.orderId !== orderId), e] })
+  } else if (table === 'act_changes' && row.ref_table === HOLD_REF && String(row.id ?? '').startsWith(HOLD_ID)) {
+    // a unit on hold (2026-10-23): kept apart from the history
+    const id = String(row.id).slice(HOLD_ID.length), cur = (state.holds ?? []).find((x) => x.id === id)
+    if (!newer(cur)) return
+    let x: Partial<HoldRec> = {}
+    try { x = JSON.parse(String(row.after ?? '')) as Partial<HoldRec> } catch { /* not one */ }
+    const e = holdFrom({ ...x, id, dept: row.dept as Dept, by: String(row.by_name ?? ''), at: fromIso(row.at) ?? 0, deleted: !!row.deleted, updatedAt: at, ...syncedOf(row) })
+    if (e) set({ ...state, holds: [...(state.holds ?? []).filter((y) => y.id !== id), e] })
   } else if (table === 'act_changes' && row.ref_table === MEAT_REF && String(row.id ?? '').startsWith(MEAT_ID)) {
     // Spiral's meat (2026-10-23): kept apart from the history
     const id = String(row.id).slice(MEAT_ID.length), cur = (state.meats ?? []).find((x) => x.id === id)

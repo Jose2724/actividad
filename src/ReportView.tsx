@@ -15,6 +15,7 @@ import { supabase } from './supabase'
 import { fetchPurged } from './sync'
 import { addDays, DayNote, download, howMany, libraries, longDate, MISSING, NoticeDialog, SendDialog, shortDay, ShiftsDialog, useCan, useDay, useWho, WipeDayDialog } from './App'
 import { DEPT_LOOK, deptVars } from './look'
+import { HoldButton } from './Holds'
 import { ColMenu, useColFilters } from './ColFilter'
 import { tr } from './i18n'
 import { trx } from './trx'
@@ -1564,7 +1565,7 @@ function UnitsTable({ k }: { k: Kit }) {
           <tbody>{pageOf('units', f.shown).map((x) => (
             <tr key={x.r.id + ':' + x.i + ':' + x.lot} style={deptVars(x.r.dept)}>
               {acts(spanOf(x.r), x.r.dept, () => setDetail({ runId: x.r.id, at: x.u.at }), () => setEditRun({ id: x.r.id, at: x.u.at }))}
-              <td data-label={tr('Hora')}>{hl(fmtTime(x.u.at), toks)}</td>{!rep.shift && <td data-label={tr('Turno')}>{x.shift}</td>}
+              <td data-label={tr('Hora')}>{hl(fmtTime(x.u.at), toks)} <HoldButton s={s} runId={x.r.id} at={x.u.at} dept={x.r.dept} /></td>{!rep.shift && <td data-label={tr('Turno')}>{x.shift}</td>}
               {manyRooms && <td className="c-head"><DeptBadge d={x.r.dept} /></td>}
               <td data-label={tr('Línea')}>{hl(lineNameOf(s, x.r.lineId, x.r.line), toks)}</td>
               <td data-label={tr('Código')} className={manyRooms ? undefined : 'c-head'}><b>{hl(x.r.code, toks)}</b></td>
