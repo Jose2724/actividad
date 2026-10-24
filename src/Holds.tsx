@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { cfgOf, fmtTime, holdOf, holdRelease, holdReject, holdSetDiscount, holdsOpen, holdUnit, lineNameOf, orderLabel, orderOfId, type Dept, type HoldRec, type State } from './store'
 import { useCan, useViewOnly } from './App'
 import { tr } from './i18n'
@@ -20,7 +21,9 @@ export function HoldButton({ s, runId, at, dept }: { s: State; runId: string; at
   return (
     <>
       <button type="button" className="btn xs hold-btn" onClick={() => setOpen(true)}>{tr('⏸ Hold')}</button>
-      {open && <HoldDialog s={s} runId={runId} at={at} dept={dept} onClose={() => setOpen(false)} />}
+      {/* over everything: it is also opened from inside other windows (a PO's pallets, Corregir), whose
+          backdrop must not get its taps (React passes them up through the portal) */}
+      {open && createPortal(<div onClick={(e) => e.stopPropagation()}><HoldDialog s={s} runId={runId} at={at} dept={dept} onClose={() => setOpen(false)} /></div>, document.body)}
     </>
   )
 }

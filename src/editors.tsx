@@ -4,6 +4,8 @@ import { clockNow } from './clock'
 import { unitStartLot } from './report'
 import { ConfirmDialog, LotsDialog, useCan, useSure, useWho, type SureBox } from './App'
 import { writesIn } from './powers'
+import { HoldButton } from './Holds'
+import { holdOf } from './store'
 import { CodePicker, codeReady, DetailNeeded, detailHint } from './CodePicker'
 import { reasonCodeOf } from './reasons'
 import { tr } from './i18n'
@@ -101,7 +103,8 @@ export function RunEditor({ s, run, mgr, focusAt, onClose }: { s: State; run: Ru
               <thead><tr><th>#</th><th>{tr('Hora')}</th>{cfg.qty !== 'none' && <th>{cfg.qtyUnit}</th>}{lotEdit && <th>{cfg.lots ? tr('Lotes y tags') : tr('Lotes')}</th>}{cfg.refLabel && !tagsInLots && <th>{cfg.refLabel}</th>}{withOrders && <th>{tr('Pedido')}</th>}<th>{tr('Por')}</th><th>{tr('Comentario')}</th><th></th></tr></thead>
               <tbody>{units.map((u, i) => (
                 <tr key={u.at + ':' + i} ref={focusAt != null && u.at === focusAt ? focusRow : undefined} className={focusAt != null && u.at === focusAt ? 'rp-focus' : undefined}>
-                  <td>{i + 1}</td><td>{fmtTime(u.at)}</td>
+                  {/* on hold from here too (2026-10-23), beside its hour as in the report: applied at once, as the order is */}
+                  <td>{i + 1}</td><td className="nowrap">{fmtTime(u.at)}{(run.units.some((x) => x.at === u.at) || holdOf(s, run.id, u.at)) && <> <HoldButton s={s} runId={run.id} at={u.at} dept={run.dept} /></>}</td>
                   {cfg.qty !== 'none' && <td><input className="num" inputMode="numeric" value={u.qty} disabled={!!u.lots?.length} title={u.lots?.length ? tr('Es la suma de sus lotes') : ''} onChange={(e) => setUnits(units.map((x, k) => (k === i ? { ...x, qty: e.target.value.replace(/\D/g, '') } : x)))} /></td>}
                   {lotEdit && <td>{u.lots?.length ? lotsText(u.lots) : <small>{(lot || '—') + (tagsInLots && u.ref ? ' (tag ' + u.ref + ')' : '')}</small>} <button type="button" className="lnk" title={tagsInLots ? tr('Cambiar los lotes y los tags de esta unidad') : tr('Cambiar los lotes de este bin')} onClick={() => setLotsOf(i)}>✎</button></td>}
                   {cfg.refLabel && !tagsInLots && <td><input className="num" value={u.ref} onChange={(e) => setUnits(units.map((x, k) => (k === i ? { ...x, ref: e.target.value } : x)))} autoComplete="off" /></td>}

@@ -2080,3 +2080,5 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 .hold-state{color:var(--muted);font-size:14px}.hold-state .red{color:#b91c1c}.hold-note{color:#3730a3}
 .hold-row .btns{display:flex;flex-wrap:wrap;gap:6px}
 @media (max-width:560px){.hold-choice{grid-template-columns:1fr}}
+.po-acts{display:flex;flex-direction:column;align-items:flex-start;gap:4px}.po-acts .hold-btn,.po-acts .hold-tag{margin-left:0}
+.nowrap{white-space:nowrap}

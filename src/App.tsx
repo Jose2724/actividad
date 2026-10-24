@@ -26,7 +26,7 @@ import { LotesView } from './LotesView'
 import { KpiView } from './KpiView'
 import { WeightButton, WeightReminder } from './Weights'
 import { MeatButton } from './Meat'
-import { HoldList } from './Holds'
+import { HoldButton, HoldList } from './Holds'
 import { seesKpi } from './kpi'
 import { AttendanceCard } from './Attendance'
 import { useColFilters } from './ColFilter'
@@ -1399,7 +1399,7 @@ function OrderPalletsDialog({ s, order, onAdd, onClose }: { s: State; order: Ord
                         {i === 0 && <td rowSpan={span}>{fmtTime(x.u.at)}</td>}
                         {i === 0 && <td rowSpan={span}>{x.u.by || '—'}</td>}
                         {i === 0 && notes && <td rowSpan={span} className="unote">{x.u.note ? '💬 ' + x.u.note : '—'}</td>}
-                        {i === 0 && <td rowSpan={span}>{x.here && can('fix') && <button type="button" className="lnk" onClick={() => setEditRun(x.r.id)}>{tr('Corregir')}</button>}</td>}
+                        {i === 0 && <td rowSpan={span}><span className="po-acts">{x.here && can('fix') && <button type="button" className="lnk" onClick={() => setEditRun(x.r.id)}>{tr('Corregir')}</button>}{x.here && <HoldButton s={s} runId={x.r.id} at={x.u.at} dept={x.r.dept} />}</span></td>}
                       </tr>
                     ))}
                   </tbody>
