@@ -1214,22 +1214,34 @@ const targetKey = (code: string, kind: WeightTest['kind']) => 'target:' + (kind 
 /**
  * QA's "Meatballs / Meatloaf target specifications" sheet (Jose, 2026-10-26), the target every code starts with until
  * a manager sets one with "Objetivo": pouch = oz per bag (the sheet gives no tolerance for the bag: 1 oz until QA says);
- * ball = 8 cooked meatballs (Spiral weighs them cooked), the sheet's after-cooking range × 8. 3477 is left out (its bag
- * weight on the sheet reads oddly against its case weight) and the meatloaf codes have no ball target.
+ * ball = 8 cooked meatballs (Spiral weighs them cooked), the sheet's after-cooking range × 8. The Excel of the sheet
+ * (same day) added 2234, 685, 5017, 4614, 4676, 3293 and 1999, and reads 7093 where the photo read 7053.
  */
 const QA_TARGETS: Record<string, Partial<Record<WeightTest['kind'], WeightTarget>>> = {
+  // 2.4 oz meatballs (Costco Jumbo and the like)
   '0889': { pouch: { pouch: 48, tol: 1 }, ball: { pouch: 18.8, tol: 0.4 } },
+  '685': { pouch: { pouch: 48, tol: 1 }, ball: { pouch: 18.8, tol: 0.4 } },
   '4139': { pouch: { pouch: 72, tol: 1 }, ball: { pouch: 18.8, tol: 0.4 } },
+  // 2.2 and 2.0 oz
   '2562': { pouch: { pouch: 72, tol: 1 }, ball: { pouch: 17.6, tol: 0.4 } },
   '5000': { pouch: { pouch: 24, tol: 1 }, ball: { pouch: 16, tol: 0.4 } },
+  '5017': { pouch: { pouch: 24, tol: 1 }, ball: { pouch: 16, tol: 0.4 } },
+  // 1.1 oz (plain, neutral and stuffed)
   '4911': { pouch: { pouch: 16, tol: 1 }, ball: { pouch: 8.4, tol: 0.4 } },
   '4917': { pouch: { pouch: 16, tol: 1 }, ball: { pouch: 8.4, tol: 0.4 } },
   '4914': { pouch: { pouch: 16, tol: 1 }, ball: { pouch: 8.4, tol: 0.4 } },
   '8441': { pouch: { pouch: 72, tol: 1 }, ball: { pouch: 8.4, tol: 0.4 } },
+  '2234': { pouch: { pouch: 72, tol: 1 }, ball: { pouch: 8.4, tol: 0.4 } },
+  '3293': { pouch: { pouch: 48, tol: 1 }, ball: { pouch: 8.4, tol: 0.4 } },
   '3187': { pouch: { pouch: 72, tol: 1 }, ball: { pouch: 8.4, tol: 0.4 } },
   '4955': { pouch: { pouch: 16, tol: 1 }, ball: { pouch: 8.4, tol: 0.4 } },
-  '7053': { pouch: { pouch: 16, tol: 1 } },
+  '3477': { pouch: { pouch: 38, tol: 1 }, ball: { pouch: 8.4, tol: 0.4 } },
+  // meatloaf and sausage: a bag target only (nobody weighs 8 of them)
+  '7093': { pouch: { pouch: 16, tol: 1 } },
   '7130': { pouch: { pouch: 16, tol: 1 } },
+  '4614': { pouch: { pouch: 14, tol: 1 } },
+  '4676': { pouch: { pouch: 14, tol: 1 } },
+  '1999': { pouch: { pouch: 48, tol: 1 } },
 }
 export function weightTarget(s: State, code: string, kind: WeightTest['kind'] = 'pouch'): WeightTarget | null {
   const d = kpiGet(s, targetKey(code, kind))?.data

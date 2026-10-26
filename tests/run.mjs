@@ -5033,7 +5033,7 @@ section('Reporte KPI del día: el plan de Costco del planner, lo real del 0889 y
     eq('lo real escrito a mano en el planner no se lee (lo tiene Actividad)', JSON.stringify(p).includes('1679'), false)
     eq('un archivo que no es el planner se dice', typeof m.parsePlanner('a,b\n1,2'), 'string')
     // QA's target sheet (2026-10-26): every code starts with its target; a manager's own still wins
-    eq('sin objetivo escrito, el de la hoja de QA: 0889 48 oz por pouch y 18.8 oz por 8 bolas; un código que no está, nada', [m.weightTarget(st(), '0889'), m.weightTarget(st(), '0889', 'ball'), m.weightTarget(st(), '7053', 'ball'), m.weightTarget(st(), '9999')], [{ pouch: 48, tol: 1 }, { pouch: 18.8, tol: 0.4 }, null, null])
+    eq('sin objetivo escrito, el de la hoja de QA: 0889 48 oz por pouch y 18.8 oz por 8 bolas; un código que no está, nada', [m.weightTarget(st(), '0889'), m.weightTarget(st(), '0889', 'ball'), m.weightTarget(st(), '7093', 'ball'), m.weightTarget(st(), '9999')], [{ pouch: 48, tol: 1 }, { pouch: 18.8, tol: 0.4 }, null, null])
     m.setWeightTarget('0889', 47.5, 0.5)
     eq('el objetivo que pone un manager manda sobre el de la hoja', m.weightTarget(st(), '0889'), { pouch: 47.5, tol: 0.5 })
     // the real planner (2026-10-26): a months row over the batches by weekday above the table, and a title across two years
