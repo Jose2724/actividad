@@ -36,7 +36,7 @@ export function KpiView({ s, now, today, admin }: { s: State; now: number; today
   const nTests = wts.reduce((t, w) => t + w.tests.length, 0)
   const excel = async () => {
     const notes = (p: KpiPart) => kpiNote(s, date, p)
-    const head: Cell[][] = [[tr('Reporte KPI del día · ER'), date], []]
+    const head: Cell[][] = [[tr('E.R. - Ops Summary'), date], []]
     const resumen: Cell[][] = [...head, [tr('Parte'), tr('Resultado'), tr('Qué vimos · causa · acción')],
       [tr('1 · Pesos'), allW ? tr('{0} de {1} pouches fuera de peso', outW, allW) : tr('Sin pruebas de peso'), notes('weights')],
       [tr('2 · Cortes'), tr('Esperando los pedidos de Julio'), notes('cuts')],
@@ -50,7 +50,7 @@ export function KpiView({ s, now, today, admin }: { s: State; now: number; today
       ...lab.rows.map((r): Cell[] => [r.dept, r.scheduled, r.showed, r.temps, r.hours, r.made, r.unit, r.perHour ?? '']),
       [tr('TOTAL'), lab.total.scheduled, lab.total.showed, lab.total.temps, lab.total.hours, lab.total.cases, tr('cajas'), lab.total.perHour ?? '']]
     const bytes = await xlsxBytes([{ name: tr('Resumen'), rows: resumen }, { name: tr('Pesos'), rows: [...head, [tr('Hora'), tr('Línea'), tr('Código'), tr('Lote'), tr('Revisados'), tr('Pesados'), tr('Promedio (oz)'), tr('Mínimo'), tr('Máximo'), tr('Objetivo (oz)'), tr('Bajos'), tr('Sobre'), tr('Anotó'), tr('Cada pouch')], ...wts.flatMap((w) => w.tests.map((t): Cell[] => { const ws = wtWeights(t), avg = ws.length ? ws.reduce((a, b) => a + b, 0) / ws.length : null; return [fmtTime(t.at), t.line, t.code, t.lot, t.entries.length, ws.length, avg == null ? '' : Math.round(avg * 1000) / 1000, ws.length ? Math.min(...ws) : '', ws.length ? Math.max(...ws) : '', w.target ? w.target.pouch + ' ± ' + w.target.tol : '', t.entries.filter((e) => entryClass(e, w.target) === 'bajo').length, t.entries.filter((e) => entryClass(e, w.target) === 'sobre').length, t.by, t.entries.map((e) => (e.w != null ? String(e.w) : '') + (e.k === 'sobre' ? ' ▲' : e.k === 'bajo' ? ' ▼' : '')).join(', ')] })), [], [notes('weights')]] }, { name: tr('Cortes'), rows: [...head, [tr('Esperando los pedidos de Julio')], [notes('cuts')]] }, { name: tr('Productividad'), rows: labor }, { name: 'Costco MVM', rows: costco }, { name: tr('Grill y freidora'), rows: [...head, [notes('grill')]] }])
-    download(new File([bytes], 'kpi-er-' + date + '.xlsx', { type: XLSX_TYPE }))
+    download(new File([bytes], 'ER-Ops-Summary-' + date + '.xlsx', { type: XLSX_TYPE }))
   }
   const tiles: { part: string; cls: string; big: string; small: string }[] = [
     { part: tr('1 · Pesos'), cls: !allW ? 'grey' : outW / allW > 0.1 ? 'bad' : outW ? 'warn' : 'ok', big: allW ? tr('{0} de {1} fuera', outW, allW) : tr('sin pruebas'), small: allW ? (nTests === 1 ? tr('1 prueba') : tr('{0} pruebas', nTests)) + ' · ' + (wts.length === 1 ? tr('1 código') : tr('{0} códigos', wts.length)) : tr('RTE anota los pesos con ⚖ Peso') },
@@ -62,7 +62,7 @@ export function KpiView({ s, now, today, admin }: { s: State; now: number; today
   return (
     <section className="kpi">
       <div className="kpi-top">
-        <div><h2>{tr('📋 Reporte KPI del día · ER')}</h2><small>{nice(date)} · <span className="kpi-lock">{tr('🔒 Solo tú y quien pusiste en la lista')}</span></small></div>
+        <div><h2>{tr('📋 E.R. - Ops Summary')}</h2><small>{nice(date)} · <span className="kpi-lock">{tr('🔒 Solo tú y quien pusiste en la lista')}</span></small></div>
         <div className="btns"><button type="button" className="btn primary" onClick={() => void excel()}>{tr('⬇ Excel')}</button></div>
       </div>
       <div className="chips">
