@@ -1,6 +1,6 @@
 {
-  "name": "Actividad DEMO",
-  "short_name": "Activ. DEMO",
+  "name": "E.R. - Ops Summary DEMO",
+  "short_name": "Ops Sum. DEMO",
   "description": "Actividad de producción por departamento: líneas, códigos, paros y avance del día (demo: los datos se quedan en este aparato)",
   "start_url": "./",
   "scope": "./",
