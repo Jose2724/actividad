@@ -47,6 +47,7 @@ input[type=text],input:not([type]),input[type=date]{min-height:48px;padding:0 12
 .panel,.report,.main{max-width:100%;min-width:0}
 .twrap{max-width:100%}
 .top{display:flex;align-items:center;gap:16px;padding:10px 16px;background:var(--surface);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+.top .brand{display:flex;align-items:center;gap:12px}.top .brand .logo{height:42px;width:auto;flex:none}
 .top .brand h1{font-size:22px}
 .top .brand small{display:block;text-transform:capitalize}
 .tabs{display:flex;gap:4px;background:var(--bg);padding:4px;border-radius:12px;margin-left:auto}
@@ -2082,3 +2083,4 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 @media (max-width:560px){.hold-choice{grid-template-columns:1fr}}
 .po-acts{display:flex;flex-direction:column;align-items:flex-start;gap:4px}.po-acts .hold-btn,.po-acts .hold-tag{margin-left:0}
 .nowrap{white-space:nowrap}
+@media (max-width:560px){.top .brand .logo{height:32px}}
