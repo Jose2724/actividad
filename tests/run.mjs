@@ -5032,6 +5032,11 @@ section('Reporte KPI del día: el plan de Costco del planner, lo real del 0889 y
     eq('el planner se lee: cada día con sus mezclas y cajas, el año del título, 18 cajas por mezcla, y el forecast de cada mes', [Object.keys(p.days).length, p.days['2026-10-10'], p.days['2026-11-30'], p.days['2026-11-26'], p.perMix, p.forecast], [31 + 29, { mixes: 100, cases: 1800 }, { mixes: 60, cases: 1080 }, undefined, 18, { '2026-10': 25356, '2026-11': 31545 }])
     eq('lo real escrito a mano en el planner no se lee (lo tiene Actividad)', JSON.stringify(p).includes('1679'), false)
     eq('un archivo que no es el planner se dice', typeof m.parsePlanner('a,b\n1,2'), 'string')
+    // the real planner (2026-10-26): a months row over the batches by weekday above the table, and a title across two years
+    const real = ['Costco MVM Planner,,,,,Case,Trays', 'East Rutherford,,,,,1,8', 'November 2026 - January 2027,,,,,Batches,Pallets,Cases', ',,,,,60,30,1080', ',,DECEMBER,,,JANUARY,,', ',,Mix M-F,Mix Sa,Mix Su,Mix M-F,Mix Sa,Mix Su', 'PLAN,Batch,80,40,20,60,20,20',
+      'December,,,,January,,,', 'Day,Mixes,Cases,Actual cs,Day,Mixes,Cases,Actual cs', '5,80,"1,440",,5,60,"1,080",', 'Total,80,"1,440",0,Total,60,"1,080",0', 'Forecast,"5,859","105,468","105,468",Forecast,863,"15,536","15,536"'].join('\r\n')
+    const rp = m.parsePlanner(real, 'real.csv')
+    eq('el planner real se lee: la tabla es la de "Day", y enero es del año siguiente', [rp.days['2026-12-05'], rp.days['2027-01-05'], rp.forecast], [{ mixes: 80, cases: 1440 }, { mixes: 60, cases: 1080 }, { '2026-12': 105468, '2027-01': 15536 }])
     eq('un planner de enero después de diciembre: enero es del año siguiente', Object.keys(m.parsePlanner(['Plan,December 2026 - January 2027', 'December,,,,January,,,', 'Day,Mixes,Cases,Actual cs,Day,Mixes,Cases,Actual cs', '1,80,"1,440",,1,60,"1,080",'].join('\n')).days), ['2026-12-01', '2027-01-01'])
     m.kpiPut('plan:0889', p)
     eq('el plan se guarda en el servidor aparte (act_kpi)', [m.outbox.items().find((i) => i.key === 'kpi:plan:0889')?.row.ref_table, !!m.costcoPlan(st())], ['act_kpi', true])

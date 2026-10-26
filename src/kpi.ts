@@ -48,8 +48,10 @@ export function csvCells(text: string): string[][] {
  */
 export function parsePlanner(text: string, file = ''): CostcoPlan | string {
   const rows = csvCells(text)
-  const head = rows.findIndex((r) => r.filter((c) => monthOf(c) >= 0).length >= 2)
-  if (head < 0 || !/^day$/i.test((rows[head + 1]?.[0] ?? '').trim())) return 'No se encontró la tabla de días (los meses y "Day, Mixes, Cases").'
+  // the months row right above "Day, Mixes, Cases" (the real planner has another months row higher up, over the
+  // batches by weekday: 2026-10-26)
+  const head = rows.findIndex((r, i) => r.filter((c) => monthOf(c) >= 0).length >= 2 && /^day$/i.test((rows[i + 1]?.[0] ?? '').trim()))
+  if (head < 0) return 'No se encontró la tabla de días (los meses y "Day, Mixes, Cases").'
   const blocks = rows[head].map((c, col) => ({ m: monthOf(c), col })).filter((b) => b.m >= 0)
   const years = rows.slice(0, head).join(' ').match(/\b20\d\d\b/g)
   let y = years ? Number(years[years.length - 1]) : new Date().getFullYear()
