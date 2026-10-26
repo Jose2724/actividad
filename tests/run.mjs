@@ -891,7 +891,7 @@ clock = T0
 section('Salir pide confirmación')
 calc.use((m) => {
   const ask = (state, pending, online = true) => m.leaveAsk({ state, pending }, online)
-  eq('normal: pregunta, y dice que hay que volver a entrar', [ask('online', 0).title, /usuario y el PIN/.test(ask('online', 0).text), ask('online', 0).yes, ask('online', 0).danger], ['¿Salir de Actividad?', true, 'Salir', false])
+  eq('normal: pregunta, y dice que hay que volver a entrar', [ask('online', 0).title, /usuario y el PIN/.test(ask('online', 0).text), ask('online', 0).yes, ask('online', 0).danger], ['¿Salir de E.R. - Ops Summary?', true, 'Salir', false])
   eq('con registros sin subir: dice cuántos y que espere', [ask('online', 3).title, /Hay 3 registros que no han llegado/.test(ask('online', 3).text), /Sincronizado/.test(ask('online', 3).text), ask('online', 3).yes, ask('online', 3).danger], ['Todavía hay registros sin subir', true, true, 'Salir de todos modos', true])
   eq('uno solo, en singular', /Hay 1 registro que no ha llegado/.test(ask('online', 1).text), true)
   eq('sin señal y con registros: que no salga hasta que vuelva', [/no hay señal/.test(ask('offline', 2).text), /No salgas/.test(ask('offline', 2).text), ask('offline', 2).danger], [true, true, true])

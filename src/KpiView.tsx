@@ -91,7 +91,7 @@ export function KpiView({ s, now, today, admin }: { s: State; now: number; today
 
       <article className="kpi-sec">
         <h3>{tr('3 · Productividad laboral')}</h3>
-        <p className="hint">{tr('Programados = las personas esperadas de cada cuarto; vinieron, los temporales y las horas salen de la Asistencia que anotan los supervisores; la producción, de Actividad.')}</p>
+        <p className="hint">{tr('Programados = las personas esperadas de cada cuarto; vinieron, los temporales y las horas salen de la Asistencia que anotan los supervisores; la producción, de E.R. - Ops Summary.')}</p>
         {!s.attView.on && <p className="hint amber">{tr('La Asistencia todavía solo la ves tú: para que los supervisores anoten a su gente, préndela para todos en Ajustes › Asistencia.')}</p>}
         <div className="scroll"><table className="kpi-tbl">
           <thead><tr><th>{tr('Cuarto')}</th><th className="n">{tr('Programados')}</th><th className="n">{tr('Vinieron')}</th><th className="n">{tr('Temporales')}</th><th className="n">{tr('Horas-persona')}</th><th className="n">{tr('Producción')}</th><th className="n">{tr('Por hora-persona')}</th></tr></thead>
@@ -105,7 +105,7 @@ export function KpiView({ s, now, today, admin }: { s: State; now: number; today
 
       <article className="kpi-sec">
         <h3>{tr('4 · Costco MVM tracker ({0})', COSTCO_CODE)}</h3>
-        <p className="hint">{tr('Lo planeado sale del planner de Yasbelth; lo hecho, de Actividad: las mezclas de Spiral y las cajas de Packing del {0}. Nadie tiene que escribirlo.', COSTCO_CODE)}</p>
+        <p className="hint">{tr('Lo planeado sale del planner de Yasbelth; lo hecho, de E.R. - Ops Summary: las mezclas de Spiral y las cajas de Packing del {0}. Nadie tiene que escribirlo.', COSTCO_CODE)}</p>
         <PlanLoader s={s} ro={viewOnly} />
         {plan && (
           <>

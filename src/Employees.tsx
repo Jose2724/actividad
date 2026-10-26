@@ -77,7 +77,7 @@ export function Employees({ meId, admin }: { meId: string; admin: boolean }) {
     const yesNo = (b: boolean) => (b ? tr('sí') : tr('no'))
     const powerText = (e: Emp) => (!e.act_role || e.act_role === 'viewer' ? '' : e.act_powers == null ? tr('los de su rol') : (cleanPowers(e.act_powers) ?? []).map((k) => POWERS.find((p) => p.key === k)?.label ?? k).join(', '))
     const rows = [
-      [tr('Nombre'), tr('Usuario'), tr('Rol en Actividad'), tr('Departamento'), tr('Turno'), tr('Poderes'), tr('Activa'), tr('Rol en Freezer RTE')],
+      [tr('Nombre'), tr('Usuario'), tr('Rol en E.R. - Ops Summary'), tr('Departamento'), tr('Turno'), tr('Poderes'), tr('Activa'), tr('Rol en Freezer RTE')],
       ...shown.map((e) => [e.name, e.username ?? '', e.act_role ? ROLE[e.act_role] ?? e.act_role : tr('Sin acceso'), e.act_role === 'op' ? e.act_dept ?? '' : '', e.act_shift === 1 || e.act_shift === 2 ? tr('Turno {0}', e.act_shift) : '', powerText(e), yesNo(e.active), e.role === 'admin' ? tr('admin') : e.role === 'worker' ? tr('trabajador') : tr('pide carros')]),
     ]
     const bytes = await xlsxBytes([{ name: tr('Empleados'), rows }])
@@ -105,8 +105,8 @@ export function Employees({ meId, admin }: { meId: string; admin: boolean }) {
       {msg && <p className="err">{msg}</p>}
       <details className="how">
         <summary>{tr('¿Qué puede hacer cada rol?')}</summary>
-        <p>{trx('Los mismos usuarios y PIN que Freezer RTE. {0} solo ve su departamento; {1} ve todo y corrige; {2} ve todo y lleva productos y programa; {3} ve todo, también Avance y el Reporte, y no puede tocar nada. Sin rol = no entra a Actividad.', <b>{tr('Operador')}</b>, <b>{tr('Manager')}</b>, <b>{tr('Oficina')}</b>, <b>{tr('Solo ver')}</b>)}</p>
-        <p>{tr('Las cuentas de manager y de Oficina solo las crea y las cambia el dueño. A una cuenta de trabajador de Freezer RTE aquí se le dan su rol de Actividad, sus poderes y su turno: su PIN, su nombre y activarla los cambia el dueño. Cada quien da solo los poderes que tiene.')}</p>
+        <p>{trx('Los mismos usuarios y PIN que Freezer RTE. {0} solo ve su departamento; {1} ve todo y corrige; {2} ve todo y lleva productos y programa; {3} ve todo, también Avance y el Reporte, y no puede tocar nada. Sin rol = no entra a E.R. - Ops Summary.', <b>{tr('Operador')}</b>, <b>{tr('Manager')}</b>, <b>{tr('Oficina')}</b>, <b>{tr('Solo ver')}</b>)}</p>
+        <p>{tr('Las cuentas de manager y de Oficina solo las crea y las cambia el dueño. A una cuenta de trabajador de Freezer RTE aquí se le dan su rol de E.R. - Ops Summary, sus poderes y su turno: su PIN, su nombre y activarla los cambia el dueño. Cada quien da solo los poderes que tiene.')}</p>
       </details>
       {list !== null && shown.length === 0 && <p className="hint">{all.length ? tr('Nadie con esa búsqueda.') : tr('No hay usuarios todavía.')}</p>}
       <div className="emplist">
@@ -211,7 +211,7 @@ function EditUserDialog({ emp, can, busy, hasPowers, call, onPowers, onClose, on
             <label>{tr('Rol')}{' '}<select value={role} disabled={!can.role} onChange={(e) => setRole(e.target.value)}><option value="">{tr('Sin acceso')}</option>{roles.map((r) => <option key={r} value={r}>{ROLE[r]}</option>)}</select></label>
             {role === 'op' && <label>{tr('Departamento')}{' '}<select value={dept} disabled={!can.role} onChange={(e) => setDept(e.target.value)}>{DEPTS.map((d) => <option key={d} value={d}>{d}</option>)}</select></label>}
           </div>
-          {!can.edit && <p className="hint">{tr('Es una cuenta de Freezer RTE: aquí se le dan o se le cambian el rol de Actividad, los poderes y el turno. Su PIN, su nombre y activarla los cambia el dueño.')}</p>}
+          {!can.edit && <p className="hint">{tr('Es una cuenta de Freezer RTE: aquí se le dan o se le cambian el rol de E.R. - Ops Summary, los poderes y el turno. Su PIN, su nombre y activarla los cambia el dueño.')}</p>}
           {userChanged && <p className="hint">{trx('Desde ahora entra con el usuario {0}, aquí y en Freezer RTE. Avísale.', <b>{username.trim().toLowerCase()}</b>)}</p>}
           {pinTyped && <p className="hint">{tr('Con el PIN nuevo entra la próxima vez; donde ya está dentro, sigue dentro.')}</p>}
           {err && <p className="err">{err}</p>}
@@ -226,7 +226,7 @@ function EditUserDialog({ emp, can, busy, hasPowers, call, onPowers, onClose, on
             </div>
           </div>
         </form>
-        {toggle && <ConfirmDialog title={(emp.active ? tr('¿Desactivar a') + ' ' : tr('¿Activar a') + ' ') + emp.name + '?'} text={emp.active ? tr('No podrá entrar a Actividad ni a Freezer RTE hasta que se active de nuevo.') : tr('Podrá entrar otra vez con su PIN.')} yes={emp.active ? tr('Desactivar') : tr('Activar')} danger={emp.active}
+        {toggle && <ConfirmDialog title={(emp.active ? tr('¿Desactivar a') + ' ' : tr('¿Activar a') + ' ') + emp.name + '?'} text={emp.active ? tr('No podrá entrar a E.R. - Ops Summary ni a Freezer RTE hasta que se active de nuevo.') : tr('Podrá entrar otra vez con su PIN.')} yes={emp.active ? tr('Desactivar') : tr('Activar')} danger={emp.active}
           onYes={() => { setToggle(false); void call({ action: 'set_active', id: emp.id, active: !emp.active }).then((e) => (e ? setErr(e) : onDone())) }} onNo={() => setToggle(false)} />}
       </div>
     </div>

@@ -13,10 +13,12 @@ const buildIdOf = (html: string) => createHash('sha1').update([...html.matchAll(
  * browser tab, and their own colour for the bar at the top of the installed app. The manifest keeps one address
  * (manifest.webmanifest) so the apps already installed pick the change up.
  */
+// the app's name (the boss, 2026-10-26: 'Change the name "Actividad" E.R. - Ops Summary'); the demo adds DEMO
+const NAME = 'E.R. - Ops Summary'
 function flavor(demo: boolean): Plugin {
   const f = demo
-    ? { key: 'demo', name: 'Actividad DEMO', short: 'Activ. DEMO', theme: '#c2410c' }
-    : { key: 'live', name: 'Actividad', short: 'Actividad', theme: '#581447' }
+    ? { key: 'demo', name: NAME + ' DEMO', short: 'Ops Sum. DEMO', theme: '#c2410c' }
+    : { key: 'live', name: NAME, short: 'Ops Summary', theme: '#581447' }
   const manifest = () => JSON.stringify({
     name: f.name, short_name: f.short,
     description: 'Actividad de producción por departamento: líneas, códigos, paros y avance del día' + (demo ? ' (demo: los datos se quedan en este aparato)' : ''),

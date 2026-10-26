@@ -533,7 +533,7 @@ export function Report(props: ReportProps) {
         </div>
       </div>
       {picking && <PartsDialog k={k} mode={picking} onClose={() => setPicking(null)} onGo={(parts) => { const m = picking; setPicking(null); if (m === 'xlsx') void excel(parts); else if (m === 'pdf') void pdf(parts); else void send(parts) }} />}
-      {sending && <SendDialog files={sending} subject={tr('Actividad · Reporte {0}', date) + (dept ? ' · ' + dept : '') + filterTitle(rep.code, rep.lot, rep.shift, lineChosen)} onClose={() => setSending(null)} />}
+      {sending && <SendDialog files={sending} subject={tr('E.R. - Ops Summary · Reporte {0}', date) + (dept ? ' · ' + dept : '') + filterTitle(rep.code, rep.lot, rep.shift, lineChosen)} onClose={() => setSending(null)} />}
       {/* what to look at: the search first, then the day, the shift, the room, the line, the code and the lot. They add up.
           (On a phone the captions marked rf-cap are left out: the box, the date and the rooms already say what they are) */}
       <div className="rp-filters">

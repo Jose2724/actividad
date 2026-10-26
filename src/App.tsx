@@ -37,6 +37,9 @@ import { appUrl, qrPath } from './qr'
 import { lang, locale, saveLang, tr } from './i18n'
 import { trx } from './trx'
 
+/** the app's name on every screen (the boss, 2026-10-26: "E.R. - Ops Summary"); the tab "Actividad" keeps its own word */
+export const APP = 'E.R. - Ops Summary'
+
 /** a clock that ticks every second, so every timer on screen moves */
 function useNow() {
   const [n, setN] = useState(clockNow())
@@ -78,7 +81,7 @@ function QrDialog({ onClose }: { onClose: () => void }) {
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg qrdlg" onClick={(e) => e.stopPropagation()}>
-        <h3>{supabase ? tr('Abrir Actividad en otro aparato') : tr('Abrir el DEMO en otro aparato')}</h3>
+        <h3>{supabase ? tr('Abrir E.R. - Ops Summary en otro aparato') : tr('Abrir el DEMO en otro aparato')}</h3>
         <p>{tr('Apunta la cámara del otro teléfono o tablet a este código y toca el enlace que sale.')}</p>
         <div className="qrbox">{qr ? <svg viewBox={'0 0 ' + qr.size + ' ' + qr.size} shapeRendering="crispEdges" role="img" aria-label={tr('Código QR de {0}', url)}><rect width={qr.size} height={qr.size} fill="#fff" /><path d={qr.d} fill="#000" /></svg> : <span>…</span>}</div>
         <code className="qrurl">{url}</code>
@@ -305,11 +308,11 @@ function ServerApp() {
   const out = async () => { leaving.current = true; rememberMe(null); user.set(''); confirmed.current = 0; setErr(''); setMe(null); await signOutHere() }
   /** the PIN was accepted: the server is asked who that is */
   const entered = async () => { leaving.current = false; return verify() }
-  if (me === 'loading') return <div className="gate"><LangSwitch /><h1>Actividad</h1><p>{tr('Entrando…')}</p></div>
+  if (me === 'loading') return <div className="gate"><LangSwitch /><h1>{APP}</h1><p>{tr('Entrando…')}</p></div>
   if (me === null) return <LoginGate error={err} onDone={entered} />
   if (me === 'none') return <NoRole onOut={out} onRetry={verify} />
   const home = isDept(me.dept) ? me.dept : DEPTS[0]
-  if (me.role === 'op' && !isDept(me.dept)) return <NoRole onOut={out} onRetry={verify} text={tr('Tu usuario está en Actividad pero sin departamento. Pide al manager que te asigne uno.')} />
+  if (me.role === 'op' && !isDept(me.dept)) return <NoRole onOut={out} onRetry={verify} text={tr('Tu usuario está en E.R. - Ops Summary pero sin departamento. Pide al manager que te asigne uno.')} />
   return <WhoCtx.Provider value={{ role: me.role, admin: !!me.admin, powers: me.powers ?? null, shift: me.shift ?? 0, dept: me.dept }}><Main name={me.name} home={home} mgr={me.role !== 'op'} admin={!!me.admin} wholeDay={!!me.admin || me.role === 'office' || me.role === 'viewer'} meId={me.id} onLogout={() => void out()} /></WhoCtx.Provider>
 }
 
@@ -372,7 +375,7 @@ function LoginGate({ error, onDone }: { error: string; onDone: () => Promise<Me 
   const mail = u.includes('@')
   return (
     <div className="gate"><LangSwitch />
-      <h1>Actividad</h1>
+      <h1>{APP}</h1>
       <p>{tr('Entra con tu usuario y PIN (los mismos de Freezer RTE).')}</p>
       <form onSubmit={(e) => { e.preventDefault(); if (!busy) void go() }}>
         <input ref={userBox} autoFocus={!known} name="username" id="act-user" placeholder={tr('Usuario (o tu correo)')} autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="username" value={u} onChange={(e) => setU(e.target.value)} />
@@ -390,8 +393,8 @@ function LoginGate({ error, onDone }: { error: string; onDone: () => Promise<Me 
 function NoRole({ onOut, onRetry, text }: { onOut: () => void; onRetry: () => void; text?: string }) {
   return (
     <div className="gate"><LangSwitch />
-      <h1>Actividad</h1>
-      <p>{text ?? tr('Tu usuario existe, pero todavía no tiene acceso a Actividad. Pide al manager que te lo active.')}</p>
+      <h1>{APP}</h1>
+      <p>{text ?? tr('Tu usuario existe, pero todavía no tiene acceso a E.R. - Ops Summary. Pide al manager que te lo active.')}</p>
       <div className="btns"><button type="button" className="btn" onClick={onRetry}>{tr('Reintentar')}</button><button type="button" className="lnk" onClick={onOut}>{tr('Cerrar sesión')}</button></div>
     </div>
   )
@@ -437,7 +440,7 @@ function Gate({ dept, mgr, onDept, onManager, onName, onBack }: { dept: Dept | n
   if (!dept && !mgr) {
     return (
       <div className="gate"><LangSwitch />
-        <h1>Actividad<span className="demotag">DEMO</span></h1>
+        <h1>{APP}<span className="demotag">DEMO</span></h1>
         <p>{tr('¿De qué departamento eres?')}</p>
         <div className="pick">{DEPTS.map((d) => <button key={d} type="button" className="btn" onClick={() => onDept(d)}>{d}</button>)}</div>
         <QrLink label={tr('Abrir el demo en otro aparato (código QR)')} />
@@ -454,7 +457,7 @@ function Gate({ dept, mgr, onDept, onManager, onName, onBack }: { dept: Dept | n
   }
   return (
     <div className="gate"><LangSwitch />
-      <h1>Actividad<span className="demotag">DEMO</span></h1>
+      <h1>{APP}<span className="demotag">DEMO</span></h1>
       <p>{trx('{0} · Ahora escribe tu nombre. Todo lo que registres lleva tu nombre.', <b>{mgr ? tr('Manager') : dept}</b>)}</p>
       <form onSubmit={(e) => { e.preventDefault(); if (v.trim()) onName(v.trim()) }}>
         <input autoFocus placeholder={tr('Tu nombre')} value={v} onChange={(e) => setV(e.target.value)} />
@@ -562,7 +565,7 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
       {full && <div className="fullbar">{trx('⚠ La memoria de este aparato está llena y lo nuevo no se está guardando aquí. {0}', supabase ? tr('Lo que ya subió al servidor está a salvo. Avisa al manager y no cierres la app hasta que diga "Sincronizado".') : tr('Manda el reporte del día y avisa al manager antes de cerrar la app: hay que hacer espacio con "Reiniciar registros".'))}</div>}
       {stale && <div className="stalebar top"><span>{sync.lastSync ? trx('⚠ Este aparato muestra lo de las {0}: lleva {1} sin bajar del servidor ({2}). Si en otra tablet cambió algo, aquí todavía no se ve.', fmtTime(sync.lastSync), agoText(staleMs), why) : trx('⚠ Este aparato no ha bajado nada del servidor todavía ({0}).', why)}</span><button type="button" className="btn sm" onClick={() => window.dispatchEvent(new Event('act-resync'))}>{tr('Reintentar')}</button></div>}
       <header className="top">
-        <div className="brand"><img className="logo" src={import.meta.env.BASE_URL + 'mamas-logo.png'} alt="Mama's Creations" /><div><h1>Actividad{!supabase && <span className="demotag">DEMO</span>}</h1><small>{new Date(now).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })} · <b className="livetime" title={supabase ? tr('La hora de la app: la del servidor, la misma en todos los aparatos') : ''}>{new Date(now).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' })}</b>{BUILD && BUILD !== 'dev' && <span className="buildtag" title={tr('La versión de la app en este aparato')}>v {BUILD.slice(0, 6)}</span>}</small></div></div>
+        <div className="brand"><img className="logo" src={import.meta.env.BASE_URL + 'mamas-logo.png'} alt="Mama's Creations" /><div><h1>{APP}{!supabase && <span className="demotag">DEMO</span>}</h1><small>{new Date(now).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })} · <b className="livetime" title={supabase ? tr('La hora de la app: la del servidor, la misma en todos los aparatos') : ''}>{new Date(now).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' })}</b>{BUILD && BUILD !== 'dev' && <span className="buildtag" title={tr('La versión de la app en este aparato')}>v {BUILD.slice(0, 6)}</span>}</small></div></div>
         <nav className={'tabs' + (can('products') || viewOnly ? ' five' : '')}>
           <button type="button" className={tab === 'act' ? 'on' : ''} onClick={() => setTab('act')}>{tr('Actividad')}</button>
           {seesProgram && <button type="button" className={tab === 'pt' ? 'on' : ''} title={tr('Programa del día')} onClick={() => setTab('pt')}>{tr('Programa')}{!s.programView.on && <small className="pt-only"> 🔒</small>}</button>}

@@ -33,7 +33,7 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
   const teal: [number, number, number] = [88, 20, 71] // Mama's Creations' purple (2026-10-23)
   const indigo: [number, number, number] = [67, 56, 202] // the colour of the bin cards
   doc.setFont('helvetica', 'bold'); doc.setFontSize(18); doc.setTextColor(22, 32, 42)
-  doc.text(tr('Actividad · Reporte del día') + (only ? ' · ' + only : '') + filterTitle(rep.code, rep.lot, rep.shift, rep.line ? rep.lineChoices.find((l) => l.id === rep.line)?.name ?? '' : ''), 40, 42)
+  doc.text(tr('E.R. - Ops Summary · Reporte del día') + (only ? ' · ' + only : '') + filterTitle(rep.code, rep.lot, rep.shift, rep.line ? rep.lineChoices.find((l) => l.id === rep.line)?.name ?? '' : ''), 40, 42)
   doc.setFont('helvetica', 'normal'); doc.setFontSize(11); doc.setTextColor(91, 107, 122)
   doc.text(tr('{0}   ·   {1}{2} en {3}{4}   ·   trabajando {5}   ·   parado {6}{7}   ({8}', fmtDate(date), rep.distinct, (rep.distinct === 1 ? ' ' + tr('código') : ' ' + tr('códigos')), rows.length, (rows.length === 1 ? ' ' + tr('corrida') : ' ' + tr('corridas')), fmtDur(working), fmtDur(down), (rep.setup ? '   ' + tr('·   set up {0}', fmtDur(rep.setup)) : ''), (rep.lines === 1 ? tr('una línea') : tr('suma de {0} líneas', rep.lines))) + ')', 40, 62)
   doc.text(rep.plan.only ? tr('Turno {0}   ·   el único del día', rep.plan.only) : tr('Turno 1: {0}   ·   Turno 2: {1}', shiftHours(rep.plan, 1), shiftHours(rep.plan, 2)), 40, 78)
