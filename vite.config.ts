@@ -16,7 +16,7 @@ const buildIdOf = (html: string) => createHash('sha1').update([...html.matchAll(
 function flavor(demo: boolean): Plugin {
   const f = demo
     ? { key: 'demo', name: 'Actividad DEMO', short: 'Activ. DEMO', theme: '#c2410c' }
-    : { key: 'live', name: 'Actividad', short: 'Actividad', theme: '#0f766e' }
+    : { key: 'live', name: 'Actividad', short: 'Actividad', theme: '#581447' }
   const manifest = () => JSON.stringify({
     name: f.name, short_name: f.short,
     description: 'Actividad de producción por departamento: líneas, códigos, paros y avance del día' + (demo ? ' (demo: los datos se quedan en este aparato)' : ''),
