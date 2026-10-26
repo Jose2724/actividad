@@ -5032,6 +5032,10 @@ section('Reporte KPI del día: el plan de Costco del planner, lo real del 0889 y
     eq('el planner se lee: cada día con sus mezclas y cajas, el año del título, 18 cajas por mezcla, y el forecast de cada mes', [Object.keys(p.days).length, p.days['2026-10-10'], p.days['2026-11-30'], p.days['2026-11-26'], p.perMix, p.forecast], [31 + 29, { mixes: 100, cases: 1800 }, { mixes: 60, cases: 1080 }, undefined, 18, { '2026-10': 25356, '2026-11': 31545 }])
     eq('lo real escrito a mano en el planner no se lee (lo tiene Actividad)', JSON.stringify(p).includes('1679'), false)
     eq('un archivo que no es el planner se dice', typeof m.parsePlanner('a,b\n1,2'), 'string')
+    // QA's target sheet (2026-10-26): every code starts with its target; a manager's own still wins
+    eq('sin objetivo escrito, el de la hoja de QA: 0889 48 oz por pouch y 18.8 oz por 8 bolas; un código que no está, nada', [m.weightTarget(st(), '0889'), m.weightTarget(st(), '0889', 'ball'), m.weightTarget(st(), '7053', 'ball'), m.weightTarget(st(), '9999')], [{ pouch: 48, tol: 1 }, { pouch: 18.8, tol: 0.4 }, null, null])
+    m.setWeightTarget('0889', 47.5, 0.5)
+    eq('el objetivo que pone un manager manda sobre el de la hoja', m.weightTarget(st(), '0889'), { pouch: 47.5, tol: 0.5 })
     // the real planner (2026-10-26): a months row over the batches by weekday above the table, and a title across two years
     const real = ['Costco MVM Planner,,,,,Case,Trays', 'East Rutherford,,,,,1,8', 'November 2026 - January 2027,,,,,Batches,Pallets,Cases', ',,,,,60,30,1080', ',,DECEMBER,,,JANUARY,,', ',,Mix M-F,Mix Sa,Mix Su,Mix M-F,Mix Sa,Mix Su', 'PLAN,Batch,80,40,20,60,20,20',
       'December,,,,January,,,', 'Day,Mixes,Cases,Actual cs,Day,Mixes,Cases,Actual cs', '5,80,"1,440",,5,60,"1,080",', 'Total,80,"1,440",0,Total,60,"1,080",0', 'Forecast,"5,859","105,468","105,468",Forecast,863,"15,536","15,536"'].join('\r\n')
@@ -5092,7 +5096,7 @@ section('Pesos en RTE: el operador escribe el peso de cada pouch, se guarda al m
     eq('el primer peso ya se guarda y sube al servidor, aparte (act_weights), con su cuarto, línea, código y lote', [st().weights.length, up?.row.ref_table, up?.row.dept, JSON.parse(up?.row.after ?? '{}').entries, JSON.parse(up?.row.after ?? '{}').lot, st().changes.some((c) => c.refTable === 'act_weights')], [1, 'act_weights', 'RTE', [{ w: 3.04 }], '6292', false])
     m.weightSave(t, [{ w: 3.04 }, { w: 3.24 }, { w: 2.95 }, { w: 3.01 }])
     eq('cada peso que sigue escribe la misma prueba otra vez (no una nueva)', [st().weights.length, m.wtWeights(st().weights[0])], [1, [3.04, 3.24, 2.95, 3.01]])
-    eq('sin objetivo no dice bajo ni sobre', m.weightClass(3.24, m.weightTarget(st(), '0889')), '')
+    eq('sin objetivo no dice bajo ni sobre', m.weightClass(3.24, m.weightTarget(st(), '9999')), '')
     m.setWeightTarget('0889', 3.01, 0.05)
     const tg = m.weightTarget(st(), '889')
     eq('con el objetivo 3.01 ± 0.05: 2.95 es bajo, 3.04 bien, 3.24 sobre; y vale para 889 y 0889', [tg, [2.95, 3.04, 3.24, 2.96, 3.06].map((w) => m.weightClass(w, tg))], [{ pouch: 3.01, tol: 0.05 }, ['bajo', 'ok', 'sobre', 'ok', 'ok']])

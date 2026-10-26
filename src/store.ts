@@ -1211,8 +1211,29 @@ export const weightTestsOf = (s: State, date: string, code = '') => (s.weights ?
 /** a code's target: the finished pouch's weight and how much it may be off (oz), set by a manager or the office (one saved in pounds, before the change to ounces, reads ×16) */
 export type WeightTarget = { pouch: number; tol: number }
 const targetKey = (code: string, kind: WeightTest['kind']) => 'target:' + (kind === 'ball' ? 'ball:' : '') + normCode(code)
+/**
+ * QA's "Meatballs / Meatloaf target specifications" sheet (Jose, 2026-10-26), the target every code starts with until
+ * a manager sets one with "Objetivo": pouch = oz per bag (the sheet gives no tolerance for the bag: 1 oz until QA says);
+ * ball = 8 cooked meatballs (Spiral weighs them cooked), the sheet's after-cooking range × 8. 3477 is left out (its bag
+ * weight on the sheet reads oddly against its case weight) and the meatloaf codes have no ball target.
+ */
+const QA_TARGETS: Record<string, Partial<Record<WeightTest['kind'], WeightTarget>>> = {
+  '0889': { pouch: { pouch: 48, tol: 1 }, ball: { pouch: 18.8, tol: 0.4 } },
+  '4139': { pouch: { pouch: 72, tol: 1 }, ball: { pouch: 18.8, tol: 0.4 } },
+  '2562': { pouch: { pouch: 72, tol: 1 }, ball: { pouch: 17.6, tol: 0.4 } },
+  '5000': { pouch: { pouch: 24, tol: 1 }, ball: { pouch: 16, tol: 0.4 } },
+  '4911': { pouch: { pouch: 16, tol: 1 }, ball: { pouch: 8.4, tol: 0.4 } },
+  '4917': { pouch: { pouch: 16, tol: 1 }, ball: { pouch: 8.4, tol: 0.4 } },
+  '4914': { pouch: { pouch: 16, tol: 1 }, ball: { pouch: 8.4, tol: 0.4 } },
+  '8441': { pouch: { pouch: 72, tol: 1 }, ball: { pouch: 8.4, tol: 0.4 } },
+  '3187': { pouch: { pouch: 72, tol: 1 }, ball: { pouch: 8.4, tol: 0.4 } },
+  '4955': { pouch: { pouch: 16, tol: 1 }, ball: { pouch: 8.4, tol: 0.4 } },
+  '7053': { pouch: { pouch: 16, tol: 1 } },
+  '7130': { pouch: { pouch: 16, tol: 1 } },
+}
 export function weightTarget(s: State, code: string, kind: WeightTest['kind'] = 'pouch'): WeightTarget | null {
   const d = kpiGet(s, targetKey(code, kind))?.data
+  if (!d) return QA_TARGETS[code.trim().toUpperCase()]?.[kind] ?? null
   const per = d?.unit === 'oz' ? 1 : 16, pouch = Number(d?.pouch) * per, tol = Number(d?.tol) * per
   return pouch > 0 ? { pouch: Math.round(pouch * 1000) / 1000, tol: tol >= 0 ? Math.round(tol * 1000) / 1000 : 0 } : null
 }
