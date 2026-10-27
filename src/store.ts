@@ -2218,6 +2218,17 @@ export function orderRunsOf(s: State, id: string): Run[] {
 export const orderMade = (s: State, id: string) => orderRunsOf(s, id).reduce((t, r) => t + r.units.filter((u) => u.po === id).reduce((a, u) => a + unitQty(s, r, u), 0), 0)
 /** the product codes typed in one box, for a PO that covers several: "0100, 0200 0300" gives three (each one once) */
 export const orderCodes = (text: string) => [...new Set(text.split(/[\s,;]+/).map((c) => c.trim().toUpperCase()).filter(Boolean))]
+/** a PO number as it is compared: case, spaces and dashes aside */
+export const poKey = (po: string) => po.trim().toUpperCase().replace(/[\s-]/g, '')
+/**
+ * The orders (open or complete) that already carry a PO number, other than the one being written (the office via Jose,
+ * 2026-10-27: the second shift's clerk writes the orders again without noticing they are in; the form warns, it does
+ * not forbid). `code` narrows them to the ones with that product
+ */
+export function poMates(s: State, po: string, exceptId = '', code = ''): Order[] {
+  const k = poKey(po), c = code ? normCode(code) : ''
+  return k ? s.orders.filter((o) => o.id !== exceptId && poKey(o.po) === k && (!c || normCode(o.code) === c)) : []
+}
 /**
  * writes an order, or changes one (its PO number can come later). '' when it has no product code. The same PO number
  * can be on as many orders as the office wants (one per product, or the same product again): it is theirs to say.

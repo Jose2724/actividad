@@ -5149,6 +5149,20 @@ section('MFO: el roaster va en bags de libras, y la línea dice Bag en vez de bi
   const back = await device('mfo-bags-again', { seed: JSON.parse(disks.get('mfo-bags').get('act_v1')), user: 'Operador MFO' })
   eq('al volver a abrir: sigue siendo bag', back.use((m) => m.cfgOf(m.store.get().runs.find((r) => r.code === 'ROASTER')).unit), 'Bag')
 }
+section('Un PO ya ingresado se avisa al escribirlo otra vez (la oficina, 2026-10-27: el del segundo turno vuelve a ingresar los pedidos sin darse cuenta)')
+{
+  const w1 = await device('po-warn', { user: 'Oficina' })
+  w1.use((m) => {
+    const st = () => m.store.get()
+    clock = T0
+    const first = m.saveOrder(null, { customer: 'BJ', po: '117972338', code: '2010', cases: 100, shipBy: '2026-10-28', dest: '' })
+    const other = m.saveOrder(null, { customer: 'BJ', po: '117972338', code: '1999', cases: 50, shipBy: '2026-10-28', dest: '' })
+    eq('los pedidos que ya llevan ese PO (escrito igual, con espacios o en minúsculas), y los de ese PO con ese código', [m.poMates(st(), '117972338').map((o) => o.code), m.poMates(st(), ' 1179 72338 ').length, m.poMates(st(), '117972338', '', '2010').map((o) => o.id), m.poMates(st(), '117972338', first, '2010').length, m.poMates(st(), '', '', '2010').length, m.poMates(st(), '999').length], [['2010', '1999'], 2, [first], 0, 0, 0])
+    m.closeOrder(first, true)
+    eq('uno completo sigue contando (para que no lo ingresen otra vez); y el aviso no impide guardar', [m.poMates(st(), '117972338', '', '2010').map((o) => o.closed), !!m.saveOrder(null, { customer: 'BJ', po: '117972338', code: '2010', cases: 100, shipBy: '', dest: '' })], [[true], true])
+    void other
+  })
+}
 section('Lo que un PO requería y lo que se hizo (la oficina, 2026-10-27: 150 cajas en pallets de 50 = 3 pallets; se hicieron 5 por los parciales)')
 {
   const rq = await device('po-required', { user: 'Ingrid' })

@@ -2593,4 +2593,8 @@ export const EN: Record<string, string> = {
   "Le faltan {0} cajas: van en su último pallet, con Corregir.": "It is {0} cases short: they go on its last pallet, with Correct.",
   "Es el pallet {0} de {1} del {2}, y al PO le faltan {3} cajas: después de este no se le podrá poner otro pallet. Si va corto, lo que falte se corrige en este (Corregir).": "It is pallet {0} of {1} of {2}, and the PO is {3} cases short: after this one no other pallet can go to it. If it goes short, what is missing is corrected on this one (Correct).",
   "Con este pallet el {0} ya tiene sus pallets ({1}). Ya no se le pueden poner más. Le faltan {2} cajas: van en este pallet, con Corregir.": "With this pallet {0} has all its pallets ({1}). No more can go to it. It is {2} cases short: they go on this pallet, with Correct.",
+  // a PO already in: the form warns (2026-10-27)
+  "⚠ Ese PO ya está ingresado con este código: {0}. No lo agregues otra vez; si es el mismo pedido, ciérralo y ábrelo con \"Editar\".": "⚠ That PO is already in with this code: {0}. Do not add it again; if it is the same order, close this and open it with \"Edit\".",
+  "Ese PO ya está ingresado con otro producto: {0}. Si es el mismo pedido con otro producto, sigue; si es el mismo producto, no lo agregues otra vez.": "That PO is already in with another product: {0}. If it is the same order with another product, go on; if it is the same product, do not add it again.",
+  "Agregarlo de todos modos": "Add it anyway",
 }

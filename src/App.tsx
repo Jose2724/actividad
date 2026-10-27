@@ -1,6 +1,6 @@
 import { Component, createContext, Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
-import { addLine, plantCut, roomMark, CUT_WINDOW, startSecondShift, addWaste, awayDay, batch, byPlanLot, planLot, cameFrom, carriedOver, dayAfter, dayBefore, orderUnitDefault, programOrderChoices, ordersOf, orderStatus, orderUnitWord, prevPending, workOrderOf, type WorkOrder, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, MFO_CHOICES, mfoChoiceOf, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, noteOf, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderAddRuns, orderOfId, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, PLAN_LOT_MAX, productOf, productsCsv, purgeDay, reasonText, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay, orderFull, orderFullText, orderNoteOf, setOrderNote, setOrderUrgent, roomMsgOf, setRoomMsg, programCap, programCapOf, holdsOpen } from './store'
+import { addLine, plantCut, roomMark, CUT_WINDOW, startSecondShift, addWaste, awayDay, batch, byPlanLot, planLot, cameFrom, carriedOver, dayAfter, dayBefore, orderUnitDefault, programOrderChoices, ordersOf, orderStatus, orderUnitWord, prevPending, workOrderOf, type WorkOrder, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, MFO_CHOICES, mfoChoiceOf, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, noteOf, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderAddRuns, orderOfId, poMates, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, PLAN_LOT_MAX, productOf, productsCsv, purgeDay, reasonText, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay, orderFull, orderFullText, orderNoteOf, setOrderNote, setOrderUrgent, roomMsgOf, setRoomMsg, programCap, programCapOf, holdsOpen } from './store'
 import { avanceLots, avanceRange, avanceRows, datesBetween, lotAcrossDays, lotRows, lotsKnown, mfoList, mfoText, mfoWord, n1, pending, type AvancePart, type AvanceRow, type MfoMade } from './avance'
 import { loadZip, type Cell } from './xlsx'
 
@@ -1591,8 +1591,15 @@ function OrderDialog({ s, order, onClose }: { s: State; order: Order | undefined
   const pallets = prod?.casesPerPallet && Number(cases) > 0 ? Number(cases) / prod.casesPerPallet : null
   // an order already written is of one product; a new one can be of several
   const ok = codes.length > 0 && !(order && many)
+  // this PO is already in (the office via Jose, 2026-10-27: the second shift's clerk writes the orders again without
+  // noticing): said, and when it is in with one of these products, saving asks once more. A warning, not a lock
+  const mates = poMates(s, po, order?.id), dup = codes.flatMap((c) => poMates(s, po, order?.id, c))
+  const [anyway, setAnyway] = useState(false)
+  useEffect(() => { setAnyway(false) }, [po, code])
+  const mateText = (o: Order) => o.code + (o.customer ? ' · ' + o.customer : '') + (o.cases != null ? ' · ' + trx('{0} cajas', fmtN(o.cases)) : '') + (o.shipBy ? ' · ' + trx('envío {0}', shipText(o.shipBy)) : '') + (o.closed ? ' · ' + tr('completo') : '')
   const save = () => {
     if (!ok) return
+    if (dup.length && !anyway) { setAnyway(true); return }
     const rest = { customer, po, shipBy, dest, urgent }
     if (order) saveOrder(order.id, { ...rest, code: codes[0], cases: Number(cases) > 0 ? Number(cases) : null })
     else for (const c of codes) saveOrder(null, { ...rest, code: c, cases: !many && Number(cases) > 0 ? Number(cases) : null })
@@ -1605,6 +1612,11 @@ function OrderDialog({ s, order, onClose }: { s: State; order: Order | undefined
         <p>{tr('Pon el PO y el producto. Packing lo ve al registrar cada pallet de ese código. Lo demás es opcional, y el PO también se puede dejar en blanco y ponerlo después. El mismo PO se puede repetir las veces que haga falta.')}</p>
         <form className="qform" onSubmit={(e) => { e.preventDefault(); save() }}>
           <label>{tr('N° de PO')}{' '}<input value={po} onChange={(e) => setPo(e.target.value)} placeholder={tr('ej. 4500012345')} autoComplete="off" /></label>
+          {dup.length > 0 ? (
+            <p className="hint red">{tr('⚠ Ese PO ya está ingresado con este código: {0}. No lo agregues otra vez; si es el mismo pedido, ciérralo y ábrelo con "Editar".', dup.map(mateText).join(' / '))}</p>
+          ) : mates.length > 0 ? (
+            <p className="hint">{tr('Ese PO ya está ingresado con otro producto: {0}. Si es el mismo pedido con otro producto, sigue; si es el mismo producto, no lo agregues otra vez.', mates.map(mateText).join(' / '))}</p>
+          ) : null}
           <label>{trx('Código del producto {0}', !order && <small>{tr('(si el PO es de varios, sepáralos con coma)')}</small>)} <input value={code} onChange={(e) => setCode(e.target.value)} placeholder={order ? tr('ej. 0100') : tr('ej. 0100, 0200')} autoComplete="off" />{prod && <small> {prod.name}</small>}</label>
           {many && !order && <p className="hint">{trx('Se crean {0} pedidos con este PO, uno por producto: {1}. Las cajas de cada uno se ponen después, con "Editar".', codes.length, codes.join(', '))}</p>}
           {many && order && <span className="err">{tr('Este pedido es de un solo producto. Para otro producto, agrega otro pedido con el mismo PO.')}</span>}
@@ -1621,7 +1633,7 @@ function OrderDialog({ s, order, onClose }: { s: State; order: Order | undefined
             </div>
             <div className="btns">
               <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
-              <button type="submit" className="btn primary" disabled={!ok}>{tr('✓ Guardar')}</button>
+              <button type="submit" className={'btn ' + (anyway ? 'danger' : 'primary')} disabled={!ok}>{anyway ? tr('Agregarlo de todos modos') : tr('✓ Guardar')}</button>
             </div>
           </div>
         </form>
