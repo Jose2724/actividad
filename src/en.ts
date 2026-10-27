@@ -2592,4 +2592,5 @@ export const EN: Record<string, string> = {
   "ya tiene sus {0} pallets · faltan {1} cajas: van en su último pallet (Corregir)": "already has its {0} pallets · {1} cases missing: they go on its last pallet (Correct)",
   "Le faltan {0} cajas: van en su último pallet, con Corregir.": "It is {0} cases short: they go on its last pallet, with Correct.",
   "Es el pallet {0} de {1} del {2}, y al PO le faltan {3} cajas: después de este no se le podrá poner otro pallet. Si va corto, lo que falte se corrige en este (Corregir).": "It is pallet {0} of {1} of {2}, and the PO is {3} cases short: after this one no other pallet can go to it. If it goes short, what is missing is corrected on this one (Correct).",
+  "Con este pallet el {0} ya tiene sus pallets ({1}). Ya no se le pueden poner más. Le faltan {2} cajas: van en este pallet, con Corregir.": "With this pallet {0} has all its pallets ({1}). No more can go to it. It is {2} cases short: they go on this pallet, with Correct.",
 }
