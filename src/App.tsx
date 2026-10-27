@@ -1596,7 +1596,7 @@ function OrderDialog({ s, order, onClose }: { s: State; order: Order | undefined
   const mates = poMates(s, po, order?.id), dup = codes.flatMap((c) => poMates(s, po, order?.id, c))
   const [anyway, setAnyway] = useState(false)
   useEffect(() => { setAnyway(false) }, [po, code])
-  const mateText = (o: Order) => o.code + (o.customer ? ' · ' + o.customer : '') + (o.cases != null ? ' · ' + trx('{0} cajas', fmtN(o.cases)) : '') + (o.shipBy ? ' · ' + trx('envío {0}', shipText(o.shipBy)) : '') + (o.closed ? ' · ' + tr('completo') : '')
+  const mateText = (o: Order) => o.code + (o.customer ? ' · ' + o.customer : '') + (o.cases != null ? ' · ' + tr('{0} cajas', fmtN(o.cases)) : '') + (o.shipBy ? ' · ' + tr('envío {0}', shipText(o.shipBy)) : '') + (o.closed ? ' · ' + tr('completo') : '')
   const save = () => {
     if (!ok) return
     if (dup.length && !anyway) { setAnyway(true); return }
