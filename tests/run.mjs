@@ -5166,6 +5166,9 @@ section('Lo que un PO requería y lo que se hizo (la oficina, 2026-10-27: 150 ca
     // Productos says 8 to the pallet (wrong, as the office found it): the pallets made, of 50, win over it
     m.saveProduct(st().products.length, { code: '1999', name: 'X', pouchesPerCase: 8, casesPerMix: 14, cratesPerCart: 24, pouchesPerCrate: 0, casesPerPallet: 8, updatedAt: 0 })
     eq('con Productos en 8 por pallet (mal), los pallets hechos de 50 mandan: sigue requiriendo 3', [m.orderPallets(st(), oid).need, m.orderPallets(st(), oid).size], [3, 50])
+    // the live case (Jose, 2026-10-27): the runs had started with 8 to the pallet (Productos' then) and made pallets of 50: the 50 wins over the 8 kept in the run
+    const r8 = run(); m.applyRemote('act_runs', runRow({ ...r8, perUnit: 8, updatedAt: T0 + 2 * 3600_000 }))
+    eq('la corrida guardó 8 por pallet pero hizo pallets de 50: requiere 3, no 19', [st().runs.find((r) => r.id === r8.id)?.perUnit ?? st().orderRuns.find((r) => r.id === r8.id)?.perUnit, m.orderPallets(st(), oid).need], [8, 3])
   })
 }
 section('Los pallets de un PO salen de lo que llevan sus pallets, no solo de Productos (Packing, 2026-10-22: PO de 100 cajas, "2 pallets de 13")')

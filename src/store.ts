@@ -1545,11 +1545,12 @@ export function orderPallets(s: State, orderId: string, perPallet?: number | nul
   const o = s.orders.find((x) => x.id === orderId)
   const units = orderRunsOf(s, orderId).flatMap((r) => r.units.filter((u) => u.po === orderId)).sort((a, b) => a.at - b.at)
   const done = units.map((u) => u.at)
-  // the size of a pallet of this order: the line's, else the size its lines said when they made its pallets, else the
-  // biggest pallet made for it, else Productos' (Packing, 2026-10-22: PO 117953991 of 100 cases in pallets of 50 read
-  // "2 pallets de 13", from Productos' 8 cases per pallet)
+  // the size of a pallet of this order: the line's; else the biggest of what its runs said at start, the biggest pallet
+  // made for it, and Productos' — a pallet never holds more than its size, so the biggest seen is the real one
+  // (Packing, 2026-10-22: PO 117953991 of 100 cases in pallets of 50 read "2 pallets de 13", from Productos' 8; Jose,
+  // 2026-10-27: a PO of 150 in pallets of 50 read "de 19" because its runs had started with Productos' 8 kept in them)
   const runs = orderRunsOf(s, orderId).filter((r) => r.units.some((u) => u.po === orderId))
-  const size = perPallet || Math.max(0, ...runs.map((r) => r.perUnit ?? 0)) || Math.max(0, ...units.map((u) => u.qty ?? 0)) || productOf(s, o?.code ?? '')?.casesPerPallet || 0
+  const size = perPallet || Math.max(0, ...runs.map((r) => r.perUnit ?? 0), ...units.map((u) => u.qty ?? 0), productOf(s, o?.code ?? '')?.casesPerPallet ?? 0)
   const partial = size > 0 ? units.filter((u) => (u.qty ?? 0) < size).length : 0
   // what the order requires by its cases and that size: fixed, however many pallets end up made (the office, 2026-10-27:
   // "150 cajas deberían ser 3 paletas de 50; por los parciales son 5" — and Jose: a complete one read "4 de 4" when it
