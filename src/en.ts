@@ -2025,6 +2025,7 @@ export const EN: Record<string, string> = {
   "Esperados": "Scheduled",
   "Vinieron": "Actual",
   "% Falta": "% Miss",
+  "% Asist.": "% Attend",
   "Nombre o número de la persona": "Person's name or number",
   "+ Anotar": "+ Add",
   "{0} ya está anotado en este turno.": "{0} is already written down this shift.",

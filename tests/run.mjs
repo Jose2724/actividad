@@ -4983,7 +4983,7 @@ section('Asistencia: cada supervisor anota a su gente, saca a quien se va, y el 
     eq('sin cambiar nada, cada cuarto espera lo de la hoja de Santiago', m.DEPTS.map((d) => m.attExpectedOf(st(), d, 1)), [6, 18, 11, 10, 21])
     clock = T0 + 5 * M
     const ids = ['Juan Pérez', 'María', '105', 'Pedro'].map((n) => m.attAdd(D, 'Kitchen', 1, n))
-    eq('cuatro anotados en Kitchen turno 1: 4 de 6, faltan 2 (33%)', [ids.every(Boolean), m.attendanceOf(st(), D, 1, ['Kitchen']).rows[0]], [true, { dept: 'Kitchen', expected: 6, actual: 4, miss: 2, pct: 2 / 6, over: 0, gone: 0 }])
+    eq('cuatro anotados en Kitchen turno 1: 4 de 6, faltan 2 (33%)', [ids.every(Boolean), m.attendanceOf(st(), D, 1, ['Kitchen']).rows[0]], [true, { dept: 'Kitchen', expected: 6, actual: 4, miss: 2, pct: 2 / 6, att: 4 / 6, over: 0, gone: 0 }])
     eq('el mismo nombre otra vez (con otros espacios y acentos) no se anota dos veces', m.attAdd(D, 'Kitchen', 1, '  juan   perez '), '')
     const up = m.outbox.items().find((i) => i.table === 'act_changes' && i.key === 'att:' + ids[0])
     eq('cada persona sube a la historia del servidor, aparte (act_attendance), con su cuarto', [up?.row.dept, up?.row.ref_table, JSON.parse(up?.row.after ?? '{}').name, st().changes.some((c) => c.refTable === 'act_attendance')], ['Kitchen', 'act_attendance', 'Juan Pérez', false])
@@ -4999,6 +4999,7 @@ section('Asistencia: cada supervisor anota a su gente, saca a quien se va, y el 
     m.setAttExpected('Kitchen', 1, 5)
     const t = m.outbox.items().find((i) => i.table === 'act_targets' && i.key === 'opt:att:Kitchen:1')
     eq('el manager cambia los esperados de Kitchen turno 1 a 5: sube, queda en el historial, y el % se rehace (2 de 5: faltan 3, 60%)', [t?.row.per_hour, st().changes.some((c) => c.what.includes('personas esperadas') && c.before === '6' && c.after === '5'), m.attendanceOf(st(), D, 1, ['Kitchen']).rows[0].pct], [5, true, 0.6])
+    eq('y el % de asistencia es lo que vino sobre lo esperado (2 de 5 = 40%; sin esperados, 0)', [m.attendanceOf(st(), D, 1, ['Kitchen']).rows[0].att, m.attendanceOf(st(), D, 1, ['MFO']).rows[0].att], [0.4, 0])
     eq('los esperados no son la meta de nadie', [st().targets, st().turnGoals, st().lineTargets], [[], [], []])
     const tot = m.attendanceOf(st(), D, 1).total
     eq('el total de la planta en el turno 1: lo de cada cuarto sumado (María cuenta en RTE)', [tot.expected, tot.actual, tot.gone], [5 + 18 + 11 + 10 + 21, 3, 1])

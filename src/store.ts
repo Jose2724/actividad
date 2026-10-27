@@ -1358,17 +1358,18 @@ export const attShifts = (s: State, date: string): (1 | 2)[] => { const o = shif
  * Each room's attendance of a day, for one shift (or the day's shifts added up: 0), as Santiago's sheet: expected,
  * actual (written and not gone), missing and its share (never below 0; more people than expected is 0% and said apart)
  */
-export type AttRow = { dept: Dept; expected: number; actual: number; miss: number; pct: number; over: number; gone: number }
+/** pct = the share missing; att = the share that came (actual / expected, over 1 when more came than expected; Jose, 2026-10-27) */
+export type AttRow = { dept: Dept; expected: number; actual: number; miss: number; pct: number; att: number; over: number; gone: number }
 export function attendanceOf(s: State, date: string, shift: 0 | 1 | 2, rooms: Dept[] = DEPTS): { rows: AttRow[]; total: AttRow } {
   const shifts = shift ? [shift] : attShifts(s, date)
   const rows = rooms.map((dept) => {
     let expected = 0, actual = 0, gone = 0
     for (const k of shifts) { expected += attExpectedOf(s, dept, k); const l = attOf(s, date, dept, k); actual += l.filter((x) => !x.gone).length; gone += l.filter((x) => !!x.gone).length }
     const miss = Math.max(0, expected - actual)
-    return { dept, expected, actual, miss, pct: expected ? miss / expected : 0, over: Math.max(0, actual - expected), gone }
+    return { dept, expected, actual, miss, pct: expected ? miss / expected : 0, att: expected ? actual / expected : 0, over: Math.max(0, actual - expected), gone }
   })
   const e = rows.reduce((t, r) => t + r.expected, 0), a = rows.reduce((t, r) => t + r.actual, 0), m = rows.reduce((t, r) => t + r.miss, 0)
-  return { rows, total: { dept: 'Kitchen', expected: e, actual: a, miss: m, pct: e ? m / e : 0, over: rows.reduce((t, r) => t + r.over, 0), gone: rows.reduce((t, r) => t + r.gone, 0) } }
+  return { rows, total: { dept: 'Kitchen', expected: e, actual: a, miss: m, pct: e ? m / e : 0, att: e ? a / e : 0, over: rows.reduce((t, r) => t + r.over, 0), gone: rows.reduce((t, r) => t + r.gone, 0) } }
 }
 /**
  * Attendance for everybody (Jose, 2026-10-21: "que la parte de attendance esté oculta por ahora, y que yo pueda

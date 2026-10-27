@@ -98,10 +98,10 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
     doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(22, 32, 42)
     doc.text(tr('Asistencia') + (rep.shift ? ' · ' + tr('Turno {0}', rep.shift) : ''), 40, top + 6)
     autoTable(doc, {
-      startY: top + 14, theme: 'grid', styles: { font: 'helvetica', fontSize: 10, cellPadding: 5, textColor: [22, 32, 42] }, headStyles: { fillColor: teal, textColor: 255, fontStyle: 'bold' }, tableWidth: 420,
-      head: [[tr('Cuarto'), tr('Esperados'), tr('Vinieron'), tr('% Falta'), tr('Faltan')]],
-      body: a.rows.map((r) => [r.dept, String(r.expected), String(r.actual), pc(r.pct), String(r.miss)]),
-      foot: [[tr('TOTAL'), String(a.total.expected), String(a.total.actual), pc(a.total.pct), String(a.total.miss)]],
+      startY: top + 14, theme: 'grid', styles: { font: 'helvetica', fontSize: 10, cellPadding: 5, textColor: [22, 32, 42] }, headStyles: { fillColor: teal, textColor: 255, fontStyle: 'bold' }, tableWidth: 480,
+      head: [[tr('Cuarto'), tr('Esperados'), tr('Vinieron'), tr('% Asist.'), tr('% Falta'), tr('Faltan')]],
+      body: a.rows.map((r) => [r.dept, String(r.expected), String(r.actual), pc(r.att), pc(r.pct), String(r.miss)]),
+      foot: [[tr('TOTAL'), String(a.total.expected), String(a.total.actual), pc(a.total.att), pc(a.total.pct), String(a.total.miss)]],
     })
     top = after() + 18
     // the people, by room and line (Jose, 2026-10-22: the names in the report)

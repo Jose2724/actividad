@@ -323,13 +323,13 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
    */
   const attSheets = (): Sheet[] => {
     const rooms = dept ? [dept] : only ? [only] : DEPTS, a = attendanceOf(s, date, rep.shift, rooms)
-    const rows: Cell[][] = [[tr('Cuarto'), tr('Esperados'), tr('Vinieron'), tr('% Falta'), tr('Faltan')], ...a.rows.map((r): Cell[] => [r.dept, r.expected, r.actual, xPct(r.pct), r.miss]), [tr('TOTAL'), a.total.expected, a.total.actual, xPct(a.total.pct), a.total.miss]]
+    const rows: Cell[][] = [[tr('Cuarto'), tr('Esperados'), tr('Vinieron'), tr('% Asist.'), tr('% Falta'), tr('Faltan')], ...a.rows.map((r): Cell[] => [r.dept, r.expected, r.actual, xPct(r.att), xPct(r.pct), r.miss]), [tr('TOTAL'), a.total.expected, a.total.actual, xPct(a.total.att), xPct(a.total.pct), a.total.miss]]
     const people = (rep.shift ? [rep.shift] : attShifts(s, date)).flatMap((k) => rooms.flatMap((d) => attOf(s, date, d, k)))
     const T = (ms: number) => xTime(ms, fmtTime(ms))
     // with the line each one is on and their moves (Jose, 2026-10-22: "que los nombres de las personas salgan también en el excel")
     const names: Cell[][] = [[tr('Fecha'), tr('Turno'), tr('Cuarto'), tr('Línea'), tr('Persona'), tr('Anotó'), tr('Hora'), tr('Estado'), tr('Pasó a'), tr('Línea allá'), tr('Hora de salida'), tr('Viene de'), tr('Traslados')],
       ...people.map((x): Cell[] => [date, x.shift, x.dept, attLineText(s, x.line), x.name, x.by, T(x.at), !x.gone ? tr('trabajando') : x.gone.why === 'casa' ? tr('se fue a su casa') : tr('pasó a otro cuarto'), x.gone?.to ?? '', attLineText(s, x.gone?.line), x.gone ? T(x.gone.at) : '', x.from, attMovesText(s, x)])]
-    return [{ name: tr('Asistencia'), rows, chart: { title: tr('% de faltas por cuarto'), series: tr('% Falta'), cat: 0, val: 3, from: 2, to: 1 + a.rows.length, at: a.rows.length + 4, pct: true } }, ...(people.length ? [{ name: tr('Asistencia · personas'), rows: names }] : [])]
+    return [{ name: tr('Asistencia'), rows, chart: { title: tr('% de faltas por cuarto'), series: tr('% Falta'), cat: 0, val: 4, from: 2, to: 1 + a.rows.length, at: a.rows.length + 4, pct: true } }, ...(people.length ? [{ name: tr('Asistencia · personas'), rows: names }] : [])]
   }
   /** Spiral's meat as a sheet (2026-10-23): the summary by code (pounds, lots, pounds per mezcla), then every entry */
   const meatSheets = (): Sheet[] => {
@@ -964,18 +964,18 @@ function AttendanceWhere({ k }: { k: Kit }) {
     <>
       <h3>{tr('Asistencia')}{rep.shift ? ' · ' + tr('Turno {0}', rep.shift) : ''}</h3>
       <div className="att-rep">
-        <div className="att-row head"><span>{tr('Cuarto')}</span><span>{tr('Esperados')}</span><span>{tr('Vinieron')}</span><span>{tr('% Falta')}</span><span className="att-barcol" /></div>
+        <div className="att-row head"><span>{tr('Cuarto')}</span><span>{tr('Esperados')}</span><span>{tr('Vinieron')}</span><span>{tr('% Asist.')}</span><span>{tr('% Falta')}</span><span className="att-barcol" /></div>
         {a.rows.map((r) => (
           <Fragment key={r.dept}>
             <div className="att-row" style={deptVars(r.dept)}>
               <span><b>{DEPT_LOOK[r.dept].emoji} {r.dept}</b></span>
-              <span>{r.expected}</span><span>{r.actual}</span><b className={r.pct >= 0.25 ? 'red' : r.miss ? 'amber' : 'ok'}>{pctText(r.pct)}</b>
+              <span>{r.expected}</span><span>{r.actual}</span><b className={r.pct >= 0.25 ? 'red' : r.miss ? 'amber' : 'ok'}>{pctText(r.att)}</b><b className={r.pct >= 0.25 ? 'red' : r.miss ? 'amber' : 'ok'}>{pctText(r.pct)}</b>
               <span className="att-barcol"><i className={r.pct >= 0.25 ? 'red' : ''} style={{ width: Math.round(r.pct * 100) + '%' }} /></span>
             </div>
             {names && <AttNames k={k} people={people(r.dept)} />}
           </Fragment>
         ))}
-        <div className="att-row total"><b>{tr('TOTAL')}</b><b>{a.total.expected}</b><b>{a.total.actual}</b><b>{pctText(a.total.pct)}</b><span className="att-barcol"><i style={{ width: Math.round(a.total.pct * 100) + '%' }} /></span></div>
+        <div className="att-row total"><b>{tr('TOTAL')}</b><b>{a.total.expected}</b><b>{a.total.actual}</b><b>{pctText(a.total.att)}</b><b>{pctText(a.total.pct)}</b><span className="att-barcol"><i style={{ width: Math.round(a.total.pct * 100) + '%' }} /></span></div>
       </div>
       <div className="att-namesbar"><button type="button" className="btn sm" onClick={() => setNames(!names)}>{names ? tr('Ocultar nombres') : tr('Ver nombres')}</button><span className="hint">{tr('En el Excel va esta tabla con su gráfica y la hoja con cada persona, su línea y sus traslados; en el PDF, la lista de personas.')}</span></div>
     </>
