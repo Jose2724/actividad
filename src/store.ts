@@ -1545,20 +1545,17 @@ export function orderPallets(s: State, orderId: string, perPallet?: number | nul
   const o = s.orders.find((x) => x.id === orderId)
   const units = orderRunsOf(s, orderId).flatMap((r) => r.units.filter((u) => u.po === orderId)).sort((a, b) => a.at - b.at)
   const done = units.map((u) => u.at)
-  // the size of a pallet of this order (the line's, else Productos', else the biggest one made for it): what the order
-  // required by its cases, and how many of the pallets made are short of it (the office, 2026-10-27: "150 cajas
-  // deberían ser 3 paletas de 50; por los parciales son 5")
-  const size = perPallet || productOf(s, o?.code ?? '')?.casesPerPallet || Math.max(0, ...units.map((u) => u.qty ?? 0))
+  // the size of a pallet of this order: the line's, else the size its lines said when they made its pallets, else the
+  // biggest pallet made for it, else Productos' (Packing, 2026-10-22: PO 117953991 of 100 cases in pallets of 50 read
+  // "2 pallets de 13", from Productos' 8 cases per pallet)
+  const runs = orderRunsOf(s, orderId).filter((r) => r.units.some((u) => u.po === orderId))
+  const size = perPallet || Math.max(0, ...runs.map((r) => r.perUnit ?? 0)) || Math.max(0, ...units.map((u) => u.qty ?? 0)) || productOf(s, o?.code ?? '')?.casesPerPallet || 0
   const partial = size > 0 ? units.filter((u) => (u.qty ?? 0) < size).length : 0
+  // what the order requires by its cases and that size: fixed, however many pallets end up made (the office, 2026-10-27:
+  // "150 cajas deberían ser 3 paletas de 50; por los parciales son 5" — and Jose: a complete one read "4 de 4" when it
+  // should read "de 3"). How many were made, complete and short, is said beside it. No size known: no "de N"
   const std = o?.cases != null && size > 0 ? Math.ceil(o.cases / size - 1e-9) : null
-  if (o?.cases == null) return { done, need: null, size: size || null, std, partial }
-  // the pallets it needs: those made, and what its cases still left take (Packing, 2026-10-22: PO 117953991 of 100
-  // cases in pallets of 50 read "2 pallets de 13", from Productos' 8 cases per pallet). Complete by its cases: the
-  // pallets made. Else the cases left over the size of its pallets: the line's, or the ones made for it, or Productos'
-  const made = orderMade(s, orderId), left = o.cases - made
-  if (left <= 0 && done.length) return { done, need: done.length, size: size || null, std, partial }
-  const per = perPallet || (done.length && made > 0 ? made / done.length : 0) || productOf(s, o.code)?.casesPerPallet || 0
-  return { done, need: per > 0 ? done.length + Math.ceil(Math.max(0, left) / per - 1e-9) : null, size: size || null, std, partial }
+  return { done, need: std, size: size || null, std, partial }
 }
 /**
  * An order that takes no more pallets (the office, 2026-10-21: "que restrinja cuando están haciendo un PO en exceso:

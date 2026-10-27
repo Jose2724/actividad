@@ -3259,7 +3259,7 @@ section('Un registro de Packing agregado después: sus pallets uno por uno, con 
     const short = m.laterPalletUnits(st(), 'P800', '6290', [{ qty: '30', tag: '3500', po: po8 }])
     const sid = m.addRunLater({ dept: 'Packing', lineId: p1.id, code: 'P800', lot: '6290', date: DAY, startedAt: oct(10, 12, 0), endedAt: oct(10, 12, 10), units: short.units, perUnit: short.perUnit })
     const sp = m.reportOf(st(), DAY, clock, { only: 'Packing' }).pallets.filter((p) => p.r.id === sid)
-    eq('un pallet corto agregado después queda corto: la corrida lleva las cajas por pallet del código, y su lugar en el PO es 1 de 5 (2026-10-22: el corto deja 210 cajas, 4 pallets más de 60)', [st().runs.find((x) => x.id === sid).perUnit, sp.map((p) => [p.total, p.total < p.r.perUnit, p.of])], [60, [[30, true, [1, 5]]]])
+    eq('un pallet corto agregado después queda corto: la corrida lleva las cajas por pallet del código, y su lugar en el PO es 1 de 4 (el PO requiere 4 pallets de 60, los parciales no suben esa cuenta; Jose, 2026-10-27)', [st().runs.find((x) => x.id === sid).perUnit, sp.map((p) => [p.total, p.total < p.r.perUnit, p.of])], [60, [[30, true, [1, 4]]]])
     // what the window checks before it saves
     const ck = (list) => { const c = m.checkLaterPallets(list.map((x) => (typeof x === 'string' ? { qty: x, tag: '', po: '' } : { po: '', ...x }))); return [c.ok, c.missing, c.twice] }
     eq('sin pallets no se guarda', ck([]), [false, [], []])
@@ -5162,7 +5162,10 @@ section('Lo que un PO requería y lo que se hizo (la oficina, 2026-10-27: 150 ca
     eq('sin pallets: requiere 3 de 50, ninguno parcial', [m.orderPallets(st(), oid, run().perUnit).std, m.orderPallets(st(), oid, run().perUnit).partial, m.orderPallets(st(), oid, run().perUnit).size], [3, 0, 50])
     for (const [i, q] of [50, 50, 3, 30, 20].entries()) { clock = T0 + (i + 1) * 10 * M; m.unitDone(run().id, q, 'T' + i, undefined, oid) }
     const q = m.orderPallets(st(), oid)
-    eq('5 hechos (3 parciales), 153 de 150 cajas: requería 3 pallets de 50, y "5 de 5" como antes', [q.done.length, q.need, q.std, q.size, q.partial, m.orderMade(st(), oid)], [5, 5, 3, 50, 3, 153])
+    eq('5 hechos (3 parciales), 153 de 150 cajas: requería 3 pallets de 50, y el "de N" se queda en 3 (Jose, 2026-10-27: un PO completo decía "4 de 4" cuando requería 3)', [q.done.length, q.need, q.std, q.size, q.partial, m.orderMade(st(), oid), m.orderFullText(st(), oid)], [5, 3, 3, 50, 3, 153, '5 de 3 pallets · 153 de 150 cajas'])
+    // Productos says 8 to the pallet (wrong, as the office found it): the pallets made, of 50, win over it
+    m.saveProduct(st().products.length, { code: '1999', name: 'X', pouchesPerCase: 8, casesPerMix: 14, cratesPerCart: 24, pouchesPerCrate: 0, casesPerPallet: 8, updatedAt: 0 })
+    eq('con Productos en 8 por pallet (mal), los pallets hechos de 50 mandan: sigue requiriendo 3', [m.orderPallets(st(), oid).need, m.orderPallets(st(), oid).size], [3, 50])
   })
 }
 section('Los pallets de un PO salen de lo que llevan sus pallets, no solo de Productos (Packing, 2026-10-22: PO de 100 cajas, "2 pallets de 13")')
