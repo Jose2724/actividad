@@ -1,6 +1,6 @@
 import { Fragment, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { apartLabel, apartWord, binWord, cameFrom, carriedOver, casesText, CFG, cfgFor, cfgOf, csvCell, DEPTS, fmtDur, roomKnown, fmtN, fmtTime, inCases, kindClass, lineLabel, lineNameOf, looksLikeTwoLots, madeText, measureName, measureUnit, normCode, noteLabel, noteOf, orderLabel, orderOfId, plainDay, plainText, productOf, purgesOf, reasonText, restorePurged, runStats, SETUP, shiftAt, shiftHours, shiftSpan, shiftsOf, stopTime, unitQty, user, whoText, workDay, type Dept, type State, type AttEntry } from './store'
+import { apartLabel, apartWord, binWord, cameFrom, carriedOver, casesText, CFG, cfgFor, cfgOf, csvCell, DEPTS, fmtDur, roomKnown, fmtN, fmtTime, inCases, kindClass, lineLabel, lineNameOf, looksLikeTwoLots, madeText, measureName, measureUnit, normCode, noteLabel, noteOf, orderLabel, orderOfId, plainDay, plainText, productOf, purgesOf, reasonText, restorePurged, runStats, SETUP, shiftAt, shiftHours, shiftSpan, shiftsOf, stopTime, unitQty, user, whoText, workDay, type Dept, type State, type AttEntry, type AttRow } from './store'
 import { avanceRows, mfoText, mfoWord, pending } from './avance'
 import { codeLabel, FAMILY_SHOWN, reasonCodeOf } from './reasons'
 import { cellText, loadZip, xDur, xPct, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
@@ -964,22 +964,27 @@ function AttendanceWhere({ k }: { k: Kit }) {
     <>
       <h3>{tr('Asistencia')}{rep.shift ? ' · ' + tr('Turno {0}', rep.shift) : ''}</h3>
       <div className="att-rep">
-        <div className="att-row head"><span>{tr('Cuarto')}</span><span>{tr('Esperados')}</span><span>{tr('Vinieron')}</span><span>{tr('% Asistencia')}</span><span>{tr('% Falta')}</span><span className="att-barcol" /></div>
+        <div className="att-row head"><span>{tr('Cuarto')}</span><span>{tr('Esperados')}</span><span>{tr('Vinieron')}</span><span>{tr('% Asistencia')}</span><span>{tr('% Falta')}</span><span>{tr('Faltan')}</span><span className="att-barcol" /></div>
         {a.rows.map((r) => (
           <Fragment key={r.dept}>
             <div className="att-row" style={deptVars(r.dept)}>
               <span><b>{DEPT_LOOK[r.dept].emoji} {r.dept}</b></span>
-              <span>{r.expected}</span><span>{r.actual}</span><b className={r.pct >= 0.25 ? 'red' : r.miss ? 'amber' : 'ok'}>{pctText(r.att)}</b><b className={r.pct >= 0.25 ? 'red' : r.miss ? 'amber' : 'ok'}>{pctText(r.pct)}</b>
+              <span>{r.expected}</span><span>{r.actual}</span><b className="ok">{pctText(r.att)}</b><AttMiss r={r} />
               <span className="att-barcol"><i className={r.pct >= 0.25 ? 'red' : ''} style={{ width: Math.round(r.pct * 100) + '%' }} /></span>
             </div>
             {names && <AttNames k={k} people={people(r.dept)} />}
           </Fragment>
         ))}
-        <div className="att-row total"><b>{tr('TOTAL')}</b><b>{a.total.expected}</b><b>{a.total.actual}</b><b>{pctText(a.total.att)}</b><b>{pctText(a.total.pct)}</b><span className="att-barcol"><i style={{ width: Math.round(a.total.pct * 100) + '%' }} /></span></div>
+        <div className="att-row total"><b>{tr('TOTAL')}</b><b>{a.total.expected}</b><b>{a.total.actual}</b><b className="ok">{pctText(a.total.att)}</b><AttMiss r={a.total} /><span className="att-barcol"><i style={{ width: Math.round(a.total.pct * 100) + '%' }} /></span></div>
       </div>
       <div className="att-namesbar"><button type="button" className="btn sm" onClick={() => setNames(!names)}>{names ? tr('Ocultar nombres') : tr('Ver nombres')}</button><span className="hint">{tr('En el Excel va esta tabla con su gráfica y la hoja con cada persona, su línea y sus traslados; en el PDF, la lista de personas.')}</span></div>
     </>
   )
+}
+/** the % missing, coloured as the floor's card, and beside it how many are missing to be complete (Jose, 2026-10-27: "otra columna que muestre la cantidad missing"); more than expected = +N */
+function AttMiss({ r }: { r: AttRow }) {
+  const c = r.pct >= 0.25 ? 'red' : r.miss ? 'amber' : 'ok'
+  return <><b className={c}>{pctText(r.pct)}</b><b className={c}>{r.miss ? r.miss : r.over ? '+' + r.over : 0}</b></>
 }
 /**
  * A room's people in the report (Jose, 2026-10-22: the names in the report too), by line: those working, those who came
