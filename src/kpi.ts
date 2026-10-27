@@ -1,5 +1,7 @@
-import { attExpectedOf, attOf, attShifts, CFG, dayBefore, DEPTS, entryClass, kpiGet, shiftsOf, weightTarget, weightTestsOf, wtWeights, type AttEntry, type Dept, type State } from './store'
+import { attExpectedOf, attOf, attShifts, CFG, dayBefore, DEPTS, entryClass, fmtTime, kpiGet, shiftsOf, weightTarget, weightTestsOf, wtWeights, type AttEntry, type Dept, type State } from './store'
 import { reportOf } from './report'
+import { X, xDay, xN, xT, type Cell, type Sheet } from './xlsx'
+import { tr } from './i18n'
 
 /**
  * The Daily KPI Report (2026-10-22): the COO's "New Expectations - Daily KPI Reporting" for East Rutherford, built for
@@ -167,3 +169,54 @@ export function weightsOf(s: State, date: string) {
 
 // ---- the notes of a day ----
 export const kpiNote = (s: State, date: string, part: KpiPart) => String(kpiGet(s, 'note:' + date + ':' + part)?.data.text ?? '')
+
+// ---- the Excel of the report (Jose, 2026-10-27: "el excel bonito con colores y gráficas") ----
+const n0 = (x: number) => Math.round(x).toLocaleString('en-US')
+const pc = (x: number | null) => (x == null ? '—' : Math.round(x * 1000) / 10 + '%')
+const headRow = (...t: string[]): Cell[] => t.map((x) => xT(x, X.head))
+const signed = (v: number): Cell => xN(v, v < 0 ? X.nBad : v > 0 ? X.nGood : X.n)
+const pct1 = (x: number | null): Cell => (x == null ? '' : { v: Math.round(x * 1000) / 1000, s: X.pct1, t: pc(x) })
+/**
+ * One sheet per part, a purple header row, the numbers as numbers with thousands, red / green / amber by what they say,
+ * each part's note in a wrapped cell, and two charts Excel draws itself: Costco's planned vs made cases by day, and the
+ * cases per person-hour by room.
+ */
+export function kpiSheets(s: State, date: string, now: number): Sheet[] {
+  const notes = (p: KpiPart) => xT(kpiNote(s, date, p), X.note)
+  const mo = costcoMonth(s, date, now), last = costcoLast(s, date, now, 7), lab = laborOf(s, date, now), day = last[last.length - 1], wts = weightsOf(s, date)
+  const outW = wts.reduce((t, w) => t + w.under + w.over, 0), allW = wts.reduce((t, w) => t + w.checked, 0)
+  const head: Cell[][] = [[xT(tr('E.R. - Ops Summary'), X.title), xDay(date)], []]
+  const wState = !allW ? X.label : outW / allW > 0.1 ? X.bad : outW ? X.warn : X.good
+  const cState = day.pct == null ? X.label : day.pct < 0.9 ? X.bad : day.pct < 1 ? X.warn : X.good
+  const resumen: Cell[][] = [...head, headRow(tr('Parte'), tr('Resultado'), tr('Qué vimos · causa · acción')),
+    [xT(tr('1 · Pesos'), X.label), xT(allW ? tr('{0} de {1} pouches fuera de peso', outW, allW) : tr('Sin pruebas de peso'), wState), notes('weights')],
+    [xT(tr('2 · Cortes'), X.label), xT(tr('Esperando los pedidos de Julio'), X.label), notes('cuts')],
+    [xT(tr('3 · Productividad'), X.label), xT(lab.total.perHour == null ? '—' : tr('{0} cajas por hora-persona', lab.total.perHour), X.label), notes('labor')],
+    [xT(tr('4 · Costco MVM'), X.label), xT(tr('{0} cajas de {1} planeadas ({2})', n0(day.cases), n0(day.planCases), pc(day.pct)), cState), notes('costco')],
+    [xT(tr('5 · Grill y freidora'), X.label), xT(tr('Sus hojas de siempre'), X.label), notes('grill')]]
+  const costco: Cell[][] = [...head, headRow(tr('Fecha'), tr('Mezclas planeadas'), tr('Mezclas (Spiral)'), tr('Cajas planeadas'), tr('Cajas (Packing)'), tr('Diferencia'), tr('% del plan')),
+    ...last.map((x): Cell[] => [xDay(x.date), xN(x.planMixes), xN(x.mixes), xN(x.planCases), xN(x.cases), signed(x.diff), pct1(x.pct)]),
+    [], [xT(tr('Plan del mes'), X.label), xN(mo.monthPlan, X.nLabel)], [xT(tr('Plan hasta este día'), X.label), xN(mo.planToDate, X.nLabel)], [xT(tr('Hecho hasta este día'), X.label), xN(mo.actualToDate, X.nLabel)],
+    [xT(tr('Diferencia'), X.label), signed(mo.gap)], [xT(tr('Necesario por día para cumplir el mes'), X.label), mo.perDay == null ? '' : xN(mo.perDay, X.nLabel)], [xT(tr('Forecast de Costco del mes'), X.label), mo.forecast == null ? '' : xN(mo.forecast, X.nLabel)],
+    [], [notes('costco')]]
+  const labor: Cell[][] = [...head, headRow(tr('Cuarto'), tr('Programados'), tr('Vinieron'), tr('Temporales'), tr('Horas-persona'), tr('Producción'), tr('Unidad'), tr('Por hora-persona')),
+    ...lab.rows.map((r): Cell[] => [r.dept, xN(r.scheduled), xN(r.showed), xN(r.temps), xN(r.hours, X.dec), xN(r.made), r.unit, r.perHour == null ? '' : xN(r.perHour, X.dec)]),
+    [xT(tr('TOTAL'), X.label), xN(lab.total.scheduled, X.nLabel), xN(lab.total.showed, X.nLabel), xN(lab.total.temps, X.nLabel), xN(lab.total.hours, X.nLabel), xN(lab.total.cases, X.nLabel), xT(tr('cajas'), X.label), lab.total.perHour == null ? '' : xN(lab.total.perHour, X.nLabel)],
+    [], [notes('labor')]]
+  const pesos: Cell[][] = [...head, headRow(tr('Hora'), tr('Línea'), tr('Código'), tr('Lote'), tr('Revisados'), tr('Pesados'), tr('Promedio (oz)'), tr('Mínimo'), tr('Máximo'), tr('Objetivo (oz)'), tr('Bajos'), tr('Sobre'), tr('Anotó'), tr('Cada pouch')),
+    ...wts.flatMap((w) => w.tests.map((t): Cell[] => {
+      const ws = wtWeights(t), avg = ws.length ? ws.reduce((a, b) => a + b, 0) / ws.length : null
+      const under = t.entries.filter((e) => entryClass(e, w.target) === 'bajo').length, over = t.entries.filter((e) => entryClass(e, w.target) === 'sobre').length
+      return [fmtTime(t.at), t.line, t.code, t.lot, xN(t.entries.length), xN(ws.length), avg == null ? '' : xN(Math.round(avg * 1000) / 1000, X.dec), ws.length ? xN(Math.min(...ws), X.dec) : '', ws.length ? xN(Math.max(...ws), X.dec) : '', w.target ? w.target.pouch + ' ± ' + w.target.tol : '', xN(under, under ? X.nBad : X.n), xN(over, over ? X.nWarn : X.n), t.by, xT(t.entries.map((e) => (e.w != null ? String(e.w) : '') + (e.k === 'sobre' ? ' ▲' : e.k === 'bajo' ? ' ▼' : '')).join(', '), X.note)]
+    })), [], [notes('weights')]]
+  const n = last.length, nl = lab.rows.length
+  return [
+    { name: tr('Resumen'), rows: resumen, freeze: 3 },
+    { name: tr('Pesos'), rows: pesos, freeze: 3 },
+    { name: tr('Cortes'), rows: [...head, [xT(tr('Esperando los pedidos de Julio'), X.label)], [notes('cuts')]], freeze: 0 },
+    { name: tr('Productividad'), rows: labor, freeze: 3, chart: nl ? { title: tr('Cajas por hora-persona'), series: tr('Por hora-persona'), cat: 0, val: 7, from: 4, to: 3 + nl, at: 3 + nl + 4, cols: 8 } : undefined },
+    { name: 'Costco MVM', rows: costco, freeze: 3, chart: n ? { title: tr('Costco 0889 · cajas planeadas vs hechas'), series: [tr('Cajas planeadas'), tr('Cajas (Packing)')], cat: 0, val: [3, 4], from: 4, to: 3 + n, at: 3 + n + 10, kind: 'col', cols: 8 } : undefined },
+    { name: tr('Grill y freidora'), rows: [...head, [notes('grill')]], freeze: 0 },
+  ]
+}
+

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { awayDay, dayBefore, entryClass, fmtTime, kpiGet, kpiPut, wtWeights, type Dept, type State } from './store'
+import { awayDay, dayBefore, fmtTime, kpiGet, kpiPut, type Dept, type State } from './store'
 import { loadDay } from './sync'
-import { COSTCO_CODE, costcoLast, costcoMonth, costcoPlan, kpiNames, kpiNote, laborOf, parsePlanner, weightsOf, type KpiPart } from './kpi'
+import { COSTCO_CODE, costcoLast, costcoMonth, costcoPlan, kpiNames, kpiNote, kpiSheets, laborOf, parsePlanner, weightsOf, type KpiPart } from './kpi'
 import { download, useViewOnly } from './App'
-import { xlsxBytes, XLSX_TYPE, type Cell } from './xlsx'
+import { xlsxBytes, XLSX_TYPE } from './xlsx'
 import { DEPT_LOOK } from './look'
 import { locale, tr } from './i18n'
 
@@ -35,21 +35,7 @@ export function KpiView({ s, now, today, admin }: { s: State; now: number; today
   const outW = wts.reduce((t, w) => t + w.under + w.over, 0), allW = wts.reduce((t, w) => t + w.checked, 0)
   const nTests = wts.reduce((t, w) => t + w.tests.length, 0)
   const excel = async () => {
-    const notes = (p: KpiPart) => kpiNote(s, date, p)
-    const head: Cell[][] = [[tr('E.R. - Ops Summary'), date], []]
-    const resumen: Cell[][] = [...head, [tr('Parte'), tr('Resultado'), tr('Qué vimos · causa · acción')],
-      [tr('1 · Pesos'), allW ? tr('{0} de {1} pouches fuera de peso', outW, allW) : tr('Sin pruebas de peso'), notes('weights')],
-      [tr('2 · Cortes'), tr('Esperando los pedidos de Julio'), notes('cuts')],
-      [tr('3 · Productividad'), lab.total.perHour == null ? '—' : tr('{0} cajas por hora-persona', lab.total.perHour), notes('labor')],
-      [tr('4 · Costco MVM'), tr('{0} cajas de {1} planeadas ({2})', n0(day.cases), n0(day.planCases), pc(day.pct)), notes('costco')],
-      [tr('5 · Grill y freidora'), tr('Sus hojas de siempre'), notes('grill')]]
-    const costco: Cell[][] = [...head, [tr('Fecha'), tr('Mezclas planeadas'), tr('Mezclas (Spiral)'), tr('Cajas planeadas'), tr('Cajas (Packing)'), tr('Diferencia'), tr('% del plan')],
-      ...last.map((x): Cell[] => [x.date, x.planMixes, x.mixes, x.planCases, x.cases, x.diff, x.pct == null ? '' : Math.round(x.pct * 1000) / 10]),
-      [], [tr('Plan del mes'), mo.monthPlan], [tr('Plan hasta este día'), mo.planToDate], [tr('Hecho hasta este día'), mo.actualToDate], [tr('Diferencia'), mo.gap], [tr('Necesario por día para cumplir el mes'), mo.perDay ?? ''], [tr('Forecast de Costco del mes'), mo.forecast ?? '']]
-    const labor: Cell[][] = [...head, [tr('Cuarto'), tr('Programados'), tr('Vinieron'), tr('Temporales'), tr('Horas-persona'), tr('Producción'), tr('Unidad'), tr('Por hora-persona')],
-      ...lab.rows.map((r): Cell[] => [r.dept, r.scheduled, r.showed, r.temps, r.hours, r.made, r.unit, r.perHour ?? '']),
-      [tr('TOTAL'), lab.total.scheduled, lab.total.showed, lab.total.temps, lab.total.hours, lab.total.cases, tr('cajas'), lab.total.perHour ?? '']]
-    const bytes = await xlsxBytes([{ name: tr('Resumen'), rows: resumen }, { name: tr('Pesos'), rows: [...head, [tr('Hora'), tr('Línea'), tr('Código'), tr('Lote'), tr('Revisados'), tr('Pesados'), tr('Promedio (oz)'), tr('Mínimo'), tr('Máximo'), tr('Objetivo (oz)'), tr('Bajos'), tr('Sobre'), tr('Anotó'), tr('Cada pouch')], ...wts.flatMap((w) => w.tests.map((t): Cell[] => { const ws = wtWeights(t), avg = ws.length ? ws.reduce((a, b) => a + b, 0) / ws.length : null; return [fmtTime(t.at), t.line, t.code, t.lot, t.entries.length, ws.length, avg == null ? '' : Math.round(avg * 1000) / 1000, ws.length ? Math.min(...ws) : '', ws.length ? Math.max(...ws) : '', w.target ? w.target.pouch + ' ± ' + w.target.tol : '', t.entries.filter((e) => entryClass(e, w.target) === 'bajo').length, t.entries.filter((e) => entryClass(e, w.target) === 'sobre').length, t.by, t.entries.map((e) => (e.w != null ? String(e.w) : '') + (e.k === 'sobre' ? ' ▲' : e.k === 'bajo' ? ' ▼' : '')).join(', ')] })), [], [notes('weights')]] }, { name: tr('Cortes'), rows: [...head, [tr('Esperando los pedidos de Julio')], [notes('cuts')]] }, { name: tr('Productividad'), rows: labor }, { name: 'Costco MVM', rows: costco }, { name: tr('Grill y freidora'), rows: [...head, [notes('grill')]] }])
+    const bytes = await xlsxBytes(kpiSheets(s, date, now))
     download(new File([bytes], 'ER-Ops-Summary-' + date + '.xlsx', { type: XLSX_TYPE }))
   }
   const tiles: { part: string; cls: string; big: string; small: string }[] = [

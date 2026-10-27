@@ -2549,4 +2549,7 @@ export const EN: Record<string, string> = {
   "Requería {0} pallets de {1} cajas · hechos {2}": "Required {0} pallets of {1} cases · made {2}",
   "{0} req.": "{0} req.",
   "Pallets que requería el pedido por sus cajas": "Pallets the order required by its cases",
+  // the KPI Excel's charts (2026-10-27)
+  "Cajas por hora-persona": "Cases per person-hour",
+  "Costco 0889 · cajas planeadas vs hechas": "Costco 0889 · planned vs made cases",
 }

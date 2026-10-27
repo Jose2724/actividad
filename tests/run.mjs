@@ -5030,6 +5030,11 @@ section('Reporte KPI del día: el plan de Costco del planner, lo real del 0889 y
     const st = () => m.store.get()
     const p = m.parsePlanner(csv, 'planner.csv')
     eq('el planner se lee: cada día con sus mezclas y cajas, el año del título, 18 cajas por mezcla, y el forecast de cada mes', [Object.keys(p.days).length, p.days['2026-10-10'], p.days['2026-11-30'], p.days['2026-11-26'], p.perMix, p.forecast], [31 + 29, { mixes: 100, cases: 1800 }, { mixes: 60, cases: 1080 }, undefined, 18, { '2026-10': 25356, '2026-11': 31545 }])
+    // the Excel (2026-10-27): six sheets, a purple header, numbers with a look, charts on Costco and Productividad
+    const sh = m.kpiSheets(st(), '2026-10-10', clock)
+    eq('las hojas del Excel, con su gráfica donde hay números', [sh.map((x) => x.name), sh.map((x) => !!x.chart)], [['Resumen', 'Pesos', 'Cortes', 'Productividad', 'Costco MVM', 'Grill y freidora'], [false, false, false, true, true, false]])
+    eq('el título y la fila de encabezado llevan su estilo; las cajas planeadas son número con miles', [sh[4].rows[0][0].s, sh[4].rows[2][0].s, sh[4].rows[2][0].t, sh[4].rows[3][3].s], [m.X.title, m.X.head, 'Fecha', m.X.n])
+    eq('la gráfica de Costco: columnas, dos series sobre los días de la tabla', [sh[4].chart.kind, sh[4].chart.val, sh[4].chart.from, sh[4].chart.to], ['col', [3, 4], 4, 3 + 7])
     eq('lo real escrito a mano en el planner no se lee (lo tiene Actividad)', JSON.stringify(p).includes('1679'), false)
     eq('un archivo que no es el planner se dice', typeof m.parsePlanner('a,b\n1,2'), 'string')
     // QA's target sheet (2026-10-26): every code starts with its target; a manager's own still wins
