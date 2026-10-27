@@ -2806,7 +2806,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         {naming}
         {removing && <ConfirmDialog title={tr('¿Quitar {0} de {1}', lineLabel(line.name), line.dept) + '?'} text={tr('Se puede volver a agregar cuando haga falta.')} yes={tr('Quitar')} danger onYes={() => removeLine(line.id)} onNo={() => setRemoving(false)} />}
         {sure.ui}
-        {attAsk && <AttendanceDialog s={s} dept={line.dept} date={day.date} shift={turn.shift} edit note={tr('Antes de empezar hay que anotar la asistencia del Turno {0}: anota a la gente de {1} y vuelve a tocar Empezar.', turn.shift, line.dept)} onClose={() => setAttAsk(false)} />}
+        {attAsk && <AttendanceDialog s={s} dept={line.dept} date={day.date} shift={turn.shift} edit note={tr('Antes de empezar, el supervisor o líder se anota como supervisor y anota a la gente del Turno {0} de {1}; después vuelve a tocar Empezar.', turn.shift, line.dept)} onClose={() => setAttAsk(false)} />}
         {consumeAsk && <ConsumeStartDialog s={s} dept={line.dept} line={line.name} code={code.trim().toUpperCase()} onClose={() => setConsumeAsk(null)} onStart={(list) => { consumeAsk(); const r = openRunOn(theStore.get(), line.id); if (r) for (const e of list) consumeAdd(r, e.product, e.prodLot, e.labelDate, e.lb, e.fromId); setConsumeAsk(null) }} />}
         {(() => { const p = consumeOn(s, line.dept) ? consumesPending(s, line.id) : []; return p.length ? <ConsumeEndDialog entries={p} /> : null })()}
         {!quiet && <form className="start" onSubmit={(e) => {
@@ -2882,7 +2882,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
               </div>
             ))}
           <button className="btn primary" type="submit" disabled={!ok}>{tr('▶ Empezar')}</button>
-          {gated && <p className="hint red">{tr('👥 Falta anotar la asistencia del Turno {0}: se pide al tocar Empezar.', turn.shift)}</p>}
+          {gated && <p className="hint red">{tr('👥 Falta la asistencia del Turno {0} (el supervisor se anota primero): se pide al tocar Empezar.', turn.shift)}</p>}
         </form>}
         {!quiet && <div className="tools">
           {!idle ? <button type="button" className="btn sm setupbtn" onClick={() => (gated ? setAttAsk(true) : startSetup(line))}>{tr('⏱ Empezar Set up')}</button> : <span />}

@@ -328,7 +328,7 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
     const T = (ms: number) => xTime(ms, fmtTime(ms))
     // with the line each one is on and their moves (Jose, 2026-10-22: "que los nombres de las personas salgan también en el excel")
     const names: Cell[][] = [[tr('Fecha'), tr('Turno'), tr('Cuarto'), tr('Línea'), tr('Persona'), tr('Anotó'), tr('Hora'), tr('Estado'), tr('Pasó a'), tr('Línea allá'), tr('Hora de salida'), tr('Viene de'), tr('Traslados')],
-      ...people.map((x): Cell[] => [date, x.shift, x.dept, attLineText(s, x.line), x.name, x.by, T(x.at), !x.gone ? tr('trabajando') : x.gone.why === 'casa' ? tr('se fue a su casa') : tr('pasó a otro cuarto'), x.gone?.to ?? '', attLineText(s, x.gone?.line), x.gone ? T(x.gone.at) : '', x.from, attMovesText(s, x)])]
+      ...people.map((x): Cell[] => [date, x.shift, x.dept, attLineText(s, x.line), x.name + (x.sup ? ' · ' + tr('supervisor') : ''), x.by, T(x.at), !x.gone ? tr('trabajando') : x.gone.why === 'casa' ? tr('se fue a su casa') : tr('pasó a otro cuarto'), x.gone?.to ?? '', attLineText(s, x.gone?.line), x.gone ? T(x.gone.at) : '', x.from, attMovesText(s, x)])]
     return [{ name: tr('Asistencia'), rows, chart: { title: tr('% de faltas por cuarto'), series: tr('% Falta'), cat: 0, val: 4, from: 2, to: 1 + a.rows.length, at: a.rows.length + 4, pct: true } }, ...(people.length ? [{ name: tr('Asistencia · personas'), rows: names }] : [])]
   }
   /** Spiral's meat as a sheet (2026-10-23): the summary by code (pounds, lots, pounds per mezcla), then every entry */
@@ -1000,7 +1000,7 @@ function AttNames({ k, people }: { k: Kit; people: AttEntry[] }) {
       {keys.map((l) => (
         <div key={l || '-'} className="att-nl">
           {many && <b>{attLineText(s, l) || tr('Sin línea')}:</b>}
-          {people.filter((x) => x.line === l).map((x) => <span key={x.id} className={x.gone ? 'gone' : ''}>{x.name}{x.from && <small> · {tr('viene de {0}', x.from)}</small>}{x.gone && <small> · {attStateText(s, x)}</small>}</span>)}
+          {people.filter((x) => x.line === l).map((x) => <span key={x.id} className={x.gone ? 'gone' : ''}>{x.name}{x.sup && <small className="att-sup"> · {tr('supervisor')}</small>}{x.from && <small> · {tr('viene de {0}', x.from)}</small>}{x.gone && <small> · {attStateText(s, x)}</small>}</span>)}
         </div>
       ))}
     </div>

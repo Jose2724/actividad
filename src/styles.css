@@ -2005,6 +2005,8 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 .kpi-month label{font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase}.kpi-month b{font-size:20px}.kpi-month b.red{color:#b91c1c}.kpi-month small{color:var(--muted)}
 .kpi-access ul{margin:0;padding-left:18px}.kpi-access form{display:flex;gap:8px}.kpi-access input{flex:1;min-height:38px}
 .att-temp{color:#7c3aed;font-weight:700}
+.att-sup{color:#0f766e;font-weight:700}
+.att-me{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:6px 0}
 
 /* weight tests on RTE (2026-10-22) */
 .wt-dlg{max-width:560px}

@@ -295,10 +295,10 @@ function AttendanceSettings({ s, date, viewOnly, admin }: { s: State; date: stri
       <div className="setcard">
         <div className="sethead"><h3>{tr('Asistencia obligatoria para empezar')}</h3><span className={'rc-state' + (gate ? ' on' : '')}>{gate ? tr('Prendida') : tr('Apagada')}</span></div>
         <label className="switch"><span>{tr('Que anoten la asistencia antes de empezar')}</span><input type="checkbox" role="switch" checked={gate} disabled={viewOnly} onChange={(e) => (e.target.checked ? setGateAsk(true) : setAttGate(false))} /></label>
-        <p className="hint">{tr('Prendida: en todos los cuartos, el supervisor tiene que anotar la asistencia del turno (al menos una persona) antes de poder empezar un código o un Set up; al tocar Empezar se abre la ventana de asistencia. Cada turno anota la suya. No aplica a managers, oficina ni "Solo ver".')}</p>
+        <p className="hint">{tr('Prendida: en todos los cuartos, el supervisor o líder tiene que anotarse como supervisor del turno (y anotar a su gente) antes de poder empezar un código o un Set up; al tocar Empezar se abre la ventana de asistencia. Cada turno anota la suya. No aplica a managers, oficina ni "Solo ver".')}</p>
       </div>
     )}
-    {gateAsk && <ConfirmDialog title={tr('¿Asistencia obligatoria para empezar?')} text={tr('Desde ahora, en todos los cuartos, ningún supervisor puede empezar un código ni un Set up sin haber anotado la asistencia del turno. Se puede apagar aquí mismo cuando quieras.')} yes={tr('Prender')} onYes={() => { setAttGate(true); setGateAsk(false) }} onNo={() => setGateAsk(false)} />}
+    {gateAsk && <ConfirmDialog title={tr('¿Asistencia obligatoria para empezar?')} text={tr('Desde ahora, en todos los cuartos, ningún supervisor puede empezar un código ni un Set up sin haberse anotado como supervisor del turno en la asistencia. Se puede apagar aquí mismo cuando quieras.')} yes={tr('Prender')} onYes={() => { setAttGate(true); setGateAsk(false) }} onNo={() => setGateAsk(false)} />}
     {asking && <ConfirmDialog title={tr('¿Que todos vean la asistencia?')} text={tr('Desde ahora la tarjeta de asistencia sale en el piso de todos los cuartos, y en el reporte y sus archivos. Se puede apagar aquí mismo cuando quieras.')} yes={tr('Prender para todos')} onYes={() => { setAttView(true); setAsking(false) }} onNo={() => setAsking(false)} />}
     <div className="setcard">
       <div className="sethead"><h3>{tr('Asistencia · personas esperadas')}</h3></div>

@@ -313,6 +313,8 @@ export type AttMove = { from: string; to: string; at: number; by: string }
 export type AttEntry = { id: string; date: string; dept: Dept; shift: 1 | 2; name: string; by: string; at: number; gone: AttGone | null; from: Dept | ''; line: string; moves: AttMove[]
   /** a temp (agency) worker (2026-10-22, the COO's Daily KPI: "who shows up ... especially TEMPS") */
   temp?: boolean; deleted?: boolean; updatedAt: number; syncedAt?: number
+  /** the room's supervisor or leader on this shift, written as such (Jose, 2026-10-27: "que el líder o el supervisor se anote a sí mismo como supervisor") */
+  sup?: boolean
   /** a person who came from another room and is not written here: shown from that room's record (never stored) */
   via?: string }
 /** the people a room expects on a shift (a fixed number the managers change: see ATT_DEFAULT) */
@@ -323,7 +325,7 @@ function attFrom(x: Partial<AttEntry> | null | undefined): AttEntry | null {
   if (!name) return null
   const g = x.gone && typeof x.gone === 'object' && (x.gone.why === 'otro' || x.gone.why === 'casa') ? { why: x.gone.why, to: (DEPTS as unknown[]).includes(x.gone.to) ? (x.gone.to as Dept) : ('' as const), at: Number(x.gone.at) || 0, by: String(x.gone.by ?? ''), ...(typeof x.gone.line === 'string' && x.gone.line ? { line: x.gone.line.slice(0, 64) } : {}) } : null
   const moves = Array.isArray(x.moves) ? x.moves.filter((m) => m && typeof m === 'object').map((m) => ({ from: String(m.from ?? '').slice(0, 64), to: String(m.to ?? '').slice(0, 64), at: Number(m.at) || 0, by: String(m.by ?? '') })).slice(-50) : []
-  return { id: x.id, date: String(x.date), dept: x.dept as Dept, shift: x.shift, name, by: String(x.by ?? ''), at: Number(x.at) || 0, gone: g, from: (DEPTS as unknown[]).includes(x.from) ? (x.from as Dept) : '', line: typeof x.line === 'string' ? x.line.slice(0, 64) : '', moves, ...(x.temp === true ? { temp: true } : {}), ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
+  return { id: x.id, date: String(x.date), dept: x.dept as Dept, shift: x.shift, name, by: String(x.by ?? ''), at: Number(x.at) || 0, gone: g, from: (DEPTS as unknown[]).includes(x.from) ? (x.from as Dept) : '', line: typeof x.line === 'string' ? x.line.slice(0, 64) : '', moves, ...(x.temp === true ? { temp: true } : {}), ...(x.sup === true ? { sup: true } : {}), ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
 }
 function attExpectedFrom(x: Partial<AttExpected> | null | undefined): AttExpected | null {
   if (!x || !(DEPTS as unknown[]).includes(x.dept) || (x.shift !== 1 && x.shift !== 2) || !(Number(x.n) >= 0)) return null
@@ -945,18 +947,18 @@ function attHere(id: string): AttEntry | null {
   putAtt(x)
   return x
 }
-const rowOfAtt = (x: AttEntry) => ({ id: ATT_ID + x.id, at: iso(x.at), by_name: x.by, dept: x.dept, what: 'Asistencia', before: '', after: JSON.stringify({ date: x.date, shift: x.shift, name: x.name, gone: x.gone, from: x.from, line: x.line, moves: x.moves, ...(x.temp ? { temp: true } : {}) }), ref_table: ATT_REF, ref_key: x.id, deleted: !!x.deleted, updated_at: iso(x.updatedAt), updated_by: user.get() })
+const rowOfAtt = (x: AttEntry) => ({ id: ATT_ID + x.id, at: iso(x.at), by_name: x.by, dept: x.dept, what: 'Asistencia', before: '', after: JSON.stringify({ date: x.date, shift: x.shift, name: x.name, gone: x.gone, from: x.from, line: x.line, moves: x.moves, ...(x.temp ? { temp: true } : {}), ...(x.sup ? { sup: true } : {}) }), ref_table: ATT_REF, ref_key: x.id, deleted: !!x.deleted, updated_at: iso(x.updatedAt), updated_by: user.get() })
 function putAtt(x: AttEntry) {
   if (x.via) return
   set({ ...state, attendance: [...(state.attendance ?? []).filter((y) => y.id !== x.id), x] })
   push('act_changes', ATT_ID + x.id, rowOfAtt(x))
 }
 /** a person written for a room and shift; '' = not written (no name, or that name is already there and not gone) */
-export function attAdd(date: string, dept: Dept, shift: 1 | 2, name: string, from: Dept | '' = '', line = '', temp = false): string {
+export function attAdd(date: string, dept: Dept, shift: 1 | 2, name: string, from: Dept | '' = '', line = '', temp = false, sup = false): string {
   const n = name.replace(/\s+/g, ' ').trim().slice(0, 60)
   if (!n || !isDay(date) || !roomKnown(dept) || (shift !== 1 && shift !== 2)) return ''
   if (attOf(state, date, dept, shift).some((x) => !x.gone && attKey(x.name) === attKey(n))) return ''
-  const x: AttEntry = { id: uid(), date, dept, shift, name: n, by: user.get(), at: clockNow(), gone: null, from, line, moves: [], ...(temp ? { temp: true } : {}), updatedAt: 0 }
+  const x: AttEntry = { id: uid(), date, dept, shift, name: n, by: user.get(), at: clockNow(), gone: null, from, line, moves: [], ...(temp ? { temp: true } : {}), ...(sup ? { sup: true } : {}), updatedAt: 0 }
   putAtt({ ...x, updatedAt: stamp(undefined) })
   return x.id
 }
@@ -976,6 +978,20 @@ export function attRemove(id: string, why: 'otro' | 'casa', to: Dept | '' = '', 
   })
   return ok
 }
+/** a person marked (or unmarked) as the room's supervisor or leader on the shift */
+export function attSetSup(id: string, sup: boolean): boolean {
+  let ok = false
+  batch(() => {
+    const x = attHere(id)
+    if (!x || x.deleted || !!x.sup === sup) return
+    const { sup: _was, ...rest } = x
+    putAtt({ ...rest, ...(sup ? { sup: true } : {}), updatedAt: stamp(x) })
+    ok = true
+  })
+  return ok
+}
+/** the supervisor or leader written for a room and shift (the first, when two) */
+export const attSupOf = (s: State, date: string, dept: Dept, shift: 1 | 2) => attOf(s, date, dept, shift).find((x) => x.sup && !x.gone)
 /** a person marked (or unmarked) as a temp (agency) worker */
 export function attSetTemp(id: string, temp: boolean): boolean {
   let ok = false
@@ -1421,10 +1437,14 @@ export function setAttGate(on: boolean) {
   push('act_targets', OPT_ATTGATE, { dept: OPT_ATTGATE, per_hour: on ? 1 : 0, per_shift: null, updated_at: iso(next.updatedAt), updated_by: user.get() })
   logChange(null, 'Asistencia obligatoria para empezar', gateText(was.on), gateText(on), 'act_targets', OPT_ATTGATE)
 }
-/** must the person on this device write the room's attendance of this shift before starting a code or a Set up there? (a supervisor, and nobody written yet) */
+/**
+ * must the person on this device write the room's attendance of this shift before starting a code or a Set up there?
+ * (a supervisor, and the room's supervisor or leader not written as such yet: "que el líder o el supervisor se anote a
+ * sí mismo como supervisor", 2026-10-27)
+ */
 export function attGated(s: State, dept: Dept, date: string, shift: 1 | 2): boolean {
   if (!s.attGate.on || !s.attView.on || role.get() !== 'op' || !!viewOnly.get()) return false
-  return attOf(s, date, dept, shift).length === 0
+  return !attSupOf(s, date, dept, shift)
 }
 /** the reason of the stop the app writes by itself when a line finishes a code and another one is coming */
 export const SETUP = 'Set up'

@@ -5347,7 +5347,13 @@ section('Asistencia obligatoria para empezar (Jose, 2026-10-27: los supervisores
     eq('prendida, y sube como ajuste (opt:attgate)', [st().attGate.on, m.outbox.items().find((i) => i.key === 'opt:attgate').row.per_hour], [true, 1])
     eq('un supervisor sin asistencia anotada del turno no puede empezar; cada cuarto y cada turno aparte', [m.attGated(st(), 'Kitchen', DAY, 1), m.attGated(st(), 'Kitchen', DAY, 2), m.attGated(st(), 'Spiral', DAY, 1)], [true, true, true])
     m.attAdd(DAY, 'Kitchen', 1, 'Juan')
-    eq('con una persona anotada, Kitchen turno 1 ya puede; Spiral y el turno 2 siguen sin poder', [m.attGated(st(), 'Kitchen', DAY, 1), m.attGated(st(), 'Kitchen', DAY, 2), m.attGated(st(), 'Spiral', DAY, 1)], [false, true, true])
+    eq('con gente anotada pero sin supervisor, sigue sin poder', m.attGated(st(), 'Kitchen', DAY, 1), true)
+    const sup = m.attAdd(DAY, 'Kitchen', 1, 'Sup', '', '', false, true)
+    eq('con el supervisor anotado como tal, Kitchen turno 1 ya puede; Spiral y el turno 2 siguen sin poder', [m.attGated(st(), 'Kitchen', DAY, 1), m.attSupOf(st(), DAY, 'Kitchen', 1)?.name, m.attGated(st(), 'Kitchen', DAY, 2), m.attGated(st(), 'Spiral', DAY, 1)], [false, 'Sup', true, true])
+    eq('la marca viaja al servidor con la persona, y se quita o se pone a otro', [JSON.parse(m.outbox.items().find((i) => i.key === 'att:' + sup).row.after).sup, m.attSetSup(sup, false), m.attGated(st(), 'Kitchen', DAY, 1), m.attSetSup(st().attendance.find((x) => x.name === 'Juan').id, true), m.attSupOf(st(), DAY, 'Kitchen', 1)?.name, m.attGated(st(), 'Kitchen', DAY, 1)], [true, true, true, true, 'Juan', false])
+    m.attRemove(st().attendance.find((x) => x.name === 'Juan').id, 'casa', '', false, '')
+    eq('si el supervisor se fue, vuelve a faltar uno', m.attGated(st(), 'Kitchen', DAY, 1), true)
+    m.attSetSup(sup, true)
     localStorage.setItem('act_role', 'mgr')
     eq('a un manager o la oficina no se le pide', m.attGated(st(), 'Spiral', DAY, 1), false)
     localStorage.setItem('act_role', 'op'); localStorage.setItem('act_view_only', '1')
@@ -5363,7 +5369,7 @@ section('Asistencia obligatoria para empezar (Jose, 2026-10-27: los supervisores
     eq('y prendida otra vez', [st().attGate.on, m.attGated(st(), 'Spiral', DAY, 1)], [true, true])
   })
   const back = await device('att-gate-again', { seed: JSON.parse(disks.get('att-gate').get('act_v1')), user: 'Sup' })
-  eq('al volver a abrir sigue prendida', back.use((m) => m.store.get().attGate.on), true)
+  eq('al volver a abrir sigue prendida, y el supervisor sigue marcado', back.use((m) => [m.store.get().attGate.on, m.attSupOf(m.store.get(), DAY, 'Kitchen', 1)?.name]), [true, 'Sup'])
 }
 section('Consumo: lo que un cuarto pesa antes de empezar un código, lo que quedó al terminarlo, y su inventario (la oficina, 2026-10-27)')
 {

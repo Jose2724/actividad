@@ -110,7 +110,7 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
       autoTable(doc, {
         startY: top, theme: 'grid', styles: { font: 'helvetica', fontSize: 9, cellPadding: 4, textColor: [22, 32, 42] }, headStyles: { fillColor: teal, textColor: 255, fontStyle: 'bold' },
         head: [[tr('Cuarto'), tr('Turno'), tr('Línea'), tr('Persona'), tr('Hora'), tr('Estado'), tr('Viene de')]],
-        body: people.map((x) => [x.dept, String(x.shift), attLineText(s, x.line), x.name, fmtTime(x.at), attStateText(s, x) + (x.gone ? ' · ' + fmtTime(x.gone.at) : ''), x.from]),
+        body: people.map((x) => [x.dept, String(x.shift), attLineText(s, x.line), x.name + (x.sup ? ' · ' + tr('supervisor') : ''), fmtTime(x.at), attStateText(s, x) + (x.gone ? ' · ' + fmtTime(x.gone.at) : ''), x.from]),
       })
       top = after() + 18
     }
