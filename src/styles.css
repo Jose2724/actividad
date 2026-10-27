@@ -2084,3 +2084,4 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 .po-acts{display:flex;flex-direction:column;align-items:flex-start;gap:4px}.po-acts .hold-btn,.po-acts .hold-tag{margin-left:0}
 .nowrap{white-space:nowrap}
 @media (max-width:560px){.top .brand .logo{height:32px}}
+.oreq{color:var(--muted);font-weight:600}

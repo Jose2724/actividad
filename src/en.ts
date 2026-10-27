@@ -2544,4 +2544,9 @@ export const EN: Record<string, string> = {
   "Que siga contando": "Let it count",
   "Descontarlo": "Take it off the count",
   "✕ Rechazar": "✕ Reject",
+  // a PO's required pallets (2026-10-27)
+  "Requería {0} pallets de {1} cajas · hechos {2}: {3} completos y {4} parciales": "Required {0} pallets of {1} cases · made {2}: {3} full and {4} partial",
+  "Requería {0} pallets de {1} cajas · hechos {2}": "Required {0} pallets of {1} cases · made {2}",
+  "{0} req.": "{0} req.",
+  "Pallets que requería el pedido por sus cajas": "Pallets the order required by its cases",
 }

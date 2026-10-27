@@ -1277,7 +1277,7 @@ function OrdersCard({ s, mgr, onAdd }: { s: State; mgr: boolean; onAdd?: (o: Ord
               <td>{o.customer || '—'}</td><td>{o.shipBy ? shipText(o.shipBy) : '—'}</td>
               <td className="num">{o.cases != null ? fmtN(o.cases) : '—'}</td><td className="num"><b>{fmtN(made)}</b></td>
               <td className="num">{left == null ? '—' : left > 0 ? <span className={'ost st-' + st}>{trx('faltan {0} {1}', fmtN(left), tr('cajas'))}</span> : <span className="ost st-done">{tr('✓ completo')}{left < 0 ? ' (+' + fmtN(-left) + ')' : ''}</span>}</td>
-              <td className="obar">{o.cases != null && o.cases > 0 && <div className="bar"><i className={'st-' + st} style={{ width: Math.min(100, Math.round((made / o.cases) * 100)) + '%' }} /></div>}<small>{seq.need ? trx('{0} de {1}', seq.done.length, seq.need) : seq.done.length ? (seq.done.length === 1 ? tr('1 pallet') : trx('{0} pallets', seq.done.length)) : ''}</small></td>
+              <td className="obar">{o.cases != null && o.cases > 0 && <div className="bar"><i className={'st-' + st} style={{ width: Math.min(100, Math.round((made / o.cases) * 100)) + '%' }} /></div>}<small>{seq.need ? trx('{0} de {1}', seq.done.length, seq.need) : seq.done.length ? (seq.done.length === 1 ? tr('1 pallet') : trx('{0} pallets', seq.done.length)) : ''}{seq.std != null && seq.need != null && seq.std !== seq.need ? <> · <span className="ofn" title={tr('Pallets que requería el pedido por sus cajas')}>{tr('{0} req.', seq.std)}</span></> : null}</small></td>
               <td className="dest">{o.dest || '—'}</td>
               {mgr && <td><button type="button" className="lnk" onClick={() => setEditing(o.id)}>{tr('Editar')}</button>{!o.closed && <button type="button" className={'lnk sm o-urgbtn' + (o.urgent ? ' on' : '')} title={o.urgent ? tr('Quitar urgente') : tr('Marcar urgente')} aria-label={o.urgent ? tr('Quitar urgente') : tr('Marcar urgente')} onClick={() => setOrderUrgent(o.id, !o.urgent)}>{o.urgent ? tr('Quitar 🔥') : tr('🔥 Urgente')}</button>}</td>}
             </tr>
@@ -1379,8 +1379,9 @@ function OrderPalletsDialog({ s, order, onAdd, onClose }: { s: State; order: Ord
         <h3>{orderLabel(order)} · <span className="code">{order.code}</span></h3>
         <p className="osum">
           <b>{list.length === 1 ? tr('1 pallet') : trx('{0} pallets', list.length)}</b>{seq.need ? ' ' + tr('de {0}', seq.need) : ''} · <b>{fmtN(made)} {tr('cajas')}</b>
-          {left != null && (left > 0 ? <span className="ost st-going"> · {trx('faltan {0} {1}', fmtN(left), tr('cajas'))}</span> : <span className="ost st-done"> · {tr('✓ completo')}</span>)}
+          {left != null && (left > 0 ? <span className="ost st-going"> · {trx('faltan {0} {1}', fmtN(left), tr('cajas'))}</span> : <span className="ost st-done"> · {tr('✓ completo')}{left < 0 ? ' · ' + tr('{0} de más', fmtN(-left)) : ''}</span>)}
           {order.shipBy && <> · {trx('envío {0}', shipText(order.shipBy))}</>}
+          {seq.std != null && seq.size && list.length > 0 && <small className="oreq"><br />{seq.partial ? tr('Requería {0} pallets de {1} cajas · hechos {2}: {3} completos y {4} parciales', seq.std, fmtN(seq.size), list.length, list.length - seq.partial, seq.partial) : tr('Requería {0} pallets de {1} cajas · hechos {2}', seq.std, fmtN(seq.size), list.length)}</small>}
         </p>
         {list.length === 0 ? <p className="hint">{tr('Todavía no se le ha dado ningún pallet.')}</p> : (
           <div className="twrap">

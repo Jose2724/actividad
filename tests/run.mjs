@@ -5143,6 +5143,22 @@ section('MFO: el roaster va en bags de libras, y la línea dice Bag en vez de bi
   const back = await device('mfo-bags-again', { seed: JSON.parse(disks.get('mfo-bags').get('act_v1')), user: 'Operador MFO' })
   eq('al volver a abrir: sigue siendo bag', back.use((m) => m.cfgOf(m.store.get().runs.find((r) => r.code === 'ROASTER')).unit), 'Bag')
 }
+section('Lo que un PO requería y lo que se hizo (la oficina, 2026-10-27: 150 cajas en pallets de 50 = 3 pallets; se hicieron 5 por los parciales)')
+{
+  const rq = await device('po-required', { user: 'Ingrid' })
+  rq.use((m) => {
+    const st = () => m.store.get()
+    clock = T0
+    const oid = m.saveOrder(null, { customer: 'BJ', po: '0117953991', code: '1999', cases: 150, shipBy: '2026-10-28', dest: '' })
+    m.addLine('Packing', 'Línea 1')
+    m.startRun(st().lines.find((l) => l.dept === 'Packing'), '1999', '6291', DAY, 50)
+    const run = () => st().runs.find((r) => r.code === '1999')
+    eq('sin pallets: requiere 3 de 50, ninguno parcial', [m.orderPallets(st(), oid, run().perUnit).std, m.orderPallets(st(), oid, run().perUnit).partial, m.orderPallets(st(), oid, run().perUnit).size], [3, 0, 50])
+    for (const [i, q] of [50, 50, 3, 30, 20].entries()) { clock = T0 + (i + 1) * 10 * M; m.unitDone(run().id, q, 'T' + i, undefined, oid) }
+    const q = m.orderPallets(st(), oid)
+    eq('5 hechos (3 parciales), 153 de 150 cajas: requería 3 pallets de 50, y "5 de 5" como antes', [q.done.length, q.need, q.std, q.size, q.partial, m.orderMade(st(), oid)], [5, 5, 3, 50, 3, 153])
+  })
+}
 section('Los pallets de un PO salen de lo que llevan sus pallets, no solo de Productos (Packing, 2026-10-22: PO de 100 cajas, "2 pallets de 13")')
 {
   const pp = await device('po-pallets', { user: 'Ingrid' })

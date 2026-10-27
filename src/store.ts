@@ -1469,15 +1469,22 @@ export const palletPo = (s: State, r: Run) => (typeof r.extra?.open?.po === 'str
 /** the pallets an order has, in the order they were finished, and how many it needs (its cases ÷ cases per pallet) */
 export function orderPallets(s: State, orderId: string, perPallet?: number | null) {
   const o = s.orders.find((x) => x.id === orderId)
-  const done = orderRunsOf(s, orderId).flatMap((r) => r.units.filter((u) => u.po === orderId).map((u) => u.at)).sort((a, b) => a - b)
-  if (o?.cases == null) return { done, need: null }
+  const units = orderRunsOf(s, orderId).flatMap((r) => r.units.filter((u) => u.po === orderId)).sort((a, b) => a.at - b.at)
+  const done = units.map((u) => u.at)
+  // the size of a pallet of this order (the line's, else Productos', else the biggest one made for it): what the order
+  // required by its cases, and how many of the pallets made are short of it (the office, 2026-10-27: "150 cajas
+  // deberían ser 3 paletas de 50; por los parciales son 5")
+  const size = perPallet || productOf(s, o?.code ?? '')?.casesPerPallet || Math.max(0, ...units.map((u) => u.qty ?? 0))
+  const partial = size > 0 ? units.filter((u) => (u.qty ?? 0) < size).length : 0
+  const std = o?.cases != null && size > 0 ? Math.ceil(o.cases / size - 1e-9) : null
+  if (o?.cases == null) return { done, need: null, size: size || null, std, partial }
   // the pallets it needs: those made, and what its cases still left take (Packing, 2026-10-22: PO 117953991 of 100
   // cases in pallets of 50 read "2 pallets de 13", from Productos' 8 cases per pallet). Complete by its cases: the
   // pallets made. Else the cases left over the size of its pallets: the line's, or the ones made for it, or Productos'
   const made = orderMade(s, orderId), left = o.cases - made
-  if (left <= 0 && done.length) return { done, need: done.length }
+  if (left <= 0 && done.length) return { done, need: done.length, size: size || null, std, partial }
   const per = perPallet || (done.length && made > 0 ? made / done.length : 0) || productOf(s, o.code)?.casesPerPallet || 0
-  return { done, need: per > 0 ? done.length + Math.ceil(Math.max(0, left) / per - 1e-9) : null }
+  return { done, need: per > 0 ? done.length + Math.ceil(Math.max(0, left) / per - 1e-9) : null, size: size || null, std, partial }
 }
 /**
  * An order that takes no more pallets (the office, 2026-10-21: "que restrinja cuando están haciendo un PO en exceso:
