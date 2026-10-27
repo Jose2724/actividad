@@ -2264,7 +2264,7 @@ function poChoices(s: State, run: Run) {
     const seq = orderPallets(s, o.id, run.perUnit), n = seq.done.length + 1, left = o.cases != null ? o.cases - orderMade(s, o.id) : null
     // (a complete order takes no more pallets, 2026-10-21: it is shown, ticked off, and cannot be chosen)
     const full = orderFull(s, o.id, run.perUnit)
-    return { id: o.id, n, need: seq.need, full, label: orderLabel(o) + ' · ' + (full ? tr('✓ completo ({0})', orderFullText(s, o.id, run.perUnit)) : left != null && left <= 0 ? tr('completo') : seq.need ? tr('pallet {0} de {1}', n, seq.need) : tr('pallet {0}', n)) }
+    return { id: o.id, n, need: seq.need, full, label: orderLabel(o) + ' · ' + (full ? (left != null && left > 0 ? tr('ya tiene sus {0} pallets · faltan {1} cajas: van en su último pallet (Corregir)', seq.need, fmtN(left)) : tr('✓ completo ({0})', orderFullText(s, o.id, run.perUnit))) : left != null && left <= 0 ? tr('completo') : seq.need ? tr('pallet {0} de {1}', n, seq.need) : tr('pallet {0}', n)) }
   })
 }
 
@@ -2312,14 +2312,14 @@ function PalletDoneDialog({ s, run, onClose, onSaved }: { s: State; run: Run; on
   const short = !!usualPallet && total < usualPallet
   const save = () => { if (!ok) return; if (tooBig) { setBinAsk(true); return } if (short) { setShortAsk(true); return } if (isPallet === total) { record(); return } sure.check([{ key: 'pallet', n: total, usual: usualPallet, unit: tr('cajas'), per: 'pallet', total: lots > 1 }], record) }
   if (doneNote) return <NoticeDialog title={tr('✓ PO completo')} text={doneNote} onClose={onSaved} />
-  if (shortAsk) return <ShortPalletDialog n={total} full={usualPallet ?? 0} code={run.code} po={pick && !pick.full ? pick.label.split(' · ')[0] : ''} onBack={() => setShortAsk(false)} onMore={() => { setShortAsk(false); setAdded(true); setRows([...rows, { lot: '', qty: '', tag: '' }]) }} onShort={(why) => { setShortAsk(false); record(why) }} />
+  if (shortAsk) return <ShortPalletDialog n={total} full={usualPallet ?? 0} code={run.code} po={pick && !pick.full ? pick.label.split(' · ')[0] : ''} last={pick && !pick.full && pick.need && pick.n >= pick.need ? { n: pick.n, need: pick.need, left: (() => { const o = orderOfId(s, pick.id); return o?.cases != null ? o.cases - orderMade(s, o.id) : 0 })() } : null} onBack={() => setShortAsk(false)} onMore={() => { setShortAsk(false); setAdded(true); setRows([...rows, { lot: '', qty: '', tag: '' }]) }} onShort={(why) => { setShortAsk(false); record(why) }} />
   if (binAsk) return <BinAskDialog s={s} run={run} n={total} usual={usualPallet ?? 0} onBack={() => setBinAsk(false)} onPallet={() => { setIsPallet(total); setBinAsk(false); record() }} onBin={onSaved} />
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
         <h3>{trx('Pallet listo · {0}', run.code)}</h3>
         {sure.ui}
-        {wentFull && <p className="hint red">{tr('El {0} ya está completo ({1}): este pallet ya no se le puede poner. Escoge otro PO o déjalo sin PO.', wentFull.label.split(' · ')[0], orderFullText(s, wentFull.id, run.perUnit))}</p>}
+        {wentFull && <p className="hint red">{tr('El {0} ya está completo ({1}): este pallet ya no se le puede poner. Escoge otro PO o déjalo sin PO.', wentFull.label.split(' · ')[0], orderFullText(s, wentFull.id, run.perUnit))}{(() => { const o = orderOfId(s, wentFull.id), left = o?.cases != null ? o.cases - orderMade(s, o.id) : 0; return left > 0 ? ' ' + tr('Le faltan {0} cajas: van en su último pallet, con Corregir.', fmtN(left)) : '' })()}</p>}
         <form className="qform" onSubmit={(e) => { e.preventDefault(); save() }}>
           <div className="palrows">
             <div className="palrow head"><span>{tr('Lote')}</span><span>{tr('Cajas')}</span><span>{tr('Tag')}</span></div>
@@ -2450,7 +2450,7 @@ function PartDialog({ run, index, onClose }: { run: Run; index: number; onClose:
 }
 
 /** "¿Por qué va corto?": a pallet with fewer cases than a full one of its code (see PalletDoneDialog) */
-function ShortPalletDialog({ n, full, code, po, onBack, onMore, onShort }: { n: number; full: number; code: string; po: string; onBack: () => void; onMore: () => void; onShort: (why: string) => void }) {
+function ShortPalletDialog({ n, full, code, po, last, onBack, onMore, onShort }: { n: number; full: number; code: string; po: string; last?: { n: number; need: number; left: number } | null; onBack: () => void; onMore: () => void; onShort: (why: string) => void }) {
   const [other, setOther] = useState(false)
   const [text, setText] = useState('')
   return (
@@ -2458,6 +2458,8 @@ function ShortPalletDialog({ n, full, code, po, onBack, onMore, onShort }: { n: 
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
         <h3>{tr('¿Por qué va corto este pallet?')}</h3>
         <p>{trx('Lleva {0} cajas y un pallet lleno de {1} lleva {2}: le faltan {3}.', <b>{fmtN(n)}</b>, <b>{code}</b>, <b>{fmtN(full)}</b>, <b>{fmtN(full - n)}</b>)}</p>
+        {/* the PO's last pallet (a PO never takes more pallets than it needs, 2026-10-27): said before it goes short */}
+        {last && last.left > n && <p className="hint red">{tr('Es el pallet {0} de {1} del {2}, y al PO le faltan {3} cajas: después de este no se le podrá poner otro pallet. Si va corto, lo que falte se corrige en este (Corregir).', last.n, last.need, po, fmtN(last.left))}</p>}
         {!other ? (
           <div className="endchoices">
             <button type="button" className="btn primary" autoFocus onClick={onMore}>{tr('Se acabó el lote: lo completan con otro lote')}</button>

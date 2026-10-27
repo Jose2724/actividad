@@ -1572,9 +1572,10 @@ export function orderFull(s: State, orderId: string, perPallet?: number | null, 
   const mine = but ? orderRunsOf(s, orderId).find((r) => r.id === but.runId)?.units.find((u) => u.at === but.at && u.po === orderId) : undefined
   const r = but ? orderRunsOf(s, orderId).find((x) => x.id === but.runId) : undefined
   const pallets = seq.done.length - (mine ? 1 : 0), made = orderMade(s, orderId) - (mine && r ? unitQty(s, r, mine) : 0)
-  // (by its cases: a PO of short pallets needs more of them than its count says, and those are taken)
-  void pallets
-  return made >= o.cases
+  // by its cases, or by its pallets: a PO of 3 pallets never takes a 4th, short ones or not — what its cases still lack
+  // goes in its last pallet (the office via Jose, 2026-10-27: "las pallets deben terminar completas; que si son 3 o 10
+  // pallets no se pase a más"); before, short pallets let it run to 4 or 5
+  return made >= o.cases || (seq.need != null && pallets >= seq.need)
 }
 /**
  * the first order a list of pallets to give would go beyond ('' = none): more pallets than it still needs, or cases
@@ -1588,8 +1589,7 @@ export function orderOver(s: State, list: { po: string; qty: number | null }[], 
     const o = s.orders.find((x) => x.id === u.po)
     if (!o || o.cases == null) continue
     const g = given.get(u.po) ?? { n: 0, cases: 0 }, seq = orderPallets(s, u.po, perPallet)
-    void seq
-    if (orderMade(s, u.po) + g.cases >= o.cases) return u.po
+    if (orderMade(s, u.po) + g.cases >= o.cases || (seq.need != null && seq.done.length + g.n >= seq.need)) return u.po
     given.set(u.po, { n: g.n + 1, cases: g.cases + (u.qty ?? 0) })
   }
   return ''

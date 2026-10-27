@@ -1508,8 +1508,8 @@ ord.use((m) => {
   const st = () => m.store.get(), order = (id) => st().orders.find((o) => o.id === id)
   clock = T0
   eq('sin pedidos no hay nada que ofrecer', [st().orders, m.openOrdersFor(st(), 'A100')], [[], []])
-  const a = m.saveOrder(null, { customer: 'Cliente A', po: '4500011', code: 'a100', cases: 72, shipBy: '2026-10-15', dest: 'Almacén Norte' })
-  eq('la oficina escribe un pedido con su PO', [order(a).customer, order(a).po, order(a).code, order(a).cases, order(a).shipBy, order(a).dest, order(a).closed, order(a).by, m.orderLabel(order(a))], ['Cliente A', '4500011', 'A100', 72, '2026-10-15', 'Almacén Norte', false, 'Oficina', 'Cliente A · PO 4500011'])
+  const a = m.saveOrder(null, { customer: 'Cliente A', po: '4500011', code: 'a100', cases: 100, shipBy: '2026-10-15', dest: 'Almacén Norte' }) // (100: three pallets of 36, so it stays open through what follows; a PO never takes more pallets than it needs, 2026-10-27)
+  eq('la oficina escribe un pedido con su PO', [order(a).customer, order(a).po, order(a).code, order(a).cases, order(a).shipBy, order(a).dest, order(a).closed, order(a).by, m.orderLabel(order(a))], ['Cliente A', '4500011', 'A100', 100, '2026-10-15', 'Almacén Norte', false, 'Oficina', 'Cliente A · PO 4500011'])
   clock = T0 + M
   const b = m.saveOrder(null, { customer: 'Cliente B', po: '', code: 'A100', cases: 36, shipBy: '2026-10-13', dest: '' })
   eq('un pedido puede no llevar PO', [order(b).po, m.orderLabel(order(b))], ['', 'Cliente B · sin PO'])
@@ -1517,7 +1517,7 @@ ord.use((m) => {
   eq('Packing ve los pedidos abiertos de su código, primero el que se envía antes', [m.openOrdersFor(st(), '0a100').length, m.openOrdersFor(st(), 'A100').map((o) => o.customer), m.openOrdersFor(st(), 'B200')], [0, ['Cliente B', 'Cliente A'], []])
   const sent = m.outbox.items().filter((i) => i.table === 'act_changes' && i.key.startsWith('po:'))
   eq('suben al servidor por la tabla del historial, sin departamento (solo managers y oficina), con fecha lejana para que los aparatos no los suelten', sent.map((i) => [i.key === 'po:' + i.row.ref_key, i.row.dept, i.row.ref_table, i.row.what, i.row.at.slice(0, 4), i.row.deleted, JSON.parse(i.row.after).code]), [[true, null, 'act_orders', 'Pedido', '2099', false, 'A100'], [true, null, 'act_orders', 'Pedido', '2099', false, 'A100']])
-  eq('en el historial queda que se crearon, y los pedidos no se mezclan con sus líneas', [st().changes.map((c) => [c.what, c.by, c.after]), st().changes.some((c) => c.refTable === 'act_orders')], [[['Pedido nuevo', 'Oficina', 'Cliente A · PO 4500011 · código A100 · 72 cajas · envío 2026-10-15 · Almacén Norte'], ['Pedido nuevo', 'Oficina', 'Cliente B · sin PO · código A100 · 36 cajas · envío 2026-10-13']], false])
+  eq('en el historial queda que se crearon, y los pedidos no se mezclan con sus líneas', [st().changes.map((c) => [c.what, c.by, c.after]), st().changes.some((c) => c.refTable === 'act_orders')], [[['Pedido nuevo', 'Oficina', 'Cliente A · PO 4500011 · código A100 · 100 cajas · envío 2026-10-15 · Almacén Norte'], ['Pedido nuevo', 'Oficina', 'Cliente B · sin PO · código A100 · 36 cajas · envío 2026-10-13']], false])
   eq('un PO para varios productos: los códigos de una caja, cada uno una vez', [m.orderCodes('0100, 0200 0300;a100,0100'), m.orderCodes('  b200 '), m.orderCodes(' , ')], [['0100', '0200', '0300', 'A100'], ['B200'], []])
   {
     // the same PO on several products, and on the same product twice: the office's to say
@@ -1536,7 +1536,7 @@ ord.use((m) => {
   clock = T0 + 20 * M; m.unitDone(run().id, 0, '1002', [{ lot: '6283', qty: 12 }, { lot: '6284', qty: 8 }], a)
   clock = T0 + 30 * M; m.unitDone(run().id, 36, '1003')
   eq('cada pallet guarda a qué pedido va (o a ninguno)', run().units.map((u) => [u.qty, u.ref, u.po === a ? 'A' : u.po === b ? 'B' : u.po ?? null]), [[36, '1001', 'B'], [20, '1002', 'A'], [36, '1003', null]])
-  eq('la app suma lo empacado para cada pedido', [m.orderMade(st(), b), m.orderMade(st(), a), order(a).cases - m.orderMade(st(), a)], [36, 20, 52])
+  eq('la app suma lo empacado para cada pedido', [m.orderMade(st(), b), m.orderMade(st(), a), order(a).cases - m.orderMade(st(), a)], [36, 20, 80])
   eq('en el reporte cada pallet dice su pedido', m.reportOf(st(), DAY, clock).unitRows.map((x) => [x.u.ref, x.lot, x.order]), [['1001', '6283', 'Cliente B · sin PO'], ['1002', '6283', 'Cliente A · PO 4500011'], ['1002', '6284', 'Cliente A · PO 4500011'], ['1003', '6283', '']])
   eq('el siguiente pallet se propone para el pedido del anterior; sin pedido en el anterior, para ninguno', m.nextOrderFor(st(), run()), '')
   m.setUnitOrder(run().id, run().units[2].at, a)
@@ -5160,9 +5160,11 @@ section('Lo que un PO requería y lo que se hizo (la oficina, 2026-10-27: 150 ca
     m.startRun(st().lines.find((l) => l.dept === 'Packing'), '1999', '6291', DAY, 50)
     const run = () => st().runs.find((r) => r.code === '1999')
     eq('sin pallets: requiere 3 de 50, ninguno parcial', [m.orderPallets(st(), oid, run().perUnit).std, m.orderPallets(st(), oid, run().perUnit).partial, m.orderPallets(st(), oid, run().perUnit).size], [3, 0, 50])
-    for (const [i, q] of [50, 50, 3, 30, 20].entries()) { clock = T0 + (i + 1) * 10 * M; m.unitDone(run().id, q, 'T' + i, undefined, oid) }
+    const took = [50, 50, 3, 30, 20].map((q, i) => { clock = T0 + (i + 1) * 10 * M; return m.palletDone(run().id, [{ lot: '6291', qty: q, tag: 'T' + i }], oid) })
     const q = m.orderPallets(st(), oid)
-    eq('5 hechos (3 parciales), 153 de 150 cajas: requería 3 pallets de 50, y el "de N" se queda en 3 (Jose, 2026-10-27: un PO completo decía "4 de 4" cuando requería 3)', [q.done.length, q.need, q.std, q.size, q.partial, m.orderMade(st(), oid), m.orderFullText(st(), oid)], [5, 3, 3, 50, 3, 153, '5 de 3 pallets · 153 de 150 cajas'])
+    eq('requería 3 pallets de 50: el tercero (corto, de 3) lo completa por pallets y el cuarto y el quinto no entran (la oficina, 2026-10-27: "que si son 3 o 10 pallets no se pase a más"); le faltan 47 cajas, que van en su último pallet', [took, q.done.length, q.need, q.std, q.size, q.partial, m.orderMade(st(), oid), m.orderFull(st(), oid), m.orderFullText(st(), oid)], [[true, true, true, false, false], 3, 3, 3, 50, 1, 103, true, '3 de 3 pallets · 103 de 150 cajas'])
+    eq('un registro agregado después con otro pallet para ese PO tampoco pasa', m.orderOver(st(), [{ po: oid, qty: 47 }]), oid)
+    eq('un pallet que ya es suyo se puede corregir (no cuenta contra sí mismo)', m.orderFull(st(), oid, 50, { runId: run().id, at: q.done[2] }), false)
     // Productos says 8 to the pallet (wrong, as the office found it): the pallets made, of 50, win over it
     m.saveProduct(st().products.length, { code: '1999', name: 'X', pouchesPerCase: 8, casesPerMix: 14, cratesPerCart: 24, pouchesPerCrate: 0, casesPerPallet: 8, updatedAt: 0 })
     eq('con Productos en 8 por pallet (mal), los pallets hechos de 50 mandan: sigue requiriendo 3', [m.orderPallets(st(), oid).need, m.orderPallets(st(), oid).size], [3, 50])
