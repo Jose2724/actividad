@@ -33,7 +33,8 @@ export function AttendanceCard({ s, dept, date, shift, edit }: { s: State; dept:
   )
 }
 
-function AttendanceDialog({ s, dept, date, shift: inCourse, edit, onClose }: { s: State; dept: Dept; date: string; shift: 1 | 2; edit: boolean; onClose: () => void }) {
+/** `note` = why it opened by itself (the start of a code or a Set up, with the attendance still to write: 2026-10-27) */
+export function AttendanceDialog({ s, dept, date, shift: inCourse, edit, note = '', onClose }: { s: State; dept: Dept; date: string; shift: 1 | 2; edit: boolean; note?: string; onClose: () => void }) {
   const who = useWho()
   const boss = !!who.admin || who.role === 'mgr' || who.role === 'office'
   const [shift, setShift] = useState<1 | 2>(inCourse)
@@ -76,6 +77,7 @@ function AttendanceDialog({ s, dept, date, shift: inCourse, edit, onClose }: { s
     <div className="veil rc-veil" onClick={onClose}>
       <div className="dlg att-dlg" onClick={(e) => e.stopPropagation()} style={deptVars(dept)}>
         <h3>{tr('Asistencia · {0} {1}', DEPT_LOOK[dept].emoji, dept)}</h3>
+        {note && <p className="hint red">{note}</p>}
         <div className="chips">{([1, 2] as const).map((k) => <button key={k} type="button" className={'chip' + (shift === k ? ' on' : '')} onClick={() => { setShift(k); setOut(null); setSaid('') }}>{tr('Turno {0}', k)}{k === inCourse ? ' ' + tr('(en curso)') : ''}</button>)}</div>
         <div className="att-sum">
           <div><label>{tr('Esperados')}</label>{editingN != null ? (

@@ -6,7 +6,7 @@ import { Devices } from './DevicesView'
 import { supabase } from './supabase'
 import { syncStore } from './sync'
 import { consumeOn, setConsumeOn } from './store'
-import { ATT_DEFAULT, attExpectedOf, attShifts, clearShiftMark, plantCut, roomMark, setAttExpected, setAttView, setShiftMark, setWeightRule, weightRuleOf } from './store'
+import { ATT_DEFAULT, attExpectedOf, attShifts, clearShiftMark, plantCut, roomMark, setAttExpected, setAttGate, setAttView, setShiftMark, setWeightRule, weightRuleOf } from './store'
 import { BUILD } from './update'
 import { clockOffText, clockState } from './clock'
 import { fmtTime } from './clock-fmt'
@@ -278,6 +278,9 @@ function AttendanceSettings({ s, date, viewOnly, admin }: { s: State; date: stri
   const save = () => { for (const x of changed) setAttExpected(x.d, x.k, x.n); setTyped({}); setSaved(true) }
   const one = attShifts(s, date).length === 1
   const on = s.attView.on
+  // attendance before starting (Jose, 2026-10-27), offered once the attendance is everybody's
+  const gate = s.attGate.on
+  const [gateAsk, setGateAsk] = useState(false)
   return (
     <>
     {admin && (
@@ -288,6 +291,14 @@ function AttendanceSettings({ s, date, viewOnly, admin }: { s: State; date: stri
         <p className="hint">{tr('Prendido: cada supervisor anota a su gente en su cuarto, y el reporte la muestra a todos.')}</p>
       </div>
     )}
+    {on && (
+      <div className="setcard">
+        <div className="sethead"><h3>{tr('Asistencia obligatoria para empezar')}</h3><span className={'rc-state' + (gate ? ' on' : '')}>{gate ? tr('Prendida') : tr('Apagada')}</span></div>
+        <label className="switch"><span>{tr('Que anoten la asistencia antes de empezar')}</span><input type="checkbox" role="switch" checked={gate} disabled={viewOnly} onChange={(e) => (e.target.checked ? setGateAsk(true) : setAttGate(false))} /></label>
+        <p className="hint">{tr('Prendida: en todos los cuartos, el supervisor tiene que anotar la asistencia del turno (al menos una persona) antes de poder empezar un código o un Set up; al tocar Empezar se abre la ventana de asistencia. Cada turno anota la suya. No aplica a managers, oficina ni "Solo ver".')}</p>
+      </div>
+    )}
+    {gateAsk && <ConfirmDialog title={tr('¿Asistencia obligatoria para empezar?')} text={tr('Desde ahora, en todos los cuartos, ningún supervisor puede empezar un código ni un Set up sin haber anotado la asistencia del turno. Se puede apagar aquí mismo cuando quieras.')} yes={tr('Prender')} onYes={() => { setAttGate(true); setGateAsk(false) }} onNo={() => setGateAsk(false)} />}
     {asking && <ConfirmDialog title={tr('¿Que todos vean la asistencia?')} text={tr('Desde ahora la tarjeta de asistencia sale en el piso de todos los cuartos, y en el reporte y sus archivos. Se puede apagar aquí mismo cuando quieras.')} yes={tr('Prender para todos')} onYes={() => { setAttView(true); setAsking(false) }} onNo={() => setAsking(false)} />}
     <div className="setcard">
       <div className="sethead"><h3>{tr('Asistencia · personas esperadas')}</h3></div>

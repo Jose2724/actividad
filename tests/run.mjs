@@ -5335,6 +5335,36 @@ section('Spiral anota la carne que echa, en libras y con su lote, y el reporte l
   const back = await device('spiral-meat-again', { seed: JSON.parse(disks.get('spiral-meat').get('act_v1')), user: 'Supervisor Spiral' })
   eq('al volver a abrir: la carne sigue', back.use((m) => m.meatsOf(m.store.get(), DAY).map((x) => [x.lb, x.meatLot])), [[450, 'BF-1023'], [300, 'BF-2000']])
 }
+section('Asistencia obligatoria para empezar (Jose, 2026-10-27: los supervisores anotan la asistencia del turno antes de empezar un código o un Set up; no los managers, la oficina ni Solo ver)')
+{
+  const g = await device('att-gate', { user: 'Sup' })
+  g.use((m) => {
+    const st = () => m.store.get()
+    clock = T0
+    localStorage.setItem('act_role', 'op'); localStorage.setItem('act_view_only', '')
+    eq('apagada hasta que un manager la prenda: no se pide nada', [st().attGate.on, m.attGated(st(), 'Kitchen', DAY, 1)], [false, false])
+    m.setAttGate(true); m.setAttView(true)
+    eq('prendida, y sube como ajuste (opt:attgate)', [st().attGate.on, m.outbox.items().find((i) => i.key === 'opt:attgate').row.per_hour], [true, 1])
+    eq('un supervisor sin asistencia anotada del turno no puede empezar; cada cuarto y cada turno aparte', [m.attGated(st(), 'Kitchen', DAY, 1), m.attGated(st(), 'Kitchen', DAY, 2), m.attGated(st(), 'Spiral', DAY, 1)], [true, true, true])
+    m.attAdd(DAY, 'Kitchen', 1, 'Juan')
+    eq('con una persona anotada, Kitchen turno 1 ya puede; Spiral y el turno 2 siguen sin poder', [m.attGated(st(), 'Kitchen', DAY, 1), m.attGated(st(), 'Kitchen', DAY, 2), m.attGated(st(), 'Spiral', DAY, 1)], [false, true, true])
+    localStorage.setItem('act_role', 'mgr')
+    eq('a un manager o la oficina no se le pide', m.attGated(st(), 'Spiral', DAY, 1), false)
+    localStorage.setItem('act_role', 'op'); localStorage.setItem('act_view_only', '1')
+    eq('ni a quien solo ve', m.attGated(st(), 'Spiral', DAY, 1), false)
+    localStorage.setItem('act_view_only', '')
+    m.setAttView(false)
+    eq('con la asistencia oculta (solo el admin) no se pide: nadie podría anotarla', m.attGated(st(), 'Spiral', DAY, 1), false)
+    m.setAttView(true)
+    eq('la historia dice que se prendió', st().changes.some((c) => c.what === 'Asistencia obligatoria para empezar' && c.after === 'obligatoria para empezar'), true)
+    m.applyRemote('act_targets', { dept: 'opt:attgate', per_hour: 0, per_shift: null, updated_at: iso(T0 + 5 * M) })
+    eq('apagada desde otra tablet: llega y se respeta', [st().attGate.on, m.attGated(st(), 'Spiral', DAY, 1)], [false, false])
+    m.applyRemote('act_targets', { dept: 'opt:attgate', per_hour: 1, per_shift: null, updated_at: iso(T0 + 6 * M) })
+    eq('y prendida otra vez', [st().attGate.on, m.attGated(st(), 'Spiral', DAY, 1)], [true, true])
+  })
+  const back = await device('att-gate-again', { seed: JSON.parse(disks.get('att-gate').get('act_v1')), user: 'Sup' })
+  eq('al volver a abrir sigue prendida', back.use((m) => m.store.get().attGate.on), true)
+}
 section('Consumo: lo que un cuarto pesa antes de empezar un código, lo que quedó al terminarlo, y su inventario (la oficina, 2026-10-27)')
 {
   const cs = await device('consumo', { user: 'Oficina' })

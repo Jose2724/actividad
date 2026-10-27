@@ -2597,4 +2597,14 @@ export const EN: Record<string, string> = {
   "⚠ Ese PO ya está ingresado con este código: {0}. No lo agregues otra vez; si es el mismo pedido, ciérralo y ábrelo con \"Editar\".": "⚠ That PO is already in with this code: {0}. Do not add it again; if it is the same order, close this and open it with \"Edit\".",
   "Ese PO ya está ingresado con otro producto: {0}. Si es el mismo pedido con otro producto, sigue; si es el mismo producto, no lo agregues otra vez.": "That PO is already in with another product: {0}. If it is the same order with another product, go on; if it is the same product, do not add it again.",
   "Agregarlo de todos modos": "Add it anyway",
+  // attendance before starting (2026-10-27)
+  "Antes de empezar hay que anotar la asistencia del Turno {0}: anota a la gente de {1} y vuelve a tocar Empezar.": "Before starting, the attendance of Shift {0} has to be written: write {1}'s people and tap Start again.",
+  "👥 Falta anotar la asistencia del Turno {0}: se pide al tocar Empezar.": "👥 The attendance of Shift {0} is still to write: it is asked when tapping Start.",
+  "Asistencia obligatoria para empezar": "Attendance required to start",
+  "Prendida": "On",
+  "Apagada": "Off",
+  "Que anoten la asistencia antes de empezar": "Attendance written before starting",
+  "Prendida: en todos los cuartos, el supervisor tiene que anotar la asistencia del turno (al menos una persona) antes de poder empezar un código o un Set up; al tocar Empezar se abre la ventana de asistencia. Cada turno anota la suya. No aplica a managers, oficina ni \"Solo ver\".": "On: in every room, the supervisor has to write the shift's attendance (at least one person) before being able to start a code or a Set up; tapping Start opens the attendance window. Each shift writes its own. It does not apply to managers, the office or \"View only\".",
+  "¿Asistencia obligatoria para empezar?": "Attendance required to start?",
+  "Desde ahora, en todos los cuartos, ningún supervisor puede empezar un código ni un Set up sin haber anotado la asistencia del turno. Se puede apagar aquí mismo cuando quieras.": "From now on, in every room, no supervisor can start a code or a Set up without having written the shift's attendance. It can be turned off right here whenever you want.",
 }
