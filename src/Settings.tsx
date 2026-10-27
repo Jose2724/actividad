@@ -5,6 +5,7 @@ import { Employees } from './Employees'
 import { Devices } from './DevicesView'
 import { supabase } from './supabase'
 import { syncStore } from './sync'
+import { consumeOn, setConsumeOn } from './store'
 import { ATT_DEFAULT, attExpectedOf, attShifts, clearShiftMark, plantCut, roomMark, setAttExpected, setAttView, setShiftMark, setWeightRule, weightRuleOf } from './store'
 import { BUILD } from './update'
 import { clockOffText, clockState } from './clock'
@@ -20,7 +21,7 @@ import { trx } from './trx'
  * powers allow; the last one, this device, is everybody's. The dialogs that do the work are the same ones the floor
  * and the report already use, so one rule holds everywhere.
  */
-export type SettingsKey = 'shifts' | 'day' | 'lines' | 'stops' | 'program' | 'attendance' | 'weights' | 'products' | 'goals' | 'people' | 'devices' | 'device'
+export type SettingsKey = 'shifts' | 'day' | 'lines' | 'stops' | 'program' | 'attendance' | 'weights' | 'consumo' | 'products' | 'goals' | 'people' | 'devices' | 'device'
 const fmtN = (x: number) => Math.round(x).toLocaleString('en-US')
 
 export function settingsSections(can: (p: 'shifts' | 'day' | 'products' | 'goals' | 'people') => boolean, mgr: boolean, viewOnly: boolean, admin = false, attOn = false): { key: SettingsKey; title: string; sub: string }[] {
@@ -31,6 +32,7 @@ export function settingsSections(can: (p: 'shifts' | 'day' | 'products' | 'goals
     // (whoever only looks sees the list and whether it is on, without the switch)
     ...(mgr ? [{ key: 'stops' as const, title: tr('Códigos de paro'), sub: tr('Reason Codes: prender o apagar') }] : []),
     ...(mgr ? [{ key: 'weights' as const, title: tr('Pesos'), sub: tr('cada cuánto se pesa y cuántos') }] : []),
+    ...(mgr ? [{ key: 'consumo' as const, title: tr('Consumo'), sub: tr('pesar lo que entra antes de empezar') }] : []),
     ...(mgr && (admin || attOn) ? [{ key: 'attendance' as const, title: tr('Asistencia'), sub: tr('personas esperadas por cuarto y turno') }] : []),
     ...(admin ? [{ key: 'program' as const, title: tr('Pestañas nuevas'), sub: tr('Programa, Lotes, Flujo: solo tú o todos') }] : []),
     ...(can('products') || viewOnly ? [{ key: 'products' as const, title: tr('Productos'), sub: tr('la tabla maestra') }] : []),
@@ -57,6 +59,7 @@ export function Settings({ s, now, day, name, home, mgr, admin, viewOnly, meId, 
         {sec === 'stops' && <StopCodesSettings s={s} viewOnly={viewOnly} />}
         {sec === 'program' && <><ProgramViewSettings s={s} /><ViewOptSettings s={s} name="lotes" /><ViewOptSettings s={s} name="flujo" /></>}
         {sec === 'weights' && <WeightSettings s={s} viewOnly={viewOnly} />}
+        {sec === 'consumo' && <ConsumeSettings s={s} viewOnly={viewOnly} />}
         {sec === 'attendance' && <AttendanceSettings s={s} date={day.date} viewOnly={viewOnly} admin={admin} />}
         {sec === 'products' && <div className="setcard wide"><div className="sethead"><h3>{tr('Productos')}</h3></div><p className="hint">{tr('La tabla maestra de la oficina: con ella las mezclas se vuelven pouches, cajas y pallets esperados, y cada cuarto sabe cuánto lleva un carro, un pallet o una caja.')}</p><Products s={s} readOnly={!can('products')} /></div>}
         {sec === 'goals' && <GoalsSettings s={s} now={now} day={day} />}
@@ -471,6 +474,18 @@ function DeviceTools() {
  * How often a room weighs and how many each time (2026-10-23: Spiral, "cada hora que pesen 8 bolas ... que se pueda
  * ajustar en Ajustes"): minutes between tests (0 = no reminder) and how many per test, for Spiral and RTE
  */
+/** which rooms weigh what they consume before a code starts (the office, 2026-10-27), off until a manager turns it on */
+function ConsumeSettings({ s, viewOnly }: { s: State; viewOnly: boolean }) {
+  return (
+    <div className="setcard">
+      <div className="sethead"><h3>{tr('Consumo')}</h3></div>
+      <p className="hint">{tr('Donde está prendido, la línea tiene que pesar y anotar lo que va a consumir (qué es, lote, fecha de la etiqueta, libras) antes de poder empezar un código; al terminarlo dice qué quedó, y eso queda en el inventario del cuarto. Sale en el Reporte y en el Excel.')}</p>
+      {DEPTS.map((d) => { const on = consumeOn(s, d); return (
+        <div key={d} className="wt-rule"><b>{d}</b><span className={on ? 'ok' : 'muted'}>{on ? tr('obligatorio al empezar') : tr('apagado')}</span>{!viewOnly && <button type="button" className={'btn sm' + (on ? '' : ' primary')} onClick={() => setConsumeOn(d, !on)}>{on ? tr('Apagar') : tr('Prender')}</button>}</div>
+      ) })}
+    </div>
+  )
+}
 function WeightSettings({ s, viewOnly }: { s: State; viewOnly: boolean }) {
   const rooms: { dept: Dept; what: string }[] = [{ dept: 'Spiral', what: tr('bolas') }, { dept: 'RTE', what: tr('pouches') }]
   return (

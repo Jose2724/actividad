@@ -5312,6 +5312,37 @@ section('Spiral anota la carne que echa, en libras y con su lote, y el reporte l
   const back = await device('spiral-meat-again', { seed: JSON.parse(disks.get('spiral-meat').get('act_v1')), user: 'Supervisor Spiral' })
   eq('al volver a abrir: la carne sigue', back.use((m) => m.meatsOf(m.store.get(), DAY).map((x) => [x.lb, x.meatLot])), [[450, 'BF-1023'], [300, 'BF-2000']])
 }
+section('Consumo: lo que un cuarto pesa antes de empezar un código, lo que quedó al terminarlo, y su inventario (la oficina, 2026-10-27)')
+{
+  const cs = await device('consumo', { user: 'Oficina' })
+  cs.use((m) => {
+    const st = () => m.store.get()
+    clock = T0
+    eq('apagado hasta que un manager lo prenda', m.consumeOn(st(), 'Kitchen'), false)
+    m.setConsumeOn('Kitchen', true)
+    eq('prendido para Kitchen, y sube como ajuste del cuarto', [m.consumeOn(st(), 'Kitchen'), m.consumeOn(st(), 'Spiral'), m.outbox.items().find((i) => i.key === 'opt:consumo:Kitchen').row.per_hour], [true, false, 1])
+    m.addLine('Kitchen', 'Línea 1')
+    const line = st().lines.find((l) => l.dept === 'Kitchen')
+    m.startRun(line, '2286', '6300', DAY, null)
+    const run = () => st().runs.find((r) => r.lineId === line.id && !r.endedAt)
+    const a = m.consumeAdd(run(), ' Carne 80/20 ', 'BF-1', '2026-10-20', 30)
+    eq('lo pesado va con el código: qué es, lote, fecha de la etiqueta, 30 lb, sin decir aún qué quedó', m.consumesOfRun(st(), run().id).map((x) => [x.product, x.prodLot, x.labelDate, x.lb, x.left, x.code]), [['Carne 80/20', 'BF-1', '2026-10-20', 30, null, '2286']])
+    eq('sube con el cuarto Kitchen, aparte del historial', [m.outbox.items().find((i) => i.key === 'consumo:' + a).row.dept, m.outbox.items().find((i) => i.key === 'consumo:' + a).row.ref_table], ['Kitchen', 'act_consumo'])
+    eq('sin qué es o sin libras no se guarda', [m.consumeAdd(run(), '', 'x', '', 30), m.consumeAdd(run(), 'Carne', '', '', 0)], ['', ''])
+    eq('nada en inventario mientras no se diga qué quedó', m.inventoryOf(st(), 'Kitchen').length, 0)
+    clock = T0 + 60 * M; m.endRun(run().id)
+    eq('terminado el código, la línea debe decir qué quedó', m.consumesPending(st(), line.id).map((x) => x.id), [a])
+    eq('más de lo que entró no se acepta; 10 lb sí', [m.consumeLeft(a, 31), m.consumeLeft(a, 10)], [false, true])
+    eq('quedaron 10 lb: en el inventario de Kitchen, y ya no pendiente', [m.inventoryOf(st(), 'Kitchen').map((x) => [x.product, x.left]), m.consumesPending(st(), line.id).length], [[['Carne 80/20', 10]], 0])
+    clock = T0 + 70 * M; m.startRun(line, '2286', '6301', DAY, null)
+    const b = m.consumeAdd(run(), 'Carne 80/20', 'BF-1', '2026-10-20', 10, a)
+    eq('usado lo que quedó: sale del inventario', [b !== '', m.inventoryOf(st(), 'Kitchen').length], [true, 0])
+    clock = T0 + 90 * M; m.endRun(run().id); m.consumeLeft(b, 0)
+    eq('se consumió todo: nada en inventario, nada pendiente; el día tiene las dos entradas', [m.inventoryOf(st(), 'Kitchen').length, m.consumesPending(st(), line.id).length, m.consumesOf(st(), DAY, 'Kitchen').length], [0, 0, 2])
+  })
+  const back = await device('consumo-again', { seed: JSON.parse(disks.get('consumo').get('act_v1')), user: 'Oficina' })
+  eq('al volver a abrir: las entradas y el ajuste siguen', back.use((m) => [m.consumesOf(m.store.get(), DAY, 'Kitchen').length, m.consumeOn(m.store.get(), 'Kitchen')]), [2, true])
+}
 section('On hold: un pallet o una mezcla en revisión, que cuenta o se descuenta según decida la oficina (Jose, 2026-10-23)')
 {
   const hd = await device('on-hold', { user: 'Oficina' })

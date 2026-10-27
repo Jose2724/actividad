@@ -5,6 +5,7 @@ import { avanceRows, mfoText, mfoWord, pending } from './avance'
 import { codeLabel, FAMILY_SHOWN, reasonCodeOf } from './reasons'
 import { cellText, loadZip, xDur, xPct, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 import { attendanceOf, attLineText, attMovesText, attOf, attShifts, attStateText } from './store'
+import { consumesOf, inventoryOf, type Dept as RoomDept } from './store'
 import { pctText } from './Attendance'
 import { buildPdf, loadPdf, type Part } from './pdf'
 import { homeScreenApple, type Kind } from './send'
@@ -339,12 +340,24 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
       [tr('Fecha'), tr('Hora'), tr('Línea'), tr('Código'), tr('Lote del producto'), tr('Libras de carne'), tr('Lote de la carne'), tr('Anotó')], ...m.list.map((x): Cell[] => [x.date, T(x.at), lineNameOf(s, x.lineId, x.line), x.code, x.lot, x.lb, x.meatLot, x.by])]
     return [{ name: tr('Carne'), rows }]
   }
+  /** what the rooms consumed that day and what is left in their inventory (2026-10-27) */
+  const consumeSheets = (): Sheet[] => {
+    const room = (dept || only || '') as RoomDept | ''
+    const list = consumesOf(s, date, room || undefined), inv = inventoryOf(s, room || undefined)
+    if (!list.length && !inv.length) return []
+    const T = (ms: number) => xTime(ms, fmtTime(ms))
+    const rows: Cell[][] = [[tr('Fecha'), tr('Hora'), tr('Cuarto'), tr('Línea'), tr('Código'), tr('Lote del producto'), tr('Qué entró'), tr('Lote'), tr('Fecha de la etiqueta'), tr('Libras'), tr('Quedaron (lb)'), tr('Anotó')],
+      ...list.map((x): Cell[] => [x.date, T(x.at), x.dept, lineNameOf(s, x.lineId, x.line), x.code, x.lot, x.product, x.prodLot, x.labelDate, x.lb, x.left ?? '', x.by]), [],
+      [tr('Inventario ahora (lo que quedó y nadie ha usado)')], [tr('Cuarto'), tr('Qué es'), tr('Lote'), tr('Fecha de la etiqueta'), tr('Libras'), tr('Desde'), tr('Código donde quedó')],
+      ...inv.map((x): Cell[] => [x.dept, x.product, x.prodLot, x.labelDate, x.left ?? 0, x.date, x.code])]
+    return [{ name: tr('Consumo'), rows }]
+  }
   /** the Excel file's sheets: one per table (Cambios and Avance only for the manager and the office) */
   const sheets = (parts?: Set<Part>): Sheet[] => {
     const b = blocks()
     // (the parts chosen in "¿Qué incluir?", 2026-10-21: each sheet goes with its part; none chosen = all of them)
-    const part: Record<string, Part> = { [tr('Resumen')]: 'resumen', [tr('Por turno')]: 'resumen', [tr('Por línea')]: 'resumen', [tr('Carne')]: 'codigo', [tr('Por código')]: 'codigo', [tr('Por lote')]: 'codigo', [tr('Pallets')]: 'pallets', [tr('Bins')]: 'bins', [tr('Unidades')]: 'unidades', [tr('Paros')]: 'paros', [tr('Cambios')]: 'cambios', [tr('Avance')]: 'avance', [tr('Asistencia')]: 'asistencia', [tr('Asistencia · personas')]: 'asistencia' }
-    const all: Sheet[] = [{ name: tr('Resumen'), rows: b.resumen }, ...attSheets(), ...(b.porTurno.length > 1 ? [{ name: tr('Por turno'), rows: b.porTurno }] : []), ...(b.porLinea.length > 1 ? [{ name: tr('Por línea'), rows: b.porLinea }] : []), { name: tr('Por código'), rows: b.porCodigo }, ...meatSheets(), { name: tr('Por lote'), rows: b.porLote }, ...(b.pallets.length > 1 ? [{ name: tr('Pallets'), rows: b.pallets }] : []), ...(b.bins.length > 1 ? [{ name: tr('Bins'), rows: b.bins }] : []), { name: tr('Unidades'), rows: b.unidades }, { name: tr('Paros'), rows: b.paros }, ...(mgr ? [{ name: tr('Cambios'), rows: b.cambios }] : []), ...(b.avance.length > 1 ? [{ name: tr('Avance'), rows: b.avance }] : [])]
+    const part: Record<string, Part> = { [tr('Resumen')]: 'resumen', [tr('Por turno')]: 'resumen', [tr('Por línea')]: 'resumen', [tr('Carne')]: 'codigo', [tr('Consumo')]: 'codigo', [tr('Por código')]: 'codigo', [tr('Por lote')]: 'codigo', [tr('Pallets')]: 'pallets', [tr('Bins')]: 'bins', [tr('Unidades')]: 'unidades', [tr('Paros')]: 'paros', [tr('Cambios')]: 'cambios', [tr('Avance')]: 'avance', [tr('Asistencia')]: 'asistencia', [tr('Asistencia · personas')]: 'asistencia' }
+    const all: Sheet[] = [{ name: tr('Resumen'), rows: b.resumen }, ...attSheets(), ...(b.porTurno.length > 1 ? [{ name: tr('Por turno'), rows: b.porTurno }] : []), ...(b.porLinea.length > 1 ? [{ name: tr('Por línea'), rows: b.porLinea }] : []), { name: tr('Por código'), rows: b.porCodigo }, ...meatSheets(), ...consumeSheets(), { name: tr('Por lote'), rows: b.porLote }, ...(b.pallets.length > 1 ? [{ name: tr('Pallets'), rows: b.pallets }] : []), ...(b.bins.length > 1 ? [{ name: tr('Bins'), rows: b.bins }] : []), { name: tr('Unidades'), rows: b.unidades }, { name: tr('Paros'), rows: b.paros }, ...(mgr ? [{ name: tr('Cambios'), rows: b.cambios }] : []), ...(b.avance.length > 1 ? [{ name: tr('Avance'), rows: b.avance }] : [])]
     return parts ? all.filter((x) => parts.has(part[x.name] ?? 'resumen')) : all
   }
 
@@ -876,6 +889,7 @@ function GeneralView({ k }: { k: Kit }) {
         </>
       )}
       <MeatWhere k={k} />
+      <ConsumeWhere k={k} />
       {(s.attView.on || k.admin) && <AttendanceWhere k={k} />}
       <StopsWhere k={k} />
       {(s.reasonCodes.on || hasCodedStops(rep)) && <CodePareto k={k} />}
@@ -989,6 +1003,26 @@ function AttNames({ k, people }: { k: Kit; people: AttEntry[] }) {
 }
 
 /** Spiral's meat in the report (2026-10-23): by code, its pounds, lots and pounds per mezcla; every entry a tap away */
+/** what the rooms weighed in that day, and the inventory that is left (2026-10-27) */
+function ConsumeWhere({ k }: { k: Kit }) {
+  const { s, date, dept, only } = k
+  const room = (dept || only || '') as RoomDept | ''
+  const list = consumesOf(s, date, room || undefined), inv = inventoryOf(s, room || undefined)
+  if (!list.length && !inv.length) return null
+  const lb = (n: number) => (Math.round(n * 100) / 100).toLocaleString('en-US')
+  const what = (x: { product: string; prodLot: string; labelDate: string }) => x.product + (x.prodLot ? ' · ' + tr('lote {0}', x.prodLot) : '') + (x.labelDate ? ' · ' + x.labelDate : '')
+  return (
+    <>
+      <h3>{tr('⚖ Consumo')}</h3>
+      {list.length > 0 && <ul className="meat-each">{list.map((x) => <li key={x.id}>{fmtTime(x.at)} · {x.dept} · {lineNameOf(s, x.lineId, x.line)} · <b>{x.code}</b> {tr('lote {0}', x.lot)} · <b>{lb(x.lb)} lb</b> {what(x)}{x.left == null ? <span className="muted"> · {tr('sin decir qué quedó')}</span> : x.left > 0 ? <b className="amber"> · {tr('quedaron {0} lb', lb(x.left))}</b> : <span className="ok"> · {tr('se consumió todo')}</span>} <small>· {x.by}</small></li>)}</ul>}
+      {inv.length > 0 && <>
+        <h4>{tr('Inventario ahora')}</h4>
+        <ul className="meat-each">{inv.map((x) => <li key={x.id}><b>{lb(x.left ?? 0)} lb</b> {what(x)} <small>· {x.dept} · {tr('quedó el {0} del código {1}', x.date, x.code)}</small></li>)}</ul>
+      </>}
+      <p className="hint">{tr('Lo que cada línea pesó antes de empezar un código y lo que dijo que quedó al terminarlo. En el Excel va la hoja "Consumo".')}</p>
+    </>
+  )
+}
 function MeatWhere({ k }: { k: Kit }) {
   const { s, rep, date, dept, only } = k
   const [open, setOpen] = useState(false)

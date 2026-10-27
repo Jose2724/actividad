@@ -378,7 +378,7 @@ export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Produ
    */
   orderRuns: Run[]
   /** the production orders of every room (deleted ones kept with their flag), and the closed accounts of finished ones */
-  workOrders: WorkOrder[]; orderSeals: OrderSeal[]; attendance: AttEntry[]; attExpected: AttExpected[]; shiftMarks: ShiftMark[]; kpi: KpiRec[]; weights: WeightTest[]; orderNotes: OrderNote[]; roomMsgs: RoomMsg[]; weightRules: WeightRule[]; meats: MeatEntry[]; holds: HoldRec[] }
+  workOrders: WorkOrder[]; orderSeals: OrderSeal[]; attendance: AttEntry[]; attExpected: AttExpected[]; shiftMarks: ShiftMark[]; kpi: KpiRec[]; weights: WeightTest[]; orderNotes: OrderNote[]; roomMsgs: RoomMsg[]; weightRules: WeightRule[]; meats: MeatEntry[]; holds: HoldRec[]; consumes: ConsumeEntry[]; consumeOpts: ConsumeOpt[] }
 /**
  * An order to fill in Packing: so many cases of one product for a customer, to ship by a date. Most carry the
  * customer's purchase order number (PO); some never do and some get it later. See "the orders Packing fills".
@@ -466,10 +466,10 @@ function tidySchedule(sch: Schedule): Schedule {
 function isDay(text: string) { return /^\d{4}-\d{2}-\d{2}$/.test(text) }
 /** with a server the lines (and products) are shared and come from it; without one, each device starts with a line per room */
 const SERVER = !!import.meta.env.VITE_SUPABASE_URL
-function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, reasonCodes: { on: false, updatedAt: 0 }, programView: { on: false, updatedAt: 0 }, attView: { on: false, updatedAt: 0 }, viewOpts: { lotes: { on: false, updatedAt: 0 }, flujo: { on: false, updatedAt: 0 } }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [], attendance: [], attExpected: [], shiftMarks: [], kpi: [], weights: [], orderNotes: [], roomMsgs: [], weightRules: [], meats: [], holds: [] } }
+function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, reasonCodes: { on: false, updatedAt: 0 }, programView: { on: false, updatedAt: 0 }, attView: { on: false, updatedAt: 0 }, viewOpts: { lotes: { on: false, updatedAt: 0 }, flujo: { on: false, updatedAt: 0 } }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [], attendance: [], attExpected: [], shiftMarks: [], kpi: [], weights: [], orderNotes: [], roomMsgs: [], weightRules: [], meats: [], holds: [], consumes: [], consumeOpts: [] } }
 function load(): State {
   try {
-    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; reasonCodes?: Partial<ReasonCodesOpt>; programView?: Partial<ReasonCodesOpt>; attView?: Partial<ReasonCodesOpt>; viewOpts?: Partial<Record<ViewOpt, Partial<ReasonCodesOpt>>>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[]; attendance?: Partial<AttEntry>[]; attExpected?: Partial<AttExpected>[]; shiftMarks?: Partial<ShiftMark>[]; kpi?: Partial<KpiRec>[]; weights?: Partial<WeightTest>[]; orderNotes?: Partial<OrderNote>[]; roomMsgs?: Partial<RoomMsg>[]; weightRules?: Partial<WeightRule>[]; meats?: Partial<MeatEntry>[]; holds?: Partial<HoldRec>[] }
+    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; reasonCodes?: Partial<ReasonCodesOpt>; programView?: Partial<ReasonCodesOpt>; attView?: Partial<ReasonCodesOpt>; viewOpts?: Partial<Record<ViewOpt, Partial<ReasonCodesOpt>>>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[]; attendance?: Partial<AttEntry>[]; attExpected?: Partial<AttExpected>[]; shiftMarks?: Partial<ShiftMark>[]; kpi?: Partial<KpiRec>[]; weights?: Partial<WeightTest>[]; orderNotes?: Partial<OrderNote>[]; roomMsgs?: Partial<RoomMsg>[]; weightRules?: Partial<WeightRule>[]; meats?: Partial<MeatEntry>[]; holds?: Partial<HoldRec>[]; consumes?: Partial<ConsumeEntry>[]; consumeOpts?: Partial<ConsumeOpt>[] }
     const s = JSON.parse(localStorage.getItem(KEY) || 'null') as Raw | null
     // rows saved by earlier versions: carts as plain timestamps, units without a tag or a name, products with one
     // pouches-per-cart number, nothing with an update time
@@ -524,6 +524,8 @@ function load(): State {
         // (inline, as above: nothing declared below load() may be used in here)
         meats: (s.meats ?? []).map(meatFrom).filter((x): x is MeatEntry => !!x),
         holds: (s.holds ?? []).map(holdFrom).filter((x): x is HoldRec => !!x),
+        consumes: (s.consumes ?? []).map(consumeFrom).filter((x): x is ConsumeEntry => !!x),
+        consumeOpts: (s.consumeOpts ?? []).filter((x) => !!x && DEPTS.includes(x.dept as Dept)).map((x) => ({ dept: x.dept as Dept, on: x.on === true, updatedAt: Number(x.updatedAt) || 0 })),
         weightRules: (s.weightRules ?? []).filter((x) => !!x && DEPTS.includes(x.dept as Dept) && Number(x.every) >= 0 && Number(x.count) >= 0).map((x) => ({ dept: x.dept as Dept, every: Math.round(Number(x.every)), count: Math.round(Number(x.count)), updatedAt: Number(x.updatedAt) || 0 })),
         attExpected: (s.attExpected ?? []).map(attExpectedFrom).filter((x): x is AttExpected => !!x),
         // each room's hand-over of a day (2026-10-21): a function declaration, as above
@@ -1123,6 +1125,77 @@ export function meatDelete(id: string) {
   if (!x || x.deleted) return
   putMeat({ ...x, deleted: true, updatedAt: stamp(x) })
 }
+// ---- what a room consumes (the office, 2026-10-27: "que Kitchen y Spiral pesen lo que consumen antes de comenzar, y lo que no se consumió quede en inventario") ----
+/**
+ * Before a code starts the line weighs what it is going to consume (what it is, its lot, the date on its label, the
+ * pounds), mandatory where a manager turned it on in Ajustes (opt:consumo:<room>, off until then); when the code ends
+ * it says whether all was consumed or how many pounds were left (left: null = not said yet), and what is left is the
+ * room's inventory, offered when the next code starts (fromId = the entry it was taken from, which then leaves the
+ * inventory). Each entry is one record in act_changes with the run's room (act_consumo), like the meat; the server
+ * never erases.
+ */
+export type ConsumeEntry = { id: string; date: string; dept: Dept; lineId: string; line: string; code: string; lot: string; runId: string; product: string; prodLot: string; labelDate: string; lb: number; left: number | null; fromId: string; at: number; by: string; deleted?: boolean; updatedAt: number; syncedAt?: number }
+export type ConsumeOpt = { dept: Dept; on: boolean; updatedAt: number }
+const CONS_ID = 'consumo:'
+export const CONS_REF = 'act_consumo'
+const CONS_KEY = 'opt:consumo:'
+function consumeFrom(x: Partial<ConsumeEntry> | null | undefined): ConsumeEntry | null {
+  if (!x || typeof x !== 'object' || typeof x.id !== 'string' || !x.id || !(DEPTS as unknown[]).includes(x.dept) || !isDay(String(x.date ?? '')) || !String(x.product ?? '').trim()) return null
+  const lb = Number(x.lb)
+  if (!(lb > 0 && lb < 100000)) return null
+  const left = x.left == null || x.left === undefined ? null : Math.min(lb, Math.max(0, Math.round(Number(x.left) * 100) / 100))
+  return { id: x.id, date: String(x.date), dept: x.dept as Dept, lineId: String(x.lineId ?? ''), line: String(x.line ?? ''), code: String(x.code ?? '').trim().toUpperCase(), lot: String(x.lot ?? ''), runId: String(x.runId ?? ''), product: String(x.product).trim().slice(0, 60), prodLot: String(x.prodLot ?? '').trim().slice(0, 40), labelDate: String(x.labelDate ?? '').slice(0, 10), lb: Math.round(lb * 100) / 100, left: Number.isFinite(left as number) ? left : null, fromId: String(x.fromId ?? ''), at: Number(x.at) || 0, by: String(x.by ?? ''), ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
+}
+const putConsume = (x: ConsumeEntry) => {
+  set({ ...state, consumes: [...(state.consumes ?? []).filter((y) => y.id !== x.id), x] })
+  push('act_changes', CONS_ID + x.id, { id: CONS_ID + x.id, at: iso(x.at), by_name: x.by, dept: x.dept, what: 'Consumo', before: '', after: JSON.stringify({ date: x.date, lineId: x.lineId, line: x.line, code: x.code, lot: x.lot, runId: x.runId, product: x.product, prodLot: x.prodLot, labelDate: x.labelDate, lb: x.lb, left: x.left, fromId: x.fromId }), ref_table: CONS_REF, ref_key: x.id, deleted: !!x.deleted, updated_at: iso(x.updatedAt), updated_by: user.get() })
+}
+/** something weighed into a code: what it is, its lot, its label's date, the pounds; fromId when it was what was left of an earlier entry. '' when it makes no sense */
+export function consumeAdd(r: Run, product: string, prodLot: string, labelDate: string, lb: number, fromId = ''): string {
+  if (!product.trim() || !(lb > 0 && lb < 100000)) return ''
+  const x: ConsumeEntry = { id: uid(), date: r.date, dept: r.dept, lineId: r.lineId, line: r.line, code: r.code, lot: lotNowOf(r), runId: r.id, product: product.trim().slice(0, 60), prodLot: prodLot.trim().slice(0, 40), labelDate: labelDate.slice(0, 10), lb: Math.round(lb * 100) / 100, left: null, fromId, at: clockNow(), by: user.get(), updatedAt: stamp(undefined) }
+  putConsume(x)
+  logChange(r.dept, 'Consumo · ' + r.code, '', x.product + (x.prodLot ? ' · lote ' + x.prodLot : '') + ' · ' + x.lb + ' lb', CONS_REF, x.id)
+  return x.id
+}
+/** what was left of an entry when its code ended (0 = all consumed); false when there is no such entry */
+export function consumeLeft(id: string, left: number): boolean {
+  const x = (state.consumes ?? []).find((y) => y.id === id)
+  if (!x || x.deleted || !(left >= 0) || left > x.lb) return false
+  const n = Math.round(left * 100) / 100
+  if (x.left === n) return true
+  putConsume({ ...x, left: n, updatedAt: stamp(x) })
+  logChange(x.dept, 'Consumo · ' + x.code, x.product + ' · ' + x.lb + ' lb', n > 0 ? 'quedaron ' + n + ' lb' : 'se consumió todo', CONS_REF, x.id + ':l')
+  return true
+}
+/** an entry written by mistake is taken away (kept on the server, marked) */
+export function consumeDelete(id: string) {
+  const x = (state.consumes ?? []).find((y) => y.id === id)
+  if (!x || x.deleted) return
+  putConsume({ ...x, deleted: true, updatedAt: stamp(x) })
+}
+/** what went in on a day (one room, or all), oldest first */
+export const consumesOf = (s: State, date: string, dept?: Dept) => (s.consumes ?? []).filter((x) => !x.deleted && x.date === date && (!dept || x.dept === dept)).sort((a, b) => a.at - b.at)
+export const consumesOfRun = (s: State, runId: string) => (s.consumes ?? []).filter((x) => !x.deleted && x.runId === runId).sort((a, b) => a.at - b.at)
+/** the room's inventory now: what was left of entries nobody has taken since, oldest first */
+export function inventoryOf(s: State, dept?: Dept): ConsumeEntry[] {
+  const all = (s.consumes ?? []).filter((x) => !x.deleted)
+  const taken = new Set(all.map((x) => x.fromId).filter(Boolean))
+  return all.filter((x) => (x.left ?? 0) > 0 && !taken.has(x.id) && (!dept || x.dept === dept)).sort((a, b) => a.at - b.at)
+}
+/** entries of a line's ended codes whose leftover has not been said yet: the line answers before going on */
+export const consumesPending = (s: State, lineId: string) => (s.consumes ?? []).filter((x) => !x.deleted && x.lineId === lineId && x.left == null && (() => { const r = s.runs.find((y) => y.id === x.runId); return !!r && !r.deleted && !!r.endedAt })()).sort((a, b) => a.at - b.at)
+/** whether a room must weigh what it consumes before a code starts (a manager's switch in Ajustes) */
+export const consumeOn = (s: State, dept: Dept) => !!(s.consumeOpts ?? []).find((x) => x.dept === dept)?.on
+export function setConsumeOn(dept: Dept, on: boolean) {
+  const was = (state.consumeOpts ?? []).find((x) => x.dept === dept)
+  if (!!was?.on === on) return
+  const x: ConsumeOpt = { dept, on, updatedAt: stamp(was) }
+  set({ ...state, consumeOpts: [...(state.consumeOpts ?? []).filter((y) => y !== was), x] })
+  push('act_targets', CONS_KEY + dept, { dept: CONS_KEY + dept, per_hour: on ? 1 : 0, per_shift: null, updated_at: iso(x.updatedAt), updated_by: user.get() })
+  logChange(dept, 'Consumo · ' + dept, was?.on ? 'obligatorio' : 'apagado', on ? 'obligatorio' : 'apagado', 'act_targets', CONS_KEY + dept)
+}
+
 // ---- units on hold (2026-10-23: "que se pueda poner en hold registros y tener la opción de omitir el conteo") ----
 /**
  * A mezcla, a pallet or any unit already recorded is put on hold while it is checked, by a manager or the office (Jose:
@@ -4223,6 +4296,21 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
     try { x = JSON.parse(String(row.after ?? '')) as Partial<HoldRec> } catch { /* not one */ }
     const e = holdFrom({ ...x, id, dept: row.dept as Dept, by: String(row.by_name ?? ''), at: fromIso(row.at) ?? 0, deleted: !!row.deleted, updatedAt: at, ...syncedOf(row) })
     if (e) set({ ...state, holds: [...(state.holds ?? []).filter((y) => y.id !== id), e] })
+  } else if (table === 'act_changes' && row.ref_table === CONS_REF && String(row.id ?? '').startsWith(CONS_ID)) {
+    // what a room consumed (2026-10-27): kept apart from the history
+    const id = String(row.id).slice(CONS_ID.length), cur = (state.consumes ?? []).find((x) => x.id === id)
+    if (!newer(cur)) return
+    let x: Partial<ConsumeEntry> = {}
+    try { x = JSON.parse(String(row.after ?? '')) as Partial<ConsumeEntry> } catch { /* not one */ }
+    const e = consumeFrom({ ...x, id, dept: row.dept as Dept, by: String(row.by_name ?? ''), at: fromIso(row.at) ?? 0, deleted: !!row.deleted, updatedAt: at, ...syncedOf(row) })
+    if (e) set({ ...state, consumes: [...(state.consumes ?? []).filter((y) => y.id !== id), e] })
+  } else if (table === 'act_targets' && String(row.dept ?? '').startsWith(CONS_KEY)) {
+    // whether a room weighs what it consumes (2026-10-27)
+    const dept = String(row.dept).slice(CONS_KEY.length) as Dept
+    if (!DEPTS.includes(dept)) return
+    const cur = (state.consumeOpts ?? []).find((x) => x.dept === dept)
+    if (!newer(cur)) return
+    set({ ...state, consumeOpts: [...(state.consumeOpts ?? []).filter((x) => x !== cur), { dept, on: Number(row.per_hour) === 1, updatedAt: at }] })
   } else if (table === 'act_changes' && row.ref_table === MEAT_REF && String(row.id ?? '').startsWith(MEAT_ID)) {
     // Spiral's meat (2026-10-23): kept apart from the history
     const id = String(row.id).slice(MEAT_ID.length), cur = (state.meats ?? []).find((x) => x.id === id)

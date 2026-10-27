@@ -26,6 +26,8 @@ import { LotesView } from './LotesView'
 import { KpiView } from './KpiView'
 import { WeightButton, WeightReminder } from './Weights'
 import { MeatButton } from './Meat'
+import { ConsumeButton, ConsumeEndDialog, ConsumeStartDialog } from './Consume'
+import { consumeAdd, consumeOn, consumesPending, openRun as openRunOn, store as theStore } from './store'
 import { HoldButton, HoldList } from './Holds'
 import { seesKpi } from './kpi'
 import { AttendanceCard } from './Attendance'
@@ -2624,6 +2626,8 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   const [wasting, setWasting] = useState(false)
   // (the program cap's question, 2026-10-23: kept with the other hooks, above the line's early return)
   const [capAsk, setCapAsk] = useState(false)
+  // what the line is going to consume, weighed before the code starts (2026-10-27): the start waits in here
+  const [consumeAsk, setConsumeAsk] = useState<null | (() => void)>(null)
   // A unit was just recorded on this run, here or on another tablet: for a moment the button says which one, the
   // counters light up and the card gets a green ring. So a tap is seen to have landed, on the line it landed on, and
   // nobody taps twice for the same cart (the button rests while it says so).
@@ -2784,13 +2788,16 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         {naming}
         {removing && <ConfirmDialog title={tr('¿Quitar {0} de {1}', lineLabel(line.name), line.dept) + '?'} text={tr('Se puede volver a agregar cuando haga falta.')} yes={tr('Quitar')} danger onYes={() => removeLine(line.id)} onNo={() => setRemoving(false)} />}
         {sure.ui}
+        {consumeAsk && <ConsumeStartDialog s={s} dept={line.dept} line={line.name} code={code.trim().toUpperCase()} onClose={() => setConsumeAsk(null)} onStart={(list) => { consumeAsk(); const r = openRunOn(theStore.get(), line.id); if (r) for (const e of list) consumeAdd(r, e.product, e.prodLot, e.labelDate, e.lb, e.fromId); setConsumeAsk(null) }} />}
+        {(() => { const p = consumeOn(s, line.dept) ? consumesPending(s, line.id) : []; return p.length ? <ConsumeEndDialog entries={p} /> : null })()}
         {!quiet && <form className="start" onSubmit={(e) => {
           e.preventDefault()
           if (!ok) return
           // only a quantity typed is asked about (the one the line proposes is the usual); RTE's is crates × pouches
           const typedPer = needPer && perUnit != null && (!!per.trim() || (isCart && !!crates.trim()))
           sure.check(typedPer ? [{ key: 'per', n: perUnit, usual: usualFor(s, line.dept, code, ''), unit: cfg.qtyUnit, per: cfg.unit.toLowerCase(), total: isCart }] : [], () => {
-            startRun(line, code.trim().toUpperCase(), lot.trim(), date, needPer ? perUnit : null, isPack && makes === 'bin' ? word : mfoWord === 'bags' ? 'lb' : mfoWord, isSpiral && spiralNow !== 'mezclas' ? spiralNow : '', mfoWord === 'bags' ? 'bag' : ''); setDateText(null); setLotText(null); setEditDate(false); setMaking(null); setBinText(''); setMeasure(null)
+            const go = () => { startRun(line, code.trim().toUpperCase(), lot.trim(), date, needPer ? perUnit : null, isPack && makes === 'bin' ? word : mfoWord === 'bags' ? 'lb' : mfoWord, isSpiral && spiralNow !== 'mezclas' ? spiralNow : '', mfoWord === 'bags' ? 'bag' : ''); setDateText(null); setLotText(null); setEditDate(false); setMaking(null); setBinText(''); setMeasure(null) }
+            if (consumeOn(s, line.dept)) setConsumeAsk(() => go); else go()
           })
         }}>
           {(() => { const c = programCapOf(s, day.date, line.dept, code, lot); return c && c.done >= c.planned - 1e-9 ? <p className="hint red capwarn">{tr('⚠ El programa de hoy del {0}{1} ya está completo: {2} de {3} {4}. Si es otro código, revísalo; si hay que hacer más, habla con la oficina.', c.code, c.lot ? ' · ' + tr('lote {0}', c.lot) : '', fmtN(c.done), fmtN(c.planned), c.unit)}</p> : null })()}
@@ -3001,6 +3008,8 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         {(line.dept === 'RTE' || line.dept === 'Spiral') && <WeightButton s={s} run={run} now={now} />}
         {/* Spiral's meat, apart from the mezclas (2026-10-23) */}
         {line.dept === 'Spiral' && <MeatButton s={s} run={run} />}
+        {/* what the code consumes, where the room weighs it (2026-10-27) */}
+        {consumeOn(s, line.dept) && <ConsumeButton s={s} run={run} />}
         {cfg.waste && <button type="button" className="btn" onClick={() => setWasting(true)}>Waste{run.waste ? <b className="red"> {run.waste} lb</b> : ' (lb)'}</button>}
         <button type="button" className="btn" disabled={!!stop && !inSetup} onClick={() => setEnding(true)}>{tr('■ Terminar')}<span className="opt"> {' '}{tr('código')}</span></button>
       </div>
