@@ -323,7 +323,7 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
    */
   const attSheets = (): Sheet[] => {
     const rooms = dept ? [dept] : only ? [only] : DEPTS, a = attendanceOf(s, date, rep.shift, rooms)
-    const rows: Cell[][] = [[tr('Cuarto'), tr('Esperados'), tr('Vinieron'), tr('% Asist.'), tr('% Falta'), tr('Faltan')], ...a.rows.map((r): Cell[] => [r.dept, r.expected, r.actual, xPct(r.att), xPct(r.pct), r.miss]), [tr('TOTAL'), a.total.expected, a.total.actual, xPct(a.total.att), xPct(a.total.pct), a.total.miss]]
+    const rows: Cell[][] = [[tr('Cuarto'), tr('Esperados'), tr('Vinieron'), tr('% Asistencia'), tr('% Falta'), tr('Faltan')], ...a.rows.map((r): Cell[] => [r.dept, r.expected, r.actual, xPct(r.att), xPct(r.pct), r.miss]), [tr('TOTAL'), a.total.expected, a.total.actual, xPct(a.total.att), xPct(a.total.pct), a.total.miss]]
     const people = (rep.shift ? [rep.shift] : attShifts(s, date)).flatMap((k) => rooms.flatMap((d) => attOf(s, date, d, k)))
     const T = (ms: number) => xTime(ms, fmtTime(ms))
     // with the line each one is on and their moves (Jose, 2026-10-22: "que los nombres de las personas salgan también en el excel")
@@ -964,7 +964,7 @@ function AttendanceWhere({ k }: { k: Kit }) {
     <>
       <h3>{tr('Asistencia')}{rep.shift ? ' · ' + tr('Turno {0}', rep.shift) : ''}</h3>
       <div className="att-rep">
-        <div className="att-row head"><span>{tr('Cuarto')}</span><span>{tr('Esperados')}</span><span>{tr('Vinieron')}</span><span>{tr('% Asist.')}</span><span>{tr('% Falta')}</span><span className="att-barcol" /></div>
+        <div className="att-row head"><span>{tr('Cuarto')}</span><span>{tr('Esperados')}</span><span>{tr('Vinieron')}</span><span>{tr('% Asistencia')}</span><span>{tr('% Falta')}</span><span className="att-barcol" /></div>
         {a.rows.map((r) => (
           <Fragment key={r.dept}>
             <div className="att-row" style={deptVars(r.dept)}>
