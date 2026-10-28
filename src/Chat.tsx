@@ -44,7 +44,7 @@ export function Chat({ s, home }: { s: State; home: Dept }) {
   }
   return (
     <>
-      <div className={'chat-fabs' + (side === 'office' ? ' many' : '')}>
+      <div className={'chat-fabs' + (side === 'office' ? ' many' : '') + (open ? ' has-open' : '')}>
         <button type="button" className="chat-hide" onClick={() => setHidden(true)} aria-label={tr('Ocultar los mensajes')} title={tr('Ocultar los mensajes')}>×</button>
         {rooms.map((d) => (
           <button key={d} type="button" className={'chat-fab' + (open === d ? ' on' : '')} style={deptVars(d)} aria-label={tr('Mensajes · {0}', d)} title={tr('Mensajes · {0}', d)} onClick={() => setOpen(open === d ? null : d)}>
