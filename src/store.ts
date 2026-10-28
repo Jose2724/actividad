@@ -313,6 +313,8 @@ export type AttMove = { from: string; to: string; at: number; by: string }
 export type AttEntry = { id: string; date: string; dept: Dept; shift: 1 | 2; name: string; by: string; at: number; gone: AttGone | null; from: Dept | ''; line: string; moves: AttMove[]
   /** a temp (agency) worker (2026-10-22, the COO's Daily KPI: "who shows up ... especially TEMPS") */
   temp?: boolean; deleted?: boolean; updatedAt: number; syncedAt?: number
+  /** the room's supervisor or leader on this shift, written as such (Jose, 2026-10-27: "que el líder o el supervisor se anote a sí mismo como supervisor") */
+  sup?: boolean
   /** a person who came from another room and is not written here: shown from that room's record (never stored) */
   via?: string }
 /** the people a room expects on a shift (a fixed number the managers change: see ATT_DEFAULT) */
@@ -323,7 +325,7 @@ function attFrom(x: Partial<AttEntry> | null | undefined): AttEntry | null {
   if (!name) return null
   const g = x.gone && typeof x.gone === 'object' && (x.gone.why === 'otro' || x.gone.why === 'casa') ? { why: x.gone.why, to: (DEPTS as unknown[]).includes(x.gone.to) ? (x.gone.to as Dept) : ('' as const), at: Number(x.gone.at) || 0, by: String(x.gone.by ?? ''), ...(typeof x.gone.line === 'string' && x.gone.line ? { line: x.gone.line.slice(0, 64) } : {}) } : null
   const moves = Array.isArray(x.moves) ? x.moves.filter((m) => m && typeof m === 'object').map((m) => ({ from: String(m.from ?? '').slice(0, 64), to: String(m.to ?? '').slice(0, 64), at: Number(m.at) || 0, by: String(m.by ?? '') })).slice(-50) : []
-  return { id: x.id, date: String(x.date), dept: x.dept as Dept, shift: x.shift, name, by: String(x.by ?? ''), at: Number(x.at) || 0, gone: g, from: (DEPTS as unknown[]).includes(x.from) ? (x.from as Dept) : '', line: typeof x.line === 'string' ? x.line.slice(0, 64) : '', moves, ...(x.temp === true ? { temp: true } : {}), ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
+  return { id: x.id, date: String(x.date), dept: x.dept as Dept, shift: x.shift, name, by: String(x.by ?? ''), at: Number(x.at) || 0, gone: g, from: (DEPTS as unknown[]).includes(x.from) ? (x.from as Dept) : '', line: typeof x.line === 'string' ? x.line.slice(0, 64) : '', moves, ...(x.temp === true ? { temp: true } : {}), ...(x.sup === true ? { sup: true } : {}), ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
 }
 function attExpectedFrom(x: Partial<AttExpected> | null | undefined): AttExpected | null {
   if (!x || !(DEPTS as unknown[]).includes(x.dept) || (x.shift !== 1 && x.shift !== 2) || !(Number(x.n) >= 0)) return null
@@ -368,7 +370,7 @@ function sealFrom(x: unknown): OrderSeal | null {
   // (a day by day an account may still carry is not read: see OrderSeal)
   return { id: e.id, sig: e.sig, upto: String(e.upto ?? ''), made, finishAt: numIn(e.finishAt), finishDay: String(e.finishDay ?? ''), completed, lots: Array.isArray(e.lots) ? e.lots.map(String).slice(0, 30) : [], updatedAt: numIn(e.updatedAt) }
 }
-export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Product[]; schedule: Schedule; changes: Change[]; targets: Target[]; shifts: ShiftPlan[]; shiftWeeks: ShiftWeek[]; dayShifts: DayShifts[]; lineRules: LineRules; reasonCodes: ReasonCodesOpt; programView: ReasonCodesOpt; attView: ReasonCodesOpt; viewOpts: Record<ViewOpt, ReasonCodesOpt>; lineTargets: LineTarget[]; orders: Order[]; turnGoals: TurnGoal[]; plans: Plan[]
+export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Product[]; schedule: Schedule; changes: Change[]; targets: Target[]; shifts: ShiftPlan[]; shiftWeeks: ShiftWeek[]; dayShifts: DayShifts[]; lineRules: LineRules; reasonCodes: ReasonCodesOpt; programView: ReasonCodesOpt; attView: ReasonCodesOpt; attGate: ReasonCodesOpt; viewOpts: Record<ViewOpt, ReasonCodesOpt>; lineTargets: LineTarget[]; orders: Order[]; turnGoals: TurnGoal[]; plans: Plan[]
   /**
    * runs the device no longer keeps (older than its days) that hold pallets given to an order still open: an order's
    * "Hechas" counts every pallet it ever got, not only the days this device holds. They come from the server (see
@@ -466,10 +468,10 @@ function tidySchedule(sch: Schedule): Schedule {
 function isDay(text: string) { return /^\d{4}-\d{2}-\d{2}$/.test(text) }
 /** with a server the lines (and products) are shared and come from it; without one, each device starts with a line per room */
 const SERVER = !!import.meta.env.VITE_SUPABASE_URL
-function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, reasonCodes: { on: false, updatedAt: 0 }, programView: { on: false, updatedAt: 0 }, attView: { on: false, updatedAt: 0 }, viewOpts: { lotes: { on: false, updatedAt: 0 }, flujo: { on: false, updatedAt: 0 } }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [], attendance: [], attExpected: [], shiftMarks: [], kpi: [], weights: [], orderNotes: [], roomMsgs: [], chat: [], weightRules: [], meats: [], holds: [], consumes: [], consumeOpts: [] } }
+function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, reasonCodes: { on: false, updatedAt: 0 }, programView: { on: false, updatedAt: 0 }, attView: { on: false, updatedAt: 0 }, attGate: { on: false, updatedAt: 0 }, viewOpts: { lotes: { on: false, updatedAt: 0 }, flujo: { on: false, updatedAt: 0 } }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [], attendance: [], attExpected: [], shiftMarks: [], kpi: [], weights: [], orderNotes: [], roomMsgs: [], chat: [], weightRules: [], meats: [], holds: [], consumes: [], consumeOpts: [] } }
 function load(): State {
   try {
-    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; reasonCodes?: Partial<ReasonCodesOpt>; programView?: Partial<ReasonCodesOpt>; attView?: Partial<ReasonCodesOpt>; viewOpts?: Partial<Record<ViewOpt, Partial<ReasonCodesOpt>>>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[]; attendance?: Partial<AttEntry>[]; attExpected?: Partial<AttExpected>[]; shiftMarks?: Partial<ShiftMark>[]; kpi?: Partial<KpiRec>[]; weights?: Partial<WeightTest>[]; orderNotes?: Partial<OrderNote>[]; roomMsgs?: Partial<RoomMsg>[]; chat?: Partial<ChatMsg>[]; weightRules?: Partial<WeightRule>[]; meats?: Partial<MeatEntry>[]; holds?: Partial<HoldRec>[]; consumes?: Partial<ConsumeEntry>[]; consumeOpts?: Partial<ConsumeOpt>[] }
+    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; reasonCodes?: Partial<ReasonCodesOpt>; programView?: Partial<ReasonCodesOpt>; attView?: Partial<ReasonCodesOpt>; attGate?: Partial<ReasonCodesOpt>; viewOpts?: Partial<Record<ViewOpt, Partial<ReasonCodesOpt>>>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[]; attendance?: Partial<AttEntry>[]; attExpected?: Partial<AttExpected>[]; shiftMarks?: Partial<ShiftMark>[]; kpi?: Partial<KpiRec>[]; weights?: Partial<WeightTest>[]; orderNotes?: Partial<OrderNote>[]; roomMsgs?: Partial<RoomMsg>[]; chat?: Partial<ChatMsg>[]; weightRules?: Partial<WeightRule>[]; meats?: Partial<MeatEntry>[]; holds?: Partial<HoldRec>[]; consumes?: Partial<ConsumeEntry>[]; consumeOpts?: Partial<ConsumeOpt>[] }
     const s = JSON.parse(localStorage.getItem(KEY) || 'null') as Raw | null
     // rows saved by earlier versions: carts as plain timestamps, units without a tag or a name, products with one
     // pouches-per-cart number, nothing with an update time
@@ -503,6 +505,7 @@ function load(): State {
         reasonCodes: { on: s.reasonCodes?.on === true, updatedAt: Number(s.reasonCodes?.updatedAt) || 0 },
         programView: { on: s.programView?.on === true, updatedAt: Number(s.programView?.updatedAt) || 0 },
         attView: { on: s.attView?.on === true, updatedAt: Number(s.attView?.updatedAt) || 0 },
+        attGate: { on: s.attGate?.on === true, updatedAt: Number(s.attGate?.updatedAt) || 0 },
         // the tabs a switch turns on for everybody (2026-10-22: Lotes, and Flujo kept off): inline, as above
         viewOpts: { lotes: { on: s.viewOpts?.lotes?.on === true, updatedAt: Number(s.viewOpts?.lotes?.updatedAt) || 0 }, flujo: { on: s.viewOpts?.flujo?.on === true, updatedAt: Number(s.viewOpts?.flujo?.updatedAt) || 0 } },
         lineTargets: (s.lineTargets ?? []).filter((t) => !!t && !!t.lineId && !isTurnKey(String(t.lineId))).map((t) => ({ lineId: String(t.lineId), perHour: t.perHour ?? null, perDay: t.perDay ?? null, updatedAt: t.updatedAt ?? 0 })),
@@ -947,18 +950,18 @@ function attHere(id: string): AttEntry | null {
   putAtt(x)
   return x
 }
-const rowOfAtt = (x: AttEntry) => ({ id: ATT_ID + x.id, at: iso(x.at), by_name: x.by, dept: x.dept, what: 'Asistencia', before: '', after: JSON.stringify({ date: x.date, shift: x.shift, name: x.name, gone: x.gone, from: x.from, line: x.line, moves: x.moves, ...(x.temp ? { temp: true } : {}) }), ref_table: ATT_REF, ref_key: x.id, deleted: !!x.deleted, updated_at: iso(x.updatedAt), updated_by: user.get() })
+const rowOfAtt = (x: AttEntry) => ({ id: ATT_ID + x.id, at: iso(x.at), by_name: x.by, dept: x.dept, what: 'Asistencia', before: '', after: JSON.stringify({ date: x.date, shift: x.shift, name: x.name, gone: x.gone, from: x.from, line: x.line, moves: x.moves, ...(x.temp ? { temp: true } : {}), ...(x.sup ? { sup: true } : {}) }), ref_table: ATT_REF, ref_key: x.id, deleted: !!x.deleted, updated_at: iso(x.updatedAt), updated_by: user.get() })
 function putAtt(x: AttEntry) {
   if (x.via) return
   set({ ...state, attendance: [...(state.attendance ?? []).filter((y) => y.id !== x.id), x] })
   push('act_changes', ATT_ID + x.id, rowOfAtt(x))
 }
 /** a person written for a room and shift; '' = not written (no name, or that name is already there and not gone) */
-export function attAdd(date: string, dept: Dept, shift: 1 | 2, name: string, from: Dept | '' = '', line = '', temp = false): string {
+export function attAdd(date: string, dept: Dept, shift: 1 | 2, name: string, from: Dept | '' = '', line = '', temp = false, sup = false): string {
   const n = name.replace(/\s+/g, ' ').trim().slice(0, 60)
   if (!n || !isDay(date) || !roomKnown(dept) || (shift !== 1 && shift !== 2)) return ''
   if (attOf(state, date, dept, shift).some((x) => !x.gone && attKey(x.name) === attKey(n))) return ''
-  const x: AttEntry = { id: uid(), date, dept, shift, name: n, by: user.get(), at: clockNow(), gone: null, from, line, moves: [], ...(temp ? { temp: true } : {}), updatedAt: 0 }
+  const x: AttEntry = { id: uid(), date, dept, shift, name: n, by: user.get(), at: clockNow(), gone: null, from, line, moves: [], ...(temp ? { temp: true } : {}), ...(sup ? { sup: true } : {}), updatedAt: 0 }
   putAtt({ ...x, updatedAt: stamp(undefined) })
   return x.id
 }
@@ -978,6 +981,20 @@ export function attRemove(id: string, why: 'otro' | 'casa', to: Dept | '' = '', 
   })
   return ok
 }
+/** a person marked (or unmarked) as the room's supervisor or leader on the shift */
+export function attSetSup(id: string, sup: boolean): boolean {
+  let ok = false
+  batch(() => {
+    const x = attHere(id)
+    if (!x || x.deleted || !!x.sup === sup) return
+    const { sup: _was, ...rest } = x
+    putAtt({ ...rest, ...(sup ? { sup: true } : {}), updatedAt: stamp(x) })
+    ok = true
+  })
+  return ok
+}
+/** the supervisor or leader written for a room and shift (the first, when two) */
+export const attSupOf = (s: State, date: string, dept: Dept, shift: 1 | 2) => attOf(s, date, dept, shift).find((x) => x.sup && !x.gone)
 /** a person marked (or unmarked) as a temp (agency) worker */
 export function attSetTemp(id: string, temp: boolean): boolean {
   let ok = false
@@ -1404,6 +1421,33 @@ export function setAttView(on: boolean) {
   set({ ...state, attView: next })
   push('act_targets', OPT_ATT, { dept: OPT_ATT, per_hour: on ? 1 : 0, per_shift: null, updated_at: iso(next.updatedAt), updated_by: user.get() })
   logChange(null, 'Asistencia', attText(was.on), attText(on), 'act_targets', OPT_ATT)
+}
+/**
+ * Attendance before starting (Jose, 2026-10-27: "restricciones en todos los departamentos para que ingresen la
+ * asistencia antes de que comiencen a iniciar las máquinas o líneas ... para los supervisores, no para las oficinas,
+ * manager o solo ver"). On, a supervisor cannot start a code or a Set up on a line until the room's attendance of the
+ * shift in course has at least one person written (each shift its own); the start opens the attendance window
+ * instead. Under 'opt:attgate' in act_targets, as the other switches (only the managers and the office write it); it
+ * asks nothing while the attendance is hidden (attView off: nobody could write it)
+ */
+const OPT_ATTGATE = 'opt:attgate'
+const gateText = (on: boolean) => (on ? 'obligatoria para empezar' : 'no obligatoria')
+export function setAttGate(on: boolean) {
+  const was = state.attGate
+  if (was.on === on) return
+  const next: ReasonCodesOpt = { on, updatedAt: stamp(was) }
+  set({ ...state, attGate: next })
+  push('act_targets', OPT_ATTGATE, { dept: OPT_ATTGATE, per_hour: on ? 1 : 0, per_shift: null, updated_at: iso(next.updatedAt), updated_by: user.get() })
+  logChange(null, 'Asistencia obligatoria para empezar', gateText(was.on), gateText(on), 'act_targets', OPT_ATTGATE)
+}
+/**
+ * must the person on this device write the room's attendance of this shift before starting a code or a Set up there?
+ * (a supervisor, and the room's supervisor or leader not written as such yet: "que el líder o el supervisor se anote a
+ * sí mismo como supervisor", 2026-10-27)
+ */
+export function attGated(s: State, dept: Dept, date: string, shift: 1 | 2): boolean {
+  if (!s.attGate.on || !s.attView.on || role.get() !== 'op' || !!viewOnly.get()) return false
+  return !attSupOf(s, date, dept, shift)
 }
 /** the reason of the stop the app writes by itself when a line finishes a code and another one is coming */
 export const SETUP = 'Set up'
@@ -4428,6 +4472,10 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
     // the attendance switch (a row without its value: off, as at first)
     if (!newer(state.attView)) return
     set({ ...state, attView: { on: Number(row.per_hour) === 1, updatedAt: at } })
+  } else if (table === 'act_targets' && String(row.dept ?? '') === OPT_ATTGATE) {
+    // attendance before starting (2026-10-27)
+    if (!newer(state.attGate)) return
+    set({ ...state, attGate: { on: Number(row.per_hour) === 1, updatedAt: at } })
   } else if (table === 'act_targets' && String(row.dept ?? '') === OPT_PROGRAM) {
     // the Programa del día switch (a row without its value: off, as at first)
     if (!newer(state.programView)) return

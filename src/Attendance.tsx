@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { attAdd, attBack, attDelete, attendanceOf, attExpectedOf, attLineText, attMoveLine, attOf, attRemove, attSetTemp, byLineName, DEPTS, fmtTime, setAttExpected, type AttEntry, type Dept, type State } from './store'
+import { attAdd, attBack, attDelete, attendanceOf, attExpectedOf, attLineText, attMoveLine, attOf, attRemove, attSetSup, attSetTemp, attSupOf, user, byLineName, DEPTS, fmtTime, setAttExpected, type AttEntry, type Dept, type State } from './store'
 import { useWho } from './App'
 import { DEPT_LOOK, deptVars } from './look'
 import { tr } from './i18n'
@@ -33,7 +33,8 @@ export function AttendanceCard({ s, dept, date, shift, edit }: { s: State; dept:
   )
 }
 
-function AttendanceDialog({ s, dept, date, shift: inCourse, edit, onClose }: { s: State; dept: Dept; date: string; shift: 1 | 2; edit: boolean; onClose: () => void }) {
+/** `note` = why it opened by itself (the start of a code or a Set up, with the attendance still to write: 2026-10-27) */
+export function AttendanceDialog({ s, dept, date, shift: inCourse, edit, note = '', onClose }: { s: State; dept: Dept; date: string; shift: 1 | 2; edit: boolean; note?: string; onClose: () => void }) {
   const who = useWho()
   const boss = !!who.admin || who.role === 'mgr' || who.role === 'office'
   const [shift, setShift] = useState<1 | 2>(inCourse)
@@ -45,16 +46,25 @@ function AttendanceDialog({ s, dept, date, shift: inCourse, edit, onClose }: { s
   const [addLine, setAddLine] = useState('')
   // a temp (agency) worker (2026-10-22, the Daily KPI: "who shows up ... especially TEMPS"): kept for the next one written
   const [addTemp, setAddTemp] = useState(false)
+  // the room's supervisor or leader, written as such (2026-10-27): a chip for whoever is typed, and one tap for oneself
+  const [addSup, setAddSup] = useState(false)
+  const sup = attSupOf(s, date, dept, shift), me = user.get().trim()
   const [said, setSaid] = useState('')
   const [editingN, setEditingN] = useState<string | null>(null)
   const box = useRef<HTMLInputElement>(null)
   const list = attOf(s, date, dept, shift), here = list.filter((x) => !x.gone), gone = list.filter((x) => !!x.gone)
   const r = attendanceOf(s, date, shift, [dept]).rows[0]
+  const meIn = !!me && list.some((x) => !x.gone && x.name.toLowerCase() === me.toLowerCase())
+  const addMe = () => {
+    if (!me || !attAdd(date, dept, shift, me, '', lines.some((l) => l.id === addLine) ? addLine : '', false, true)) return
+    setSaid(tr('{0} quedó anotado como supervisor del turno.', me)); setTwice('')
+    box.current?.focus()
+  }
   const add = () => {
     const n = name.trim()
     if (!n) return
-    if (!attAdd(date, dept, shift, n, '', lines.some((l) => l.id === addLine) ? addLine : '', addTemp)) { setTwice(n); return }
-    setName(''); setTwice(''); setSaid('')
+    if (!attAdd(date, dept, shift, n, '', lines.some((l) => l.id === addLine) ? addLine : '', addTemp, addSup)) { setTwice(n); return }
+    setName(''); setTwice(''); setSaid(''); setAddSup(false)
     box.current?.focus()
   }
   // gone to another room: they show up there by themselves ("viene de"), on the line chosen; nobody there has to write them
@@ -76,6 +86,7 @@ function AttendanceDialog({ s, dept, date, shift: inCourse, edit, onClose }: { s
     <div className="veil rc-veil" onClick={onClose}>
       <div className="dlg att-dlg" onClick={(e) => e.stopPropagation()} style={deptVars(dept)}>
         <h3>{tr('Asistencia · {0} {1}', DEPT_LOOK[dept].emoji, dept)}</h3>
+        {note && <p className="hint red">{note}</p>}
         <div className="chips">{([1, 2] as const).map((k) => <button key={k} type="button" className={'chip' + (shift === k ? ' on' : '')} onClick={() => { setShift(k); setOut(null); setSaid('') }}>{tr('Turno {0}', k)}{k === inCourse ? ' ' + tr('(en curso)') : ''}</button>)}</div>
         <div className="att-sum">
           <div><label>{tr('Esperados')}</label>{editingN != null ? (
@@ -89,7 +100,8 @@ function AttendanceDialog({ s, dept, date, shift: inCourse, edit, onClose }: { s
         {edit && (
           <>
           {lines.length > 0 && <div className="chips att-lines"><span className="att-lab">{tr('Línea:')}</span>{[{ id: '', name: tr('Sin línea') }, ...lines.map((l) => ({ id: l.id, name: attLineText(s, l.id) }))].map((l) => <button key={l.id || '-'} type="button" className={'chip' + (addLine === l.id ? ' on' : '')} onClick={() => { setAddLine(l.id); box.current?.focus() }}>{l.name}</button>)}</div>}
-          <div className="chips att-lines"><span className="att-lab">{tr('Es:')}</span><button type="button" className={'chip' + (!addTemp ? ' on' : '')} onClick={() => { setAddTemp(false); box.current?.focus() }}>{tr('De la compañía')}</button><button type="button" className={'chip' + (addTemp ? ' on' : '')} onClick={() => { setAddTemp(true); box.current?.focus() }}>{tr('Temporal (agencia)')}</button></div>
+          {!sup && !meIn && !!me && <div className="att-me"><button type="button" className="btn sm primary" onClick={addMe}>{tr('👤 Anotarme como supervisor: {0}', me)}</button><small className="hint">{tr('El supervisor o líder del cuarto se anota primero, como supervisor.')}</small></div>}
+          <div className="chips att-lines"><span className="att-lab">{tr('Es:')}</span><button type="button" className={'chip' + (!addTemp && !addSup ? ' on' : '')} onClick={() => { setAddTemp(false); setAddSup(false); box.current?.focus() }}>{tr('De la compañía')}</button><button type="button" className={'chip' + (addTemp ? ' on' : '')} onClick={() => { setAddTemp(true); setAddSup(false); box.current?.focus() }}>{tr('Temporal (agencia)')}</button><button type="button" className={'chip' + (addSup ? ' on' : '')} onClick={() => { setAddSup(true); setAddTemp(false); box.current?.focus() }}>{tr('Supervisor o líder')}</button></div>
           <form className="att-add" onSubmit={(e) => { e.preventDefault(); add() }}>
             <input ref={box} value={name} maxLength={60} placeholder={tr('Nombre o número de la persona')} autoComplete="off" aria-label={tr('Nombre o número de la persona')} onChange={(e) => { setName(e.target.value); setTwice('') }} />
             <button type="submit" className="btn primary" disabled={!name.trim()}>{tr('+ Anotar')}</button>
@@ -104,12 +116,13 @@ function AttendanceDialog({ s, dept, date, shift: inCourse, edit, onClose }: { s
             <ol className="att-list">
               {g.people.map((x) => (
                 <li key={x.id}>
-                  <span className="att-name">{x.name}{x.temp && <small className="att-temp"> {tr('temporal')}</small>}{x.from && <small> · {tr('viene de {0}', x.from)}</small>}{x.moves.length > 0 && <small> · {tr('antes en {0}', attLineText(s, x.moves[x.moves.length - 1].from) || tr('sin línea'))}</small>}</span>
+                  <span className="att-name">{x.name}{x.sup && <small className="att-sup"> {tr('supervisor')}</small>}{x.temp && <small className="att-temp"> {tr('temporal')}</small>}{x.from && <small> · {tr('viene de {0}', x.from)}</small>}{x.moves.length > 0 && <small> · {tr('antes en {0}', attLineText(s, x.moves[x.moves.length - 1].from) || tr('sin línea'))}</small>}</span>
                   <small className="att-at">{fmtTime(x.at)}</small>
                   {edit && out?.id !== x.id && <>
                     <button type="button" className="btn xs soft" onClick={() => { setOut({ id: x.id, mode: 'move' }); setSaid('') }}>{tr('⇄ Trasladar')}</button>
                     <button type="button" className="btn xs" onClick={() => { setOut({ id: x.id, mode: 'out' }); setSaid('') }}>{tr('✕ Sacar')}</button>
                     <button type="button" className="lnk sm" onClick={() => attSetTemp(x.id, !x.temp)}>{x.temp ? tr('No es temporal') : tr('Es temporal')}</button>
+                    <button type="button" className="lnk sm" onClick={() => attSetSup(x.id, !x.sup)}>{x.sup ? tr('No es supervisor') : tr('Es supervisor')}</button>
                   </>}
                   {out?.id === x.id && out.mode === 'out' && (
                     <div className="att-out">

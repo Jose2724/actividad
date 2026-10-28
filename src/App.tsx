@@ -1,6 +1,6 @@
 import { Component, createContext, Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
-import { addLine, plantCut, roomMark, CUT_WINDOW, startSecondShift, addWaste, awayDay, batch, byPlanLot, planLot, cameFrom, carriedOver, dayAfter, dayBefore, orderUnitDefault, programOrderChoices, ordersOf, orderStatus, orderUnitWord, prevPending, workOrderOf, type WorkOrder, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, MFO_CHOICES, mfoChoiceOf, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, noteOf, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderAddRuns, orderOfId, poMates, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, PLAN_LOT_MAX, productOf, productsCsv, purgeDay, reasonText, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay, orderFull, orderFullText, orderNoteOf, setOrderNote, setOrderUrgent, programCap, programCapOf, holdsOpen } from './store'
+import { attGated, addLine, plantCut, roomMark, CUT_WINDOW, startSecondShift, addWaste, awayDay, batch, byPlanLot, planLot, cameFrom, carriedOver, dayAfter, dayBefore, orderUnitDefault, programOrderChoices, ordersOf, orderStatus, orderUnitWord, prevPending, workOrderOf, type WorkOrder, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, MFO_CHOICES, mfoChoiceOf, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, noteOf, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderAddRuns, orderOfId, poMates, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, PLAN_LOT_MAX, productOf, productsCsv, purgeDay, reasonText, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay, orderFull, orderFullText, orderNoteOf, setOrderNote, setOrderUrgent, programCap, programCapOf, holdsOpen } from './store'
 import { avanceLots, avanceRange, avanceRows, datesBetween, lotAcrossDays, lotRows, lotsKnown, mfoList, mfoText, mfoWord, n1, pending, type AvancePart, type AvanceRow, type MfoMade } from './avance'
 import { loadZip, type Cell } from './xlsx'
 
@@ -30,7 +30,7 @@ import { ConsumeButton, ConsumeEndDialog, ConsumeStartDialog } from './Consume'
 import { consumeAdd, consumeOn, consumesPending, openRun as openRunOn, store as theStore } from './store'
 import { HoldButton, HoldList } from './Holds'
 import { seesKpi } from './kpi'
-import { AttendanceCard } from './Attendance'
+import { AttendanceCard, AttendanceDialog } from './Attendance'
 import { Chat } from './Chat'
 import { useColFilters } from './ColFilter'
 import { Flujo, flujoOpenAt } from './FlujoView'
@@ -2622,6 +2622,10 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   const [capAsk, setCapAsk] = useState(false)
   // what the line is going to consume, weighed before the code starts (2026-10-27): the start waits in here
   const [consumeAsk, setConsumeAsk] = useState<null | (() => void)>(null)
+  // the attendance of the shift is written before a code or a Set up starts (Jose, 2026-10-27: the supervisors; not the
+  // managers, the office nor "Solo ver"): Empezar opens the room's attendance window instead, and is tapped again after
+  const [attAsk, setAttAsk] = useState(false)
+  const gated = attGated(s, line.dept, day.date, turn.shift)
   // A unit was just recorded on this run, here or on another tablet: for a moment the button says which one, the
   // counters light up and the card gets a green ring. So a tap is seen to have landed, on the line it landed on, and
   // nobody taps twice for the same cart (the button rests while it says so).
@@ -2782,11 +2786,13 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         {naming}
         {removing && <ConfirmDialog title={tr('¿Quitar {0} de {1}', lineLabel(line.name), line.dept) + '?'} text={tr('Se puede volver a agregar cuando haga falta.')} yes={tr('Quitar')} danger onYes={() => removeLine(line.id)} onNo={() => setRemoving(false)} />}
         {sure.ui}
+        {attAsk && <AttendanceDialog s={s} dept={line.dept} date={day.date} shift={turn.shift} edit note={tr('Antes de empezar, el supervisor o líder se anota como supervisor y anota a la gente del Turno {0} de {1}; después vuelve a tocar Empezar.', turn.shift, line.dept)} onClose={() => setAttAsk(false)} />}
         {consumeAsk && <ConsumeStartDialog s={s} dept={line.dept} line={line.name} code={code.trim().toUpperCase()} onClose={() => setConsumeAsk(null)} onStart={(list) => { consumeAsk(); const r = openRunOn(theStore.get(), line.id); if (r) for (const e of list) consumeAdd(r, e.product, e.prodLot, e.labelDate, e.lb, e.fromId); setConsumeAsk(null) }} />}
         {(() => { const p = consumeOn(s, line.dept) ? consumesPending(s, line.id) : []; return p.length ? <ConsumeEndDialog entries={p} /> : null })()}
         {!quiet && <form className="start" onSubmit={(e) => {
           e.preventDefault()
           if (!ok) return
+          if (gated) { setAttAsk(true); return }
           // only a quantity typed is asked about (the one the line proposes is the usual); RTE's is crates × pouches
           const typedPer = needPer && perUnit != null && (!!per.trim() || (isCart && !!crates.trim()))
           sure.check(typedPer ? [{ key: 'per', n: perUnit, usual: usualFor(s, line.dept, code, ''), unit: cfg.qtyUnit, per: cfg.unit.toLowerCase(), total: isCart }] : [], () => {
@@ -2856,9 +2862,10 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
               </div>
             ))}
           <button className="btn primary" type="submit" disabled={!ok}>{tr('▶ Empezar')}</button>
+          {gated && <p className="hint red">{tr('👥 Falta la asistencia del Turno {0} (el supervisor se anota primero): se pide al tocar Empezar.', turn.shift)}</p>}
         </form>}
         {!quiet && <div className="tools">
-          {!idle ? <button type="button" className="btn sm setupbtn" onClick={() => startSetup(line)}>{tr('⏱ Empezar Set up')}</button> : <span />}
+          {!idle ? <button type="button" className="btn sm setupbtn" onClick={() => (gated ? setAttAsk(true) : startSetup(line))}>{tr('⏱ Empezar Set up')}</button> : <span />}
           {(mgr || s.lineRules.remove) && !idle && <button type="button" className="lnk sm muted" onClick={() => setRemoving(true)}>{trx('Quitar {0}', cfg.lineWord.toLowerCase())}</button>}
         </div>}
         {viewOnly && !idle && <p className="hint">{tr('Libre: sin código.')}</p>}
