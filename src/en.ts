@@ -2659,4 +2659,12 @@ export const EN: Record<string, string> = {
   "El último guacal no puede llevar más de {0} pouches.": "The last crate cannot hold more than {0} pouches.",
   "Pon los guacales de cada columna.": "Put the crates of each column.",
   "✓ Guardar {0} pouches": "✓ Save {0} pouches",
+  // crates per cart, plant-wide (2026-10-28)
+  "✓ {0} guacales por carro: cambiados {1} códigos; ya lo ven todas las tablets.": "✓ {0} crates per cart: {1} codes changed; every tablet sees it now.",
+  "✓ {0} guacales por carro en todos los códigos.": "✓ {0} crates per cart on every code.",
+  "Guacales por carro (RTE)": "Crates per cart (RTE)",
+  "{0} ahora": "{0} now",
+  "Cuántos guacales lleva un carro de RTE (dos columnas: {0} por columna). Al aplicarlo se escribe en todos los códigos de Productos y es lo que usa \"Carro listo\" y el aviso al empezar un código. Un código se puede cambiar aparte en la tabla de abajo.": "How many crates an RTE cart holds (two columns: {0} per column). Applying it writes it into every code of Productos, and it is what \"Cart done\" and the note when starting a code use. A single code can be changed apart in the table below.",
+  "Poner {0} en todos los códigos ({1})": "Set {0} on every code ({1})",
+  "Poner {0} en todos los códigos": "Set {0} on every code",
 }

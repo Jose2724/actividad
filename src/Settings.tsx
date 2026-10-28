@@ -6,6 +6,7 @@ import { Devices } from './DevicesView'
 import { supabase } from './supabase'
 import { syncStore } from './sync'
 import { consumeOn, setConsumeOn } from './store'
+import { cartCratesOf, setAllCartCrates, setCartCrates } from './store'
 import { ATT_DEFAULT, attExpectedOf, attShifts, clearShiftMark, plantCut, roomMark, setAttExpected, setAttGate, setAttView, setShiftMark, setWeightRule, weightRuleOf } from './store'
 import { BUILD } from './update'
 import { clockOffText, clockState } from './clock'
@@ -61,6 +62,7 @@ export function Settings({ s, now, day, name, home, mgr, admin, viewOnly, meId, 
         {sec === 'weights' && <WeightSettings s={s} viewOnly={viewOnly} />}
         {sec === 'consumo' && <ConsumeSettings s={s} viewOnly={viewOnly} />}
         {sec === 'attendance' && <AttendanceSettings s={s} date={day.date} viewOnly={viewOnly} admin={admin} />}
+        {sec === 'products' && <CartCratesSettings s={s} readOnly={!can('products')} />}
         {sec === 'products' && <div className="setcard wide"><div className="sethead"><h3>{tr('Productos')}</h3></div><p className="hint">{tr('La tabla maestra de la oficina: con ella las mezclas se vuelven pouches, cajas y pallets esperados, y cada cuarto sabe cuánto lleva un carro, un pallet o una caja.')}</p><Products s={s} readOnly={!can('products')} /></div>}
         {sec === 'goals' && <GoalsSettings s={s} now={now} day={day} />}
         {sec === 'people' && <Employees meId={meId} admin={admin} />}
@@ -519,5 +521,35 @@ function WeightRuleRow({ s, dept, what, viewOnly }: { s: State; dept: Dept; what
       {!viewOnly && <button type="submit" className="btn sm primary" disabled={!changed}>{tr('Guardar')}</button>}
       <small>{now.every ? tr('Ahora: cada {0} min, {1} {2}', now.every, now.count, what) : tr('Ahora: sin aviso')}</small>
     </form>
+  )
+}
+
+/**
+ * The crates an RTE cart holds, for the whole plant (Jose, 2026-10-28: "elegir 24 o 26 u otro número"): the number
+ * the codes with no figure of their own use, and a button that writes it into every code of Productos
+ */
+function CartCratesSettings({ s, readOnly }: { s: State; readOnly: boolean }) {
+  const now = cartCratesOf(s)
+  const [typed, setTyped] = useState('')
+  const [said, setSaid] = useState('')
+  const n = typed.trim() === '' ? now : Number(typed)
+  const ok = Number.isInteger(n) && n >= 1 && n <= 200
+  const differ = s.products.filter((p) => !p.deleted && p.cratesPerCart !== n).length
+  const apply = () => {
+    if (!ok) return
+    setCartCrates(n)
+    const changed = setAllCartCrates(n)
+    setTyped(''); setSaid(changed ? tr('✓ {0} guacales por carro: cambiados {1} códigos; ya lo ven todas las tablets.', n, changed) : tr('✓ {0} guacales por carro en todos los códigos.', n))
+  }
+  return (
+    <div className="setcard">
+      <div className="sethead"><h3>{tr('Guacales por carro (RTE)')}</h3><span className="rc-state on">{tr('{0} ahora', now)}</span></div>
+      <p className="hint">{tr('Cuántos guacales lleva un carro de RTE (dos columnas: {0} por columna). Al aplicarlo se escribe en todos los códigos de Productos y es lo que usa "Carro listo" y el aviso al empezar un código. Un código se puede cambiar aparte en la tabla de abajo.', Math.ceil(now / 2))}</p>
+      <div className="btns" style={{ alignItems: 'center' }}>
+        <label>{tr('Guacales por carro')}{' '}<input inputMode="numeric" value={typed} placeholder={String(now)} disabled={readOnly} style={{ width: 80 }} onChange={(e) => { setTyped(e.target.value.replace(/\D/g, '').slice(0, 3)); setSaid('') }} /></label>
+        {!readOnly && <button type="button" className="btn primary" disabled={!ok || (n === now && !differ)} onClick={apply}>{differ ? tr('Poner {0} en todos los códigos ({1})', n, differ) : tr('Poner {0} en todos los códigos', n)}</button>}
+      </div>
+      {said && <p className="hint ok">{said}</p>}
+    </div>
   )
 }

@@ -370,7 +370,7 @@ function sealFrom(x: unknown): OrderSeal | null {
   // (a day by day an account may still carry is not read: see OrderSeal)
   return { id: e.id, sig: e.sig, upto: String(e.upto ?? ''), made, finishAt: numIn(e.finishAt), finishDay: String(e.finishDay ?? ''), completed, lots: Array.isArray(e.lots) ? e.lots.map(String).slice(0, 30) : [], updatedAt: numIn(e.updatedAt) }
 }
-export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Product[]; schedule: Schedule; changes: Change[]; targets: Target[]; shifts: ShiftPlan[]; shiftWeeks: ShiftWeek[]; dayShifts: DayShifts[]; lineRules: LineRules; reasonCodes: ReasonCodesOpt; programView: ReasonCodesOpt; attView: ReasonCodesOpt; attGate: ReasonCodesOpt; viewOpts: Record<ViewOpt, ReasonCodesOpt>; lineTargets: LineTarget[]; orders: Order[]; turnGoals: TurnGoal[]; plans: Plan[]
+export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Product[]; schedule: Schedule; changes: Change[]; targets: Target[]; shifts: ShiftPlan[]; shiftWeeks: ShiftWeek[]; dayShifts: DayShifts[]; lineRules: LineRules; reasonCodes: ReasonCodesOpt; programView: ReasonCodesOpt; attView: ReasonCodesOpt; attGate: ReasonCodesOpt; cartCrates: { n: number; updatedAt: number }; viewOpts: Record<ViewOpt, ReasonCodesOpt>; lineTargets: LineTarget[]; orders: Order[]; turnGoals: TurnGoal[]; plans: Plan[]
   /**
    * runs the device no longer keeps (older than its days) that hold pallets given to an order still open: an order's
    * "Hechas" counts every pallet it ever got, not only the days this device holds. They come from the server (see
@@ -415,7 +415,7 @@ export const CRATES_PER_CART = 26
 /** how an RTE cart of this run is counted: its crates and the pouches each holds (the product's; the pouches from the run's own figure when the product has none); null when nothing is known */
 export function cartSpecOf(s: State, r: Run): { crates: number; ppc: number } | null {
   const p = productOf(s, r.code)
-  const crates = p?.cratesPerCart || CRATES_PER_CART
+  const crates = p?.cratesPerCart || cartCratesOf(s)
   const ppc = p?.pouchesPerCrate || (r.perUnit && r.perUnit % crates === 0 ? r.perUnit / crates : 0)
   return ppc > 0 && Number.isInteger(ppc) ? { crates, ppc } : null
 }
@@ -490,10 +490,10 @@ function tidySchedule(sch: Schedule): Schedule {
 function isDay(text: string) { return /^\d{4}-\d{2}-\d{2}$/.test(text) }
 /** with a server the lines (and products) are shared and come from it; without one, each device starts with a line per room */
 const SERVER = !!import.meta.env.VITE_SUPABASE_URL
-function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, reasonCodes: { on: false, updatedAt: 0 }, programView: { on: false, updatedAt: 0 }, attView: { on: false, updatedAt: 0 }, attGate: { on: false, updatedAt: 0 }, viewOpts: { lotes: { on: false, updatedAt: 0 }, flujo: { on: false, updatedAt: 0 } }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [], attendance: [], attExpected: [], shiftMarks: [], kpi: [], weights: [], orderNotes: [], roomMsgs: [], chat: [], weightRules: [], meats: [], holds: [], consumes: [], consumeOpts: [] } }
+function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, reasonCodes: { on: false, updatedAt: 0 }, programView: { on: false, updatedAt: 0 }, attView: { on: false, updatedAt: 0 }, attGate: { on: false, updatedAt: 0 }, cartCrates: { n: 0, updatedAt: 0 }, viewOpts: { lotes: { on: false, updatedAt: 0 }, flujo: { on: false, updatedAt: 0 } }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [], attendance: [], attExpected: [], shiftMarks: [], kpi: [], weights: [], orderNotes: [], roomMsgs: [], chat: [], weightRules: [], meats: [], holds: [], consumes: [], consumeOpts: [] } }
 function load(): State {
   try {
-    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; reasonCodes?: Partial<ReasonCodesOpt>; programView?: Partial<ReasonCodesOpt>; attView?: Partial<ReasonCodesOpt>; attGate?: Partial<ReasonCodesOpt>; viewOpts?: Partial<Record<ViewOpt, Partial<ReasonCodesOpt>>>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[]; attendance?: Partial<AttEntry>[]; attExpected?: Partial<AttExpected>[]; shiftMarks?: Partial<ShiftMark>[]; kpi?: Partial<KpiRec>[]; weights?: Partial<WeightTest>[]; orderNotes?: Partial<OrderNote>[]; roomMsgs?: Partial<RoomMsg>[]; chat?: Partial<ChatMsg>[]; weightRules?: Partial<WeightRule>[]; meats?: Partial<MeatEntry>[]; holds?: Partial<HoldRec>[]; consumes?: Partial<ConsumeEntry>[]; consumeOpts?: Partial<ConsumeOpt>[] }
+    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; reasonCodes?: Partial<ReasonCodesOpt>; programView?: Partial<ReasonCodesOpt>; attView?: Partial<ReasonCodesOpt>; attGate?: Partial<ReasonCodesOpt>; cartCrates?: { n?: number; updatedAt?: number }; viewOpts?: Partial<Record<ViewOpt, Partial<ReasonCodesOpt>>>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[]; attendance?: Partial<AttEntry>[]; attExpected?: Partial<AttExpected>[]; shiftMarks?: Partial<ShiftMark>[]; kpi?: Partial<KpiRec>[]; weights?: Partial<WeightTest>[]; orderNotes?: Partial<OrderNote>[]; roomMsgs?: Partial<RoomMsg>[]; chat?: Partial<ChatMsg>[]; weightRules?: Partial<WeightRule>[]; meats?: Partial<MeatEntry>[]; holds?: Partial<HoldRec>[]; consumes?: Partial<ConsumeEntry>[]; consumeOpts?: Partial<ConsumeOpt>[] }
     const s = JSON.parse(localStorage.getItem(KEY) || 'null') as Raw | null
     // rows saved by earlier versions: carts as plain timestamps, units without a tag or a name, products with one
     // pouches-per-cart number, nothing with an update time
@@ -528,6 +528,7 @@ function load(): State {
         programView: { on: s.programView?.on === true, updatedAt: Number(s.programView?.updatedAt) || 0 },
         attView: { on: s.attView?.on === true, updatedAt: Number(s.attView?.updatedAt) || 0 },
         attGate: { on: s.attGate?.on === true, updatedAt: Number(s.attGate?.updatedAt) || 0 },
+        cartCrates: { n: Number(s.cartCrates?.n) || 0, updatedAt: Number(s.cartCrates?.updatedAt) || 0 },
         // the tabs a switch turns on for everybody (2026-10-22: Lotes, and Flujo kept off): inline, as above
         viewOpts: { lotes: { on: s.viewOpts?.lotes?.on === true, updatedAt: Number(s.viewOpts?.lotes?.updatedAt) || 0 }, flujo: { on: s.viewOpts?.flujo?.on === true, updatedAt: Number(s.viewOpts?.flujo?.updatedAt) || 0 } },
         lineTargets: (s.lineTargets ?? []).filter((t) => !!t && !!t.lineId && !isTurnKey(String(t.lineId))).map((t) => ({ lineId: String(t.lineId), perHour: t.perHour ?? null, perDay: t.perDay ?? null, updatedAt: t.updatedAt ?? 0 })),
@@ -1467,6 +1468,33 @@ export function setAttView(on: boolean) {
  * instead. Under 'opt:attgate' in act_targets, as the other switches (only the managers and the office write it); it
  * asks nothing while the attendance is hidden (attView off: nobody could write it)
  */
+/**
+ * The crates an RTE cart holds, for the whole plant (Jose, 2026-10-28: "una opción en Ajustes de elegir 24 o 26 u otro
+ * número ... así no tengo que venir aquí siempre"): what a code with no figure of its own uses, and what "Poner en
+ * todos los códigos" writes into Productos. Under 'opt:crates' in act_targets (per_hour = the number), as the other
+ * switches; 0 = never set (the app's own figure, CRATES_PER_CART)
+ */
+const OPT_CRATES = 'opt:crates'
+export const cartCratesOf = (s: State) => s.cartCrates.n || CRATES_PER_CART
+export function setCartCrates(n: number) {
+  const k = Math.round(n)
+  if (!(k >= 1 && k <= 200) || state.cartCrates.n === k) return
+  const was = cartCratesOf(state)
+  const next = { n: k, updatedAt: stamp(state.cartCrates) }
+  set({ ...state, cartCrates: next })
+  push('act_targets', OPT_CRATES, { dept: OPT_CRATES, per_hour: k, per_shift: null, updated_at: iso(next.updatedAt), updated_by: user.get() })
+  logChange('RTE', 'Guacales por carro', String(was), String(k), 'act_targets', OPT_CRATES)
+}
+/** every code of Productos gets this many crates per cart (the ones that already say it are left alone); how many changed */
+export function setAllCartCrates(n: number): number {
+  const k = Math.round(n)
+  if (!(k >= 1 && k <= 200)) return 0
+  let changed = 0
+  batch(() => {
+    state.products.forEach((p, i) => { if (!p.deleted && p.cratesPerCart !== k && saveProduct(i, { ...p, cratesPerCart: k })) changed++ })
+  })
+  return changed
+}
 const OPT_ATTGATE = 'opt:attgate'
 const gateText = (on: boolean) => (on ? 'obligatoria para empezar' : 'no obligatoria')
 export function setAttGate(on: boolean) {
@@ -4509,6 +4537,10 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
     // the attendance switch (a row without its value: off, as at first)
     if (!newer(state.attView)) return
     set({ ...state, attView: { on: Number(row.per_hour) === 1, updatedAt: at } })
+  } else if (table === 'act_targets' && String(row.dept ?? '') === OPT_CRATES) {
+    // the crates of an RTE cart, plant-wide (2026-10-28)
+    if (!newer(state.cartCrates)) return
+    set({ ...state, cartCrates: { n: Math.max(0, Math.round(Number(row.per_hour) || 0)), updatedAt: at } })
   } else if (table === 'act_targets' && String(row.dept ?? '') === OPT_ATTGATE) {
     // attendance before starting (2026-10-27)
     if (!newer(state.attGate)) return
