@@ -204,7 +204,7 @@ export type Stop = { id: string; dept: Dept; lineId: string | null; reason: stri
 /** the room that packs a product after its mezclas: RTE fills pouches, MFO fills bins of cases (the office's sheets list each code under one of them) */
 export type PackRoom = 'RTE' | 'MFO'
 export const packRoomOfText = (t: unknown): PackRoom | undefined => { const u = String(t ?? '').toUpperCase(); return u.includes('MFO') ? 'MFO' : u.includes('RTE') ? 'RTE' : undefined }
-export type Product = { code: string; name: string; pouchesPerCase: number; casesPerMix: number; cratesPerCart: number; pouchesPerCrate: number; casesPerPallet: number; room?: PackRoom; spiralUnit?: SpiralUnit; updatedAt: number; deleted?: boolean }
+export type Product = { code: string; name: string; pouchesPerCase: number; casesPerMix: number; cratesPerCart: number; pouchesPerCrate: number; casesPerPallet: number; room?: PackRoom; spiralUnit?: SpiralUnit; /** pounds per case (QA's sheet; migration 024) */ lbPerCase?: number; updatedAt: number; deleted?: boolean }
 /** "12x10" in the office's RTE sheet: crates per cart × pouches per crate */
 export const cartPouches = (p: Product) => p.cratesPerCart * p.pouchesPerCrate
 /** mezclas scheduled per day and code ("SCHEDULE" in the office's AVANCE sheet) */
@@ -370,7 +370,7 @@ function sealFrom(x: unknown): OrderSeal | null {
   // (a day by day an account may still carry is not read: see OrderSeal)
   return { id: e.id, sig: e.sig, upto: String(e.upto ?? ''), made, finishAt: numIn(e.finishAt), finishDay: String(e.finishDay ?? ''), completed, lots: Array.isArray(e.lots) ? e.lots.map(String).slice(0, 30) : [], updatedAt: numIn(e.updatedAt) }
 }
-export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Product[]; schedule: Schedule; changes: Change[]; targets: Target[]; shifts: ShiftPlan[]; shiftWeeks: ShiftWeek[]; dayShifts: DayShifts[]; lineRules: LineRules; reasonCodes: ReasonCodesOpt; programView: ReasonCodesOpt; attView: ReasonCodesOpt; attGate: ReasonCodesOpt; cartCrates: { n: number; updatedAt: number }; viewOpts: Record<ViewOpt, ReasonCodesOpt>; lineTargets: LineTarget[]; orders: Order[]; turnGoals: TurnGoal[]; plans: Plan[]
+export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Product[]; schedule: Schedule; changes: Change[]; targets: Target[]; shifts: ShiftPlan[]; shiftWeeks: ShiftWeek[]; dayShifts: DayShifts[]; lineRules: LineRules; reasonCodes: ReasonCodesOpt; programView: ReasonCodesOpt; attView: ReasonCodesOpt; attGate: ReasonCodesOpt; cartCrates: { n: number; updatedAt: number }; lbCase: ReasonCodesOpt; viewOpts: Record<ViewOpt, ReasonCodesOpt>; lineTargets: LineTarget[]; orders: Order[]; turnGoals: TurnGoal[]; plans: Plan[]
   /**
    * runs the device no longer keeps (older than its days) that hold pallets given to an order still open: an order's
    * "Hechas" counts every pallet it ever got, not only the days this device holds. They come from the server (see
@@ -490,17 +490,17 @@ function tidySchedule(sch: Schedule): Schedule {
 function isDay(text: string) { return /^\d{4}-\d{2}-\d{2}$/.test(text) }
 /** with a server the lines (and products) are shared and come from it; without one, each device starts with a line per room */
 const SERVER = !!import.meta.env.VITE_SUPABASE_URL
-function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, reasonCodes: { on: false, updatedAt: 0 }, programView: { on: false, updatedAt: 0 }, attView: { on: false, updatedAt: 0 }, attGate: { on: false, updatedAt: 0 }, cartCrates: { n: 0, updatedAt: 0 }, viewOpts: { lotes: { on: false, updatedAt: 0 }, flujo: { on: false, updatedAt: 0 } }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [], attendance: [], attExpected: [], shiftMarks: [], kpi: [], weights: [], orderNotes: [], roomMsgs: [], chat: [], weightRules: [], meats: [], holds: [], consumes: [], consumeOpts: [] } }
+function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, reasonCodes: { on: false, updatedAt: 0 }, programView: { on: false, updatedAt: 0 }, attView: { on: false, updatedAt: 0 }, attGate: { on: false, updatedAt: 0 }, cartCrates: { n: 0, updatedAt: 0 }, lbCase: { on: false, updatedAt: 0 }, viewOpts: { lotes: { on: false, updatedAt: 0 }, flujo: { on: false, updatedAt: 0 } }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [], attendance: [], attExpected: [], shiftMarks: [], kpi: [], weights: [], orderNotes: [], roomMsgs: [], chat: [], weightRules: [], meats: [], holds: [], consumes: [], consumeOpts: [] } }
 function load(): State {
   try {
-    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; reasonCodes?: Partial<ReasonCodesOpt>; programView?: Partial<ReasonCodesOpt>; attView?: Partial<ReasonCodesOpt>; attGate?: Partial<ReasonCodesOpt>; cartCrates?: { n?: number; updatedAt?: number }; viewOpts?: Partial<Record<ViewOpt, Partial<ReasonCodesOpt>>>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[]; attendance?: Partial<AttEntry>[]; attExpected?: Partial<AttExpected>[]; shiftMarks?: Partial<ShiftMark>[]; kpi?: Partial<KpiRec>[]; weights?: Partial<WeightTest>[]; orderNotes?: Partial<OrderNote>[]; roomMsgs?: Partial<RoomMsg>[]; chat?: Partial<ChatMsg>[]; weightRules?: Partial<WeightRule>[]; meats?: Partial<MeatEntry>[]; holds?: Partial<HoldRec>[]; consumes?: Partial<ConsumeEntry>[]; consumeOpts?: Partial<ConsumeOpt>[] }
+    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; reasonCodes?: Partial<ReasonCodesOpt>; programView?: Partial<ReasonCodesOpt>; attView?: Partial<ReasonCodesOpt>; attGate?: Partial<ReasonCodesOpt>; cartCrates?: { n?: number; updatedAt?: number }; lbCase?: Partial<ReasonCodesOpt>; viewOpts?: Partial<Record<ViewOpt, Partial<ReasonCodesOpt>>>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[]; attendance?: Partial<AttEntry>[]; attExpected?: Partial<AttExpected>[]; shiftMarks?: Partial<ShiftMark>[]; kpi?: Partial<KpiRec>[]; weights?: Partial<WeightTest>[]; orderNotes?: Partial<OrderNote>[]; roomMsgs?: Partial<RoomMsg>[]; chat?: Partial<ChatMsg>[]; weightRules?: Partial<WeightRule>[]; meats?: Partial<MeatEntry>[]; holds?: Partial<HoldRec>[]; consumes?: Partial<ConsumeEntry>[]; consumeOpts?: Partial<ConsumeOpt>[] }
     const s = JSON.parse(localStorage.getItem(KEY) || 'null') as Raw | null
     // rows saved by earlier versions: carts as plain timestamps, units without a tag or a name, products with one
     // pouches-per-cart number, nothing with an update time
     if (s && s.lines && s.runs && s.stops) {
       const units = (r: Raw['runs'][number]): Unit[] => (r.units ? r.units.map(unitOf) : (r.carts ?? []).map((at) => ({ at, qty: null, ref: '', by: '' })))
       const sample = (code: string) => SAMPLE_PRODUCTS.some((x) => x.code === code)
-      const products: Product[] = s.products ? s.products.map((p) => ({ code: p.code ?? '', name: p.name ?? '', pouchesPerCase: p.pouchesPerCase ?? 0, casesPerMix: p.casesPerMix ?? 0, cratesPerCart: (p.cratesPerCart ?? (p.pouchesPerCart ? 12 : 0)) === 12 && sample(p.code ?? '') ? CRATES_PER_CART : p.cratesPerCart ?? (p.pouchesPerCart ? 12 : 0), pouchesPerCrate: p.pouchesPerCrate ?? (p.pouchesPerCart ? Math.round(p.pouchesPerCart / 12) : 0), casesPerPallet: p.casesPerPallet ?? 0, ...((r) => (r ? { room: r } : {}))(packRoomOfText(p.room)), ...((u) => (u ? { spiralUnit: u } : {}))(spiralUnitOfText(p.spiralUnit)), updatedAt: p.updatedAt ?? 0 })) : SAMPLE_PRODUCTS
+      const products: Product[] = s.products ? s.products.map((p) => ({ code: p.code ?? '', name: p.name ?? '', pouchesPerCase: p.pouchesPerCase ?? 0, casesPerMix: p.casesPerMix ?? 0, cratesPerCart: (p.cratesPerCart ?? (p.pouchesPerCart ? 12 : 0)) === 12 && sample(p.code ?? '') ? CRATES_PER_CART : p.cratesPerCart ?? (p.pouchesPerCart ? 12 : 0), pouchesPerCrate: p.pouchesPerCrate ?? (p.pouchesPerCart ? Math.round(p.pouchesPerCart / 12) : 0), casesPerPallet: p.casesPerPallet ?? 0, ...((r) => (r ? { room: r } : {}))(packRoomOfText(p.room)), ...((u) => (u ? { spiralUnit: u } : {}))(spiralUnitOfText(p.spiralUnit)), ...(Number(p.lbPerCase) > 0 ? { lbPerCase: Number(p.lbPerCase) } : {}), updatedAt: p.updatedAt ?? 0 })) : SAMPLE_PRODUCTS
       // A line, run or stop keeps the server's stamp of the version it holds (syncedAt): it is what tells a late echo
       // of an older version from news (see reconcile). Lost on every reload until 2026-10-17 (audit S8): after one,
       // a page of a pull that came late could open again a code just ended. (Written inline: nothing declared below
@@ -529,6 +529,7 @@ function load(): State {
         attView: { on: s.attView?.on === true, updatedAt: Number(s.attView?.updatedAt) || 0 },
         attGate: { on: s.attGate?.on === true, updatedAt: Number(s.attGate?.updatedAt) || 0 },
         cartCrates: { n: Number(s.cartCrates?.n) || 0, updatedAt: Number(s.cartCrates?.updatedAt) || 0 },
+        lbCase: { on: s.lbCase?.on === true, updatedAt: Number(s.lbCase?.updatedAt) || 0 },
         // the tabs a switch turns on for everybody (2026-10-22: Lotes, and Flujo kept off): inline, as above
         viewOpts: { lotes: { on: s.viewOpts?.lotes?.on === true, updatedAt: Number(s.viewOpts?.lotes?.updatedAt) || 0 }, flujo: { on: s.viewOpts?.flujo?.on === true, updatedAt: Number(s.viewOpts?.flujo?.updatedAt) || 0 } },
         lineTargets: (s.lineTargets ?? []).filter((t) => !!t && !!t.lineId && !isTurnKey(String(t.lineId))).map((t) => ({ lineId: String(t.lineId), perHour: t.perHour ?? null, perDay: t.perDay ?? null, updatedAt: t.updatedAt ?? 0 })),
@@ -717,7 +718,7 @@ const fromIso = (s: unknown) => (typeof s === 'string' && s ? Date.parse(s) : nu
 const rowOfLine = (l: Line) => ({ id: l.id, dept: l.dept, name: l.name, deleted: !!l.deleted, updated_at: iso(l.updatedAt), updated_by: user.get(), ...(l.syncedAt ? { synced_at: iso(l.syncedAt) } : {}) })
 const rowOfRun = (r: Run) => ({ id: r.id, dept: r.dept, line_id: r.lineId, line: r.line, code: r.code, lot: r.lot, date: r.date, started_at: iso(r.startedAt), ended_at: iso(r.endedAt), units: r.units, per_unit: r.perUnit, waste: r.waste, by_name: r.by, deleted: !!r.deleted, updated_at: iso(r.updatedAt), updated_by: user.get(), extra: r.extra ?? null, ...(r.syncedAt ? { synced_at: iso(r.syncedAt) } : {}) })
 const rowOfStop = (x: Stop) => ({ id: x.id, dept: x.dept, line_id: x.lineId, reason: x.reason, note: x.note, started_at: iso(x.startedAt), ended_at: iso(x.endedAt), by_name: x.by, deleted: !!x.deleted, updated_at: iso(x.updatedAt), updated_by: user.get(), ...(x.syncedAt ? { synced_at: iso(x.syncedAt) } : {}) })
-const rowOfProduct = (p: Product) => ({ code: normCode(p.code), name: p.name, pouches_per_case: p.pouchesPerCase, cases_per_mix: p.casesPerMix, crates_per_cart: p.cratesPerCart, pouches_per_crate: p.pouchesPerCrate, cases_per_pallet: p.casesPerPallet, room: p.room ?? null, spiral_unit: p.spiralUnit ?? null, deleted: !!p.deleted, updated_at: iso(p.updatedAt), updated_by: user.get() })
+const rowOfProduct = (p: Product) => ({ code: normCode(p.code), name: p.name, pouches_per_case: p.pouchesPerCase, cases_per_mix: p.casesPerMix, crates_per_cart: p.cratesPerCart, pouches_per_crate: p.pouchesPerCrate, cases_per_pallet: p.casesPerPallet, room: p.room ?? null, spiral_unit: p.spiralUnit ?? null, lb_per_case: p.lbPerCase ?? null, deleted: !!p.deleted, updated_at: iso(p.updatedAt), updated_by: user.get() })
 const rowOfSchedule = (date: string, code: string, mixes: number) => ({ date, code: normCode(code), mixes, updated_at: iso(clockNow()), updated_by: user.get() })
 const rowOfChange = (c: Change) => ({ id: c.id, at: iso(c.at), by_name: c.by, dept: c.dept, what: c.what, before: c.before, after: c.after, ref_table: c.refTable, ref_key: c.refKey, deleted: !!c.deleted, updated_at: iso(c.updatedAt), updated_by: user.get() })
 
@@ -781,7 +782,7 @@ function logChange(dept: Dept | null, what: string, before: string, after: strin
   set({ ...state, changes: upsertIn(changes, c) })
   push('act_changes', c.id, rowOfChange(c))
 }
-const PRODUCT_FIELDS: [keyof Product, string][] = [['name', 'Producto'], ['pouchesPerCase', 'Pouches / caja'], ['casesPerMix', 'Cajas / mezcla'], ['cratesPerCart', 'Guacales / carro'], ['pouchesPerCrate', 'Pouches / guacal'], ['casesPerPallet', 'Cajas / pallet'], ['room', 'Lo empaca'], ['spiralUnit', 'Spiral cuenta en']]
+const PRODUCT_FIELDS: [keyof Product, string][] = [['name', 'Producto'], ['pouchesPerCase', 'Pouches / caja'], ['casesPerMix', 'Cajas / mezcla'], ['cratesPerCart', 'Guacales / carro'], ['pouchesPerCrate', 'Pouches / guacal'], ['casesPerPallet', 'Cajas / pallet'], ['lbPerCase', 'Lb / caja'], ['room', 'Lo empaca'], ['spiralUnit', 'Spiral cuenta en']]
 function logProductDiff(old: Product | undefined, p: Product) {
   if (!old) { if (p.code.trim()) logChange(null, 'Producto nuevo', '', p.code, 'act_products', normCode(p.code)); return }
   if (normCode(old.code) !== normCode(p.code)) logChange(null, old.code.trim() ? 'Producto ' + old.code + ' · Código' : 'Producto nuevo', old.code, p.code, 'act_products', normCode(p.code))
@@ -1494,6 +1495,29 @@ export function setAllCartCrates(n: number): number {
     state.products.forEach((p, i) => { if (!p.deleted && p.cratesPerCart !== k && saveProduct(i, { ...p, cratesPerCart: k })) changed++ })
   })
   return changed
+}
+// ---- pounds per case (QA's sheet, photo 2026-10-26 and its Excel; Jose, 2026-10-28: "carga las libras por caja igual que los guacales, y que yo lo pueda prender y apagar") ----
+/** QA's pounds per case by code, as its "target specifications" sheet says; Productos wins when it says its own */
+export const QA_LB_PER_CASE: Record<string, number> = { '0889': 24, '4911': 6, '4917': 6, '4914': 6, '7093': 12.5, '5000': 9, '2562': 27, '8441': 9, '7130': 12.5, '3477': 4, '3187': 9, '4955': 6, '4139': 27, '2234': 27, '685': 24, '0685': 24, '5017': 9, '4614': 5.25, '4676': 5.25, '3293': 36, '1999': 24 }
+export const lbPerCaseOf = (s: State, code: string) => productOf(s, code)?.lbPerCase || QA_LB_PER_CASE[normCode(code)] || QA_LB_PER_CASE[code.trim()] || 0
+/** QA's pounds written into every code of Productos the sheet has (a code already saying the same is left alone); how many changed */
+export function loadQaLbPerCase(): number {
+  let changed = 0
+  batch(() => {
+    state.products.forEach((p, i) => { const lb = QA_LB_PER_CASE[normCode(p.code)] ?? QA_LB_PER_CASE[p.code.trim()]; if (!p.deleted && lb && p.lbPerCase !== lb && saveProduct(i, { ...p, lbPerCase: lb })) changed++ })
+  })
+  return changed
+}
+/** the switch: with it on, the KPI's productivity is also said in pounds per labor hour (opt:lbcase in act_targets, as the other switches) */
+const OPT_LB = 'opt:lbcase'
+export const lbCaseOn = (s: State) => s.lbCase.on
+export function setLbCaseOn(on: boolean) {
+  const was = state.lbCase
+  if (was.on === on) return
+  const next: ReasonCodesOpt = { on, updatedAt: stamp(was) }
+  set({ ...state, lbCase: next })
+  push('act_targets', OPT_LB, { dept: OPT_LB, per_hour: on ? 1 : 0, per_shift: null, updated_at: iso(next.updatedAt), updated_by: user.get() })
+  logChange(null, 'Libras por caja en el KPI', was.on ? 'prendido' : 'apagado', on ? 'prendido' : 'apagado', 'act_targets', OPT_LB)
 }
 const OPT_ATTGATE = 'opt:attgate'
 const gateText = (on: boolean) => (on ? 'obligatoria para empezar' : 'no obligatoria')
@@ -2920,7 +2944,7 @@ export function mergeProducts(list: Product[]) {
   let added = 0, changed = 0
   for (const p of list) {
     const i = products.findIndex((x) => normCode(x.code) === normCode(p.code))
-    const merged: Product = i < 0 ? { ...p, updatedAt: clockNow() } : { ...products[i], name: p.name || products[i].name, pouchesPerCase: p.pouchesPerCase || products[i].pouchesPerCase, casesPerMix: p.casesPerMix || products[i].casesPerMix, cratesPerCart: p.cratesPerCart || products[i].cratesPerCart, pouchesPerCrate: p.pouchesPerCrate || products[i].pouchesPerCrate, casesPerPallet: p.casesPerPallet || products[i].casesPerPallet, ...((r) => (r ? { room: r } : {}))(p.room || products[i].room), ...((u) => (u ? { spiralUnit: u } : {}))(p.spiralUnit || products[i].spiralUnit), updatedAt: clockNow() }
+    const merged: Product = i < 0 ? { ...p, updatedAt: clockNow() } : { ...products[i], name: p.name || products[i].name, pouchesPerCase: p.pouchesPerCase || products[i].pouchesPerCase, casesPerMix: p.casesPerMix || products[i].casesPerMix, cratesPerCart: p.cratesPerCart || products[i].cratesPerCart, pouchesPerCrate: p.pouchesPerCrate || products[i].pouchesPerCrate, casesPerPallet: p.casesPerPallet || products[i].casesPerPallet, ...((r) => (r ? { room: r } : {}))(p.room || products[i].room), ...((u) => (u ? { spiralUnit: u } : {}))(p.spiralUnit || products[i].spiralUnit), ...((l) => (l ? { lbPerCase: l } : {}))(p.lbPerCase || products[i].lbPerCase), updatedAt: clockNow() }
     if (i < 0) { products.push(merged); added++ } else { if (PRODUCT_FIELDS.some(([k]) => v(products[i][k]) !== v(merged[k]))) { changed++; logProductDiff(products[i], merged) } products[i] = merged }
     push('act_products', normCode(merged.code), rowOfProduct(merged))
   }
@@ -4392,7 +4416,7 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
     const i = state.products.findIndex((p) => normCode(p.code) === key)
     const cur = i >= 0 ? state.products[i] : undefined
     if (!newer(cur)) return
-    const p: Product = { code, name: String(row.name ?? ''), pouchesPerCase: Number(row.pouches_per_case ?? 0), casesPerMix: Number(row.cases_per_mix ?? 0), cratesPerCart: Number(row.crates_per_cart ?? 0), pouchesPerCrate: Number(row.pouches_per_crate ?? 0), casesPerPallet: Number(row.cases_per_pallet ?? 0), ...((r) => (r ? { room: r } : {}))(packRoomOfText(row.room)), ...((u) => (u ? { spiralUnit: u } : {}))(spiralUnitOfText(row.spiral_unit)), updatedAt: at }
+    const p: Product = { code, name: String(row.name ?? ''), pouchesPerCase: Number(row.pouches_per_case ?? 0), casesPerMix: Number(row.cases_per_mix ?? 0), cratesPerCart: Number(row.crates_per_cart ?? 0), pouchesPerCrate: Number(row.pouches_per_crate ?? 0), casesPerPallet: Number(row.cases_per_pallet ?? 0), ...((r) => (r ? { room: r } : {}))(packRoomOfText(row.room)), ...((u) => (u ? { spiralUnit: u } : {}))(spiralUnitOfText(row.spiral_unit)), ...(Number(row.lb_per_case) > 0 ? { lbPerCase: Number(row.lb_per_case) } : {}), updatedAt: at }
     // the product stays in its place in the table (a changed row must not jump to the end while someone is editing)
     const others = (x: Product, k: number) => k === i || normCode(x.code) !== key
     const products = row.deleted ? state.products.filter((x) => normCode(x.code) !== key) : cur ? state.products.map((x, k) => (k === i ? p : x)).filter(others) : [...state.products, p]
@@ -4545,6 +4569,10 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
     // the attendance switch (a row without its value: off, as at first)
     if (!newer(state.attView)) return
     set({ ...state, attView: { on: Number(row.per_hour) === 1, updatedAt: at } })
+  } else if (table === 'act_targets' && String(row.dept ?? '') === OPT_LB) {
+    // pounds per case in the KPI (2026-10-28)
+    if (!newer(state.lbCase)) return
+    set({ ...state, lbCase: { on: Number(row.per_hour) === 1, updatedAt: at } })
   } else if (table === 'act_targets' && String(row.dept ?? '') === OPT_CRATES) {
     // the crates of an RTE cart, plant-wide (2026-10-28)
     if (!newer(state.cartCrates)) return
@@ -4649,13 +4677,14 @@ export function parseProductsCsv(text: string): Product[] {
   const cCode = find('código', 'codigo', 'code'), cName = find('producto rte', 'producto', 'r-t-e', 'item', 'name')
   const cPpc = find('pouches por caja', 'pouches/'), cYield = find('cajas por mezcla', 'yield x'), cPallet = find('cajas por pallet', 'palet')
   const cCrates = find('guacales'), cPerCrate = find('pouches por guacal'), cRoom = find('lo empaca', 'empaca', 'room'), cSpiral = find('spiral')
+  const cLb = find('lb por caja', 'libras por caja', 'lb/case', 'lb per case', 'lb / caja')
   const n = (r: string[], c: number) => (c < 0 ? 0 : numOf(r[c] ?? ''))
   const out: Product[] = []
   for (const r of rows) {
     const code = cCode < 0 ? '' : String(r[cCode] ?? '').trim().toUpperCase()
     if (!code) continue
     const room = cRoom < 0 ? undefined : packRoomOfText(r[cRoom]), spiralUnit = cSpiral < 0 ? undefined : spiralUnitOfText(r[cSpiral])
-    out.push({ code, name: cName < 0 ? '' : String(r[cName] ?? '').trim(), pouchesPerCase: n(r, cPpc), casesPerMix: n(r, cYield), cratesPerCart: n(r, cCrates), pouchesPerCrate: n(r, cPerCrate), casesPerPallet: n(r, cPallet), ...(room ? { room } : {}), ...(spiralUnit ? { spiralUnit } : {}), updatedAt: 0 })
+    out.push({ code, name: cName < 0 ? '' : String(r[cName] ?? '').trim(), pouchesPerCase: n(r, cPpc), casesPerMix: n(r, cYield), cratesPerCart: n(r, cCrates), pouchesPerCrate: n(r, cPerCrate), casesPerPallet: n(r, cPallet), ...(n(r, cLb) > 0 ? { lbPerCase: n(r, cLb) } : {}), ...(room ? { room } : {}), ...(spiralUnit ? { spiralUnit } : {}), updatedAt: 0 })
   }
   return out
 }
@@ -4673,8 +4702,8 @@ export function csvCell(v: string | number | null | undefined): string {
 }
 export function productsCsv(products: Product[]) {
   const q = csvCell
-  const head = ['Código', 'Producto', 'Pouches por caja', 'Cajas por mezcla (yield)', 'Cajas por pallet', 'Guacales por carro', 'Pouches por guacal', 'Lo empaca', 'Spiral cuenta en']
-  return '﻿' + [head, ...products.map((p) => [p.code, p.name, p.pouchesPerCase, p.casesPerMix, p.casesPerPallet, p.cratesPerCart, p.pouchesPerCrate, p.room ?? '', p.spiralUnit ?? ''])].map((r) => r.map(q).join(',')).join('\r\n')
+  const head = ['Código', 'Producto', 'Pouches por caja', 'Cajas por mezcla (yield)', 'Cajas por pallet', 'Guacales por carro', 'Pouches por guacal', 'Lo empaca', 'Spiral cuenta en', 'Lb por caja']
+  return '﻿' + [head, ...products.map((p) => [p.code, p.name, p.pouchesPerCase, p.casesPerMix, p.casesPerPallet, p.cratesPerCart, p.pouchesPerCrate, p.room ?? '', p.spiralUnit ?? '', p.lbPerCase ?? ''])].map((r) => r.map(q).join(',')).join('\r\n')
 }
 
 /** the codes open on a line at once (one, except by a fault: two devices that could not see each other both started one), the newest first */

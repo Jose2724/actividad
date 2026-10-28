@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { awayDay, dayBefore, fmtTime, kpiGet, kpiPut, type Dept, type State } from './store'
+import { fmtN, awayDay, dayBefore, fmtTime, kpiGet, kpiPut, type Dept, type State } from './store'
 import { loadDay } from './sync'
 import { COSTCO_CODE, costcoLast, costcoMonth, costcoPlan, kpiNames, kpiNote, kpiSheets, laborOf, parsePlanner, weightsOf, type KpiPart } from './kpi'
 import { download, useViewOnly } from './App'
@@ -80,12 +80,13 @@ export function KpiView({ s, now, today, admin }: { s: State; now: number; today
         <p className="hint">{tr('Programados = las personas esperadas de cada cuarto; vinieron, los temporales y las horas salen de la Asistencia que anotan los supervisores; la producción, de E.R. - Ops Summary.')}</p>
         {!s.attView.on && <p className="hint amber">{tr('La Asistencia todavía solo la ves tú: para que los supervisores anoten a su gente, préndela para todos en Ajustes › Asistencia.')}</p>}
         <div className="scroll"><table className="kpi-tbl">
-          <thead><tr><th>{tr('Cuarto')}</th><th className="n">{tr('Programados')}</th><th className="n">{tr('Vinieron')}</th><th className="n">{tr('Temporales')}</th><th className="n">{tr('Horas-persona')}</th><th className="n">{tr('Producción')}</th><th className="n">{tr('Por hora-persona')}</th></tr></thead>
+          <thead><tr><th>{tr('Cuarto')}</th><th className="n">{tr('Programados')}</th><th className="n">{tr('Vinieron')}</th><th className="n">{tr('Temporales')}</th><th className="n">{tr('Horas-persona')}</th><th className="n">{tr('Producción')}</th><th className="n">{tr('Por hora-persona')}</th>{lab.total.lb != null && <><th className="n">{tr('Libras')}</th><th className="n">{tr('Lb por hora-persona')}</th></>}</tr></thead>
           <tbody>
-            {lab.rows.map((r) => <tr key={r.dept}><td>{DEPT_LOOK[r.dept as Dept].emoji} {r.dept}</td><td className="n">{r.scheduled}</td><td className="n">{r.written ? r.showed : '—'}</td><td className="n">{r.written ? r.temps : '—'}</td><td className="n">{r.written ? r.hours : '—'}</td><td className="n">{n0(r.made)} {r.unit}</td><td className="n">{r.perHour == null ? '—' : r.perHour + ' ' + r.unit}</td></tr>)}
-            <tr className="tot"><td>{tr('Total')}</td><td className="n">{lab.total.scheduled}</td><td className="n">{lab.total.written ? lab.total.showed : '—'}</td><td className="n">{lab.total.written ? lab.total.temps : '—'}</td><td className="n">{lab.total.written ? lab.total.hours : '—'}</td><td className="n">{n0(lab.total.cases)} {tr('cajas')}</td><td className="n">{lab.total.perHour == null ? '—' : lab.total.perHour + ' ' + tr('cajas')}</td></tr>
+            {lab.rows.map((r) => <tr key={r.dept}><td>{DEPT_LOOK[r.dept as Dept].emoji} {r.dept}</td><td className="n">{r.scheduled}</td><td className="n">{r.written ? r.showed : '—'}</td><td className="n">{r.written ? r.temps : '—'}</td><td className="n">{r.written ? r.hours : '—'}</td><td className="n">{n0(r.made)} {r.unit}</td><td className="n">{r.perHour == null ? '—' : r.perHour + ' ' + r.unit}</td>{lab.total.lb != null && <><td className="n">{r.lb == null ? '—' : fmtN(r.lb)}</td><td className="n">{r.lb == null || r.hours <= 0 ? '—' : fmtN(Math.round((r.lb / r.hours) * 100) / 100)}</td></>}</tr>)}
+            <tr className="tot"><td>{tr('Total')}</td><td className="n">{lab.total.scheduled}</td><td className="n">{lab.total.written ? lab.total.showed : '—'}</td><td className="n">{lab.total.written ? lab.total.temps : '—'}</td><td className="n">{lab.total.written ? lab.total.hours : '—'}</td><td className="n">{n0(lab.total.cases)} {tr('cajas')}</td><td className="n">{lab.total.perHour == null ? '—' : lab.total.perHour + ' ' + tr('cajas')}</td>{lab.total.lb != null && <><td className="n">{fmtN(lab.total.lb)} lb</td><td className="n">{lab.total.lbPerHour == null ? '—' : fmtN(lab.total.lbPerHour) + ' lb'}</td></>}</tr>
           </tbody>
         </table></div>
+        {lab.total.lb != null && lab.total.lbMissing.length > 0 && <p className="hint amber">{tr('Sin libras por caja (no cuentan en las libras): {0}. Ponlas en Ajustes › Productos.', lab.total.lbMissing.join(', '))}</p>}
         <Note s={s} date={date} part="labor" ro={viewOnly} />
       </article>
 

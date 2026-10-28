@@ -7,6 +7,7 @@ import { supabase } from './supabase'
 import { syncStore } from './sync'
 import { consumeOn, setConsumeOn } from './store'
 import { cartCratesOf, setAllCartCrates, setCartCrates } from './store'
+import { lbCaseOn, loadQaLbPerCase, QA_LB_PER_CASE, setLbCaseOn, normCode } from './store'
 import { ATT_DEFAULT, attExpectedOf, attShifts, clearShiftMark, plantCut, roomMark, setAttExpected, setAttGate, setAttView, setShiftMark, setWeightRule, weightRuleOf } from './store'
 import { BUILD } from './update'
 import { clockOffText, clockState } from './clock'
@@ -63,6 +64,7 @@ export function Settings({ s, now, day, name, home, mgr, admin, viewOnly, meId, 
         {sec === 'consumo' && <ConsumeSettings s={s} viewOnly={viewOnly} />}
         {sec === 'attendance' && <AttendanceSettings s={s} date={day.date} viewOnly={viewOnly} admin={admin} />}
         {sec === 'products' && <CartCratesSettings s={s} readOnly={!can('products')} />}
+        {sec === 'products' && <LbCaseSettings s={s} readOnly={!can('products')} />}
         {sec === 'products' && <div className="setcard wide"><div className="sethead"><h3>{tr('Productos')}</h3></div><p className="hint">{tr('La tabla maestra de la oficina: con ella las mezclas se vuelven pouches, cajas y pallets esperados, y cada cuarto sabe cuánto lleva un carro, un pallet o una caja.')}</p><Products s={s} readOnly={!can('products')} /></div>}
         {sec === 'goals' && <GoalsSettings s={s} now={now} day={day} />}
         {sec === 'people' && <Employees meId={meId} admin={admin} />}
@@ -549,6 +551,28 @@ function CartCratesSettings({ s, readOnly }: { s: State; readOnly: boolean }) {
         <label>{tr('Guacales por carro')}{' '}<input inputMode="numeric" value={typed} placeholder={String(now)} disabled={readOnly} style={{ width: 80 }} onChange={(e) => { setTyped(e.target.value.replace(/\D/g, '').slice(0, 3)); setSaid('') }} /></label>
         {!readOnly && <button type="button" className="btn primary" disabled={!ok || (n === now && !differ)} onClick={apply}>{differ ? tr('Poner {0} en todos los códigos ({1})', n, differ) : tr('Poner {0} en todos los códigos', n)}</button>}
       </div>
+      {said && <p className="hint ok">{said}</p>}
+    </div>
+  )
+}
+
+/**
+ * Pounds per case from QA's sheet (Jose, 2026-10-28: "carga las libras por caja igual que los guacales, y que yo lo
+ * pueda prender y apagar"): a switch that adds pounds per labor hour to the KPI's productivity, and a button that
+ * writes QA's pounds into the codes of Productos the sheet has
+ */
+function LbCaseSettings({ s, readOnly }: { s: State; readOnly: boolean }) {
+  const on = lbCaseOn(s)
+  const [said, setSaid] = useState('')
+  const pending = s.products.filter((p) => !p.deleted && (QA_LB_PER_CASE[normCode(p.code)] ?? QA_LB_PER_CASE[p.code.trim()]) && p.lbPerCase !== (QA_LB_PER_CASE[normCode(p.code)] ?? QA_LB_PER_CASE[p.code.trim()])).length
+  const withLb = s.products.filter((p) => !p.deleted && p.lbPerCase).length
+  return (
+    <div className="setcard">
+      <div className="sethead"><h3>{tr('Libras por caja (QA)')}</h3><span className={'rc-state' + (on ? ' on' : '')}>{on ? tr('En el KPI') : tr('Apagado')}</span></div>
+      <label className="switch"><span>{tr('Productividad también en libras por hora-persona')}</span><input type="checkbox" role="switch" checked={on} disabled={readOnly} onChange={(e) => setLbCaseOn(e.target.checked)} /></label>
+      <p className="hint">{tr('Prendido: el KPI (parte 3) suma las libras de las cajas de Packing (cajas × libras por caja de cada código) y las divide entre las horas-persona, al lado de las cajas. Las libras por caja salen de Productos; un código sin libras se avisa y no cuenta.')}</p>
+      <p className="hint">{tr('La hoja de QA (target specifications) trae las libras por caja de {0} códigos. Hoy {1} códigos de Productos tienen libras.', Object.keys(QA_LB_PER_CASE).length - 1, withLb)}</p>
+      {!readOnly && <div className="btns"><button type="button" className="btn primary" disabled={!pending} onClick={() => { const n = loadQaLbPerCase(); setSaid(tr('✓ Libras de QA cargadas en {0} códigos.', n)) }}>{pending ? tr('Cargar las libras de QA en Productos ({0})', pending) : withLb ? tr('Las libras de QA ya están en Productos') : tr('Ningún código de Productos está en la hoja de QA')}</button></div>}
       {said && <p className="hint ok">{said}</p>}
     </div>
   )
