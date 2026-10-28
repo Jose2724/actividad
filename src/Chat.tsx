@@ -15,6 +15,8 @@ import { tr } from './i18n'
 const SEEN = 'act_chat_seen:'
 // (by side as well: a device that enters as the office and later as a room keeps them apart)
 const seenOf = (side: string, d: Dept) => { try { return Number(localStorage.getItem(SEEN + side + ':' + d)) || 0 } catch { return 0 } }
+// the buttons can be put away and brought back (Jose, 2026-10-28): remembered on the device
+const HIDDEN = 'act_chat_hidden'
 const markSeen = (side: string, d: Dept, at: number) => { try { localStorage.setItem(SEEN + side + ':' + d, String(at)) } catch { /* private window: counted again next time */ } }
 
 export function Chat({ s, home }: { s: State; home: Dept }) {
@@ -22,6 +24,8 @@ export function Chat({ s, home }: { s: State; home: Dept }) {
   const side = who.role === 'op' ? 'room' : 'office'
   const rooms: Dept[] = side === 'room' ? [home] : DEPTS
   const [open, setOpen] = useState<Dept | null>(null)
+  const [hidden, setHiddenState] = useState(() => { try { return localStorage.getItem(HIDDEN) === '1' } catch { return false } })
+  const setHidden = (h: boolean) => { setHiddenState(h); if (h) setOpen(null); try { localStorage.setItem(HIDDEN, h ? '1' : '') } catch { /* no */ } }
   const [, bump] = useState(0)
   const unread = Object.fromEntries(rooms.map((d) => [d, chatUnread(s, d, side, seenOf(side, d))])) as Record<Dept, number>
   // the conversation that is open is read as it is looked at
@@ -31,9 +35,17 @@ export function Chat({ s, home }: { s: State; home: Dept }) {
   const total = rooms.reduce((t, d) => t + unread[d], 0)
   const prev = useRef(total)
   useEffect(() => { if (total > prev.current) { try { (navigator as Navigator & { vibrate?: (ms: number) => boolean }).vibrate?.(150) } catch { /* no */ } } prev.current = total }, [total])
+  if (hidden) {
+    return (
+      <button type="button" className="chat-peek" onClick={() => setHidden(false)} aria-label={tr('Mostrar los mensajes')} title={tr('Mostrar los mensajes')}>
+        ‹{total > 0 && <i className="chat-badge">{total}</i>}
+      </button>
+    )
+  }
   return (
     <>
       <div className={'chat-fabs' + (side === 'office' ? ' many' : '')}>
+        <button type="button" className="chat-hide" onClick={() => setHidden(true)} aria-label={tr('Ocultar los mensajes')} title={tr('Ocultar los mensajes')}>×</button>
         {rooms.map((d) => (
           <button key={d} type="button" className={'chat-fab' + (open === d ? ' on' : '')} style={deptVars(d)} aria-label={tr('Mensajes · {0}', d)} title={tr('Mensajes · {0}', d)} onClick={() => setOpen(open === d ? null : d)}>
             <span className="chat-fab-ico" aria-hidden="true">{side === 'room' ? '💬' : DEPT_LOOK[d].emoji}</span>

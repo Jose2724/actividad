@@ -2123,4 +2123,8 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 .chat-send{width:44px;height:44px;flex:none;border-radius:50%;background:var(--d,var(--accent));color:#fff;border:0;font-size:18px}
 .chat-send:disabled{opacity:.4}
 .chat-ro{padding:10px;color:var(--muted);font-size:13px;text-align:center;margin:0;border-top:1px solid var(--line)}
-@media print{.chat-fabs,.chat-win{display:none}}
+.chat-hide{width:28px;height:28px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--muted);font-size:16px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0;box-shadow:0 2px 8px rgba(0,0,0,.18);margin-right:12px}
+.chat-fabs.many .chat-hide{margin-right:9px}
+.chat-peek{position:fixed;right:0;bottom:24px;width:34px;height:44px;border-radius:22px 0 0 22px;border:1px solid var(--line);border-right:0;background:var(--surface);color:var(--muted);font-size:24px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0 4px 2px 0;box-shadow:0 4px 14px rgba(0,0,0,.18);z-index:15}
+.chat-peek .chat-badge{top:-6px;left:-6px;right:auto}
+@media print{.chat-fabs,.chat-win,.chat-peek{display:none}}

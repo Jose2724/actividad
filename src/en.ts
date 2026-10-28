@@ -2628,4 +2628,6 @@ export const EN: Record<string, string> = {
   "supervisor": "supervisor",
   "No es supervisor": "Not the supervisor",
   "Es supervisor": "Is the supervisor",
+  "Mostrar los mensajes": "Show the messages",
+  "Ocultar los mensajes": "Hide the messages",
 }
