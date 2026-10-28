@@ -5249,42 +5249,62 @@ section('El carro de RTE se cuenta por guacales (Jose, 2026-10-28: dos columnas 
     eq('sin guacales, más pouches de los que caben, o números raros: nada', [m.cartPouchesOf(0, 0, null, 10), m.cartPouchesOf(7, 3, 12, 10), m.cartPouchesOf(7.5, 3, null, 10), m.cartPouchesOf(7, 3, null, 0)], [null, null, null, null])
     m.saveProduct(st().products.length, { code: '0889', name: 'Meatballs', pouchesPerCase: 8, casesPerMix: 18, cratesPerCart: 26, pouchesPerCrate: 10, casesPerPallet: 36 })
     localStorage.setItem('act_role', 'mgr')
-    // the slow-line signal (2026-10-28): RTE's minimum, the rate of the last hour, lines left out, the switch from another device
+    // the slow-line signal (2026-10-28): each room's minimum in its own word, the rate of the last hour of work, lines left out, the switch from another device
     {
       m.addLine('RTE', 'Línea S')
       const rte = st().lines.find((l) => l.dept === 'RTE' && l.name === 'Línea S')
       eq('RTE empieza con 1000 pouches por hora; los demás cuartos sin señal', [m.slowRuleOf(st(), 'RTE'), m.slowRuleOf(st(), 'Packing'), m.slowLimitOf(st(), rte)], [1000, 0, 1000])
+      eq('cada cuarto en su palabra', m.DEPTS.map((d) => m.slowUnitOf(d)), ['mezclas', 'pouches', 'mezclas', 'platos', 'cajas'])
       clock = T0
       m.startRun(rte, '0889', '6400', DAY, 240)
       const run = () => st().runs.find((r) => r.lineId === rte.id && !r.endedAt)
-      eq('un código de menos de 15 minutos no se juzga', m.lineSlow(st(), rte, run(), T0 + 10 * M), null)
-      clock = T0 + 20 * M
-      m.unitDone(run().id, null)
-      eq('a los 20 min con un carro de 240: 720 por hora, por debajo de 1000: la señal', [m.slowRateOf(st(), run(), clock), !!m.lineSlow(st(), rte, run(), clock)], [720, true])
-      clock = T0 + 30 * M
-      m.unitDone(run().id, null)
-      eq('a los 30 min con dos carros: 960 por hora, todavía por debajo', Math.round(m.slowRateOf(st(), run(), clock)), 960)
-      clock = T0 + 40 * M
-      m.unitDone(run().id, null)
-      eq('a los 40 min con tres: 1080, ya no', [Math.round(m.slowRateOf(st(), run(), clock)), m.lineSlow(st(), rte, run(), clock)], [1080, null])
+      for (const min of [20, 30, 40]) { clock = T0 + min * M; m.unitDone(run().id, null) }
+      eq('un código con menos de una hora de trabajo no se juzga (tres carros en 40 min no dicen nada todavía)', [m.slowRateOf(st(), run(), T0 + 10 * M), m.lineSlow(st(), rte, run(), T0 + 45 * M)], [null, null])
+      clock = T0 + 60 * M
+      eq('a la hora con tres carros de 240: 720 por hora, por debajo de 1000: la señal', [m.slowRateOf(st(), run(), clock), !!m.lineSlow(st(), rte, run(), clock)], [720, true])
       m.startStop('RTE', rte.id, 'Falta material', '')
       eq('una línea parada no se juzga', m.slowRateOf(st(), run(), clock + 5 * M), null)
-      clock = T0 + 60 * M
+      clock = T0 + 80 * M
       m.endStop(st().stops.find((x) => x.lineId === rte.id && !x.endedAt).id)
-      eq('el tiempo parado no cuenta: 3 carros en 40 min de trabajo = 1080', Math.round(m.slowRateOf(st(), run(), clock)), 1080)
+      eq('el tiempo parado no cuenta: la última hora de trabajo llega hasta antes de la parada, 3 carros = 720', Math.round(m.slowRateOf(st(), run(), clock)), 720)
       clock = T0 + 100 * M
-      eq('a los 100 min sin más carros: en la última hora (20 min parada) 1 carro en 40 min de trabajo = 360', [Math.round(m.slowRateOf(st(), run(), clock)), !!m.lineSlow(st(), rte, run(), clock)], [360, true])
+      m.unitDone(run().id, null)
+      eq('a los 100 min con otro carro: la hora de trabajo va del minuto 20 al 100 (20 parada): 4 carros = 960, todavía por debajo', [Math.round(m.slowRateOf(st(), run(), clock)), !!m.lineSlow(st(), rte, run(), clock)], [960, true])
+      clock = T0 + 200 * M
+      eq('a los 200 min sin más carros: 0 por hora, la señal', [m.slowRateOf(st(), run(), clock), !!m.lineSlow(st(), rte, run(), clock)], [0, true])
       m.setSlowLineOn(rte, false)
       eq('la línea apagada en Ajustes no parpadea; queda en el historial', [m.lineSlow(st(), rte, run(), clock), m.outbox.items().find((i) => i.key === 'opt:slowln:' + rte.id).row.per_hour, st().changes.some((c) => c.what.startsWith('Ritmo mínimo · ') && c.after === 'apagado')], [null, 0, true])
       m.setSlowLineOn(rte, true)
-      m.setSlowRule('RTE', 300)
-      eq('con el mínimo en 300 ya va bien; sube como ajuste de la planta', [m.lineSlow(st(), rte, run(), clock), m.outbox.items().find((i) => i.key === 'opt:slow:RTE').row.per_hour], [null, 300])
       m.setSlowRule('RTE', 0)
       eq('con 0 no hay señal', [m.slowRuleOf(st(), 'RTE'), m.lineSlow(st(), rte, run(), clock)], [0, null])
       m.applyRemote('act_targets', { dept: 'opt:slow:RTE', per_hour: 1200, per_shift: null, updated_at: new Date(clock + M).toISOString(), updated_by: 'Jose' })
       m.applyRemote('act_targets', { dept: 'opt:slowln:' + rte.id, per_hour: 0, per_shift: null, updated_at: new Date(clock + M).toISOString(), updated_by: 'Jose' })
       eq('cambiado desde otra computadora: llega el mínimo y la línea apagada', [m.slowRuleOf(st(), 'RTE'), m.slowLineOn(st(), rte.id), m.slowLimitOf(st(), rte)], [1200, false, 0])
       m.endRun(run().id)
+      // Kitchen counts mixes; Spiral in pounds is not the room's word
+      m.addLine('Kitchen', 'Braiser S')
+      const kit = st().lines.find((l) => l.dept === 'Kitchen' && l.name === 'Braiser S')
+      m.setSlowRule('Kitchen', 2)
+      eq('Kitchen con 2 mezclas por hora: sube como ajuste de la planta', [m.slowRuleOf(st(), 'Kitchen'), m.outbox.items().find((i) => i.key === 'opt:slow:Kitchen').row.per_hour, st().changes.some((c) => c.what === 'Ritmo mínimo · Kitchen' && c.after === '2 por hora')], [2, 2, true])
+      clock = T0 + 300 * M
+      m.startRun(kit, '2286', '6400', DAY, null)
+      const krun = () => st().runs.find((r) => r.lineId === kit.id && !r.endedAt)
+      clock = T0 + 330 * M
+      m.unitDone(krun().id, null)
+      clock = T0 + 360 * M
+      eq('una mezcla en la hora: 1 por hora, por debajo de 2: la señal', [m.slowRateOf(st(), krun(), clock), m.lineSlow(st(), kit, krun(), clock)], [1, { rate: 1, limit: 2 }])
+      m.endRun(krun().id)
+      m.addLine('Spiral', 'Línea S')
+      const spi = st().lines.find((l) => l.dept === 'Spiral' && l.name === 'Línea S')
+      m.setSlowRule('Spiral', 3)
+      clock = T0 + 300 * M
+      m.startRun(spi, '0889', '6400', DAY, null, '', 'lb')
+      const srun = () => st().runs.find((r) => r.lineId === spi.id && !r.endedAt)
+      clock = T0 + 400 * M
+      eq('una mezcla de Spiral contada en libras no se juzga con el número del cuarto', [m.slowCounts(srun()), m.lineSlow(st(), spi, srun(), clock)], [false, null])
+      m.endRun(srun().id)
+      m.setSlowRule('Spiral', 0)
+      m.setSlowRule('Kitchen', 0)
       clock = T0
     }
     eq('los guacales por carro de la planta: 26 mientras nadie diga otra cosa', m.cartCratesOf(st()), 26)

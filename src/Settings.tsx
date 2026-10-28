@@ -2,13 +2,14 @@ import { useState, useSyncExternalStore } from 'react'
 import { type ViewOpt, byLineName, CFG, dayShiftsText, DEPTS, lineLabel, lotFor, managerPin, nightText, openRun, removedLines, removeLine, reset, resetRecords, restoreLine, setDayShifts, setLineRules, setProgramView, setReasonCodes, shiftGoalOf, shiftHours, shiftSpan, shiftsOf, turnOf, uploadAll, weekOf, type Dept, type Line, type State, type WorkDay, setViewOpt } from './store'
 import { ConfirmDialog, LangSwitch, LineNameDialog, longDate, NoticeDialog, Products, QrLink, ShiftsDialog, StartDayDialog, StopDialog, TargetDialog, useCan, useWho } from './App'
 import { Employees } from './Employees'
+import { DEPT_LOOK } from './look'
 import { Devices } from './DevicesView'
 import { supabase } from './supabase'
 import { syncStore } from './sync'
 import { consumeOn, setConsumeOn } from './store'
 import { cartCratesOf, setAllCartCrates, setCartCrates } from './store'
 import { lbCaseOn, loadQaLbPerCase, QA_LB_PER_CASE, setLbCaseOn, normCode } from './store'
-import { ATT_DEFAULT, attExpectedOf, attShifts, clearShiftMark, plantCut, roomMark, setAttExpected, setAttGate, setAttView, setShiftMark, setWeightRule, weightRuleOf, setSlowRule, slowRuleOf, setSlowLineOn, slowLineOn } from './store'
+import { ATT_DEFAULT, attExpectedOf, attShifts, clearShiftMark, plantCut, roomMark, setAttExpected, setAttGate, setAttView, setShiftMark, setWeightRule, weightRuleOf, setSlowRule, slowRuleOf, setSlowLineOn, slowLineOn, slowUnitOf } from './store'
 import { BUILD } from './update'
 import { clockOffText, clockState } from './clock'
 import { fmtTime } from './clock-fmt'
@@ -503,25 +504,33 @@ function ConsumeSettings({ s, viewOnly }: { s: State; viewOnly: boolean }) {
 }
 /**
  * The slow-line signal (Jose, 2026-10-28: "que parpadee la línea que no esté haciendo 1000 pouches por hora, y que en
- * Ajustes se pueda cambiar, apagar o elegir las líneas"): the room's minimum per hour, 0 to turn it off, and a switch
- * per line. RTE for now; the rest of the rooms when they ask.
+ * Ajustes se pueda cambiar, apagar o elegir las líneas"; then "para todos los departamentos, igual que se pueda apagar
+ * y editar, y que hable el idioma de cada departamento"): per room, its minimum per hour in its own word, 0 to turn it
+ * off, and a switch per line.
  */
 function SlowSettings({ s, viewOnly }: { s: State; viewOnly: boolean }) {
-  const dept: Dept = 'RTE'
+  return (
+    <div className="setcard">
+      <div className="sethead"><h3>{tr('Ritmo mínimo por cuarto')}</h3></div>
+      <p className="hint">{tr('Una línea que en su última hora de trabajo va por debajo del ritmo de su cuarto se pone roja y vuelve, una y otra vez, para que la gente sepa que tiene que avanzar. Es una señal, no un dato: nada se guarda. Con 0 el cuarto no tiene señal. Se juzga después de la primera hora de trabajo del código; una línea parada o en Set up no parpadea, y una corrida contada en otra cosa (libras, copas, bins) tampoco.')}</p>
+      {DEPTS.map((d) => <SlowRoom key={d} s={s} dept={d} viewOnly={viewOnly} />)}
+    </div>
+  )
+}
+function SlowRoom({ s, dept, viewOnly }: { s: State; dept: Dept; viewOnly: boolean }) {
   const now = slowRuleOf(s, dept)
   const [typed, setTyped] = useState(String(now))
   const n = Number(typed) || 0, changed = n !== now
   const lines = s.lines.filter((l) => l.dept === dept && !l.deleted).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
   return (
-    <div className="setcard">
-      <div className="sethead"><h3>{tr('Ritmo mínimo ({0})', dept)}</h3><span className={'rc-state ' + (now ? 'on' : 'off')}>{now ? tr('{0} por hora', fmtN(now)) : tr('Apagado')}</span></div>
-      <p className="hint">{tr('Una línea que en su última hora va por debajo de este ritmo se pone roja y vuelve, una y otra vez, para que la gente sepa que tiene que avanzar. Es una señal, no un dato: nada se guarda. Con 0 no hay señal. Una línea parada o en Set up no parpadea.')}</p>
+    <div className="slowroom">
+      <div className="sethead"><h4><i aria-hidden="true">{DEPT_LOOK[dept].emoji}</i> {dept}</h4><span className={'rc-state ' + (now ? 'on' : 'off')}>{now ? tr('{0} por hora', fmtN(now) + ' ' + slowUnitOf(dept)) : tr('Apagado')}</span></div>
       <form className="wt-rule" onSubmit={(e) => { e.preventDefault(); setSlowRule(dept, n); setTyped(String(Math.max(0, Math.round(n)))) }}>
-        <label>{tr('Mínimo')} <input inputMode="numeric" value={typed} disabled={viewOnly} onChange={(e) => setTyped(e.target.value.replace(/\D/g, '').slice(0, 6))} /> {tr('pouches por hora')}</label>
+        <label>{tr('Mínimo')} <input inputMode="numeric" value={typed} disabled={viewOnly} onChange={(e) => setTyped(e.target.value.replace(/\D/g, '').slice(0, 6))} /> {tr('{0} por hora', slowUnitOf(dept))}</label>
         {!viewOnly && <button type="submit" className="btn sm primary" disabled={!changed}>{tr('Guardar')}</button>}
         {!viewOnly && now > 0 && <button type="button" className="btn sm" onClick={() => { setSlowRule(dept, 0); setTyped('0') }}>{tr('Apagar')}</button>}
       </form>
-      {lines.length > 0 && (
+      {lines.length > 0 && now > 0 && (
         <div className="slowlines">
           <b>{tr('Líneas con la señal')}</b>
           {lines.map((l) => { const on = slowLineOn(s, l.id); return (

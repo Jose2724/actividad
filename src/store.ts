@@ -1413,13 +1413,19 @@ export function setWeightRule(dept: Dept, every: number, count: number) {
 // ---- the slow-line signal (Jose, 2026-10-28: "que parpadee la línea que no esté haciendo 1000 pouches por hora", "es algo más símbolo que un dato": the card goes red and back so the people know they have to move) ----
 /**
  * A room's minimum per hour (0 = no signal), set in Ajustes for everybody; under 'opt:slow:<room>' in act_targets
- * (per_hour = the minimum), as the other switches. RTE starts at 1000 pouches an hour, Jose's number; the rest at 0.
+ * (per_hour = the minimum), as the other switches. RTE starts at 1000 pouches an hour, Jose's number; the rest at 0
+ * until a manager writes theirs (Jose, 2026-10-28: "para todos los departamentos, igual que se pueda apagar y editar,
+ * y que hable el idioma de cada departamento": each room counts in its own word, slowUnitOf).
  * Each line can be left out ('opt:slowln:<line id>', per_hour 0 = off, 1 = on): "elegir las líneas que queramos".
  */
 export type SlowRule = { dept: Dept; perHour: number; updatedAt: number }
 export type SlowLine = { lineId: string; off: boolean; updatedAt: number }
 const SLOW_KEY = 'opt:slow:', SLOWLN_KEY = 'opt:slowln:'
 export const SLOW_DEFAULT: Partial<Record<Dept, number>> = { RTE: 1000 }
+/** the word a room's minimum is counted in: what the room counts (mezclas, pouches, platos, cajas) */
+export const slowUnitOf = (dept: Dept) => (CFG[dept].qty === 'none' ? CFG[dept].plural.toLowerCase() : CFG[dept].qtyUnit)
+/** whether a code is counted in its room's own word (a Spiral mix in pounds, an MFO bin of copas or lb, a Packing bin are not: the room's number says nothing about them) */
+export const slowCounts = (r: Pick<Run, 'dept' | 'extra'>) => { const c = cfgOf(r); return c.qty === CFG[r.dept].qty && c.qtyUnit === CFG[r.dept].qtyUnit }
 /** the room's minimum per hour, 0 when the signal is off there */
 export const slowRuleOf = (s: State, dept: Dept) => { const r = (s.slowRules ?? []).find((x) => x.dept === dept); return r ? r.perHour : SLOW_DEFAULT[dept] ?? 0 }
 export function setSlowRule(dept: Dept, perHour: number) {
@@ -1442,28 +1448,31 @@ export function setSlowLineOn(line: Line, on: boolean) {
 }
 /** a line's minimum per hour: the room's, when the signal is on for the line; 0 = none */
 export const slowLimitOf = (s: State, line: Line) => (slowLineOn(s, line.id) ? slowRuleOf(s, line.dept) : 0)
-const SLOW_WINDOW_MS = 3_600_000, SLOW_MIN_MS = 15 * 60_000
+const SLOW_WINDOW_MS = 3_600_000
 /**
- * What the line made in its last hour, per hour of running time: the quantity of the units recorded in the last 60
- * minutes (the code's whole time when it is younger), over that time less the line's stops in it. Null while the
- * code is under 15 minutes old (nothing to judge yet), while the line is stopped or in a set up (it has its own
- * colour), or when the code is not running.
+ * What the line made in its last hour of work, per hour: the quantity of the units recorded in the last 60 minutes
+ * of running time (the line's stops, and the room's, are left out: the window reaches back past them). Null while
+ * the code has less than an hour of work (nothing to judge yet: a mix or a pallet takes a while, and a 15-minute
+ * guess called every code slow at its start), while the line is stopped or in a set up (it has its own colour), or
+ * when the code is not running.
  */
 export function slowRateOf(s: State, r: Run, now: number): number | null {
-  if (r.endedAt || now - r.startedAt < SLOW_MIN_MS) return null
-  const from = Math.max(r.startedAt, now - SLOW_WINDOW_MS)
-  const stops = s.stops.filter((x) => !x.deleted && (x.lineId === r.lineId || (x.lineId === null && x.dept === r.dept)) && x.startedAt < now && (x.endedAt == null || x.endedAt > from))
+  if (r.endedAt || now - r.startedAt < SLOW_WINDOW_MS) return null
+  const stops = s.stops.filter((x) => !x.deleted && (x.lineId === r.lineId || (x.lineId === null && x.dept === r.dept)) && x.startedAt < now && x.startedAt >= r.startedAt)
   if (stops.some((x) => x.endedAt == null)) return null
-  const down = stops.reduce((t, x) => t + Math.max(0, Math.min(now, x.endedAt ?? now) - Math.max(from, x.startedAt)), 0)
-  const ms = now - from - down
-  if (ms < SLOW_MIN_MS) return null
+  const downFrom = (from: number) => stops.reduce((t, x) => t + Math.max(0, Math.min(now, x.endedAt ?? now) - Math.max(from, x.startedAt)), 0)
+  // the window: 60 minutes of work, so it starts earlier by what was stopped inside it (settles in a few turns)
+  let from = now - SLOW_WINDOW_MS
+  for (let i = 0; i < 20; i++) { const next = Math.max(r.startedAt, now - SLOW_WINDOW_MS - downFrom(from)); if (next === from) break; from = next }
+  const ms = now - from - downFrom(from)
+  if (ms < SLOW_WINDOW_MS - 1000) return null
   const qty = r.units.filter((u) => u.at >= from && u.at <= now).reduce((t, u) => t + (CFG[r.dept].qty === 'none' ? 1 : unitQty(s, r, u)), 0)
   return qty / (ms / 3_600_000)
 }
 /** the signal: the line is running under its minimum (null = nothing to say) */
 export function lineSlow(s: State, line: Line, r: Run, now: number): { rate: number; limit: number } | null {
   const limit = slowLimitOf(s, line)
-  if (!limit) return null
+  if (!limit || !slowCounts(r)) return null
   const rate = slowRateOf(s, r, now)
   return rate != null && rate < limit ? { rate, limit } : null
 }
