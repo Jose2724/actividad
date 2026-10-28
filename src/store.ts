@@ -1512,7 +1512,10 @@ export function setAttGate(on: boolean) {
  */
 export function attGated(s: State, dept: Dept, date: string, shift: 1 | 2): boolean {
   if (!s.attGate.on || !s.attView.on || role.get() !== 'op' || !!viewOnly.get()) return false
-  return !attSupOf(s, date, dept, shift)
+  // the supervisor written as such, and at least one worker (Jose, 2026-10-28: "el supervisor se tiene que apuntar
+  // pero él no cuenta para empezar, aunque sí cuenta para el attendance"); how many are needed is never said
+  const here = attOf(s, date, dept, shift).filter((x) => !x.gone)
+  return !here.some((x) => x.sup) || !here.some((x) => !x.sup)
 }
 /** the reason of the stop the app writes by itself when a line finishes a code and another one is coming */
 export const SETUP = 'Set up'
