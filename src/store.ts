@@ -380,7 +380,7 @@ export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Produ
    */
   orderRuns: Run[]
   /** the production orders of every room (deleted ones kept with their flag), and the closed accounts of finished ones */
-  workOrders: WorkOrder[]; orderSeals: OrderSeal[]; attendance: AttEntry[]; attExpected: AttExpected[]; shiftMarks: ShiftMark[]; kpi: KpiRec[]; weights: WeightTest[]; orderNotes: OrderNote[]; roomMsgs: RoomMsg[]; chat: ChatMsg[]; weightRules: WeightRule[]; meats: MeatEntry[]; holds: HoldRec[]; consumes: ConsumeEntry[]; consumeOpts: ConsumeOpt[] }
+  workOrders: WorkOrder[]; orderSeals: OrderSeal[]; attendance: AttEntry[]; attExpected: AttExpected[]; shiftMarks: ShiftMark[]; kpi: KpiRec[]; weights: WeightTest[]; orderNotes: OrderNote[]; roomMsgs: RoomMsg[]; chat: ChatMsg[]; weightRules: WeightRule[]; slowRules: SlowRule[]; slowLines: SlowLine[]; meats: MeatEntry[]; holds: HoldRec[]; consumes: ConsumeEntry[]; consumeOpts: ConsumeOpt[] }
 /**
  * An order to fill in Packing: so many cases of one product for a customer, to ship by a date. Most carry the
  * customer's purchase order number (PO); some never do and some get it later. See "the orders Packing fills".
@@ -490,10 +490,10 @@ function tidySchedule(sch: Schedule): Schedule {
 function isDay(text: string) { return /^\d{4}-\d{2}-\d{2}$/.test(text) }
 /** with a server the lines (and products) are shared and come from it; without one, each device starts with a line per room */
 const SERVER = !!import.meta.env.VITE_SUPABASE_URL
-function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, reasonCodes: { on: false, updatedAt: 0 }, programView: { on: false, updatedAt: 0 }, attView: { on: false, updatedAt: 0 }, attGate: { on: false, updatedAt: 0 }, cartCrates: { n: 0, updatedAt: 0 }, lbCase: { on: false, updatedAt: 0 }, viewOpts: { lotes: { on: false, updatedAt: 0 }, flujo: { on: false, updatedAt: 0 } }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [], attendance: [], attExpected: [], shiftMarks: [], kpi: [], weights: [], orderNotes: [], roomMsgs: [], chat: [], weightRules: [], meats: [], holds: [], consumes: [], consumeOpts: [] } }
+function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, reasonCodes: { on: false, updatedAt: 0 }, programView: { on: false, updatedAt: 0 }, attView: { on: false, updatedAt: 0 }, attGate: { on: false, updatedAt: 0 }, cartCrates: { n: 0, updatedAt: 0 }, lbCase: { on: false, updatedAt: 0 }, viewOpts: { lotes: { on: false, updatedAt: 0 }, flujo: { on: false, updatedAt: 0 } }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [], attendance: [], attExpected: [], shiftMarks: [], kpi: [], weights: [], orderNotes: [], roomMsgs: [], chat: [], weightRules: [], slowRules: [], slowLines: [], meats: [], holds: [], consumes: [], consumeOpts: [] } }
 function load(): State {
   try {
-    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; reasonCodes?: Partial<ReasonCodesOpt>; programView?: Partial<ReasonCodesOpt>; attView?: Partial<ReasonCodesOpt>; attGate?: Partial<ReasonCodesOpt>; cartCrates?: { n?: number; updatedAt?: number }; lbCase?: Partial<ReasonCodesOpt>; viewOpts?: Partial<Record<ViewOpt, Partial<ReasonCodesOpt>>>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[]; attendance?: Partial<AttEntry>[]; attExpected?: Partial<AttExpected>[]; shiftMarks?: Partial<ShiftMark>[]; kpi?: Partial<KpiRec>[]; weights?: Partial<WeightTest>[]; orderNotes?: Partial<OrderNote>[]; roomMsgs?: Partial<RoomMsg>[]; chat?: Partial<ChatMsg>[]; weightRules?: Partial<WeightRule>[]; meats?: Partial<MeatEntry>[]; holds?: Partial<HoldRec>[]; consumes?: Partial<ConsumeEntry>[]; consumeOpts?: Partial<ConsumeOpt>[] }
+    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; reasonCodes?: Partial<ReasonCodesOpt>; programView?: Partial<ReasonCodesOpt>; attView?: Partial<ReasonCodesOpt>; attGate?: Partial<ReasonCodesOpt>; cartCrates?: { n?: number; updatedAt?: number }; lbCase?: Partial<ReasonCodesOpt>; viewOpts?: Partial<Record<ViewOpt, Partial<ReasonCodesOpt>>>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[]; attendance?: Partial<AttEntry>[]; attExpected?: Partial<AttExpected>[]; shiftMarks?: Partial<ShiftMark>[]; kpi?: Partial<KpiRec>[]; weights?: Partial<WeightTest>[]; orderNotes?: Partial<OrderNote>[]; roomMsgs?: Partial<RoomMsg>[]; chat?: Partial<ChatMsg>[]; weightRules?: Partial<WeightRule>[]; slowRules?: Partial<SlowRule>[]; slowLines?: Partial<SlowLine>[]; meats?: Partial<MeatEntry>[]; holds?: Partial<HoldRec>[]; consumes?: Partial<ConsumeEntry>[]; consumeOpts?: Partial<ConsumeOpt>[] }
     const s = JSON.parse(localStorage.getItem(KEY) || 'null') as Raw | null
     // rows saved by earlier versions: carts as plain timestamps, units without a tag or a name, products with one
     // pouches-per-cart number, nothing with an update time
@@ -555,6 +555,9 @@ function load(): State {
         consumes: (s.consumes ?? []).map(consumeFrom).filter((x): x is ConsumeEntry => !!x),
         consumeOpts: (s.consumeOpts ?? []).filter((x) => !!x && DEPTS.includes(x.dept as Dept)).map((x) => ({ dept: x.dept as Dept, on: x.on === true, updatedAt: Number(x.updatedAt) || 0 })),
         weightRules: (s.weightRules ?? []).filter((x) => !!x && DEPTS.includes(x.dept as Dept) && Number(x.every) >= 0 && Number(x.count) >= 0).map((x) => ({ dept: x.dept as Dept, every: Math.round(Number(x.every)), count: Math.round(Number(x.count)), updatedAt: Number(x.updatedAt) || 0 })),
+        // the slow-line signal (2026-10-28): the room's minimum per hour, and the lines it is turned off for
+        slowRules: (s.slowRules ?? []).filter((x) => !!x && DEPTS.includes(x.dept as Dept) && Number(x.perHour) >= 0).map((x) => ({ dept: x.dept as Dept, perHour: Math.round(Number(x.perHour)), updatedAt: Number(x.updatedAt) || 0 })),
+        slowLines: (s.slowLines ?? []).filter((x) => !!x && typeof x.lineId === 'string' && x.lineId).map((x) => ({ lineId: String(x.lineId), off: x.off === true, updatedAt: Number(x.updatedAt) || 0 })),
         attExpected: (s.attExpected ?? []).map(attExpectedFrom).filter((x): x is AttExpected => !!x),
         // each room's hand-over of a day (2026-10-21): a function declaration, as above
         shiftMarks: (s.shiftMarks ?? []).map(shiftMarkFrom).filter((x): x is ShiftMark => !!x),
@@ -1406,6 +1409,63 @@ export function setWeightRule(dept: Dept, every: number, count: number) {
   set({ ...state, weightRules: [...(state.weightRules ?? []).filter((y) => y !== was), x] })
   push('act_targets', WRULE_KEY + dept, { dept: WRULE_KEY + dept, per_hour: e, per_shift: c, updated_at: iso(x.updatedAt), updated_by: user.get() })
   logChange(dept, 'Pesos · ' + dept, before.every + ' min · ' + before.count, e + ' min · ' + c, 'act_targets', WRULE_KEY + dept)
+}
+// ---- the slow-line signal (Jose, 2026-10-28: "que parpadee la línea que no esté haciendo 1000 pouches por hora", "es algo más símbolo que un dato": the card goes red and back so the people know they have to move) ----
+/**
+ * A room's minimum per hour (0 = no signal), set in Ajustes for everybody; under 'opt:slow:<room>' in act_targets
+ * (per_hour = the minimum), as the other switches. RTE starts at 1000 pouches an hour, Jose's number; the rest at 0.
+ * Each line can be left out ('opt:slowln:<line id>', per_hour 0 = off, 1 = on): "elegir las líneas que queramos".
+ */
+export type SlowRule = { dept: Dept; perHour: number; updatedAt: number }
+export type SlowLine = { lineId: string; off: boolean; updatedAt: number }
+const SLOW_KEY = 'opt:slow:', SLOWLN_KEY = 'opt:slowln:'
+export const SLOW_DEFAULT: Partial<Record<Dept, number>> = { RTE: 1000 }
+/** the room's minimum per hour, 0 when the signal is off there */
+export const slowRuleOf = (s: State, dept: Dept) => { const r = (s.slowRules ?? []).find((x) => x.dept === dept); return r ? r.perHour : SLOW_DEFAULT[dept] ?? 0 }
+export function setSlowRule(dept: Dept, perHour: number) {
+  const n = Math.max(0, Math.round(perHour)), was = (state.slowRules ?? []).find((x) => x.dept === dept), before = slowRuleOf(state, dept)
+  if (was && before === n) return
+  const x: SlowRule = { dept, perHour: n, updatedAt: stamp(was) }
+  set({ ...state, slowRules: [...(state.slowRules ?? []).filter((y) => y !== was), x] })
+  push('act_targets', SLOW_KEY + dept, { dept: SLOW_KEY + dept, per_hour: n, per_shift: null, updated_at: iso(x.updatedAt), updated_by: user.get() })
+  logChange(dept, 'Ritmo mínimo · ' + dept, before ? before + ' por hora' : 'apagado', n ? n + ' por hora' : 'apagado', 'act_targets', SLOW_KEY + dept)
+}
+/** whether the signal is on for this line (on unless a manager turned it off) */
+export const slowLineOn = (s: State, lineId: string) => !(s.slowLines ?? []).some((x) => x.lineId === lineId && x.off)
+export function setSlowLineOn(line: Line, on: boolean) {
+  const was = (state.slowLines ?? []).find((x) => x.lineId === line.id)
+  if (slowLineOn(state, line.id) === on) return
+  const x: SlowLine = { lineId: line.id, off: !on, updatedAt: stamp(was) }
+  set({ ...state, slowLines: [...(state.slowLines ?? []).filter((y) => y !== was), x] })
+  push('act_targets', SLOWLN_KEY + line.id, { dept: SLOWLN_KEY + line.id, per_hour: on ? 1 : 0, per_shift: null, updated_at: iso(x.updatedAt), updated_by: user.get() })
+  logChange(line.dept, 'Ritmo mínimo · ' + line.name + ' (' + line.dept + ')', on ? 'apagado' : 'prendido', on ? 'prendido' : 'apagado', 'act_targets', SLOWLN_KEY + line.id)
+}
+/** a line's minimum per hour: the room's, when the signal is on for the line; 0 = none */
+export const slowLimitOf = (s: State, line: Line) => (slowLineOn(s, line.id) ? slowRuleOf(s, line.dept) : 0)
+const SLOW_WINDOW_MS = 3_600_000, SLOW_MIN_MS = 15 * 60_000
+/**
+ * What the line made in its last hour, per hour of running time: the quantity of the units recorded in the last 60
+ * minutes (the code's whole time when it is younger), over that time less the line's stops in it. Null while the
+ * code is under 15 minutes old (nothing to judge yet), while the line is stopped or in a set up (it has its own
+ * colour), or when the code is not running.
+ */
+export function slowRateOf(s: State, r: Run, now: number): number | null {
+  if (r.endedAt || now - r.startedAt < SLOW_MIN_MS) return null
+  const from = Math.max(r.startedAt, now - SLOW_WINDOW_MS)
+  const stops = s.stops.filter((x) => !x.deleted && (x.lineId === r.lineId || (x.lineId === null && x.dept === r.dept)) && x.startedAt < now && (x.endedAt == null || x.endedAt > from))
+  if (stops.some((x) => x.endedAt == null)) return null
+  const down = stops.reduce((t, x) => t + Math.max(0, Math.min(now, x.endedAt ?? now) - Math.max(from, x.startedAt)), 0)
+  const ms = now - from - down
+  if (ms < SLOW_MIN_MS) return null
+  const qty = r.units.filter((u) => u.at >= from && u.at <= now).reduce((t, u) => t + (CFG[r.dept].qty === 'none' ? 1 : unitQty(s, r, u)), 0)
+  return qty / (ms / 3_600_000)
+}
+/** the signal: the line is running under its minimum (null = nothing to say) */
+export function lineSlow(s: State, line: Line, r: Run, now: number): { rate: number; limit: number } | null {
+  const limit = slowLimitOf(s, line)
+  if (!limit) return null
+  const rate = slowRateOf(s, r, now)
+  return rate != null && rate < limit ? { rate, limit } : null
 }
 /** when a line's next weight test is due: the room's rule, from the code's start or the line's last test of the day; null = no reminder */
 export function weightDueAt(s: State, r: Run): number | null {
@@ -4543,6 +4603,19 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
     const cur = (state.weightRules ?? []).find((x) => x.dept === dept)
     if (!newer(cur) || !(Number(row.per_hour) >= 0)) return
     set({ ...state, weightRules: [...(state.weightRules ?? []).filter((x) => x !== cur), { dept, every: Math.round(Number(row.per_hour)), count: Math.max(0, Math.round(Number(row.per_shift) || 0)), updatedAt: at }] })
+  } else if (table === 'act_targets' && String(row.dept ?? '').startsWith(SLOWLN_KEY)) {
+    // the slow-line signal turned off or on for one line (2026-10-28)
+    const lineId = String(row.dept).slice(SLOWLN_KEY.length)
+    const cur = (state.slowLines ?? []).find((x) => x.lineId === lineId)
+    if (!lineId || !newer(cur)) return
+    set({ ...state, slowLines: [...(state.slowLines ?? []).filter((x) => x !== cur), { lineId, off: Number(row.per_hour) === 0, updatedAt: at }] })
+  } else if (table === 'act_targets' && String(row.dept ?? '').startsWith(SLOW_KEY)) {
+    // a room's minimum per hour for the slow-line signal (2026-10-28)
+    const dept = String(row.dept).slice(SLOW_KEY.length) as Dept
+    if (!DEPTS.includes(dept)) return
+    const cur = (state.slowRules ?? []).find((x) => x.dept === dept)
+    if (!newer(cur) || !(Number(row.per_hour) >= 0)) return
+    set({ ...state, slowRules: [...(state.slowRules ?? []).filter((x) => x !== cur), { dept, perHour: Math.round(Number(row.per_hour)), updatedAt: at }] })
   } else if (table === 'act_targets' && String(row.dept ?? '').startsWith(ATT_KEY)) {
     // a room's people expected on a shift (2026-10-20)
     const [dept, k] = String(row.dept).slice(ATT_KEY.length).split(':'), shift = Number(k)

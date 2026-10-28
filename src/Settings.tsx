@@ -8,7 +8,7 @@ import { syncStore } from './sync'
 import { consumeOn, setConsumeOn } from './store'
 import { cartCratesOf, setAllCartCrates, setCartCrates } from './store'
 import { lbCaseOn, loadQaLbPerCase, QA_LB_PER_CASE, setLbCaseOn, normCode } from './store'
-import { ATT_DEFAULT, attExpectedOf, attShifts, clearShiftMark, plantCut, roomMark, setAttExpected, setAttGate, setAttView, setShiftMark, setWeightRule, weightRuleOf } from './store'
+import { ATT_DEFAULT, attExpectedOf, attShifts, clearShiftMark, plantCut, roomMark, setAttExpected, setAttGate, setAttView, setShiftMark, setWeightRule, weightRuleOf, setSlowRule, slowRuleOf, setSlowLineOn, slowLineOn } from './store'
 import { BUILD } from './update'
 import { clockOffText, clockState } from './clock'
 import { fmtTime } from './clock-fmt'
@@ -60,7 +60,7 @@ export function Settings({ s, now, day, name, home, mgr, admin, viewOnly, meId, 
         {sec === 'lines' && <LinesSettings s={s} />}
         {sec === 'stops' && <StopCodesSettings s={s} viewOnly={viewOnly} />}
         {sec === 'program' && <><ProgramViewSettings s={s} /><ViewOptSettings s={s} name="lotes" /><ViewOptSettings s={s} name="flujo" /></>}
-        {sec === 'weights' && <WeightSettings s={s} viewOnly={viewOnly} />}
+        {sec === 'weights' && <><SlowSettings s={s} viewOnly={viewOnly} /><WeightSettings s={s} viewOnly={viewOnly} /></>}
         {sec === 'consumo' && <ConsumeSettings s={s} viewOnly={viewOnly} />}
         {sec === 'attendance' && <AttendanceSettings s={s} date={day.date} viewOnly={viewOnly} admin={admin} />}
         {sec === 'products' && <CartCratesSettings s={s} readOnly={!can('products')} />}
@@ -498,6 +498,39 @@ function ConsumeSettings({ s, viewOnly }: { s: State; viewOnly: boolean }) {
       {DEPTS.map((d) => { const on = consumeOn(s, d); return (
         <div key={d} className="wt-rule"><b>{d}</b><span className={on ? 'ok' : 'muted'}>{on ? tr('obligatorio al empezar') : tr('apagado')}</span>{!viewOnly && <button type="button" className={'btn sm' + (on ? '' : ' primary')} onClick={() => setConsumeOn(d, !on)}>{on ? tr('Apagar') : tr('Prender')}</button>}</div>
       ) })}
+    </div>
+  )
+}
+/**
+ * The slow-line signal (Jose, 2026-10-28: "que parpadee la línea que no esté haciendo 1000 pouches por hora, y que en
+ * Ajustes se pueda cambiar, apagar o elegir las líneas"): the room's minimum per hour, 0 to turn it off, and a switch
+ * per line. RTE for now; the rest of the rooms when they ask.
+ */
+function SlowSettings({ s, viewOnly }: { s: State; viewOnly: boolean }) {
+  const dept: Dept = 'RTE'
+  const now = slowRuleOf(s, dept)
+  const [typed, setTyped] = useState(String(now))
+  const n = Number(typed) || 0, changed = n !== now
+  const lines = s.lines.filter((l) => l.dept === dept && !l.deleted).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+  return (
+    <div className="setcard">
+      <div className="sethead"><h3>{tr('Ritmo mínimo ({0})', dept)}</h3><span className={'rc-state ' + (now ? 'on' : 'off')}>{now ? tr('{0} por hora', fmtN(now)) : tr('Apagado')}</span></div>
+      <p className="hint">{tr('Una línea que en su última hora va por debajo de este ritmo se pone roja y vuelve, una y otra vez, para que la gente sepa que tiene que avanzar. Es una señal, no un dato: nada se guarda. Con 0 no hay señal. Una línea parada o en Set up no parpadea.')}</p>
+      <form className="wt-rule" onSubmit={(e) => { e.preventDefault(); setSlowRule(dept, n); setTyped(String(Math.max(0, Math.round(n)))) }}>
+        <label>{tr('Mínimo')} <input inputMode="numeric" value={typed} disabled={viewOnly} onChange={(e) => setTyped(e.target.value.replace(/\D/g, '').slice(0, 6))} /> {tr('pouches por hora')}</label>
+        {!viewOnly && <button type="submit" className="btn sm primary" disabled={!changed}>{tr('Guardar')}</button>}
+        {!viewOnly && now > 0 && <button type="button" className="btn sm" onClick={() => { setSlowRule(dept, 0); setTyped('0') }}>{tr('Apagar')}</button>}
+      </form>
+      {lines.length > 0 && (
+        <div className="slowlines">
+          <b>{tr('Líneas con la señal')}</b>
+          {lines.map((l) => { const on = slowLineOn(s, l.id); return (
+            <label key={l.id} className={'chip' + (on ? ' on' : '')}>
+              <input type="checkbox" checked={on} disabled={viewOnly} onChange={(e) => setSlowLineOn(l, e.target.checked)} /> {lineLabel(l.name)}
+            </label>
+          ) })}
+        </div>
+      )}
     </div>
   )
 }

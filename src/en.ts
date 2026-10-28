@@ -2619,6 +2619,12 @@ export const EN: Record<string, string> = {
   // the supervisor written as such (2026-10-27)
   "Antes de empezar, el supervisor o líder se anota como supervisor y anota a la gente del Turno {0} de {1}; después vuelve a tocar Empezar.": "Before starting, the supervisor or leader writes themselves as supervisor and writes the people of Shift {0} of {1}; then tap Start again.",
   "Anotar la asistencia": "Write the attendance",
+  "Líneas con la señal": "Lines with the signal",
+  "pouches por hora": "pouches per hour",
+  "Una línea que en su última hora va por debajo de este ritmo se pone roja y vuelve, una y otra vez, para que la gente sepa que tiene que avanzar. Es una señal, no un dato: nada se guarda. Con 0 no hay señal. Una línea parada o en Set up no parpadea.": "A line that in its last hour runs under this pace goes red and back, again and again, so the people know they have to move. It is a signal, not a figure: nothing is saved. With 0 there is no signal. A stopped line or one in a Set up does not blink.",
+  "{0} por hora": "{0} per hour",
+  "Ritmo mínimo ({0})": "Minimum pace ({0})",
+  "🔴 Ritmo bajo: {0} {1} por hora en la última hora · mínimo {2}": "🔴 Slow: {0} {1} per hour in the last hour · minimum {2}",
   "bolas crudas": "raw meatballs",
   "Lo dice QA. Con 2.7 y 0.1: menos de 2.6 es bajo, más de 2.8 es sobre.": "QA says it. With 2.7 and 0.1: under 2.6 is low, over 2.8 is high.",
   "Cada bola cruda (oz)": "Each raw meatball (oz)",
