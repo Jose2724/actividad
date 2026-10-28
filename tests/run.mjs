@@ -5236,6 +5236,25 @@ section('Pedidos: urgente para que Packing le dé prioridad, y el comentario de 
   const back = await device('order-urgent-again', { seed: JSON.parse(disks.get('order-urgent').get('act_v1')), user: 'Oficina' })
   eq('al volver a abrir: el comentario sigue', back.use((m) => m.orderNoteOf(m.store.get(), m.store.get().orders.find((o) => o.po === '1001').id)?.text), 'Falta producto de RTE; sale mañana')
 }
+section('El carro de RTE se cuenta por guacales (Jose, 2026-10-28: dos columnas de 13; un carro corto se dice como se ve y la app suma)')
+{
+  const rc = await device('rte-cart', { user: 'Sup RTE' })
+  rc.use((m) => {
+    const st = () => m.store.get()
+    eq('un carro completo de 2 × 13 a 10 pouches', m.cartPouchesOf(13, 13, null, 10), { crates: 26, full: 26, last: 0, total: 260 })
+    eq('el último guacal con los 10 es un guacal lleno', m.cartPouchesOf(13, 13, 10, 10), { crates: 26, full: 26, last: 0, total: 260 })
+    eq('una columna de 7 y otra de 3, con 3 pouches en el último: 9 llenos × 10 + 3', m.cartPouchesOf(7, 3, 3, 10), { crates: 10, full: 9, last: 3, total: 93 })
+    eq('una sola columna de 5, el último vacío (0 pouches): 4 llenos', m.cartPouchesOf(5, 0, 0, 10), { crates: 5, full: 4, last: 0, total: 40 })
+    eq('sin guacales, más pouches de los que caben, o números raros: nada', [m.cartPouchesOf(0, 0, null, 10), m.cartPouchesOf(7, 3, 12, 10), m.cartPouchesOf(7.5, 3, null, 10), m.cartPouchesOf(7, 3, null, 0)], [null, null, null, null])
+    m.saveProduct(st().products.length, { code: '0889', name: 'Meatballs', pouchesPerCase: 8, casesPerMix: 18, cratesPerCart: 26, pouchesPerCrate: 10, casesPerPallet: 36 })
+    const line = st().lines.find((l) => l.dept === 'RTE') ?? (m.addLine('RTE', 'Línea 1'), st().lines.find((l) => l.dept === 'RTE'))
+    m.startRun(line, '0889', '6301', DAY, 260)
+    eq('el carro de un código conocido: sus guacales y pouches por guacal', m.cartSpecOf(st(), m.openRun(st(), line.id)), { crates: 26, ppc: 10 })
+    m.endRun(m.openRun(st(), line.id).id)
+    m.startRun(line, 'X999', '6301', DAY, 260)
+    eq('un código sin producto: 26 guacales por defecto y los pouches salen de la cifra del código cuando cuadra; si no cuadra, nada', [m.cartSpecOf(st(), m.openRun(st(), line.id)), (m.endRun(m.openRun(st(), line.id).id), m.startRun(line, 'X998', '6301', DAY, 250), m.cartSpecOf(st(), m.openRun(st(), line.id)))], [{ crates: 26, ppc: 10 }, null])
+  })
+}
 section('Mensajes entre un cuarto y la oficina (Jose, 2026-10-28: el operador escribe para atrás; la oficina tiene un botón por cuarto)')
 {
   const of = await device('chat-office', { user: 'Oficina' })

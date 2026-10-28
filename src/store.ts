@@ -410,7 +410,29 @@ export function shiftsProblem(h: ShiftHours): string {
 }
 
 /** a cart has two columns of 12 crates (the office counts columns: "12x10" = 12 crates × 10 pouches) */
-export const CRATES_PER_CART = 24
+/** an RTE cart when the product does not say: two columns of 13 crates (Jose, 2026-10-28: "los dos turnos usan dos columnas de 13") */
+export const CRATES_PER_CART = 26
+/** how an RTE cart of this run is counted: its crates and the pouches each holds (the product's; the pouches from the run's own figure when the product has none); null when nothing is known */
+export function cartSpecOf(s: State, r: Run): { crates: number; ppc: number } | null {
+  const p = productOf(s, r.code)
+  const crates = p?.cratesPerCart || CRATES_PER_CART
+  const ppc = p?.pouchesPerCrate || (r.perUnit && r.perUnit % crates === 0 ? r.perUnit / crates : 0)
+  return ppc > 0 && Number.isInteger(ppc) ? { crates, ppc } : null
+}
+/**
+ * The pouches of an RTE cart from how it is seen (Jose, 2026-10-28: "una columna de 7 y otra de 3, pero esa 3 solo
+ * tiene 3 pouches ... la app debe calcularlo, no ellas con la calculadora"): the crates in each column, counting the
+ * last one even if it is not full, and the pouches in that last one (null = full). Null when it makes no sense
+ */
+export function cartPouchesOf(c1: number, c2: number, last: number | null, ppc: number): { crates: number; full: number; last: number; total: number } | null {
+  if (![c1, c2, ppc].every((n) => Number.isInteger(n) && n >= 0) || ppc <= 0) return null
+  const crates = c1 + c2
+  if (crates <= 0) return null
+  if (last != null && (!Number.isInteger(last) || last < 0 || last > ppc)) return null
+  const short = last != null && last < ppc
+  const full = short ? crates - 1 : crates, rest = short ? last : 0
+  return { crates, full, last: rest, total: full * ppc + rest }
+}
 /** how long a device keeps the history (the server keeps all of it) */
 const KEEP_CHANGES_MS = 120 * 86_400_000
 const SAMPLE_PRODUCTS: Product[] = [

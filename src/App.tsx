@@ -1,6 +1,6 @@
 import { Component, createContext, Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
-import { attGated, addLine, plantCut, roomMark, CUT_WINDOW, startSecondShift, addWaste, awayDay, batch, byPlanLot, planLot, cameFrom, carriedOver, dayAfter, dayBefore, orderUnitDefault, programOrderChoices, ordersOf, orderStatus, orderUnitWord, prevPending, workOrderOf, type WorkOrder, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, MFO_CHOICES, mfoChoiceOf, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, noteOf, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderAddRuns, orderOfId, poMates, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, PLAN_LOT_MAX, productOf, productsCsv, purgeDay, reasonText, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay, orderFull, orderFullText, orderNoteOf, setOrderNote, setOrderUrgent, programCap, programCapOf, holdsOpen } from './store'
+import { attGated, addLine, plantCut, roomMark, CUT_WINDOW, startSecondShift, addWaste, awayDay, batch, byPlanLot, planLot, cameFrom, carriedOver, dayAfter, dayBefore, orderUnitDefault, programOrderChoices, ordersOf, orderStatus, orderUnitWord, prevPending, workOrderOf, type WorkOrder, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, MFO_CHOICES, mfoChoiceOf, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, cartPouchesOf, cartSpecOf, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, noteOf, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderAddRuns, orderOfId, poMates, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, PLAN_LOT_MAX, productOf, productsCsv, purgeDay, reasonText, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay, orderFull, orderFullText, orderNoteOf, setOrderNote, setOrderUrgent, programCap, programCapOf, holdsOpen } from './store'
 import { avanceLots, avanceRange, avanceRows, datesBetween, lotAcrossDays, lotRows, lotsKnown, mfoList, mfoText, mfoWord, n1, pending, type AvancePart, type AvanceRow, type MfoMade } from './avance'
 import { loadZip, type Cell } from './xlsx'
 
@@ -2858,7 +2858,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
               <div className="cartrow">
                 <label>{tr('Guacales por carro')}{' '}<input value={crates} onChange={(e) => setCrates(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder={String(cratesN)} autoComplete="off" /></label>
                 <label>{tr('Pouches por guacal')}{' '}<input value={per} onChange={(e) => setPer(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder={perCrateN ? String(perCrateN) : tr('ej. 10')} autoComplete="off" /></label>
-                <span className="eq">{trx('= {0} pouches por carro {1}', <b>{perUnit ?? '—'}</b>, <small>{tr('(12 guacales por columna)')}</small>)}</span>
+                <span className="eq">{trx('= {0} pouches por carro {1}', <b>{perUnit ?? '—'}</b>, <small>{tr('({0} guacales por columna)', Math.ceil(cratesN / 2))}</small>)}</span>
               </div>
             ))}
           <button className="btn primary" type="submit" disabled={!ok}>{tr('▶ Empezar')}</button>
@@ -2915,6 +2915,8 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   const lit = just ? ' bumped' : ''
   // pouches are also told as full cases and loose pouches, where the products table says how many go in a case
   const perCase = perCaseOf(run.code)
+  // an RTE cart is counted by its crates (two columns) and the pouches of the last one: the app adds it up (2026-10-28)
+  const cart = run.dept === 'RTE' ? cartSpecOf(s, run) : null
   const cases = perCase && mineNow.qty > 0 ? inCases(s, run.code, mineNow.qty) : null
   // a set up on this line while its code runs: amber like every set up, never the red of a stop
   const inSetup = !!stop && stop.lineId === line.id && stop.reason === SETUP
@@ -3024,6 +3026,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       {fillUi}
       {counting && (rc.lots
         ? <LotsDialog title={rc.qtyQ} unit={rc.qtyUnit} refLabel={rc.refLabel} lot={run.lot} qty={run.perUnit} usual={usualOf(s, run)} per={runWord} orders={orderOptions} order={nextOrder} onClose={() => { setCounting(false); setEndAfter(null) }} onPick={(q, ref, lots, po, note) => { record(q, ref, lots, po, note); setCounting(false); if (endAfter !== null) { setEndAfter(null); endRun(run.id, endAfter) } }} />
+        : cart ? <CartDoneDialog code={run.code} crates={cart.crates} ppc={cart.ppc} onClose={() => { setCounting(false); setEndAfter(null) }} onPick={(q) => { record(q, '', binLots(q)); setCounting(false); if (endAfter !== null) { setEndAfter(null); endRun(run.id, endAfter) } }} />
         : <QtyDialog title={rc.qtyQ} unit={rc.qtyUnit} refLabel={rc.refLabel} initial={run.perUnit} usual={usualOf(s, run)} per={runWord} perCase={perCase} decimal={measureOf(run) === 'lb' || binOf(run) === 'lb'} onClose={() => { setCounting(false); setEndAfter(null) }} onPick={(q, ref) => { record(q, ref, binLots(q)); setCounting(false); if (endAfter !== null) { setEndAfter(null); endRun(run.id, endAfter) } }} />)}
       {packing === 'done' && <PalletDoneDialog s={s} run={run} onClose={() => { setPacking(null); setEndAfter(null) }} onSaved={() => { setPacking(null); buzz(); if (endAfter !== null) { const next = endAfter; setEndAfter(null); endRun(run.id, next) } }} />}
       {packing === 'lot' && <LotEndDialog run={run} onClose={() => setPacking(null)} />}
@@ -3262,6 +3265,64 @@ export function LotsDialog({ what, title, unit, refLabel, lot, qty, start, start
  * a quantity already suggested (pouches per cart, cases per pallet) opens without the keyboard: a tap on "Guardar" takes it, a tap on the box changes it.
  * usual / per = the usual quantity of one unit and the unit's word: more than twice it is asked about first (useSure)
  */
+/**
+ * RTE's "Carro listo" (Jose, 2026-10-28: the two shifts count the cart differently and then doubt the app; "la app debe
+ * calcularlo, no ellas con la calculadora"): a full cart is one tap, with its sum in sight; a short cart is said as it
+ * is seen, the crates in each column and the pouches of the last one, and the app adds it up and shows the arithmetic.
+ * The plain number is still there for whoever counted the pouches themselves
+ */
+function CartDoneDialog({ code, crates, ppc, onClose, onPick }: { code: string; crates: number; ppc: number; onClose: () => void; onPick: (q: number) => void }) {
+  const full = crates * ppc, col = Math.ceil(crates / 2)
+  const [mode, setMode] = useState<'full' | 'short' | 'manual'>('full')
+  const [c1, setC1] = useState(''), [c2, setC2] = useState(''), [last, setLast] = useState(''), [v, setV] = useState('')
+  const digits = (x: string) => x.replace(/\D/g, '').slice(0, 4)
+  const nl = last.trim() === '' ? null : Number(last)
+  const calc = mode === 'short' ? cartPouchesOf(Number(c1 || 0), Number(c2 || 0), nl, ppc) : null
+  const manualN = Number(v), manualOk = v.trim() !== '' && Number.isInteger(manualN) && manualN > 0
+  return (
+    <div className="veil" onClick={onClose}>
+      <div className="dlg cartdone" onClick={(e) => e.stopPropagation()}>
+        <h3>{tr('Carro listo · {0}', code)}</h3>
+        <p className="hint">{trx('Carro completo: {0} guacales ({1} por columna) × {2} pouches = {3} pouches.', <b>{crates}</b>, col, <b>{ppc}</b>, <b>{fmtN(full)}</b>)}</p>
+        {mode === 'full' && (
+          <div className="cartpick">
+            <button type="button" className="btn primary big" onClick={() => onPick(full)}>{tr('✓ Carro completo · {0} pouches', fmtN(full))}</button>
+            <button type="button" className="btn soft" onClick={() => setMode('short')}>{tr('Carro corto: no se llenó')}</button>
+            <button type="button" className="lnk sm" onClick={() => setMode('manual')}>{tr('Escribir los pouches contados')}</button>
+          </div>
+        )}
+        {mode === 'short' && (
+          <form className="qform" onSubmit={(e) => { e.preventDefault(); if (calc && calc.total > 0) onPick(calc.total) }}>
+            <p className="hint">{tr('Di cómo quedó el carro: cuántos guacales hay en cada columna (el último cuenta aunque no esté lleno) y cuántos pouches tiene ese último guacal.')}</p>
+            <div className="cartcols">
+              <label>{tr('Columna 1 · guacales')} <input inputMode="numeric" autoFocus value={c1} placeholder={String(col)} onChange={(e) => setC1(digits(e.target.value))} /></label>
+              <label>{tr('Columna 2 · guacales')} <input inputMode="numeric" value={c2} placeholder="0" onChange={(e) => setC2(digits(e.target.value))} /></label>
+              <label>{tr('Pouches en el último guacal')} <input inputMode="numeric" value={last} placeholder={tr('{0} = lleno', ppc)} onChange={(e) => setLast(digits(e.target.value))} /></label>
+            </div>
+            {calc
+              ? <p className="cartsum">{trx('= {0} guacales llenos × {1}{2} = {3} pouches', <b>{calc.full}</b>, ppc, calc.last ? ' + ' + calc.last : '', <b>{fmtN(calc.total)}</b>)}</p>
+              : <p className="hint red">{nl != null && nl > ppc ? tr('El último guacal no puede llevar más de {0} pouches.', ppc) : tr('Pon los guacales de cada columna.')}</p>}
+            <div className="dbtns">
+              <button type="button" className="btn" onClick={() => setMode('full')}>{tr('← Atrás')}</button>
+              <button type="submit" className="btn primary" disabled={!calc || calc.total <= 0}>{calc && calc.total > 0 ? tr('✓ Guardar {0} pouches', fmtN(calc.total)) : tr('✓ Guardar')}</button>
+            </div>
+          </form>
+        )}
+        {mode === 'manual' && (
+          <form className="qform" onSubmit={(e) => { e.preventDefault(); if (manualOk) onPick(manualN) }}>
+            <label>{tr('pouches')} <input inputMode="numeric" autoFocus value={v} placeholder={tr('pouches')} onChange={(e) => setV(digits(e.target.value))} /></label>
+            <div className="dbtns">
+              <button type="button" className="btn" onClick={() => setMode('full')}>{tr('← Atrás')}</button>
+              <button type="submit" className="btn primary" disabled={!manualOk}>{tr('✓ Guardar')}</button>
+            </div>
+          </form>
+        )}
+        {mode === 'full' && <div className="dbtns"><button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button></div>}
+      </div>
+    </div>
+  )
+}
+
 function QtyDialog({ title, unit, refLabel, initial, decimal, perCase, usual, per, onClose, onPick }: { title: string; unit: string; refLabel: string; initial: number | null; decimal?: boolean; perCase?: number; usual?: number | null; per?: string; onClose: () => void; onPick: (q: number, ref: string) => void }) {
   const [v, setV] = useState(initial != null ? String(initial) : '')
   const [ref, setRef] = useState('')

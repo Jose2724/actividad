@@ -2135,3 +2135,11 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 /* a phone (Jose's iPhone, 2026-10-28: the window ran off the screen beside the buttons): the window takes the width, the buttons wait behind it */
 @media (max-width:640px){.chat-win,.chat-win.office{left:8px;right:8px;width:auto;bottom:8px;height:min(78dvh,calc(100dvh - 16px));border-radius:16px}.chat-fabs.has-open{display:none}}
 @media print{.chat-fabs,.chat-win,.chat-peek{display:none}}
+/* RTE's "Carro listo" (2026-10-28): one tap for a full cart, the arithmetic in sight for a short one */
+.cartpick{display:grid;gap:10px}
+.cartpick .btn.big{font-size:19px;padding:16px 14px}
+.cartcols{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.cartcols label:last-child{grid-column:1 / -1}
+.cartcols label{display:grid;gap:4px;font-weight:600}
+.cartcols input{font-size:20px;padding:10px 12px}
+.cartsum{font-size:18px;margin:4px 0;padding:10px 12px;border-radius:10px;background:var(--soft);color:var(--accent)}
