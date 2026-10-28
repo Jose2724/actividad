@@ -572,7 +572,7 @@ function LbCaseSettings({ s, readOnly }: { s: State; readOnly: boolean }) {
       <label className="switch"><span>{tr('Productividad también en libras por hora-persona')}</span><input type="checkbox" role="switch" checked={on} disabled={readOnly} onChange={(e) => setLbCaseOn(e.target.checked)} /></label>
       <p className="hint">{tr('Prendido: el KPI (parte 3) suma las libras de las cajas de Packing (cajas × libras por caja de cada código) y las divide entre las horas-persona, al lado de las cajas. Las libras por caja salen de Productos; un código sin libras se avisa y no cuenta.')}</p>
       <p className="hint">{tr('La hoja de QA (target specifications) trae las libras por caja de {0} códigos. Hoy {1} códigos de Productos tienen libras.', Object.keys(QA_LB_PER_CASE).length - 1, withLb)}</p>
-      {!readOnly && <div className="btns"><button type="button" className="btn primary" disabled={!pending} onClick={() => { const n = loadQaLbPerCase(); setSaid(tr('✓ Libras de QA cargadas en {0} códigos.', n)) }}>{pending ? tr('Cargar las libras de QA en Productos ({0})', pending) : tr('Las libras de QA ya están en Productos')}</button></div>}
+      {!readOnly && <div className="btns"><button type="button" className="btn primary" disabled={!pending} onClick={() => { const n = loadQaLbPerCase(); setSaid(tr('✓ Libras de QA cargadas en {0} códigos.', n)) }}>{pending ? tr('Cargar las libras de QA en Productos ({0})', pending) : withLb ? tr('Las libras de QA ya están en Productos') : tr('Ningún código de Productos está en la hoja de QA')}</button></div>}
       {said && <p className="hint ok">{said}</p>}
     </div>
   )

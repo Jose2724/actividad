@@ -2683,4 +2683,5 @@ export const EN: Record<string, string> = {
   "✓ Libras de QA cargadas en {0} códigos.": "✓ QA's pounds loaded into {0} codes.",
   "Cargar las libras de QA en Productos ({0})": "Load QA's pounds into Productos ({0})",
   "Las libras de QA ya están en Productos": "QA's pounds are already in Productos",
+  "Ningún código de Productos está en la hoja de QA": "No code of Productos is on QA's sheet",
 }
