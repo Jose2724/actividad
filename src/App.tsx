@@ -2038,10 +2038,8 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
   // what ended in the shift in course is its list; what the shift before ended is one line, opened by whoever wants it
   const turn = turnOf(s, day.date, now, dept)
   // The shift's attendance is asked once, when the room is opened (Jose, 2026-10-28: "debe salir como un pop up desde
-  // que inicia el turno, no en cada línea"): a window over the room with one button, that opens the attendance.
-  // "Más tarde" puts it away on this device until the next shift; Empezar and Set up still open the attendance first
-  const gateKey = dept + '|' + day.date + '|' + turn.shift
-  const [attLater, setAttLater] = useState('')
+  // que inicia el turno, no en cada línea"): a window over the room with one button, that opens the attendance, and
+  // nothing else until it is written ("que salga siempre"). Empezar and Set up still open the attendance first
   const [attWin, setAttWin] = useState(false)
   // Each room hands over on its own (2026-10-21, see ShiftMark). Near the plant's hand-over: "Empezar Turno 2" while
   // the room is still in its first shift (its second came in early), and "Terminar turno" asks which shift is leaving
@@ -2130,14 +2128,13 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
         </div>
       ))}
       {dupOpen && <DupLinesDialog s={s} ids={dupOpen} onClose={() => setDupOpen(null)} />}
-      {gatedRoom && !attWin && attLater !== gateKey && (
+      {gatedRoom && !attWin && (
         <div className="veil" role="dialog" aria-modal="true" aria-labelledby="attgate-title">
           <div className="dlg attgate-dlg">
             <div className="attgate-ico" aria-hidden="true">👥</div>
             <h3 id="attgate-title">{tr('Asistencia del Turno {0} · {1}', turn.shift, dept)}</h3>
             <p>{tr('Antes de empezar las líneas, el supervisor o líder se anota como supervisor y anota a la gente que vino.')}</p>
             <button type="button" className="btn primary big" autoFocus onClick={() => setAttWin(true)}>{tr('✍️ Anotar la asistencia')}</button>
-            <button type="button" className="lnk muted" onClick={() => setAttLater(gateKey)}>{tr('Más tarde')}</button>
           </div>
         </div>
       )}

@@ -2620,7 +2620,6 @@ export const EN: Record<string, string> = {
   "Antes de empezar, el supervisor o líder se anota como supervisor y anota a la gente del Turno {0} de {1}; después vuelve a tocar Empezar.": "Before starting, the supervisor or leader writes themselves as supervisor and writes the people of Shift {0} of {1}; then tap Start again.",
   "Anotar la asistencia": "Write the attendance",
   "El supervisor o líder se anota como supervisor y anota a la gente del Turno {0} de {1}.": "The supervisor or leader writes themselves as supervisor and writes the people of Shift {0} of {1}.",
-  "Más tarde": "Later",
   "✍️ Anotar la asistencia": "✍️ Write the attendance",
   "Antes de empezar las líneas, el supervisor o líder se anota como supervisor y anota a la gente que vino.": "Before starting the lines, the supervisor or leader writes themselves as supervisor and writes the people who came.",
   "Asistencia del Turno {0} · {1}": "Attendance of Shift {0} · {1}",
