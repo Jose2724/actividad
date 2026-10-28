@@ -2618,8 +2618,12 @@ export const EN: Record<string, string> = {
   "¿Asistencia obligatoria para empezar?": "Attendance required to start?",
   // the supervisor written as such (2026-10-27)
   "Antes de empezar, el supervisor o líder se anota como supervisor y anota a la gente del Turno {0} de {1}; después vuelve a tocar Empezar.": "Before starting, the supervisor or leader writes themselves as supervisor and writes the people of Shift {0} of {1}; then tap Start again.",
-  "👥 Falta la asistencia del Turno {0} (el supervisor se anota primero).": "👥 The attendance of Shift {0} is missing (the supervisor writes themselves first).",
   "Anotar la asistencia": "Write the attendance",
+  "El supervisor o líder se anota como supervisor y anota a la gente del Turno {0} de {1}.": "The supervisor or leader writes themselves as supervisor and writes the people of Shift {0} of {1}.",
+  "Más tarde": "Later",
+  "✍️ Anotar la asistencia": "✍️ Write the attendance",
+  "Antes de empezar las líneas, el supervisor o líder se anota como supervisor y anota a la gente que vino.": "Before starting the lines, the supervisor or leader writes themselves as supervisor and writes the people who came.",
+  "Asistencia del Turno {0} · {1}": "Attendance of Shift {0} · {1}",
   "Prendida: en todos los cuartos, el supervisor o líder tiene que anotarse como supervisor del turno y anotar a su gente antes de poder empezar un código o un Set up; al tocar Empezar se abre la ventana de asistencia. Cada turno anota la suya. No aplica a managers, oficina ni \"Solo ver\".": "On: in every room, the supervisor or leader has to write themselves as the shift's supervisor and write their people before being able to start a code or a Set up; tapping Start opens the attendance window. Each shift writes its own. It does not apply to managers, the office or \"View only\".",
   "Desde ahora, en todos los cuartos, ningún supervisor puede empezar un código ni un Set up sin haberse anotado como supervisor del turno en la asistencia. Se puede apagar aquí mismo cuando quieras.": "From now on, in every room, no supervisor can start a code or a Set up without having written themselves as the shift's supervisor in the attendance. It can be turned off right here whenever you want.",
   "{0} quedó anotado como supervisor del turno.": "{0} is written as the shift's supervisor.",

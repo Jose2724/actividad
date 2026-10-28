@@ -2037,6 +2037,12 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
   const doneToday = s.runs.filter((r) => r.dept === dept && r.endedAt && r.date === day.date).sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0))
   // what ended in the shift in course is its list; what the shift before ended is one line, opened by whoever wants it
   const turn = turnOf(s, day.date, now, dept)
+  // The shift's attendance is asked once, when the room is opened (Jose, 2026-10-28: "debe salir como un pop up desde
+  // que inicia el turno, no en cada línea"): a window over the room with one button, that opens the attendance.
+  // "Más tarde" puts it away on this device until the next shift; Empezar and Set up still open the attendance first
+  const gateKey = dept + '|' + day.date + '|' + turn.shift
+  const [attLater, setAttLater] = useState('')
+  const [attWin, setAttWin] = useState(false)
   // Each room hands over on its own (2026-10-21, see ShiftMark). Near the plant's hand-over: "Empezar Turno 2" while
   // the room is still in its first shift (its second came in early), and "Terminar turno" asks which shift is leaving
   const pc = plantCut(s, day.date), mark = roomMark(s, day.date, dept)
@@ -2064,6 +2070,7 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
   // units on hold (2026-10-23): a tab while the room has any
   const held = holdsOpen(s, dept).length
   const shown: DeptTab = (part === 'orders' && !hasOrders) || (part === 'hold' && !held) ? 'live' : part
+  const gatedRoom = shown === 'live' && attGated(s, dept, day.date, turn.shift as 1 | 2)
   const parts: { t: DeptTab; label: string; n: number; sub: string }[] = [
     { t: 'live', label: tr('En vivo'), n: working, sub: working === 1 ? tr('1 línea trabajando') : tr('{0} líneas trabajando', working) },
     { t: 'done', label: tr('Terminados'), n: doneToday.length, sub: tr('códigos terminados hoy') },
@@ -2123,6 +2130,18 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
         </div>
       ))}
       {dupOpen && <DupLinesDialog s={s} ids={dupOpen} onClose={() => setDupOpen(null)} />}
+      {gatedRoom && !attWin && attLater !== gateKey && (
+        <div className="veil" role="dialog" aria-modal="true" aria-labelledby="attgate-title">
+          <div className="dlg attgate-dlg">
+            <div className="attgate-ico" aria-hidden="true">👥</div>
+            <h3 id="attgate-title">{tr('Asistencia del Turno {0} · {1}', turn.shift, dept)}</h3>
+            <p>{tr('Antes de empezar las líneas, el supervisor o líder se anota como supervisor y anota a la gente que vino.')}</p>
+            <button type="button" className="btn primary big" autoFocus onClick={() => setAttWin(true)}>{tr('✍️ Anotar la asistencia')}</button>
+            <button type="button" className="lnk muted" onClick={() => setAttLater(gateKey)}>{tr('Más tarde')}</button>
+          </div>
+        </div>
+      )}
+      {attWin && <AttendanceDialog s={s} dept={dept} date={day.date} shift={turn.shift as 1 | 2} edit note={tr('El supervisor o líder se anota como supervisor y anota a la gente del Turno {0} de {1}.', turn.shift, dept)} onClose={() => setAttWin(false)} />}
       <div className="rp-tabs dp-tabs" role="tablist" aria-label={tr('Partes de {0}', dept)}>
         {parts.map((x) => (
           <button key={x.t} type="button" role="tab" aria-selected={shown === x.t} className={'rp-tab' + (shown === x.t ? ' on' : '')} title={x.sub} onClick={() => pick(x.t)}>
@@ -2623,7 +2642,8 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   // what the line is going to consume, weighed before the code starts (2026-10-27): the start waits in here
   const [consumeAsk, setConsumeAsk] = useState<null | (() => void)>(null)
   // the attendance of the shift is written before a code or a Set up starts (Jose, 2026-10-27: the supervisors; not the
-  // managers, the office nor "Solo ver"): Empezar opens the room's attendance window instead, and is tapped again after
+  // managers, the office nor "Solo ver"): Empezar opens the room's attendance window instead, and is tapped again after.
+  // The room asks for it when it is opened (its pop-up, 2026-10-28); here nothing says so until Empezar is tapped
   const [attAsk, setAttAsk] = useState(false)
   const gated = attGated(s, line.dept, day.date, turn.shift)
   // A unit was just recorded on this run, here or on another tablet: for a moment the button says which one, the
@@ -2862,7 +2882,6 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
               </div>
             ))}
           <button className="btn primary" type="submit" disabled={!ok}>{tr('▶ Empezar')}</button>
-          {gated && <p className="hint red attgate">{tr('👥 Falta la asistencia del Turno {0} (el supervisor se anota primero).', turn.shift)} <button type="button" className="btn sm primary" onClick={() => setAttAsk(true)}>{tr('Anotar la asistencia')}</button></p>}
         </form>}
         {!quiet && <div className="tools">
           {!idle ? <button type="button" className="btn sm setupbtn" onClick={() => (gated ? setAttAsk(true) : startSetup(line))}>{tr('⏱ Empezar Set up')}</button> : <span />}

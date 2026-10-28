@@ -2143,4 +2143,10 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 .cartcols label{display:grid;gap:4px;font-weight:600}
 .cartcols input{font-size:20px;padding:10px 12px}
 .cartsum{font-size:18px;margin:4px 0;padding:10px 12px;border-radius:10px;background:var(--soft);color:var(--accent)}
-.hint.attgate{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+/* the shift's attendance asked once, over the room (2026-10-28): one big button, "Más tarde" small under it */
+.dlg.attgate-dlg{width:min(440px,100%);text-align:center;justify-items:center;gap:10px}
+.attgate-ico{font-size:52px;line-height:1}
+.dlg.attgate-dlg h3{position:static;margin:0;padding:0}
+.dlg.attgate-dlg p{font-size:16px;color:var(--ink)}
+.dlg.attgate-dlg .btn.big{width:100%;min-height:56px;font-size:18px;margin-top:4px}
+.dlg.attgate-dlg .lnk.muted{font-size:15px;padding:8px}
