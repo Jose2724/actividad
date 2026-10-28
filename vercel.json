@@ -9,6 +9,10 @@
   ],
   "rewrites": [
     {
+      "source": "/freezer/",
+      "destination": "https://freezer-control-eight.vercel.app/index.html"
+    },
+    {
       "source": "/freezer/:path*",
       "destination": "https://freezer-control-eight.vercel.app/:path*"
     }
