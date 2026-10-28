@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { attAdd, attBack, attDelete, attendanceOf, attExpectedOf, attLineText, attMoveLine, attOf, attRemove, attSetSup, attSetTemp, attSupOf, user, byLineName, DEPTS, fmtTime, setAttExpected, type AttEntry, type Dept, type State } from './store'
+import { attAccept, attAdd, attBack, attDelete, attendanceOf, attExpectedOf, attLineText, attMoveLine, attOf, attRemove, attSetSup, attSetTemp, attSupOf, user, byLineName, DEPTS, fmtTime, setAttExpected, type AttEntry, type Dept, type State } from './store'
 import { useWho } from './App'
 import { DEPT_LOOK, deptVars } from './look'
 import { tr } from './i18n'
@@ -25,6 +25,7 @@ export function AttendanceCard({ s, dept, date, shift, edit }: { s: State; dept:
         <b>{tr('👥 Asistencia · Turno {0}', shift)}</b>
         <span className="att-n">{tr('{0} de {1}', r.actual, r.expected)}</span>
         <span className={'att-miss' + (r.pct >= 0.25 ? ' red' : r.miss ? ' amber' : ' ok')}>{r.miss ? (r.miss === 1 ? tr('falta 1 persona · {0}', pctText(r.pct)) : tr('faltan {0} personas · {1}', r.miss, pctText(r.pct))) : r.over ? tr('✓ completos (+{0})', r.over) : tr('✓ completos')}</span>
+        {(() => { const n = attOf(s, date, dept, shift).filter((x) => !!x.via && !x.gone).length; return n > 0 ? <span className="att-arrive">{n === 1 ? tr('👋 1 llegó de otro cuarto · aceptar') : tr('👋 {0} llegaron de otro cuarto · aceptar', n)}</span> : null })()}
         <button type="button" className={'btn sm ' + (edit ? 'soft' : '')} onClick={() => setOpen(true)}>{edit ? tr('Anotar personas') : tr('Ver personas')}</button>
       </div>
       <div className="att-bar"><i style={{ width: Math.min(100, r.expected ? Math.round((r.actual / r.expected) * 100) : 0) + '%' }} /></div>
@@ -117,6 +118,16 @@ export function AttendanceDialog({ s, dept, date, shift: inCourse, edit, note = 
         )}
         {twice && <p className="hint amber">{tr('{0} ya está anotado en este turno.', twice)}</p>}
         {said && <p className="hint ok">{said}</p>}
+        {/* people another room sent here, not yet taken in (2026-10-28): the room accepts them on a line or none */}
+        {edit && here.filter((x) => !!x.via).map((x) => (
+          <div key={x.id} className="att-out att-arrival">
+            <span>{tr('👋 Llegó de {0}: {1}', x.from, x.name)}{x.line ? ' · ' + tr('lo mandaron a {0}', attLineText(s, x.line)) : ''}</span>
+            <div className="att-row2">
+              {lines.map((l) => <button key={l.id} type="button" className="btn sm soft" onClick={() => { attAccept(x.id, l.id); setSaid(tr('{0} aceptado en {1}.', x.name, attLineText(s, l.id))) }}>{tr('Aceptar en {0}', attLineText(s, l.id))}</button>)}
+              <button type="button" className="btn sm soft" onClick={() => { attAccept(x.id, ''); setSaid(tr('{0} aceptado, sin línea.', x.name)) }}>{tr('Aceptar sin línea')}</button>
+            </div>
+          </div>
+        ))}
         {!list.length ? <p className="hint">{tr('Nadie anotado todavía en este turno.')}</p> : groups.map((g) => (
           <div key={g.id || '-'} className="att-group">
             {byLine && <h4 className="att-gh">{g.name} <small>· {g.people.length}</small></h4>}

@@ -1018,6 +1018,21 @@ export function attMoveLine(id: string, line: string): boolean {
   })
   return ok
 }
+/**
+ * A person who came from another room is taken in here (Jose, 2026-10-28: "a Packing le debe salir ese aceptar y lo
+ * pone en una línea o sin línea"): written as this room's record, on the line chosen (none = ''). They already counted
+ * here from the moment the other room sent them; accepting places them and takes the "llegó" notice away
+ */
+export function attAccept(id: string, line = ''): boolean {
+  let ok = false
+  batch(() => {
+    const x = attHere(id)
+    if (!x || x.deleted || x.gone) return
+    if (x.line !== line) putAtt({ ...x, line, moves: [...x.moves, { from: x.line, to: line, at: clockNow(), by: user.get() }], updatedAt: stamp(x) })
+    ok = true
+  })
+  return ok
+}
 /** a person taken out by mistake comes back (what was written in the other room for them stays: it is that room's) */
 export function attBack(id: string): boolean {
   const x = (state.attendance ?? []).find((y) => y.id === id)

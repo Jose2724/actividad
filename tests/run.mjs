@@ -5510,6 +5510,10 @@ section('Trasladar personal a otra línea o a otro cuarto, y los nombres en el E
     const pk = m.attOf(st(), D, 'Packing', 1)
     eq('Beto pasa a Packing Línea 2: sale de RTE y aparece solo en Packing, en esa línea, diciendo de dónde viene (nadie en Packing tuvo que anotarlo)', [m.attendanceOf(st(), D, 1, ['RTE']).rows[0].actual, pk.map((x) => [x.name, x.from, m.attLineText(st(), x.line), !!x.via]), m.attendanceOf(st(), D, 1, ['Packing']).rows[0].actual], [1, [['Beto', 'RTE', 'Línea 2', true]], 1])
     eq('lo que aparece en Packing no se guarda dos veces: es el registro de RTE', st().attendance.filter((x) => x.name === 'Beto').length, 1)
+    clock = T0 + 61 * M
+    const viaId = pk.find((x) => x.name === 'Beto').id
+    eq('Packing lo acepta en su Línea 1 (2026-10-28): ya es registro de Packing, en esa línea, y sigue contando una vez', [m.attAccept(viaId, L('Packing', 'Línea 1')), m.attOf(st(), D, 'Packing', 1).map((x) => [x.name, m.attLineText(st(), x.line), !!x.via]), st().attendance.filter((x) => x.name === 'Beto').length, m.attendanceOf(st(), D, 1, ['Packing']).rows[0].actual], [true, [['Beto', 'Línea 1', false]], 2, 1])
+    eq('aceptarlo otra vez no hace nada raro', [m.attAccept(viaId, ''), m.attOf(st(), D, 'Packing', 1).length], [true, 1])
     eq('el total de la planta no cambia por trasladar', m.attendanceOf(st(), D, 1).total.actual, 2)
     // Packing's supervisor acts on him: he is written in Packing first (with the hour he came), then moved
     clock = T0 + 90 * M

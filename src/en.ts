@@ -2635,4 +2635,12 @@ export const EN: Record<string, string> = {
   "nadie todavía": "nobody yet",
   "Otro supervisor…": "Another supervisor…",
   "Elegir de los anotados…": "Pick one of those written…",
+  "👋 1 llegó de otro cuarto · aceptar": "👋 1 arrived from another room · accept",
+  "👋 {0} llegaron de otro cuarto · aceptar": "👋 {0} arrived from another room · accept",
+  "👋 Llegó de {0}: {1}": "👋 Arrived from {0}: {1}",
+  "lo mandaron a {0}": "sent to {0}",
+  "{0} aceptado en {1}.": "{0} accepted on {1}.",
+  "Aceptar en {0}": "Accept on {0}",
+  "{0} aceptado, sin línea.": "{0} accepted, no line.",
+  "Aceptar sin línea": "Accept with no line",
 }
