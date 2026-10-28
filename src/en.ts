@@ -2601,4 +2601,13 @@ export const EN: Record<string, string> = {
   "Abrir Freezer RTE": "Open Freezer RTE",
   "carritos y entregas": "carts and deliveries",
   "🧊 Listo para {0}": "🧊 Ready for {0}",
+  // messages between a room and the office (2026-10-28)
+  "Mensajes · {0}": "Messages · {0}",
+  "Mensajes con la oficina y los managers": "Messages with the office and the managers",
+  "Mensajes con {0}": "Messages with {0}",
+  "Escribe aquí a la oficina. Lo ven en su pantalla y te contestan aquí mismo.": "Write to the office here. They see it on their screen and answer right here.",
+  "Todavía no hay mensajes con {0}. Escribe abajo: lo ven en las tablets de ese cuarto.": "No messages with {0} yet. Write below: that room's tablets show it.",
+  "Escribe un mensaje…": "Write a message…",
+  "Mandar": "Send",
+  "Solo ver: aquí no se escribe.": "View only: nothing is written here.",
 }

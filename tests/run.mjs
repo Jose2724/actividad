@@ -5236,6 +5236,36 @@ section('Pedidos: urgente para que Packing le dé prioridad, y el comentario de 
   const back = await device('order-urgent-again', { seed: JSON.parse(disks.get('order-urgent').get('act_v1')), user: 'Oficina' })
   eq('al volver a abrir: el comentario sigue', back.use((m) => m.orderNoteOf(m.store.get(), m.store.get().orders.find((o) => o.po === '1001').id)?.text), 'Falta producto de RTE; sale mañana')
 }
+section('Mensajes entre un cuarto y la oficina (Jose, 2026-10-28: el operador escribe para atrás; la oficina tiene un botón por cuarto)')
+{
+  const of = await device('chat-office', { user: 'Oficina' })
+  of.use((m) => {
+    localStorage.setItem('act_role', 'mgr')
+    const st = () => m.store.get()
+    clock = T0
+    eq('sin mensajes', m.chatOf(st(), 'Packing').length, 0)
+    const id = m.sendChat('Packing', '  Hoy primero   el 0889 ')
+    const up = m.outbox.items().find((i) => i.key === 'chat:' + id)
+    eq('la oficina escribe a Packing: queda con su cuarto, su lado y quién, aparte del historial', [m.chatOf(st(), 'Packing').map((x) => [x.text, x.side, x.by]), up.row.dept, up.row.ref_table, up.row.what, JSON.parse(up.row.after)], [[['Hoy primero el 0889', 'office', 'Oficina']], 'Packing', 'act_chat', 'Mensaje para Packing', { text: 'Hoy primero el 0889', side: 'office' }])
+    eq('vacío no manda', m.sendChat('Packing', '   '), '')
+    m.applyRemote('act_changes', { id: 'chat:r1', at: iso(T0 + M), by_name: 'Sup Packing', dept: 'Packing', what: 'Mensaje de Packing', before: '', after: JSON.stringify({ text: 'Ok, ya lo empezamos', side: 'room' }), ref_table: 'act_chat', ref_key: 'r1', deleted: false, updated_at: iso(T0 + M) })
+    eq('la respuesta del cuarto llega, en orden, y es no leída para la oficina (no la suya) hasta que mira', [m.chatOf(st(), 'Packing').map((x) => x.side), m.chatUnread(st(), 'Packing', 'office', 0), m.chatUnread(st(), 'Packing', 'office', T0 + M), m.chatUnread(st(), 'Packing', 'room', 0), m.chatOf(st(), 'Kitchen').length], [['office', 'room'], 1, 0, 1, 0])
+    m.applyRemote('act_changes', { id: 'chat:r1', at: iso(T0 + M), by_name: 'Sup Packing', dept: 'Packing', what: 'Mensaje de Packing', before: '', after: JSON.stringify({ text: 'Ok, ya lo empezamos', side: 'room' }), ref_table: 'act_chat', ref_key: 'r1', deleted: true, updated_at: iso(T0 + 2 * M) })
+    eq('uno marcado borrado en el servidor desaparece', m.chatOf(st(), 'Packing').length, 1)
+  })
+  const back = await device('chat-office-again', { seed: JSON.parse(disks.get('chat-office').get('act_v1')), user: 'Oficina' })
+  eq('al volver a abrir sigue', back.use((m) => m.chatOf(m.store.get(), 'Packing').map((x) => x.text)), ['Hoy primero el 0889'])
+  const op = await device('chat-op', { user: 'Sup Packing' })
+  op.use((m) => {
+    localStorage.setItem('act_role', 'op'); localStorage.setItem('act_dept', 'Packing')
+    const st = () => m.store.get()
+    clock = T0 + 3 * M
+    eq('un operador escribe a la oficina desde su cuarto (lado cuarto), y no desde otro cuarto', [!!m.sendChat('Packing', 'Falta tape'), m.chatOf(st(), 'Packing')[0]?.side, m.outbox.items().find((i) => i.key.startsWith('chat:')).row.what, m.sendChat('Kitchen', 'x')], [true, 'room', 'Mensaje de Packing', ''])
+    localStorage.setItem('act_view_only', '1')
+    eq('quien solo ve no escribe', m.sendChat('Packing', 'y'), '')
+    localStorage.setItem('act_view_only', '')
+  })
+}
 section('El mensaje de la oficina para Packing, arriba en todas sus tablets (la oficina, 2026-10-22)')
 {
   const ms = await device('room-msg', { user: 'Oficina' })

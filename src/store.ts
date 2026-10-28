@@ -378,7 +378,7 @@ export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Produ
    */
   orderRuns: Run[]
   /** the production orders of every room (deleted ones kept with their flag), and the closed accounts of finished ones */
-  workOrders: WorkOrder[]; orderSeals: OrderSeal[]; attendance: AttEntry[]; attExpected: AttExpected[]; shiftMarks: ShiftMark[]; kpi: KpiRec[]; weights: WeightTest[]; orderNotes: OrderNote[]; roomMsgs: RoomMsg[]; weightRules: WeightRule[]; meats: MeatEntry[]; holds: HoldRec[]; consumes: ConsumeEntry[]; consumeOpts: ConsumeOpt[] }
+  workOrders: WorkOrder[]; orderSeals: OrderSeal[]; attendance: AttEntry[]; attExpected: AttExpected[]; shiftMarks: ShiftMark[]; kpi: KpiRec[]; weights: WeightTest[]; orderNotes: OrderNote[]; roomMsgs: RoomMsg[]; chat: ChatMsg[]; weightRules: WeightRule[]; meats: MeatEntry[]; holds: HoldRec[]; consumes: ConsumeEntry[]; consumeOpts: ConsumeOpt[] }
 /**
  * An order to fill in Packing: so many cases of one product for a customer, to ship by a date. Most carry the
  * customer's purchase order number (PO); some never do and some get it later. See "the orders Packing fills".
@@ -466,10 +466,10 @@ function tidySchedule(sch: Schedule): Schedule {
 function isDay(text: string) { return /^\d{4}-\d{2}-\d{2}$/.test(text) }
 /** with a server the lines (and products) are shared and come from it; without one, each device starts with a line per room */
 const SERVER = !!import.meta.env.VITE_SUPABASE_URL
-function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, reasonCodes: { on: false, updatedAt: 0 }, programView: { on: false, updatedAt: 0 }, attView: { on: false, updatedAt: 0 }, viewOpts: { lotes: { on: false, updatedAt: 0 }, flujo: { on: false, updatedAt: 0 } }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [], attendance: [], attExpected: [], shiftMarks: [], kpi: [], weights: [], orderNotes: [], roomMsgs: [], weightRules: [], meats: [], holds: [], consumes: [], consumeOpts: [] } }
+function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, reasonCodes: { on: false, updatedAt: 0 }, programView: { on: false, updatedAt: 0 }, attView: { on: false, updatedAt: 0 }, viewOpts: { lotes: { on: false, updatedAt: 0 }, flujo: { on: false, updatedAt: 0 } }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [], attendance: [], attExpected: [], shiftMarks: [], kpi: [], weights: [], orderNotes: [], roomMsgs: [], chat: [], weightRules: [], meats: [], holds: [], consumes: [], consumeOpts: [] } }
 function load(): State {
   try {
-    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; reasonCodes?: Partial<ReasonCodesOpt>; programView?: Partial<ReasonCodesOpt>; attView?: Partial<ReasonCodesOpt>; viewOpts?: Partial<Record<ViewOpt, Partial<ReasonCodesOpt>>>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[]; attendance?: Partial<AttEntry>[]; attExpected?: Partial<AttExpected>[]; shiftMarks?: Partial<ShiftMark>[]; kpi?: Partial<KpiRec>[]; weights?: Partial<WeightTest>[]; orderNotes?: Partial<OrderNote>[]; roomMsgs?: Partial<RoomMsg>[]; weightRules?: Partial<WeightRule>[]; meats?: Partial<MeatEntry>[]; holds?: Partial<HoldRec>[]; consumes?: Partial<ConsumeEntry>[]; consumeOpts?: Partial<ConsumeOpt>[] }
+    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; reasonCodes?: Partial<ReasonCodesOpt>; programView?: Partial<ReasonCodesOpt>; attView?: Partial<ReasonCodesOpt>; viewOpts?: Partial<Record<ViewOpt, Partial<ReasonCodesOpt>>>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[]; attendance?: Partial<AttEntry>[]; attExpected?: Partial<AttExpected>[]; shiftMarks?: Partial<ShiftMark>[]; kpi?: Partial<KpiRec>[]; weights?: Partial<WeightTest>[]; orderNotes?: Partial<OrderNote>[]; roomMsgs?: Partial<RoomMsg>[]; chat?: Partial<ChatMsg>[]; weightRules?: Partial<WeightRule>[]; meats?: Partial<MeatEntry>[]; holds?: Partial<HoldRec>[]; consumes?: Partial<ConsumeEntry>[]; consumeOpts?: Partial<ConsumeOpt>[] }
     const s = JSON.parse(localStorage.getItem(KEY) || 'null') as Raw | null
     // rows saved by earlier versions: carts as plain timestamps, units without a tag or a name, products with one
     // pouches-per-cart number, nothing with an update time
@@ -521,6 +521,7 @@ function load(): State {
         weights: (s.weights ?? []).map(wtFrom).filter((x): x is WeightTest => !!x),
         orderNotes: (s.orderNotes ?? []).map(orderNoteFrom).filter((x): x is OrderNote => !!x),
         roomMsgs: (s.roomMsgs ?? []).map(roomMsgFrom).filter((x): x is RoomMsg => !!x),
+        chat: (s.chat ?? []).map(chatFrom).filter((x): x is ChatMsg => !!x),
         // (inline, as above: nothing declared below load() may be used in here)
         meats: (s.meats ?? []).map(meatFrom).filter((x): x is MeatEntry => !!x),
         holds: (s.holds ?? []).map(holdFrom).filter((x): x is HoldRec => !!x),
@@ -587,14 +588,16 @@ function pruned(s: State): State {
   // (attendance goes with its day, as everything else: kept while it waits to go up)
   const attendance = (s.attendance ?? []).filter((x) => x.date >= from || opened.has(x.date) || waiting.has('act_changes|att:' + x.id))
   const shiftMarks = (s.shiftMarks ?? []).filter((x) => x.date >= from || opened.has(x.date) || waiting.has('act_changes|cut:' + x.date + ':' + x.dept))
+  // (messages go with their day too)
+  const chat = (s.chat ?? []).filter((x) => dayOf(x.at) >= from || waiting.has('act_changes|chat:' + x.id))
   // a run that goes with its day keeps counting for the order its pallets went to, as long as that order is open
   const kept = new Set(runs.map((r) => r.id)), openIds = new Set(s.orders.filter((o) => !o.closed).map((o) => o.id))
   const forOrder = (r: Run) => r.units.some((u) => !!u.po && openIds.has(u.po)) || needed(r)
   const gone = s.runs.filter((r) => !kept.has(r.id) && forOrder(r))
   const orderRuns = [...(s.orderRuns ?? []).filter((r) => !kept.has(r.id) && !gone.some((g) => g.id === r.id) && forOrder(r)), ...gone]
   const sameOrderRuns = orderRuns.length === (s.orderRuns ?? []).length && orderRuns.every((r, k) => r === s.orderRuns[k])
-  if (runs.length === s.runs.length && stops.length === s.stops.length && changes.length === s.changes.length && days.length === Object.keys(s.schedule).length && plans.length === s.plans.length && attendance.length === (s.attendance ?? []).length && shiftMarks.length === (s.shiftMarks ?? []).length && sameOrderRuns) return s
-  return { ...s, runs, orderRuns, stops, changes, schedule: Object.fromEntries(days.map((d) => [d, s.schedule[d]])), plans, attendance, shiftMarks }
+  if (runs.length === s.runs.length && stops.length === s.stops.length && changes.length === s.changes.length && days.length === Object.keys(s.schedule).length && plans.length === s.plans.length && attendance.length === (s.attendance ?? []).length && shiftMarks.length === (s.shiftMarks ?? []).length && chat.length === (s.chat ?? []).length && sameOrderRuns) return s
+  return { ...s, runs, orderRuns, stops, changes, schedule: Object.fromEntries(days.map((d) => [d, s.schedule[d]])), plans, attendance, shiftMarks, chat }
 }
 // ---- what this device holds of the days of each production order (2026-10-19) ----
 /** this page has brought the plant from the server at least once (sync.ts says so after every pull that went well) */
@@ -2290,6 +2293,38 @@ export function setRoomMsg(dept: Dept, text: string) {
   set({ ...state, roomMsgs: [...(state.roomMsgs ?? []).filter((y) => y.dept !== dept), x] })
   push('act_changes', RMSG_ID + dept, { id: RMSG_ID + dept, at: iso(x.at), by_name: x.by, dept, what: 'Mensaje para ' + dept, before: '', after: JSON.stringify({ text: t }), ref_table: RMSG_REF, ref_key: dept, deleted: !t, updated_at: iso(x.updatedAt), updated_by: user.get() })
   logChange(dept, t ? 'Mensaje para ' + dept : 'Mensaje para ' + dept + ' quitado', was && !was.deleted ? was.text : '', t, RMSG_REF + ':log', dept + ':' + x.at)
+}
+// ---- messages between a room and the office (Jose, 2026-10-28: "que el operador de la tablet pueda escribir también para atrás, de todos los departamentos") ----
+/**
+ * A conversation per room: the room's tablets write to the office and the managers, who see one button per room and
+ * answer in the same window. Each message is one record in act_changes with its room (act_chat): the room's operators
+ * read their own room's, the office and the managers every room's (the server's reading rule, migrations/015); it
+ * goes with its day, as everything else (14 days on a device). "Read" is each device's own: see src/Chat.tsx
+ */
+export type ChatMsg = { id: string; dept: Dept; text: string; by: string; at: number; side: 'room' | 'office'; deleted?: boolean; updatedAt: number; syncedAt?: number }
+const CHAT_ID = 'chat:'
+export const CHAT_REF = 'act_chat'
+function chatFrom(x: Partial<ChatMsg> | null | undefined): ChatMsg | null {
+  if (!x || typeof x !== 'object' || typeof x.id !== 'string' || !x.id || !(DEPTS as unknown[]).includes(x.dept)) return null
+  const text = String(x.text ?? '').replace(/\s+/g, ' ').trim().slice(0, 600)
+  if (!text) return null
+  return { id: x.id, dept: x.dept as Dept, text, by: String(x.by ?? ''), at: Number(x.at) || 0, side: x.side === 'room' ? 'room' : 'office', ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
+}
+/** a room's conversation, oldest first */
+export const chatOf = (s: State, dept: Dept) => (s.chat ?? []).filter((x) => x.dept === dept && !x.deleted).sort((a, b) => a.at - b.at || a.id.localeCompare(b.id))
+/** which side this device writes from: a room's operator, or the office and the managers */
+export const chatSide = (): ChatMsg['side'] => (role.get() === 'op' ? 'room' : 'office')
+/** the messages from the other side later than the moment this device last looked (`seen`) */
+export const chatUnread = (s: State, dept: Dept, side: ChatMsg['side'], seen: number) => chatOf(s, dept).filter((x) => x.side !== side && x.at > seen).length
+/** a message to (from the office) or from (an operator) a room; '' when there is nothing to say or this device may not write that room */
+export function sendChat(dept: Dept, text: string): string {
+  const t = text.replace(/\s+/g, ' ').trim().slice(0, 600)
+  if (!t || !roomKnown(dept) || !writesRoom(dept)) return ''
+  const side = chatSide()
+  const x: ChatMsg = { id: uid(), dept, text: t, by: user.get(), at: clockNow(), side, updatedAt: stamp(undefined) }
+  set({ ...state, chat: [...(state.chat ?? []), x] })
+  push('act_changes', CHAT_ID + x.id, { id: CHAT_ID + x.id, at: iso(x.at), by_name: x.by, dept, what: side === 'room' ? 'Mensaje de ' + dept : 'Mensaje para ' + dept, before: '', after: JSON.stringify({ text: t, side }), ref_table: CHAT_REF, ref_key: x.id, deleted: false, updated_at: iso(x.updatedAt), updated_by: user.get() })
+  return x.id
 }
 /** an order is complete (Packing is no longer offered it), or is opened again */
 export function closeOrder(id: string, closed: boolean) {
@@ -4282,6 +4317,14 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
     try { data = JSON.parse(String(row.after ?? '')) as Record<string, unknown> } catch { /* not one */ }
     const e = kpiFrom({ key, data: data ?? {}, by: String(row.by_name ?? ''), at: fromIso(row.at) ?? 0, deleted: !!row.deleted, updatedAt: at, ...syncedOf(row) })
     if (e) set({ ...state, kpi: [...(state.kpi ?? []).filter((y) => y.key !== key), e] })
+  } else if (table === 'act_changes' && row.ref_table === CHAT_REF && String(row.id ?? '').startsWith(CHAT_ID)) {
+    // a message between a room and the office (2026-10-28): kept apart from the history
+    const id = String(row.id).slice(CHAT_ID.length), cur = (state.chat ?? []).find((x) => x.id === id)
+    if (!newer(cur)) return
+    let x: Partial<ChatMsg> = {}
+    try { x = JSON.parse(String(row.after ?? '')) as Partial<ChatMsg> } catch { /* not one */ }
+    const e = chatFrom({ ...x, id, dept: row.dept as Dept, by: String(row.by_name ?? ''), at: fromIso(row.at) ?? 0, deleted: !!row.deleted, updatedAt: at, ...syncedOf(row) })
+    if (e) set({ ...state, chat: [...(state.chat ?? []).filter((y) => y.id !== id), e] })
   } else if (table === 'act_changes' && row.ref_table === RMSG_REF && String(row.id ?? '').startsWith(RMSG_ID)) {
     // the office's message to a room (2026-10-22): kept apart from the history
     const dept = String(row.id).slice(RMSG_ID.length) as Dept, cur = (state.roomMsgs ?? []).find((x) => x.dept === dept)

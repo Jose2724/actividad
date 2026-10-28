@@ -2095,3 +2095,30 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 .cons-end li{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px 10px;display:grid;gap:6px}
 .cons-end-btns{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.cons-end-btns input{width:80px;font:inherit;padding:6px;border-radius:8px;border:1px solid var(--line)}
 .cons-sum{font-weight:700}@media (max-width:560px){.cons-two{grid-template-columns:1fr}}
+/* messages between a room and the office (2026-10-28): round buttons at the bottom right, one window per conversation */
+.chat-fabs{position:fixed;right:14px;bottom:14px;display:flex;flex-direction:column;gap:8px;z-index:15;align-items:flex-end}
+.chat-fab{position:relative;width:54px;height:54px;border-radius:50%;border:2px solid var(--d-edge,var(--accent));background:var(--d,var(--accent));color:#fff;font-size:26px;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(0,0,0,.28);padding:0}
+.chat-fabs.many .chat-fab{width:46px;height:46px;font-size:21px}
+.chat-fab.on{outline:3px solid var(--accent);outline-offset:2px}
+.chat-fab-name{position:absolute;right:54px;top:50%;transform:translateY(-50%);font-size:12px;font-weight:700;color:var(--d-ink);background:var(--surface);border:1px solid var(--d-edge);border-radius:8px;padding:2px 7px;white-space:nowrap;display:none}
+.chat-fab:hover .chat-fab-name,.chat-fab.on .chat-fab-name{display:block}
+.chat-badge{position:absolute;top:-5px;right:-5px;min-width:21px;height:21px;border-radius:11px;background:var(--warn);color:#fff;font-size:12px;font-weight:800;font-style:normal;display:flex;align-items:center;justify-content:center;padding:0 5px;border:2px solid var(--surface)}
+.chat-win{position:fixed;right:14px;bottom:78px;width:min(380px,calc(100vw - 28px));height:min(540px,calc(100dvh - 100px));background:var(--surface);border-radius:18px;box-shadow:0 14px 40px rgba(0,0,0,.3);display:flex;flex-direction:column;overflow:hidden;z-index:16;border:1px solid var(--line)}
+.chat-win.office{right:72px;bottom:14px;height:min(540px,calc(100dvh - 28px))}
+.chat-head{display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--d,var(--accent));color:#fff}
+.chat-head b{display:block;font-size:16px}.chat-head small{opacity:.85;font-size:12px;display:block}
+.chat-avatar{width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;font-size:21px;flex:none}
+.chat-x{margin-left:auto;background:none;border:0;color:#fff;font-size:26px;line-height:1;padding:2px 8px;cursor:pointer}
+.chat-body{flex:1;overflow:auto;padding:12px;background:var(--bg);display:flex;flex-direction:column;gap:8px;overscroll-behavior:contain}
+.chat-msg{display:flex;flex-direction:column;max-width:86%}.chat-msg.mine{align-self:flex-end;align-items:flex-end}.chat-msg.theirs{align-self:flex-start}
+.chat-bubble{padding:8px 12px;border-radius:14px;background:var(--surface);border:1px solid var(--line);white-space:pre-wrap;word-break:break-word;font-size:15px;line-height:1.35}
+.chat-msg.mine .chat-bubble{background:var(--d,var(--accent));color:#fff;border-color:transparent}
+.chat-msg small{color:var(--muted);font-size:11px;margin-top:2px}
+.chat-day{align-self:center;font-size:11px;color:var(--muted);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:2px 8px}
+.chat-empty{color:var(--muted);font-size:14px;margin:auto 0;text-align:center;padding:0 10px}
+.chat-form{display:flex;gap:8px;padding:10px;border-top:1px solid var(--line);background:var(--surface)}
+.chat-form input{flex:1;min-width:0;border:1px solid var(--line);border-radius:22px;padding:10px 14px;font-size:16px}
+.chat-send{width:44px;height:44px;flex:none;border-radius:50%;background:var(--d,var(--accent));color:#fff;border:0;font-size:18px}
+.chat-send:disabled{opacity:.4}
+.chat-ro{padding:10px;color:var(--muted);font-size:13px;text-align:center;margin:0;border-top:1px solid var(--line)}
+@media print{.chat-fabs,.chat-win{display:none}}

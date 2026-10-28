@@ -31,6 +31,7 @@ import { consumeAdd, consumeOn, consumesPending, openRun as openRunOn, store as 
 import { HoldButton, HoldList } from './Holds'
 import { seesKpi } from './kpi'
 import { AttendanceCard } from './Attendance'
+import { Chat } from './Chat'
 import { useColFilters } from './ColFilter'
 import { Flujo, flujoOpenAt } from './FlujoView'
 import { daysBetween, daysText, OpenOrders, OrderDetail, OrderHistory, revealAbove, shortOf, startText, WoNavCtx, woName, WorkOrderDialog, WoStateTag, type WoNav } from './WorkOrders'
@@ -558,6 +559,7 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
   const unsentWhy = sync.state === 'signedOut' ? tr('este aparato ya no tiene sesión en el servidor') : sync.refused > 0 ? tr('el servidor no acepta lo que registra esta sesión ({0})', name) : sync.lastError || (sync.state === 'offline' ? tr('sin señal') : tr('sin alcanzar el servidor'))
   return (
     <div className="app">
+      <Chat s={s} home={home} />
       {away ? <div className="zonebar">{tr('⚠ Este aparato está puesto en otra zona horaria que la planta: las horas y la fecha saldrán corridas. En los ajustes del aparato, activa la zona horaria automática.')}</div>
         : off && <div className="zonebar">{trx('⚠ El reloj de este aparato está {0}. La app usa la hora correcta, la del servidor. Para arreglarlo, activa la hora automática en los ajustes del aparato.', off)}</div>}
       {clockUnset && clk && <div className="stalebar top"><span>{trx('⚠ Este aparato no ha podido ajustar su reloj con el del servidor ({0}). Si su hora está mal, los tiempos de las mezclas y del turno salen corridos aquí, y las horas que registre también. Compara la hora de arriba con un teléfono.', clk.savedAt ? tr('usa la medida de hace {0}', agoText(now - clk.savedAt)) : tr('usa su propio reloj'))}</span><button type="button" className="btn sm" onClick={() => void syncClock()}>{tr('Reintentar')}</button></div>}
