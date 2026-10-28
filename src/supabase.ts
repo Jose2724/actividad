@@ -102,7 +102,8 @@ export const USER_DOMAIN = 'freezer.example.com'
 export const loginEmail = (user: string) => (user.includes('@') ? user.trim().toLowerCase() : user.trim().toLowerCase() + '@' + USER_DOMAIN)
 
 /** admin = an administrator of Freezer RTE (the owner): the only one who may wipe a whole day of tests */
-export type Me = { id: string; name: string; username: string; role: 'op' | 'mgr' | 'office' | 'viewer'; dept: string; admin?: boolean; powers?: Power[] | null; shift?: 0 | 1 | 2 }
+/** freezer = this person works in Freezer RTE (its role admin or worker, not a requester): the Freezer tile is theirs */
+export type Me = { id: string; name: string; username: string; role: 'op' | 'mgr' | 'office' | 'viewer'; dept: string; admin?: boolean; powers?: Power[] | null; shift?: 0 | 1 | 2; freezer?: boolean }
 /** the database does not have a column the app asks for (a change that has not been applied there yet) */
 export const missingColumn = (e: { code?: string; message?: string } | null | undefined) => !!e && (e.code === '42703' || e.code === 'PGRST204' || /does not exist|could not find the .* column|act_powers|act_shift/i.test(e.message ?? ''))
 
@@ -125,7 +126,7 @@ export async function fetchMe(): Promise<Me | null | 'none'> {
   if (error && missingColumn(error)) ({ data, error } = await ask('id, name, username, role, act_role, act_dept, active'))
   if (error) throw error
   if (!data || !data.active || !data.act_role) return 'none'
-  return { id: data.id, name: data.name, username: data.username ?? '', role: data.act_role, dept: data.act_dept ?? '', admin: data.role === 'admin', powers: cleanPowers(data.act_powers), shift: cleanShift(data.act_shift) }
+  return { id: data.id, name: data.name, username: data.username ?? '', role: data.act_role, dept: data.act_dept ?? '', admin: data.role === 'admin', powers: cleanPowers(data.act_powers), shift: cleanShift(data.act_shift), freezer: data.role === 'admin' || data.role === 'worker' }
 }
 
 // ---- the last person the server confirmed on this device: with it the app opens at once, with or without signal ----

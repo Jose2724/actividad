@@ -2597,4 +2597,7 @@ export const EN: Record<string, string> = {
   "⚠ Ese PO ya está ingresado con este código: {0}. No lo agregues otra vez; si es el mismo pedido, ciérralo y ábrelo con \"Editar\".": "⚠ That PO is already in with this code: {0}. Do not add it again; if it is the same order, close this and open it with \"Edit\".",
   "Ese PO ya está ingresado con otro producto: {0}. Si es el mismo pedido con otro producto, sigue; si es el mismo producto, no lo agregues otra vez.": "That PO is already in with another product: {0}. If it is the same order with another product, go on; if it is the same product, do not add it again.",
   "Agregarlo de todos modos": "Add it anyway",
+  // Freezer RTE inside (2026-10-28)
+  "Abrir Freezer RTE": "Open Freezer RTE",
+  "carritos y entregas": "carts and deliveries",
 }

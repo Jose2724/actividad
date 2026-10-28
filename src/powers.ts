@@ -21,7 +21,7 @@ export const POWERS: { key: Power; label: string }[] = [
 const ALL = POWERS.map((p) => p.key)
 /** 'viewer' = somebody from the office who looks and never touches: every room, Avance and the report, no button */
 export type Role = 'op' | 'mgr' | 'office' | 'viewer'
-export type Who = { role: Role; admin?: boolean; powers?: Power[] | null; shift?: 0 | 1 | 2; dept?: string } // dept = an operator's room
+export type Who = { role: Role; admin?: boolean; powers?: Power[] | null; shift?: 0 | 1 | 2; dept?: string; freezer?: boolean } // dept = an operator's room; freezer = works in Freezer RTE too
 /** what a role starts with: the office everything, a manager everything but correcting the other shift, an operator nothing, a viewer only looking at every room */
 export const defaultPowers = (role: Role | null | undefined): Power[] => (role === 'office' ? ALL : role === 'mgr' ? ALL.filter((p) => p !== 'othershift') : role === 'viewer' ? ['depts'] : [])
 /** the powers saved for a person, as they are kept: only real ones, each once; null = none saved (the role's own) */

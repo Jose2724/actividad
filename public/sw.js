@@ -24,6 +24,8 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET') return
   const url = new URL(req.url)
   if (url.origin !== location.origin || !url.pathname.startsWith(BASE)) return
+  // Freezer RTE lives under freezer/ of this site with a worker of its own (2026-10-28): nothing of it is touched here
+  if (url.pathname.startsWith(BASE + 'freezer/')) return
   if (req.mode === 'navigate') {
     // Only the app's own page, as it came back whole, is kept as the copy that opens without WiFi. Any page opened on
     // this site used to replace it: a mistyped link's 404, version.json opened by hand, a server error; and the next

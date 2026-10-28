@@ -1,0 +1,16 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "redirects": [
+    {
+      "source": "/freezer",
+      "destination": "/freezer/",
+      "permanent": false
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/freezer/:path*",
+      "destination": "https://freezer-control-eight.vercel.app/:path*"
+    }
+  ]
+}

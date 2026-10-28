@@ -315,7 +315,7 @@ function ServerApp() {
   if (me === 'none') return <NoRole onOut={out} onRetry={verify} />
   const home = isDept(me.dept) ? me.dept : DEPTS[0]
   if (me.role === 'op' && !isDept(me.dept)) return <NoRole onOut={out} onRetry={verify} text={tr('Tu usuario está en E.R. - Ops Summary pero sin departamento. Pide al manager que te asigne uno.')} />
-  return <WhoCtx.Provider value={{ role: me.role, admin: !!me.admin, powers: me.powers ?? null, shift: me.shift ?? 0, dept: me.dept }}><Main name={me.name} home={home} mgr={me.role !== 'op'} admin={!!me.admin} wholeDay={!!me.admin || me.role === 'office' || me.role === 'viewer'} meId={me.id} onLogout={() => void out()} /></WhoCtx.Provider>
+  return <WhoCtx.Provider value={{ role: me.role, admin: !!me.admin, powers: me.powers ?? null, shift: me.shift ?? 0, dept: me.dept, freezer: !!me.freezer }}><Main name={me.name} home={home} mgr={me.role !== 'op'} admin={!!me.admin} wholeDay={!!me.admin || me.role === 'office' || me.role === 'viewer'} meId={me.id} onLogout={() => void out()} /></WhoCtx.Provider>
 }
 
 /**
@@ -473,6 +473,8 @@ function Gate({ dept, mgr, onDept, onManager, onName, onBack }: { dept: Dept | n
 
 /** who is using the app, for every screen that asks what they may do (see powers.ts) */
 const WhoCtx = createContext<Who>({ role: 'op' })
+/** where Freezer RTE answers: under freezer/ of this site (vercel.json); the demo, which has no server, opens the live one */
+const FREEZER_URL = import.meta.env.VITE_SUPABASE_URL ? import.meta.env.BASE_URL + 'freezer/' : 'https://freezer-control-eight.vercel.app/'
 /**
  * The floor's numbers open the Reporte on their records (Jose, 2026-10-20: "aquí que tengan link todo, los paros, lo
  * hecho etc... para saber rápido todo"): what a shift made, a code of the shift, a line's units, its time worked, its
@@ -604,6 +606,16 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
                   </button>
                 )
               })}
+              {/* Freezer RTE, the carts app, inside this one (Jose, 2026-10-27: "incluir el Freezer RTE aquí ... todo como
+                  funciona esa app actualmente"): it answers under freezer/ of this site, so the sign-in already made serves
+                  it too. For the office, the managers and whoever works in the freezer; an operator of a room sees it only
+                  if the freezer is theirs as well. The demo opens the live freezer, which has no demo */}
+              {(who.role !== 'op' || who.freezer) && (
+                <a className="dept fz" href={FREEZER_URL} title={tr('Abrir Freezer RTE')}>
+                  <span className="dname"><span className="dtitle"><i className="demoji" aria-hidden="true">🧊</i>Freezer</span><small className="soonnote">{tr('carritos y entregas')}</small></span>
+                  <span className="dots"><i className="dot fzgo">→</i></span>
+                </a>
+              )}
               {/* Quality Control is coming (Jose, 2026-10-17): in sight with its lock, not yet a room anybody can open */}
               <div className="dept soon" aria-disabled="true" title={tr('Próximamente')}>
                 <span className="dname"><span className="dtitle"><i className="demoji" aria-hidden="true">🔒</i>QC</span><small className="soonnote">{tr('Quality Control · próximamente')}</small></span>
