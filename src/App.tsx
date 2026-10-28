@@ -1,6 +1,6 @@
 import { Component, createContext, Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
-import { addLine, plantCut, roomMark, CUT_WINDOW, startSecondShift, addWaste, awayDay, batch, byPlanLot, planLot, cameFrom, carriedOver, dayAfter, dayBefore, orderUnitDefault, programOrderChoices, ordersOf, orderStatus, orderUnitWord, prevPending, workOrderOf, type WorkOrder, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, MFO_CHOICES, mfoChoiceOf, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, noteOf, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderAddRuns, orderOfId, poMates, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, PLAN_LOT_MAX, productOf, productsCsv, purgeDay, reasonText, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay, orderFull, orderFullText, orderNoteOf, setOrderNote, setOrderUrgent, roomMsgOf, setRoomMsg, programCap, programCapOf, holdsOpen } from './store'
+import { addLine, plantCut, roomMark, CUT_WINDOW, startSecondShift, addWaste, awayDay, batch, byPlanLot, planLot, cameFrom, carriedOver, dayAfter, dayBefore, orderUnitDefault, programOrderChoices, ordersOf, orderStatus, orderUnitWord, prevPending, workOrderOf, type WorkOrder, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, MFO_CHOICES, mfoChoiceOf, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, CRATES_PER_CART, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, noteOf, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderAddRuns, orderOfId, poMates, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, PLAN_LOT_MAX, productOf, productsCsv, purgeDay, reasonText, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay, orderFull, orderFullText, orderNoteOf, setOrderNote, setOrderUrgent, programCap, programCapOf, holdsOpen } from './store'
 import { avanceLots, avanceRange, avanceRows, datesBetween, lotAcrossDays, lotRows, lotsKnown, mfoList, mfoText, mfoWord, n1, pending, type AvancePart, type AvanceRow, type MfoMade } from './avance'
 import { loadZip, type Cell } from './xlsx'
 
@@ -1507,30 +1507,14 @@ function OrderAddChooser({ s, order, onPick, onNew, onClose }: { s: State; order
  * On top of Packing, in every tab ("En vivo" too), for whoever looks at the tablet (the office, 2026-10-22: "que resalte
  * en la parte superior ... que le llegue mensaje, o cualquier parte de anuncio ... para que pueda recibir referencia de
  * qué producto tiene por hacer"): the office's message to Packing, and every urgent order still lacking cases, with
- * its code, customer, what it lacks, when it ships and Packing's comment. A tap on an order opens Pedidos. The office
- * and the managers write the message here; each tablet sets a read message aside with "Entendido" until a new one.
+ * its code, customer, what it lacks, when it ships and Packing's comment. A tap on an order opens Pedidos. (The office's
+ * fixed message to Packing lived here until 2026-10-28: the chat, src/Chat.tsx, replaced it.)
  */
-const MSG_SEEN = 'act_msg_seen'
 function PackingNotice({ s, onOrders }: { s: State; onOrders: () => void }) {
-  const who = useWho()
-  const boss = !!who.admin || who.role === 'mgr' || who.role === 'office'
-  const msg = roomMsgOf(s, 'Packing')
-  const [seen, setSeen] = useState(() => { try { return Number(localStorage.getItem(MSG_SEEN)) || 0 } catch { return 0 } })
-  const [writing, setWriting] = useState(false)
   const urgent = s.orders.filter((o) => o.urgent && !o.closed).map((o) => ({ o, left: o.cases != null ? o.cases - orderMade(s, o.id) : null })).filter((x) => x.left == null || x.left > 0).sort((a, b) => byShip(a.o, b.o))
-  const showMsg = !!msg && msg.updatedAt !== seen
-  if (!showMsg && !urgent.length && !boss) return null
-  const okSeen = () => { if (!msg) return; setSeen(msg.updatedAt); try { localStorage.setItem(MSG_SEEN, String(msg.updatedAt)) } catch { /* private window: shown again next time */ } }
+  if (!urgent.length) return null
   return (
     <div className="pk-notice">
-      {showMsg && msg && (
-        <div className="pk-msg" role="status">
-          <b>{tr('📢 Mensaje de la oficina')}</b>
-          <p>{msg.text}</p>
-          <small>{tr('{0} · {1}', msg.by, fmtTime(msg.at))}</small>
-          <div className="btns"><button type="button" className="btn sm primary" onClick={okSeen}>{tr('✓ Entendido')}</button>{boss && <button type="button" className="btn sm" onClick={() => setWriting(true)}>{tr('✎ Cambiar')}</button>}</div>
-        </div>
-      )}
       {urgent.length > 0 && (
         <div className="pk-urg">
           <b className="pk-urgh">{urgent.length === 1 ? tr('🔥 1 pedido urgente') : tr('🔥 {0} pedidos urgentes', urgent.length)}</b>
@@ -1546,26 +1530,6 @@ function PackingNotice({ s, onOrders }: { s: State; onOrders: () => void }) {
           {urgent.length > 4 && <button type="button" className="lnk sm" onClick={onOrders}>{tr('y {0} más en Pedidos', urgent.length - 4)}</button>}
         </div>
       )}
-      {boss && !msg && <button type="button" className="lnk sm pk-write" onClick={() => setWriting(true)}>{tr('📢 Escribir un mensaje para Packing')}</button>}
-      {boss && msg && !showMsg && <button type="button" className="lnk sm pk-write" onClick={() => setWriting(true)}>{tr('📢 Mensaje para Packing (ya visto aquí) · ver o cambiar')}</button>}
-      {writing && <RoomMsgDialog s={s} onClose={() => setWriting(false)} />}
-    </div>
-  )
-}
-function RoomMsgDialog({ s, onClose }: { s: State; onClose: () => void }) {
-  const now = roomMsgOf(s, 'Packing')
-  const [text, setText] = useState(now?.text ?? '')
-  return (
-    <div className="veil" onClick={onClose}>
-      <form className="dlg" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); setRoomMsg('Packing', text); onClose() }}>
-        <h3>{tr('📢 Mensaje para Packing')}</h3>
-        <p className="hint">{tr('Sale arriba en todas las tablets de Packing, también en "En vivo", hasta que lo quites. Cada tablet lo puede marcar "Entendido".')}</p>
-        <textarea rows={4} maxLength={600} autoFocus value={text} placeholder={tr('ej. Hoy primero el 0889 para Costco, después el 2010')} onChange={(e) => setText(e.target.value)} />
-        <div className="dbtns spread">
-          <div className="btns">{now && <button type="button" className="btn" onClick={() => { setRoomMsg('Packing', ''); onClose() }}>{tr('Quitar el mensaje')}</button>}</div>
-          <div className="btns"><button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button><button type="submit" className="btn primary" disabled={!text.trim()}>{tr('📢 Mandar')}</button></div>
-        </div>
-      </form>
     </div>
   )
 }
