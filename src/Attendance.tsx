@@ -97,6 +97,13 @@ export function AttendanceDialog({ s, dept, date, shift: inCourse, edit, note = 
           <div><label>{tr('Vinieron')}</label><b>{r.actual}</b></div>
           <div className={r.miss ? 'miss' : 'ok'}><label>{tr('% Falta')}</label><b>{pctText(r.pct)}</b><small>{r.miss ? (r.miss === 1 ? tr('falta 1 persona') : tr('faltan {0} personas', r.miss)) : r.over ? tr('+{0} de más', r.over) : tr('✓ completos')}</small></div>
         </div>
+        {/* the shift's supervisor(s) in one line (Jose, 2026-10-28: "quitar lo de siempre preguntar si es supervisor y mejor que ponga en el lugar de supervisor los nombres"): taken off with ✕, another one picked from the people written */}
+        <div className="att-supline">
+          <span className="att-lab">{tr('Supervisor:')}</span>
+          {here.filter((x) => x.sup).map((x) => <b key={x.id} className="att-supname">👤 {x.name}{edit && <button type="button" className="lnk sm" onClick={() => attSetSup(x.id, false)} aria-label={tr('Quitar a {0} como supervisor', x.name)} title={tr('Quitar a {0} como supervisor', x.name)}>✕</button>}</b>)}
+          {!here.some((x) => x.sup) && <span className="muted">{tr('nadie todavía')}</span>}
+          {edit && here.some((x) => !x.sup) && <select value="" aria-label={tr('Supervisor:')} onChange={(e) => { if (e.target.value) attSetSup(e.target.value, true) }}><option value="">{here.some((x) => x.sup) ? tr('Otro supervisor…') : tr('Elegir de los anotados…')}</option>{here.filter((x) => !x.sup).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select>}
+        </div>
         {edit && (
           <>
           {lines.length > 0 && <div className="chips att-lines"><span className="att-lab">{tr('Línea:')}</span>{[{ id: '', name: tr('Sin línea') }, ...lines.map((l) => ({ id: l.id, name: attLineText(s, l.id) }))].map((l) => <button key={l.id || '-'} type="button" className={'chip' + (addLine === l.id ? ' on' : '')} onClick={() => { setAddLine(l.id); box.current?.focus() }}>{l.name}</button>)}</div>}
@@ -122,7 +129,6 @@ export function AttendanceDialog({ s, dept, date, shift: inCourse, edit, note = 
                     <button type="button" className="btn xs soft" onClick={() => { setOut({ id: x.id, mode: 'move' }); setSaid('') }}>{tr('⇄ Trasladar')}</button>
                     <button type="button" className="btn xs" onClick={() => { setOut({ id: x.id, mode: 'out' }); setSaid('') }}>{tr('✕ Sacar')}</button>
                     <button type="button" className="lnk sm" onClick={() => attSetTemp(x.id, !x.temp)}>{x.temp ? tr('No es temporal') : tr('Es temporal')}</button>
-                    <button type="button" className="lnk sm" onClick={() => attSetSup(x.id, !x.sup)}>{x.sup ? tr('No es supervisor') : tr('Es supervisor')}</button>
                   </>}
                   {out?.id === x.id && out.mode === 'out' && (
                     <div className="att-out">

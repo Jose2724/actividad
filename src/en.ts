@@ -2630,4 +2630,9 @@ export const EN: Record<string, string> = {
   "Es supervisor": "Is the supervisor",
   "Mostrar los mensajes": "Show the messages",
   "Ocultar los mensajes": "Hide the messages",
+  "Supervisor:": "Supervisor:",
+  "Quitar a {0} como supervisor": "Remove {0} as supervisor",
+  "nadie todavía": "nobody yet",
+  "Otro supervisor…": "Another supervisor…",
+  "Elegir de los anotados…": "Pick one of those written…",
 }

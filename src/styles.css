@@ -2009,6 +2009,9 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 .kpi-access ul{margin:0;padding-left:18px}.kpi-access form{display:flex;gap:8px}.kpi-access input{flex:1;min-height:38px}
 .att-temp{color:#7c3aed;font-weight:700}
 .att-sup{color:#0f766e;font-weight:700}
+.att-supline{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:8px 10px;border:1px solid var(--line);border-radius:12px;background:var(--surface);margin:4px 0}
+.att-supname{color:#0f766e;display:inline-flex;align-items:center;gap:4px}
+.att-supline select{font-size:14px;padding:4px 8px;border-radius:8px;border:1px solid var(--line)}
 .att-me{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:6px 0}
 
 /* weight tests on RTE (2026-10-22) */
