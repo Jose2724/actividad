@@ -1,4 +1,4 @@
-import { attExpectedOf, attOf, attShifts, CFG, dayBefore, DEPTS, entryClass, fmtTime, kpiGet, shiftsOf, weightTarget, weightTestsOf, wtWeights, type AttEntry, type Dept, type State } from './store'
+import { attExpectedOf, attOf, attShifts, CFG, dayBefore, DEPTS, deptToday, entryClass, fmtTime, kpiGet, lbCaseOn, lbPerCaseOf, shiftsOf, weightTarget, weightTestsOf, wtWeights, type AttEntry, type Dept, type State } from './store'
 import { reportOf } from './report'
 import { X, xDay, xN, xT, type Cell, type Sheet } from './xlsx'
 import { tr } from './i18n'
@@ -146,11 +146,16 @@ export function laborOf(s: State, date: string, now: number) {
     const hours = Math.round(people.reduce((t, x) => t + hoursOf(s, x, now), 0) * 10) / 10
     const d = rep.byDept.find((y) => y.dept === dept), cfg = CFG[dept], q = cfg.qty !== 'none'
     const made = d ? (q ? d.qty : d.units) : 0, unit = q ? cfg.qtyUnit : cfg.plural.toLowerCase()
-    return { dept, scheduled, showed, present, temps, hours, made, unit, perHour: hours > 0 ? Math.round((made / hours) * 100) / 100 : null, written: people.length > 0 }
+    // Packing's cases in pounds too (QA's pounds per case; Jose, 2026-10-28), when the switch is on: the codes with no pounds are counted apart
+    const byCode = dept === 'Packing' && lbCaseOn(s) ? deptToday(s, dept, date, now).byCode : null
+    const lb = byCode ? Math.round(byCode.reduce((t, c) => t + c.qty * lbPerCaseOf(s, c.code), 0) * 10) / 10 : null
+    const lbMissing = byCode ? byCode.filter((c) => c.qty > 0 && !lbPerCaseOf(s, c.code)).map((c) => c.code) : []
+    return { dept, scheduled, showed, present, temps, hours, made, unit, perHour: hours > 0 ? Math.round((made / hours) * 100) / 100 : null, written: people.length > 0, lb, lbMissing }
   })
   const hours = Math.round(rows.reduce((t, r) => t + r.hours, 0) * 10) / 10
   const cases = rows.find((r) => r.dept === 'Packing')?.made ?? 0
-  return { rows, total: { scheduled: rows.reduce((t, r) => t + r.scheduled, 0), showed: rows.reduce((t, r) => t + r.showed, 0), temps: rows.reduce((t, r) => t + r.temps, 0), hours, cases, perHour: hours > 0 ? Math.round((cases / hours) * 100) / 100 : null, written: rows.some((r) => r.written) } }
+  const lb = rows.find((r) => r.dept === 'Packing')?.lb ?? null, lbMissing = rows.find((r) => r.dept === 'Packing')?.lbMissing ?? []
+  return { rows, total: { lb, lbMissing, lbPerHour: lb != null && hours > 0 ? Math.round((lb / hours) * 100) / 100 : null, scheduled: rows.reduce((t, r) => t + r.scheduled, 0), showed: rows.reduce((t, r) => t + r.showed, 0), temps: rows.reduce((t, r) => t + r.temps, 0), hours, cases, perHour: hours > 0 ? Math.round((cases / hours) * 100) / 100 : null, written: rows.some((r) => r.written) } }
 }
 
 // ---- item weights ----
@@ -191,7 +196,7 @@ export function kpiSheets(s: State, date: string, now: number): Sheet[] {
   const resumen: Cell[][] = [...head, headRow(tr('Parte'), tr('Resultado'), tr('Qué vimos · causa · acción')),
     [xT(tr('1 · Pesos'), X.label), xT(allW ? tr('{0} de {1} pouches fuera de peso', outW, allW) : tr('Sin pruebas de peso'), wState), notes('weights')],
     [xT(tr('2 · Cortes'), X.label), xT(tr('Esperando los pedidos de Julio'), X.label), notes('cuts')],
-    [xT(tr('3 · Productividad'), X.label), xT(lab.total.perHour == null ? '—' : tr('{0} cajas por hora-persona', lab.total.perHour), X.label), notes('labor')],
+    [xT(tr('3 · Productividad'), X.label), xT(lab.total.perHour == null ? '—' : tr('{0} cajas por hora-persona', lab.total.perHour) + (lab.total.lbPerHour != null ? ' · ' + tr('{0} lb por hora-persona', lab.total.lbPerHour) : ''), X.label), notes('labor')],
     [xT(tr('4 · Costco MVM'), X.label), xT(tr('{0} cajas de {1} planeadas ({2})', n0(day.cases), n0(day.planCases), pc(day.pct)), cState), notes('costco')],
     [xT(tr('5 · Grill y freidora'), X.label), xT(tr('Sus hojas de siempre'), X.label), notes('grill')]]
   const costco: Cell[][] = [...head, headRow(tr('Fecha'), tr('Mezclas planeadas'), tr('Mezclas (Spiral)'), tr('Cajas planeadas'), tr('Cajas (Packing)'), tr('Diferencia'), tr('% del plan')),
@@ -199,9 +204,10 @@ export function kpiSheets(s: State, date: string, now: number): Sheet[] {
     [], [xT(tr('Plan del mes'), X.label), xN(mo.monthPlan, X.nLabel)], [xT(tr('Plan hasta este día'), X.label), xN(mo.planToDate, X.nLabel)], [xT(tr('Hecho hasta este día'), X.label), xN(mo.actualToDate, X.nLabel)],
     [xT(tr('Diferencia'), X.label), signed(mo.gap)], [xT(tr('Necesario por día para cumplir el mes'), X.label), mo.perDay == null ? '' : xN(mo.perDay, X.nLabel)], [xT(tr('Forecast de Costco del mes'), X.label), mo.forecast == null ? '' : xN(mo.forecast, X.nLabel)],
     [], [notes('costco')]]
-  const labor: Cell[][] = [...head, headRow(tr('Cuarto'), tr('Programados'), tr('Vinieron'), tr('Temporales'), tr('Horas-persona'), tr('Producción'), tr('Unidad'), tr('Por hora-persona')),
-    ...lab.rows.map((r): Cell[] => [r.dept, xN(r.scheduled), xN(r.showed), xN(r.temps), xN(r.hours, X.dec), xN(r.made), r.unit, r.perHour == null ? '' : xN(r.perHour, X.dec)]),
-    [xT(tr('TOTAL'), X.label), xN(lab.total.scheduled, X.nLabel), xN(lab.total.showed, X.nLabel), xN(lab.total.temps, X.nLabel), xN(lab.total.hours, X.nLabel), xN(lab.total.cases, X.nLabel), xT(tr('cajas'), X.label), lab.total.perHour == null ? '' : xN(lab.total.perHour, X.nLabel)],
+  const lbCols = lab.total.lb != null
+  const labor: Cell[][] = [...head, headRow(tr('Cuarto'), tr('Programados'), tr('Vinieron'), tr('Temporales'), tr('Horas-persona'), tr('Producción'), tr('Unidad'), tr('Por hora-persona'), ...(lbCols ? [tr('Libras'), tr('Lb por hora-persona')] : [])),
+    ...lab.rows.map((r): Cell[] => [r.dept, xN(r.scheduled), xN(r.showed), xN(r.temps), xN(r.hours, X.dec), xN(r.made), r.unit, r.perHour == null ? '' : xN(r.perHour, X.dec), ...(lbCols ? [r.lb == null ? '' : xN(r.lb, X.dec), r.lb == null || r.hours <= 0 ? '' : xN(Math.round((r.lb / r.hours) * 100) / 100, X.dec)] : [])]),
+    [xT(tr('TOTAL'), X.label), xN(lab.total.scheduled, X.nLabel), xN(lab.total.showed, X.nLabel), xN(lab.total.temps, X.nLabel), xN(lab.total.hours, X.nLabel), xN(lab.total.cases, X.nLabel), xT(tr('cajas'), X.label), lab.total.perHour == null ? '' : xN(lab.total.perHour, X.nLabel), ...(lbCols ? [xN(lab.total.lb ?? 0, X.nLabel), lab.total.lbPerHour == null ? '' : xN(lab.total.lbPerHour, X.nLabel)] : [])],
     [], [notes('labor')]]
   const pesos: Cell[][] = [...head, headRow(tr('Hora'), tr('Línea'), tr('Código'), tr('Lote'), tr('Revisados'), tr('Pesados'), tr('Promedio (oz)'), tr('Mínimo'), tr('Máximo'), tr('Objetivo (oz)'), tr('Bajos'), tr('Sobre'), tr('Anotó'), tr('Cada pouch')),
     ...wts.flatMap((w) => w.tests.map((t): Cell[] => {

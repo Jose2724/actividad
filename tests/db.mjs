@@ -605,6 +605,13 @@ section('023: la gente del freezer y la oficina se escriben (Jose, 2026-10-28)')
   eq('023 corre otra vez sin error', await code(runFile(db, '023_freezer_chat.sql')), '')
 }
 
+section('024: las libras por caja de cada producto (Jose, 2026-10-28)')
+{
+  const prodRow = (codeV, o = {}) => ({ code: codeV, name: 'p', pouches_per_case: 8, cases_per_mix: 18, crates_per_cart: 26, pouches_per_crate: 10, cases_per_pallet: 36, deleted: false, updated_at: iso(NOW), updated_by: 'prueba', ...o })
+  eq('024 corre otra vez sin error', await code(runFile(db, '024_lb_per_case.sql')), '')
+  eq('un producto sube con sus libras (decimales), y uno sin ellas sigue como antes', [await code(as(db, jose, (tx) => upsert(tx, 'act_products', prodRow('4614', { lb_per_case: 5.25 }), 'code'))), await code(as(db, jose, (tx) => upsert(tx, 'act_products', prodRow('9999'), 'code'))), (await db.query("select lb_per_case::float as lb from public.act_products where code in ('4614', '9999') order by code")).rows.map((r) => r.lb)], ['', '', [5.25, null]])
+}
+
 section('Correr otra vez un archivo viejo, solo, no afloja ni cambia ninguna regla')
 // each file says "safe to run again" and Jose pastes them by hand: a rule a later file tightened must stay tight
 const rules = async () => new Map((await db.query(`

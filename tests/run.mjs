@@ -5264,6 +5264,29 @@ section('El carro de RTE se cuenta por guacales (Jose, 2026-10-28: dos columnas 
     eq('un código sin producto: 26 guacales por defecto y los pouches salen de la cifra del código cuando cuadra; si no cuadra, nada', [m.cartSpecOf(st(), m.openRun(st(), line.id)), (m.endRun(m.openRun(st(), line.id).id), m.startRun(line, 'X998', '6301', DAY, 250), m.cartSpecOf(st(), m.openRun(st(), line.id)))], [{ crates: 26, ppc: 10 }, null])
   })
 }
+section('Libras por caja (la hoja de QA; Jose, 2026-10-28: cargarlas como los guacales, y prender o apagar en Ajustes)')
+{
+  const lb = await device('lb-case', { user: 'Oficina' })
+  lb.use((m) => {
+    const st = () => m.store.get()
+    clock = T0
+    localStorage.setItem('act_role', 'mgr')
+    m.saveProduct(st().products.length, { code: '0889', name: 'Costco jumbo', pouchesPerCase: 8, casesPerMix: 18, cratesPerCart: 26, pouchesPerCrate: 10, casesPerPallet: 36 })
+    m.saveProduct(st().products.length, { code: '9999', name: 'Sin hoja', pouchesPerCase: 8, casesPerMix: 18, cratesPerCart: 26, pouchesPerCrate: 10, casesPerPallet: 36 })
+    eq('las libras de un código: Productos primero, la hoja de QA cuando Productos no dice; nada cuando ninguno', [m.lbPerCaseOf(st(), '0889'), m.lbPerCaseOf(st(), '4614'), m.lbPerCaseOf(st(), '9999')], [24, 5.25, 0])
+    eq('cargar la hoja en Productos: solo los códigos que la hoja tiene, y suben; otra vez no cambia nada', [m.loadQaLbPerCase(), m.productOf(st(), '0889').lbPerCase, m.productOf(st(), '9999').lbPerCase, m.outbox.items().some((i) => i.row && i.row.lb_per_case === 24), m.loadQaLbPerCase()], [1, 24, undefined, true, 0])
+    m.saveProduct(st().products.findIndex((p) => p.code === '0889'), { ...m.productOf(st(), '0889'), lbPerCase: 25 })
+    eq('lo que la oficina escribe en Productos manda sobre la hoja', m.lbPerCaseOf(st(), '0889'), 25)
+    eq('el CSV lleva y trae las libras', m.parseProductsCsv(m.productsCsv(st().products)).find((p) => p.code === '0889').lbPerCase, 25)
+    eq('apagado hasta que un manager lo prenda; prendido sube como ajuste', [m.lbCaseOn(st()), (m.setLbCaseOn(true), m.lbCaseOn(st())), m.outbox.items().find((i) => i.key === 'opt:lbcase').row.per_hour], [false, true, 1])
+    m.applyRemote('act_targets', { dept: 'opt:lbcase', per_hour: 0, per_shift: null, updated_at: iso(T0 + 5 * M) })
+    eq('apagado desde otra computadora: llega', m.lbCaseOn(st()), false)
+    m.applyRemote('act_products', { code: '4139', name: 'MB 2.4', pouches_per_case: 6, cases_per_mix: 10, crates_per_cart: 26, pouches_per_crate: 12, cases_per_pallet: 27, lb_per_case: '27', deleted: false, updated_at: iso(T0 + 6 * M) })
+    eq('un producto del servidor trae sus libras', m.productOf(st(), '4139').lbPerCase, 27)
+  })
+  const back = await device('lb-case-again', { seed: JSON.parse(disks.get('lb-case').get('act_v1')), user: 'Oficina' })
+  eq('al volver a abrir siguen', back.use((m) => [m.productOf(m.store.get(), '0889').lbPerCase, m.productOf(m.store.get(), '4139').lbPerCase]), [25, 27])
+}
 section('Mensajes entre un cuarto y la oficina (Jose, 2026-10-28: el operador escribe para atrás; la oficina tiene un botón por cuarto)')
 {
   const of = await device('chat-office', { user: 'Oficina' })

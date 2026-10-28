@@ -1037,10 +1037,10 @@ export function Products({ s, readOnly }: { s: State; readOnly?: boolean }) {
       </div>
       <div className="twrap">
         <table>
-          <thead><tr><th>{tr('Código')}</th><th>{tr('Producto')}</th><th>{tr('Pouches / caja')}</th><th>{tr('Cajas / mezcla (yield)')}</th><th>{tr('Guacales / carro')}</th><th>{tr('Pouches / guacal')}</th><th>{tr('Cajas / pallet')}</th><th>{tr('Lo empaca')}</th><th>{tr('Spiral cuenta en')}</th>{unlocked && <th></th>}</tr></thead>
+          <thead><tr><th>{tr('Código')}</th><th>{tr('Producto')}</th><th>{tr('Pouches / caja')}</th><th>{tr('Cajas / mezcla (yield)')}</th><th>{tr('Guacales / carro')}</th><th>{tr('Pouches / guacal')}</th><th>{tr('Cajas / pallet')}</th><th>{tr('Lb / caja')}</th><th>{tr('Lo empaca')}</th><th>{tr('Spiral cuenta en')}</th>{unlocked && <th></th>}</tr></thead>
           <tbody>
-            {s.products.length === 0 && <tr><td colSpan={10}><i>{tr('No hay productos todavía.')}{!unlocked && ' ' + tr('Toca "Editar" para escribirlos o importar el CSV de la oficina.')}</i></td></tr>}
-            {s.products.length > 0 && shown.length === 0 && <tr><td colSpan={10}><i>{trx('Ningún producto con "{0}".', q.trim())}</i></td></tr>}
+            {s.products.length === 0 && <tr><td colSpan={11}><i>{tr('No hay productos todavía.')}{!unlocked && ' ' + tr('Toca "Editar" para escribirlos o importar el CSV de la oficina.')}</i></td></tr>}
+            {s.products.length > 0 && shown.length === 0 && <tr><td colSpan={11}><i>{trx('Ningún producto con "{0}".', q.trim())}</i></td></tr>}
             {shown.map(({ p, i }) => unlocked ? (
               <tr key={(p.code || '·') + ':' + i}>
                 <td><Cell className="code" value={p.code} onCommit={(t) => upd(i, { code: t.trim().toUpperCase() })} /></td>
@@ -1050,6 +1050,7 @@ export function Products({ s, readOnly }: { s: State; readOnly?: boolean }) {
                 <td><Cell className="num" numeric value={text(p.cratesPerCart)} onCommit={(t) => upd(i, { cratesPerCart: numOf(t) })} /></td>
                 <td><Cell className="num" numeric value={text(p.pouchesPerCrate)} onCommit={(t) => upd(i, { pouchesPerCrate: numOf(t) })} /></td>
                 <td><Cell className="num" numeric value={text(p.casesPerPallet)} onCommit={(t) => upd(i, { casesPerPallet: numOf(t) })} /></td>
+                <td><Cell className="num" numeric value={p.lbPerCase ? String(p.lbPerCase) : ''} onCommit={(t) => upd(i, { lbPerCase: Number(t.replace(',', '.')) > 0 ? Math.round(Number(t.replace(',', '.')) * 100) / 100 : undefined })} /></td>
                 <td><select className="room" value={p.room ?? ''} aria-label={tr('Lo empaca')} onChange={(e) => upd(i, { room: (e.target.value || undefined) as Product['room'] })}><option value="">—</option><option value="RTE">RTE</option><option value="MFO">MFO</option></select></td>
                 <td><select className="room" value={p.spiralUnit ?? ''} aria-label={tr('Spiral cuenta en')} onChange={(e) => upd(i, { spiralUnit: (e.target.value || undefined) as Product['spiralUnit'] })}><option value="">—</option>{SPIRAL_UNITS.map((u) => <option key={u} value={u}>{measureUnit(u)}</option>)}</select></td>
                 <td><button type="button" className="lnk" onClick={() => setRemoveIdx(i)}>✕</button></td>
@@ -1057,7 +1058,7 @@ export function Products({ s, readOnly }: { s: State; readOnly?: boolean }) {
             ) : (
               <tr key={p.code + ':' + i}>
                 <td><b className="mono">{p.code}</b></td><td>{p.name}</td>
-                <td className="r">{show(p.pouchesPerCase)}</td><td className="r">{show(p.casesPerMix)}</td><td className="r">{show(p.cratesPerCart)}</td><td className="r">{show(p.pouchesPerCrate)}</td><td className="r">{show(p.casesPerPallet)}</td><td>{p.room ?? '—'}</td><td>{p.spiralUnit ? measureUnit(p.spiralUnit) : '—'}</td>
+                <td className="r">{show(p.pouchesPerCase)}</td><td className="r">{show(p.casesPerMix)}</td><td className="r">{show(p.cratesPerCart)}</td><td className="r">{show(p.pouchesPerCrate)}</td><td className="r">{show(p.casesPerPallet)}</td><td className="r">{p.lbPerCase ? p.lbPerCase : '—'}</td><td>{p.room ?? '—'}</td><td>{p.spiralUnit ? measureUnit(p.spiralUnit) : '—'}</td>
               </tr>
             ))}
           </tbody>
