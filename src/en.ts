@@ -2600,4 +2600,5 @@ export const EN: Record<string, string> = {
   // Freezer RTE inside (2026-10-28)
   "Abrir Freezer RTE": "Open Freezer RTE",
   "carritos y entregas": "carts and deliveries",
+  "🧊 Listo para {0}": "🧊 Ready for {0}",
 }

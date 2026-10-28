@@ -2116,6 +2116,8 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
           {canStart2 && <button type="button" className="btn soft" onClick={() => setStarting2(true)}>{tr('▶ Empezar Turno 2')}</button>}
           <button type="button" className="btn" disabled={!left.runs.length && !left.setups.length && !left.stops.length} onClick={openLeaving}>{tr('🏁 Terminar turno')}</button>
           {(can('fix') || s.lineRules.add) && <button type="button" className="btn soft" onClick={() => setAdding(true)}>{trx('+ Agregar {0}', CFG[dept].lineWord.toLowerCase())}</button>}
+          {/* what the freezer has ready for this room, and asking for it (Jose, 2026-10-27): Freezer RTE's own screen for the room's people */}
+          {(dept === 'Packing' || dept === 'MFO') && <a className="btn soft" href={FREEZER_URL + '#listo'}>{tr('🧊 Listo para {0}', dept)}</a>}
         </div>}
       </div>
       {dept === 'Packing' && <PackingNotice s={s} onOrders={() => pick('orders')} />}
