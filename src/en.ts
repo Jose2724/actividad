@@ -2668,4 +2668,5 @@ export const EN: Record<string, string> = {
   "Cuántos guacales lleva un carro de RTE (dos columnas: {0} por columna). Al aplicarlo se escribe en todos los códigos de Productos y es lo que usa \"Carro listo\" y el aviso al empezar un código. Un código se puede cambiar aparte en la tabla de abajo.": "How many crates an RTE cart holds (two columns: {0} per column). Applying it writes it into every code of Productos, and it is what \"Cart done\" and the note when starting a code use. A single code can be changed apart in the table below.",
   "Poner {0} en todos los códigos ({1})": "Set {0} on every code ({1})",
   "Poner {0} en todos los códigos": "Set {0} on every code",
+  "Todavía no hay mensajes con el freezer. Escribe abajo: lo ven en Freezer RTE, en sus teléfonos.": "No messages with the freezer yet. Write below: they see it in Freezer RTE, on their phones.",
 }

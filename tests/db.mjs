@@ -591,6 +591,20 @@ section('021: el programa de un cuarto por lote: el mismo código con otro lote 
   eq('en la base con todos los archivos la llave es (día, cuarto, código, lote), una sola vez', [await pkCols(db), (await db.query("select count(*)::int as n from pg_constraint where conrelid = 'public.act_plan'::regclass and contype in ('p', 'u')")).rows[0].n], [['date', 'dept', 'code', 'lot'], 1])
 }
 
+section('023: la gente del freezer y la oficina se escriben (Jose, 2026-10-28)')
+{
+  const luis = await person(db, { name: 'Luis Freezer', role: 'worker' })
+  const chatRow = (id, side, by, dept = 'Freezer') => ({ id: 'chat:' + id, at: iso(NOW), by_name: by, dept, what: side === 'room' ? 'Mensaje de ' + dept : 'Mensaje para ' + dept, before: '', after: JSON.stringify({ text: 'hola', side }), ref_table: 'act_chat', ref_key: id, deleted: false, updated_at: iso(NOW), updated_by: by })
+  const chatSeen = (who) => as(db, who, async (tx) => (await tx.query("select count(*)::int as n from public.act_changes where dept = 'Freezer' and ref_table = 'act_chat'")).rows[0].n)
+  eq('la oficina y un manager le escriben al freezer como a un cuarto', [await code(as(db, edgar, (tx) => upsert(tx, 'act_changes', chatRow('o1', 'office', 'Edgar')))), await code(as(db, jose, (tx) => upsert(tx, 'act_changes', chatRow('o2', 'office', 'Jose'))))], ['', ''])
+  eq('un trabajador del freezer sin rol de Ops Summary lee esa conversación y contesta', [await chatSeen(luis), await code(as(db, luis, (tx) => upsert(tx, 'act_changes', chatRow('f1', 'room', 'Luis Freezer')))), await chatSeen(luis)], [2, '', 3])
+  eq('y nada más de Ops Summary: ni otro cuarto, ni otro registro, ni leer el resto', [await code(as(db, luis, (tx) => upsert(tx, 'act_changes', chatRow('f2', 'room', 'Luis Freezer', 'Packing')))), await code(as(db, luis, (tx) => upsert(tx, 'act_changes', { ...chatRow('f3', 'room', 'Luis Freezer'), ref_table: 'act_consumo' }))), await as(db, luis, async (tx) => (await tx.query("select count(*)::int as n from public.act_changes where not (dept = 'Freezer' and ref_table = 'act_chat')")).rows[0].n), await count(luis, 'act_runs')], ['42501', '42501', 0, []])
+  eq('ni borrar ni cambiar lo escrito (el servidor nunca borra)', await as(db, luis, (tx) => tx.query("update public.act_changes set deleted = true where id = 'chat:f1'").then((r) => r.affectedRows)), 0)
+  // (the people made above are freezer workers too, as the helper makes them; an operator of a room who is a requester in the freezer, as the plant's are, reads nothing)
+  eq('la oficina y el manager la leen entera; un operador de un cuarto (requester en el freezer), no; una cuenta del freezer desactivada, tampoco', [await chatSeen(edgar), await chatSeen(jose), await chatSeen(await person(db, { name: 'Pepa', actRole: 'op', actDept: 'Packing', role: 'requester' })), await chatSeen(await person(db, { name: 'Ex Freezer', role: 'worker', active: false }))], [3, 3, 0, 0])
+  eq('023 corre otra vez sin error', await code(runFile(db, '023_freezer_chat.sql')), '')
+}
+
 section('Correr otra vez un archivo viejo, solo, no afloja ni cambia ninguna regla')
 // each file says "safe to run again" and Jose pastes them by hand: a rule a later file tightened must stay tight
 const rules = async () => new Map((await db.query(`

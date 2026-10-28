@@ -5280,6 +5280,10 @@ section('Mensajes entre un cuarto y la oficina (Jose, 2026-10-28: el operador es
     eq('la respuesta del cuarto llega, en orden, y es no leída para la oficina (no la suya) hasta que mira', [m.chatOf(st(), 'Packing').map((x) => x.side), m.chatUnread(st(), 'Packing', 'office', 0), m.chatUnread(st(), 'Packing', 'office', T0 + M), m.chatUnread(st(), 'Packing', 'room', 0), m.chatOf(st(), 'Kitchen').length], [['office', 'room'], 1, 0, 1, 0])
     m.applyRemote('act_changes', { id: 'chat:r1', at: iso(T0 + M), by_name: 'Sup Packing', dept: 'Packing', what: 'Mensaje de Packing', before: '', after: JSON.stringify({ text: 'Ok, ya lo empezamos', side: 'room' }), ref_table: 'act_chat', ref_key: 'r1', deleted: true, updated_at: iso(T0 + 2 * M) })
     eq('uno marcado borrado en el servidor desaparece', m.chatOf(st(), 'Packing').length, 1)
+    const fz = m.sendChat('Freezer', 'Hay 3 carts listos para Packing?')
+    eq('la oficina también le escribe al freezer (2026-10-28): su propia conversación, con "Freezer" como cuarto', [!!fz, m.outbox.items().find((i) => i.key === 'chat:' + fz).row.dept, m.chatOf(st(), 'Freezer').length, m.chatOf(st(), 'Packing').length, m.CHAT_ROOMS], [true, 'Freezer', 1, 1, ['Kitchen', 'RTE', 'Spiral', 'MFO', 'Packing', 'Freezer']])
+    m.applyRemote('act_changes', { id: 'chat:fz1', at: iso(T0 + 4 * M), by_name: 'Luis Freezer', dept: 'Freezer', what: 'Mensaje de Freezer', before: '', after: JSON.stringify({ text: 'Sí, 3 listos', side: 'room' }), ref_table: 'act_chat', ref_key: 'fz1', deleted: false, updated_at: iso(T0 + 4 * M) })
+    eq('lo que el freezer contesta desde su app llega aquí', m.chatOf(st(), 'Freezer').map((x) => [x.side, x.by]), [['office', 'Oficina'], ['room', 'Luis Freezer']])
   })
   const back = await device('chat-office-again', { seed: JSON.parse(disks.get('chat-office').get('act_v1')), user: 'Oficina' })
   eq('al volver a abrir sigue', back.use((m) => m.chatOf(m.store.get(), 'Packing').map((x) => x.text)), ['Hoy primero el 0889'])
@@ -5288,6 +5292,7 @@ section('Mensajes entre un cuarto y la oficina (Jose, 2026-10-28: el operador es
     localStorage.setItem('act_role', 'op'); localStorage.setItem('act_dept', 'Packing')
     const st = () => m.store.get()
     clock = T0 + 3 * M
+    eq('un operador de un cuarto no le escribe al freezer desde aquí', m.sendChat('Freezer', 'x'), '')
     eq('un operador escribe a la oficina desde su cuarto (lado cuarto), y no desde otro cuarto', [!!m.sendChat('Packing', 'Falta tape'), m.chatOf(st(), 'Packing')[0]?.side, m.outbox.items().find((i) => i.key.startsWith('chat:')).row.what, m.sendChat('Kitchen', 'x')], [true, 'room', 'Mensaje de Packing', ''])
     localStorage.setItem('act_view_only', '1')
     eq('quien solo ve no escribe', m.sendChat('Packing', 'y'), '')

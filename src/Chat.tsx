@@ -1,6 +1,9 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
-import { chatOf, chatUnread, dayOf, DEPTS, fmtTime, sendChat, writesRoom, type Dept, type State } from './store'
-import { DEPT_LOOK, deptVars } from './look'
+import { CHAT_ROOMS, chatOf, chatUnread, dayOf, fmtTime, sendChat, writesRoom, type ChatRoom, type Dept, type State } from './store'
+import { DEPT_LOOK, FREEZER_LOOK, lookVars } from './look'
+
+/** a room's look, the freezer's too */
+const lookOf = (d: ChatRoom) => (d === 'Freezer' ? FREEZER_LOOK : DEPT_LOOK[d])
 import { longDate, useWho } from './App'
 import { tr } from './i18n'
 
@@ -14,20 +17,20 @@ import { tr } from './i18n'
  */
 const SEEN = 'act_chat_seen:'
 // (by side as well: a device that enters as the office and later as a room keeps them apart)
-const seenOf = (side: string, d: Dept) => { try { return Number(localStorage.getItem(SEEN + side + ':' + d)) || 0 } catch { return 0 } }
+const seenOf = (side: string, d: ChatRoom) => { try { return Number(localStorage.getItem(SEEN + side + ':' + d)) || 0 } catch { return 0 } }
 // the buttons can be put away and brought back (Jose, 2026-10-28): remembered on the device
 const HIDDEN = 'act_chat_hidden'
-const markSeen = (side: string, d: Dept, at: number) => { try { localStorage.setItem(SEEN + side + ':' + d, String(at)) } catch { /* private window: counted again next time */ } }
+const markSeen = (side: string, d: ChatRoom, at: number) => { try { localStorage.setItem(SEEN + side + ':' + d, String(at)) } catch { /* private window: counted again next time */ } }
 
 export function Chat({ s, home }: { s: State; home: Dept }) {
   const who = useWho()
   const side = who.role === 'op' ? 'room' : 'office'
-  const rooms: Dept[] = side === 'room' ? [home] : DEPTS
-  const [open, setOpen] = useState<Dept | null>(null)
+  const rooms: ChatRoom[] = side === 'room' ? [home] : CHAT_ROOMS
+  const [open, setOpen] = useState<ChatRoom | null>(null)
   const [hidden, setHiddenState] = useState(() => { try { return localStorage.getItem(HIDDEN) === '1' } catch { return false } })
   const setHidden = (h: boolean) => { setHiddenState(h); if (h) setOpen(null); try { localStorage.setItem(HIDDEN, h ? '1' : '') } catch { /* no */ } }
   const [, bump] = useState(0)
-  const unread = Object.fromEntries(rooms.map((d) => [d, chatUnread(s, d, side, seenOf(side, d))])) as Record<Dept, number>
+  const unread = Object.fromEntries(rooms.map((d) => [d, chatUnread(s, d, side, seenOf(side, d))])) as Record<ChatRoom, number>
   // the conversation that is open is read as it is looked at
   const last = open ? (chatOf(s, open).at(-1)?.at ?? 0) : 0
   useEffect(() => { if (open && last > seenOf(side, open)) { markSeen(side, open, last); bump((n) => n + 1) } }, [open, last])
@@ -47,8 +50,8 @@ export function Chat({ s, home }: { s: State; home: Dept }) {
       <div className={'chat-fabs' + (side === 'office' ? ' many' : '') + (open ? ' has-open' : '')}>
         <button type="button" className="chat-hide" onClick={() => setHidden(true)} aria-label={tr('Ocultar los mensajes')} title={tr('Ocultar los mensajes')}>×</button>
         {rooms.map((d) => (
-          <button key={d} type="button" className={'chat-fab' + (open === d ? ' on' : '')} style={deptVars(d)} aria-label={tr('Mensajes · {0}', d)} title={tr('Mensajes · {0}', d)} onClick={() => setOpen(open === d ? null : d)}>
-            <span className="chat-fab-ico" aria-hidden="true">{side === 'room' ? '💬' : DEPT_LOOK[d].emoji}</span>
+          <button key={d} type="button" className={'chat-fab' + (open === d ? ' on' : '')} style={lookVars(lookOf(d))} aria-label={tr('Mensajes · {0}', d)} title={tr('Mensajes · {0}', d)} onClick={() => setOpen(open === d ? null : d)}>
+            <span className="chat-fab-ico" aria-hidden="true">{side === 'room' ? '💬' : lookOf(d).emoji}</span>
             {side === 'office' && <small className="chat-fab-name">{d}</small>}
             {unread[d] > 0 && <i className="chat-badge">{unread[d]}</i>}
           </button>
@@ -59,7 +62,7 @@ export function Chat({ s, home }: { s: State; home: Dept }) {
   )
 }
 
-function ChatWindow({ s, dept, side, onClose }: { s: State; dept: Dept; side: 'room' | 'office'; onClose: () => void }) {
+function ChatWindow({ s, dept, side, onClose }: { s: State; dept: ChatRoom; side: 'room' | 'office'; onClose: () => void }) {
   const who = useWho()
   const canWrite = who.role !== 'viewer' && writesRoom(dept)
   const list = chatOf(s, dept)
@@ -68,14 +71,14 @@ function ChatWindow({ s, dept, side, onClose }: { s: State; dept: Dept; side: 'r
   useEffect(() => { end.current?.scrollIntoView({ block: 'end' }) }, [list.length, dept])
   const send = () => { if (sendChat(dept, text)) setText('') }
   return (
-    <div className={'chat-win' + (side === 'office' ? ' office' : '')} style={deptVars(dept)} role="dialog" aria-label={tr('Mensajes · {0}', dept)}>
+    <div className={'chat-win' + (side === 'office' ? ' office' : '')} style={lookVars(lookOf(dept))} role="dialog" aria-label={tr('Mensajes · {0}', dept)}>
       <div className="chat-head">
-        <span className="chat-avatar" aria-hidden="true">{side === 'room' ? '🏢' : DEPT_LOOK[dept].emoji}</span>
+        <span className="chat-avatar" aria-hidden="true">{side === 'room' ? '🏢' : lookOf(dept).emoji}</span>
         <div><b>{side === 'room' ? tr('Oficina') : dept}</b><small>{side === 'room' ? tr('Mensajes con la oficina y los managers') : tr('Mensajes con {0}', dept)}</small></div>
         <button type="button" className="chat-x" onClick={onClose} aria-label={tr('Cerrar')}>×</button>
       </div>
       <div className="chat-body">
-        {!list.length && <p className="chat-empty">{side === 'room' ? tr('Escribe aquí a la oficina. Lo ven en su pantalla y te contestan aquí mismo.') : tr('Todavía no hay mensajes con {0}. Escribe abajo: lo ven en las tablets de ese cuarto.', dept)}</p>}
+        {!list.length && <p className="chat-empty">{side === 'room' ? tr('Escribe aquí a la oficina. Lo ven en su pantalla y te contestan aquí mismo.') : dept === 'Freezer' ? tr('Todavía no hay mensajes con el freezer. Escribe abajo: lo ven en Freezer RTE, en sus teléfonos.') : tr('Todavía no hay mensajes con {0}. Escribe abajo: lo ven en las tablets de ese cuarto.', dept)}</p>}
         {list.map((x, i) => {
           const day = dayOf(x.at), before = i ? dayOf(list[i - 1].at) : ''
           return (

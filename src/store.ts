@@ -2413,25 +2413,30 @@ export function setRoomMsg(dept: Dept, text: string) {
  * read their own room's, the office and the managers every room's (the server's reading rule, migrations/015); it
  * goes with its day, as everything else (14 days on a device). "Read" is each device's own: see src/Chat.tsx
  */
-export type ChatMsg = { id: string; dept: Dept; text: string; by: string; at: number; side: 'room' | 'office'; deleted?: boolean; updatedAt: number; syncedAt?: number }
+/** the rooms that talk with the office: the five, and the freezer (Jose, 2026-10-28: its people answer from Freezer RTE, see migrations/023) */
+export type ChatRoom = Dept | 'Freezer'
+export const CHAT_ROOMS: ChatRoom[] = [...DEPTS, 'Freezer']
+// (a function, not a const: load() reads the chat through chatFrom before the file's consts exist, see the TDZ note above load)
+export function chatRoomKnown(d: unknown): d is ChatRoom { return d === 'Freezer' || roomKnown(d) }
+export type ChatMsg = { id: string; dept: ChatRoom; text: string; by: string; at: number; side: 'room' | 'office'; deleted?: boolean; updatedAt: number; syncedAt?: number }
 const CHAT_ID = 'chat:'
 export const CHAT_REF = 'act_chat'
 function chatFrom(x: Partial<ChatMsg> | null | undefined): ChatMsg | null {
-  if (!x || typeof x !== 'object' || typeof x.id !== 'string' || !x.id || !(DEPTS as unknown[]).includes(x.dept)) return null
+  if (!x || typeof x !== 'object' || typeof x.id !== 'string' || !x.id || !chatRoomKnown(x.dept)) return null
   const text = String(x.text ?? '').replace(/\s+/g, ' ').trim().slice(0, 600)
   if (!text) return null
-  return { id: x.id, dept: x.dept as Dept, text, by: String(x.by ?? ''), at: Number(x.at) || 0, side: x.side === 'room' ? 'room' : 'office', ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
+  return { id: x.id, dept: x.dept, text, by: String(x.by ?? ''), at: Number(x.at) || 0, side: x.side === 'room' ? 'room' : 'office', ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
 }
 /** a room's conversation, oldest first */
-export const chatOf = (s: State, dept: Dept) => (s.chat ?? []).filter((x) => x.dept === dept && !x.deleted).sort((a, b) => a.at - b.at || a.id.localeCompare(b.id))
+export const chatOf = (s: State, dept: ChatRoom) => (s.chat ?? []).filter((x) => x.dept === dept && !x.deleted).sort((a, b) => a.at - b.at || a.id.localeCompare(b.id))
 /** which side this device writes from: a room's operator, or the office and the managers */
 export const chatSide = (): ChatMsg['side'] => (role.get() === 'op' ? 'room' : 'office')
 /** the messages from the other side later than the moment this device last looked (`seen`) */
-export const chatUnread = (s: State, dept: Dept, side: ChatMsg['side'], seen: number) => chatOf(s, dept).filter((x) => x.side !== side && x.at > seen).length
+export const chatUnread = (s: State, dept: ChatRoom, side: ChatMsg['side'], seen: number) => chatOf(s, dept).filter((x) => x.side !== side && x.at > seen).length
 /** a message to (from the office) or from (an operator) a room; '' when there is nothing to say or this device may not write that room */
-export function sendChat(dept: Dept, text: string): string {
+export function sendChat(dept: ChatRoom, text: string): string {
   const t = text.replace(/\s+/g, ' ').trim().slice(0, 600)
-  if (!t || !roomKnown(dept) || !writesRoom(dept)) return ''
+  if (!t || !chatRoomKnown(dept) || !writesRoom(dept)) return ''
   const side = chatSide()
   const x: ChatMsg = { id: uid(), dept, text: t, by: user.get(), at: clockNow(), side, updatedAt: stamp(undefined) }
   set({ ...state, chat: [...(state.chat ?? []), x] })
@@ -4435,7 +4440,7 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
     if (!newer(cur)) return
     let x: Partial<ChatMsg> = {}
     try { x = JSON.parse(String(row.after ?? '')) as Partial<ChatMsg> } catch { /* not one */ }
-    const e = chatFrom({ ...x, id, dept: row.dept as Dept, by: String(row.by_name ?? ''), at: fromIso(row.at) ?? 0, deleted: !!row.deleted, updatedAt: at, ...syncedOf(row) })
+    const e = chatFrom({ ...x, id, dept: row.dept as ChatRoom, by: String(row.by_name ?? ''), at: fromIso(row.at) ?? 0, deleted: !!row.deleted, updatedAt: at, ...syncedOf(row) })
     if (e) set({ ...state, chat: [...(state.chat ?? []).filter((y) => y.id !== id), e] })
   } else if (table === 'act_changes' && row.ref_table === RMSG_REF && String(row.id ?? '').startsWith(RMSG_ID)) {
     // the office's message to a room (2026-10-22): kept apart from the history
