@@ -1114,8 +1114,9 @@ export function kpiPut(key: string, data: Record<string, unknown>, deleted = fal
  */
 export type WtEntry = { w?: number; k?: 'sobre' | 'bajo' }
 export type WeightTest = { id: string; date: string; dept: Dept; lineId: string; line: string; code: string; lot: string; runId: string
-  /** pouch: RTE's finished pouches; ball: Spiral's meatballs, so many each hour (2026-10-23) */
-  kind: 'pouch' | 'ball'; unit: 'oz'
+  /** pouch: RTE's finished pouches; ball: Spiral's cooked meatballs, so many each hour (2026-10-23); raw: Kitchen's
+   *  meatballs before the oven, the same way (Jose, 2026-10-28: "que Kitchen también pueda pesar las meatballs en oz") */
+  kind: 'pouch' | 'ball' | 'raw'; unit: 'oz'
   /** in ounces (Jose, 2026-10-22: "aquí es oz, no lb"); the first builds of that day wrote pounds and no unit: read ×16 */
   entries: WtEntry[]; at: number; by: string; deleted?: boolean; updatedAt: number; syncedAt?: number }
 const WT_ID = 'wt:'
@@ -1133,13 +1134,13 @@ function wtEntries(x: { entries?: unknown; weights?: unknown; unit?: unknown }):
 }
 function wtFrom(x: (Partial<WeightTest> & { weights?: unknown; unit?: unknown }) | null | undefined): WeightTest | null {
   if (!x || typeof x !== 'object' || typeof x.id !== 'string' || !x.id || !(DEPTS as unknown[]).includes(x.dept) || !isDay(String(x.date ?? '')) || !normCode(String(x.code ?? ''))) return null
-  return { id: x.id, date: String(x.date), dept: x.dept as Dept, lineId: String(x.lineId ?? ''), line: String(x.line ?? ''), code: String(x.code).trim().toUpperCase(), lot: String(x.lot ?? ''), runId: String(x.runId ?? ''), kind: x.kind === 'ball' ? 'ball' : 'pouch', unit: 'oz', entries: wtEntries(x), at: Number(x.at) || 0, by: String(x.by ?? ''), ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
+  return { id: x.id, date: String(x.date), dept: x.dept as Dept, lineId: String(x.lineId ?? ''), line: String(x.line ?? ''), code: String(x.code).trim().toUpperCase(), lot: String(x.lot ?? ''), runId: String(x.runId ?? ''), kind: x.kind === 'ball' ? 'ball' : x.kind === 'raw' ? 'raw' : 'pouch', unit: 'oz', entries: wtEntries(x), at: Number(x.at) || 0, by: String(x.by ?? ''), ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
 }
 /** the weights typed in a test (the entries with a number) */
 export const wtWeights = (t: WeightTest) => t.entries.flatMap((e) => (e.w != null ? [e.w] : []))
 const rowOfWt = (x: WeightTest) => ({ id: WT_ID + x.id, at: iso(x.at), by_name: x.by, dept: x.dept, what: 'Peso', before: '', after: JSON.stringify({ date: x.date, lineId: x.lineId, line: x.line, code: x.code, lot: x.lot, runId: x.runId, kind: x.kind, unit: 'oz', entries: x.entries, weights: wtWeights(x) }), ref_table: WT_REF, ref_key: x.id, deleted: !!x.deleted, updated_at: iso(x.updatedAt), updated_by: user.get() })
 /** a new test on a run (nothing is saved until its first entry) */
-export const weightNew = (run: Run): WeightTest => ({ id: uid(), date: run.date, dept: run.dept, lineId: run.lineId, line: run.line, code: run.code, lot: lotNowOf(run), runId: run.id, kind: run.dept === 'Spiral' ? 'ball' : 'pouch', unit: 'oz', entries: [], at: clockNow(), by: user.get(), updatedAt: 0 })
+export const weightNew = (run: Run): WeightTest => ({ id: uid(), date: run.date, dept: run.dept, lineId: run.lineId, line: run.line, code: run.code, lot: lotNowOf(run), runId: run.id, kind: run.dept === 'Spiral' ? 'ball' : run.dept === 'Kitchen' ? 'raw' : 'pouch', unit: 'oz', entries: [], at: clockNow(), by: user.get(), updatedAt: 0 })
 /** a test saved with the entries it has now (the first one saves it; each next one writes it again); none = taken away */
 export function weightSave(t: WeightTest, entries: WtEntry[]) {
   const was = (state.weights ?? []).find((y) => y.id === t.id)
@@ -1342,32 +1343,33 @@ export const meatsOf = (s: State, date: string, code = '') => (s.meats ?? []).fi
 export const weightTestsOf = (s: State, date: string, code = '') => (s.weights ?? []).filter((x) => !x.deleted && x.date === date && x.entries.length > 0 && (!code || normCode(x.code) === normCode(code))).sort((a, b) => a.at - b.at)
 /** a code's target: the finished pouch's weight and how much it may be off (oz), set by a manager or the office (one saved in pounds, before the change to ounces, reads ×16) */
 export type WeightTarget = { pouch: number; tol: number }
-const targetKey = (code: string, kind: WeightTest['kind']) => 'target:' + (kind === 'ball' ? 'ball:' : '') + normCode(code)
+const targetKey = (code: string, kind: WeightTest['kind']) => 'target:' + (kind === 'pouch' ? '' : kind + ':') + normCode(code)
 /**
  * QA's "Meatballs / Meatloaf target specifications" sheet (Jose, 2026-10-26), the target every code starts with until
  * a manager sets one with "Objetivo": pouch = oz per bag (the sheet gives no tolerance for the bag: 1 oz until QA says);
  * ball = 8 cooked meatballs (Spiral weighs them cooked), the sheet's after-cooking range × 8. The Excel of the sheet
  * (same day) added 2234, 685, 5017, 4614, 4676, 3293 and 1999, and reads 7093 where the photo read 7053.
+ * raw = one meatball before the oven (Kitchen, 2026-10-28), the middle of the sheet's before-cooking range, ± half of it
  */
 const QA_TARGETS: Record<string, Partial<Record<WeightTest['kind'], WeightTarget>>> = {
   // 2.4 oz meatballs (Costco Jumbo and the like)
-  '0889': { pouch: { pouch: 48, tol: 1 }, ball: { pouch: 18.8, tol: 0.4 } },
-  '685': { pouch: { pouch: 48, tol: 1 }, ball: { pouch: 18.8, tol: 0.4 } },
-  '4139': { pouch: { pouch: 72, tol: 1 }, ball: { pouch: 18.8, tol: 0.4 } },
+  '0889': { pouch: { pouch: 48, tol: 1 }, ball: { pouch: 18.8, tol: 0.4 }, raw: { pouch: 2.7, tol: 0.1 } },
+  '685': { pouch: { pouch: 48, tol: 1 }, ball: { pouch: 18.8, tol: 0.4 }, raw: { pouch: 2.7, tol: 0.1 } },
+  '4139': { pouch: { pouch: 72, tol: 1 }, ball: { pouch: 18.8, tol: 0.4 }, raw: { pouch: 2.7, tol: 0.1 } },
   // 2.2 and 2.0 oz
-  '2562': { pouch: { pouch: 72, tol: 1 }, ball: { pouch: 17.6, tol: 0.4 } },
-  '5000': { pouch: { pouch: 24, tol: 1 }, ball: { pouch: 16, tol: 0.4 } },
-  '5017': { pouch: { pouch: 24, tol: 1 }, ball: { pouch: 16, tol: 0.4 } },
+  '2562': { pouch: { pouch: 72, tol: 1 }, ball: { pouch: 17.6, tol: 0.4 }, raw: { pouch: 2.45, tol: 0.05 } },
+  '5000': { pouch: { pouch: 24, tol: 1 }, ball: { pouch: 16, tol: 0.4 }, raw: { pouch: 2.25, tol: 0.05 } },
+  '5017': { pouch: { pouch: 24, tol: 1 }, ball: { pouch: 16, tol: 0.4 }, raw: { pouch: 2.25, tol: 0.05 } },
   // 1.1 oz (plain, neutral and stuffed)
-  '4911': { pouch: { pouch: 16, tol: 1 }, ball: { pouch: 8.4, tol: 0.4 } },
-  '4917': { pouch: { pouch: 16, tol: 1 }, ball: { pouch: 8.4, tol: 0.4 } },
-  '4914': { pouch: { pouch: 16, tol: 1 }, ball: { pouch: 8.4, tol: 0.4 } },
-  '8441': { pouch: { pouch: 72, tol: 1 }, ball: { pouch: 8.4, tol: 0.4 } },
-  '2234': { pouch: { pouch: 72, tol: 1 }, ball: { pouch: 8.4, tol: 0.4 } },
-  '3293': { pouch: { pouch: 48, tol: 1 }, ball: { pouch: 8.4, tol: 0.4 } },
-  '3187': { pouch: { pouch: 72, tol: 1 }, ball: { pouch: 8.4, tol: 0.4 } },
-  '4955': { pouch: { pouch: 16, tol: 1 }, ball: { pouch: 8.4, tol: 0.4 } },
-  '3477': { pouch: { pouch: 38, tol: 1 }, ball: { pouch: 8.4, tol: 0.4 } },
+  '4911': { pouch: { pouch: 16, tol: 1 }, ball: { pouch: 8.4, tol: 0.4 }, raw: { pouch: 1.25, tol: 0.05 } },
+  '4917': { pouch: { pouch: 16, tol: 1 }, ball: { pouch: 8.4, tol: 0.4 }, raw: { pouch: 1.25, tol: 0.05 } },
+  '4914': { pouch: { pouch: 16, tol: 1 }, ball: { pouch: 8.4, tol: 0.4 }, raw: { pouch: 1.25, tol: 0.05 } },
+  '8441': { pouch: { pouch: 72, tol: 1 }, ball: { pouch: 8.4, tol: 0.4 }, raw: { pouch: 1.25, tol: 0.05 } },
+  '2234': { pouch: { pouch: 72, tol: 1 }, ball: { pouch: 8.4, tol: 0.4 }, raw: { pouch: 1.25, tol: 0.05 } },
+  '3293': { pouch: { pouch: 48, tol: 1 }, ball: { pouch: 8.4, tol: 0.4 }, raw: { pouch: 1.25, tol: 0.05 } },
+  '3187': { pouch: { pouch: 72, tol: 1 }, ball: { pouch: 8.4, tol: 0.4 }, raw: { pouch: 1.25, tol: 0.05 } },
+  '4955': { pouch: { pouch: 16, tol: 1 }, ball: { pouch: 8.4, tol: 0.4 }, raw: { pouch: 1.25, tol: 0.05 } },
+  '3477': { pouch: { pouch: 38, tol: 1 }, ball: { pouch: 8.4, tol: 0.4 }, raw: { pouch: 1.25, tol: 0.05 } },
   // meatloaf and sausage: a bag target only (nobody weighs 8 of them)
   '7093': { pouch: { pouch: 16, tol: 1 } },
   '7130': { pouch: { pouch: 16, tol: 1 } },
@@ -1375,9 +1377,14 @@ const QA_TARGETS: Record<string, Partial<Record<WeightTest['kind'], WeightTarget
   '4676': { pouch: { pouch: 14, tol: 1 } },
   '1999': { pouch: { pouch: 48, tol: 1 } },
 }
+/**
+ * Kitchen writes its mix codes, not the product's, so the sheet seldom knows the code: until a manager sets one, every
+ * code there is weighed as the 0889's raw meatball (Jose, 2026-10-28: "ahora mismo vamos a poner que sean las 0889")
+ */
+const KITCHEN_RAW_DEFAULT: WeightTarget = { pouch: 2.7, tol: 0.1 }
 export function weightTarget(s: State, code: string, kind: WeightTest['kind'] = 'pouch'): WeightTarget | null {
   const d = kpiGet(s, targetKey(code, kind))?.data
-  if (!d) return QA_TARGETS[code.trim().toUpperCase()]?.[kind] ?? null
+  if (!d) return QA_TARGETS[code.trim().toUpperCase()]?.[kind] ?? (kind === 'raw' ? KITCHEN_RAW_DEFAULT : null)
   const per = d?.unit === 'oz' ? 1 : 16, pouch = Number(d?.pouch) * per, tol = Number(d?.tol) * per
   return pouch > 0 ? { pouch: Math.round(pouch * 1000) / 1000, tol: tol >= 0 ? Math.round(tol * 1000) / 1000 : 0 } : null
 }
@@ -1390,7 +1397,7 @@ export const setWeightTarget = (code: string, pouch: number, tol: number, kind: 
  */
 export type WeightRule = { dept: Dept; every: number; count: number; updatedAt: number }
 const WRULE_KEY = 'opt:wt:'
-export const WEIGHT_RULE_DEFAULT: Partial<Record<Dept, { every: number; count: number }>> = { Spiral: { every: 60, count: 8 } }
+export const WEIGHT_RULE_DEFAULT: Partial<Record<Dept, { every: number; count: number }>> = { Spiral: { every: 60, count: 8 }, Kitchen: { every: 60, count: 8 } }
 export const weightRuleOf = (s: State, dept: Dept) => { const r = (s.weightRules ?? []).find((x) => x.dept === dept); return r ? { every: r.every, count: r.count } : WEIGHT_RULE_DEFAULT[dept] ?? { every: 0, count: 0 } }
 export function setWeightRule(dept: Dept, every: number, count: number) {
   const e = Math.max(0, Math.round(every)), c = Math.max(0, Math.round(count)), was = (state.weightRules ?? []).find((x) => x.dept === dept), before = weightRuleOf(state, dept)

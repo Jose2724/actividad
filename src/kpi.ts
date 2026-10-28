@@ -1,4 +1,4 @@
-import { attExpectedOf, attOf, attShifts, CFG, dayBefore, DEPTS, deptToday, entryClass, fmtTime, kpiGet, lbCaseOn, lbPerCaseOf, shiftsOf, weightTarget, weightTestsOf, wtWeights, type AttEntry, type Dept, type State } from './store'
+import { attExpectedOf, attOf, attShifts, CFG, dayBefore, DEPTS, deptToday, entryClass, fmtTime, kpiGet, lbCaseOn, lbPerCaseOf, shiftsOf, weightTarget, weightTestsOf, type WeightTest, wtWeights, type AttEntry, type Dept, type State } from './store'
 import { reportOf } from './report'
 import { X, xDay, xN, xT, type Cell, type Sheet } from './xlsx'
 import { tr } from './i18n'
@@ -164,7 +164,7 @@ export function weightsOf(s: State, date: string) {
   // (each code and what was weighed: RTE's pouches, Spiral's meatballs, 2026-10-23)
   const tests = weightTestsOf(s, date), keys = [...new Set(tests.map((t) => t.code + '|' + t.kind))]
   return keys.map((k) => {
-    const [code, kind] = k.split('|') as [string, 'pouch' | 'ball']
+    const [code, kind] = k.split('|') as [string, WeightTest['kind']]
     // checked = every pouch (a weight, a call, or both); weighed = the ones with a weight (the average, min and max)
     const mine = tests.filter((t) => t.code === code && t.kind === kind), entries = mine.flatMap((t) => t.entries), all = mine.flatMap(wtWeights), target = weightTarget(s, code, kind)
     const avg = all.length ? all.reduce((a, b) => a + b, 0) / all.length : null

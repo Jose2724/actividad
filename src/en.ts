@@ -2619,6 +2619,12 @@ export const EN: Record<string, string> = {
   // the supervisor written as such (2026-10-27)
   "Antes de empezar, el supervisor o líder se anota como supervisor y anota a la gente del Turno {0} de {1}; después vuelve a tocar Empezar.": "Before starting, the supervisor or leader writes themselves as supervisor and writes the people of Shift {0} of {1}; then tap Start again.",
   "Anotar la asistencia": "Write the attendance",
+  "bolas crudas": "raw meatballs",
+  "Lo dice QA. Con 2.7 y 0.1: menos de 2.6 es bajo, más de 2.8 es sobre.": "QA says it. With 2.7 and 0.1: under 2.6 is low, over 2.8 is high.",
+  "Cada bola cruda (oz)": "Each raw meatball (oz)",
+  "Objetivo: {0} oz por bola cruda (± {1} oz).": "Target: {0} oz per raw meatball (± {1} oz).",
+  "Pesa las bolas crudas, una por una, y escribe el peso de cada una en onzas (oz).": "Weigh the raw meatballs, one by one, and write each one's weight in ounces (oz).",
+  "Pesa {0} bolas crudas, una por una, y escribe el peso de cada una en onzas (oz).": "Weigh {0} raw meatballs, one by one, and write each one's weight in ounces (oz).",
   "El supervisor o líder se anota como supervisor y anota a la gente del Turno {0} de {1}.": "The supervisor or leader writes themselves as supervisor and writes the people of Shift {0} of {1}.",
   "✍️ Anotar la asistencia": "✍️ Write the attendance",
   "Antes de empezar las líneas, el supervisor o líder se anota como supervisor y anota a la gente que vino.": "Before starting the lines, the supervisor or leader writes themselves as supervisor and writes the people who came.",

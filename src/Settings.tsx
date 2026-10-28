@@ -502,7 +502,7 @@ function ConsumeSettings({ s, viewOnly }: { s: State; viewOnly: boolean }) {
   )
 }
 function WeightSettings({ s, viewOnly }: { s: State; viewOnly: boolean }) {
-  const rooms: { dept: Dept; what: string }[] = [{ dept: 'Spiral', what: tr('bolas') }, { dept: 'RTE', what: tr('pouches') }]
+  const rooms: { dept: Dept; what: string }[] = [{ dept: 'Kitchen', what: tr('bolas crudas') }, { dept: 'Spiral', what: tr('bolas') }, { dept: 'RTE', what: tr('pouches') }]
   return (
     <div className="setcard">
       <div className="sethead"><h3>{tr('Pesos')}</h3></div>

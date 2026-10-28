@@ -24,7 +24,7 @@ import { Report, reportOpenAt, type ReportAt } from './ReportView'
 import { ProgramToday, programRooms } from './ProgramToday'
 import { LotesView } from './LotesView'
 import { KpiView } from './KpiView'
-import { WeightButton, WeightReminder } from './Weights'
+import { WeightButton, WeightReminder, weighsBalls } from './Weights'
 import { MeatButton } from './Meat'
 import { ConsumeButton, ConsumeEndDialog, ConsumeStartDialog } from './Consume'
 import { consumeAdd, consumeOn, consumesPending, openRun as openRunOn, store as theStore } from './store'
@@ -3001,7 +3001,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       {pallets
         ? <PalletPanel s={s} run={run} readOnly={quiet} saved={just ? savedText(line.dept, just.n - brought, rc) : ''} onDone={done} onLot={() => setPacking('lot')} onLotNow={() => setPacking('binlot')} onPart={(i) => setPacking(i)} onOrder={() => setPacking('po')} onReopen={() => setPacking('reopen')} canReopen={run.units.length > brought && !run.extra?.open?.parts.length} />
         : !quiet && <button type="button" className={'btn primary huge' + (just ? ' saved' : '')} disabled={!!just} onClick={() => done()}>✓ {just ? savedText(line.dept, just.n - brought, rc) : rc.done}</button>}
-      {!quiet && (line.dept === 'RTE' || line.dept === 'Spiral') && <WeightReminder s={s} run={run} now={now} />}
+      {!quiet && (line.dept === 'RTE' || weighsBalls(line.dept)) && <WeightReminder s={s} run={run} now={now} />}
       {!quiet && capFull && cap && <div className="capdone">{tr('✓ Programa completo: {0} de {1} {2} del {3}{4}. Si hay que hacer más, habla con la oficina.', fmtN(cap.done), fmtN(cap.planned), cap.unit, cap.code, cap.lot ? ' · ' + tr('lote {0}', cap.lot) : '')}</div>}
       {capAsk && cap && <div className="veil" onClick={() => setCapAsk(false)}><div className="dlg capdlg" onClick={(e) => e.stopPropagation()}>
         <h3>{tr('Ya se hicieron todas las {0} del programa', cap.unit)}</h3>
@@ -3026,8 +3026,8 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
             : <button type="button" className="btn stopbtn" onClick={() => setAsking(true)}>{tr('⏸ Parar')}</button>}
         {/* the set up is one tap away at any moment: from running, or from a stop that turns out to be a set up */}
         {!inSetup && (!stop || stop.lineId === line.id) && <button type="button" className="btn setupbtn" onClick={() => (stop ? switchToSetup(stop.id) : startStop(line.dept, line.id, SETUP, ''))}>{tr('⏱ Set up')}</button>}
-        {/* RTE weighs its pouches (2026-10-22): each weight typed, saved at once */}
-        {(line.dept === 'RTE' || line.dept === 'Spiral') && <WeightButton s={s} run={run} now={now} />}
+        {/* RTE weighs its pouches (2026-10-22), Spiral its cooked meatballs, Kitchen its raw ones (2026-10-28): each weight typed, saved at once */}
+        {(line.dept === 'RTE' || weighsBalls(line.dept)) && <WeightButton s={s} run={run} now={now} />}
         {/* Spiral's meat, apart from the mezclas (2026-10-23) */}
         {line.dept === 'Spiral' && <MeatButton s={s} run={run} />}
         {/* what the code consumes, where the room weighs it (2026-10-27) */}
