@@ -2143,3 +2143,4 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 .cartcols label{display:grid;gap:4px;font-weight:600}
 .cartcols input{font-size:20px;padding:10px 12px}
 .cartsum{font-size:18px;margin:4px 0;padding:10px 12px;border-radius:10px;background:var(--soft);color:var(--accent)}
+.hint.attgate{display:flex;flex-wrap:wrap;align-items:center;gap:8px}

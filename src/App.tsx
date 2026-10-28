@@ -2862,7 +2862,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
               </div>
             ))}
           <button className="btn primary" type="submit" disabled={!ok}>{tr('▶ Empezar')}</button>
-          {gated && <p className="hint red">{tr('👥 Falta la asistencia del Turno {0} (el supervisor se anota primero): se pide al tocar Empezar.', turn.shift)}</p>}
+          {gated && <p className="hint red attgate">{tr('👥 Falta la asistencia del Turno {0} (el supervisor se anota primero).', turn.shift)} <button type="button" className="btn sm primary" onClick={() => setAttAsk(true)}>{tr('Anotar la asistencia')}</button></p>}
         </form>}
         {!quiet && <div className="tools">
           {!idle ? <button type="button" className="btn sm setupbtn" onClick={() => (gated ? setAttAsk(true) : startSetup(line))}>{tr('⏱ Empezar Set up')}</button> : <span />}
