@@ -1,6 +1,6 @@
 import { Component, createContext, Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
-import { attGated, attOf, lineSlow, addLine, plantCut, roomMark, CUT_WINDOW, startSecondShift, addWaste, awayDay, batch, byPlanLot, planLot, cameFrom, carriedOver, dayAfter, dayBefore, orderUnitDefault, programOrderChoices, ordersOf, orderStatus, orderUnitWord, prevPending, workOrderOf, type WorkOrder, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, MFO_CHOICES, mfoChoiceOf, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, cartCratesOf, cartPouchesOf, cartSpecOf, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, noteOf, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderAddRuns, orderOfId, poMates, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, PLAN_LOT_MAX, productOf, productsCsv, purgeDay, reasonText, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay, orderFull, orderFullText, orderNoteOf, setOrderNote, setOrderUrgent, programCap, programCapOf, holdsOpen } from './store'
+import { PLAN_SPAN_MAX, attGated, attOf, lineSlow, addLine, plantCut, roomMark, CUT_WINDOW, startSecondShift, addWaste, awayDay, batch, byPlanLot, planLot, cameFrom, carriedOver, dayAfter, dayBefore, orderUnitDefault, programOrderChoices, ordersOf, orderStatus, orderUnitWord, prevPending, workOrderOf, type WorkOrder, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, MFO_CHOICES, mfoChoiceOf, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, cartCratesOf, cartPouchesOf, cartSpecOf, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, noteOf, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderAddRuns, orderOfId, poMates, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, PLAN_LOT_MAX, productOf, productsCsv, purgeDay, reasonText, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay, orderFull, orderFullText, orderNoteOf, setOrderNote, setOrderUrgent, programCap, programCapOf, holdsOpen } from './store'
 import { avanceLots, avanceRange, avanceRows, datesBetween, lotAcrossDays, lotRows, lotsKnown, mfoList, mfoText, mfoWord, n1, pending, type AvancePart, type AvanceRow, type MfoMade } from './avance'
 import { loadZip, type Cell } from './xlsx'
 
@@ -1807,7 +1807,7 @@ function PlanCard({ s, dept, date, mgr }: { s: State; dept: Dept; date: string; 
       {planned.length ? (
         <div className="twrap rp-cardlist wo-cards">
           <table className="pctable">
-            <thead><tr><th>{tr('Código')}</th><th>{tr('Lote')}</th><th className="pc-order">{tr('Pedido de producción')}</th><th>{tr('Desde')}</th><th className="num">{tr('Programado hoy')}</th><th className="num pc-turn">{tr('Turno 1')}</th><th className="num pc-turn">{tr('Turno 2')}</th><th className="num">{tr('Hecho hoy')}</th><th className="num">{tr('Pendiente hoy')}</th><th className="num">{tr('Disponible del pedido')}</th></tr></thead>
+            <thead><tr><th>{tr('Código')}</th><th>{tr('Lote')}</th><th className="pc-order">{tr('Pedido de producción')}</th><th>{tr('Desde')}</th><th className="num">{tr('Programado')}</th><th className="num pc-turn">{tr('Turno 1')}</th><th className="num pc-turn">{tr('Turno 2')}</th><th className="num">{tr('Hecho hoy')}</th><th className="num">{tr('Pendiente')}</th><th className="num">{tr('Disponible del pedido')}</th></tr></thead>
             <tbody>{planned.map((r) => {
               const pct = Math.max(0, Math.min(100, Math.floor((r.done / r.planned) * 100)))
               const o = r.orderId ? workOrderOf(s, r.orderId) : undefined, st = o && !o.deleted ? orderStatus(s, o, date) : null
@@ -1830,12 +1830,13 @@ function PlanCard({ s, dept, date, mgr }: { s: State; dept: Dept; date: string; 
                   {/* since when (Jose, 2026-10-19): the order's start day, "hoy", or the day with how long ago in amber */}
                   <td className={'pc-since' + (old ? ' old' : '') + (o && st ? '' : ' c-none')} data-label={tr('Desde')}>{o && st ? <>{startText(o, date)}{old > 0 && <small className="wo-age"> 🕒 {daysText(old)}</small>}</> : '—'}</td>
                   {/* in the word of its order when it has one (an MFO code's copas order before its first bin of copas read "platos") */}
-                  <td className="num" data-label={tr('Programado hoy')}>{woN(r.planned)}{byCode && <small className="punit"> {o && st ? orderUnitWord(o) : r.unit}</small>}</td>
+                  {/* a program of several days (2026-10-28): its total, with its days under it */}
+                  <td className="num" data-label={tr('Programado')}>{woN(r.planned)}{byCode && <small className="punit"> {o && st ? orderUnitWord(o) : r.unit}</small>}{r.to !== r.from && <small className="pc-span">📅 {tr('del {0} al {1}', shortDay(r.from), shortDay(r.to))}</small>}</td>
                   {/* each shift's part: for wider screens (a phone keeps the code, what was set, what is made and what is left, as before the orders) */}
                   <td className="num pc-turn" data-label={tr('Turno 1')}>{woN(r.byShift[0])}</td>
                   <td className="num pc-turn" data-label={tr('Turno 2')}>{woN(r.byShift[1])}</td>
-                  <td className="num" data-label={tr('Hecho hoy')}><b>{woN(r.done)}</b></td>
-                  <td className={'num pc-left ' + (r.left <= 0 ? 'ok' : 'left')} data-label={tr('Pendiente hoy')}>
+                  <td className="num" data-label={tr('Hecho hoy')}><b>{woN(r.today)}</b>{r.before > 0 && <small className="pc-span">{tr('antes: {0}', woN(r.before))}</small>}</td>
+                  <td className={'num pc-left ' + (r.left <= 0 ? 'ok' : 'left')} data-label={tr('Pendiente')}>
                     <span>{r.left > 0 ? woN(r.left) : tr('✓ completo') + (r.left < 0 ? ' (+' + woN(-r.left) + ')' : '')}</span>
                     <div className="pc-bar"><div className="bar"><i className={pct >= 100 ? 'ok' : 'pend'} style={{ width: pct + '%' }} /></div><small>{pct}%</small></div>
                   </td>
@@ -1849,7 +1850,7 @@ function PlanCard({ s, dept, date, mgr }: { s: State; dept: Dept; date: string; 
           </table>
         </div>
       ) : <p className="hint">{mgr ? trx('{0} no tiene programa para hoy. Pon aquí los códigos que le tocan y cuánto de cada uno: lo que registren se descuenta solo.', dept) : trx('{0} no tiene programa para hoy.', dept)}</p>}
-      {planned.length > 0 && <p className="hint">{tr('Cada vez que se registra uno de estos códigos, baja solo lo pendiente.')}{planned.some((r) => r.orderId) && ' ' + tr('Lo que el día no hace vuelve a su pedido: no pasa solo al día siguiente, se programa otra vez.')}{extra.length + offLots.length > 0 && ' ' + tr('Fuera del programa: {0}.', [...extra.map((r) => r.code + ' (' + fmtN(r.done) + ')'), ...offLots].join(', '))}</p>}
+      {planned.length > 0 && <p className="hint">{tr('Cada vez que se registra uno de estos códigos, baja solo lo pendiente.')}{planned.some((r) => r.to !== r.from) && ' ' + tr('Un programa de varios días se descuenta con lo hecho cada uno de esos días, hasta completarlo.')}{planned.some((r) => r.orderId) && ' ' + tr('Lo que el día no hace vuelve a su pedido: no pasa solo al día siguiente, se programa otra vez.')}{extra.length + offLots.length > 0 && ' ' + tr('Fuera del programa: {0}.', [...extra.map((r) => r.code + ' (' + fmtN(r.done) + ')'), ...offLots].join(', '))}</p>}
     </div>
     {editing && <PlanDialog s={s} dept={dept} today={date} unit={unit} onClose={() => setEditing(false)} />}
     {detail && <OrderDetail s={s} id={detail} today={date} edit={mgr} onClose={closeDetail} />}
@@ -1873,9 +1874,12 @@ function PlanCard({ s, dept, date, mgr }: { s: State; dept: Dept; date: string; 
  */
 function PlanDialog({ s, dept, today, unit, onClose }: { s: State; dept: Dept; today: string; unit: string; onClose: () => void }) {
   // order: undefined = not chosen (the oldest open order of the code, when there is one); null = none; an id = that order
-  type Line = { code: string; qty: string; unit: SpiralUnit; lot: string; order?: string | null }
-  const blank = (d: string): Line => ({ code: '', qty: '', unit: 'mezclas', lot: lotFor(d) })
-  const draftOf = (date: string): Line[] => [...planOf(s, date, dept).sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }) || byPlanLot(a, b)).map((p) => ({ code: productOf(s, p.code)?.code ?? p.code, qty: String(p.qty), unit: productOf(s, p.code)?.spiralUnit ?? 'mezclas', lot: p.lot, order: p.orderId ?? null })), blank(date)]
+  // from = the day the row's program started when it is not the day being programmed (a program of several days seen
+  // from one of its later days: it is changed where it started); to = its last day ('' = that day only)
+  type Line = { code: string; qty: string; unit: SpiralUnit; lot: string; order?: string | null; from?: string; to: string }
+  const blank = (d: string): Line => ({ code: '', qty: '', unit: 'mezclas', lot: lotFor(d), to: '' })
+  const draftOf = (date: string): Line[] => [...planOf(s, date, dept).sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }) || byPlanLot(a, b)).map((p) => ({ code: productOf(s, p.code)?.code ?? p.code, qty: String(p.qty), unit: productOf(s, p.code)?.spiralUnit ?? 'mezclas', lot: p.lot, order: p.orderId ?? null, ...(p.date !== date ? { from: p.date } : {}), to: p.endDate ?? '' })), blank(date)]
+  const lastDay = (from: string) => { const x = new Date(from + 'T12:00:00'); x.setDate(x.getDate() + PLAN_SPAN_MAX); return dayOf(x.getTime()) }
   const [date, setDate] = useState(today)
   const [lines, setLines] = useState<Line[]>(() => draftOf(today))
   const [creating, setCreating] = useState<number | null>(null) // the row whose "+ Crear pedido" is open
@@ -1914,8 +1918,8 @@ function PlanDialog({ s, dept, today, unit, onClose }: { s: State; dept: Dept; t
     // a row (a code and its lot) that was on the program and is not typed any more is taken off: so is the old one of a
     // row whose lot was changed. The rest are set to what was typed, each with its order (or none). Saved and shown once
     batch(() => {
-      for (const p of planOf(s, date, dept)) if (!typed.has(normCode(p.code) + '|' + planLot(p.lot))) setPlan(date, dept, p.code, 0, p.lot)
-      for (const l of typed.values()) { setPlan(date, dept, l.code, numOf(l.qty), l.lot, orderOf(l)); if (dept === 'Spiral') setSpiralUnit(l.code, l.unit) }
+      for (const p of planOf(s, date, dept)) if (!typed.has(normCode(p.code) + '|' + planLot(p.lot))) setPlan(p.date, dept, p.code, 0, p.lot)
+      for (const l of typed.values()) { setPlan(l.from ?? date, dept, l.code, numOf(l.qty), l.lot, orderOf(l), l.to || ''); if (dept === 'Spiral') setSpiralUnit(l.code, l.unit) }
     })
     onClose()
   }
@@ -1926,11 +1930,11 @@ function PlanDialog({ s, dept, today, unit, onClose }: { s: State; dept: Dept; t
     <div className="veil" onClick={onClose}>
       <div className="dlg plandlg" onClick={(e) => e.stopPropagation()}>
         <h3>{trx('Programa de {0}', dept)}</h3>
-        <p>{trx('Los códigos que {0} tiene que hacer ese día y cuánto de cada uno, en {1}. Lo ven todas sus tablets, y cada vez que registran uno de esos códigos se descuenta solo. Para quitar un código, deja su cantidad en blanco.', dept, unit)} {tr('El lote es opcional: sale el del día y se puede cambiar o dejar en blanco. Con lote, "Flujo de datos" compara lo programado con lo hecho de ese lote.')} {tr('Un código puede ir en varios renglones, uno por lote: cada lote se descuenta aparte.')} {tr('Si el código tiene un pedido de producción abierto, el programa del día es una parte de él: sale el más viejo y se puede cambiar.')}</p>
+        <p>{trx('Los códigos que {0} tiene que hacer ese día y cuánto de cada uno, en {1}. Lo ven todas sus tablets, y cada vez que registran uno de esos códigos se descuenta solo. Para quitar un código, deja su cantidad en blanco.', dept, unit)} {tr('El lote es opcional: sale el del día y se puede cambiar o dejar en blanco. Con lote, "Flujo de datos" compara lo programado con lo hecho de ese lote.')} {tr('Un código puede ir en varios renglones, uno por lote: cada lote se descuenta aparte.')} {tr('Si el código tiene un pedido de producción abierto, el programa del día es una parte de él: sale el más viejo y se puede cambiar.')} {tr('Con "Hasta" el programa es de varios días (hasta 14): una sola cantidad para todos, y lo hecho cada día se va descontando del mismo programa hasta completarlo.')}</p>
         <form className="qform" onSubmit={(e) => { e.preventDefault(); if (!twice && !noQty) save() }}>
           <label>{tr('Día')}{' '}<input type="date" value={date} onChange={(e) => pickDate(e.target.value)} /></label>
           <div className="planrows">
-            <div className={'planrow head' + (dept === 'Spiral' ? ' spiral' : '')}><span>{tr('Código')}</span><span>{dept === 'Spiral' || dept === 'MFO' ? tr('Cantidad') : trx('Cantidad ({0})', unit)}</span>{dept === 'Spiral' && <span>{tr('Unidad')}</span>}<span>{tr('Lote')}</span></div>
+            <div className={'planrow head' + (dept === 'Spiral' ? ' spiral' : '')}><span>{tr('Código')}</span><span>{dept === 'Spiral' || dept === 'MFO' ? tr('Cantidad') : trx('Cantidad ({0})', unit)}</span>{dept === 'Spiral' && <span>{tr('Unidad')}</span>}<span>{tr('Lote')}</span><span>{tr('Hasta')}</span></div>
             {lines.map((l, i) => {
               // the production order of the row (2026-10-19): the open ones of its code, the oldest first and chosen by
               // default; the one the program already names stays in the list even when it is no longer open
@@ -1947,7 +1951,10 @@ function PlanDialog({ s, dept, today, unit, onClose }: { s: State; dept: Dept; t
                     {dept === 'Spiral' && <select value={l.unit} aria-label={tr('Unidad')} onChange={(e) => change(i, { unit: e.target.value as SpiralUnit })}>{SPIRAL_UNITS.map((u) => <option key={u} value={u}>{measureUnit(u)}</option>)}</select>}
                     {/* the lot, offered as the day's (lotFor) and free to change or clear: the only box the app fills in for the person (Jose, 2026-10-19) */}
                     <input value={l.lot} inputMode="numeric" maxLength={PLAN_LOT_MAX} placeholder={tr('sin lote')} autoComplete="off" aria-label={tr('Lote')} onChange={(e) => change(i, { lot: e.target.value })} />
+                    {/* the program's last day (2026-10-28): blank = that day only; never before its first day, at most 14 days on */}
+                    <input type="date" value={l.to} min={dayAfter(l.from ?? date)} max={lastDay(l.from ?? date)} aria-label={tr('Hasta')} onChange={(e) => change(i, { to: e.target.value && e.target.value > (l.from ?? date) ? e.target.value : '' })} />
                   </div>
+                  {l.from && <p className="hint planfrom">📅 {trx('Programa de varios días: empezó el {0}{1}. Lo que se cambie aquí cambia todo el programa.', shortDay(l.from), l.to ? ' ' + tr('y va hasta el {0}', shortDay(l.to)) : '')}</p>}
                   {normCode(l.code) && (
                     <div className="planorder">
                       {list.length > 0 ? (

@@ -5307,6 +5307,35 @@ section('El carro de RTE se cuenta por guacales (Jose, 2026-10-28: dos columnas 
       m.setSlowRule('Kitchen', 0)
       clock = T0
     }
+    // a program of several days (the office, 2026-10-28): one total, taken off by every day's units, pending once it ends
+    {
+      const D1 = '2026-10-24', D2 = '2026-10-25', D3 = '2026-10-26', D4 = '2026-10-27'
+      const rte = st().lines.find((l) => l.dept === 'RTE' && l.name === 'Línea S')
+      m.setPlan(D1, 'RTE', 'ZZ9', 1000, '7001', null, D3)
+      const row = (d) => m.planRows(st(), d, 'RTE').filter((x) => x.code === 'ZZ9').map((x) => [x.planned, x.before, x.today, x.done, x.left, x.from, x.to])
+      eq('un programa del 24 al 26 corre los tres días, y sube con su último día', [m.planOf(st(), D1, 'RTE').length, m.planOf(st(), D2, 'RTE').length, m.planOf(st(), D3, 'RTE').length, m.planOf(st(), D4, 'RTE').length, m.outbox.items().find((i) => i.key === D1 + '|RTE|ZZ9|7001').row.end_date, st().changes.find((c) => c.what.startsWith('Programa 2026-10-24 al 2026-10-26 · RTE · ZZ9'))?.after], [1, 1, 1, 0, D3, '1000'])
+      eq('los tres días en orden', m.planDays(st().plans.find((p) => p.code === 'ZZ9')), [D1, D2, D3])
+      clock = new Date(2026, 9, 24, 9, 0).getTime(); m.startRun(rte, 'ZZ9', '7001', D1, 240)
+      const run = () => st().runs.find((r) => r.lineId === rte.id && !r.endedAt)
+      clock += 30 * M; m.unitDone(run().id, null); clock += 30 * M; m.unitDone(run().id, null)
+      eq('el día 24 con dos carros: 480 hechos, 520 pendientes', row(D1), [[1000, 0, 480, 480, 520, D1, D3]])
+      m.endRun(run().id)
+      clock = new Date(2026, 9, 25, 9, 0).getTime(); m.startRun(rte, 'ZZ9', '7001', D2, 240)
+      clock += 30 * M; m.unitDone(run().id, null)
+      eq('el día 25 con un carro más: lo del 24 cuenta (antes 480), hoy 240, pendientes 280', row(D2), [[1000, 480, 240, 720, 280, D1, D3]])
+      eq('el 26 sin carros todavía: antes 720, pendientes 280', row(D3), [[1000, 720, 0, 720, 280, D1, D3]])
+      m.endRun(run().id)
+      eq('mientras corre no es "pendiente de días anteriores"; al día siguiente de su último día sí, una vez', [m.prevPending(st(), 'RTE', D2).filter((x) => x.code === 'ZZ9'), m.prevPending(st(), 'RTE', D3).filter((x) => x.code === 'ZZ9'), m.prevPending(st(), 'RTE', D4).filter((x) => x.code === 'ZZ9')], [[], [], [{ code: 'ZZ9', lot: '7001', n: 280, unit: 'pouches', date: D3, orderId: '', was: '' }]])
+      eq('RTE no tiene tope de programa (solo Kitchen y Spiral)', m.programCapOf(st(), D2, 'RTE', 'ZZ9', '7001'), null)
+      m.setPlan(D1, 'RTE', 'ZZ9', 1000, '7001', undefined, '')
+      eq('quitado el "hasta": vuelve a ser el programa de un día, y sube end_date en blanco', [m.planOf(st(), D2, 'RTE').length, m.outbox.items().find((i) => i.key === D1 + '|RTE|ZZ9|7001').row.end_date, st().changes.find((c) => c.what === 'Programa 2026-10-24 · RTE · ZZ9 · lote 7001')?.before], [0, null, '1000 · del 2026-10-24 al 2026-10-26'])
+      m.setPlan(D1, 'RTE', 'ZZ9', 1000, '7001', undefined, D1); m.setPlan(D1, 'RTE', 'ZZ9', 1000, '7001', undefined, '2026-11-20')
+      eq('un "hasta" que no es después del primer día, o a más de 14 días, no entra', st().plans.find((p) => p.code === 'ZZ9').endDate, undefined)
+      m.applyRemote('act_plan', { date: D1, dept: 'RTE', code: 'ZZ9', lot: '7001', qty: 900, order_id: null, end_date: D2, updated_at: new Date(clock + M).toISOString(), updated_by: 'Oficina' })
+      eq('desde otra computadora llega con sus días', [st().plans.find((p) => p.code === 'ZZ9').endDate, st().plans.find((p) => p.code === 'ZZ9').qty], [D2, 900])
+      m.setPlan(D1, 'RTE', 'ZZ9', 0, '7001')
+      clock = T0
+    }
     eq('los guacales por carro de la planta: 26 mientras nadie diga otra cosa', m.cartCratesOf(st()), 26)
     m.setCartCrates(24)
     eq('un manager pone 24: sube como ajuste de la planta y es lo que usa un código sin su propia cifra', [m.cartCratesOf(st()), m.outbox.items().find((i) => i.key === 'opt:crates').row.per_hour, st().changes.some((c) => c.what === 'Guacales por carro' && c.before === '26' && c.after === '24')], [24, 24, true])

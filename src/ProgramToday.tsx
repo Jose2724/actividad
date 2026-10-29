@@ -1,5 +1,6 @@
-import { useMemo } from 'react'
-import { CFG, DEPTS, fmtDur, lineNameOf, normCode, orderStatus, orderUnitWord, planRows, prevPending, reasonText, SETUP, shiftAt, shiftsOf, workOrderOf, type Dept, type PlanRow, type State } from './store'
+import { useMemo, useState } from 'react'
+import { CFG, dayAfter, dayBefore, DEPTS, fmtDur, lineNameOf, normCode, orderStatus, orderUnitWord, planRows, prevPending, reasonText, SETUP, shiftAt, shiftsOf, workOrderOf, type Dept, type PlanRow, type State } from './store'
+import { shortDay } from './App'
 import { woName } from './WorkOrders'
 import { woN } from './woSum'
 import { DeptBadge, type ReportAt } from './ReportView'
@@ -19,10 +20,13 @@ import { tr } from './i18n'
 type Look = { kind: 'stop' | 'setup' | 'run' | 'done' | 'started' | 'wait'; text: string; at?: ReportAt }
 type Row = PlanRow & { look: Look; carry: number; order: string }
 
-export function ProgramToday({ s, date, now, rooms, onReport }: { s: State; date: string; now: number; rooms: Dept[]; onReport: (x: ReportAt) => void }) {
+export function ProgramToday({ s, date: today, now, rooms, onReport }: { s: State; date: string; now: number; rooms: Dept[]; onReport: (x: ReportAt) => void }) {
+  // the day shown (2026-10-28, the office: "programar también para días más adelante"): today, or any other day
+  const [picked, setPicked] = useState('')
+  const date = picked || today, isToday = date === today
   // the rows change with the store; what each line is doing now is looked at every second (its stop's minutes)
   const base = useMemo(() => rooms.map((d) => ({ dept: d, rows: planRows(s, date, d), carried: prevPending(s, d, date) })), [s, date, rooms.join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
-  const shiftNow = shiftAt(shiftsOf(s, date), now)
+  const shiftNow = isToday ? shiftAt(shiftsOf(s, date), now) : 0
   const cards = base.map(({ dept, rows, carried }) => {
     const planned = rows.filter((r) => r.planned > 0)
     const also = rows.filter((r) => r.planned <= 0 && r.done > 0)
@@ -44,10 +48,16 @@ export function ProgramToday({ s, date, now, rooms, onReport }: { s: State; date
   return (
     <div className="pt">
       <div className="pt-head">
-        <div><h2>{tr('📋 Programa del día')}</h2><small>{tr('lo que programó la oficina, lo que hizo cada turno y lo que falta')}</small></div>
+        <div><h2>{isToday ? tr('📋 Programa del día') : tr('📋 Programa del {0}', shortDay(date))}</h2><small>{tr('lo que programó la oficina, lo que hizo cada turno y lo que falta')}</small></div>
         {shiftNow > 0 && <span className="pt-live"><i />{tr('Turno {0} en curso · al momento', shiftNow)}</span>}
+        <div className="pt-days">
+          <button type="button" className="btn sm" onClick={() => setPicked(dayBefore(date))}>{tr('‹ Día anterior')}</button>
+          <input type="date" value={date} aria-label={tr('Día')} onChange={(e) => setPicked(e.target.value === today ? '' : e.target.value)} />
+          <button type="button" className="btn sm" onClick={() => setPicked(dayAfter(date))}>{tr('Día siguiente ›')}</button>
+          {!isToday && <button type="button" className="btn sm soft" onClick={() => setPicked('')}>{tr('Hoy')}</button>}
+        </div>
       </div>
-      {!shown.length ? <p className="hint">{tr('Todavía no hay programa para hoy.')}</p> : (
+      {!shown.length ? <p className="hint">{isToday ? tr('Todavía no hay programa para hoy.') : tr('No hay programa para el {0}. Se pone desde la tarjeta del cuarto, en "Cambiar programa", eligiendo ese día.', shortDay(date))}</p> : (
         <>
           <div className="pt-strip">
             {shown.map((c) => (
@@ -118,8 +128,9 @@ function Card({ dept, list, also, share, complete, date, shiftNow, onReport }: {
               <button type="button" className={'pt-n ' + (left > 0 ? 'left' : 'ok')} onClick={() => go(r)}><label>{tr('Falta')}</label><b>{woN(left)}</b> <small>{left > 0 ? unitOf(r) : '✓'}</small></button>
             </div>
             <div className="pt-bar"><i className="t1" style={{ width: w(one) }} /><i className="t2" style={{ width: w(Math.min(two, Math.max(0, r.planned - one))) }} /></div>
-            {(r.carry > 0 || r.order || r.done > r.planned || r.also.length > 0) && (
+            {(r.carry > 0 || r.order || r.done > r.planned || r.also.length > 0 || r.to !== r.from) && (
               <div className="pt-tags">
+                {r.to !== r.from && <span className="pt-tag span">📅 {tr('del {0} al {1}', shortDay(r.from), shortDay(r.to))}{r.before > 0 && ' · ' + tr('antes: {0}', woN(r.before))}</span>}
                 {r.carry > 0 && <span className="pt-tag carry">{tr('↩ ayer quedaron {0} {1}', woN(r.carry), unitOf(r))}</span>}
                 {r.order && <span className="pt-tag order">{r.order}</span>}
                 {r.done > r.planned && <span className="pt-tag">{tr('+{0} de más', woN(Math.round((r.done - r.planned) * 100) / 100))}</span>}

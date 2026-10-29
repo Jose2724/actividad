@@ -555,7 +555,7 @@ table.shiftgrid tr.sep td{background:var(--bg);color:var(--muted);font-size:11px
 .plan .pill{margin-left:8px}
 .planrows{display:grid;gap:6px}
 /* code, quantity, and the lot (2026-10-19: offered as the day's, free to change or clear) */
-.planrow{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) minmax(0,.9fr);gap:8px}
+.planrow{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) minmax(0,.9fr) minmax(0,1.1fr);gap:8px}.planrow input[type=date]{min-width:0;padding:0 6px}.planfrom{margin:0 0 2px;font-size:13px}
 .planrow.head{font-size:12px;color:var(--muted);font-weight:700}
 .hint.red{color:var(--warn)}
 /* on a free line: the pending codes of the program, to start one with a tap */
@@ -679,7 +679,7 @@ table.pallets th.num,table.pallets td.num{text-align:right;font-variant-numeric:
   .emp > .btn,.emp > .nobtn{grid-area:btn}
 }
 /* Spiral: each code of its program in its own unit (mezclas, lb, cajas), typed with it */
-.planrow.spiral{grid-template-columns:minmax(0,1.1fr) minmax(0,.8fr) minmax(0,.9fr) minmax(0,.8fr)}
+.planrow.spiral{grid-template-columns:minmax(0,1.1fr) minmax(0,.8fr) minmax(0,.9fr) minmax(0,.8fr) minmax(0,1.1fr)}
 .planrow.spiral select{min-height:46px;padding:0 8px;border-radius:12px;border:1.5px solid var(--btn-line);background:var(--surface);font-size:15px;font-weight:600}
 /* on a phone Spiral's four boxes do not fit in one line (the Unidad select was 75 px wide and "mezclas" read "mezcl",
    review of 2026-10-19): each row wraps, code and quantity above, unit and lot under them, the labels the same way */
@@ -2067,6 +2067,7 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 .line.slow{animation:slowblink 1.4s ease-in-out infinite;border-color:#dc2626;border-left-color:#dc2626}
 .line .slowbar{background:#b91c1c;color:#fff;border-radius:10px;padding:8px 12px;font-weight:700;font-size:15px}
 .line .slowbar b{font-size:17px}
+.pc-span{display:block;font-size:11.5px;color:var(--muted);font-weight:500;white-space:nowrap}.pt-days{display:flex;flex-wrap:wrap;gap:6px;align-items:center;width:100%}.pt-days input{min-height:36px;width:auto;flex:0 0 auto}.pt-tag.span{background:#ede9fe;color:#4c1d95}
 .slowroom{border-top:2px solid var(--line);padding-top:8px;margin-top:8px}.slowroom .sethead h4{margin:0;font-size:17px}.slowroom .wt-rule,.slowroom .slowlines{border-top:0;padding-top:4px}
 .slowlines{display:flex;flex-wrap:wrap;gap:8px;align-items:center;border-top:1px solid var(--line);padding:10px 0}.slowlines b{width:100%}.slowlines label.chip{display:inline-flex;align-items:center;gap:6px;cursor:pointer}.slowlines label.chip input{width:20px;height:20px;margin:0}
 .btn.wt-due{border-color:#eab308;background:#fef9c3;color:#854d0e}
