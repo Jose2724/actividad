@@ -129,6 +129,19 @@ await m.pullAll()
 const local = st().stops.find((x) => x.id === setupId)
 eq('y la tablet lo ve así', [!!local?.endedAt, local?.endedAt === Date.parse(runRow.started_at.toISOString())], [true, true])
 
+section('Antes de empezar un código, la tablet le pregunta al servidor si la línea tiene uno abierto (Jose, 2026-10-29: 2286 y 0889 abiertos a la vez en RTE Línea 1)')
+{
+  const line2 = st().lines.find((l) => l.dept === 'Packing' && l.name === 'Línea 2'), otherRun = uuid()
+  eq('una línea libre: se puede empezar', await m.checkLineOpen(line2.id), null)
+  // another tablet started a code on Línea 2 a moment ago, and this one has not heard of it
+  await openRunSql(ana, otherRun, 'Packing', line2.id, 'Línea 2')
+  const found = await m.checkLineOpen(line2.id)
+  eq('con un código abierto en el servidor: se dice cuál, y ya queda en la tablet', [found?.id, found?.code, m.openRun(st(), line2.id)?.id], [otherRun, '0100', otherRun])
+  m.endRun(otherRun)
+  eq('terminado en esta tablet (aunque todavía no haya subido): la línea está libre', await m.checkLineOpen(line2.id), null)
+  await drain()
+}
+
 section('Lo que el manager fija llega a la tablet (reglas de líneas)')
 await sql(jose, "insert into public.act_targets (dept, per_hour, per_shift, updated_at, updated_by) values ('opt:oplines', 0, 1, now(), 'Jose') on conflict (dept) do update set per_hour = excluded.per_hour, per_shift = excluded.per_shift, updated_at = excluded.updated_at")
 await m.pullAll()

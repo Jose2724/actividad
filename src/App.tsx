@@ -12,7 +12,7 @@ import { canDo, canShift, keepsPin, writesIn, type Power, type Who } from './pow
 import { AddRunDialog, AddUnitDialog, NoteBox, RunEditor, StopEditor } from './editors'
 import { CodePicker, codeReady, DetailNeeded, detailHint } from './CodePicker'
 import { fetchMe, finishSignOut, loginEmail, rememberedMe, rememberedUser, rememberMe, rememberUser, signedOut, signOutHere, supabase, type Me } from './supabase'
-import { checkLineName, leaveAsk, loadDay, STALE_MS, startSync, syncStore, syncNow, unreachable } from './sync'
+import { checkLineName, checkLineOpen, leaveAsk, loadDay, STALE_MS, startSync, syncStore, syncNow, unreachable } from './sync'
 import { storageFull } from './storage'
 import { clockNow, clockOffText, clockState, otherZone, startClock, syncClock } from './clock'
 import { BUILD, keepView, reloadHeld, reloadNow, updateStore, updateText, viewKept } from './update'
@@ -2653,6 +2653,9 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   const [capAsk, setCapAsk] = useState(false)
   // what the line is going to consume, weighed before the code starts (2026-10-27): the start waits in here
   const [consumeAsk, setConsumeAsk] = useState<null | (() => void)>(null)
+  // the code the server says is still open on this line, found when Empezar was tapped (2026-10-29): nothing starts
+  const [openFound, setOpenFound] = useState<Run | null>(null)
+  const [checkingOpen, setCheckingOpen] = useState(false)
   // the attendance of the shift is written before a code or a Set up starts (Jose, 2026-10-27: the supervisors; not the
   // managers, the office nor "Solo ver"): Empezar opens the room's attendance window instead, and is tapped again after.
   // The room asks for it when it is opened (its pop-up, 2026-10-28); here nothing says so until Empezar is tapped
@@ -2814,6 +2817,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
           text={tr('Se marcó terminado a las {0}. Vuelve a correr como si no se hubiera terminado: el tiempo desde entonces cuenta como trabajando y el Set up que empezó se quita. Si la línea estuvo parada y el código vuelve ahora, es mejor empezarlo de nuevo abajo.', fmtTime(prev.endedAt ?? 0))}
           yes={tr('Seguir con {0}', prev.code)} onYes={() => { reopenRun(prev.id); setReopening(null) }} onNo={() => setReopening(null)} />}
         {fillUi}
+        {openFound && <NoticeDialog title={tr('{0} todavía tiene un código abierto', lineLabel(line.name))} text={tr('{0} · lote {1} sigue abierto desde las {2} (lo empezó {3} en otra tablet). Ya sale en esta pantalla: termínalo o sigue con él antes de empezar otro código.', openFound.code, openFound.lot, fmtTime(openFound.startedAt), openFound.by || '—')} onClose={() => setOpenFound(null)} />}
         {fixingStop && idle && <StopEditor stop={idle} mgr={mgr} onClose={() => setFixingStop(false)} />}
         {naming}
         {removing && <ConfirmDialog title={tr('¿Quitar {0} de {1}', lineLabel(line.name), line.dept) + '?'} text={tr('Se puede volver a agregar cuando haga falta.')} yes={tr('Quitar')} danger onYes={() => removeLine(line.id)} onNo={() => setRemoving(false)} />}
@@ -2829,7 +2833,13 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
           const typedPer = needPer && perUnit != null && (!!per.trim() || (isCart && !!crates.trim()))
           sure.check(typedPer ? [{ key: 'per', n: perUnit, usual: usualFor(s, line.dept, code, ''), unit: cfg.qtyUnit, per: cfg.unit.toLowerCase(), total: isCart }] : [], () => {
             const go = () => { startRun(line, code.trim().toUpperCase(), lot.trim(), date, needPer ? perUnit : null, isPack && makes === 'bin' ? word : mfoWord === 'bags' ? 'lb' : mfoWord, isSpiral && spiralNow !== 'mezclas' ? spiralNow : '', mfoWord === 'bags' ? 'bag' : ''); setDateText(null); setLotText(null); setEditDate(false); setMaking(null); setBinText(''); setMeasure(null) }
-            if (consumeOn(s, line.dept)) setConsumeAsk(() => go); else go()
+            void (async () => {
+              setCheckingOpen(true)
+              const open = await checkLineOpen(line.id)
+              setCheckingOpen(false)
+              if (open) { setOpenFound(open); return }
+              if (consumeOn(s, line.dept)) setConsumeAsk(() => go); else go()
+            })()
           })
         }}>
           {(() => { const c = programCapOf(s, day.date, line.dept, code, lot); return c && c.done >= c.planned - 1e-9 ? <p className="hint red capwarn">{tr('⚠ El programa de hoy del {0}{1} ya está completo: {2} de {3} {4}. Si es otro código, revísalo; si hay que hacer más, habla con la oficina.', c.code, c.lot ? ' · ' + tr('lote {0}', c.lot) : '', fmtN(c.done), fmtN(c.planned), c.unit)}</p> : null })()}
@@ -2893,7 +2903,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
                 <span className="eq">{trx('= {0} pouches por carro {1}', <b>{perUnit ?? '—'}</b>, <small>{tr('({0} guacales por columna)', Math.ceil(cratesN / 2))}</small>)}</span>
               </div>
             ))}
-          <button className="btn primary" type="submit" disabled={!ok}>{tr('▶ Empezar')}</button>
+          <button className="btn primary" type="submit" disabled={!ok || checkingOpen}>{checkingOpen ? tr('Revisando la línea…') : tr('▶ Empezar')}</button>
         </form>}
         {!quiet && <div className="tools">
           {!idle ? <button type="button" className="btn sm setupbtn" onClick={() => (gated ? setAttAsk(true) : startSetup(line))}>{tr('⏱ Empezar Set up')}</button> : <span />}

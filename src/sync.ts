@@ -1,7 +1,7 @@
 import { noSignal, passExpired, rememberedMe, renewSession, supabase } from './supabase'
 import { clockNow, startClock } from './clock'
 import { afterFlush, beforeFlush, flush, outbox, setMayGo, setOwnRow, type Item, type Row, type Table } from './outbox'
-import { KPI_REF, ONOTE_REF, RMSG_REF, HOLD_REF, CONS_REF, applyRemote, awayDay, batch, closeDay, codeVariants, DEPTS, firstKeptDay, keepServerPlans, markFetched, markPulled, myDept, onlyTakesOff, openDay, orderGroup, planHeardMark, planKeyOfRow, planRefKeys, prune, queueHeld, role, sameName, shareLocalLines, store, viewOnly, WO_DONE_REF, workNeeds, type Dept, type WorkOrder } from './store'
+import { KPI_REF, ONOTE_REF, RMSG_REF, HOLD_REF, CONS_REF, applyRemote, openRun, type Run, awayDay, batch, closeDay, codeVariants, DEPTS, firstKeptDay, keepServerPlans, markFetched, markPulled, myDept, onlyTakesOff, openDay, orderGroup, planHeardMark, planKeyOfRow, planRefKeys, prune, queueHeld, role, sameName, shareLocalLines, store, viewOnly, WO_DONE_REF, workNeeds, type Dept, type WorkOrder } from './store'
 import { canDo } from './powers'
 import { tr } from './i18n'
 import { BUILD } from './update'
@@ -388,6 +388,22 @@ export async function checkLineName(dept: Dept, name: string, selfId?: string): 
     batch(() => { for (const row of data as Row[]) applyRemote('act_lines', row) })
     return (data as Row[]).some((r) => String(r.id) !== selfId && sameName(String(r.name ?? ''), name)) ? 'taken' : ''
   } catch { return 'offline' }
+}
+/**
+ * Before a code starts on a line, the server is asked whether the line still has a code open (Jose, 2026-10-29: RTE
+ * Línea 1 had 2286 open since 9:20 AM when 0889 was started at 11:04 on a tablet that did not have it). What the
+ * server says is kept on the device at once, so the open code shows on the card; a code this device ended and has
+ * not sent yet stays ended. Without the server (or after 5 seconds) the start goes on as always: the floor never waits
+ * on the signal. null = the line is free (or the server could not be asked); otherwise the code open on it
+ */
+export async function checkLineOpen(lineId: string): Promise<Run | null> {
+  if (!supabase) return null
+  try {
+    const { data, error } = await supabase.from('act_runs').select('*').eq('line_id', lineId).is('ended_at', null).eq('deleted', false).abortSignal(AbortSignal.timeout(5000))
+    if (error || !Array.isArray(data)) return null
+    batch(() => { for (const row of data as Row[]) applyRemote('act_runs', row) })
+  } catch { return null }
+  return openRun(store.get(), lineId) ?? null
 }
 /**
  * an older day, brought from the server because someone opened it in Reporte or Avance. It stays on the device while
