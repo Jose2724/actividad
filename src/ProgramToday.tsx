@@ -130,7 +130,7 @@ function Card({ dept, list, also, share, complete, date, shiftNow, onReport }: {
             <div className="pt-bar"><i className="t1" style={{ width: w(one) }} /><i className="t2" style={{ width: w(Math.min(two, Math.max(0, r.planned - one))) }} /></div>
             {(r.carry > 0 || r.order || r.done > r.planned || r.also.length > 0 || r.to !== r.from) && (
               <div className="pt-tags">
-                {r.to !== r.from && <span className="pt-tag span">📅 {tr('del {0} al {1}', shortDay(r.from), shortDay(r.to))}{r.before > 0 && ' · ' + tr('antes: {0}', woN(r.before))}</span>}
+                {r.to !== r.from && <span className="pt-tag span">📅 {tr('hasta el {0}', shortDay(r.to))}{r.before > 0 && ' · ' + tr('antes: {0}', woN(r.before))}</span>}
                 {r.carry > 0 && <span className="pt-tag carry">{tr('↩ ayer quedaron {0} {1}', woN(r.carry), unitOf(r))}</span>}
                 {r.order && <span className="pt-tag order">{r.order}</span>}
                 {r.done > r.planned && <span className="pt-tag">{tr('+{0} de más', woN(Math.round((r.done - r.planned) * 100) / 100))}</span>}

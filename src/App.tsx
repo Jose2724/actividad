@@ -1831,7 +1831,7 @@ function PlanCard({ s, dept, date, mgr }: { s: State; dept: Dept; date: string; 
                   <td className={'pc-since' + (old ? ' old' : '') + (o && st ? '' : ' c-none')} data-label={tr('Desde')}>{o && st ? <>{startText(o, date)}{old > 0 && <small className="wo-age"> 🕒 {daysText(old)}</small>}</> : '—'}</td>
                   {/* in the word of its order when it has one (an MFO code's copas order before its first bin of copas read "platos") */}
                   {/* a program of several days (2026-10-28): its total, with its days under it */}
-                  <td className="num" data-label={tr('Programado')}>{woN(r.planned)}{byCode && <small className="punit"> {o && st ? orderUnitWord(o) : r.unit}</small>}{r.to !== r.from && <small className="pc-span">📅 {tr('del {0} al {1}', shortDay(r.from), shortDay(r.to))}</small>}</td>
+                  <td className="num" data-label={tr('Programado')}>{woN(r.planned)}{byCode && <small className="punit"> {o && st ? orderUnitWord(o) : r.unit}</small>}{r.to !== r.from && <small className="pc-span">📅 {tr('hasta el {0}', shortDay(r.to))}</small>}</td>
                   {/* each shift's part: for wider screens (a phone keeps the code, what was set, what is made and what is left, as before the orders) */}
                   <td className="num pc-turn" data-label={tr('Turno 1')}>{woN(r.byShift[0])}</td>
                   <td className="num pc-turn" data-label={tr('Turno 2')}>{woN(r.byShift[1])}</td>
