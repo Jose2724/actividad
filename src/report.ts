@@ -1,4 +1,4 @@
-import { apartOf, binOf, binWord, CFG, cfgOf, DEPTS, fmtDur, fmtTime, kindOf, lineLabel, lineNameOf, normCode, noteLabel, noteOf, orderLabel, orderOfId, orderPallets, palletPo, plainDay, plainText, runInShift, runStats, SETUP, shiftAt, shiftPieces, shiftsOf, stopSpans, unitQty, waitsForCode, whoText, type Change, type Dept, type Run, type ShiftHours, type State, type Unit, meatsOf} from './store'
+import { apartOf, binOf, binWord, CFG, cfgOf, DEPTS, expiryOf, fmtDur, fmtTime, kindOf, lineLabel, lineNameOf, normCode, noteLabel, noteOf, orderLabel, orderOfId, orderPallets, palletPo, plainDay, plainText, runInShift, runStats, SETUP, shiftAt, shiftPieces, shiftsOf, stopSpans, unitQty, waitsForCode, whoText, type Change, type Dept, type Run, type ShiftHours, type State, type Unit, meatsOf} from './store'
 import { clockNow } from './clock'
 import { xDay, xDur, xTime, type Cell } from './xlsx'
 import { phrase, tr } from './i18n'
@@ -260,8 +260,8 @@ export function runsSheet(s: State, rep: Report): Cell[][] {
  */
 export function palletsSheet(s: State, rep: Report): Cell[][] {
   const T = (ms: number) => xTime(ms, fmtTime(ms))
-  return [[tr('Pallet'), tr('Línea'), tr('Código'), tr('Lote'), tr('Cajas'), tr('Tag'), tr('Total del pallet'), 'PO', tr('Pallet del PO'), tr('Hora'), tr('Turno'), tr('Registró'), tr('Comentario')],
-    ...rep.pallets.flatMap((p) => p.parts.map((x, i): Cell[] => [p.n, lineNameOf(s, p.r.lineId, p.r.line), p.r.code, x.lot, x.qty ?? '', x.tag, i === 0 ? p.total : '', p.order, p.of ? (p.of[1] ? tr('pallet {0} de {1}', p.of[0], p.of[1]) : String(p.of[0])) : '', p.open ? tr('en armado') : T(p.at), p.shift, p.by, i === 0 ? p.note : '']))]
+  return [[tr('Pallet'), tr('Línea'), tr('Código'), tr('Lote'), tr('Vence'), tr('Cajas'), tr('Tag'), tr('Total del pallet'), 'PO', tr('Pallet del PO'), tr('Hora'), tr('Turno'), tr('Registró'), tr('Comentario')],
+    ...rep.pallets.flatMap((p) => p.parts.map((x, i): Cell[] => [p.n, lineNameOf(s, p.r.lineId, p.r.line), p.r.code, x.lot, ((e) => (e ? xDay(e) : ''))(expiryOf(s, p.r.code, x.lot, p.r.date)), x.qty ?? '', x.tag, i === 0 ? p.total : '', p.order, p.of ? (p.of[1] ? tr('pallet {0} de {1}', p.of[0], p.of[1]) : String(p.of[0])) : '', p.open ? tr('en armado') : T(p.at), p.shift, p.by, i === 0 ? p.note : '']))]
 }
 export function unitsSheet(s: State, rep: Report): Cell[][] {
   const T = (ms: number) => xTime(ms, fmtTime(ms)), D = (ms: number) => xDur(ms, fmtDur(ms))

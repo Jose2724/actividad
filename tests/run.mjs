@@ -5655,6 +5655,21 @@ section('Pesos de QA cada hora (Jose, 2026-10-29): Spiral pesa 10 bolas crudas a
   eq('al volver a abrir: los ajustes, los códigos y las pruebas con su cocinador y lo que no se usó siguen', back.use((m) => [m.weightRuleOf(m.store.get(), 'Spiral'), m.weightRuleOf(m.store.get(), 'RTE'), m.weighedCodes(m.store.get(), 'RTE'), m.store.get().weights.filter((x) => x.dept === 'Spiral' && !x.deleted && x.id !== 'RK1').map((x) => [x.kind, x.cook, !!x.skip, x.entries.length])]),
     [{ every: 0, count: 8 }, { every: 120, count: 5 }, ['0889'], [['raw', 'spiral', false, 10], ['ball', 'spiral', false, 10], ['raw', 'racks', true, 0], ['ball', 'racks', true, 0], ['raw', 'spiral', false, 3]]])
 }
+section('Pedidos (PO): solo los códigos que van en pedidos, y cada lote con su vencimiento (Jose, 2026-10-29: 45 días de vigencia, el 0889 50)')
+{
+  const oc = await device('order-codes', { user: 'Oficina' })
+  oc.use((m) => {
+    const st = () => m.store.get()
+    eq('los códigos de pedidos sin que nadie los ponga: 14, el 0889 con 50 días y los demás con 45', [m.orderCodesList(st()).length, m.orderCodeOf(st(), '889')?.days, m.orderCodeOf(st(), '685')?.days, m.orderCodeOf(st(), '4911')?.days], [14, 50, 45, 45])
+    eq('un pedido acepta el 0889 (o 889) y el 0685 (o 685); el 2286 no (va en el Programa)', ['0889', '889', '685', '2286'].map((c) => m.orderCodeOk(st(), c)), [true, true, true, false])
+    eq('el lote es la fecha juliana: 6302 = 29 de octubre de 2026, 6001 = 1 de enero, 5365 = 31 de diciembre de 2025; lo que no es lote, nada', [m.lotDay('6302', '2026-10-29'), m.lotDay('6001', '2026-01-02'), m.lotDay('5365', '2026-01-02'), m.lotDay('6168-6216', '2026-10-29'), m.lotDay('6400', '2026-10-29')], ['2026-10-29', '2026-01-01', '2025-12-31', '', ''])
+    eq('vence = el día del lote + la vigencia: 0889 lote 6302 → 18 dic (50 días); 4911 → 13 dic (45); el 2286 no tiene', [m.expiryOf(st(), '0889', '6302', '2026-10-29'), m.expiryOf(st(), '4911', '6302', '2026-10-29'), m.expiryOf(st(), '2286', '6302', '2026-10-29')], ['2026-12-18', '2026-12-13', ''])
+    m.setOrderCodes([{ code: '0889', days: 50 }, { code: '2286', days: 30 }, { code: '889', days: 10 }])
+    eq('en Ajustes se cambia la lista: el 2286 entra con 30 días, un código repetido se queda una vez', [m.orderCodesList(st()), m.orderCodeOk(st(), '2286'), m.orderCodeOk(st(), '4911')], [[{ code: '0889', days: 50 }, { code: '2286', days: 30 }], true, false])
+    m.setOrderCodes([])
+    eq('sin códigos, un pedido acepta cualquiera', m.orderCodeOk(st(), '7777'), true)
+  })
+}
 section('Spiral anota la carne que echa, en libras y con su lote, y el reporte la suma por código con las libras por mezcla (Jose, 2026-10-23)')
 {
   const mt = await device('spiral-meat', { user: 'Supervisor Spiral' })

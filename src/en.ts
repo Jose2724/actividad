@@ -2855,4 +2855,11 @@ export const EN: Record<string, string> = {
   "QA": "QA",
   "⚠ por confirmar (estimado)": "⚠ to confirm (estimate)",
   "⚠ {0} rangos por confirmar: la hoja de QA solo dice las onzas de la bolsa, y el rango (±1 oz) lo puso la app para tener uno. Pídele a QA el mínimo y el máximo de cada uno y ponlos con ✎ Cambiar; entonces dicen \"cambiado por\" quien los puso.": "⚠ {0} ranges to confirm: QA's sheet only says the bag's ounces, and the range (±1 oz) was put by the app to have one. Ask QA for each one's minimum and maximum and put them with ✎ Change; then they say \"changed by\" whoever put them.",
+  "Vence": "Expires",
+  "vigencia {0} días": "shelf life {0} days",
+  "{0} no va en pedidos: ese código se pone en el Programa. Los códigos que van en pedidos: {1} (Ajustes › Productos).": "{0} does not go in orders: that code goes in the Program. The codes that go in orders: {1} (Settings › Productos).",
+  "Códigos que van en pedidos (PO)": "Codes that go in orders (PO)",
+  "Solo estos códigos se pueden poner en un pedido de Packing; los demás van en el Programa. La vigencia (días) da la fecha en que vence cada lote: el día del lote + esos días, y sale en los pallets de cada pedido y en el Reporte.": "Only these codes can be put in a Packing order; the rest go in the Program. The shelf life (days) gives the day each lot expires: the lot's day + those days, shown on each order's pallets and in the Report.",
+  "Vigencia (días)": "Shelf life (days)",
+  "Sin códigos: un pedido acepta cualquier código.": "No codes: an order takes any code.",
 }

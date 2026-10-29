@@ -478,6 +478,43 @@ export function uid(): string {
 const pad = (n: number) => String(n).padStart(2, '0')
 export const dayOf = (ms: number) => { const d = new Date(ms); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) }
 export const today = () => dayOf(clockNow())
+// ---- the codes that go in a customer's order (PO), and their shelf life (2026-10-29) ----
+/**
+ * Jose, 2026-10-29 ("me comentan que solo estos códigos o productos se pueden ingresar en pedidos, lo demás en
+ * programa"): the products a PO may be written for, each with its shelf life in days ("vigencia"), from which each lot's
+ * expiry is shown. A manager or the office changes the list in Ajustes › Productos (key 'order-codes' of the report's
+ * records); an empty list = any code, as before
+ */
+export const ORDER_CODES_DEFAULT: Record<string, number> = { '4911': 45, '4914': 45, '4928': 45, '4983': 45, '0685': 45, '1999': 45, '2010': 45, '3293': 45, '8660': 45, '0889': 50, '5000': 45, '4676': 45, '4614': 45, '5017': 45 }
+export type OrderCode = { code: string; days: number }
+export function orderCodesList(s: State): OrderCode[] {
+  const d = kpiGet(s, 'order-codes')?.data
+  if (d && Array.isArray(d.codes)) return d.codes.flatMap((x) => { const o = x as { code?: unknown; days?: unknown }, code = String(o?.code ?? '').trim().toUpperCase(), days = Math.round(Number(o?.days)); return code ? [{ code, days: days > 0 ? days : 0 }] : [] })
+  return Object.entries(ORDER_CODES_DEFAULT).map(([code, days]) => ({ code, days }))
+}
+export const orderCodeOf = (s: State, code: string) => orderCodesList(s).find((x) => normCode(x.code) === normCode(code)) ?? null
+/** whether a PO may be written for a code (any code when the list is empty) */
+export const orderCodeOk = (s: State, code: string) => { const l = orderCodesList(s); return !l.length || l.some((x) => normCode(x.code) === normCode(code)) }
+export const setOrderCodes = (rows: OrderCode[]) => { const seen = new Set<string>(); kpiPut('order-codes', { codes: rows.map((x) => ({ code: x.code.trim().toUpperCase(), days: Math.max(0, Math.round(x.days)) })).filter((x) => x.code && !seen.has(normCode(x.code)) && !!seen.add(normCode(x.code))) }) }
+/**
+ * a lot's day (YYYY-MM-DD): the plant's lot is the Julian date (6302 = the 302nd day of a year ending in 6), its year the
+ * one ending in that digit nearest to the day it was made; '' = not a lot of that form (a "6168-6216", a word…)
+ */
+export function lotDay(lot: string, near: string): string {
+  const m = /^(\d)(\d{3})$/.exec(lot.trim()), ny = Number(near.slice(0, 4))
+  if (!m || !ny) return ''
+  const y = [ny - 1, ny, ny + 1, ny - 2, ny + 2, ny - 3, ny + 3, ny - 4, ny + 4, ny - 5].find((x) => x % 10 === Number(m[1])) as number, day = Number(m[2])
+  const len = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0 ? 366 : 365
+  if (day < 1 || day > len) return ''
+  return new Date(Date.UTC(y, 0, day)).toISOString().slice(0, 10)
+}
+/** the day a lot of a code expires: its day + the code's shelf life; '' = no shelf life for the code, or no day for the lot */
+export function expiryOf(s: State, code: string, lot: string, near: string): string {
+  const c = orderCodeOf(s, code), d = lotDay(lot, near)
+  if (!c?.days || !d) return ''
+  const [y, mo, dd] = d.split('-').map(Number)
+  return new Date(Date.UTC(y, mo - 1, dd + c.days)).toISOString().slice(0, 10)
+}
 /** the plant's lot number is the Julian date: last digit of the year + day of the year (10/07/2026 → 6280) */
 export function lotFor(ds: string) {
   const [y, m, d] = ds.split('-').map(Number)

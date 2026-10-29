@@ -4,7 +4,7 @@ import { PLAN_NOTE_MAX, PLAN_SPAN_MAX, attGated, attOf, lineSlow, addLine, plant
 import { avanceLots, avanceRange, avanceRows, datesBetween, lotAcrossDays, lotRows, lotsKnown, mfoList, mfoText, mfoWord, n1, pending, type AvancePart, type AvanceRow, type MfoMade } from './avance'
 import { loadZip, type Cell } from './xlsx'
 
-import { fmtN, looksLikeTwoLots, plainText, viewOnly, whoText, askFirst, usualFor, usualOf, type QtyCheck } from './store'
+import { expiryOf, orderCodeOf, orderCodeOk, orderCodesList, fmtN, looksLikeTwoLots, plainText, viewOnly, whoText, askFirst, usualFor, usualOf, type QtyCheck } from './store'
 import { loadPdf } from './pdf'
 import { sharePick, shareProblem, type Kind } from './send'
 import { runLots, spanShifts, unitParts } from './report'
@@ -1405,7 +1405,7 @@ function OrderPalletsDialog({ s, order, onAdd, onClose }: { s: State; order: Ord
         {list.length === 0 ? <p className="hint">{tr('Todavía no se le ha dado ningún pallet.')}</p> : (
           <div className="twrap">
             <table className="pallets">
-              <thead><tr><th>#</th><th>{tr('Fecha')}</th><th>{tr('Línea')}</th><th>{tr('Lote')}</th><th className="num">{tr('Cajas')}</th><th>{tr('Tag')}</th><th className="num">{tr('Total')}</th><th>{tr('Hora')}</th><th>{tr('Por')}</th>{notes && <th>{tr('Comentario')}</th>}<th></th></tr></thead>
+              <thead><tr><th>#</th><th>{tr('Fecha')}</th><th>{tr('Línea')}</th><th>{tr('Lote')}</th><th>{tr('Vence')}</th><th className="num">{tr('Cajas')}</th><th>{tr('Tag')}</th><th className="num">{tr('Total')}</th><th>{tr('Hora')}</th><th>{tr('Por')}</th>{notes && <th>{tr('Comentario')}</th>}<th></th></tr></thead>
               {list.map((x, k) => {
                 const parts = x.parts.length ? x.parts : [{ lot: x.r.lot, qty: x.u.qty, tag: x.u.ref }], span = parts.length
                 const fresh = added.includes(x.r.id + ':' + x.u.at)
@@ -1417,7 +1417,7 @@ function OrderPalletsDialog({ s, order, onAdd, onClose }: { s: State; order: Ord
                         {i === 0 && <td rowSpan={span}><b>{k + 1}</b>{seq.need ? <small className="ofn">/{seq.need}</small> : null}{span > 1 && <small className="onelot">{tr('1 pallet · {0} lotes', span)}</small>}</td>}
                         {i === 0 && <td rowSpan={span}>{shortDay(x.r.date)}</td>}
                         {i === 0 && <td rowSpan={span}>{lineNameOf(s, x.r.lineId, x.r.line)}</td>}
-                        <td>{p.lot || '—'}</td><td className="num">{p.qty != null ? fmtN(p.qty) : '—'}</td><td>{p.tag || <span className="notag">{tr('sin tag')}</span>}</td>
+                        <td>{p.lot || '—'}</td><td>{((e) => (e ? <span className={'vence' + (order.shipBy && e < order.shipBy ? ' red' : '')}>{shortDay(e)}</span> : '—'))(expiryOf(s, order.code, p.lot, x.r.date))}</td><td className="num">{p.qty != null ? fmtN(p.qty) : '—'}</td><td>{p.tag || <span className="notag">{tr('sin tag')}</span>}</td>
                         {i === 0 && <td rowSpan={span} className="num"><b>{fmtN(unitQty(s, x.r, x.u))}</b></td>}
                         {i === 0 && <td rowSpan={span}>{fmtTime(x.u.at)}</td>}
                         {i === 0 && <td rowSpan={span}>{x.u.by || '—'}</td>}
@@ -1570,8 +1570,11 @@ function OrderDialog({ s, order, onClose }: { s: State; order: Order | undefined
   const codes = orderCodes(code), many = codes.length > 1
   const prod = codes.length === 1 ? productOf(s, codes[0]) : undefined
   const pallets = prod?.casesPerPallet && Number(cases) > 0 ? Number(cases) / prod.casesPerPallet : null
+  // only the products that go in orders (Jose, 2026-10-29: "lo demás en programa"); an order written before keeps its code
+  const notOrder = codes.filter((c) => !orderCodeOk(s, c) && !(order && normCode(c) === normCode(order.code)))
+  const life = codes.length === 1 ? orderCodeOf(s, codes[0]) : null
   // an order already written is of one product; a new one can be of several
-  const ok = codes.length > 0 && !(order && many)
+  const ok = codes.length > 0 && !(order && many) && !notOrder.length
   // this PO is already in (the office via Jose, 2026-10-27: the second shift's clerk writes the orders again without
   // noticing): said, and when it is in with one of these products, saving asks once more. A warning, not a lock
   const mates = poMates(s, po, order?.id), dup = codes.flatMap((c) => poMates(s, po, order?.id, c))
@@ -1598,7 +1601,9 @@ function OrderDialog({ s, order, onClose }: { s: State; order: Order | undefined
           ) : mates.length > 0 ? (
             <p className="hint">{tr('Ese PO ya está ingresado con otro producto: {0}. Si es el mismo pedido con otro producto, sigue; si es el mismo producto, no lo agregues otra vez.', mates.map(mateText).join(' / '))}</p>
           ) : null}
-          <label>{trx('Código del producto {0}', !order && <small>{tr('(si el PO es de varios, sepáralos con coma)')}</small>)} <input value={code} onChange={(e) => setCode(e.target.value)} placeholder={order ? tr('ej. 0100') : tr('ej. 0100, 0200')} autoComplete="off" />{prod && <small> {prod.name}</small>}</label>
+          <label>{trx('Código del producto {0}', !order && <small>{tr('(si el PO es de varios, sepáralos con coma)')}</small>)} <input value={code} list="order-codes" onChange={(e) => setCode(e.target.value)} placeholder={order ? tr('ej. 0100') : tr('ej. 0100, 0200')} autoComplete="off" />{prod && <small> {prod.name}</small>}{life?.days ? <small> · {tr('vigencia {0} días', life.days)}</small> : null}</label>
+          <datalist id="order-codes">{orderCodesList(s).map((c) => <option key={c.code} value={c.code} />)}</datalist>
+          {notOrder.length > 0 && <p className="hint red">{tr('{0} no va en pedidos: ese código se pone en el Programa. Los códigos que van en pedidos: {1} (Ajustes › Productos).', notOrder.join(', '), orderCodesList(s).map((c) => c.code).join(', '))}</p>}
           {many && !order && <p className="hint">{trx('Se crean {0} pedidos con este PO, uno por producto: {1}. Las cajas de cada uno se ponen después, con "Editar".', codes.length, codes.join(', '))}</p>}
           {many && order && <span className="err">{tr('Este pedido es de un solo producto. Para otro producto, agrega otro pedido con el mismo PO.')}</span>}
           <label>{trx('Cajas pedidas {0}', <small>{tr('(opcional)')}</small>)} <input inputMode="numeric" value={many ? '' : cases} disabled={many} onChange={(e) => setCases(e.target.value.replace(/\D/g, ''))} placeholder={tr('ej. 288')} />{pallets != null && <small> {' '}{trx('= {0} {1} de {2}', Math.round(pallets * 100) / 100, pallets === 1 ? 'pallet' : 'pallets', prod?.casesPerPallet)}</small>}</label>

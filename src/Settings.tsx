@@ -7,7 +7,7 @@ import { Devices } from './DevicesView'
 import { supabase } from './supabase'
 import { syncStore } from './sync'
 import { consumeOn, setConsumeOn } from './store'
-import { cartCratesOf, setAllCartCrates, setCartCrates } from './store'
+import { cartCratesOf, setAllCartCrates, setCartCrates, orderCodesList, setOrderCodes, type OrderCode } from './store'
 import { attWriteOn, kpiPut, lunchOf, setAttWriteOn, setLunch } from './store'
 import { laborAccess, seesLabor } from './kpi'
 import { lbCaseOn, loadQaLbPerCase, QA_LB_PER_CASE, setLbCaseOn, normCode } from './store'
@@ -68,6 +68,7 @@ export function Settings({ s, now, day, name, home, mgr, admin, viewOnly, meId, 
         {sec === 'kpi' && <KpiSettings s={s} viewOnly={viewOnly} />}
         {sec === 'consumo' && <ConsumeSettings s={s} viewOnly={viewOnly} />}
         {sec === 'attendance' && <AttendanceSettings s={s} date={day.date} viewOnly={viewOnly} admin={admin} name={name} />}
+        {sec === 'products' && <OrderCodesSettings s={s} ro={!mgr || viewOnly} />}
         {sec === 'products' && <CartCratesSettings s={s} readOnly={!can('products')} />}
         {sec === 'products' && <LbCaseSettings s={s} readOnly={!can('products')} />}
         {sec === 'products' && <div className="setcard wide"><div className="sethead"><h3>{tr('Productos')}</h3></div><p className="hint">{tr('La tabla maestra de la oficina: con ella las mezclas se vuelven pouches, cajas y pallets esperados, y cada cuarto sabe cuánto lleva un carro, un pallet o una caja.')}</p><Products s={s} readOnly={!can('products')} /></div>}
@@ -761,6 +762,45 @@ function WeightRuleRow({ s, dept, what, viewOnly, label }: { s: State; dept: Dep
   )
 }
 
+/**
+ * the products that go in a customer's order (PO), each with its shelf life (Jose, 2026-10-29: "solo estos códigos se
+ * pueden ingresar en pedidos, lo demás en programa", 45 days, the 0889 50): the order form takes only these, and each
+ * pallet of an order shows when its lot expires (the lot's day + the days). A manager or the office changes them
+ */
+type OcRow = { code: string; days: string }
+function OrderCodesSettings({ s, ro }: { s: State; ro: boolean }) {
+  const now = orderCodesList(s)
+  const toRows = (x: OrderCode[]): OcRow[] => x.map((c) => ({ code: c.code, days: String(c.days || '') }))
+  const [rows, setRows] = useState<OcRow[]>(() => toRows(now))
+  const nowKey = JSON.stringify(now), [seen, setSeen] = useState(nowKey)
+  if (seen !== nowKey) { setSeen(nowKey); setRows(toRows(now)) }
+  const clean = rows.filter((r) => r.code.trim()).map((r) => ({ code: r.code.trim().toUpperCase(), days: Number(r.days) || 0 }))
+  const changed = JSON.stringify(clean) !== JSON.stringify(now)
+  const put = (i: number, k: keyof OcRow, v: string) => setRows((x) => x.map((r, j) => (j === i ? { ...r, [k]: k === 'code' ? v.replace(/[^\w-]/g, '') : v.replace(/\D/g, '') } : r)))
+  return (
+    <div className="setcard">
+      <div className="sethead"><h3>{tr('Códigos que van en pedidos (PO)')}</h3></div>
+      <p className="hint">{tr('Solo estos códigos se pueden poner en un pedido de Packing; los demás van en el Programa. La vigencia (días) da la fecha en que vence cada lote: el día del lote + esos días, y sale en los pallets de cada pedido y en el Reporte.')}</p>
+      <div className="scroll"><table className="kpi-set">
+        <thead><tr><th>{tr('Código')}</th><th>{tr('Vigencia (días)')}</th>{!ro && <th />}</tr></thead>
+        <tbody>{rows.map((r, i) => (
+          <tr key={i}>
+            <td><input value={r.code} disabled={ro} aria-label={tr('Código')} onChange={(e) => put(i, 'code', e.target.value)} /></td>
+            <td><input inputMode="numeric" value={r.days} disabled={ro} aria-label={tr('Vigencia (días)')} onChange={(e) => put(i, 'days', e.target.value)} /></td>
+            {!ro && <td><button type="button" className="btn xs" aria-label={tr('Quitar')} onClick={() => setRows(rows.filter((_, j) => j !== i))}>✕</button></td>}
+          </tr>
+        ))}</tbody>
+      </table></div>
+      {!ro && (
+        <div className="btns">
+          <button type="button" className="btn sm soft" onClick={() => setRows([...rows, { code: '', days: '45' }])}>{tr('+ Agregar código')}</button>
+          {changed && <><button type="button" className="btn sm primary" onClick={() => setOrderCodes(clean)}>{tr('Guardar')}</button><button type="button" className="btn sm" onClick={() => setRows(toRows(now))}>{tr('Cancelar')}</button></>}
+        </div>
+      )}
+      {!clean.length && <small className="amber">{tr('Sin códigos: un pedido acepta cualquier código.')}</small>}
+    </div>
+  )
+}
 /**
  * The crates an RTE cart holds, for the whole plant (Jose, 2026-10-28: "elegir 24 o 26 u otro número"): the number
  * the codes with no figure of their own use, and a button that writes it into every code of Productos
