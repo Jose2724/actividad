@@ -5333,6 +5333,13 @@ section('El carro de RTE se cuenta por guacales (Jose, 2026-10-28: dos columnas 
       eq('un "hasta" que no es después del primer día, o a más de 14 días, no entra', st().plans.find((p) => p.code === 'ZZ9').endDate, undefined)
       m.applyRemote('act_plan', { date: D1, dept: 'RTE', code: 'ZZ9', lot: '7001', qty: 900, order_id: null, end_date: D2, updated_at: new Date(clock + M).toISOString(), updated_by: 'Oficina' })
       eq('desde otra computadora llega con sus días', [st().plans.find((p) => p.code === 'ZZ9').endDate, st().plans.find((p) => p.code === 'ZZ9').qty], [D2, 900])
+      // a comment on the row (2026-10-28): kept with it, up to the server only when there is one, shown on the card
+      m.setPlan(D1, 'RTE', 'ZZ9', 900, '7001', undefined, undefined, '  Primero   este, urgente ')
+      eq('el comentario queda en el renglón y sube con él; en el historial va después de la cantidad', [st().plans.find((p) => p.code === 'ZZ9').note, m.outbox.items().find((i) => i.key === D1 + '|RTE|ZZ9|7001').row.note, m.planRows(st(), D1, 'RTE').find((x) => x.code === 'ZZ9').note, st().changes.find((c) => c.what.startsWith('Programa 2026-10-24') && c.what.includes('· RTE · ZZ9') && c.after === '900 · Primero este, urgente') != null], ['Primero este, urgente', 'Primero este, urgente', 'Primero este, urgente', true])
+      m.setPlan(D1, 'RTE', 'ZZ9', 900, '7001', undefined, undefined, '')
+      eq('borrado el comentario: sube en blanco', [st().plans.find((p) => p.code === 'ZZ9').note, m.outbox.items().find((i) => i.key === D1 + '|RTE|ZZ9|7001').row.note], [undefined, null])
+      m.applyRemote('act_plan', { date: D1, dept: 'RTE', code: 'ZZ9', lot: '7001', qty: 900, order_id: null, end_date: null, note: 'Lo pidió el cliente', updated_at: new Date(clock + 2 * M).toISOString(), updated_by: 'Oficina' })
+      eq('desde otra computadora llega con su comentario', st().plans.find((p) => p.code === 'ZZ9').note, 'Lo pidió el cliente')
       m.setPlan(D1, 'RTE', 'ZZ9', 0, '7001')
       clock = T0
     }

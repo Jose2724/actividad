@@ -2626,6 +2626,9 @@ export const EN: Record<string, string> = {
   // a program of several days (2026-10-28)
   "antes: {0}": "before: {0}",
   "hasta el {0}": "until {0}",
+  // a comment on a program row (2026-10-28)
+  "Comentario (opcional): lo ve el cuarto en su programa": "Comment (optional): the room sees it on its program",
+  "Falta ejecutar en Supabase el SQL 026 (comentarios del programa): el programa espera": "SQL 026 (program comments) still has to be run in Supabase: the program is waiting",
   "Un programa de varios días se descuenta con lo hecho cada uno de esos días, hasta completarlo.": "A program of several days is taken down by what each of those days makes, until it is complete.",
   "Con \"Hasta\" el programa es de varios días (hasta 14): una sola cantidad para todos, y lo hecho cada día se va descontando del mismo programa hasta completarlo.": "With \"To\" the program runs for several days (up to 14): one quantity for all of them, and what each day makes is taken off the same program until it is complete.",
   "Programa de varios días: empezó el {0}{1}. Lo que se cambie aquí cambia todo el programa.": "Program of several days: it started on {0}{1}. What is changed here changes the whole program.",

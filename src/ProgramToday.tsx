@@ -128,8 +128,9 @@ function Card({ dept, list, also, share, complete, date, shiftNow, onReport }: {
               <button type="button" className={'pt-n ' + (left > 0 ? 'left' : 'ok')} onClick={() => go(r)}><label>{tr('Falta')}</label><b>{woN(left)}</b> <small>{left > 0 ? unitOf(r) : '✓'}</small></button>
             </div>
             <div className="pt-bar"><i className="t1" style={{ width: w(one) }} /><i className="t2" style={{ width: w(Math.min(two, Math.max(0, r.planned - one))) }} /></div>
-            {(r.carry > 0 || r.order || r.done > r.planned || r.also.length > 0 || r.to !== r.from) && (
+            {(r.carry > 0 || r.order || r.done > r.planned || r.also.length > 0 || r.to !== r.from || r.note) && (
               <div className="pt-tags">
+                {r.note && <span className="pt-tag note">💬 {r.note}</span>}
                 {r.to !== r.from && <span className="pt-tag span">📅 {tr('hasta el {0}', shortDay(r.to))}{r.before > 0 && ' · ' + tr('antes: {0}', woN(r.before))}</span>}
                 {r.carry > 0 && <span className="pt-tag carry">{tr('↩ ayer quedaron {0} {1}', woN(r.carry), unitOf(r))}</span>}
                 {r.order && <span className="pt-tag order">{r.order}</span>}

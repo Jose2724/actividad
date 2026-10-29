@@ -279,7 +279,11 @@ export type TurnGoal = { key: string; perHour: number | null; total: number | nu
  * the total for all of them, and what the room makes of that code and lot on any of those days is taken off the same
  * row. Without endDate it is a day's program as before
  */
-export type Plan = { date: string; dept: Dept; code: string; qty: number; lot: string; orderId?: string; endDate?: string; updatedAt: number }
+export type Plan = { date: string; dept: Dept; code: string; qty: number; lot: string; orderId?: string; endDate?: string
+  /** the office's comment on the row (2026-10-28: "comentarios en programas de cada departamento en una columna"), act_plan.note (SQL 026) */
+  note?: string; updatedAt: number }
+export const PLAN_NOTE_MAX = 200
+export const planNote = (x: unknown) => String(x ?? '').replace(/\s+/g, ' ').trim().slice(0, PLAN_NOTE_MAX)
 /** a lot as typed on a program: trimmed, at most this long (declared above load(): it is read there) */
 export const PLAN_LOT_MAX = 30
 // ---- the production orders: what load() needs of them is declared here (see "the production orders of each room") ----
@@ -543,7 +547,7 @@ function load(): State {
         orders: (s.orders ?? []).map((o) => (o ? orderOf(String(o.id ?? ''), o, String(o.by ?? ''), o.updatedAt ?? 0) : null)).filter((o): o is Order => !!o),
         // (lot since 2026-10-19: a program saved before it reads ''. Written inline, as above: nothing below load())
         // (orderId since 2026-10-19: kept only when it is a real id; a program saved before it is a plain day's program)
-        plans: (s.plans ?? []).filter((p) => !!p && isDay(String(p.date ?? '')) && DEPTS.includes(p.dept as Dept) && !!normCode(String(p.code ?? ''))).map((p) => ({ date: String(p.date), dept: p.dept as Dept, code: String(p.code).trim().toUpperCase(), qty: Number(p.qty) > 0 ? Number(p.qty) : 0, lot: String(p.lot ?? '').trim().slice(0, PLAN_LOT_MAX), ...(isUuid(p.orderId) ? { orderId: p.orderId } : {}), ...(isDay(String(p.endDate ?? '')) && String(p.endDate) > String(p.date) ? { endDate: String(p.endDate) } : {}), updatedAt: p.updatedAt ?? 0 })),
+        plans: (s.plans ?? []).filter((p) => !!p && isDay(String(p.date ?? '')) && DEPTS.includes(p.dept as Dept) && !!normCode(String(p.code ?? ''))).map((p) => ({ date: String(p.date), dept: p.dept as Dept, code: String(p.code).trim().toUpperCase(), qty: Number(p.qty) > 0 ? Number(p.qty) : 0, lot: String(p.lot ?? '').trim().slice(0, PLAN_LOT_MAX), ...(isUuid(p.orderId) ? { orderId: p.orderId } : {}), ...(isDay(String(p.endDate ?? '')) && String(p.endDate) > String(p.date) ? { endDate: String(p.endDate) } : {}), ...(planNote(p.note) ? { note: planNote(p.note) } : {}), updatedAt: p.updatedAt ?? 0 })),
         // the production orders and their closed accounts (2026-10-19). Read with function declarations only (see the
         // note at `let state = load()`): a stored field nothing reads back is a field lost on every reload
         workOrders: (s.workOrders ?? []).map(workOrderFrom).filter((o): o is WorkOrder => !!o),
@@ -3145,7 +3149,8 @@ const lotNote = (lot: string) => (lot ? ' · lote ' + lot : '')
 // 2026-10-19): the whole row stands, so a program unlinked on a device is unlinked on the server. Until 020 is run a
 // program without one goes up without the column, and one with an order waits, said on the screen: see outbox.ts)
 // (end_date goes up only when the row has or had one: a day's program keeps going up as before 025 was run)
-const rowOfPlan = (p: Plan, withEnd = !!p.endDate) => ({ date: p.date, dept: p.dept, code: normCode(p.code), qty: p.qty, lot: planLot(p.lot), order_id: p.orderId ?? null, ...(withEnd ? { end_date: p.endDate ?? null } : {}), updated_at: iso(p.updatedAt), updated_by: user.get() })
+// (note the same: only when the row has or had one, SQL 026)
+const rowOfPlan = (p: Plan, withEnd = !!p.endDate, withNote = !!p.note) => ({ date: p.date, dept: p.dept, code: normCode(p.code), qty: p.qty, lot: planLot(p.lot), order_id: p.orderId ?? null, ...(withEnd ? { end_date: p.endDate ?? null } : {}), ...(withNote ? { note: p.note ?? null } : {}), updated_at: iso(p.updatedAt), updated_by: user.get() })
 /** the most days a program may run for (the device keeps 14 days of records: every day of the program stays countable) */
 export const PLAN_SPAN_MAX = 14
 /** a row's last day: its endDate, or its day */
@@ -3187,30 +3192,33 @@ export const planOf = (s: State, date: string, dept: Dept) => s.plans.filter((p)
  * (a program changed without saying keeps its order), null or '' = none (a plain day's program). Another order, or
  * none, is a change too, said in the history
  */
-/** endDate: undefined = as it was; '' = a day's program; a day = the program's last day (see Plan) */
-export function setPlan(date: string, dept: Dept, code: string, qty: number, lot = '', orderId?: string | null, endDate?: string | null) {
+/** endDate: undefined = as it was; '' = a day's program; a day = the program's last day (see Plan). note the same: undefined = as it was, '' = none */
+export function setPlan(date: string, dept: Dept, code: string, qty: number, lot = '', orderId?: string | null, endDate?: string | null, note?: string | null) {
   const key = normCode(code)
   if (!key || !isDay(date) || !DEPTS.includes(dept)) return
   const n = Number.isFinite(qty) && qty > 0 ? Math.round(qty * 100) / 100 : 0
   const l = planLot(lot)
   const old = state.plans.find((p) => p.date === date && p.dept === dept && normCode(p.code) === key && planLot(p.lot) === l)
   const end = endDate === undefined ? old?.endDate : planEndOf(date, endDate)
+  const nt = note === undefined ? old?.note : planNote(note) || undefined
   // a code with nothing programmed stays off the program: the dialog fills the day's lot into every row, so a code
   // typed with its quantity blank came with a lot and used to make a row of 0 with it, sent to the server and saying
   // nothing (review of 2026-10-19). Taking a row off (a quantity it had → 0) still goes through
   if (n === 0 && !(old && old.qty > 0)) return
   const link = orderId === undefined ? old?.orderId : isUuid(orderId) ? orderId : undefined
-  if ((old?.qty ?? 0) === n && (old?.orderId ?? '') === (link ?? '') && (old?.endDate ?? '') === (end ?? '')) return
-  const p: Plan = { date, dept, code: code.trim().toUpperCase(), qty: n, lot: l, ...(link ? { orderId: link } : {}), ...(end ? { endDate: end } : {}), updatedAt: stamp(old) }
+  if ((old?.qty ?? 0) === n && (old?.orderId ?? '') === (link ?? '') && (old?.endDate ?? '') === (end ?? '') && (old?.note ?? '') === (nt ?? '')) return
+  const p: Plan = { date, dept, code: code.trim().toUpperCase(), qty: n, lot: l, ...(link ? { orderId: link } : {}), ...(end ? { endDate: end } : {}), ...(nt ? { note: nt } : {}), updatedAt: stamp(old) }
   set({ ...state, plans: [...state.plans.filter((x) => x !== old), p] })
   const k = planKey(date, dept, key, l)
-  push('act_plan', k, rowOfPlan(p, !!end || !!old?.endDate))
+  push('act_plan', k, rowOfPlan(p, !!end || !!old?.endDate, !!nt || !!old?.note))
   // the line names the row (its code and its lot, its days when it runs for several) and the order it is a part of
   // now; "before" is the quantity it had (nothing when it had none), with the order it had when that changed (or "sin
   // pedido") and its days when those changed
   const was0 = v(old?.qty), relinked = (old?.orderId ?? '') !== (link ?? ''), respanned = !!old && (old.endDate ?? '') !== (end ?? '')
   const was = was0 && (relinked || respanned) ? was0 + (relinked ? (old?.orderId ? orderNote(old.orderId) : ' · sin pedido') : '') + (respanned ? (old?.endDate ? spanNote(old) : ' · un día') : '') : was0
-  logChange(dept, 'Programa ' + date + (end ? ' al ' + end : '') + ' · ' + dept + ' · ' + key + lotNote(l) + orderNote(link), was, v(n), 'act_plan', k)
+  // (the comment goes after the quantity, on both sides when it changed)
+  const renoted = !!old && (old.note ?? '') !== (nt ?? '')
+  logChange(dept, 'Programa ' + date + (end ? ' al ' + end : '') + ' · ' + dept + ' · ' + key + lotNote(l) + orderNote(link), renoted && old?.note ? was + ' · ' + old.note : was, nt && (renoted || !old) ? v(n) + ' · ' + nt : v(n), 'act_plan', k)
 }
 /**
  * One row of a room's day against its program: what was set, what the room has registered of it (in all, and by each
@@ -3256,7 +3264,7 @@ function lotShares(s: State, r: Run, u: Unit, byCount: boolean): { lot: string; 
  * it (in done; today = the day's own, which byShift splits). A program of several days is counted on every one of its
  * days against the same total (2026-10-28)
  */
-export type PlanRow = { code: string; name: string; planned: number; done: number; byShift: [number, number]; left: number; running: boolean; lines: string[]; unit: string; kind: string; other: { word: string; n: number }[]; lot: string; orderId: string; also: { lot: string; n: number }[]; from: string; to: string; before: number; today: number }
+export type PlanRow = { code: string; name: string; planned: number; done: number; byShift: [number, number]; left: number; running: boolean; lines: string[]; unit: string; kind: string; other: { word: string; n: number }[]; lot: string; orderId: string; also: { lot: string; n: number }[]; from: string; to: string; before: number; today: number; note: string }
 /**
  * The rows of a room's program for a day, each against what was made OF ITS LOT (the office, 2026-10-20: 889 of lot
  * 6292 programmed 15,688 showed "hecho 25,244 · ✓ completo (+9,556)": the 9,556 of lot 6290 were added in). Each unit
@@ -3306,7 +3314,7 @@ export function planRows(s: State, date: string, dept: Dept): PlanRow[] {
       // units of lots no row of the code running that day names)
       const before = p && p.endDate && p.date < date ? planDays(p).filter((d) => d < date).reduce((t, d) => t + madeForRow(s, dept, key, planLot(p.lot), d, measure), 0) : 0
       const done = Math.round((before + today) * 100) / 100
-      out.push({ code, name: product?.name ?? '', planned, done, byShift: [one, two], left: planned ? Math.round((planned - done) * 100) / 100 : 0, running: lines.length > 0, unit, kind: measure, other: i ? [] : other, lines, lot: p ? planLot(p.lot) : '', orderId: p?.orderId ?? '', also: i ? [] : alsoList, from: p?.date ?? date, to: p ? planEnd(p) : date, before: Math.round(before * 100) / 100, today: Math.round(today * 100) / 100 })
+      out.push({ code, name: product?.name ?? '', planned, done, byShift: [one, two], left: planned ? Math.round((planned - done) * 100) / 100 : 0, running: lines.length > 0, unit, kind: measure, other: i ? [] : other, lines, lot: p ? planLot(p.lot) : '', orderId: p?.orderId ?? '', also: i ? [] : alsoList, from: p?.date ?? date, to: p ? planEnd(p) : date, before: Math.round(before * 100) / 100, today: Math.round(today * 100) / 100, note: p?.note ?? '' })
     })
   }
   return out.sort((a, b) => Number(b.planned > 0) - Number(a.planned > 0) || a.code.localeCompare(b.code, undefined, { numeric: true }) || byPlanLot(a, b))
@@ -3895,8 +3903,8 @@ export const planHeardMark = () => planHeardN
 function planOfRow(row: Row, at: number): Plan | null {
   const date = String(row.date ?? '').slice(0, 10), dept = row.dept as Dept, key = normCode(String(row.code ?? ''))
   if (!isDay(date) || !roomKnown(dept) || !key) return null
-  const end = planEndOf(date, String(row.end_date ?? '').slice(0, 10))
-  return { date, dept, code: key, qty: Number(row.qty) > 0 ? Number(row.qty) : 0, lot: planLot(row.lot), ...(isUuid(row.order_id) ? { orderId: row.order_id } : {}), ...(end ? { endDate: end } : {}), updatedAt: at }
+  const end = planEndOf(date, String(row.end_date ?? '').slice(0, 10)), nt = planNote(row.note)
+  return { date, dept, code: key, qty: Number(row.qty) > 0 ? Number(row.qty) : 0, lot: planLot(row.lot), ...(isUuid(row.order_id) ? { orderId: row.order_id } : {}), ...(end ? { endDate: end } : {}), ...(nt ? { note: nt } : {}), updatedAt: at }
 }
 /**
  * A copy of a state with rows brought from the server added (runs, programs, history lines; what the device already
@@ -4561,8 +4569,8 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
     if (!newer(cur)) return
     // (lot: '' from a server where 019 has not run yet, or a program typed without one; the production order: none
     // from a server where 020 has not run yet, or a plain day's program)
-    const end = planEndOf(date, String(row.end_date ?? '').slice(0, 10))
-    set({ ...state, plans: [...state.plans.filter((p) => p !== cur), { date, dept, code: cur?.code ?? key, qty: Number(row.qty) > 0 ? Number(row.qty) : 0, lot, ...(isUuid(row.order_id) ? { orderId: row.order_id } : {}), ...(end ? { endDate: end } : {}), updatedAt: at }] })
+    const end = planEndOf(date, String(row.end_date ?? '').slice(0, 10)), nt = planNote(row.note)
+    set({ ...state, plans: [...state.plans.filter((p) => p !== cur), { date, dept, code: cur?.code ?? key, qty: Number(row.qty) > 0 ? Number(row.qty) : 0, lot, ...(isUuid(row.order_id) ? { orderId: row.order_id } : {}), ...(end ? { endDate: end } : {}), ...(nt ? { note: nt } : {}), updatedAt: at }] })
   } else if (table === 'act_work_orders') {
     // a production order (2026-10-19): the newer version stands, as the program's (one of a room this version does not
     // know is left out); a change of it still waiting here keeps what it changed (mergeQueuedOrder)
