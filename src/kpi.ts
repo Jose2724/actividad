@@ -197,11 +197,18 @@ export function wtSum(entries: WeightTest['entries'], target: ReturnType<typeof 
  */
 export function weightsDue(s: State, date: string, dept: Dept, code: string, now: number): number | null {
   const rule = weightRuleFor(s, dept, code)
-  if (!rule.every || !weighsCode(s, dept, code)) return null
+  if (date < wtCountedFrom(s) || !rule.every || !weighsCode(s, dept, code)) return null
   const span = rule.every * 60_000
   return s.runs.filter((r) => !r.deleted && r.date === date && r.dept === dept && normCode(r.code) === normCode(code)).reduce((t, r) => t + Math.floor(Math.max(0, Math.min(r.endedAt ?? now, now) - r.startedAt) / span), 0)
 }
 /** complete = as many weights as the room's count (or more); short = a test left with fewer */
+/**
+ * the first work day the tests due are counted (2026-10-30, the first whole day with the hourly tests of 2026-10-29):
+ * the days before had other rules (Spiral 8 balls, RTE no hourly test) and are not judged by these
+ */
+export const WT_COUNTED_FROM = '2026-10-30'
+/** the day the count starts: WT_COUNTED_FROM, or another an admin keeps in the report's records ('wt-from') */
+export const wtCountedFrom = (s: State) => { const d = String(kpiGet(s, 'wt-from')?.data.date ?? ''); return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : WT_COUNTED_FROM }
 export type WtRow = ReturnType<typeof wtSum> & { dept: Dept; code: string; kind: WeightTest['kind']; cook?: Cook; label: string; tests: WeightTest[]; skipped: WeightTest[]; complete: number; short: number; due: number | null; target: ReturnType<typeof weightTarget> }
 /**
  * each room, code and what was weighed of a day (RTE's pouches; Spiral's balls raw and cooked, by cooker; Kitchen's raw
@@ -221,7 +228,8 @@ export function weightsOf(s: State, date: string, now = Date.now()): WtRow[] {
   return [...groups.values()].sort((a, b) => order(a)[0] - order(b)[0] || normCode(a.code).localeCompare(normCode(b.code), 'en', { numeric: true }) || order(a)[1] - order(b)[1]).map((g): WtRow => {
     const mine = all.filter((t) => t.dept === g.dept && normCode(t.code) === normCode(g.code) && sameStep(t, g.step)).sort((a, b) => a.at - b.at)
     const tests = mine.filter((t) => t.entries.length > 0), target = weightTarget(s, g.code, g.step.kind, g.step.cook), count = weightRuleFor(s, g.dept, g.code).count
-    const complete = tests.filter((t) => t.entries.length >= count).length
+    // (a test is complete with as many weights as were asked when it was made; one of before that kept no count, as it was)
+    const complete = tests.filter((t) => t.entries.length >= (t.need ?? (t.date < wtCountedFrom(s) ? 1 : count))).length
     return { ...wtSum(tests.flatMap((t) => t.entries), target), dept: g.dept, code: g.code, kind: g.step.kind, ...(g.step.cook ? { cook: g.step.cook } : {}), label: stepText(g.step), tests, skipped: mine.filter((t) => t.skip), complete, short: tests.length - complete, due: weightsDue(s, date, g.dept, g.code, now), target }
   })
 }
@@ -241,7 +249,7 @@ export function wtCompliance(rows: WtRow[]) {
   return { due, done, pct: due ? done / due : null }
 }
 /** a row's tests as said: "3 de 4" (made of due), or how many were made when none is due */
-export const wtDoneText = (r: WtRow) => (r.due != null && r.due > 0 ? tr('{0} de {1}', r.complete + r.skipped.length, r.due) : String(r.complete + r.skipped.length))
+export const wtDoneText = (r: WtRow) => (r.due != null && r.due > 0 ? tr('{0} de {1}', Math.min(r.complete + r.skipped.length, r.due), r.due) : String(r.complete + r.skipped.length))
 
 /** each test of some rows (a cooker not used too), oldest first, with its row */
 export const wtTests = (rows: WtRow[]) => rows.flatMap((w) => [...w.tests, ...w.skipped].map((t) => ({ w, t }))).sort((a, b) => a.t.at - b.t.at)

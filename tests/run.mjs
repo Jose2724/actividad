@@ -5164,7 +5164,7 @@ section('Pesos en RTE: el operador escribe el peso de cada pouch, se guarda al m
     eq('el reporte KPI: por código, pruebas, revisados, pesados, promedio, mínimo, máximo, bajos y sobre', w.map((x) => [x.code, x.tests.length, x.checked, x.n, x.avg, x.min, x.max, x.under, x.over]), [['0889', 1, 4, 4, 3.06, 2.95, 3.24, 1, 1]])
     m.weightSave(t, [{ w: 3.04 }, { w: 3.24 }, { w: 2.95 }, { w: 3.01 }, { k: 'sobre' }, { k: 'sobre' }, { w: 2.99, k: 'bajo' }])
     const w2 = m.weightsOf(st(), DAY)[0]
-    eq('los botones Sobre / Bajo cuentan un pouch sin peso; con peso, el peso va con su marca (la marca del operador manda)', [w2.checked, w2.n, w2.under, w2.over, m.entryClass({ w: 2.99, k: 'bajo' }, tg), m.entryClass({ k: 'sobre' }, null)], [7, 5, 2, 3, 'bajo', 'sobre'])
+    eq('los botones viejos Sobre / Bajo cuentan un pouch sin peso; con peso, manda el peso contra el objetivo (2026-10-29: la marca vieja daba 0% en peso)', [w2.checked, w2.n, w2.under, w2.over, w2.good, m.entryClass({ w: 2.99, k: 'bajo' }, tg), m.entryClass({ k: 'sobre' }, null), m.entryClass({ w: 2.99, k: 'bajo' }, null)], [7, 5, 1, 3, 3, 'ok', 'sobre', 'bajo'])
     eq('un toque sin peso ni marca no se guarda', [(m.weightSave(t, [...st().weights[0].entries, {}]), st().weights[0].entries.length)], [7])
     m.weightSave(t, [])
     eq('quitar todos los pesos deja la prueba borrada (marcada en el servidor)', [m.weightTestsOf(st(), DAY).length, m.outbox.items().find((i) => i.key === 'wt:' + t.id)?.row.deleted], [0, true])
@@ -5545,6 +5545,8 @@ section('Pesos de QA cada hora (Jose, 2026-10-29): Spiral pesa 10 bolas crudas a
     const st = () => m.store.get()
     const sent = (id) => JSON.parse(m.outbox.items().find((i) => i.key === 'wt:' + id)?.row.after ?? '{}')
     clock = T0
+    eq('las pruebas que tocaban se cuentan desde el 30 de octubre de 2026 (antes había otras reglas)', [m.WT_COUNTED_FROM, m.weightsDue(st(), DAY, 'Spiral', '0889', T0 + 600 * M)], ['2026-10-30', null])
+    m.kpiPut('wt-from', { date: DAY })
     if (!st().lines.some((l) => l.dept === 'Spiral')) m.addLine('Spiral', 'Línea 1')
     m.startRun(st().lines.find((l) => l.dept === 'Spiral'), '889', '6292', DAY, null)
     const run = () => st().runs.find((r) => r.dept === 'Spiral')
@@ -5585,6 +5587,10 @@ section('Pesos de QA cada hora (Jose, 2026-10-29): Spiral pesa 10 bolas crudas a
     clock = T0 + 200 * M
     const half = m.weightNew(run(), { kind: 'raw', cook: 'spiral' })
     m.weightSave(half, [{ w: 2.7 }, { w: 2.7 }, { w: 2.7 }])
+    const asked = { ...m.weightNew(run(), { kind: 'ball', cook: 'spiral' }), need: 3 }
+    m.weightSave(asked, [{ w: 2.2 }, { w: 2.3 }, { w: 2.25 }])
+    eq('cada prueba guarda cuántos se pedían al hacerla (sube con ella) y está completa con esos', [sent(asked.id).need, st().weights.find((x) => x.id === asked.id).need, m.weightsOf(st(), DAY, clock).find((x) => x.label === 'Cocinado · Spiral').complete], [3, 3, 2])
+    m.weightSave(asked, [])
     eq('una prueba de 3 bolas queda incompleta: no cuenta como hecha', ((r) => [r.complete, r.short, r.tests.length])(m.weightsOf(st(), DAY, clock)[0]), [1, 1, 2])
     // RTE: only 0889 has the hourly test; each pouch weighed
     for (const n of ['Línea 1', 'Línea 2']) if (!st().lines.some((l) => l.dept === 'RTE' && l.name === n)) m.addLine('RTE', n)

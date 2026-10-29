@@ -92,7 +92,7 @@ function WeightDialog({ s, run, now, onClose }: { s: State; run: Run; now: numbe
   const save = (list: WtEntry[]) => {
     const k = stepKey(pick)
     if (test) { weightSave(test, list); return }
-    const x = fresh.current[k] ?? (fresh.current[k] = weightNew(run, pick))
+    const x = fresh.current[k] ?? (fresh.current[k] = { ...weightNew(run, pick), ...(rule.count > 0 ? { need: rule.count } : {}) })
     setStarted((m) => ({ ...m, [k]: x.id }))
     weightSave(x, list)
   }

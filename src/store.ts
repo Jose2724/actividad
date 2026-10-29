@@ -1156,6 +1156,8 @@ export type WeightTest = { id: string; date: string; dept: Dept; lineId: string;
   cook?: Cook
   /** a cooker that did not cook that hour, said by the operator instead of weighing it (no entries) */
   skip?: true
+  /** how many weights were asked when the test was made (2026-10-29): it is complete with that many; none = a test of before */
+  need?: number
   /** in ounces (Jose, 2026-10-22: "aquí es oz, no lb"); the first builds of that day wrote pounds and no unit: read ×16 */
   entries: WtEntry[]; at: number; by: string; deleted?: boolean; updatedAt: number; syncedAt?: number }
 export type Cook = 'spiral' | 'racks'
@@ -1175,11 +1177,11 @@ function wtEntries(x: { entries?: unknown; weights?: unknown; unit?: unknown }):
 }
 function wtFrom(x: (Partial<WeightTest> & { weights?: unknown; unit?: unknown }) | null | undefined): WeightTest | null {
   if (!x || typeof x !== 'object' || typeof x.id !== 'string' || !x.id || !(DEPTS as unknown[]).includes(x.dept) || !isDay(String(x.date ?? '')) || !normCode(String(x.code ?? ''))) return null
-  return { id: x.id, date: String(x.date), dept: x.dept as Dept, lineId: String(x.lineId ?? ''), line: String(x.line ?? ''), code: String(x.code).trim().toUpperCase(), lot: String(x.lot ?? ''), runId: String(x.runId ?? ''), kind: x.kind === 'ball' ? 'ball' : x.kind === 'raw' ? 'raw' : 'pouch', unit: 'oz', ...(x.dept === 'Spiral' && (x.cook === 'spiral' || x.cook === 'racks') ? { cook: x.cook } : {}), ...(x.skip === true ? { skip: true as const } : {}), entries: wtEntries(x), at: Number(x.at) || 0, by: String(x.by ?? ''), ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
+  return { id: x.id, date: String(x.date), dept: x.dept as Dept, lineId: String(x.lineId ?? ''), line: String(x.line ?? ''), code: String(x.code).trim().toUpperCase(), lot: String(x.lot ?? ''), runId: String(x.runId ?? ''), kind: x.kind === 'ball' ? 'ball' : x.kind === 'raw' ? 'raw' : 'pouch', unit: 'oz', ...(x.dept === 'Spiral' && (x.cook === 'spiral' || x.cook === 'racks') ? { cook: x.cook } : {}), ...(x.skip === true ? { skip: true as const } : {}), ...(Number(x.need) > 0 ? { need: Math.round(Number(x.need)) } : {}), entries: wtEntries(x), at: Number(x.at) || 0, by: String(x.by ?? ''), ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
 }
 /** the weights typed in a test (the entries with a number) */
 export const wtWeights = (t: WeightTest) => t.entries.flatMap((e) => (e.w != null ? [e.w] : []))
-const rowOfWt = (x: WeightTest) => ({ id: WT_ID + x.id, at: iso(x.at), by_name: x.by, dept: x.dept, what: 'Peso', before: '', after: JSON.stringify({ date: x.date, lineId: x.lineId, line: x.line, code: x.code, lot: x.lot, runId: x.runId, kind: x.kind, ...(x.cook ? { cook: x.cook } : {}), ...(x.skip ? { skip: true } : {}), unit: 'oz', entries: x.entries, weights: wtWeights(x) }), ref_table: WT_REF, ref_key: x.id, deleted: !!x.deleted, updated_at: iso(x.updatedAt), updated_by: user.get() })
+const rowOfWt = (x: WeightTest) => ({ id: WT_ID + x.id, at: iso(x.at), by_name: x.by, dept: x.dept, what: 'Peso', before: '', after: JSON.stringify({ date: x.date, lineId: x.lineId, line: x.line, code: x.code, lot: x.lot, runId: x.runId, kind: x.kind, ...(x.cook ? { cook: x.cook } : {}), ...(x.skip ? { skip: true } : {}), ...(x.need ? { need: x.need } : {}), unit: 'oz', entries: x.entries, weights: wtWeights(x) }), ref_table: WT_REF, ref_key: x.id, deleted: !!x.deleted, updated_at: iso(x.updatedAt), updated_by: user.get() })
 /** a new test on a run, of one of its room's steps (the room's first one when none is said); nothing is saved until its first entry */
 export const weightNew = (run: Run, step?: WtStep): WeightTest => { const st = step ?? weightStepsOf(run.dept)[0] ?? { kind: 'pouch' as const }; return { id: uid(), date: run.date, dept: run.dept, lineId: run.lineId, line: run.line, code: run.code, lot: lotNowOf(run), runId: run.id, kind: st.kind, ...(st.cook ? { cook: st.cook } : {}), unit: 'oz', entries: [], at: clockNow(), by: user.get(), updatedAt: 0 } }
 /**
@@ -1516,7 +1518,8 @@ export function weighedRules(s: State, dept: Dept): WtCodeRule[] | null {
   if (!list || !list.length) return null
   const rules = (d?.rules && typeof d.rules === 'object' ? d.rules : {}) as Record<string, { every?: unknown; count?: unknown }>
   const n = (v: unknown, or: number) => (Number.isInteger(Number(v)) && Number(v) >= 0 && v !== null && v !== '' ? Number(v) : or)
-  return list.map((code) => { const r = rules[normCode(code)]; return { code, every: n(r?.every, room.every), count: n(r?.count, room.count) } })
+  // (a code weighed every hour always weighs some: a room's count of 0, from the old settings, reads as 10)
+  return list.map((code) => { const r = rules[normCode(code)], count = n(r?.count, room.count); return { code, every: n(r?.every, room.every), count: count > 0 ? count : 10 } })
 }
 export const weighedCodes = (s: State, dept: Dept): string[] | null => weighedRules(s, dept)?.map((x) => x.code) ?? null
 export const weighsCode = (s: State, dept: Dept, code: string) => { const c = weighedCodes(s, dept); return !c || c.some((x) => normCode(x) === normCode(code)) }
@@ -1648,7 +1651,10 @@ export const wtRangeText = (t: WeightTarget | null) => { if (!t) return ''; cons
 /** a weight against the target: under, ok or over ('' without a target) */
 export const weightClass = (w: number, t: WeightTarget | null): '' | 'bajo' | 'ok' | 'sobre' => (!t ? '' : w < t.pouch - t.tol - 1e-9 ? 'bajo' : w > t.pouch + t.tol + 1e-9 ? 'sobre' : 'ok')
 /** an entry: the operator's call when they made one, else its weight against the target */
-export const entryClass = (e: WtEntry, t: WeightTarget | null): '' | 'bajo' | 'ok' | 'sobre' => e.k ?? (e.w != null ? weightClass(e.w, t) : '')
+// (a weight typed decides by itself against the target since 2026-10-29: in the first window RTE typed the weight and also
+// tapped ▲/▼ by the old target, and the KPI read every pouch as under or over, "0% en peso" with an average of 48.5; the
+// operator's mark counts only for a pouch with no weight, or with no target)
+export const entryClass = (e: WtEntry, t: WeightTarget | null): '' | 'bajo' | 'ok' | 'sobre' => (e.w != null && t ? weightClass(e.w, t) : e.k ?? (e.w != null ? weightClass(e.w, t) : ''))
 /** the shifts a day works (a day of one shift: that one alone) */
 export const attShifts = (s: State, date: string): (1 | 2)[] => { const o = shiftsOf(s, date).only; return o === 1 || o === 2 ? [o] : [1, 2] }
 /**
