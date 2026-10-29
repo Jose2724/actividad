@@ -106,6 +106,15 @@ ROOMS = {
 <li>Cada mezcla terminada: {B('✓ Mezcla lista')}. Si se cuenta en libras o cajas, la app pregunta cuántas.</li>
 <li>El mismo código se puede escribir 889 o 0889: la app los toma como el mismo.</li>
 </ul>
+<h2>⚖ Pesar las bolas del 0889 (cada hora)</h2>
+<ul>
+<li>Mientras corre el <b>0889</b>, cada hora sale el aviso amarillo <i>"⚖ Ya pasó 1 hora…"</i>. Tóquenlo, o {B('⚖ Peso','grey')}.</li>
+<li>La ventana tiene <b>4 pruebas</b>: <b>Crudo · Spiral</b>, <b>Cocinado · Spiral</b>, <b>Crudo · Racks</b> y <b>Cocinado · Racks</b>. Gris = falta, amarillo = toca ahora, verde ✓ = hecha.</li>
+<li><b>Crudo</b>: 10 bolas <b>antes de que entren</b> a cocinar. <b>Cocinado</b>: 10 bolas <b>al salir</b>.</li>
+<li>Cada bola <b>una por una</b>: escriban el peso en <b>onzas (oz)</b> y {B('+ Agregar')}. La app dice sola si está bajo o sobre. Al llegar a 10 pasa sola a la prueba siguiente.</li>
+<li>Si Racks (o Spiral) <b>no cocinó esa hora</b>, toquen <b>"Racks no cocinó esta hora"</b>: no se cuenta como prueba que falta.</li>
+<li>Cada peso ya queda guardado. Si se equivocan: <b>Quitar el último</b>. Si cierran la ventana a la mitad, al abrirla siguen con la misma prueba.</li>
+</ul>
 <div class="box warn"><b class="t">El programa pone el tope (mezclas)</b>Si la oficina programó, por ejemplo, <b>10 mezclas</b> de un código y lote, la app deja registrar <b>hasta 10, ni una más</b>. Al llegar sale <i>"✓ Programa completo"</i>. Si tocan una más, <b>no se registra</b>:
 <ul><li>¿Pusieron el mismo código pero era otro? Toquen {B('Corregir el código','soft')}.</li><li>¿Hay que hacer más? <b>Vayan a la oficina</b>: solo la oficina lo autoriza, subiendo la cantidad en el programa.</li></ul></div>
 """),
@@ -118,10 +127,9 @@ ROOMS = {
 </ul>
 <h2>⚖ Peso de los pouches</h2>
 <ul>
-<li>Cada línea tiene {B('⚖ Peso','grey')}. Úsenlo en las pruebas de peso (cada hora o en cada cambio de código).</li>
-<li>Por cada pouch <b>fuera de peso</b>: {B('▲ Sobre peso','amb')} o {B('▼ Bajo peso','red')}. Un toque = un pouch.</li>
-<li>El peso es <b>opcional</b>: si lo pesaron, escriban el peso en <b>onzas (oz)</b> antes de tocar el botón. Un pouch bien de peso: escriban el peso y {B('+ Agregar','soft')}.</li>
-<li>Cada toque ya queda guardado. Si se equivocan: <b>Quitar el último</b>.</li>
+<li>Mientras corre el <b>0889</b>, cada hora sale el aviso amarillo <i>"⚖ Ya pasó 1 hora…"</i>. Tóquenlo, o {B('⚖ Peso','grey')}.</li>
+<li>Pesen <b>10 pouches, uno por uno</b>: escriban el peso en <b>onzas (oz)</b> y {B('+ Agregar')}. La app dice sola cuál está <b>bajo</b> (menos de 48 oz) o <b>sobre</b> (más de 52 oz).</li>
+<li>Cada peso ya queda guardado. Si se equivocan: <b>Quitar el último</b>. Si cierran la ventana a la mitad, al abrirla siguen con la misma prueba.</li>
 </ul>
 """),
  'MFO': dict(emo='🍽️', c='#4d7c0f', sub='Líneas de platos, copas y bags · se cuenta por bin', body=f"""

@@ -185,7 +185,9 @@ export function laborOf(s: State, date: string, now: number) {
 export function wtSum(entries: WeightTest['entries'], target: ReturnType<typeof weightTarget>) {
   const ws = entries.flatMap((e) => (e.w != null ? [e.w] : [])), avg = ws.length ? ws.reduce((a, b) => a + b, 0) / ws.length : null
   const under = entries.filter((e) => entryClass(e, target) === 'bajo').length, over = entries.filter((e) => entryClass(e, target) === 'sobre').length
-  return { checked: entries.length, n: ws.length, avg: avg == null ? null : Math.round(avg * 1000) / 1000, min: ws.length ? Math.min(...ws) : null, max: ws.length ? Math.max(...ws) : null, under, over,
+  // (in weight said too, Jose 2026-10-29: "el que sale en el rango de bueno no se está apuntando")
+  const good = entries.filter((e) => entryClass(e, target) === 'ok').length
+  return { checked: entries.length, n: ws.length, avg: avg == null ? null : Math.round(avg * 1000) / 1000, min: ws.length ? Math.min(...ws) : null, max: ws.length ? Math.max(...ws) : null, good, under, over,
     okPct: target && entries.length ? (entries.length - under - over) / entries.length : null, avgPct: target && avg != null ? (avg - target.pouch) / target.pouch : null }
 }
 /**
@@ -270,15 +272,15 @@ export function wtSheetRows(s: State, wts: WtRow[], detail: { w: WtRow; t: Weigh
   const yields = cookYields(wts), most = Math.min(20, Math.max(0, ...detail.map((x) => x.t.entries.length)))
   const target = (w: WtRow) => wtRangeText(w.target)
   return [
-    headRow(tr('Cuarto'), tr('Código'), tr('Qué se pesó'), tr('Pruebas hechas'), tr('Incompletas'), tr('Pesados'), tr('Promedio (oz)'), tr('Mínimo'), tr('Máximo'), tr('Objetivo (oz)'), tr('Bajos'), tr('Sobre'), tr('% en peso'), tr('Promedio vs objetivo')),
-    ...wts.map((w): Cell[] => [w.dept, w.code, w.label, xT(wtDoneText(w), w.due && w.complete + w.skipped.length < w.due ? X.bad : X.label), xN(w.short, w.short ? X.nWarn : X.n), xN(w.n), w.avg == null ? '' : xN(w.avg, X.dec), w.min == null ? '' : xN(w.min, X.dec), w.max == null ? '' : xN(w.max, X.dec), target(w), xN(w.under, w.under ? X.nBad : X.n), xN(w.over, w.over ? X.nWarn : X.n), okCell(w.okPct), pct1(w.avgPct)]),
+    headRow(tr('Cuarto'), tr('Código'), tr('Qué se pesó'), tr('Pruebas hechas'), tr('Incompletas'), tr('Pesados'), tr('Promedio (oz)'), tr('Mínimo'), tr('Máximo'), tr('Objetivo (oz)'), tr('Bien'), tr('Bajos'), tr('Sobre'), tr('% en peso'), tr('Promedio vs objetivo')),
+    ...wts.map((w): Cell[] => [w.dept, w.code, w.label, xT(wtDoneText(w), w.due && w.complete + w.skipped.length < w.due ? X.bad : X.label), xN(w.short, w.short ? X.nWarn : X.n), xN(w.n), w.avg == null ? '' : xN(w.avg, X.dec), w.min == null ? '' : xN(w.min, X.dec), w.max == null ? '' : xN(w.max, X.dec), target(w), xN(w.good, w.good ? X.nGood : X.n), xN(w.under, w.under ? X.nBad : X.n), xN(w.over, w.over ? X.nWarn : X.n), okCell(w.okPct), pct1(w.avgPct)]),
     ...(yields.length ? [[], headRow(tr('Rendimiento de cocción'), tr('Código'), tr('Crudo promedio (oz)'), tr('Cocinado promedio (oz)'), tr('Cocinado ÷ crudo'), tr('Se pierde')),
       ...yields.map((y): Cell[] => [cookText(y.cook), y.code, xN(y.raw, X.dec), xN(y.cooked, X.dec), pct1(y.pct), pct1(1 - y.pct)])] : []),
-    [], headRow(tr('Hora'), tr('Turno'), tr('Cuarto'), tr('Línea'), tr('Código'), tr('Lote'), tr('Qué se pesó'), tr('Pesados'), tr('Promedio (oz)'), tr('Mínimo'), tr('Máximo'), tr('Objetivo (oz)'), tr('Bajos'), tr('Sobre'), tr('Anotó'), ...Array.from({ length: most }, (_, i) => '#' + (i + 1))),
+    [], headRow(tr('Hora'), tr('Turno'), tr('Cuarto'), tr('Línea'), tr('Código'), tr('Lote'), tr('Qué se pesó'), tr('Pesados'), tr('Promedio (oz)'), tr('Mínimo'), tr('Máximo'), tr('Objetivo (oz)'), tr('Bien'), tr('Bajos'), tr('Sobre'), tr('Anotó'), ...Array.from({ length: most }, (_, i) => '#' + (i + 1))),
     ...detail.map(({ w, t }): Cell[] => {
-      if (t.skip) return [fmtTime(t.at), wtShift(s, t), t.dept, t.line, t.code, t.lot, w.label, xT(tr('No se usó esa hora'), X.label), '', '', '', '', '', '', t.by]
+      if (t.skip) return [fmtTime(t.at), wtShift(s, t), t.dept, t.line, t.code, t.lot, w.label, xT(tr('No se usó esa hora'), X.label), '', '', '', '', '', '', '', t.by]
       const x = wtSum(t.entries, w.target)
-      return [fmtTime(t.at), wtShift(s, t), t.dept, t.line, t.code, t.lot, w.label, xN(x.n), x.avg == null ? '' : xN(x.avg, X.dec), x.min == null ? '' : xN(x.min, X.dec), x.max == null ? '' : xN(x.max, X.dec), target(w), xN(x.under, x.under ? X.nBad : X.n), xN(x.over, x.over ? X.nWarn : X.n), t.by,
+      return [fmtTime(t.at), wtShift(s, t), t.dept, t.line, t.code, t.lot, w.label, xN(x.n), x.avg == null ? '' : xN(x.avg, X.dec), x.min == null ? '' : xN(x.min, X.dec), x.max == null ? '' : xN(x.max, X.dec), target(w), xN(x.good, x.good ? X.nGood : X.n), xN(x.under, x.under ? X.nBad : X.n), xN(x.over, x.over ? X.nWarn : X.n), t.by,
         ...t.entries.slice(0, most).map((e): Cell => { const k = entryClass(e, w.target); return e.w == null ? (e.k === 'sobre' ? '▲' : e.k === 'bajo' ? '▼' : '') : xN(e.w, k === 'bajo' ? X.nBad : k === 'sobre' ? X.nWarn : X.dec) })]
     }),
   ]
@@ -292,11 +294,12 @@ export function kpiSheets(s: State, date: string, now: number): Sheet[] {
   const notes = (p: KpiPart) => xT(kpiNote(s, date, p), X.note)
   const mo = costcoMonth(s, date, now), last = costcoLast(s, date, now, 7), lab = laborOf(s, date, now), day = last[last.length - 1], wts = weightsOf(s, date, now)
   const outW = wts.reduce((t, w) => t + w.under + w.over, 0), allW = wts.reduce((t, w) => t + w.checked, 0), cw = wtCompliance(wts)
+  const goodW = wts.reduce((t, w) => t + w.good, 0), underW = wts.reduce((t, w) => t + w.under, 0), overW = wts.reduce((t, w) => t + w.over, 0)
   const head: Cell[][] = [[xT(tr('E.R. - Ops Summary'), X.title), xDay(date)], []]
   const wState = !allW && !cw.due ? X.label : (allW && outW / allW > 0.1) || (cw.pct != null && cw.pct < 0.9) ? X.bad : outW || (cw.pct != null && cw.pct < 1) ? X.warn : X.good
   const cState = day.pct == null ? X.label : day.pct < 0.9 ? X.bad : day.pct < 1 ? X.warn : X.good
   const resumen: Cell[][] = [...head, headRow(tr('Parte'), tr('Resultado'), tr('Qué vimos · causa · acción')),
-    [xT(tr('1 · Pesos'), X.label), xT([allW ? tr('{0} de {1} pesados fuera de peso', outW, allW) : tr('Sin pruebas de peso'), ...(cw.due ? [tr('{0} de {1} pruebas hechas', cw.done, cw.due)] : [])].join(' · '), wState), notes('weights')],
+    [xT(tr('1 · Pesos'), X.label), xT([allW ? tr('{0} pesados: {1} bien, {2} bajos, {3} sobre', allW, goodW, underW, overW) : tr('Sin pruebas de peso'), ...(cw.due ? [tr('{0} de {1} pruebas hechas', cw.done, cw.due)] : [])].join(' · '), wState), notes('weights')],
     [xT(tr('2 · Cortes'), X.label), xT(tr('Esperando los pedidos de Julio'), X.label), notes('cuts')],
     [xT(tr('3 · Productividad'), X.label), xT(lab.total.perHour == null ? '—' : tr('{0} cajas por hora-persona', lab.total.perHour) + (lab.total.lbPerHour != null ? ' · ' + tr('{0} lb por hora-persona', lab.total.lbPerHour) : ''), X.label), notes('labor')],
     [xT(tr('4 · Costco MVM'), X.label), xT(tr('{0} cajas de {1} planeadas ({2})', n0(day.cases), n0(day.planCases), pc(day.pct)), cState), notes('costco')],

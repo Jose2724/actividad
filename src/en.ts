@@ -2823,4 +2823,6 @@ export const EN: Record<string, string> = {
   "Máximo (oz)": "Maximum (oz)",
   "Lo dice QA. Menos del mínimo es bajo, más del máximo es sobre; el mínimo y el máximo mismos están bien.": "QA says it. Below the minimum is under, above the maximum is over; the minimum and the maximum themselves are fine.",
   "El máximo tiene que ser mayor que el mínimo.": "The maximum has to be more than the minimum.",
+  "Bien": "In weight",
+  "{0} pesados: {1} bien, {2} bajos, {3} sobre": "{0} weighed: {1} in weight, {2} under, {3} over",
 }

@@ -2026,11 +2026,6 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 .wt-sum{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;font-weight:700}.wt-sum .red{color:#b91c1c}.wt-sum .amber{color:#b45309}
 .wt-earlier{margin:0;padding-left:18px;color:var(--muted);display:grid;gap:2px}
 
-/* the two big buttons of a weight test (2026-10-22): over amber, under red, as the marks */
-.wt-big{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.wt-big .btn{min-height:64px;font-size:20px;font-weight:800}
-.wt-over{background:#fff4e5;border-color:#f59e0b;color:#b45309;box-shadow:0 3px 0 #f59e0b}
-.wt-under{background:#fee2e2;border-color:#dc2626;color:#b91c1c;box-shadow:0 3px 0 #dc2626}
 
 /* urgent orders and Packing's comment on an order (2026-10-22) */
 .otable tr.o-urgent td{background:#fff1f2}
@@ -2189,7 +2184,7 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 .wt-rp-tbl{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
 .wt-rp-tbl th{text-align:left;font-size:12px;color:var(--muted);font-weight:700;padding:4px 8px;border-bottom:1.5px solid var(--line,#e5e7eb);white-space:nowrap}
 .wt-rp-tbl td{padding:6px 8px;border-bottom:1px solid var(--line,#eef0f3);vertical-align:middle}
-.wt-rp-tbl .n{text-align:right;white-space:nowrap}.wt-rp-tbl .red{color:#b91c1c;font-weight:700}.wt-rp-tbl .amber{color:#b45309;font-weight:700}
+.wt-rp-tbl .n{text-align:right;white-space:nowrap}.wt-rp-tbl .ok,.kpi-tbl td.ok{color:#166534;font-weight:700}.wt-rp-tbl .red{color:#b91c1c;font-weight:700}.wt-rp-tbl .amber{color:#b45309;font-weight:700}
 .wt-ok{display:inline-block;min-width:52px;text-align:center;border-radius:99px;padding:2px 8px;font-weight:800;background:#e5e7eb;color:#374151}
 .wt-ok.good{background:#dcfce7;color:#166534}.wt-ok.warn{background:#fef3c7;color:#92400e}.wt-ok.bad{background:#fee2e2;color:#b91c1c}
 .wt-yield{margin:8px 0 0;font-weight:700;color:var(--d-ink,inherit)}

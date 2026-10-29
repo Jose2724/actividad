@@ -5601,15 +5601,15 @@ section('Pesos de QA cada hora (Jose, 2026-10-29): Spiral pesa 10 bolas crudas a
     const p = m.weightNew(rr('0889'))
     m.weightSave(p, [49.2, 50.1, 47.99, 48, 52.3, 50.5, 49.9, 52, 50.1, 49.6].map((w) => ({ w })))
     const R = m.wtOfReport(st(), DAY, T0 + 125 * M, { dept: 'RTE' })
-    eq('el reporte de RTE: solo sus códigos; el 0889 con 1 de 2 pruebas, 1 bajo (47.99) y 1 sobre (52.3); 48 y 52 bien', R.rows.map((x) => [x.code, x.label, m.wtDoneText(x), x.under, x.over]), [['0889', 'Pouch', '1 de 2', 1, 1]])
+    eq('el reporte de RTE: solo sus códigos; el 0889 con 1 de 2 pruebas, 8 bien, 1 bajo (47.99) y 1 sobre (52.3); 48 y 52 bien', R.rows.map((x) => [x.code, x.label, m.wtDoneText(x), x.good, x.under, x.over]), [['0889', 'Pouch', '1 de 2', 8, 1, 1]])
     eq('el reporte filtrado por la otra línea o el otro turno no lista la prueba', [m.wtOfReport(st(), DAY, clock, { dept: 'RTE', line: rl('Línea 2').id }).tests.length, m.wtOfReport(st(), DAY, clock, { dept: 'RTE', shift: m.wtShift(st(), p) === 1 ? 2 : 1 }).tests.length, m.wtOfReport(st(), DAY, clock, { dept: 'RTE', code: '889' }).tests.length], [0, 0, 1])
     // the Excel of the KPI: the summary row and the Pesos sheet with each weight in its column
     const sh = m.kpiSheets(st(), DAY, T0 + 190 * M), pes = sh.find((x) => x.name === 'Pesos')
     const res = sh[0].rows.find((r) => r[0]?.t === '1 · Pesos')
-    eq('el resumen del KPI dice los fuera de peso y las pruebas hechas de las que tocaban', res[1].t, '6 de 33 pesados fuera de peso · 5 de 15 pruebas hechas')
+    eq('el resumen del KPI dice los fuera de peso y las pruebas hechas de las que tocaban', res[1].t, '33 pesados: 27 bien, 3 bajos, 3 sobre · 5 de 15 pruebas hechas')
     const head = pes.rows.findIndex((r) => r[0]?.t === 'Hora'), first = pes.rows[head + 1]
-    eq('la hoja Pesos: cada prueba con su hora, turno, qué se pesó y cada peso en su columna (el bajo en rojo, el sobre en ámbar)', [pes.rows[2].map((c) => c?.t ?? c).slice(0, 4), first.slice(2, 8).map((c) => c?.t ?? c), first.slice(15).length, first[15 + 2].s, first[15 + 4].s], [['Cuarto', 'Código', 'Qué se pesó', 'Pruebas hechas'], ['RTE', 'Línea 1', '0889', '6300', 'Pouch', '10'], 10, m.X.nBad, m.X.nWarn])
-    eq('una prueba que no se usó dice eso en la hoja', pes.rows.some((r) => r[7]?.t === 'No se usó esa hora' && r[6] === 'Crudo · Racks'), true)
+    eq('la hoja Pesos: cada prueba con su hora, turno, qué se pesó y cada peso en su columna (el bajo en rojo, el sobre en ámbar)', [pes.rows[2].map((c) => c?.t ?? c).slice(0, 4), first.slice(2, 8).map((c) => c?.t ?? c), first.slice(16).length, first[16 + 2].s, first[16 + 4].s], [['Cuarto', 'Código', 'Qué se pesó', 'Pruebas hechas'], ['RTE', 'Línea 1', '0889', '6300', 'Pouch', '10'], 10, m.X.nBad, m.X.nWarn])
+    eq('una prueba que no se usó dice eso en la hoja', pes.rows.some((r) => r[7]?.t === 'No se usó esa hora' && r[6] === 'Crudo · Racks' && r[15] === r.at(-1)), true)
     // what another tablet sends arrives with its cooker; a cooker on another room is not kept
     m.applyRemote('act_changes', { id: 'wt:RK1', at: iso(T0 + 70 * M), by_name: 'Otro', dept: 'Spiral', what: 'Peso', before: '', after: JSON.stringify({ date: DAY, lineId: 'x', line: 'Línea 2', code: '0889', lot: '6292', runId: 'r9', kind: 'ball', cook: 'racks', unit: 'oz', entries: [{ w: 2.33 }] }), ref_table: 'act_weights', ref_key: 'RK1', deleted: false, updated_at: iso(T0 + 70 * M), updated_by: 'Otro' })
     m.applyRemote('act_changes', { id: 'wt:RK2', at: iso(T0 + 70 * M), by_name: 'Otro', dept: 'RTE', what: 'Peso', before: '', after: JSON.stringify({ date: DAY, lineId: 'x', line: 'Línea 2', code: '0889', lot: '6292', runId: 'r8', kind: 'pouch', cook: 'racks', skip: true, unit: 'oz', entries: [] }), ref_table: 'act_weights', ref_key: 'RK2', deleted: false, updated_at: iso(T0 + 70 * M), updated_by: 'Otro' })

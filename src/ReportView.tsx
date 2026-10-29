@@ -1541,7 +1541,7 @@ function WeightsView({ k }: { k: Kit }) {
         <article key={g[0].dept + g[0].code} className="wt-rp" style={deptVars(g[0].dept)}>
           <h3>{DEPT_LOOK[g[0].dept].emoji} {g[0].dept} · {g[0].code}</h3>
           <div className="scroll"><table className="wt-rp-tbl">
-            <thead><tr><th>{tr('Qué se pesó')}</th><th className="n">{tr('Pruebas')}</th><th className="n">{tr('Pesados')}</th><th className="n">{tr('Promedio')}</th><th className="n">{tr('Objetivo')}</th><th className="n">{tr('Mín · Máx')}</th><th className="n">▼ {tr('Bajos')}</th><th className="n">▲ {tr('Sobre')}</th><th className="n">{tr('% en peso')}</th></tr></thead>
+            <thead><tr><th>{tr('Qué se pesó')}</th><th className="n">{tr('Pruebas')}</th><th className="n">{tr('Pesados')}</th><th className="n">{tr('Promedio')}</th><th className="n">{tr('Objetivo')}</th><th className="n">{tr('Mín · Máx')}</th><th className="n">✓ {tr('Bien')}</th><th className="n">▼ {tr('Bajos')}</th><th className="n">▲ {tr('Sobre')}</th><th className="n">{tr('% en peso')}</th></tr></thead>
             <tbody>{g.map((r) => (
               <tr key={r.label}>
                 <td><b>{r.label}</b></td>
@@ -1550,6 +1550,7 @@ function WeightsView({ k }: { k: Kit }) {
                 <td className="n"><b>{oz(r.avg)}</b>{r.avgPct != null && <small className={Math.abs(r.avgPct) > 0.02 ? 'red' : ''}> {(r.avgPct > 0 ? '+' : '') + Math.round(r.avgPct * 1000) / 10}%</small>}</td>
                 <td className="n">{wtRangeText(r.target) || '—'}</td>
                 <td className="n">{r.min == null ? '—' : oz(r.min) + ' · ' + oz(r.max)}</td>
+                <td className={'n' + (r.good ? ' ok' : '')}>{r.good}</td>
                 <td className={'n' + (r.under ? ' red' : '')}>{r.under}</td>
                 <td className={'n' + (r.over ? ' amber' : '')}>{r.over}</td>
                 <td className="n"><span className={'wt-ok ' + (r.okPct == null ? '' : r.okPct < 0.9 ? 'bad' : r.okPct < 1 ? 'warn' : 'good')}>{pc(r.okPct)}</span></td>
@@ -1561,12 +1562,12 @@ function WeightsView({ k }: { k: Kit }) {
       ))}
       <h3>{tr('Cada prueba')}{rep.shift ? ' · ' + tr('Turno {0}', rep.shift) : ''}</h3>
       {wt.tests.length ? <div className="scroll"><table className="wt-rp-tbl each">
-        <thead><tr><th>{tr('Hora')}</th><th>{tr('Turno')}</th><th>{tr('Línea')}</th><th>{tr('Código')}</th><th>{tr('Qué')}</th><th>{tr('Pesos (oz)')}</th><th className="n">{tr('Promedio')}</th><th className="n">▼</th><th className="n">▲</th><th>{tr('Anotó')}</th></tr></thead>
+        <thead><tr><th>{tr('Hora')}</th><th>{tr('Turno')}</th><th>{tr('Línea')}</th><th>{tr('Código')}</th><th>{tr('Qué')}</th><th>{tr('Pesos (oz)')}</th><th className="n">{tr('Promedio')}</th><th className="n">✓</th><th className="n">▼</th><th className="n">▲</th><th>{tr('Anotó')}</th></tr></thead>
         <tbody>{wt.tests.map(({ w, t }) => { const x = wtSum(t.entries, w.target); return (
           <tr key={t.id}>
             <td>{fmtTime(t.at)}</td><td>{wtShift(s, t)}</td><td>{lineNameOf(s, t.lineId, t.line)}</td><td>{t.code}{t.lot ? <small> · {t.lot}</small> : null}</td><td>{w.label}</td>
             <td>{t.skip ? <i className="muted">{tr('no se usó esa hora')}</i> : <span className="wt-chips">{t.entries.map((e, i) => { const c = entryClassOf(e, w.target); return <span key={i} className={'wt-chip ' + (c || 'none')}>{e.w != null ? oz(e.w) : c === 'sobre' ? '▲' : '▼'}</span> })}</span>}</td>
-            <td className="n">{t.skip ? '' : oz(x.avg)}</td><td className={'n' + (x.under ? ' red' : '')}>{t.skip ? '' : x.under}</td><td className={'n' + (x.over ? ' amber' : '')}>{t.skip ? '' : x.over}</td><td>{t.by}</td>
+            <td className="n">{t.skip ? '' : oz(x.avg)}</td><td className={'n' + (x.good ? ' ok' : '')}>{t.skip ? '' : x.good}</td><td className={'n' + (x.under ? ' red' : '')}>{t.skip ? '' : x.under}</td><td className={'n' + (x.over ? ' amber' : '')}>{t.skip ? '' : x.over}</td><td>{t.by}</td>
           </tr>
         ) })}</tbody>
       </table></div> : <p className="hint">{tr('Ninguna prueba con lo que estás viendo.')}</p>}

@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { cookText, entryClass, fmtTime, lineLabel, sameStep, setWeightTarget, stepKey, stepText, weighsCode, weightDueSteps, weightNew, weightOpen, weightRuleOf, weightSave, weightSkip, weightStepsOf, weightTarget, weightThisHour, wtRange, wtWeights, type Cook, type Run, type State, type WeightTest, type WtEntry, type WtStep } from './store'
+import { cookText, entryClass, fmtTime, lineLabel, sameStep, setWeightTarget, stepKey, stepText, weightDueSteps, weightNew, weightOpen, weightRuleOf, weightSave, weightSkip, weightStepsOf, weightTarget, weightThisHour, wtRange, wtWeights, type Cook, type Run, type State, type WeightTest, type WtEntry, type WtStep } from './store'
 import { useWho } from './App'
 import { tr } from './i18n'
 
@@ -63,8 +63,6 @@ function WeightDialog({ s, run, now, onClose }: { s: State; run: Run; now: numbe
   const who = useWho()
   const boss = !!who.admin || who.role === 'mgr' || who.role === 'office'
   const steps = weightStepsOf(run.dept), many = steps.length > 1, rule = weightRuleOf(s, run.dept)
-  // a code the room weighs every hour: each weight typed (Jose, 2026-10-29: "tiene que poner el peso, no solo over o under")
-  const strict = weighsCode(s, run.dept, run.code) && rule.every > 0
   const due = weightDueSteps(s, run, now)
   // the tests begun in this window (by step), and the steps asked to be weighed again although done this hour
   const fresh = useRef<Record<string, WeightTest>>({})
@@ -98,12 +96,12 @@ function WeightDialog({ s, run, now, onClose }: { s: State; run: Run; now: numbe
     setStarted((m) => ({ ...m, [k]: x.id }))
     weightSave(x, list)
   }
-  // a weight typed is needed with "+ Agregar" (and always on a code weighed every hour), optional with the buttons
-  const add = (k?: 'sobre' | 'bajo') => {
+  // every weight typed: the app says under, in weight or over by the target (Jose, 2026-10-29: the two buttons of
+  // under and over are not needed any more, "la misma app sabe cuáles están bajos y subidos")
+  const add = () => {
     const typed = text.trim(), w = Number(typed.replace(',', '.'))
-    if (typed && !(w > 0 && w < 2000)) { setBad(true); return }
-    if (!typed && !k) { setBad(true); return }
-    const e: WtEntry = { ...(typed ? { w } : {}), ...(k ? { k } : {}) }
+    if (!(w > 0 && w < 2000)) { setBad(true); return }
+    const e: WtEntry = { w }
     save([...entries, e]); setText(''); setBad(false)
     // (Spiral: the tenth ball moves on to the next test still to do this hour)
     if (many && rule.count && entries.length + 1 === rule.count) { const next = firstToDo(pick); if (next) setPick(next) }
@@ -143,16 +141,11 @@ function WeightDialog({ s, run, now, onClose }: { s: State; run: Run; now: numbe
           </div>
         ) : <>
           {ball ? <p className="hint">{pick.kind === 'raw' ? (pick.cook ? tr('Pesa {0} bolas crudas, una por una, antes de que entren a {1}, y escribe el peso de cada una en onzas (oz).', rule.count || 10, cookText(pick.cook)) : rule.count ? tr('Pesa {0} bolas crudas, una por una, y escribe el peso de cada una en onzas (oz).', rule.count) : tr('Pesa las bolas crudas, una por una, y escribe el peso de cada una en onzas (oz).')) : pick.cook ? tr('Pesa {0} bolas cocinadas, una por una, al salir de {1}, y escribe el peso de cada una en onzas (oz).', rule.count || 10, cookText(pick.cook)) : rule.count ? tr('Pesa {0} bolas, una por una, y escribe el peso de cada una en onzas (oz).', rule.count) : tr('Pesa las bolas, una por una, y escribe el peso de cada una en onzas (oz).')}</p>
-            : strict ? <p className="hint">{tr('Pesa {0} pouches, uno por uno, y escribe el peso de cada uno en onzas (oz). La app dice si está bajo o sobre.', rule.count || 10)}</p> : <>
-            <div className="wt-big">
-              <button type="button" className="btn wt-over" onClick={() => add('sobre')}>{tr('▲ Sobre peso')}</button>
-              <button type="button" className="btn wt-under" onClick={() => add('bajo')}>{tr('▼ Bajo peso')}</button>
-            </div>
-            <p className="hint">{tr('Toca el botón por cada pouch fuera de peso. El peso es opcional: si lo pesaste, escríbelo antes de tocar el botón.')}</p></>}
-          {(ball || strict) && rule.count > 0 && <div className="wt-count"><b>{tr('{0} de {1}', Math.min(entries.length, rule.count), rule.count)}</b>{entries.length >= rule.count ? <span className="ok">{tr('✓ Prueba completa')}</span> : <span>{tr('faltan {0}', rule.count - entries.length)}</span>}</div>}
+            : <p className="hint">{tr('Pesa {0} pouches, uno por uno, y escribe el peso de cada uno en onzas (oz). La app dice si está bajo o sobre.', rule.count || 10)}</p>}
+          {rule.count > 0 && <div className="wt-count"><b>{tr('{0} de {1}', Math.min(entries.length, rule.count), rule.count)}</b>{entries.length >= rule.count ? <span className="ok">{tr('✓ Prueba completa')}</span> : <span>{tr('faltan {0}', rule.count - entries.length)}</span>}</div>}
           <form className="wt-add" onSubmit={(e) => { e.preventDefault(); add() }}>
-            <input ref={box} autoFocus={ball || strict} inputMode="decimal" value={text} placeholder={ball ? tr('Peso de la bola (oz)') : strict ? tr('Peso del pouch (oz)') : tr('Peso del pouch (oz), opcional')} aria-label={ball ? tr('Peso de la bola (oz)') : strict ? tr('Peso del pouch (oz)') : tr('Peso del pouch (oz), opcional')} onChange={(e) => { setText(e.target.value.replace(/[^\d.,]/g, '')); setBad(false) }} />
-            <button type="submit" className={'btn ' + (ball || strict ? 'primary' : 'soft')} disabled={!text}>{tr('+ Agregar')}</button>
+            <input ref={box} autoFocus inputMode="decimal" value={text} placeholder={ball ? tr('Peso de la bola (oz)') : tr('Peso del pouch (oz)')} aria-label={ball ? tr('Peso de la bola (oz)') : tr('Peso del pouch (oz)')} onChange={(e) => { setText(e.target.value.replace(/[^\d.,]/g, '')); setBad(false) }} />
+            <button type="submit" className="btn primary" disabled={!text}>{tr('+ Agregar')}</button>
           </form>
           {many && pick.cook && cookFree(pick.cook) && <p className="hint"><button type="button" className="lnk sm" onClick={() => skipCook(pick.cook as Cook)}>{tr('{0} no cocinó esta hora', cookText(pick.cook))}</button></p>}
         </>}

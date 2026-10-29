@@ -180,9 +180,9 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
     doc.text(tr('Pesos'), 40, y)
     autoTable(doc, {
       startY: y + 10, theme: 'grid', styles: { font: 'helvetica', fontSize: 9, cellPadding: 4, textColor: [22, 32, 42] }, headStyles: { fillColor: teal, textColor: 255, fontStyle: 'bold' },
-      head: [[tr('Cuarto'), tr('Código'), tr('Qué se pesó'), tr('Pruebas'), tr('Pesados'), tr('Promedio (oz)'), tr('Objetivo (oz)'), tr('Mín · Máx'), tr('Bajos'), tr('Sobre'), tr('% en peso')]],
-      body: wt.rows.map((w) => [w.dept, w.code, w.label, wtDoneText(w), String(w.n), o(w.avg), wtRangeText(w.target) || '—', w.min == null ? '—' : o(w.min) + ' · ' + o(w.max), String(w.under), String(w.over), p(w.okPct)]),
-      didParseCell: (c) => { const w = wt.rows[c.row.index]; if (c.section === 'body' && w && ((c.column.index === 3 && w.due != null && w.complete + w.skipped.length < w.due) || (c.column.index === 8 && w.under))) c.cell.styles.textColor = [185, 28, 28] },
+      head: [[tr('Cuarto'), tr('Código'), tr('Qué se pesó'), tr('Pruebas'), tr('Pesados'), tr('Promedio (oz)'), tr('Objetivo (oz)'), tr('Mín · Máx'), tr('Bien'), tr('Bajos'), tr('Sobre'), tr('% en peso')]],
+      body: wt.rows.map((w) => [w.dept, w.code, w.label, wtDoneText(w), String(w.n), o(w.avg), wtRangeText(w.target) || '—', w.min == null ? '—' : o(w.min) + ' · ' + o(w.max), String(w.good), String(w.under), String(w.over), p(w.okPct)]),
+      didParseCell: (c) => { const w = wt.rows[c.row.index]; if (c.section === 'body' && w && ((c.column.index === 3 && w.due != null && w.complete + w.skipped.length < w.due) || (c.column.index === 9 && w.under))) c.cell.styles.textColor = [185, 28, 28] },
     })
     const yields = cookYields(wt.rows)
     if (yields.length) autoTable(doc, {
@@ -192,8 +192,8 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
     })
     if (wt.tests.length) autoTable(doc, {
       startY: after() + 10, theme: 'grid', styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 3, textColor: [22, 32, 42] }, headStyles: { fillColor: [91, 107, 122], textColor: 255, fontStyle: 'bold' },
-      head: [[tr('Hora'), tr('Turno'), tr('Línea'), tr('Código'), tr('Qué'), tr('Pesos (oz)'), tr('Promedio'), tr('Bajos'), tr('Sobre'), tr('Anotó')]],
-      body: wt.tests.map(({ w, t }) => { const x = wtSum(t.entries, w.target); return [fmtTime(t.at), String(wtShift(s, t)), lineNameOf(s, t.lineId, t.line), t.code, w.label, t.skip ? tr('no se usó esa hora') : t.entries.map((e) => (e.w != null ? o(e.w) : '') + (e.k === 'sobre' ? '▲' : e.k === 'bajo' ? '▼' : '')).join('  '), t.skip ? '' : o(x.avg), t.skip ? '' : String(x.under), t.skip ? '' : String(x.over), t.by] }),
+      head: [[tr('Hora'), tr('Turno'), tr('Línea'), tr('Código'), tr('Qué'), tr('Pesos (oz)'), tr('Promedio'), tr('Bien'), tr('Bajos'), tr('Sobre'), tr('Anotó')]],
+      body: wt.tests.map(({ w, t }) => { const x = wtSum(t.entries, w.target); return [fmtTime(t.at), String(wtShift(s, t)), lineNameOf(s, t.lineId, t.line), t.code, w.label, t.skip ? tr('no se usó esa hora') : t.entries.map((e) => (e.w != null ? o(e.w) : '') + (e.k === 'sobre' ? '▲' : e.k === 'bajo' ? '▼' : '')).join('  '), t.skip ? '' : o(x.avg), t.skip ? '' : String(x.good), t.skip ? '' : String(x.under), t.skip ? '' : String(x.over), t.by] }),
       columnStyles: { 5: { cellWidth: 230 } },
     })
   }
