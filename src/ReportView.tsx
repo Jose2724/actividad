@@ -3,7 +3,8 @@ import type { ReactNode } from 'react'
 import { apartLabel, apartWord, binWord, cameFrom, carriedOver, casesText, CFG, cfgFor, cfgOf, csvCell, DEPTS, fmtDur, roomKnown, fmtN, fmtTime, inCases, kindClass, lineLabel, lineNameOf, looksLikeTwoLots, madeText, measureName, measureUnit, normCode, noteLabel, noteOf, orderLabel, orderOfId, plainDay, plainText, productOf, purgesOf, reasonText, restorePurged, runStats, SETUP, shiftAt, shiftHours, shiftSpan, shiftsOf, stopTime, unitQty, user, whoText, workDay, type Dept, type State, type AttEntry, type AttRow } from './store'
 import { avanceRows, mfoText, mfoWord, pending } from './avance'
 import { codeLabel, FAMILY_SHOWN, reasonCodeOf } from './reasons'
-import { cellText, loadZip, xDur, xPct, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
+import { cellText, loadZip, X, xDur, xN, xPct, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
+import { hoursOf, seesLabor } from './kpi'
 import { attendanceOf, attLineText, attMovesText, attOf, attShifts, attStateText } from './store'
 import { consumesOf, inventoryOf, type Dept as RoomDept } from './store'
 import { pctText } from './Attendance'
@@ -327,8 +328,10 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
     const people = (rep.shift ? [rep.shift] : attShifts(s, date)).flatMap((k) => rooms.flatMap((d) => attOf(s, date, d, k)))
     const T = (ms: number) => xTime(ms, fmtTime(ms))
     // with the line each one is on and their moves (Jose, 2026-10-22: "que los nombres de las personas salgan también en el excel")
-    const names: Cell[][] = [[tr('Fecha'), tr('Turno'), tr('Cuarto'), tr('Línea'), tr('Persona'), tr('Anotó'), tr('Hora'), tr('Estado'), tr('Pasó a'), tr('Línea allá'), tr('Hora de salida'), tr('Viene de'), tr('Traslados')],
-      ...people.map((x): Cell[] => [date, x.shift, x.dept, attLineText(s, x.line), x.name + (x.sup ? ' · ' + tr('supervisor') : ''), x.by, T(x.at), !x.gone ? tr('trabajando') : x.gone.why === 'casa' ? tr('se fue a su casa') : tr('pasó a otro cuarto'), x.gone?.to ?? '', attLineText(s, x.gone?.line), x.gone ? T(x.gone.at) : '', x.from, attMovesText(s, x)])]
+    const labor = seesLabor(s, admin, user.get())
+    const names: Cell[][] = [[tr('Fecha'), tr('Turno'), tr('Cuarto'), tr('Línea'), tr('Persona'), tr('Anotó'), tr('Hora'), ...(labor ? [tr('Llegó'), tr('Horas trabajadas')] : []), tr('Estado'), tr('Pasó a'), tr('Línea allá'), tr('Hora de salida'), tr('Viene de'), tr('Traslados')],
+      // when each one came (blank = at the shift's start) and the hours they count in the KPI (2026-10-29, the boss's input/output)
+      ...people.map((x): Cell[] => [date, x.shift, x.dept, attLineText(s, x.line), x.name + (x.sup ? ' · ' + tr('supervisor') : ''), x.by, T(x.at), ...(labor ? [x.came ? T(x.came) : '', xN(Math.round(hoursOf(s, x, now) * 100) / 100, X.dec)] : []), !x.gone ? tr('trabajando') : x.gone.why === 'casa' ? tr('se fue a su casa') : tr('pasó a otro cuarto'), x.gone?.to ?? '', attLineText(s, x.gone?.line), x.gone ? T(x.gone.at) : '', x.from, attMovesText(s, x)])]
     return [{ name: tr('Asistencia'), rows, chart: { title: tr('% de faltas por cuarto'), series: tr('% Falta'), cat: 0, val: 4, from: 2, to: 1 + a.rows.length, at: a.rows.length + 4, pct: true } }, ...(people.length ? [{ name: tr('Asistencia · personas'), rows: names }] : [])]
   }
   /** Spiral's meat as a sheet (2026-10-23): the summary by code (pounds, lots, pounds per mezcla), then every entry */

@@ -8,6 +8,8 @@ import { supabase } from './supabase'
 import { syncStore } from './sync'
 import { consumeOn, setConsumeOn } from './store'
 import { cartCratesOf, setAllCartCrates, setCartCrates } from './store'
+import { kpiPut, lunchOf, setLunch } from './store'
+import { laborAccess, seesLabor } from './kpi'
 import { lbCaseOn, loadQaLbPerCase, QA_LB_PER_CASE, setLbCaseOn, normCode } from './store'
 import { ATT_DEFAULT, attExpectedOf, attShifts, clearShiftMark, plantCut, roomMark, setAttExpected, setAttGate, setAttView, setShiftMark, setWeightRule, weightRuleOf, setSlowRule, slowRuleOf, setSlowLineOn, slowLineOn, slowUnitOf } from './store'
 import { BUILD } from './update'
@@ -63,7 +65,7 @@ export function Settings({ s, now, day, name, home, mgr, admin, viewOnly, meId, 
         {sec === 'program' && <><ProgramViewSettings s={s} /><ViewOptSettings s={s} name="lotes" /><ViewOptSettings s={s} name="flujo" /></>}
         {sec === 'weights' && <><SlowSettings s={s} viewOnly={viewOnly} /><WeightSettings s={s} viewOnly={viewOnly} /></>}
         {sec === 'consumo' && <ConsumeSettings s={s} viewOnly={viewOnly} />}
-        {sec === 'attendance' && <AttendanceSettings s={s} date={day.date} viewOnly={viewOnly} admin={admin} />}
+        {sec === 'attendance' && <AttendanceSettings s={s} date={day.date} viewOnly={viewOnly} admin={admin} name={name} />}
         {sec === 'products' && <CartCratesSettings s={s} readOnly={!can('products')} />}
         {sec === 'products' && <LbCaseSettings s={s} readOnly={!can('products')} />}
         {sec === 'products' && <div className="setcard wide"><div className="sethead"><h3>{tr('Productos')}</h3></div><p className="hint">{tr('La tabla maestra de la oficina: con ella las mezclas se vuelven pouches, cajas y pallets esperados, y cada cuarto sabe cuánto lleva un carro, un pallet o una caja.')}</p><Products s={s} readOnly={!can('products')} /></div>}
@@ -272,7 +274,7 @@ function LinesSettings({ s }: { s: State }) {
  * history, as from the attendance window on the floor). The managers and the office write it; "Solo ver" reads it.
  * The plant's number of the shift is the rooms' added up, as the attendance total.
  */
-function AttendanceSettings({ s, date, viewOnly, admin }: { s: State; date: string; viewOnly: boolean; admin: boolean }) {
+function AttendanceSettings({ s, date, viewOnly, admin, name }: { s: State; date: string; viewOnly: boolean; admin: boolean; name: string }) {
   const [asking, setAsking] = useState(false)
   const now = (d: Dept, k: 1 | 2) => String(attExpectedOf(s, d, k))
   const [typed, setTyped] = useState<Record<string, string>>({})
@@ -303,6 +305,8 @@ function AttendanceSettings({ s, date, viewOnly, admin }: { s: State; date: stri
         <p className="hint">{tr('Prendida: en todos los cuartos, el supervisor o líder tiene que anotarse como supervisor del turno y anotar a su gente antes de poder empezar un código o un Set up; al tocar Empezar se abre la ventana de asistencia. Cada turno anota la suya. No aplica a managers, oficina ni "Solo ver".')}</p>
       </div>
     )}
+    {admin && <LaborAccess s={s} />}
+    {seesLabor(s, admin, name) && <LunchSettings s={s} readOnly={viewOnly} />}
     {gateAsk && <ConfirmDialog title={tr('¿Asistencia obligatoria para empezar?')} text={tr('Desde ahora, en todos los cuartos, ningún supervisor puede empezar un código ni un Set up sin haberse anotado como supervisor del turno en la asistencia. Se puede apagar aquí mismo cuando quieras.')} yes={tr('Prender')} onYes={() => { setAttGate(true); setGateAsk(false) }} onNo={() => setGateAsk(false)} />}
     {asking && <ConfirmDialog title={tr('¿Que todos vean la asistencia?')} text={tr('Desde ahora la tarjeta de asistencia sale en el piso de todos los cuartos, y en el reporte y sus archivos. Se puede apagar aquí mismo cuando quieras.')} yes={tr('Prender para todos')} onYes={() => { setAttView(true); setAsking(false) }} onNo={() => setAsking(false)} />}
     <div className="setcard">
@@ -327,6 +331,57 @@ function AttendanceSettings({ s, date, viewOnly, admin }: { s: State; date: stri
       {!viewOnly && <div className="btns"><button type="button" className="btn" disabled={!changed.length} onClick={() => setTyped({})}>{tr('Deshacer cambios')}</button><button type="button" className="btn primary" disabled={!changed.length} onClick={save}>{!changed.length ? tr('✓ Guardar') : changed.length === 1 ? tr('✓ Guardar 1 cambio') : tr('✓ Guardar {0} cambios', changed.length)}</button></div>}
     </div>
     </>
+  )
+}
+
+/**
+ * Who has the hour each person came and the lunch (Jose, 2026-10-29: "solo para mí y después activárselo a los demás o
+ * elegir a quién"): only the admin sees this card; off and with no names, only the admin has them
+ */
+function LaborAccess({ s }: { s: State }) {
+  const a = laborAccess(s)
+  const [name, setName] = useState('')
+  const save = (all: boolean, names: string[]) => kpiPut('labor-access', { all, names })
+  return (
+    <div className="setcard">
+      <div className="sethead"><h3>{tr('Hora de llegada y lunch')}</h3><span className={'rc-state' + (a.all || a.names.length ? ' on' : '')}>{a.all ? tr('Para todos') : a.names.length ? tr('Tú y {0} más', a.names.length) : tr('Solo tú')}</span></div>
+      <label className="switch"><span>{tr('Que todos lo tengan')}</span><input type="checkbox" role="switch" checked={a.all} onChange={(e) => save(e.target.checked, a.names)} /></label>
+      <p className="hint">{tr('Es el botón "🕐 Llegó tarde" de la ventana de asistencia, el lunch de aquí abajo y las columnas Llegó y Horas trabajadas del Excel. Apagado: solo tú y los nombres de esta lista, escritos como sale el nombre en su cuenta.')}</p>
+      {!a.all && (
+        <>
+          <ul>{a.names.map((n) => <li key={n}>{n} <button type="button" className="lnk sm" onClick={() => save(false, a.names.filter((x) => x !== n))}>{tr('Quitar')}</button></li>)}</ul>
+          <form className="btns" onSubmit={(e) => { e.preventDefault(); const t = name.trim(); if (t && !a.names.includes(t)) save(false, [...a.names, t]); setName('') }}>
+            <input value={name} maxLength={60} placeholder={tr('Nombre, por ejemplo Edgar Carhuapoma')} onChange={(e) => setName(e.target.value)} aria-label={tr('Nombre')} />
+            <button type="submit" className="btn sm primary" disabled={!name.trim()}>{tr('Agregar')}</button>
+          </form>
+        </>
+      )}
+    </div>
+  )
+}
+
+/**
+ * The lunch not counted in the labor hours (Jose, 2026-10-29, the boss's input/output): so many minutes taken from
+ * each person who stayed at least so many hours. 0 minutes = nothing taken away (as at first)
+ */
+function LunchSettings({ s, readOnly }: { s: State; readOnly: boolean }) {
+  const now = lunchOf(s)
+  const [min, setMin] = useState(''), [after, setAfter] = useState('')
+  const [said, setSaid] = useState('')
+  const m = min.trim() === '' ? now.min : Number(min), a = after.trim() === '' ? now.after : Number(after)
+  const ok = Number.isInteger(m) && m >= 0 && m <= 240 && a >= 0 && a <= 24
+  const save = () => { if (!ok) return; setLunch(m, a); setMin(''); setAfter(''); setSaid(m ? tr('✓ Guardado: {0} minutos de lunch fuera de las horas-persona.', m) : tr('✓ Guardado: no se descuenta lunch.')) }
+  return (
+    <div className="setcard">
+      <div className="sethead"><h3>{tr('Lunch que no se cuenta')}</h3><span className={'rc-state' + (now.min ? ' on' : '')}>{now.min ? tr('{0} min', now.min) : tr('Nada')}</span></div>
+      <p className="hint">{tr('Las horas-persona del KPI van de la hora en que cada persona llegó (la del turno, o la que anotó el supervisor con "Llegó tarde") a la hora en que se fue. Aquí se dice cuánto lunch o break no pagado se les quita, a quien se quedó por lo menos tantas horas.')}</p>
+      <div className="btns" style={{ alignItems: 'center' }}>
+        <label>{tr('Minutos')}{' '}<input inputMode="numeric" value={min} placeholder={String(now.min)} disabled={readOnly} style={{ width: 70 }} onChange={(e) => { setMin(e.target.value.replace(/\D/g, '').slice(0, 3)); setSaid('') }} /></label>
+        <label>{tr('a quien se quedó por lo menos (horas)')}{' '}<input inputMode="decimal" value={after} placeholder={String(now.after)} disabled={readOnly} style={{ width: 70 }} onChange={(e) => { setAfter(e.target.value.replace(/[^\d.]/g, '').slice(0, 4)); setSaid('') }} /></label>
+        {!readOnly && <button type="button" className="btn primary" disabled={!ok || (m === now.min && a === now.after)} onClick={save}>{tr('✓ Guardar')}</button>}
+      </div>
+      {said && <p className="hint ok">{said}</p>}
+    </div>
   )
 }
 

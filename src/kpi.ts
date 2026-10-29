@@ -1,4 +1,4 @@
-import { attExpectedOf, attOf, attShifts, CFG, dayBefore, DEPTS, deptToday, entryClass, fmtTime, kpiGet, lbCaseOn, lbPerCaseOf, shiftsOf, weightTarget, weightTestsOf, type WeightTest, wtWeights, type AttEntry, type Dept, type State } from './store'
+import { attExpectedOf, attOf, attShifts, CFG, dayBefore, DEPTS, deptToday, entryClass, fmtTime, kpiGet, lbCaseOn, lbPerCaseOf, lunchOf, shiftsOf, weightTarget, weightTestsOf, type WeightTest, wtWeights, type AttEntry, type Dept, type State } from './store'
 import { reportOf } from './report'
 import { X, xDay, xN, xT, type Cell, type Sheet } from './xlsx'
 import { tr } from './i18n'
@@ -19,6 +19,13 @@ const plainName = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLo
 /** the names (besides the admin) who see the report: the admin writes them (Edgar) */
 export const kpiNames = (s: State): string[] => { const v = kpiGet(s, 'access')?.data.names; return Array.isArray(v) ? v.map(String).filter(Boolean) : [] }
 export const seesKpi = (s: State, admin: boolean, name: string) => admin || kpiNames(s).some((n) => plainName(n) === plainName(name))
+/**
+ * who has the hour each person came and the lunch rule (Jose, 2026-10-29: "publicarlo solo para mí y después activárselo
+ * a los demás o elegir a quién"): the admin always; everybody once 'all' is on; otherwise the names of the list (key
+ * 'labor-access', as the report's own list)
+ */
+export const laborAccess = (s: State) => { const d = kpiGet(s, 'labor-access')?.data; return { all: d?.all === true, names: Array.isArray(d?.names) ? d.names.map(String).filter(Boolean) : [] } }
+export const seesLabor = (s: State, admin: boolean, name: string) => { const a = laborAccess(s); return admin || a.all || a.names.some((n) => plainName(n) === plainName(name)) }
 
 // ---- the Costco MVM plan (Yasbelth's "MVM Costco Planner", exported as CSV) ----
 export type CostcoPlan = { code: string; perMix: number; days: Record<string, { mixes: number; cases: number }>; forecast: Record<string, number>; file: string }
@@ -122,12 +129,26 @@ export function workSpan(s: State, date: string, dept: Dept, k: 1 | 2) {
   if (to <= from) to += 86_400_000
   return { from, to }
 }
-/** the hours a person was in the room on a shift: from the shift's start (or when they came) to its end, when they left, or now */
-function hoursOf(s: State, x: AttEntry, now: number) {
+/**
+ * the hours a person worked in the room on a shift: from the shift's start, or from when they came (the hour the
+ * supervisor wrote, or when another room sent them), to its end, when they left, or now; the plant's lunch taken away
+ * from whoever stayed long enough for it (Ajustes: lunchOf)
+ */
+export function hoursOf(s: State, x: AttEntry, now: number) {
   const w = workSpan(s, x.date, x.dept, x.shift)
-  const from = x.via || x.from ? Math.max(w.from, x.at) : w.from
+  const from = Math.max(w.from, x.via || x.from ? x.at : 0, x.came ?? 0)
   const to = Math.min(x.gone ? x.gone.at : w.to, now)
-  return Math.max(0, to - from) / 3_600_000
+  const h = Math.max(0, to - from) / 3_600_000, l = lunchOf(s)
+  return l.min > 0 && h >= l.after ? Math.max(0, h - l.min / 60) : h
+}
+/** an hour written as "6:45" on a person's shift, as a time: the one inside the shift (or nearest to it), on its day or the next */
+export function hourOnShift(s: State, x: AttEntry, hm: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hm.trim())
+  if (!m || +m[1] > 23 || +m[2] > 59) return null
+  const w = workSpan(s, x.date, x.dept, x.shift), d0 = new Date(x.date + 'T00:00:00').getTime()
+  const at = (days: number) => { const d = new Date(d0 + days * 86_400_000); d.setHours(+m[1], +m[2], 0, 0); return d.getTime() }
+  const off = (t: number) => (t < w.from ? w.from - t : t > w.to ? t - w.to : 0)
+  return [at(0), at(1)].sort((p, q) => off(p) - off(q))[0]
 }
 /**
  * Each room's people and production of a day: scheduled (the people expected), who showed up (written and still

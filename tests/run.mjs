@@ -5071,6 +5071,32 @@ section('Reporte KPI del día: el plan de Costco del planner, lo real del 0889 y
     eq('Packing: programados, vinieron, temporales, horas-persona, lo que hizo y por hora-persona', [pk.scheduled, pk.showed, pk.temps, pk.hours, pk.made, pk.unit, pk.perHour], [m.attExpectedOf(st(), 'Packing', 1) + (m.attShifts(st(), DAY).length > 1 ? m.attExpectedOf(st(), 'Packing', 2) : 0), 2, 1, Math.round(2 * h * 10) / 10, 108, 'cajas', Math.round((108 / (Math.round(2 * h * 10) / 10)) * 100) / 100])
     eq('el total de la planta: las cajas de Packing sobre las horas de todos', [lab.total.cases, lab.total.hours], [108, pk.hours])
     eq('las horas del turno son las de su horario (de su hora de empezar a la de terminar), no el corte entre turnos', [new Date(w.from).getHours() + ':' + new Date(w.from).getMinutes(), w.to > w.from], [m.shiftsOf(st(), DAY, 'Packing').first.replace(/^0/, '').replace(':00', ':0'), true])
+    // the hour a person really came and the plant's lunch (2026-10-29, the boss's input/output)
+    {
+      const was = clock, bx = () => st().attendance.find((x) => x.id === b), hrs = () => Math.round(m.hoursOf(st(), bx(), clock) * 100) / 100
+      clock = w.to + 3600000
+      const full = Math.round(((w.to - w.from) / 3600000) * 100) / 100, hm = (t) => new Date(t).getHours() + ':' + String(new Date(t).getMinutes()).padStart(2, '0')
+      eq('sin hora escrita: el turno entero, sin lunch', hrs(), full)
+      eq('"6:45" escrito es la hora de ese turno', m.hourOnShift(st(), bx(), hm(w.from + 45 * M)), w.from + 45 * M)
+      m.attSetCame(b, w.from + 45 * M)
+      eq('llegó tarde: sus horas cuentan desde la hora escrita, y viaja al servidor con la persona', [hrs(), JSON.parse(m.outbox.items().find((i) => i.key === 'att:' + b).row.after).came], [full - 0.75, w.from + 45 * M])
+      m.setLunch(30, 5)
+      eq('el lunch: se quita a quien se quedó 5 horas o más, y sube como ajuste de la planta', [hrs(), m.outbox.items().find((i) => i.key === 'opt:lunch').row.per_hour, m.outbox.items().find((i) => i.key === 'opt:lunch').row.per_shift], [full - 1.25, 30, 5])
+      m.applyRemote('act_targets', { dept: 'opt:lunch', per_hour: 30, per_shift: 24, updated_at: iso(clock + M) })
+      eq('cambiado desde otra computadora: llega; quien no se quedó tantas horas no pierde nada', [m.lunchOf(st()).after, hrs()], [24, full - 0.75])
+      m.applyRemote('act_targets', { dept: 'opt:lunch', per_hour: 30, per_shift: 5, updated_at: iso(clock + 2 * M) })
+      m.attSetCame(b, null)
+      eq('"llegó a la hora del turno": la hora se quita', [bx().came, hrs()], [undefined, full - 0.5])
+      m.attSetCame(b, w.from + 45 * M)
+      clock = was
+    }
+    // who has them (Jose, 2026-10-29: only him first, then everybody or the people he chooses)
+    eq('la hora de llegada y el lunch: al principio solo el admin', [m.seesLabor(st(), true, 'Jose Garcia'), m.seesLabor(st(), false, 'Ana')], [true, false])
+    m.kpiPut('labor-access', { all: false, names: ['Ana López'] })
+    eq('con un nombre en la lista lo tiene (sin importar mayúsculas ni acentos); otro no', [m.seesLabor(st(), false, 'ana lopez'), m.seesLabor(st(), false, 'Beto')], [true, false])
+    m.kpiPut('labor-access', { all: true, names: ['Ana López'] })
+    eq('para todos: cualquiera lo tiene', m.seesLabor(st(), false, 'Beto'), true)
+    m.kpiPut('labor-access', { all: false, names: [] })
     // who sees it, and the notes
     eq('lo ve el admin; otro, solo si su nombre está en la lista', [m.seesKpi(st(), true, 'Jose'), m.seesKpi(st(), false, 'Edgar Carhuapoma')], [true, false])
     m.kpiPut('access', { names: ['Edgar Carhuapoma'] })
@@ -5084,6 +5110,7 @@ section('Reporte KPI del día: el plan de Costco del planner, lo real del 0889 y
   })
   const back = await device('kpi-again', { seed: JSON.parse(disks.get('kpi').get('act_v1')), user: 'Jose' })
   eq('al volver a abrir: el plan, la lista, las notas y el temporal siguen', back.use((m) => [Object.keys(m.costcoPlan(m.store.get()).days).length, m.kpiNames(m.store.get()), m.kpiNote(m.store.get(), DAY, 'costco'), m.store.get().attendance.filter((x) => x.temp).length]), [60, ['Edgar Carhuapoma'], 'Corrió todo el turno sin cambio de código', 1])
+  eq('al volver a abrir: la hora de llegada y el lunch siguen', back.use((m) => [m.store.get().attendance.filter((x) => x.came).length, m.lunchOf(m.store.get()).min, m.lunchOf(m.store.get()).after]), [1, 30, 5])
 }
 section('Pesos en RTE: el operador escribe el peso de cada pouch, se guarda al momento, y dice bajo o sobre (Jose, 2026-10-22)')
 {
