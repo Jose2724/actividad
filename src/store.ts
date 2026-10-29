@@ -1409,7 +1409,8 @@ const targetKey = (code: string, kind: WeightTest['kind'], cook?: Cook) => 'targ
 const QA_TARGETS: Record<string, Partial<Record<WeightTest['kind'], WeightTarget>>> = {
   // 2.4 oz meatballs (Costco Jumbo and the like)
   // (0889 from QA through Jose, 2026-10-29: raw 2.60–2.80 oz, cooked 2.10–2.40 oz a ball; to be confirmed)
-  '0889': { pouch: { pouch: 48, tol: 1 }, ball: { pouch: 2.25, tol: 0.15 }, raw: { pouch: 2.7, tol: 0.1 } },
+  // (and the pouch 48–52 oz, never under 48: Jose, 2026-10-29 "48 oz y máximo 52 oz en RTE", "no puede tener mínimo de tolerancia")
+  '0889': { pouch: { pouch: 50, tol: 2 }, ball: { pouch: 2.25, tol: 0.15 }, raw: { pouch: 2.7, tol: 0.1 } },
   '685': { pouch: { pouch: 48, tol: 1 }, ball: { pouch: 2.35, tol: 0.05 }, raw: { pouch: 2.7, tol: 0.1 } },
   '4139': { pouch: { pouch: 72, tol: 1 }, ball: { pouch: 2.35, tol: 0.05 }, raw: { pouch: 2.7, tol: 0.1 } },
   // 2.2 and 2.0 oz
@@ -1593,6 +1594,9 @@ export function weightOpen(s: State, r: Run, step: WtStep, now: number): WeightT
   const x = weightThisHour(s, r, step, now), count = weightRuleOf(s, r.dept).count
   return x && !x.skip && x.runId === r.id && count > 0 && x.entries.length < count ? x : null
 }
+/** a target as QA says it, its lightest and heaviest (2026-10-29: "48 oz y máximo 52 oz"): "48–52" */
+export const wtRange = (t: WeightTarget) => ({ min: Math.round((t.pouch - t.tol) * 1000) / 1000, max: Math.round((t.pouch + t.tol) * 1000) / 1000 })
+export const wtRangeText = (t: WeightTarget | null) => { if (!t) return ''; const r = wtRange(t); return r.min + '–' + r.max }
 /** a weight against the target: under, ok or over ('' without a target) */
 export const weightClass = (w: number, t: WeightTarget | null): '' | 'bajo' | 'ok' | 'sobre' => (!t ? '' : w < t.pouch - t.tol - 1e-9 ? 'bajo' : w > t.pouch + t.tol + 1e-9 ? 'sobre' : 'ok')
 /** an entry: the operator's call when they made one, else its weight against the target */

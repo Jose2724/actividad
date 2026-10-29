@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { cookText, entryClass, fmtTime, lineLabel, sameStep, setWeightTarget, stepKey, stepText, weighsCode, weightDueSteps, weightNew, weightOpen, weightRuleOf, weightSave, weightSkip, weightStepsOf, weightTarget, weightThisHour, wtWeights, type Cook, type Run, type State, type WeightTest, type WtEntry, type WtStep } from './store'
+import { cookText, entryClass, fmtTime, lineLabel, sameStep, setWeightTarget, stepKey, stepText, weighsCode, weightDueSteps, weightNew, weightOpen, weightRuleOf, weightSave, weightSkip, weightStepsOf, weightTarget, weightThisHour, wtRange, wtWeights, type Cook, type Run, type State, type WeightTest, type WtEntry, type WtStep } from './store'
 import { useWho } from './App'
 import { tr } from './i18n'
 
@@ -156,7 +156,7 @@ function WeightDialog({ s, run, now, onClose }: { s: State; run: Run; now: numbe
           </form>
           {many && pick.cook && cookFree(pick.cook) && <p className="hint"><button type="button" className="lnk sm" onClick={() => skipCook(pick.cook as Cook)}>{tr('{0} no cocinó esta hora', cookText(pick.cook))}</button></p>}
         </>}
-        <p className="hint">{t ? (pick.kind === 'raw' ? tr('Objetivo: {0} oz por bola cruda (± {1} oz).', oz(t.pouch), oz(t.tol)) : ball ? tr('Objetivo: {0} oz por bola cocinada (± {1} oz).', oz(t.pouch), oz(t.tol)) : tr('Objetivo: {0} oz por pouch (± {1} oz), con el plástico.', oz(t.pouch), oz(t.tol))) : tr('Este código todavía no tiene peso objetivo: un peso escrito con "+ Agregar" se guarda sin decir bajo o sobre.')}
+        <p className="hint">{t ? (pick.kind === 'raw' ? tr('Objetivo: entre {0} y {1} oz por bola cruda.', oz(wtRange(t).min), oz(wtRange(t).max)) : ball ? tr('Objetivo: entre {0} y {1} oz por bola cocinada.', oz(wtRange(t).min), oz(wtRange(t).max)) : tr('Objetivo: entre {0} y {1} oz por pouch, con el plástico.', oz(wtRange(t).min), oz(wtRange(t).max))) : tr('Este código todavía no tiene peso objetivo: un peso escrito con "+ Agregar" se guarda sin decir bajo o sobre.')}
           {boss && <> <button type="button" className="lnk sm" onClick={() => setTargeting(true)}>{tr('✎ Objetivo')}</button></>}</p>
         {bad && <p className="hint red">{tr('Escribe el peso en onzas, por ejemplo 48.5')}</p>}
         {entries.length > 0 && (
@@ -185,18 +185,21 @@ function WeightDialog({ s, run, now, onClose }: { s: State; run: Run; now: numbe
 }
 
 function TargetDialog({ code, step, now, onClose }: { code: string; step: WtStep; now: { pouch: number; tol: number } | null; onClose: () => void }) {
-  const [pouch, setPouch] = useState(now ? oz(now.pouch) : '')
-  const [tol, setTol] = useState(now ? oz(now.tol) : '')
-  const p = Number(pouch.replace(',', '.')), d = Number((tol || '0').replace(',', '.'))
+  // (QA says the lightest and the heaviest, 2026-10-29: "48 oz y máximo 52 oz"; kept as the middle and how far from it)
+  const [lo, setLo] = useState(now ? oz(wtRange(now).min) : '')
+  const [hi, setHi] = useState(now ? oz(wtRange(now).max) : '')
+  const a = Number(lo.replace(',', '.')), b = Number(hi.replace(',', '.')), ok = a > 0 && b >= a
   const kind = step.kind
   return (
     <div className="veil rc-veil" onClick={onClose}>
-      <form className="dlg" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); if (p > 0 && d >= 0) { setWeightTarget(code, p, d, kind, step.cook); onClose() } }}>
+      <form className="dlg" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); if (ok) { setWeightTarget(code, Math.round(((a + b) / 2) * 1000) / 1000, Math.round(((b - a) / 2) * 1000) / 1000, kind, step.cook); onClose() } }}>
         <h3>{tr('Peso objetivo de {0}', code)}{step.cook ? ' · ' + stepText(step) : ''}</h3>
-        <label>{kind === 'raw' ? tr('Cada bola cruda (oz)') : kind === 'ball' ? tr('Cada bola cocinada (oz)') : tr('Pouch terminado, con el plástico (oz)')}<input autoFocus inputMode="decimal" value={pouch} onChange={(e) => setPouch(e.target.value.replace(/[^\d.,]/g, ''))} /></label>
-        <label>{tr('Cuánto puede variar, más o menos (oz)')}<input inputMode="decimal" value={tol} placeholder="1" onChange={(e) => setTol(e.target.value.replace(/[^\d.,]/g, ''))} /></label>
-        <p className="hint">{kind === 'raw' ? tr('Lo dice QA. Con 2.7 y 0.1: menos de 2.6 es bajo, más de 2.8 es sobre.') : kind === 'ball' ? tr('Lo dice QA. Con 2.25 y 0.15: menos de 2.1 es bajo, más de 2.4 es sobre.') : tr('Lo dice QA. Con 48 y 1: menos de 47 es bajo, más de 49 es sobre.')}</p>
-        <div className="dbtns"><button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button><button type="submit" className="btn primary" disabled={!(p > 0)}>{tr('Guardar')}</button></div>
+        <p className="hint">{kind === 'raw' ? tr('Cada bola cruda, en onzas (oz).') : kind === 'ball' ? tr('Cada bola cocinada, en onzas (oz).') : tr('El pouch terminado, con el plástico, en onzas (oz).')}</p>
+        <label>{tr('Mínimo (oz)')}<input autoFocus inputMode="decimal" value={lo} onChange={(e) => setLo(e.target.value.replace(/[^\d.,]/g, ''))} /></label>
+        <label>{tr('Máximo (oz)')}<input inputMode="decimal" value={hi} onChange={(e) => setHi(e.target.value.replace(/[^\d.,]/g, ''))} /></label>
+        <p className="hint">{tr('Lo dice QA. Menos del mínimo es bajo, más del máximo es sobre; el mínimo y el máximo mismos están bien.')}</p>
+        {a > 0 && b > 0 && b < a && <p className="hint red">{tr('El máximo tiene que ser mayor que el mínimo.')}</p>}
+        <div className="dbtns"><button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button><button type="submit" className="btn primary" disabled={!ok}>{tr('Guardar')}</button></div>
       </form>
     </div>
   )

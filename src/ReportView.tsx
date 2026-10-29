@@ -1,6 +1,6 @@
 import { Fragment, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { cookText as cookTextOf, entryClass as entryClassOf, apartLabel, apartWord, binWord, cameFrom, carriedOver, casesText, CFG, cfgFor, cfgOf, csvCell, DEPTS, fmtDur, roomKnown, fmtN, fmtTime, inCases, kindClass, lineLabel, lineNameOf, looksLikeTwoLots, madeText, measureName, measureUnit, normCode, noteLabel, noteOf, orderLabel, orderOfId, plainDay, plainText, productOf, purgesOf, reasonText, restorePurged, runStats, SETUP, shiftAt, shiftHours, shiftSpan, shiftsOf, stopTime, unitQty, user, whoText, workDay, type Dept, type State, type AttEntry, type AttRow } from './store'
+import { cookText as cookTextOf, entryClass as entryClassOf, wtRangeText, apartLabel, apartWord, binWord, cameFrom, carriedOver, casesText, CFG, cfgFor, cfgOf, csvCell, DEPTS, fmtDur, roomKnown, fmtN, fmtTime, inCases, kindClass, lineLabel, lineNameOf, looksLikeTwoLots, madeText, measureName, measureUnit, normCode, noteLabel, noteOf, orderLabel, orderOfId, plainDay, plainText, productOf, purgesOf, reasonText, restorePurged, runStats, SETUP, shiftAt, shiftHours, shiftSpan, shiftsOf, stopTime, unitQty, user, whoText, workDay, type Dept, type State, type AttEntry, type AttRow } from './store'
 import { avanceRows, mfoText, mfoWord, pending } from './avance'
 import { codeLabel, FAMILY_SHOWN, reasonCodeOf } from './reasons'
 import { cellText, loadZip, X, xDur, xN, xPct, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
@@ -1548,7 +1548,7 @@ function WeightsView({ k }: { k: Kit }) {
                 <td className={'n' + (late(r) ? ' red' : '')}>{wtDoneText(r)}{r.short > 0 && <small className="amber"> · {tr('{0} incompletas', r.short)}</small>}{r.skipped.length > 0 && <small> · {tr('{0} sin usar', r.skipped.length)}</small>}</td>
                 <td className="n">{r.n}</td>
                 <td className="n"><b>{oz(r.avg)}</b>{r.avgPct != null && <small className={Math.abs(r.avgPct) > 0.02 ? 'red' : ''}> {(r.avgPct > 0 ? '+' : '') + Math.round(r.avgPct * 1000) / 10}%</small>}</td>
-                <td className="n">{r.target ? r.target.pouch + ' ± ' + r.target.tol : '—'}</td>
+                <td className="n">{wtRangeText(r.target) || '—'}</td>
                 <td className="n">{r.min == null ? '—' : oz(r.min) + ' · ' + oz(r.max)}</td>
                 <td className={'n' + (r.under ? ' red' : '')}>{r.under}</td>
                 <td className={'n' + (r.over ? ' amber' : '')}>{r.over}</td>

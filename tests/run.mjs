@@ -5039,7 +5039,7 @@ section('Reporte KPI del día: el plan de Costco del planner, lo real del 0889 y
     eq('lo real escrito a mano en el planner no se lee (lo tiene Actividad)', JSON.stringify(p).includes('1679'), false)
     eq('un archivo que no es el planner se dice', typeof m.parsePlanner('a,b\n1,2'), 'string')
     // QA's target sheet (2026-10-26): every code starts with its target; a manager's own still wins
-    eq('sin objetivo escrito, el de la hoja de QA: 0889 48 oz por pouch y 2.10–2.40 oz por bola cocinada; un código que no está, nada', [m.weightTarget(st(), '0889'), m.weightTarget(st(), '0889', 'ball'), m.weightTarget(st(), '7093', 'ball'), m.weightTarget(st(), '9999')], [{ pouch: 48, tol: 1 }, { pouch: 2.25, tol: 0.15 }, null, null])
+    eq('sin objetivo escrito, el de la hoja de QA: 0889 48–52 oz por pouch y 2.10–2.40 oz por bola cocinada; un código que no está, nada', [m.weightTarget(st(), '0889'), m.weightTarget(st(), '0889', 'ball'), m.weightTarget(st(), '7093', 'ball'), m.weightTarget(st(), '9999')], [{ pouch: 50, tol: 2 }, { pouch: 2.25, tol: 0.15 }, null, null])
     m.setWeightTarget('0889', 47.5, 0.5)
     eq('el objetivo que pone un manager manda sobre el de la hoja', m.weightTarget(st(), '0889'), { pouch: 47.5, tol: 0.5 })
     // the real planner (2026-10-26): a months row over the batches by weekday above the table, and a title across two years
@@ -5551,7 +5551,8 @@ section('Pesos de QA cada hora (Jose, 2026-10-29): Spiral pesa 10 bolas crudas a
     eq('Spiral y RTE: cada hora y 10, sin que nadie lo ponga; Kitchen como estaba (8); los demás sin aviso', [m.weightRuleOf(st(), 'Spiral'), m.weightRuleOf(st(), 'RTE'), m.weightRuleOf(st(), 'Kitchen'), m.weightRuleOf(st(), 'Packing').every], [{ every: 60, count: 10 }, { every: 60, count: 10 }, { every: 60, count: 8 }, 0])
     eq('cada hora Spiral pesa cuatro cosas: crudo y cocinado, en Spiral y en Racks', m.weightStepsOf('Spiral').map(m.stepText), ['Crudo · Spiral', 'Cocinado · Spiral', 'Crudo · Racks', 'Cocinado · Racks'])
     eq('el primer aviso, una hora después de empezar el código (889 es el 0889); antes nada', [m.weightDueAt(st(), run()), m.weightDueSteps(st(), run(), T0 + 59 * M).length, m.weightDueSteps(st(), run(), T0 + 60 * M).length], [T0 + 60 * M, 0, 4])
-    eq('los objetivos de QA valen para 889 y 0889: crudo 2.60–2.80, cocinado 2.10–2.40 POR BOLA (antes 8 juntas), pouch 48 ± 1', [m.weightTarget(st(), '889', 'raw'), m.weightTarget(st(), '889', 'ball'), m.weightTarget(st(), '0889', 'ball', 'racks'), m.weightTarget(st(), '889')], [{ pouch: 2.7, tol: 0.1 }, { pouch: 2.25, tol: 0.15 }, { pouch: 2.25, tol: 0.15 }, { pouch: 48, tol: 1 }])
+    eq('los objetivos de QA valen para 889 y 0889: crudo 2.60–2.80, cocinado 2.10–2.40 POR BOLA (antes 8 juntas), pouch 48–52', [m.weightTarget(st(), '889', 'raw'), m.weightTarget(st(), '889', 'ball'), m.weightTarget(st(), '0889', 'ball', 'racks'), m.weightTarget(st(), '889')], [{ pouch: 2.7, tol: 0.1 }, { pouch: 2.25, tol: 0.15 }, { pouch: 2.25, tol: 0.15 }, { pouch: 50, tol: 2 }])
+    eq('como lo dice QA, mínimo–máximo: el pouch nunca bajo 48 (47.99 es bajo, 48 y 52 bien, 52.01 sobre); la bola 2.1–2.4', [['raw', 'ball', 'pouch'].map((k) => m.wtRangeText(m.weightTarget(st(), '0889', k))), [47.99, 48, 52, 52.01].map((w) => m.weightClass(w, m.weightTarget(st(), '0889')))], [['2.6–2.8', '2.1–2.4', '48–52'], ['bajo', 'ok', 'ok', 'sobre']])
     clock = T0 + 60 * M
     const raw = m.weightNew(run(), { kind: 'raw', cook: 'spiral' })
     eq('una prueba nueva sabe qué es y en qué cocinador', [raw.kind, raw.cook], ['raw', 'spiral'])
@@ -5598,9 +5599,9 @@ section('Pesos de QA cada hora (Jose, 2026-10-29): Spiral pesa 10 bolas crudas a
     m.setWeighedCodes('RTE', ['0889'])
     clock = T0 + 61 * M
     const p = m.weightNew(rr('0889'))
-    m.weightSave(p, [48.2, 47.1, 46.8, 48, 49.3, 48.5, 47.9, 48, 48.1, 47.6].map((w) => ({ w })))
+    m.weightSave(p, [49.2, 50.1, 47.99, 48, 52.3, 50.5, 49.9, 52, 50.1, 49.6].map((w) => ({ w })))
     const R = m.wtOfReport(st(), DAY, T0 + 125 * M, { dept: 'RTE' })
-    eq('el reporte de RTE: solo sus códigos; el 0889 con 1 de 2 pruebas, 1 bajo (46.8) y 1 sobre (49.3)', R.rows.map((x) => [x.code, x.label, m.wtDoneText(x), x.under, x.over]), [['0889', 'Pouch', '1 de 2', 1, 1]])
+    eq('el reporte de RTE: solo sus códigos; el 0889 con 1 de 2 pruebas, 1 bajo (47.99) y 1 sobre (52.3); 48 y 52 bien', R.rows.map((x) => [x.code, x.label, m.wtDoneText(x), x.under, x.over]), [['0889', 'Pouch', '1 de 2', 1, 1]])
     eq('el reporte filtrado por la otra línea o el otro turno no lista la prueba', [m.wtOfReport(st(), DAY, clock, { dept: 'RTE', line: rl('Línea 2').id }).tests.length, m.wtOfReport(st(), DAY, clock, { dept: 'RTE', shift: m.wtShift(st(), p) === 1 ? 2 : 1 }).tests.length, m.wtOfReport(st(), DAY, clock, { dept: 'RTE', code: '889' }).tests.length], [0, 0, 1])
     // the Excel of the KPI: the summary row and the Pesos sheet with each weight in its column
     const sh = m.kpiSheets(st(), DAY, T0 + 190 * M), pes = sh.find((x) => x.name === 'Pesos')

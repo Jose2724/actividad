@@ -2,6 +2,7 @@ import { apartLabel, apartWord, binWord, casesText, CFG, cfgFor, cfgOf, fmtDur, 
 import { filterTitle, reportOf, spanShifts, type ReportFilter } from './report'
 import { avanceRows, n1, pending, mfoText } from './avance'
 import { tr } from './i18n'
+import { wtRangeText } from './store'
 import { cookYields, wtDoneText, wtOfReport, wtShift, wtSum } from './kpi'
 
 type Libs = { jsPDF: typeof import('jspdf').jsPDF; autoTable: typeof import('jspdf-autotable').default }
@@ -180,7 +181,7 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
     autoTable(doc, {
       startY: y + 10, theme: 'grid', styles: { font: 'helvetica', fontSize: 9, cellPadding: 4, textColor: [22, 32, 42] }, headStyles: { fillColor: teal, textColor: 255, fontStyle: 'bold' },
       head: [[tr('Cuarto'), tr('Código'), tr('Qué se pesó'), tr('Pruebas'), tr('Pesados'), tr('Promedio (oz)'), tr('Objetivo (oz)'), tr('Mín · Máx'), tr('Bajos'), tr('Sobre'), tr('% en peso')]],
-      body: wt.rows.map((w) => [w.dept, w.code, w.label, wtDoneText(w), String(w.n), o(w.avg), w.target ? w.target.pouch + ' ± ' + w.target.tol : '—', w.min == null ? '—' : o(w.min) + ' · ' + o(w.max), String(w.under), String(w.over), p(w.okPct)]),
+      body: wt.rows.map((w) => [w.dept, w.code, w.label, wtDoneText(w), String(w.n), o(w.avg), wtRangeText(w.target) || '—', w.min == null ? '—' : o(w.min) + ' · ' + o(w.max), String(w.under), String(w.over), p(w.okPct)]),
       didParseCell: (c) => { const w = wt.rows[c.row.index]; if (c.section === 'body' && w && ((c.column.index === 3 && w.due != null && w.complete + w.skipped.length < w.due) || (c.column.index === 8 && w.under))) c.cell.styles.textColor = [185, 28, 28] },
     })
     const yields = cookYields(wt.rows)

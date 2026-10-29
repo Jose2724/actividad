@@ -1,4 +1,4 @@
-import { attExpectedOf, attOf, attSentAt, attShifts, attWriteOn, CFG, cookText, dayBefore, DEPTS, deptToday, entryClass, fmtTime, kpiGet, lbCaseOn, lbPerCaseOf, lunchOf, normCode, sameStep, shiftAt, shiftsOf, stepKey, stepText, weighedCodes, weighsCode, weightRuleOf, weightStepsOf, weightTarget, type Cook, type WeightTest, type WtStep, type AttEntry, type Dept, type State } from './store'
+import { attExpectedOf, attOf, attSentAt, attShifts, attWriteOn, CFG, cookText, dayBefore, DEPTS, deptToday, entryClass, fmtTime, kpiGet, lbCaseOn, lbPerCaseOf, lunchOf, normCode, sameStep, shiftAt, shiftsOf, stepKey, stepText, weighedCodes, weighsCode, weightRuleOf, weightStepsOf, weightTarget, wtRangeText, type Cook, type WeightTest, type WtStep, type AttEntry, type Dept, type State } from './store'
 import { reportOf } from './report'
 import { X, xDay, xN, xT, type Cell, type Sheet } from './xlsx'
 import { tr } from './i18n'
@@ -268,7 +268,7 @@ const pct1 = (x: number | null): Cell => (x == null ? '' : { v: Math.round(x * 1
 export function wtSheetRows(s: State, wts: WtRow[], detail: { w: WtRow; t: WeightTest }[]): Cell[][] {
   const okCell = (x: number | null): Cell => (x == null ? '' : { v: Math.round(x * 1000) / 1000, s: x < 0.9 ? X.nBad : x < 1 ? X.nWarn : X.nGood, t: pc(x) })
   const yields = cookYields(wts), most = Math.min(20, Math.max(0, ...detail.map((x) => x.t.entries.length)))
-  const target = (w: WtRow) => (w.target ? w.target.pouch + ' ± ' + w.target.tol : '')
+  const target = (w: WtRow) => wtRangeText(w.target)
   return [
     headRow(tr('Cuarto'), tr('Código'), tr('Qué se pesó'), tr('Pruebas hechas'), tr('Incompletas'), tr('Pesados'), tr('Promedio (oz)'), tr('Mínimo'), tr('Máximo'), tr('Objetivo (oz)'), tr('Bajos'), tr('Sobre'), tr('% en peso'), tr('Promedio vs objetivo')),
     ...wts.map((w): Cell[] => [w.dept, w.code, w.label, xT(wtDoneText(w), w.due && w.complete + w.skipped.length < w.due ? X.bad : X.label), xN(w.short, w.short ? X.nWarn : X.n), xN(w.n), w.avg == null ? '' : xN(w.avg, X.dec), w.min == null ? '' : xN(w.min, X.dec), w.max == null ? '' : xN(w.max, X.dec), target(w), xN(w.under, w.under ? X.nBad : X.n), xN(w.over, w.over ? X.nWarn : X.n), okCell(w.okPct), pct1(w.avgPct)]),
