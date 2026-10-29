@@ -522,6 +522,8 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
   const woNav = useMemo<WoNav>(() => (seesFlows ? { openFlujo: (code, from, to) => { flujoOpenAt(code, from, to, day.date); setTab('fl') }, openLot } : {}), [seesFlows, day.date, openLot])
   const [sec, setSec] = useState<SettingsKey>(kept?.tab === 'emp' ? 'people' : kept?.tab === 'dev' ? 'devices' : ((kept?.sec as SettingsKey | undefined) ?? 'shifts'))
   useEffect(() => { keepView({ dept, tab, sec }) }, [dept, tab, sec])
+  // the tab open stays in view when the tabs scroll sideways (a phone, a small window: 2026-10-29)
+  useEffect(() => { document.querySelector('.tabs button.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }) }, [tab])
   const upd = useSyncExternalStore(updateStore.subscribe, updateStore.get)
   useEffect(() => keepAwake(), []) // a tablet on the floor must not go to sleep in the middle of a shift
   // every free line of every room into set up with one tap (a manager's or the office's, when a shift starts)

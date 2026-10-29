@@ -51,7 +51,9 @@ input[type=text],input:not([type]),input[type=date]{min-height:48px;padding:0 12
 .top .brand h1{font-size:22px}
 .top .brand small{display:block;text-transform:capitalize}
 .tabs{display:flex;gap:4px;background:var(--bg);padding:4px;border-radius:12px;margin-left:auto}
-.tabs button{border:0;background:none;padding:8px 14px;border-radius:9px;font-weight:600;color:var(--muted)}
+/* more tabs than fit (a phone, a small window): they scroll sideways instead of being cut off (Jose, 2026-10-29) */
+.tabs{min-width:0;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:thin}
+.tabs button{border:0;background:none;padding:8px 14px;border-radius:9px;font-weight:600;color:var(--muted);flex:none;white-space:nowrap}
 .tabs button.on{background:var(--accent);color:var(--accent-ink);box-shadow:0 1px 3px rgba(0,0,0,.2)}
 .me{font-weight:600;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .syncdot{border:0;background:none;font-size:13px;font-weight:600;color:var(--muted);padding:4px 6px;border-radius:8px}
@@ -167,7 +169,7 @@ tr.live td{background:#f1fbf5}
 @media (max-width:720px){
   .top{flex-wrap:wrap;gap:8px}
   .tabs{order:3;width:100%;margin:0}
-  .tabs button{flex:1;padding:8px 6px}
+  .tabs button{flex:1 0 auto;padding:8px 10px}
   .me{margin-left:auto}
   .main{flex-direction:column}
   .side{width:auto;flex-direction:row;overflow-x:auto;border-right:0;border-bottom:1px solid var(--line)}
