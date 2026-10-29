@@ -1422,7 +1422,9 @@ const QA_TARGETS: Record<string, Partial<Record<WeightTest['kind'], WeightTarget
   '4917': { pouch: { pouch: 16, tol: 1 }, ball: { pouch: 1.05, tol: 0.05 }, raw: { pouch: 1.25, tol: 0.05 } },
   '4914': { pouch: { pouch: 16, tol: 1 }, ball: { pouch: 1.05, tol: 0.05 }, raw: { pouch: 1.25, tol: 0.05 } },
   '8441': { pouch: { pouch: 72, tol: 1 }, ball: { pouch: 1.05, tol: 0.05 }, raw: { pouch: 1.25, tol: 0.05 } },
-  '2234': { pouch: { pouch: 72, tol: 1 }, ball: { pouch: 1.05, tol: 0.05 }, raw: { pouch: 1.25, tol: 0.05 } },
+  // (2234 from QA through Jose, 2026-10-29: raw 1.20–1.30, cooked "1.1 1.3 1.4" read as 1.10–1.40 and the pouch 72 oz, never
+  // under, its maximum not said yet (76, as the 0889's +4): both to be confirmed; Ajustes › KPI changes them)
+  '2234': { pouch: { pouch: 74, tol: 2 }, ball: { pouch: 1.25, tol: 0.15 }, raw: { pouch: 1.25, tol: 0.05 } },
   '3293': { pouch: { pouch: 48, tol: 1 }, ball: { pouch: 1.05, tol: 0.05 }, raw: { pouch: 1.25, tol: 0.05 } },
   '3187': { pouch: { pouch: 72, tol: 1 }, ball: { pouch: 1.05, tol: 0.05 }, raw: { pouch: 1.25, tol: 0.05 } },
   '4955': { pouch: { pouch: 16, tol: 1 }, ball: { pouch: 1.05, tol: 0.05 }, raw: { pouch: 1.25, tol: 0.05 } },
@@ -1452,6 +1454,29 @@ export function weightTarget(s: State, code: string, kind: WeightTest['kind'] = 
   return pouch > 0 ? { pouch: Math.round(pouch * 1000) / 1000, tol: tol >= 0 ? Math.round(tol * 1000) / 1000 : 0 } : null
 }
 export const setWeightTarget = (code: string, pouch: number, tol: number, kind: WeightTest['kind'] = 'pouch', cook?: Cook) => kpiPut(targetKey(code, kind, cook), { code: code.trim().toUpperCase(), pouch, tol, unit: 'oz', ...(cook ? { cook } : {}) })
+/** a target set by a manager taken away: the code goes back to QA's sheet (or to none) */
+export const clearWeightTarget = (code: string, kind: WeightTest['kind'] = 'pouch', cook?: Cook) => kpiPut(targetKey(code, kind, cook), { code: code.trim().toUpperCase() }, true)
+/**
+ * every target there is (Ajustes › KPI, 2026-10-29): QA's sheet, and over it what a manager set (by code, what is
+ * weighed and cooker), each with where it comes from; sorted by code, then pouch, raw, cooked
+ */
+export type WtTargetRow = { code: string; step: WtStep; target: WeightTarget; qa: WeightTarget | null; set: { by: string; at: number } | null }
+export function weightTargetsList(s: State): WtTargetRow[] {
+  const rows = new Map<string, WtTargetRow>()
+  const key = (code: string, st: WtStep) => normCode(code) + '|' + stepKey(st)
+  for (const [code, kinds] of Object.entries(QA_TARGETS)) for (const [kind, t] of Object.entries(kinds) as [WeightTest['kind'], WeightTarget][]) rows.set(key(code, { kind }), { code, step: { kind }, target: t, qa: t, set: null })
+  for (const x of s.kpi ?? []) {
+    if (x.deleted || !x.key.startsWith('target:')) continue
+    const parts = x.key.slice('target:'.length).split(':'), kind: WeightTest['kind'] = parts.length > 1 && (parts[0] === 'raw' || parts[0] === 'ball') ? parts[0] : 'pouch'
+    const cook = parts.length > 2 && (parts[1] === 'spiral' || parts[1] === 'racks') ? parts[1] : undefined, code = String(x.data.code ?? parts[parts.length - 1])
+    const st: WtStep = { kind, ...(cook ? { cook } : {}) }, t = weightTarget(s, code, kind, cook)
+    if (!t) continue
+    const was = rows.get(key(code, st))
+    rows.set(key(code, st), { code: was?.code ?? code, step: st, target: t, qa: was?.qa ?? null, set: { by: x.by, at: x.at } })
+  }
+  const order = (st: WtStep) => ['pouch', 'raw', 'ball'].indexOf(st.kind) * 3 + (st.cook ? COOKS.indexOf(st.cook) + 1 : 0)
+  return [...rows.values()].sort((a, b) => normCode(a.code).localeCompare(normCode(b.code), 'en', { numeric: true }) || order(a.step) - order(b.step))
+}
 /**
  * How often a room weighs, and how many each time (2026-10-23: Spiral, "que le salga cada hora que pesen 8 bolas", and
  * "que se pueda ajustar en Ajustes"): every = minutes between tests (0 = no reminder), count = how many per test. Under
@@ -1477,14 +1502,37 @@ export function setWeightRule(dept: Dept, every: number, count: number) {
  * button stays on every code. null = every code (Kitchen, as it was). A manager changes them in Ajustes › Pesos (key
  * 'wt-codes:<room>' of the report's records, which every tablet reads)
  */
-export const WEIGHT_CODES_DEFAULT: Partial<Record<Dept, string[]>> = { Spiral: ['0889'], RTE: ['0889'] }
-export function weighedCodes(s: State, dept: Dept): string[] | null {
-  const d = kpiGet(s, 'wt-codes:' + dept)?.data
-  if (d && Array.isArray(d.codes)) { const c = d.codes.map(String).filter(Boolean); return c.length ? c : null }
-  return WEIGHT_CODES_DEFAULT[dept] ?? null
+// (2234 too, Jose 2026-10-29: "de este código también me pidieron")
+export const WEIGHT_CODES_DEFAULT: Partial<Record<Dept, string[]>> = { Spiral: ['0889', '2234'], RTE: ['0889', '2234'] }
+/**
+ * each code a room weighs, with how often and how many (Jose, 2026-10-29: in Ajustes › KPI "agregar diferente código,
+ * hora y cantidad ... y así no tener que venir aquí de nuevo"): its own minutes and count when a manager gave them,
+ * else the room's rule. null = every code, with the room's rule (Kitchen)
+ */
+export type WtCodeRule = { code: string; every: number; count: number }
+export function weighedRules(s: State, dept: Dept): WtCodeRule[] | null {
+  const d = kpiGet(s, 'wt-codes:' + dept)?.data, room = weightRuleOf(s, dept)
+  const list = d && Array.isArray(d.codes) ? d.codes.map(String).filter(Boolean) : WEIGHT_CODES_DEFAULT[dept] ?? null
+  if (!list || !list.length) return null
+  const rules = (d?.rules && typeof d.rules === 'object' ? d.rules : {}) as Record<string, { every?: unknown; count?: unknown }>
+  const n = (v: unknown, or: number) => (Number.isInteger(Number(v)) && Number(v) >= 0 && v !== null && v !== '' ? Number(v) : or)
+  return list.map((code) => { const r = rules[normCode(code)]; return { code, every: n(r?.every, room.every), count: n(r?.count, room.count) } })
 }
+export const weighedCodes = (s: State, dept: Dept): string[] | null => weighedRules(s, dept)?.map((x) => x.code) ?? null
 export const weighsCode = (s: State, dept: Dept, code: string) => { const c = weighedCodes(s, dept); return !c || c.some((x) => normCode(x) === normCode(code)) }
-export const setWeighedCodes = (dept: Dept, codes: string[]) => kpiPut('wt-codes:' + dept, { codes: [...new Set(codes.map((c) => c.trim().toUpperCase()).filter(Boolean))] })
+/** how often and how many a code is weighed: its own when its room lists it, else the room's */
+export const weightRuleFor = (s: State, dept: Dept, code: string) => { const r = weighedRules(s, dept)?.find((x) => normCode(x.code) === normCode(code)); return r ? { every: r.every, count: r.count } : weightRuleOf(s, dept) }
+/** the codes a room weighs, each with its minutes and count (a plain code takes the room's); none = every code */
+export function setWeighedCodes(dept: Dept, rows: (string | WtCodeRule)[]) {
+  const list = rows.map((x) => (typeof x === 'string' ? { code: x } : x)).map((x) => ({ ...x, code: x.code.trim().toUpperCase() })).filter((x) => x.code)
+  const seen = new Set<string>(), codes: string[] = [], rules: Record<string, { every: number; count: number }> = {}
+  for (const x of list) {
+    if (seen.has(normCode(x.code))) continue
+    seen.add(normCode(x.code)); codes.push(x.code)
+    if ('every' in x) rules[normCode(x.code)] = { every: Math.max(0, Math.round(x.every)), count: Math.max(0, Math.round(x.count)) }
+  }
+  kpiPut('wt-codes:' + dept, { codes, rules })
+}
 /**
  * What a room weighs each time (2026-10-29): Spiral, the balls raw before each cooker and cooked out of it (Spiral and
  * Racks: four tests an hour); RTE its finished pouches; Kitchen its raw balls
@@ -1569,7 +1617,7 @@ export function lineSlow(s: State, line: Line, r: Run, now: number): { rate: num
  * weigh every hour)
  */
 export function stepDueAt(s: State, r: Run, step: WtStep): number | null {
-  const rule = weightRuleOf(s, r.dept)
+  const rule = weightRuleFor(s, r.dept, r.code)
   if (!rule.every || !weighsCode(s, r.dept, r.code)) return null
   const last = (s.weights ?? []).filter((x) => !x.deleted && x.lineId === r.lineId && x.date === r.date && (x.entries.length > 0 || x.skip) && sameStep(x, step)).reduce((t, x) => Math.max(t, x.at), 0)
   return Math.max(r.startedAt, last) + rule.every * 60_000
@@ -1583,7 +1631,7 @@ export function weightDueAt(s: State, r: Run): number | null {
 export const weightDueSteps = (s: State, r: Run, now: number) => weightStepsOf(r.dept).filter((x) => { const d = stepDueAt(s, r, x); return d != null && now >= d })
 /** the test of a step done within the room's time on this line (complete, half-way, or a cooker not used); null = none yet */
 export function weightThisHour(s: State, r: Run, step: WtStep, now: number): WeightTest | null {
-  const rule = weightRuleOf(s, r.dept), span = (rule.every || 60) * 60_000
+  const rule = weightRuleFor(s, r.dept, r.code), span = (rule.every || 60) * 60_000
   return (s.weights ?? []).filter((y) => !y.deleted && y.lineId === r.lineId && y.date === r.date && sameStep(y, step) && (y.entries.length > 0 || y.skip) && now - y.at < span && y.at >= r.startedAt).sort((a, b) => b.at - a.at)[0] ?? null
 }
 /**
@@ -1591,7 +1639,7 @@ export function weightThisHour(s: State, r: Run, step: WtStep, now: number): Wei
  * window closed half-way goes on with the same test (2026-10-29)
  */
 export function weightOpen(s: State, r: Run, step: WtStep, now: number): WeightTest | null {
-  const x = weightThisHour(s, r, step, now), count = weightRuleOf(s, r.dept).count
+  const x = weightThisHour(s, r, step, now), count = weightRuleFor(s, r.dept, r.code).count
   return x && !x.skip && x.runId === r.id && count > 0 && x.entries.length < count ? x : null
 }
 /** a target as QA says it, its lightest and heaviest (2026-10-29: "48 oz y máximo 52 oz"): "48–52" */

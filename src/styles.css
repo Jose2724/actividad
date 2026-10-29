@@ -2191,3 +2191,17 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 .wt-chips{display:flex;flex-wrap:wrap;gap:3px}
 .wt-chip{display:inline-block;min-width:38px;text-align:center;border-radius:6px;padding:1px 4px;font-size:12.5px;font-weight:700;background:#dcfce7;color:#166534}
 .wt-chip.bajo{background:#fee2e2;color:#b91c1c}.wt-chip.sobre{background:#fef3c7;color:#92400e}.wt-chip.none{background:#eef0f3;color:#374151}
+
+/* Ajustes › KPI (2026-10-29): what each room weighs and the targets, editable tables */
+.kpi-plan{border-top:1px solid var(--line);padding:10px 0;display:grid;gap:8px}
+.kpi-plan h4{margin:0;color:var(--d-ink,inherit)}.kpi-plan h4 small{color:var(--muted);font-weight:600}
+.kpi-plan .btns,.setcard .btns{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.kpi-set{border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
+.kpi-set th{text-align:left;font-size:12px;color:var(--muted);padding:4px 8px;border-bottom:1.5px solid var(--line);white-space:nowrap}
+.kpi-set td{padding:5px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+.kpi-set .n{text-align:right}
+.kpi-set input{width:90px;min-height:38px;font-size:16px}
+.kpi-set.targets{width:100%}.kpi-set.targets tr.set td{background:#fdf4ff}
+.kpi-q{min-height:38px;font-size:16px;width:160px}
+.kpi-add{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:end;background:#f8fafc;border:1px solid var(--line);border-radius:12px;padding:10px}
+.kpi-add label{display:grid;gap:2px;font-size:13px;font-weight:700}.kpi-add input{width:110px;min-height:38px;font-size:16px}.kpi-add select{min-height:38px;font-size:15px}

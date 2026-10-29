@@ -1,4 +1,4 @@
-import { attExpectedOf, attOf, attSentAt, attShifts, attWriteOn, CFG, cookText, dayBefore, DEPTS, deptToday, entryClass, fmtTime, kpiGet, lbCaseOn, lbPerCaseOf, lunchOf, normCode, sameStep, shiftAt, shiftsOf, stepKey, stepText, weighedCodes, weighsCode, weightRuleOf, weightStepsOf, weightTarget, wtRangeText, type Cook, type WeightTest, type WtStep, type AttEntry, type Dept, type State } from './store'
+import { attExpectedOf, attOf, attSentAt, attShifts, attWriteOn, CFG, cookText, dayBefore, DEPTS, deptToday, entryClass, fmtTime, kpiGet, lbCaseOn, lbPerCaseOf, lunchOf, normCode, sameStep, shiftAt, shiftsOf, stepKey, stepText, weighedCodes, weighsCode, weightRuleFor, weightStepsOf, weightTarget, wtRangeText, type Cook, type WeightTest, type WtStep, type AttEntry, type Dept, type State } from './store'
 import { reportOf } from './report'
 import { X, xDay, xN, xT, type Cell, type Sheet } from './xlsx'
 import { tr } from './i18n'
@@ -196,7 +196,7 @@ export function wtSum(entries: WeightTest['entries'], target: ReturnType<typeof 
  * (no rule, or a code the room does not weigh every hour)
  */
 export function weightsDue(s: State, date: string, dept: Dept, code: string, now: number): number | null {
-  const rule = weightRuleOf(s, dept)
+  const rule = weightRuleFor(s, dept, code)
   if (!rule.every || !weighsCode(s, dept, code)) return null
   const span = rule.every * 60_000
   return s.runs.filter((r) => !r.deleted && r.date === date && r.dept === dept && normCode(r.code) === normCode(code)).reduce((t, r) => t + Math.floor(Math.max(0, Math.min(r.endedAt ?? now, now) - r.startedAt) / span), 0)
@@ -220,7 +220,7 @@ export function weightsOf(s: State, date: string, now = Date.now()): WtRow[] {
   const order = (g: { dept: Dept; code: string; step: WtStep }) => [DEPTS.indexOf(g.dept), weightStepsOf(g.dept).findIndex((x) => sameStep(x, g.step))] as const
   return [...groups.values()].sort((a, b) => order(a)[0] - order(b)[0] || normCode(a.code).localeCompare(normCode(b.code), 'en', { numeric: true }) || order(a)[1] - order(b)[1]).map((g): WtRow => {
     const mine = all.filter((t) => t.dept === g.dept && normCode(t.code) === normCode(g.code) && sameStep(t, g.step)).sort((a, b) => a.at - b.at)
-    const tests = mine.filter((t) => t.entries.length > 0), target = weightTarget(s, g.code, g.step.kind, g.step.cook), count = weightRuleOf(s, g.dept).count
+    const tests = mine.filter((t) => t.entries.length > 0), target = weightTarget(s, g.code, g.step.kind, g.step.cook), count = weightRuleFor(s, g.dept, g.code).count
     const complete = tests.filter((t) => t.entries.length >= count).length
     return { ...wtSum(tests.flatMap((t) => t.entries), target), dept: g.dept, code: g.code, kind: g.step.kind, ...(g.step.cook ? { cook: g.step.cook } : {}), label: stepText(g.step), tests, skipped: mine.filter((t) => t.skip), complete, short: tests.length - complete, due: weightsDue(s, date, g.dept, g.code, now), target }
   })

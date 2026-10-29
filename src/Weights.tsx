@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { cookText, entryClass, fmtTime, lineLabel, sameStep, setWeightTarget, stepKey, stepText, weightDueSteps, weightNew, weightOpen, weightRuleOf, weightSave, weightSkip, weightStepsOf, weightTarget, weightThisHour, wtRange, wtWeights, type Cook, type Run, type State, type WeightTest, type WtEntry, type WtStep } from './store'
+import { cookText, entryClass, fmtTime, lineLabel, sameStep, setWeightTarget, stepKey, stepText, weightDueSteps, weightNew, weightOpen, weightRuleFor, weightSave, weightSkip, weightStepsOf, weightTarget, weightThisHour, wtRange, wtWeights, type Cook, type Run, type State, type WeightTest, type WtEntry, type WtStep } from './store'
 import { useWho } from './App'
 import { tr } from './i18n'
 
@@ -38,7 +38,7 @@ export function WeightButton({ s, run, now }: { s: State; run: Run; now: number 
  */
 export function WeightReminder({ s, run, now }: { s: State; run: Run; now: number }) {
   const [open, setOpen] = useState(false)
-  const due = weightDueSteps(s, run, now), rule = weightRuleOf(s, run.dept), many = weightStepsOf(run.dept).length > 1
+  const due = weightDueSteps(s, run, now), rule = weightRuleFor(s, run.dept, run.code), many = weightStepsOf(run.dept).length > 1
   // (the window stays open, the same test, once the first weight puts the reminder away: it closes with Listo)
   if (!due.length && !open) return null
   const n = weighsBalls(run.dept) ? (rule.count === 1 ? tr('1 bola') : tr('{0} bolas', rule.count)) : rule.count ? tr('{0} pouches', rule.count) : tr('los pouches')
@@ -62,7 +62,7 @@ function testText(x: WeightTest, t: ReturnType<typeof weightTarget>, many: boole
 function WeightDialog({ s, run, now, onClose }: { s: State; run: Run; now: number; onClose: () => void }) {
   const who = useWho()
   const boss = !!who.admin || who.role === 'mgr' || who.role === 'office'
-  const steps = weightStepsOf(run.dept), many = steps.length > 1, rule = weightRuleOf(s, run.dept)
+  const steps = weightStepsOf(run.dept), many = steps.length > 1, rule = weightRuleFor(s, run.dept, run.code)
   const due = weightDueSteps(s, run, now)
   // the tests begun in this window (by step), and the steps asked to be weighed again although done this hour
   const fresh = useRef<Record<string, WeightTest>>({})

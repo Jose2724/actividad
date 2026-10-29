@@ -1,8 +1,8 @@
-import { Fragment, useState, useSyncExternalStore } from 'react'
+import { useState, useSyncExternalStore } from 'react'
 import { type ViewOpt, byLineName, CFG, dayShiftsText, DEPTS, lineLabel, lotFor, managerPin, nightText, openRun, removedLines, removeLine, reset, resetRecords, restoreLine, setDayShifts, setLineRules, setProgramView, setReasonCodes, shiftGoalOf, shiftHours, shiftSpan, shiftsOf, turnOf, uploadAll, weekOf, type Dept, type Line, type State, type WorkDay, setViewOpt } from './store'
 import { ConfirmDialog, LangSwitch, LineNameDialog, longDate, NoticeDialog, Products, QrLink, ShiftsDialog, StartDayDialog, StopDialog, TargetDialog, useCan, useWho } from './App'
 import { Employees } from './Employees'
-import { DEPT_LOOK } from './look'
+import { DEPT_LOOK, deptVars } from './look'
 import { Devices } from './DevicesView'
 import { supabase } from './supabase'
 import { syncStore } from './sync'
@@ -11,11 +11,11 @@ import { cartCratesOf, setAllCartCrates, setCartCrates } from './store'
 import { attWriteOn, kpiPut, lunchOf, setAttWriteOn, setLunch } from './store'
 import { laborAccess, seesLabor } from './kpi'
 import { lbCaseOn, loadQaLbPerCase, QA_LB_PER_CASE, setLbCaseOn, normCode } from './store'
-import { ATT_DEFAULT, attExpectedOf, attShifts, clearShiftMark, plantCut, roomMark, setAttExpected, setAttGate, setAttView, setShiftMark, setWeightRule, weightRuleOf, setWeighedCodes, weighedCodes, setSlowRule, slowRuleOf, setSlowLineOn, slowLineOn, slowUnitOf } from './store'
+import { ATT_DEFAULT, attExpectedOf, attShifts, clearShiftMark, plantCut, roomMark, setAttExpected, setAttGate, setAttView, setShiftMark, setWeightRule, weightRuleOf, setWeighedCodes, weighedRules, weightTargetsList, setWeightTarget, clearWeightTarget, stepKey, stepText, wtRange, wtRangeText, type WtCodeRule, type WtStep, type WtTargetRow, setSlowRule, slowRuleOf, setSlowLineOn, slowLineOn, slowUnitOf } from './store'
 import { BUILD } from './update'
 import { clockOffText, clockState } from './clock'
 import { fmtTime } from './clock-fmt'
-import { tr } from './i18n'
+import { locale, tr } from './i18n'
 import { CodeList } from './CodePicker'
 import { OTHER_CODE, REASON_CODES, SETUP_CODE } from './reasons'
 import { trx } from './trx'
@@ -26,7 +26,7 @@ import { trx } from './trx'
  * powers allow; the last one, this device, is everybody's. The dialogs that do the work are the same ones the floor
  * and the report already use, so one rule holds everywhere.
  */
-export type SettingsKey = 'shifts' | 'day' | 'lines' | 'stops' | 'program' | 'attendance' | 'weights' | 'consumo' | 'products' | 'goals' | 'people' | 'devices' | 'device'
+export type SettingsKey = 'shifts' | 'day' | 'lines' | 'stops' | 'program' | 'attendance' | 'weights' | 'kpi' | 'consumo' | 'products' | 'goals' | 'people' | 'devices' | 'device'
 const fmtN = (x: number) => Math.round(x).toLocaleString('en-US')
 
 export function settingsSections(can: (p: 'shifts' | 'day' | 'products' | 'goals' | 'people') => boolean, mgr: boolean, viewOnly: boolean, admin = false, attOn = false): { key: SettingsKey; title: string; sub: string }[] {
@@ -36,7 +36,8 @@ export function settingsSections(can: (p: 'shifts' | 'day' | 'products' | 'goals
     ...(mgr && !viewOnly ? [{ key: 'lines' as const, title: tr('Líneas'), sub: tr('las líneas de cada cuarto') }] : []),
     // (whoever only looks sees the list and whether it is on, without the switch)
     ...(mgr ? [{ key: 'stops' as const, title: tr('Códigos de paro'), sub: tr('Reason Codes: prender o apagar') }] : []),
-    ...(mgr ? [{ key: 'weights' as const, title: tr('Pesos'), sub: tr('cada cuánto se pesa y cuántos') }] : []),
+    ...(mgr ? [{ key: 'kpi' as const, title: tr('KPI'), sub: tr('pesos: qué códigos, cada cuánto, cuántos y el objetivo') }] : []),
+    ...(mgr ? [{ key: 'weights' as const, title: tr('Ritmo mínimo'), sub: tr('cuándo una línea va lenta') }] : []),
     ...(mgr ? [{ key: 'consumo' as const, title: tr('Consumo'), sub: tr('pesar lo que entra antes de empezar') }] : []),
     ...(mgr && (admin || attOn) ? [{ key: 'attendance' as const, title: tr('Asistencia'), sub: tr('personas esperadas por cuarto y turno') }] : []),
     ...(admin ? [{ key: 'program' as const, title: tr('Pestañas nuevas'), sub: tr('Programa, Lotes, Flujo: solo tú o todos') }] : []),
@@ -63,7 +64,8 @@ export function Settings({ s, now, day, name, home, mgr, admin, viewOnly, meId, 
         {sec === 'lines' && <LinesSettings s={s} />}
         {sec === 'stops' && <StopCodesSettings s={s} viewOnly={viewOnly} />}
         {sec === 'program' && <><ProgramViewSettings s={s} /><ViewOptSettings s={s} name="lotes" /><ViewOptSettings s={s} name="flujo" /></>}
-        {sec === 'weights' && <><SlowSettings s={s} viewOnly={viewOnly} /><WeightSettings s={s} viewOnly={viewOnly} /></>}
+        {sec === 'weights' && <SlowSettings s={s} viewOnly={viewOnly} />}
+        {sec === 'kpi' && <KpiSettings s={s} viewOnly={viewOnly} />}
         {sec === 'consumo' && <ConsumeSettings s={s} viewOnly={viewOnly} />}
         {sec === 'attendance' && <AttendanceSettings s={s} date={day.date} viewOnly={viewOnly} admin={admin} name={name} />}
         {sec === 'products' && <CartCratesSettings s={s} readOnly={!can('products')} />}
@@ -611,41 +613,145 @@ function SlowRoom({ s, dept, viewOnly }: { s: State; dept: Dept; viewOnly: boole
     </div>
   )
 }
-function WeightSettings({ s, viewOnly }: { s: State; viewOnly: boolean }) {
-  const rooms: { dept: Dept; what: string }[] = [{ dept: 'Kitchen', what: tr('bolas crudas') }, { dept: 'Spiral', what: tr('bolas por prueba (crudas y cocinadas, Spiral y Racks)') }, { dept: 'RTE', what: tr('pouches') }]
+/**
+ * Ajustes › KPI (Jose, 2026-10-29: "una opción que se llame KPI donde estos valores se puedan cambiar si es necesario,
+ * y si queremos agregar diferente código, hora y cantidad ... y así no tener que venir aquí de nuevo"): what each room
+ * weighs every hour (which codes, every how many minutes, how many each time) and the target of each code, as QA says
+ * it (minimum and maximum), over QA's sheet. A manager changes them; whoever only looks sees them
+ */
+function KpiSettings({ s, viewOnly }: { s: State; viewOnly: boolean }) {
+  const rooms: { dept: Dept; what: string }[] = [{ dept: 'Spiral', what: tr('bolas, crudas y cocinadas, en Spiral y en Racks') }, { dept: 'RTE', what: tr('pouches') }, { dept: 'Kitchen', what: tr('bolas crudas') }]
   return (
-    <div className="setcard">
-      <div className="sethead"><h3>{tr('Pesos')}</h3></div>
-      <p className="hint">{tr('Cada cuánto le sale a la línea el aviso de pesar, y cuántos se pesan cada vez. Con 0 minutos no sale aviso (el botón ⚖ Peso sigue ahí).')}</p>
-      {rooms.map((r) => <Fragment key={r.dept}><WeightRuleRow s={s} dept={r.dept} what={r.what} viewOnly={viewOnly} />{r.dept !== 'Kitchen' && <WeighedCodesRow s={s} dept={r.dept} viewOnly={viewOnly} />}</Fragment>)}
+    <>
+      <div className="setcard wide">
+        <div className="sethead"><h3>{tr('Qué se pesa cada hora')}</h3></div>
+        <p className="hint">{tr('Por cuarto: los códigos que se pesan, cada cuántos minutos sale el aviso y cuántos se pesan cada vez. Lo que corre con otro código no pide pesar (el botón ⚖ Peso sigue ahí). Con 0 minutos no sale aviso. El KPI cuenta las pruebas que tocaban con esto.')}</p>
+        {rooms.map((r) => <WeighPlan key={r.dept} s={s} dept={r.dept} what={r.what} ro={viewOnly} />)}
+      </div>
+      <TargetsCard s={s} ro={viewOnly} />
+    </>
+  )
+}
+type PlanRow = { code: string; every: string; count: string }
+function WeighPlan({ s, dept, what, ro }: { s: State; dept: Dept; what: string; ro: boolean }) {
+  const now = weighedRules(s, dept), room = weightRuleOf(s, dept)
+  const toRows = (x: WtCodeRule[] | null): PlanRow[] | null => (x ? x.map((r) => ({ code: r.code, every: String(r.every), count: String(r.count) })) : null)
+  const [rows, setRows] = useState<PlanRow[] | null>(() => toRows(now))
+  // (what another computer saves comes in: the table follows it)
+  const nowKey = JSON.stringify(now), [seen, setSeen] = useState(nowKey)
+  if (seen !== nowKey) { setSeen(nowKey); setRows(toRows(now)) }
+  const clean = rows?.filter((r) => r.code.trim()).map((r) => ({ code: r.code.trim().toUpperCase(), every: Number(r.every) || 0, count: Number(r.count) || 0 })) ?? null
+  const changed = JSON.stringify(clean) !== JSON.stringify(now?.map((r) => ({ code: r.code.toUpperCase(), every: r.every, count: r.count })) ?? null)
+  const put = (i: number, k: keyof PlanRow, v: string) => setRows((x) => (x ?? []).map((r, j) => (j === i ? { ...r, [k]: k === 'code' ? v.replace(/[^\w-]/g, '') : v.replace(/\D/g, '') } : r)))
+  const blank = (): PlanRow => ({ code: '', every: String(room.every || 60), count: String(room.count || 10) })
+  return (
+    <div className="kpi-plan" style={deptVars(dept)}>
+      <h4>{DEPT_LOOK[dept].emoji} {dept} <small>· {what}</small></h4>
+      {rows === null ? (
+        <>
+          <WeightRuleRow s={s} dept={dept} what={what} viewOnly={ro} label={tr('Todos los códigos')} />
+          {!ro && <div className="btns"><button type="button" className="btn sm soft" onClick={() => setRows([blank()])}>{tr('Solo algunos códigos')}</button></div>}
+        </>
+      ) : (
+        <>
+          <div className="scroll"><table className="kpi-set">
+            <thead><tr><th>{tr('Código')}</th><th>{tr('Aviso cada (min)')}</th><th>{tr('Cuántos cada vez')}</th>{!ro && <th />}</tr></thead>
+            <tbody>{rows.map((r, i) => (
+              <tr key={i}>
+                <td><input value={r.code} disabled={ro} placeholder="0889" aria-label={tr('Código')} onChange={(e) => put(i, 'code', e.target.value)} /></td>
+                <td><input inputMode="numeric" value={r.every} disabled={ro} aria-label={tr('Aviso cada (min)')} onChange={(e) => put(i, 'every', e.target.value)} /></td>
+                <td><input inputMode="numeric" value={r.count} disabled={ro} aria-label={tr('Cuántos cada vez')} onChange={(e) => put(i, 'count', e.target.value)} /></td>
+                {!ro && <td><button type="button" className="btn xs" aria-label={tr('Quitar')} onClick={() => setRows(rows.filter((_, j) => j !== i))}>✕</button></td>}
+              </tr>
+            ))}</tbody>
+          </table></div>
+          {!ro && (
+            <div className="btns">
+              <button type="button" className="btn sm soft" onClick={() => setRows([...rows, blank()])}>{tr('+ Agregar código')}</button>
+              <button type="button" className="btn sm" onClick={() => setRows(null)}>{tr('Pesar todos los códigos')}</button>
+            </div>
+          )}
+        </>
+      )}
+      {!ro && changed && (
+        <div className="btns">
+          <button type="button" className="btn sm primary" disabled={!!rows && !clean?.length} onClick={() => setWeighedCodes(dept, clean ?? [])}>{tr('Guardar')}</button>
+          <button type="button" className="btn sm" onClick={() => setRows(toRows(now))}>{tr('Cancelar')}</button>
+          {!!rows && !clean?.length && <small className="red">{tr('Escribe al menos un código, o escoge "Pesar todos los códigos".')}</small>}
+        </div>
+      )}
+      {(now || rows !== null) && <small className="muted">{now ? tr('Ahora: {0}', now.map((r) => tr('{0} cada {1} min, {2}', r.code, r.every, r.count)).join(' · ')) : tr('Ahora: todos los códigos, cada {0} min, {1}', room.every, room.count)}</small>}
     </div>
   )
 }
-/**
- * the codes a room's hourly test is for (Jose, 2026-10-29: Spiral and RTE weigh while 0889 runs): the reminder and
- * the KPI's count of tests due follow them; ⚖ Peso stays on every code
- */
-function WeighedCodesRow({ s, dept, viewOnly }: { s: State; dept: Dept; viewOnly: boolean }) {
-  const now = weighedCodes(s, dept)
-  const [text, setText] = useState((now ?? []).join(', '))
-  const list = text.split(/[\s,;]+/).map((c) => c.trim()).filter(Boolean)
-  const changed = list.join(',').toUpperCase() !== (now ?? []).join(',').toUpperCase()
+const STEP_CHOICES: WtStep[] = [{ kind: 'pouch' }, { kind: 'raw' }, { kind: 'ball' }, { kind: 'raw', cook: 'spiral' }, { kind: 'ball', cook: 'spiral' }, { kind: 'raw', cook: 'racks' }, { kind: 'ball', cook: 'racks' }]
+const numOz = (t: string) => Number(t.replace(',', '.'))
+const ozText = (x: number) => String(Math.round(x * 1000) / 1000)
+/** the targets: QA's sheet and what a manager set, each changed, taken back to QA, or added for a new code */
+function TargetsCard({ s, ro }: { s: State; ro: boolean }) {
+  const all = weightTargetsList(s)
+  const [q, setQ] = useState('')
+  const [editing, setEditing] = useState<{ key: string; lo: string; hi: string } | null>(null)
+  const [add, setAdd] = useState<{ code: string; step: number; lo: string; hi: string } | null>(null)
+  const keyOf = (r: WtTargetRow) => normCode(r.code) + '|' + stepKey(r.step)
+  const shown = all.filter((r) => !q.trim() || normCode(r.code).includes(normCode(q)) || r.code.includes(q.trim().toUpperCase()))
+  const save = (code: string, st: WtStep, lo: number, hi: number) => setWeightTarget(code, Math.round(((lo + hi) / 2) * 1000) / 1000, Math.round(((hi - lo) / 2) * 1000) / 1000, st.kind, st.cook)
+  const okPair = (lo: string, hi: string) => numOz(lo) > 0 && numOz(hi) >= numOz(lo)
   return (
-    <form className="wt-rule" onSubmit={(e) => { e.preventDefault(); if (list.length) setWeighedCodes(dept, list) }}>
-      <b />
-      <label>{tr('Códigos que se pesan cada hora')} <input value={text} disabled={viewOnly} placeholder="0889" onChange={(e) => setText(e.target.value)} /></label>
-      {!viewOnly && <button type="submit" className="btn sm primary" disabled={!changed || !list.length}>{tr('Guardar')}</button>}
-      <small>{now ? tr('Ahora: {0}', now.join(', ')) : tr('Ahora: todos los códigos')}</small>
-    </form>
+    <div className="setcard wide">
+      <div className="sethead"><h3>{tr('Peso objetivo')}</h3></div>
+      <p className="hint">{tr('El peso que pide QA para cada código y cada cosa que se pesa: menos del mínimo es bajo, más del máximo es sobre. Sin cambiar nada, cada código usa la hoja de QA. "Cocinado" sin cocinador vale para Spiral y Racks, a menos que uno tenga el suyo.')}</p>
+      <div className="btns">
+        <input className="kpi-q" value={q} placeholder={tr('Buscar código')} aria-label={tr('Buscar código')} onChange={(e) => setQ(e.target.value)} />
+        {!ro && !add && <button type="button" className="btn sm soft" onClick={() => setAdd({ code: q.trim().toUpperCase(), step: 0, lo: '', hi: '' })}>{tr('+ Agregar un peso objetivo')}</button>}
+      </div>
+      {add && (
+        <form className="kpi-add" onSubmit={(e) => { e.preventDefault(); if (add.code.trim() && okPair(add.lo, add.hi)) { save(add.code.trim().toUpperCase(), STEP_CHOICES[add.step], numOz(add.lo), numOz(add.hi)); setAdd(null) } }}>
+          <label>{tr('Código')}<input autoFocus value={add.code} onChange={(e) => setAdd({ ...add, code: e.target.value.replace(/[^\w-]/g, '') })} /></label>
+          <label>{tr('Qué se pesa')}<select value={add.step} onChange={(e) => setAdd({ ...add, step: Number(e.target.value) })}>{STEP_CHOICES.map((st, i) => <option key={i} value={i}>{stepText(st)}</option>)}</select></label>
+          <label>{tr('Mínimo (oz)')}<input inputMode="decimal" value={add.lo} onChange={(e) => setAdd({ ...add, lo: e.target.value.replace(/[^\d.,]/g, '') })} /></label>
+          <label>{tr('Máximo (oz)')}<input inputMode="decimal" value={add.hi} onChange={(e) => setAdd({ ...add, hi: e.target.value.replace(/[^\d.,]/g, '') })} /></label>
+          <div className="btns"><button type="submit" className="btn sm primary" disabled={!add.code.trim() || !okPair(add.lo, add.hi)}>{tr('Guardar')}</button><button type="button" className="btn sm" onClick={() => setAdd(null)}>{tr('Cancelar')}</button></div>
+          {numOz(add.lo) > 0 && numOz(add.hi) > 0 && numOz(add.hi) < numOz(add.lo) && <small className="red">{tr('El máximo tiene que ser mayor que el mínimo.')}</small>}
+        </form>
+      )}
+      <div className="scroll"><table className="kpi-set targets">
+        <thead><tr><th>{tr('Código')}</th><th>{tr('Qué se pesa')}</th><th className="n">{tr('Mínimo (oz)')}</th><th className="n">{tr('Máximo (oz)')}</th><th>{tr('De dónde')}</th>{!ro && <th />}</tr></thead>
+        <tbody>{shown.map((r) => {
+          const k = keyOf(r), ed = editing?.key === k ? editing : null, rg = wtRange(r.target)
+          return (
+            <tr key={k} className={r.set ? 'set' : ''}>
+              <td><b>{r.code}</b></td><td>{stepText(r.step)}</td>
+              {ed ? <>
+                <td className="n"><input autoFocus inputMode="decimal" value={ed.lo} aria-label={tr('Mínimo (oz)')} onChange={(e) => setEditing({ ...ed, lo: e.target.value.replace(/[^\d.,]/g, '') })} /></td>
+                <td className="n"><input inputMode="decimal" value={ed.hi} aria-label={tr('Máximo (oz)')} onChange={(e) => setEditing({ ...ed, hi: e.target.value.replace(/[^\d.,]/g, '') })} /></td>
+              </> : <><td className="n">{ozText(rg.min)}</td><td className="n">{ozText(rg.max)}</td></>}
+              <td><small>{r.set ? tr('cambiado por {0} · {1}', r.set.by || '—', new Date(r.set.at).toLocaleDateString(locale)) + (r.qa ? ' · ' + tr('QA: {0}', wtRangeText(r.qa)) : '') : tr('hoja de QA')}</small></td>
+              {!ro && <td><div className="btns">
+                {ed ? <>
+                  <button type="button" className="btn xs primary" disabled={!okPair(ed.lo, ed.hi)} onClick={() => { save(r.code, r.step, numOz(ed.lo), numOz(ed.hi)); setEditing(null) }}>{tr('Guardar')}</button>
+                  <button type="button" className="btn xs" onClick={() => setEditing(null)}>{tr('Cancelar')}</button>
+                </> : <>
+                  <button type="button" className="btn xs soft" onClick={() => setEditing({ key: k, lo: ozText(rg.min), hi: ozText(rg.max) })}>{tr('✎ Cambiar')}</button>
+                  {r.set && <button type="button" className="btn xs" onClick={() => clearWeightTarget(r.code, r.step.kind, r.step.cook)}>{r.qa ? tr('Volver a QA') : tr('Quitar')}</button>}
+                </>}
+              </div></td>}
+            </tr>
+          )
+        })}</tbody>
+      </table></div>
+      {!shown.length && <p className="hint">{tr('Ningún código con eso. Agrégalo con "+ Agregar un peso objetivo".')}</p>}
+      <p className="hint">{tr('Kitchen pesa sus códigos de mezcla como la bola cruda del 0889 (2.6–2.8) mientras no tengan el suyo.')}</p>
+    </div>
   )
 }
-function WeightRuleRow({ s, dept, what, viewOnly }: { s: State; dept: Dept; what: string; viewOnly: boolean }) {
+function WeightRuleRow({ s, dept, what, viewOnly, label }: { s: State; dept: Dept; what: string; viewOnly: boolean; label?: string }) {
   const now = weightRuleOf(s, dept)
   const [every, setEvery] = useState(String(now.every)), [count, setCount] = useState(String(now.count))
   const changed = Number(every) !== now.every || Number(count) !== now.count
   return (
     <form className="wt-rule" onSubmit={(e) => { e.preventDefault(); setWeightRule(dept, Number(every) || 0, Number(count) || 0) }}>
-      <b>{dept}</b>
+      <b>{label ?? dept}</b>
       <label>{tr('Aviso cada')} <input inputMode="numeric" value={every} disabled={viewOnly} onChange={(e) => setEvery(e.target.value.replace(/\D/g, ''))} /> {tr('min')}</label>
       <label>{tr('Pesar')} <input inputMode="numeric" value={count} disabled={viewOnly} onChange={(e) => setCount(e.target.value.replace(/\D/g, ''))} /> {what}</label>
       {!viewOnly && <button type="submit" className="btn sm primary" disabled={!changed}>{tr('Guardar')}</button>}
