@@ -2128,7 +2128,7 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 .chat-msg{display:flex;flex-direction:column;max-width:86%}.chat-msg.mine{align-self:flex-end;align-items:flex-end}.chat-msg.theirs{align-self:flex-start}
 .chat-bubble{padding:8px 12px;border-radius:14px;background:var(--surface);border:1px solid var(--line);white-space:pre-wrap;word-break:break-word;font-size:15px;line-height:1.35}
 .chat-msg.mine .chat-bubble{background:var(--d,var(--accent));color:#fff;border-color:transparent}
-.chat-msg small{color:var(--muted);font-size:11px;margin-top:2px}
+.chat-msg small{color:var(--muted);font-size:11px;margin-top:2px}.chat-msg small.chat-seen{margin-top:0;font-size:10.5px}.chat-msg small.chat-seen.on{color:#15803d;font-weight:700}
 .chat-day{align-self:center;font-size:11px;color:var(--muted);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:2px 8px}
 .chat-empty{color:var(--muted);font-size:14px;margin:auto 0;text-align:center;padding:0 10px}
 .chat-form{display:flex;gap:8px;padding:10px;border-top:1px solid var(--line);background:var(--surface)}

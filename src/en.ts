@@ -2633,6 +2633,9 @@ export const EN: Record<string, string> = {
   "Día siguiente ›": "Next day ›",
   "No hay programa para el {0}. Se pone desde la tarjeta del cuarto, en \"Cambiar programa\", eligiendo ese día.": "There is no program for {0}. It is set from the room's card, in \"Change program\", picking that day.",
   "Falta ejecutar en Supabase el SQL 025 (programa de varios días): el programa espera": "SQL 025 (a program of several days) still has to be run in Supabase: the program is waiting",
+  // whether the other side saw the message (2026-10-28)
+  "Visto · {0} · {1}": "Seen · {0} · {1}",
+  "Sin ver todavía": "Not seen yet",
   "🔴 Ritmo bajo: {0} {1} por hora en la última hora · mínimo {2}": "🔴 Slow: {0} {1} per hour in the last hour · minimum {2}",
   "bolas crudas": "raw meatballs",
   "Lo dice QA. Con 2.7 y 0.1: menos de 2.6 es bajo, más de 2.8 es sobre.": "QA says it. With 2.7 and 0.1: under 2.6 is low, over 2.8 is high.",

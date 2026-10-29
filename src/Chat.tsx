@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
-import { CHAT_ROOMS, chatOf, chatUnread, dayOf, fmtTime, sendChat, writesRoom, type ChatRoom, type Dept, type State } from './store'
+import { CHAT_ROOMS, chatOf, chatSeenOf, chatUnread, dayOf, fmtTime, markChatSeen, sendChat, writesRoom, type ChatRoom, type Dept, type State } from './store'
 import { DEPT_LOOK, FREEZER_LOOK, lookVars } from './look'
 
 /** a room's look, the freezer's too */
@@ -34,6 +34,8 @@ export function Chat({ s, home }: { s: State; home: Dept }) {
   // the conversation that is open is read as it is looked at
   const last = open ? (chatOf(s, open).at(-1)?.at ?? 0) : 0
   useEffect(() => { if (open && last > seenOf(side, open)) { markSeen(side, open, last); bump((n) => n + 1) } }, [open, last])
+  // and the other side is told how far this one has looked (store.ts, markChatSeen; once per new message)
+  useEffect(() => { if (open && last) markChatSeen(open, last) }, [open, last])
   // a message that just came from the other side: a short buzz on devices that can
   const total = rooms.reduce((t, d) => t + unread[d], 0)
   const prev = useRef(total)
@@ -66,6 +68,10 @@ function ChatWindow({ s, dept, side, onClose }: { s: State; dept: ChatRoom; side
   const who = useWho()
   const canWrite = who.role !== 'viewer' && writesRoom(dept)
   const list = chatOf(s, dept)
+  // how far the other side has looked (2026-10-28): under each message of this side, "Visto · quién · hora" or "Sin ver
+  // todavía". The freezer's app does not say it yet: nothing under the messages to the freezer
+  const theirs = dept === 'Freezer' && side === 'office' ? null : chatSeenOf(s, dept, side === 'room' ? 'office' : 'room') ?? null
+  const seenMark = (at: number) => (dept === 'Freezer' && side === 'office' ? null : theirs && theirs.at >= at ? <small className="chat-seen on">✓✓ {tr('Visto · {0} · {1}', theirs.by, fmtTime(theirs.seenAt))}</small> : <small className="chat-seen">✓ {tr('Sin ver todavía')}</small>)
   const [text, setText] = useState('')
   const end = useRef<HTMLDivElement>(null)
   useEffect(() => { end.current?.scrollIntoView({ block: 'end' }) }, [list.length, dept])
@@ -87,6 +93,7 @@ function ChatWindow({ s, dept, side, onClose }: { s: State; dept: ChatRoom; side
               <div className={'chat-msg ' + (x.side === side ? 'mine' : 'theirs')}>
                 <div className="chat-bubble">{x.text}</div>
                 <small>{x.by} · {fmtTime(x.at)}</small>
+                {x.side === side && seenMark(x.at)}
               </div>
             </Fragment>
           )

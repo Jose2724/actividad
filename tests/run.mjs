@@ -5394,9 +5394,21 @@ section('Mensajes entre un cuarto y la oficina (Jose, 2026-10-28: el operador es
     eq('la oficina también le escribe al freezer (2026-10-28): su propia conversación, con "Freezer" como cuarto', [!!fz, m.outbox.items().find((i) => i.key === 'chat:' + fz).row.dept, m.chatOf(st(), 'Freezer').length, m.chatOf(st(), 'Packing').length, m.CHAT_ROOMS], [true, 'Freezer', 1, 1, ['Kitchen', 'RTE', 'Spiral', 'MFO', 'Packing', 'Freezer']])
     m.applyRemote('act_changes', { id: 'chat:fz1', at: iso(T0 + 4 * M), by_name: 'Luis Freezer', dept: 'Freezer', what: 'Mensaje de Freezer', before: '', after: JSON.stringify({ text: 'Sí, 3 listos', side: 'room' }), ref_table: 'act_chat', ref_key: 'fz1', deleted: false, updated_at: iso(T0 + 4 * M) })
     eq('lo que el freezer contesta desde su app llega aquí', m.chatOf(st(), 'Freezer').map((x) => [x.side, x.by]), [['office', 'Oficina'], ['room', 'Luis Freezer']])
+    // whether the other side saw it (2026-10-28): one record per room and side, said to the server
+    clock = T0 + 5 * M
+    m.markChatSeen('Packing', T0 + M)
+    const sn = m.outbox.items().find((i) => i.key === 'chat:seen:Packing:office')
+    eq('la oficina miró la conversación de Packing hasta su mensaje de las 3:01: queda como un registro del cuarto, aparte del historial', [m.chatSeenOf(st(), 'Packing', 'office'), sn.row.dept, sn.row.ref_table, sn.row.by_name, JSON.parse(sn.row.after), st().changes.some((c) => c.what.includes('vistos'))], [{ dept: 'Packing', side: 'office', at: T0 + M, seenAt: T0 + 5 * M, by: 'Oficina', updatedAt: T0 + 5 * M }, 'Packing', 'act_chat', 'Oficina', { seen: T0 + M, side: 'office' }, false])
+    m.markChatSeen('Packing', T0); m.markChatSeen('Packing', 0)
+    eq('nunca hacia atrás, ni sin mensaje', [m.chatSeenOf(st(), 'Packing', 'office').at, m.outbox.items().filter((i) => i.key === 'chat:seen:Packing:office').length], [T0 + M, 1])
+    m.applyRemote('act_changes', { id: 'chat:seen:Packing:room', at: iso(T0 + 6 * M), by_name: 'Sup Packing', dept: 'Packing', what: 'Mensajes para Packing vistos', before: '', after: JSON.stringify({ seen: T0, side: 'room' }), ref_table: 'act_chat', ref_key: 'seen:room', deleted: false, updated_at: iso(T0 + 6 * M) })
+    eq('la tablet de Packing dice hasta dónde miró: quién y cuándo, y no es un mensaje', [m.chatSeenOf(st(), 'Packing', 'room'), m.chatOf(st(), 'Packing').length], [{ dept: 'Packing', side: 'room', at: T0, seenAt: T0 + 6 * M, by: 'Sup Packing', updatedAt: T0 + 6 * M }, 1])
+    m.applyRemote('act_changes', { id: 'chat:seen:Packing:room', at: iso(T0 + 3 * M), by_name: 'Otro', dept: 'Packing', what: 'Mensajes para Packing vistos', before: '', after: JSON.stringify({ seen: T0 - M, side: 'room' }), ref_table: 'act_chat', ref_key: 'seen:room', deleted: false, updated_at: iso(T0 + 3 * M) })
+    eq('una versión más vieja no manda', m.chatSeenOf(st(), 'Packing', 'room').by, 'Sup Packing')
   })
   const back = await device('chat-office-again', { seed: JSON.parse(disks.get('chat-office').get('act_v1')), user: 'Oficina' })
   eq('al volver a abrir sigue', back.use((m) => m.chatOf(m.store.get(), 'Packing').map((x) => x.text)), ['Hoy primero el 0889'])
+  eq('el visto de cada lado sobrevive a la recarga', back.use((m) => [m.chatSeenOf(m.store.get(), 'Packing', 'office')?.at, m.chatSeenOf(m.store.get(), 'Packing', 'room')?.by]), [T0 + M, 'Sup Packing'])
   const op = await device('chat-op', { user: 'Sup Packing' })
   op.use((m) => {
     localStorage.setItem('act_role', 'op'); localStorage.setItem('act_dept', 'Packing')
