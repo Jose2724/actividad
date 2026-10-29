@@ -2531,16 +2531,18 @@ export const CHAT_ROOMS: ChatRoom[] = [...DEPTS, 'Freezer']
 // (a function, not a const: load() reads the chat through chatFrom before the file's consts exist, see the TDZ note above load)
 export function chatRoomKnown(d: unknown): d is ChatRoom { return d === 'Freezer' || roomKnown(d) }
 /** img = a photo with the message (2026-10-28): its path in the server's bucket act_chat ('<room>/<id>.jpg', SQL 027), or a data: URL on a device without a server (the demo) */
-export type ChatMsg = { id: string; dept: ChatRoom; text: string; by: string; at: number; side: 'room' | 'office'; img?: string; deleted?: boolean; updatedAt: number; syncedAt?: number }
-/** what a photo says for whoever cannot show it (a build from before, the freezer's app): the message's text when none was typed */
-export const CHAT_PHOTO_TEXT = '📷 Foto'
+export type ChatMsg = { id: string; dept: ChatRoom; text: string; by: string; at: number; side: 'room' | 'office'; img?: string
+  /** a voice note with the message (2026-10-29): its path in the bucket ('<room>/<id>.webm' or .mp4, SQL 028), or a data: URL without a server */
+  audio?: string; deleted?: boolean; updatedAt: number; syncedAt?: number }
+/** what a photo / a voice note says for whoever cannot show it (a build from before, the freezer's app): the message's text when none was typed */
+export const CHAT_PHOTO_TEXT = '📷 Foto', CHAT_AUDIO_TEXT = '🎤 Nota de voz'
 const CHAT_ID = 'chat:'
 export const CHAT_REF = 'act_chat'
 function chatFrom(x: Partial<ChatMsg> | null | undefined): ChatMsg | null {
   if (!x || typeof x !== 'object' || typeof x.id !== 'string' || !x.id || !chatRoomKnown(x.dept)) return null
-  const text = String(x.text ?? '').replace(/\s+/g, ' ').trim().slice(0, 600), img = String(x.img ?? '').trim().slice(0, 400_000)
-  if (!text && !img) return null
-  return { id: x.id, dept: x.dept, text, by: String(x.by ?? ''), at: Number(x.at) || 0, side: x.side === 'room' ? 'room' : 'office', ...(img ? { img } : {}), ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
+  const text = String(x.text ?? '').replace(/\s+/g, ' ').trim().slice(0, 600), img = String(x.img ?? '').trim().slice(0, 400_000), audio = String(x.audio ?? '').trim().slice(0, 1_500_000)
+  if (!text && !img && !audio) return null
+  return { id: x.id, dept: x.dept, text, by: String(x.by ?? ''), at: Number(x.at) || 0, side: x.side === 'room' ? 'room' : 'office', ...(img ? { img } : {}), ...(audio ? { audio } : {}), ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
 }
 /** a room's conversation, oldest first */
 export const chatOf = (s: State, dept: ChatRoom) => (s.chat ?? []).filter((x) => x.dept === dept && !x.deleted).sort((a, b) => a.at - b.at || a.id.localeCompare(b.id))
@@ -2578,13 +2580,13 @@ export function markChatSeen(dept: ChatRoom, upTo: number) {
  * is nothing to say or this device may not write that room. A photo with no words goes up saying "📷 Foto" for whoever
  * cannot show it; here it is only the photo
  */
-export function sendChat(dept: ChatRoom, text: string, img = ''): string {
-  const t = text.replace(/\s+/g, ' ').trim().slice(0, 600), i = img.trim()
-  if ((!t && !i) || !chatRoomKnown(dept) || !writesRoom(dept)) return ''
+export function sendChat(dept: ChatRoom, text: string, img = '', audio = ''): string {
+  const t = text.replace(/\s+/g, ' ').trim().slice(0, 600), i = img.trim(), a = audio.trim()
+  if ((!t && !i && !a) || !chatRoomKnown(dept) || !writesRoom(dept)) return ''
   const side = chatSide()
-  const x: ChatMsg = { id: uid(), dept, text: t, by: user.get(), at: clockNow(), side, ...(i ? { img: i } : {}), updatedAt: stamp(undefined) }
+  const x: ChatMsg = { id: uid(), dept, text: t, by: user.get(), at: clockNow(), side, ...(i ? { img: i } : {}), ...(a ? { audio: a } : {}), updatedAt: stamp(undefined) }
   set({ ...state, chat: [...(state.chat ?? []), x] })
-  push('act_changes', CHAT_ID + x.id, { id: CHAT_ID + x.id, at: iso(x.at), by_name: x.by, dept, what: side === 'room' ? 'Mensaje de ' + dept : 'Mensaje para ' + dept, before: '', after: JSON.stringify({ text: t || (i ? CHAT_PHOTO_TEXT : ''), side, ...(i ? { img: i } : {}) }), ref_table: CHAT_REF, ref_key: x.id, deleted: false, updated_at: iso(x.updatedAt), updated_by: user.get() })
+  push('act_changes', CHAT_ID + x.id, { id: CHAT_ID + x.id, at: iso(x.at), by_name: x.by, dept, what: side === 'room' ? 'Mensaje de ' + dept : 'Mensaje para ' + dept, before: '', after: JSON.stringify({ text: t || (i ? CHAT_PHOTO_TEXT : a ? CHAT_AUDIO_TEXT : ''), side, ...(i ? { img: i } : {}), ...(a ? { audio: a } : {}) }), ref_table: CHAT_REF, ref_key: x.id, deleted: false, updated_at: iso(x.updatedAt), updated_by: user.get() })
   return x.id
 }
 /** an order is complete (Packing is no longer offered it), or is opened again */

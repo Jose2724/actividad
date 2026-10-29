@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
-import { CHAT_PHOTO_TEXT, CHAT_ROOMS, chatOf, chatSeenOf, chatUnread, dayOf, fmtTime, markChatSeen, sendChat, uid, writesRoom, type ChatRoom, type Dept, type State } from './store'
+import { CHAT_AUDIO_TEXT, CHAT_PHOTO_TEXT, CHAT_ROOMS, chatOf, chatSeenOf, chatUnread, dayOf, fmtTime, markChatSeen, sendChat, uid, writesRoom, type ChatRoom, type Dept, type State } from './store'
 import { supabase } from './supabase'
 import { DEPT_LOOK, FREEZER_LOOK, lookVars } from './look'
 
@@ -120,6 +120,24 @@ function ChatImg({ path, onOpen }: { path: string; onOpen: (url: string) => void
   return <img className="chat-img" src={url} alt={tr('Foto')} onClick={() => onOpen(url)} onError={() => { links.delete(path); setGone(true) }} />
 }
 
+// ---- voice notes (Jose, 2026-10-29: "¿y el audio?") ----
+const REC_MAX_S = 60
+/** the kind of recording this browser makes: Opus in WebM (Chrome, Android), else MP4 (Safari); '' = none */
+function recMime(): string {
+  const MR = (window as Window & { MediaRecorder?: typeof MediaRecorder }).MediaRecorder
+  if (!MR) return ''
+  return ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'].find((m) => MR.isTypeSupported(m)) ?? ''
+}
+const extOf = (mime: string) => (/mp4/.test(mime) ? 'm4a' : /ogg/.test(mime) ? 'ogg' : 'webm')
+function ChatAudio({ path }: { path: string }) {
+  const [url, setUrl] = useState(path.startsWith('data:') ? path : links.get(path)?.url ?? '')
+  const [gone, setGone] = useState(false)
+  useEffect(() => { let on = true; if (!url) void photoUrl(path).then((u) => { if (on) { if (u) setUrl(u); else setGone(true) } }); return () => { on = false } }, [path]) // eslint-disable-line react-hooks/exhaustive-deps
+  if (gone) return <span className="chat-img-gone">🎤 {tr('Nota de voz que este aparato no puede traer ahora')}</span>
+  if (!url) return <span className="chat-img-wait">🎤 …</span>
+  return <audio className="chat-audio" controls preload="none" src={url} onError={() => { links.delete(path); setGone(true) }} />
+}
+
 function ChatWindow({ s, dept, side, onClose }: { s: State; dept: ChatRoom; side: 'room' | 'office'; onClose: () => void }) {
   const who = useWho()
   const canWrite = who.role !== 'viewer' && writesRoom(dept)
@@ -131,6 +149,30 @@ function ChatWindow({ s, dept, side, onClose }: { s: State; dept: ChatRoom; side
   const [text, setText] = useState('')
   // a photo picked (pasted, or found with +) and not sent yet; busy = what the sending is doing or what went wrong
   const [pic, setPic] = useState<{ blob: Blob; url: string } | null>(null)
+  // a voice note recorded and not sent yet; while recording, the recorder and its seconds
+  const [note, setNote] = useState<{ blob: Blob; url: string; secs: number } | null>(null)
+  const [recorder, setRecorder] = useState<MediaRecorder | null>(null)
+  const [recSecs, setRecSecs] = useState(0)
+  const canRecord = !!recMime() && !!navigator.mediaDevices?.getUserMedia
+  const dropNote = () => { setNote((was) => { if (was) URL.revokeObjectURL(was.url); return null }); setBusy('') }
+  const stopRec = () => { try { recorder?.stop() } catch { /* already */ } }
+  const startRec = async () => {
+    if (recorder) { stopRec(); return }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mime = recMime(), chunks: Blob[] = []
+      const mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined)
+      const t0 = Date.now()
+      const tick = setInterval(() => { const sec = Math.round((Date.now() - t0) / 1000); setRecSecs(sec); if (sec >= REC_MAX_S) { try { mr.stop() } catch { /* already */ } } }, 250)
+      mr.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data) }
+      mr.onstop = () => {
+        clearInterval(tick); stream.getTracks().forEach((tr) => tr.stop()); setRecorder(null)
+        const blob = new Blob(chunks, { type: mr.mimeType || mime || 'audio/webm' }), secs = Math.max(1, Math.round((Date.now() - t0) / 1000))
+        if (blob.size > 0) { dropPic(); setNote((was) => { if (was) URL.revokeObjectURL(was.url); return { blob, url: URL.createObjectURL(blob), secs } }) }
+      }
+      mr.start(1000); setRecorder(mr); setRecSecs(0); setBusy('')
+    } catch (e) { setBusy(tr('No se pudo grabar ({0}). ¿El micrófono está permitido para esta página?', String((e as Error)?.message ?? e))) }
+  }
   const [busy, setBusy] = useState('')
   const [zoom, setZoom] = useState('')
   const end = useRef<HTMLDivElement>(null)
@@ -145,8 +187,20 @@ function ChatWindow({ s, dept, side, onClose }: { s: State; dept: ChatRoom; side
   const onPaste = (e: React.ClipboardEvent) => { const f = [...(e.clipboardData?.files ?? [])].find((x) => /^image\//.test(x.type)); if (f) { e.preventDefault(); void takeFile(f) } }
   const [sending, setSending] = useState(false)
   const send = async () => {
-    if (sending || (!text.trim() && !pic)) return
-    let img = ''
+    if (sending || recorder || (!text.trim() && !pic && !note)) return
+    let img = '', audio = ''
+    if (note) {
+      setSending(true)
+      try {
+        if (supabase) {
+          const path = dept + '/' + uid() + '.' + extOf(note.blob.type)
+          setBusy(tr('Subiendo la nota de voz…'))
+          const { error } = await supabase.storage.from(BUCKET).upload(path, note.blob, { contentType: note.blob.type || 'audio/webm', upsert: false })
+          if (error) { setBusy(tr('No se pudo mandar la nota de voz ({0}). ¿Hay señal? Vuelve a intentar.', error.message)); setSending(false); return }
+          audio = path
+        } else audio = await asDataUrl(note.blob)
+      } catch (e) { setBusy(tr('No se pudo mandar la nota de voz ({0}). ¿Hay señal? Vuelve a intentar.', String((e as Error)?.message ?? e))); setSending(false); return }
+    }
     if (pic) {
       setSending(true)
       try {
@@ -160,7 +214,7 @@ function ChatWindow({ s, dept, side, onClose }: { s: State; dept: ChatRoom; side
         } else img = await asDataUrl(pic.blob)
       } catch (e) { setBusy(tr('No se pudo mandar la foto ({0}). ¿Hay señal? Vuelve a intentar.', String((e as Error)?.message ?? e))); setSending(false); return }
     }
-    if (sendChat(dept, text, img)) { setText(''); dropPic() }
+    if (sendChat(dept, text, img, audio)) { setText(''); dropPic(); dropNote() }
     setSending(false)
   }
   return (
@@ -179,7 +233,8 @@ function ChatWindow({ s, dept, side, onClose }: { s: State; dept: ChatRoom; side
               {day !== before && <div className="chat-day">{longDate(day)}</div>}
               <div className={'chat-msg ' + (x.side === side ? 'mine' : 'theirs')}>
                 {x.img && <ChatImg path={x.img} onOpen={setZoom} />}
-                {(x.text && !(x.img && x.text === CHAT_PHOTO_TEXT)) && <div className="chat-bubble">{x.text}</div>}
+                {x.audio && <ChatAudio path={x.audio} />}
+                {(x.text && !(x.img && x.text === CHAT_PHOTO_TEXT) && !(x.audio && x.text === CHAT_AUDIO_TEXT)) && <div className="chat-bubble">{x.text}</div>}
                 <small>{x.by} · {fmtTime(x.at)}</small>
                 {x.side === side && seenMark(x.at)}
               </div>
@@ -188,10 +243,13 @@ function ChatWindow({ s, dept, side, onClose }: { s: State; dept: ChatRoom; side
         })}
         <div ref={end} />
       </div>
-      {canWrite && (pic || busy) && (
+      {canWrite && (pic || note || recorder || busy) && (
         <div className="chat-pic">
           {pic && <img src={pic.url} alt="" />}
           {pic && !sending && <button type="button" className="chat-pic-x" onClick={dropPic} aria-label={tr('Quitar la foto')}>×</button>}
+          {recorder && <span className="chat-rec"><i />{tr('Grabando… {0} s · toca el micrófono para parar', recSecs)}</span>}
+          {note && !recorder && <audio className="chat-audio" controls src={note.url} />}
+          {note && !recorder && !sending && <button type="button" className="chat-pic-x" onClick={dropNote} aria-label={tr('Quitar la nota de voz')}>×</button>}
           {busy && <small className={sending ? '' : 'err'}>{busy}</small>}
         </div>
       )}
@@ -199,8 +257,10 @@ function ChatWindow({ s, dept, side, onClose }: { s: State; dept: ChatRoom; side
         ? <form className="chat-form" onSubmit={(e) => { e.preventDefault(); void send() }}>
             {/* a photo: found on the device (a tablet offers its camera too), or pasted into the box */}
             <label className="chat-plus" title={tr('Mandar una foto')}><input type="file" accept="image/*" onChange={(e) => { void takeFile(e.target.files?.[0]); e.target.value = '' }} /><span aria-hidden="true">+</span><span className="sr-only">{tr('Mandar una foto')}</span></label>
-            <input value={text} maxLength={600} placeholder={pic ? tr('Un texto con la foto (opcional)') : tr('Escribe un mensaje…')} aria-label={tr('Escribe un mensaje…')} autoComplete="off" onChange={(e) => setText(e.target.value)} onPaste={onPaste} />
-            <button type="submit" className="chat-send" disabled={sending || (!text.trim() && !pic)} aria-label={tr('Mandar')}>➤</button>
+            {/* a voice note: one tap starts, another stops (at most a minute); it is heard before sending */}
+            {canRecord && <button type="button" className={'chat-mic' + (recorder ? ' on' : '')} onClick={() => void startRec()} disabled={sending} aria-label={recorder ? tr('Parar la grabación') : tr('Grabar una nota de voz')} title={recorder ? tr('Parar la grabación') : tr('Grabar una nota de voz')}>{recorder ? '■' : '🎤'}</button>}
+            <input value={text} maxLength={600} placeholder={pic ? tr('Un texto con la foto (opcional)') : note ? tr('Un texto con la nota de voz (opcional)') : tr('Escribe un mensaje…')} aria-label={tr('Escribe un mensaje…')} autoComplete="off" onChange={(e) => setText(e.target.value)} onPaste={onPaste} />
+            <button type="submit" className="chat-send" disabled={sending || !!recorder || (!text.trim() && !pic && !note)} aria-label={tr('Mandar')}>➤</button>
           </form>
         : <p className="chat-ro">{tr('Solo ver: aquí no se escribe.')}</p>}
       {zoom && <div className="veil chat-zoom" onClick={() => setZoom('')} role="dialog" aria-label={tr('Foto')}><img src={zoom} alt={tr('Foto')} /><button type="button" className="chat-x" onClick={() => setZoom('')} aria-label={tr('Cerrar')}>×</button></div>}
