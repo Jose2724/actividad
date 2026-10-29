@@ -2201,7 +2201,7 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 .kpi-set td{padding:5px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
 .kpi-set .n{text-align:right}
 .kpi-set input{width:90px;min-height:38px;font-size:16px}
-.kpi-set.targets{width:100%}.kpi-set.targets tr.set td{background:#fdf4ff}
+.kpi-set.targets{width:100%}.kpi-set.targets tr.set td{background:#fdf4ff}.kpi-set.targets tr.unsure td{background:#fffbeb}.kpi-unsure{color:#92400e;font-weight:700}
 .kpi-q{min-height:38px;font-size:16px;width:160px}
 .kpi-add{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:end;background:#f8fafc;border:1px solid var(--line);border-radius:12px;padding:10px}
 .kpi-add label{display:grid;gap:2px;font-size:13px;font-weight:700}.kpi-add input{width:110px;min-height:38px;font-size:16px}.kpi-add select{min-height:38px;font-size:15px}

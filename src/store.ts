@@ -1462,11 +1462,18 @@ export const clearWeightTarget = (code: string, kind: WeightTest['kind'] = 'pouc
  * every target there is (Ajustes › KPI, 2026-10-29): QA's sheet, and over it what a manager set (by code, what is
  * weighed and cooker), each with where it comes from; sorted by code, then pouch, raw, cooked
  */
-export type WtTargetRow = { code: string; step: WtStep; target: WeightTarget; qa: WeightTarget | null; set: { by: string; at: number } | null }
+/**
+ * whether a target of the table above is QA's own (Jose, 2026-10-29: "¿de dónde sacaste estos datos?"): the raw and cooked
+ * ranges are the sheet's; a bag's range is not (the sheet says only its ounces: ±1 was put to have one), but the 0889's
+ * 48–52 QA gave; the 2234's cooked range and its bag's maximum were read from words still to be confirmed
+ */
+export const qaSure = (code: string, kind: WeightTest['kind']) => { const n = normCode(code); return kind === 'pouch' ? n === '889' : !(n === '2234' && kind === 'ball') }
+/** sure: QA said it (always for one a manager set); false = an estimate of the table, to ask QA for */
+export type WtTargetRow = { code: string; step: WtStep; target: WeightTarget; qa: WeightTarget | null; set: { by: string; at: number } | null; sure: boolean }
 export function weightTargetsList(s: State): WtTargetRow[] {
   const rows = new Map<string, WtTargetRow>()
   const key = (code: string, st: WtStep) => normCode(code) + '|' + stepKey(st)
-  for (const [code, kinds] of Object.entries(QA_TARGETS)) for (const [kind, t] of Object.entries(kinds) as [WeightTest['kind'], WeightTarget][]) rows.set(key(code, { kind }), { code, step: { kind }, target: t, qa: t, set: null })
+  for (const [code, kinds] of Object.entries(QA_TARGETS)) for (const [kind, t] of Object.entries(kinds) as [WeightTest['kind'], WeightTarget][]) rows.set(key(code, { kind }), { code, step: { kind }, target: t, qa: t, set: null, sure: qaSure(code, kind) })
   for (const x of s.kpi ?? []) {
     if (x.deleted || !x.key.startsWith('target:')) continue
     const parts = x.key.slice('target:'.length).split(':'), kind: WeightTest['kind'] = parts.length > 1 && (parts[0] === 'raw' || parts[0] === 'ball') ? parts[0] : 'pouch'
@@ -1474,7 +1481,7 @@ export function weightTargetsList(s: State): WtTargetRow[] {
     const st: WtStep = { kind, ...(cook ? { cook } : {}) }, t = weightTarget(s, code, kind, cook)
     if (!t) continue
     const was = rows.get(key(code, st))
-    rows.set(key(code, st), { code: was?.code ?? code, step: st, target: t, qa: was?.qa ?? null, set: { by: x.by, at: x.at } })
+    rows.set(key(code, st), { code: was?.code ?? code, step: st, target: t, qa: was?.qa ?? null, set: { by: x.by, at: x.at }, sure: true })
   }
   const order = (st: WtStep) => ['pouch', 'raw', 'ball'].indexOf(st.kind) * 3 + (st.cook ? COOKS.indexOf(st.cook) + 1 : 0)
   return [...rows.values()].sort((a, b) => normCode(a.code).localeCompare(normCode(b.code), 'en', { numeric: true }) || order(a.step) - order(b.step))

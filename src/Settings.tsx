@@ -693,7 +693,7 @@ function TargetsCard({ s, ro }: { s: State; ro: boolean }) {
   const [q, setQ] = useState('')
   const [editing, setEditing] = useState<{ key: string; lo: string; hi: string } | null>(null)
   const [add, setAdd] = useState<{ code: string; step: number; lo: string; hi: string } | null>(null)
-  const keyOf = (r: WtTargetRow) => normCode(r.code) + '|' + stepKey(r.step)
+  const keyOf = (r: WtTargetRow) => normCode(r.code) + '|' + stepKey(r.step), unsure = all.filter((r) => !r.sure).length
   const shown = all.filter((r) => !q.trim() || normCode(r.code).includes(normCode(q)) || r.code.includes(q.trim().toUpperCase()))
   const save = (code: string, st: WtStep, lo: number, hi: number) => setWeightTarget(code, Math.round(((lo + hi) / 2) * 1000) / 1000, Math.round(((hi - lo) / 2) * 1000) / 1000, st.kind, st.cook)
   const okPair = (lo: string, hi: string) => numOz(lo) > 0 && numOz(hi) >= numOz(lo)
@@ -720,13 +720,13 @@ function TargetsCard({ s, ro }: { s: State; ro: boolean }) {
         <tbody>{shown.map((r) => {
           const k = keyOf(r), ed = editing?.key === k ? editing : null, rg = wtRange(r.target)
           return (
-            <tr key={k} className={r.set ? 'set' : ''}>
+            <tr key={k} className={r.set ? 'set' : r.sure ? '' : 'unsure'}>
               <td><b>{r.code}</b></td><td>{stepText(r.step)}</td>
               {ed ? <>
                 <td className="n"><input autoFocus inputMode="decimal" value={ed.lo} aria-label={tr('Mínimo (oz)')} onChange={(e) => setEditing({ ...ed, lo: e.target.value.replace(/[^\d.,]/g, '') })} /></td>
                 <td className="n"><input inputMode="decimal" value={ed.hi} aria-label={tr('Máximo (oz)')} onChange={(e) => setEditing({ ...ed, hi: e.target.value.replace(/[^\d.,]/g, '') })} /></td>
               </> : <><td className="n">{ozText(rg.min)}</td><td className="n">{ozText(rg.max)}</td></>}
-              <td><small>{r.set ? tr('cambiado por {0} · {1}', r.set.by || '—', new Date(r.set.at).toLocaleDateString(locale)) + (r.qa ? ' · ' + tr('QA: {0}', wtRangeText(r.qa)) : '') : tr('hoja de QA')}</small></td>
+              <td><small className={r.sure ? '' : 'kpi-unsure'}>{r.set ? tr('cambiado por {0} · {1}', r.set.by || '—', new Date(r.set.at).toLocaleDateString(locale)) + (r.qa ? ' · ' + tr('antes: {0}', wtRangeText(r.qa)) : '') : r.sure ? tr('QA') : tr('⚠ por confirmar (estimado)')}</small></td>
               {!ro && <td><div className="btns">
                 {ed ? <>
                   <button type="button" className="btn xs primary" disabled={!okPair(ed.lo, ed.hi)} onClick={() => { save(r.code, r.step, numOz(ed.lo), numOz(ed.hi)); setEditing(null) }}>{tr('Guardar')}</button>
@@ -741,6 +741,7 @@ function TargetsCard({ s, ro }: { s: State; ro: boolean }) {
         })}</tbody>
       </table></div>
       {!shown.length && <p className="hint">{tr('Ningún código con eso. Agrégalo con "+ Agregar un peso objetivo".')}</p>}
+      {unsure > 0 && <p className="hint amber">{tr('⚠ {0} rangos por confirmar: la hoja de QA solo dice las onzas de la bolsa, y el rango (±1 oz) lo puso la app para tener uno. Pídele a QA el mínimo y el máximo de cada uno y ponlos con ✎ Cambiar; entonces dicen "cambiado por" quien los puso.', unsure)}</p>}
       <p className="hint">{tr('Kitchen pesa sus códigos de mezcla como la bola cruda del 0889 (2.6–2.8) mientras no tengan el suyo.')}</p>
     </div>
   )

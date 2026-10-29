@@ -2852,4 +2852,7 @@ export const EN: Record<string, string> = {
   "Volver a QA": "Back to QA",
   "Ningún código con eso. Agrégalo con \"+ Agregar un peso objetivo\".": "No code with that. Add it with \"+ Add a target weight\".",
   "Kitchen pesa sus códigos de mezcla como la bola cruda del 0889 (2.6–2.8) mientras no tengan el suyo.": "Kitchen weighs its mix codes as the 0889's raw ball (2.6–2.8) until they have their own.",
+  "QA": "QA",
+  "⚠ por confirmar (estimado)": "⚠ to confirm (estimate)",
+  "⚠ {0} rangos por confirmar: la hoja de QA solo dice las onzas de la bolsa, y el rango (±1 oz) lo puso la app para tener uno. Pídele a QA el mínimo y el máximo de cada uno y ponlos con ✎ Cambiar; entonces dicen \"cambiado por\" quien los puso.": "⚠ {0} ranges to confirm: QA's sheet only says the bag's ounces, and the range (±1 oz) was put by the app to have one. Ask QA for each one's minimum and maximum and put them with ✎ Change; then they say \"changed by\" whoever put them.",
 }
