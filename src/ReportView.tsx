@@ -1,10 +1,10 @@
 import { Fragment, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { apartLabel, apartWord, binWord, cameFrom, carriedOver, casesText, CFG, cfgFor, cfgOf, csvCell, DEPTS, fmtDur, roomKnown, fmtN, fmtTime, inCases, kindClass, lineLabel, lineNameOf, looksLikeTwoLots, madeText, measureName, measureUnit, normCode, noteLabel, noteOf, orderLabel, orderOfId, plainDay, plainText, productOf, purgesOf, reasonText, restorePurged, runStats, SETUP, shiftAt, shiftHours, shiftSpan, shiftsOf, stopTime, unitQty, user, whoText, workDay, type Dept, type State, type AttEntry, type AttRow } from './store'
+import { cookText as cookTextOf, entryClass as entryClassOf, apartLabel, apartWord, binWord, cameFrom, carriedOver, casesText, CFG, cfgFor, cfgOf, csvCell, DEPTS, fmtDur, roomKnown, fmtN, fmtTime, inCases, kindClass, lineLabel, lineNameOf, looksLikeTwoLots, madeText, measureName, measureUnit, normCode, noteLabel, noteOf, orderLabel, orderOfId, plainDay, plainText, productOf, purgesOf, reasonText, restorePurged, runStats, SETUP, shiftAt, shiftHours, shiftSpan, shiftsOf, stopTime, unitQty, user, whoText, workDay, type Dept, type State, type AttEntry, type AttRow } from './store'
 import { avanceRows, mfoText, mfoWord, pending } from './avance'
 import { codeLabel, FAMILY_SHOWN, reasonCodeOf } from './reasons'
 import { cellText, loadZip, X, xDur, xN, xPct, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
-import { hoursOf, seesLabor } from './kpi'
+import { cookYields, hoursOf, seesLabor, wtCompliance, wtDoneText, wtOfReport, wtSheetRows, wtShift, wtSum, type WtRow } from './kpi'
 import { attendanceOf, attLineText, attMovesText, attOf, attShifts, attStateText } from './store'
 import { consumesOf, inventoryOf, type Dept as RoomDept } from './store'
 import { pctText } from './Attendance'
@@ -35,7 +35,7 @@ import { trx } from './trx'
  */
 
 /** the parts of the report, one tab each */
-type View = 'gen' | 'code' | 'shift' | 'pal' | 'rec' | 'chg'
+type View = 'gen' | 'code' | 'shift' | 'pal' | 'wt' | 'rec' | 'chg'
 /** the three lists of Registros, and the two of Pallets */
 type RecSub = 'runs' | 'units' | 'stops'
 type PalSub = 'pallets' | 'bins'
@@ -112,11 +112,12 @@ const onScreen = (hits: Hit[]) => hits.filter((h) => !(h.kind === 'unit' && h.de
 const none = (v: unknown) => (v === '—' ? 'c-none' : undefined)
 
 /** what each part of the report is called, and what it holds (said under the tabs and in the help) */
-const viewLabel = (v: View) => (v === 'gen' ? tr('General') : v === 'code' ? tr('Por código') : v === 'shift' ? tr('Por turno') : v === 'pal' ? '📦 ' + tr('Pallets') : v === 'rec' ? tr('Registros') : tr('Cambios'))
+const viewLabel = (v: View) => (v === 'gen' ? tr('General') : v === 'code' ? tr('Por código') : v === 'shift' ? tr('Por turno') : v === 'pal' ? '📦 ' + tr('Pallets') : v === 'wt' ? '⚖ ' + tr('Pesos') : v === 'rec' ? tr('Registros') : tr('Cambios'))
 const viewSub = (v: View) => (v === 'gen' ? tr('Lo hecho por cada departamento, cada turno y por qué se paró.')
   : v === 'code' ? tr('Cada código con sus lotes, como en el Excel. Toca un código o un lote para ver solo eso; toca lo hecho para ver cada unidad.')
     : v === 'shift' ? tr('Cada departamento con el día completo y cada turno: lo hecho, el reloj y la suma de sus líneas.')
       : v === 'pal' ? tr('Los pallets de Packing uno por uno, con sus lotes, tags y PO, y sus bins aparte.')
+        : v === 'wt' ? tr('Lo que se pesó: cada código con sus pruebas hechas de las que tocaban, el promedio contra el objetivo, los bajos y sobre, y cada prueba con sus pesos.')
         : v === 'rec' ? tr('Cada corrida, cada unidad y cada paro: para buscar, ver, corregir o agregar.')
           : tr('Quién corrigió o cambió qué, y a qué hora.'))
 const STOPS_NOTE = () => tr('El Parado de las tarjetas cuenta solo el tiempo parado mientras la línea tenía un código; en Registros › Paros sale cada paro completo.')
@@ -359,8 +360,8 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
   const sheets = (parts?: Set<Part>): Sheet[] => {
     const b = blocks()
     // (the parts chosen in "¿Qué incluir?", 2026-10-21: each sheet goes with its part; none chosen = all of them)
-    const part: Record<string, Part> = { [tr('Resumen')]: 'resumen', [tr('Por turno')]: 'resumen', [tr('Por línea')]: 'resumen', [tr('Carne')]: 'codigo', [tr('Consumo')]: 'codigo', [tr('Por código')]: 'codigo', [tr('Por lote')]: 'codigo', [tr('Pallets')]: 'pallets', [tr('Bins')]: 'bins', [tr('Unidades')]: 'unidades', [tr('Paros')]: 'paros', [tr('Cambios')]: 'cambios', [tr('Avance')]: 'avance', [tr('Asistencia')]: 'asistencia', [tr('Asistencia · personas')]: 'asistencia' }
-    const all: Sheet[] = [{ name: tr('Resumen'), rows: b.resumen }, ...attSheets(), ...(b.porTurno.length > 1 ? [{ name: tr('Por turno'), rows: b.porTurno }] : []), ...(b.porLinea.length > 1 ? [{ name: tr('Por línea'), rows: b.porLinea }] : []), { name: tr('Por código'), rows: b.porCodigo }, ...meatSheets(), ...consumeSheets(), { name: tr('Por lote'), rows: b.porLote }, ...(b.pallets.length > 1 ? [{ name: tr('Pallets'), rows: b.pallets }] : []), ...(b.bins.length > 1 ? [{ name: tr('Bins'), rows: b.bins }] : []), { name: tr('Unidades'), rows: b.unidades }, { name: tr('Paros'), rows: b.paros }, ...(mgr ? [{ name: tr('Cambios'), rows: b.cambios }] : []), ...(b.avance.length > 1 ? [{ name: tr('Avance'), rows: b.avance }] : [])]
+    const part: Record<string, Part> = { [tr('Resumen')]: 'resumen', [tr('Por turno')]: 'resumen', [tr('Por línea')]: 'resumen', [tr('Carne')]: 'codigo', [tr('Consumo')]: 'codigo', [tr('Por código')]: 'codigo', [tr('Por lote')]: 'codigo', [tr('Pallets')]: 'pallets', [tr('Bins')]: 'bins', [tr('Unidades')]: 'unidades', [tr('Paros')]: 'paros', [tr('Cambios')]: 'cambios', [tr('Avance')]: 'avance', [tr('Asistencia')]: 'asistencia', [tr('Asistencia · personas')]: 'asistencia', [tr('Pesos')]: 'pesos' }
+    const all: Sheet[] = [{ name: tr('Resumen'), rows: b.resumen }, ...attSheets(), ...(wt.rows.length ? [{ name: tr('Pesos'), rows: wtSheetRows(s, wt.rows, wt.tests), freeze: 1 }] : []), ...(b.porTurno.length > 1 ? [{ name: tr('Por turno'), rows: b.porTurno }] : []), ...(b.porLinea.length > 1 ? [{ name: tr('Por línea'), rows: b.porLinea }] : []), { name: tr('Por código'), rows: b.porCodigo }, ...meatSheets(), ...consumeSheets(), { name: tr('Por lote'), rows: b.porLote }, ...(b.pallets.length > 1 ? [{ name: tr('Pallets'), rows: b.pallets }] : []), ...(b.bins.length > 1 ? [{ name: tr('Bins'), rows: b.bins }] : []), { name: tr('Unidades'), rows: b.unidades }, { name: tr('Paros'), rows: b.paros }, ...(mgr ? [{ name: tr('Cambios'), rows: b.cambios }] : []), ...(b.avance.length > 1 ? [{ name: tr('Avance'), rows: b.avance }] : [])]
     return parts ? all.filter((x) => parts.has(part[x.name] ?? 'resumen')) : all
   }
 
@@ -396,6 +397,8 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
   // Searched again only when what it looks in changes: the day, the filters, the records, the words. The report redraws
   // every second for its live clocks; the search follows the clock once a minute (a stop still going, a time "en curso").
   const minute = Math.floor(now / 60_000)
+  // the weights of the day (2026-10-29): the room and code chosen, the line and shift chosen for the tests one by one
+  const wt = useMemo(() => wtOfReport(s, date, now, { dept: dept || only || '', code: rep.code, line: rep.line, shift: rep.shift }), [s, date, dept, only, rep.code, rep.line, rep.shift, minute]) // eslint-disable-line react-hooks/exhaustive-deps
   const found = useMemo(() => searchReport(s, rep, qs, changes, now), [s, date, dept, fCode, fLot, fShift, fLine, qs, mgr, minute]) // eslint-disable-line react-hooks/exhaustive-deps
   const keys = found.keys
   // what the search found, each record once as the screen shows it: a unit of Packing is its pallet or its bin, which
@@ -436,13 +439,13 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
   // a room's column in the lists only when more than one room is in view
   const manyRooms = !dept
   // ---- the parts: which ones this person has, and how many things each holds (or how many the search found in it) ----
-  const views: View[] = ['gen', 'code', 'shift', ...(!only || only === 'Packing' ? ['pal' as const] : []), 'rec', ...(mgr ? ['chg' as const] : [])]
+  const views: View[] = ['gen', 'code', 'shift', ...(!only || only === 'Packing' ? ['pal' as const] : []), ...(wt.rows.length ? ['wt' as const] : []), 'rec', ...(mgr ? ['chg' as const] : [])]
   const v: View = views.includes(view) ? view : 'gen'
   const hitCount = (x: View) => (x === 'code' ? hitsOf('code').length : x === 'pal' ? hitsOf('pallet', 'bin').length : x === 'rec' ? hitsOf('unit', 'run', 'stop').length : x === 'chg' ? hitsOf('change').length : null)
   const tabs = views.map((x) => {
     const hits = hitCount(x)
     // (Registros says how many stops there are when they are all the day has: no code ran, and only it holds them)
-    const n = searching ? hits : x === 'code' ? byCode.length : x === 'pal' ? rep.pallets.length + rep.bins.length : x === 'chg' ? changes.length : x === 'rec' && !rows.length ? stops.length || null : null
+    const n = searching ? hits : x === 'code' ? byCode.length : x === 'pal' ? rep.pallets.length + rep.bins.length : x === 'wt' ? wt.tests.length : x === 'chg' ? changes.length : x === 'rec' && !rows.length ? stops.length || null : null
     return { v: x, label: viewLabel(x), n, zero: searching && hits === 0 }
   })
   // ---- drills: a number tapped takes to the records behind it, and "‹ Volver" brings back what was in view ----
@@ -527,7 +530,7 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
     purges, recovering, recover, tookText, sending, setSending, preparing, send, pdf, excel, csv, shiftsOpen, setShiftsOpen, wiping, setWiping,
     notice, setNotice, editRun, setEditRun, runToEdit, stopToEdit, setEditStop, addFor, setAddFor, detail, setDetail, stopSheet, setStopSheet, picking, setPicking, any, help, setHelp,
     q, qs, setQ, toks, searching, found, shownN, hitsOf, scopes, applyScope, scopeText, wholeN, searchWholeDay,
-    views, v, tabs, setView, pickView, scopeRef, recSub, setRecSub, palSub, setPalSub, cause, setCause, runChip, setRunChip, palF, setPalF, back, go, goBack,
+    views, v, tabs, setView, pickView, wt, scopeRef, recSub, setRecSub, palSub, setPalSub, cause, setCause, runChip, setRunChip, palF, setPalF, back, go, goBack,
     codesShown, palletsFound, palletsShown, palCount, binsShown, runsFound, runsShown, runIs, unitsShown, stopsFound, stopsShown, stopIs, changes, changesShown,
     manyRooms, canAdd, addIn, fixable, fix, spanOf, seeBtn, fixBtn, acts, pageOf, pageBar, withOrders, unitsText, binsN, ofText, cw, reasonsText, lineName, cap, hrs, dash, linesText, shiftCols,
   }
@@ -606,7 +609,7 @@ export function Report(props: ReportProps) {
       <div className="rp-sub"><span>{viewSub(v)}</span><button type="button" className="btn sm" onClick={() => setHelp(true)}>ⓘ {tr('Cómo leer este reporte')}</button></div>
       <div id="rp-panel" role="tabpanel" aria-labelledby={'rp-tab-' + v} className="rp-panel">
         {/* (a day, or a filter, with no code but with stops: every part says so and Registros opens on them) */}
-        {v === 'chg' ? <ChangesView k={k} /> : k.searching && (v === 'gen' || v === 'shift') ? <SearchResults k={k} />
+        {v === 'chg' ? <ChangesView k={k} /> : v === 'wt' ? <WeightsView k={k} /> : k.searching && (v === 'gen' || v === 'shift') ? <SearchResults k={k} />
           : rows.length === 0 ? (v === 'rec' && k.stops.length > 0 ? <RecordsView k={k} /> : <EmptyDay k={k} />)
             : v === 'gen' ? <GeneralView k={k} /> : v === 'code' ? <CodesView k={k} /> : v === 'shift' ? <ShiftsView k={k} /> : v === 'pal' ? <PalletsView k={k} /> : <RecordsView k={k} />}
       </div>
@@ -917,6 +920,7 @@ function PartsDialog({ k, mode, onClose, onGo }: { k: Kit; mode: 'xlsx' | 'pdf' 
     ...(rep.stops.length ? [{ p: 'paros' as const, label: tr('Paros'), sub: tr('cada paro con su razón y duración') }] : []),
     ...(rep.unitRows.length ? [{ p: 'unidades' as const, label: tr('Detalle por unidad'), sub: tr('cada carro, mezcla, bin o pallet con su hora') }] : []),
     ...(rep.pallets.length ? [{ p: 'pallets' as const, label: tr('Pallets'), sub: tr('cada pallet con sus lotes, tags y PO') }] : []),
+    ...(k.wt.rows.length ? [{ p: 'pesos' as const, label: tr('Pesos'), sub: tr('las pruebas de peso: hechas de las que tocaban, promedios, bajos y sobre, y cada peso') }] : []),
     ...(rep.bins.length ? [{ p: 'bins' as const, label: tr('Bins'), sub: tr('cada bin de Packing') }] : []),
     ...(mgr && !only && !rep.filtered ? [{ p: 'avance' as const, label: tr('Avance'), sub: tr('el avance del día, como la hoja de la oficina') }] : []),
     ...(mgr && mode !== 'pdf' ? [{ p: 'cambios' as const, label: tr('Cambios'), sub: tr('correcciones y cambios del día') }] : []),
@@ -1517,6 +1521,60 @@ function PalletsView({ k }: { k: Kit }) {
 }
 
 /** Registros: every run, every unit and every stop, each with what sees it and corrects it, and the way to add one */
+/**
+ * ⚖ Pesos (Jose, 2026-10-29: "estos datos tienen que estar bien lindos en el report para cuando se necesite ver"): each
+ * room and code with what it weighs, the tests done of those due (red when some were missed), the average against QA's
+ * target, under, over and the share in weight; Spiral's cook yield by cooker; then every test, each weight a coloured
+ * chip. The room and code chosen choose the codes; the line and the shift, the tests listed
+ */
+function WeightsView({ k }: { k: Kit }) {
+  const { s, wt, rep } = k
+  const groups = [...new Set(wt.rows.map((r) => r.dept + '|' + normCode(r.code)))].map((g) => wt.rows.filter((r) => r.dept + '|' + normCode(r.code) === g))
+  const yields = cookYields(wt.rows), cw = wtCompliance(wt.rows)
+  const oz = (x: number | null) => (x == null ? '—' : String(Math.round(x * 100) / 100))
+  const pc = (x: number | null) => (x == null ? '—' : Math.round(x * 1000) / 10 + '%')
+  const late = (r: WtRow) => r.due != null && r.complete + r.skipped.length < r.due
+  return (
+    <>
+      {cw.due > 0 && <p className={'wt-rp-sum ' + (cw.done < cw.due ? 'bad' : 'ok')}>{tr('{0} de {1} pruebas hechas', cw.done, cw.due)}{cw.done < cw.due ? ' · ' + tr('faltaron {0}', cw.due - cw.done) : ' · ' + tr('todas')}</p>}
+      {groups.map((g) => (
+        <article key={g[0].dept + g[0].code} className="wt-rp" style={deptVars(g[0].dept)}>
+          <h3>{DEPT_LOOK[g[0].dept].emoji} {g[0].dept} · {g[0].code}</h3>
+          <div className="scroll"><table className="wt-rp-tbl">
+            <thead><tr><th>{tr('Qué se pesó')}</th><th className="n">{tr('Pruebas')}</th><th className="n">{tr('Pesados')}</th><th className="n">{tr('Promedio')}</th><th className="n">{tr('Objetivo')}</th><th className="n">{tr('Mín · Máx')}</th><th className="n">▼ {tr('Bajos')}</th><th className="n">▲ {tr('Sobre')}</th><th className="n">{tr('% en peso')}</th></tr></thead>
+            <tbody>{g.map((r) => (
+              <tr key={r.label}>
+                <td><b>{r.label}</b></td>
+                <td className={'n' + (late(r) ? ' red' : '')}>{wtDoneText(r)}{r.short > 0 && <small className="amber"> · {tr('{0} incompletas', r.short)}</small>}{r.skipped.length > 0 && <small> · {tr('{0} sin usar', r.skipped.length)}</small>}</td>
+                <td className="n">{r.n}</td>
+                <td className="n"><b>{oz(r.avg)}</b>{r.avgPct != null && <small className={Math.abs(r.avgPct) > 0.02 ? 'red' : ''}> {(r.avgPct > 0 ? '+' : '') + Math.round(r.avgPct * 1000) / 10}%</small>}</td>
+                <td className="n">{r.target ? r.target.pouch + ' ± ' + r.target.tol : '—'}</td>
+                <td className="n">{r.min == null ? '—' : oz(r.min) + ' · ' + oz(r.max)}</td>
+                <td className={'n' + (r.under ? ' red' : '')}>{r.under}</td>
+                <td className={'n' + (r.over ? ' amber' : '')}>{r.over}</td>
+                <td className="n"><span className={'wt-ok ' + (r.okPct == null ? '' : r.okPct < 0.9 ? 'bad' : r.okPct < 1 ? 'warn' : 'good')}>{pc(r.okPct)}</span></td>
+              </tr>
+            ))}</tbody>
+          </table></div>
+          {yields.filter((y) => y.dept === g[0].dept && normCode(y.code) === normCode(g[0].code)).map((y) => <p key={y.cook} className="wt-yield">{tr('Rendimiento {0}: {1} oz crudo → {2} oz cocinado = {3} (se pierde {4})', cookTextOf(y.cook), oz(y.raw), oz(y.cooked), pc(y.pct), pc(1 - y.pct))}</p>)}
+        </article>
+      ))}
+      <h3>{tr('Cada prueba')}{rep.shift ? ' · ' + tr('Turno {0}', rep.shift) : ''}</h3>
+      {wt.tests.length ? <div className="scroll"><table className="wt-rp-tbl each">
+        <thead><tr><th>{tr('Hora')}</th><th>{tr('Turno')}</th><th>{tr('Línea')}</th><th>{tr('Código')}</th><th>{tr('Qué')}</th><th>{tr('Pesos (oz)')}</th><th className="n">{tr('Promedio')}</th><th className="n">▼</th><th className="n">▲</th><th>{tr('Anotó')}</th></tr></thead>
+        <tbody>{wt.tests.map(({ w, t }) => { const x = wtSum(t.entries, w.target); return (
+          <tr key={t.id}>
+            <td>{fmtTime(t.at)}</td><td>{wtShift(s, t)}</td><td>{lineNameOf(s, t.lineId, t.line)}</td><td>{t.code}{t.lot ? <small> · {t.lot}</small> : null}</td><td>{w.label}</td>
+            <td>{t.skip ? <i className="muted">{tr('no se usó esa hora')}</i> : <span className="wt-chips">{t.entries.map((e, i) => { const c = entryClassOf(e, w.target); return <span key={i} className={'wt-chip ' + (c || 'none')}>{e.w != null ? oz(e.w) : c === 'sobre' ? '▲' : '▼'}</span> })}</span>}</td>
+            <td className="n">{t.skip ? '' : oz(x.avg)}</td><td className={'n' + (x.under ? ' red' : '')}>{t.skip ? '' : x.under}</td><td className={'n' + (x.over ? ' amber' : '')}>{t.skip ? '' : x.over}</td><td>{t.by}</td>
+          </tr>
+        ) })}</tbody>
+      </table></div> : <p className="hint">{tr('Ninguna prueba con lo que estás viendo.')}</p>}
+      <p className="hint">{tr('Pruebas = las completas (o un cocinador que no se usó) de las que tocaban: una por cada hora que corrió el código. Rojo = bajo el objetivo, ámbar = sobre. En el Excel va la hoja "Pesos", con cada peso en su columna.')}</p>
+    </>
+  )
+}
+
 function RecordsView({ k }: { k: Kit }) {
   const { only, dept, rows, recSub, setRecSub, runsFound, unitsShown, stopsFound, searching, canAdd, setAddFor } = k
   const unitsWord = dept ? CFG[dept].plural : tr('Unidades')

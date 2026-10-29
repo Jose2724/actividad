@@ -1,4 +1,4 @@
-import { attExpectedOf, attOf, attSentAt, attShifts, attWriteOn, CFG, dayBefore, DEPTS, deptToday, entryClass, fmtTime, kpiGet, lbCaseOn, lbPerCaseOf, lunchOf, shiftsOf, weightTarget, weightTestsOf, type WeightTest, wtWeights, type AttEntry, type Dept, type State } from './store'
+import { attExpectedOf, attOf, attSentAt, attShifts, attWriteOn, CFG, cookText, dayBefore, DEPTS, deptToday, entryClass, fmtTime, kpiGet, lbCaseOn, lbPerCaseOf, lunchOf, normCode, sameStep, shiftAt, shiftsOf, stepKey, stepText, weighedCodes, weighsCode, weightRuleOf, weightStepsOf, weightTarget, type Cook, type WeightTest, type WtStep, type AttEntry, type Dept, type State } from './store'
 import { reportOf } from './report'
 import { X, xDay, xN, xT, type Cell, type Sheet } from './xlsx'
 import { tr } from './i18n'
@@ -181,17 +181,75 @@ export function laborOf(s: State, date: string, now: number) {
 }
 
 // ---- item weights ----
-/** each code's weight tests of a day: how many tests and pouches, average, lightest, heaviest, its target, under and over */
-export function weightsOf(s: State, date: string) {
-  // (each code and what was weighed: RTE's pouches, Spiral's meatballs, 2026-10-23)
-  const tests = weightTestsOf(s, date), keys = [...new Set(tests.map((t) => t.code + '|' + t.kind))]
-  return keys.map((k) => {
-    const [code, kind] = k.split('|') as [string, WeightTest['kind']]
-    // checked = every pouch (a weight, a call, or both); weighed = the ones with a weight (the average, min and max)
-    const mine = tests.filter((t) => t.code === code && t.kind === kind), entries = mine.flatMap((t) => t.entries), all = mine.flatMap(wtWeights), target = weightTarget(s, code, kind)
-    const avg = all.length ? all.reduce((a, b) => a + b, 0) / all.length : null
-    return { code, kind, tests: mine, checked: entries.length, n: all.length, avg: avg == null ? null : Math.round(avg * 1000) / 1000, min: all.length ? Math.min(...all) : null, max: all.length ? Math.max(...all) : null, target, under: entries.filter((e) => entryClass(e, target) === 'bajo').length, over: entries.filter((e) => entryClass(e, target) === 'sobre').length, avgPct: target && avg != null ? (avg - target.pouch) / target.pouch : null }
+/** what a set of entries says against a target: how many checked and weighed, average, lightest, heaviest, under, over, in weight */
+export function wtSum(entries: WeightTest['entries'], target: ReturnType<typeof weightTarget>) {
+  const ws = entries.flatMap((e) => (e.w != null ? [e.w] : [])), avg = ws.length ? ws.reduce((a, b) => a + b, 0) / ws.length : null
+  const under = entries.filter((e) => entryClass(e, target) === 'bajo').length, over = entries.filter((e) => entryClass(e, target) === 'sobre').length
+  return { checked: entries.length, n: ws.length, avg: avg == null ? null : Math.round(avg * 1000) / 1000, min: ws.length ? Math.min(...ws) : null, max: ws.length ? Math.max(...ws) : null, under, over,
+    okPct: target && entries.length ? (entries.length - under - over) / entries.length : null, avgPct: target && avg != null ? (avg - target.pouch) / target.pouch : null }
+}
+/**
+ * the tests a step of a code was due that day (2026-10-29: "every hour ... siempre y cuando se está haciendo este código"):
+ * one for each whole stretch of the room's time the code ran, run by run (a code of 2 h 40 min: 2); null = nothing due
+ * (no rule, or a code the room does not weigh every hour)
+ */
+export function weightsDue(s: State, date: string, dept: Dept, code: string, now: number): number | null {
+  const rule = weightRuleOf(s, dept)
+  if (!rule.every || !weighsCode(s, dept, code)) return null
+  const span = rule.every * 60_000
+  return s.runs.filter((r) => !r.deleted && r.date === date && r.dept === dept && normCode(r.code) === normCode(code)).reduce((t, r) => t + Math.floor(Math.max(0, Math.min(r.endedAt ?? now, now) - r.startedAt) / span), 0)
+}
+/** complete = as many weights as the room's count (or more); short = a test left with fewer */
+export type WtRow = ReturnType<typeof wtSum> & { dept: Dept; code: string; kind: WeightTest['kind']; cook?: Cook; label: string; tests: WeightTest[]; skipped: WeightTest[]; complete: number; short: number; due: number | null; target: ReturnType<typeof weightTarget> }
+/**
+ * each room, code and what was weighed of a day (RTE's pouches; Spiral's balls raw and cooked, by cooker; Kitchen's raw
+ * balls): the tests made against those due, the weights and what they say. 0889 and 889 are one code. A code a room
+ * weighs every hour that ran with no test at all still has its row (0 of N): the report says what was missed
+ */
+export function weightsOf(s: State, date: string, now = Date.now()): WtRow[] {
+  const all = (s.weights ?? []).filter((x) => !x.deleted && x.date === date && (x.entries.length > 0 || x.skip))
+  const groups = new Map<string, { dept: Dept; code: string; step: WtStep }>()
+  const key = (dept: Dept, code: string, st: WtStep) => dept + '|' + normCode(code) + '|' + stepKey(st)
+  for (const t of [...all].sort((a, b) => a.at - b.at)) { const k = key(t.dept, t.code, t); if (!groups.has(k)) groups.set(k, { dept: t.dept, code: t.code, step: { kind: t.kind, ...(t.cook ? { cook: t.cook } : {}) } }) }
+  for (const r of s.runs) {
+    if (r.deleted || r.date !== date || !weighedCodes(s, r.dept) || !weighsCode(s, r.dept, r.code)) continue
+    for (const st of weightStepsOf(r.dept)) { const k = key(r.dept, r.code, st); if (!groups.has(k)) groups.set(k, { dept: r.dept, code: r.code, step: st }) }
+  }
+  const order = (g: { dept: Dept; code: string; step: WtStep }) => [DEPTS.indexOf(g.dept), weightStepsOf(g.dept).findIndex((x) => sameStep(x, g.step))] as const
+  return [...groups.values()].sort((a, b) => order(a)[0] - order(b)[0] || normCode(a.code).localeCompare(normCode(b.code), 'en', { numeric: true }) || order(a)[1] - order(b)[1]).map((g): WtRow => {
+    const mine = all.filter((t) => t.dept === g.dept && normCode(t.code) === normCode(g.code) && sameStep(t, g.step)).sort((a, b) => a.at - b.at)
+    const tests = mine.filter((t) => t.entries.length > 0), target = weightTarget(s, g.code, g.step.kind, g.step.cook), count = weightRuleOf(s, g.dept).count
+    const complete = tests.filter((t) => t.entries.length >= count).length
+    return { ...wtSum(tests.flatMap((t) => t.entries), target), dept: g.dept, code: g.code, kind: g.step.kind, ...(g.step.cook ? { cook: g.step.cook } : {}), label: stepText(g.step), tests, skipped: mine.filter((t) => t.skip), complete, short: tests.length - complete, due: weightsDue(s, date, g.dept, g.code, now), target }
   })
+}
+/** Spiral's cook yield by cooker (2026-10-29): the cooked balls' average over the raw ones' (cooked ÷ raw), and what was lost */
+export function cookYields(rows: WtRow[]) {
+  return rows.filter((r) => r.kind === 'ball' && r.cook && r.avg != null).flatMap((c) => {
+    const raw = rows.find((r) => r.kind === 'raw' && r.cook === c.cook && r.dept === c.dept && normCode(r.code) === normCode(c.code))
+    return raw?.avg ? [{ dept: c.dept, code: c.code, cook: c.cook as Cook, raw: raw.avg, cooked: c.avg as number, pct: (c.avg as number) / raw.avg }] : []
+  })
+}
+/** the shift a test was made on */
+export const wtShift = (s: State, t: WeightTest) => shiftAt(shiftsOf(s, t.date), t.at)
+/** the tests done (complete, or a cooker said not used) out of those due, over every row that has a count */
+export function wtCompliance(rows: WtRow[]) {
+  const counted = rows.filter((r) => r.due != null && r.due > 0)
+  const due = counted.reduce((t, r) => t + (r.due ?? 0), 0), done = counted.reduce((t, r) => t + Math.min(r.complete + r.skipped.length, r.due ?? 0), 0)
+  return { due, done, pct: due ? done / due : null }
+}
+/** a row's tests as said: "3 de 4" (made of due), or how many were made when none is due */
+export const wtDoneText = (r: WtRow) => (r.due != null && r.due > 0 ? tr('{0} de {1}', r.complete + r.skipped.length, r.due) : String(r.complete + r.skipped.length))
+
+/** each test of some rows (a cooker not used too), oldest first, with its row */
+export const wtTests = (rows: WtRow[]) => rows.flatMap((w) => [...w.tests, ...w.skipped].map((t) => ({ w, t }))).sort((a, b) => a.t.at - b.t.at)
+/**
+ * the weights of the day's report as filtered (2026-10-29): the room and the code chosen choose the rows (each with the
+ * whole day's tests, as the KPI), the line and the shift chosen the tests listed one by one
+ */
+export function wtOfReport(s: State, date: string, now: number, f: { dept?: Dept | ''; code?: string; line?: string; shift?: 0 | 1 | 2 }) {
+  const rows = weightsOf(s, date, now).filter((r) => (!f.dept || r.dept === f.dept) && (!f.code || normCode(r.code) === normCode(f.code)))
+  return { rows, tests: wtTests(rows).filter(({ t }) => (!f.line || t.lineId === f.line) && (!f.shift || wtShift(s, t) === f.shift)) }
 }
 
 // ---- the notes of a day ----
@@ -204,19 +262,41 @@ const headRow = (...t: string[]): Cell[] => t.map((x) => xT(x, X.head))
 const signed = (v: number): Cell => xN(v, v < 0 ? X.nBad : v > 0 ? X.nGood : X.n)
 const pct1 = (x: number | null): Cell => (x == null ? '' : { v: Math.round(x * 1000) / 1000, s: X.pct1, t: pc(x) })
 /**
+ * The weights as a sheet (2026-10-29), for the KPI's Excel and the report's: each room, code and what was weighed against
+ * what was due, Spiral's cook yield, then every test with each weight in its own column (red under, amber over)
+ */
+export function wtSheetRows(s: State, wts: WtRow[], detail: { w: WtRow; t: WeightTest }[]): Cell[][] {
+  const okCell = (x: number | null): Cell => (x == null ? '' : { v: Math.round(x * 1000) / 1000, s: x < 0.9 ? X.nBad : x < 1 ? X.nWarn : X.nGood, t: pc(x) })
+  const yields = cookYields(wts), most = Math.min(20, Math.max(0, ...detail.map((x) => x.t.entries.length)))
+  const target = (w: WtRow) => (w.target ? w.target.pouch + ' ± ' + w.target.tol : '')
+  return [
+    headRow(tr('Cuarto'), tr('Código'), tr('Qué se pesó'), tr('Pruebas hechas'), tr('Incompletas'), tr('Pesados'), tr('Promedio (oz)'), tr('Mínimo'), tr('Máximo'), tr('Objetivo (oz)'), tr('Bajos'), tr('Sobre'), tr('% en peso'), tr('Promedio vs objetivo')),
+    ...wts.map((w): Cell[] => [w.dept, w.code, w.label, xT(wtDoneText(w), w.due && w.complete + w.skipped.length < w.due ? X.bad : X.label), xN(w.short, w.short ? X.nWarn : X.n), xN(w.n), w.avg == null ? '' : xN(w.avg, X.dec), w.min == null ? '' : xN(w.min, X.dec), w.max == null ? '' : xN(w.max, X.dec), target(w), xN(w.under, w.under ? X.nBad : X.n), xN(w.over, w.over ? X.nWarn : X.n), okCell(w.okPct), pct1(w.avgPct)]),
+    ...(yields.length ? [[], headRow(tr('Rendimiento de cocción'), tr('Código'), tr('Crudo promedio (oz)'), tr('Cocinado promedio (oz)'), tr('Cocinado ÷ crudo'), tr('Se pierde')),
+      ...yields.map((y): Cell[] => [cookText(y.cook), y.code, xN(y.raw, X.dec), xN(y.cooked, X.dec), pct1(y.pct), pct1(1 - y.pct)])] : []),
+    [], headRow(tr('Hora'), tr('Turno'), tr('Cuarto'), tr('Línea'), tr('Código'), tr('Lote'), tr('Qué se pesó'), tr('Pesados'), tr('Promedio (oz)'), tr('Mínimo'), tr('Máximo'), tr('Objetivo (oz)'), tr('Bajos'), tr('Sobre'), tr('Anotó'), ...Array.from({ length: most }, (_, i) => '#' + (i + 1))),
+    ...detail.map(({ w, t }): Cell[] => {
+      if (t.skip) return [fmtTime(t.at), wtShift(s, t), t.dept, t.line, t.code, t.lot, w.label, xT(tr('No se usó esa hora'), X.label), '', '', '', '', '', '', t.by]
+      const x = wtSum(t.entries, w.target)
+      return [fmtTime(t.at), wtShift(s, t), t.dept, t.line, t.code, t.lot, w.label, xN(x.n), x.avg == null ? '' : xN(x.avg, X.dec), x.min == null ? '' : xN(x.min, X.dec), x.max == null ? '' : xN(x.max, X.dec), target(w), xN(x.under, x.under ? X.nBad : X.n), xN(x.over, x.over ? X.nWarn : X.n), t.by,
+        ...t.entries.slice(0, most).map((e): Cell => { const k = entryClass(e, w.target); return e.w == null ? (e.k === 'sobre' ? '▲' : e.k === 'bajo' ? '▼' : '') : xN(e.w, k === 'bajo' ? X.nBad : k === 'sobre' ? X.nWarn : X.dec) })]
+    }),
+  ]
+}
+/**
  * One sheet per part, a purple header row, the numbers as numbers with thousands, red / green / amber by what they say,
  * each part's note in a wrapped cell, and two charts Excel draws itself: Costco's planned vs made cases by day, and the
  * cases per person-hour by room.
  */
 export function kpiSheets(s: State, date: string, now: number): Sheet[] {
   const notes = (p: KpiPart) => xT(kpiNote(s, date, p), X.note)
-  const mo = costcoMonth(s, date, now), last = costcoLast(s, date, now, 7), lab = laborOf(s, date, now), day = last[last.length - 1], wts = weightsOf(s, date)
-  const outW = wts.reduce((t, w) => t + w.under + w.over, 0), allW = wts.reduce((t, w) => t + w.checked, 0)
+  const mo = costcoMonth(s, date, now), last = costcoLast(s, date, now, 7), lab = laborOf(s, date, now), day = last[last.length - 1], wts = weightsOf(s, date, now)
+  const outW = wts.reduce((t, w) => t + w.under + w.over, 0), allW = wts.reduce((t, w) => t + w.checked, 0), cw = wtCompliance(wts)
   const head: Cell[][] = [[xT(tr('E.R. - Ops Summary'), X.title), xDay(date)], []]
-  const wState = !allW ? X.label : outW / allW > 0.1 ? X.bad : outW ? X.warn : X.good
+  const wState = !allW && !cw.due ? X.label : (allW && outW / allW > 0.1) || (cw.pct != null && cw.pct < 0.9) ? X.bad : outW || (cw.pct != null && cw.pct < 1) ? X.warn : X.good
   const cState = day.pct == null ? X.label : day.pct < 0.9 ? X.bad : day.pct < 1 ? X.warn : X.good
   const resumen: Cell[][] = [...head, headRow(tr('Parte'), tr('Resultado'), tr('Qué vimos · causa · acción')),
-    [xT(tr('1 · Pesos'), X.label), xT(allW ? tr('{0} de {1} pouches fuera de peso', outW, allW) : tr('Sin pruebas de peso'), wState), notes('weights')],
+    [xT(tr('1 · Pesos'), X.label), xT([allW ? tr('{0} de {1} pesados fuera de peso', outW, allW) : tr('Sin pruebas de peso'), ...(cw.due ? [tr('{0} de {1} pruebas hechas', cw.done, cw.due)] : [])].join(' · '), wState), notes('weights')],
     [xT(tr('2 · Cortes'), X.label), xT(tr('Esperando los pedidos de Julio'), X.label), notes('cuts')],
     [xT(tr('3 · Productividad'), X.label), xT(lab.total.perHour == null ? '—' : tr('{0} cajas por hora-persona', lab.total.perHour) + (lab.total.lbPerHour != null ? ' · ' + tr('{0} lb por hora-persona', lab.total.lbPerHour) : ''), X.label), notes('labor')],
     [xT(tr('4 · Costco MVM'), X.label), xT(tr('{0} cajas de {1} planeadas ({2})', n0(day.cases), n0(day.planCases), pc(day.pct)), cState), notes('costco')],
@@ -231,12 +311,7 @@ export function kpiSheets(s: State, date: string, now: number): Sheet[] {
     ...lab.rows.map((r): Cell[] => [r.dept, xN(r.scheduled), xN(r.showed), xN(r.temps), xN(r.hours, X.dec), xN(r.made), r.unit, r.perHour == null ? '' : xN(r.perHour, X.dec), ...(lbCols ? [r.lb == null ? '' : xN(r.lb, X.dec), r.lb == null || r.hours <= 0 ? '' : xN(Math.round((r.lb / r.hours) * 100) / 100, X.dec)] : [])]),
     [xT(tr('TOTAL'), X.label), xN(lab.total.scheduled, X.nLabel), xN(lab.total.showed, X.nLabel), xN(lab.total.temps, X.nLabel), xN(lab.total.hours, X.nLabel), xN(lab.total.cases, X.nLabel), xT(tr('cajas'), X.label), lab.total.perHour == null ? '' : xN(lab.total.perHour, X.nLabel), ...(lbCols ? [xN(lab.total.lb ?? 0, X.nLabel), lab.total.lbPerHour == null ? '' : xN(lab.total.lbPerHour, X.nLabel)] : [])],
     [], [notes('labor')]]
-  const pesos: Cell[][] = [...head, headRow(tr('Hora'), tr('Línea'), tr('Código'), tr('Lote'), tr('Revisados'), tr('Pesados'), tr('Promedio (oz)'), tr('Mínimo'), tr('Máximo'), tr('Objetivo (oz)'), tr('Bajos'), tr('Sobre'), tr('Anotó'), tr('Cada pouch')),
-    ...wts.flatMap((w) => w.tests.map((t): Cell[] => {
-      const ws = wtWeights(t), avg = ws.length ? ws.reduce((a, b) => a + b, 0) / ws.length : null
-      const under = t.entries.filter((e) => entryClass(e, w.target) === 'bajo').length, over = t.entries.filter((e) => entryClass(e, w.target) === 'sobre').length
-      return [fmtTime(t.at), t.line, t.code, t.lot, xN(t.entries.length), xN(ws.length), avg == null ? '' : xN(Math.round(avg * 1000) / 1000, X.dec), ws.length ? xN(Math.min(...ws), X.dec) : '', ws.length ? xN(Math.max(...ws), X.dec) : '', w.target ? w.target.pouch + ' ± ' + w.target.tol : '', xN(under, under ? X.nBad : X.n), xN(over, over ? X.nWarn : X.n), t.by, xT(t.entries.map((e) => (e.w != null ? String(e.w) : '') + (e.k === 'sobre' ? ' ▲' : e.k === 'bajo' ? ' ▼' : '')).join(', '), X.note)]
-    })), [], [notes('weights')]]
+  const pesos: Cell[][] = [...head, ...wtSheetRows(s, wts, wtTests(wts)), [], [notes('weights')]]
   const n = last.length, nl = lab.rows.length
   return [
     { name: tr('Resumen'), rows: resumen, freeze: 3 },

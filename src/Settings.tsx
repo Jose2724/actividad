@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore } from 'react'
+import { Fragment, useState, useSyncExternalStore } from 'react'
 import { type ViewOpt, byLineName, CFG, dayShiftsText, DEPTS, lineLabel, lotFor, managerPin, nightText, openRun, removedLines, removeLine, reset, resetRecords, restoreLine, setDayShifts, setLineRules, setProgramView, setReasonCodes, shiftGoalOf, shiftHours, shiftSpan, shiftsOf, turnOf, uploadAll, weekOf, type Dept, type Line, type State, type WorkDay, setViewOpt } from './store'
 import { ConfirmDialog, LangSwitch, LineNameDialog, longDate, NoticeDialog, Products, QrLink, ShiftsDialog, StartDayDialog, StopDialog, TargetDialog, useCan, useWho } from './App'
 import { Employees } from './Employees'
@@ -11,7 +11,7 @@ import { cartCratesOf, setAllCartCrates, setCartCrates } from './store'
 import { attWriteOn, kpiPut, lunchOf, setAttWriteOn, setLunch } from './store'
 import { laborAccess, seesLabor } from './kpi'
 import { lbCaseOn, loadQaLbPerCase, QA_LB_PER_CASE, setLbCaseOn, normCode } from './store'
-import { ATT_DEFAULT, attExpectedOf, attShifts, clearShiftMark, plantCut, roomMark, setAttExpected, setAttGate, setAttView, setShiftMark, setWeightRule, weightRuleOf, setSlowRule, slowRuleOf, setSlowLineOn, slowLineOn, slowUnitOf } from './store'
+import { ATT_DEFAULT, attExpectedOf, attShifts, clearShiftMark, plantCut, roomMark, setAttExpected, setAttGate, setAttView, setShiftMark, setWeightRule, weightRuleOf, setWeighedCodes, weighedCodes, setSlowRule, slowRuleOf, setSlowLineOn, slowLineOn, slowUnitOf } from './store'
 import { BUILD } from './update'
 import { clockOffText, clockState } from './clock'
 import { fmtTime } from './clock-fmt'
@@ -612,13 +612,31 @@ function SlowRoom({ s, dept, viewOnly }: { s: State; dept: Dept; viewOnly: boole
   )
 }
 function WeightSettings({ s, viewOnly }: { s: State; viewOnly: boolean }) {
-  const rooms: { dept: Dept; what: string }[] = [{ dept: 'Kitchen', what: tr('bolas crudas') }, { dept: 'Spiral', what: tr('bolas') }, { dept: 'RTE', what: tr('pouches') }]
+  const rooms: { dept: Dept; what: string }[] = [{ dept: 'Kitchen', what: tr('bolas crudas') }, { dept: 'Spiral', what: tr('bolas por prueba (crudas y cocinadas, Spiral y Racks)') }, { dept: 'RTE', what: tr('pouches') }]
   return (
     <div className="setcard">
       <div className="sethead"><h3>{tr('Pesos')}</h3></div>
       <p className="hint">{tr('Cada cuánto le sale a la línea el aviso de pesar, y cuántos se pesan cada vez. Con 0 minutos no sale aviso (el botón ⚖ Peso sigue ahí).')}</p>
-      {rooms.map((r) => <WeightRuleRow key={r.dept} s={s} dept={r.dept} what={r.what} viewOnly={viewOnly} />)}
+      {rooms.map((r) => <Fragment key={r.dept}><WeightRuleRow s={s} dept={r.dept} what={r.what} viewOnly={viewOnly} />{r.dept !== 'Kitchen' && <WeighedCodesRow s={s} dept={r.dept} viewOnly={viewOnly} />}</Fragment>)}
     </div>
+  )
+}
+/**
+ * the codes a room's hourly test is for (Jose, 2026-10-29: Spiral and RTE weigh while 0889 runs): the reminder and
+ * the KPI's count of tests due follow them; ⚖ Peso stays on every code
+ */
+function WeighedCodesRow({ s, dept, viewOnly }: { s: State; dept: Dept; viewOnly: boolean }) {
+  const now = weighedCodes(s, dept)
+  const [text, setText] = useState((now ?? []).join(', '))
+  const list = text.split(/[\s,;]+/).map((c) => c.trim()).filter(Boolean)
+  const changed = list.join(',').toUpperCase() !== (now ?? []).join(',').toUpperCase()
+  return (
+    <form className="wt-rule" onSubmit={(e) => { e.preventDefault(); if (list.length) setWeighedCodes(dept, list) }}>
+      <b />
+      <label>{tr('Códigos que se pesan cada hora')} <input value={text} disabled={viewOnly} placeholder="0889" onChange={(e) => setText(e.target.value)} /></label>
+      {!viewOnly && <button type="submit" className="btn sm primary" disabled={!changed || !list.length}>{tr('Guardar')}</button>}
+      <small>{now ? tr('Ahora: {0}', now.join(', ')) : tr('Ahora: todos los códigos')}</small>
+    </form>
   )
 }
 function WeightRuleRow({ s, dept, what, viewOnly }: { s: State; dept: Dept; what: string; viewOnly: boolean }) {

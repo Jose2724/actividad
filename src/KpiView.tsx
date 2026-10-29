@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { fmtN, awayDay, dayBefore, fmtTime, kpiGet, kpiPut, type Dept, type State } from './store'
+import { cookText, fmtN, awayDay, dayBefore, fmtTime, kpiGet, kpiPut, type Dept, type State } from './store'
 import { loadDay } from './sync'
-import { COSTCO_CODE, costcoLast, costcoMonth, costcoPlan, kpiNames, kpiNote, kpiSheets, laborOf, parsePlanner, weightsOf, type KpiPart } from './kpi'
+import { COSTCO_CODE, cookYields, costcoLast, costcoMonth, costcoPlan, kpiNames, kpiNote, kpiSheets, laborOf, parsePlanner, weightsOf, wtCompliance, wtDoneText, type KpiPart } from './kpi'
 import { download, useViewOnly } from './App'
 import { xlsxBytes, XLSX_TYPE } from './xlsx'
 import { DEPT_LOOK } from './look'
@@ -31,15 +31,15 @@ export function KpiView({ s, now, today, admin }: { s: State; now: number; today
   const last = useMemo(() => costcoLast(s, date, now, 7), [s, date, now])
   const lab = useMemo(() => laborOf(s, date, now), [s, date, now])
   const day = last[last.length - 1]
-  const wts = useMemo(() => weightsOf(s, date), [s, date])
+  const wts = useMemo(() => weightsOf(s, date, now), [s, date, now])
   const outW = wts.reduce((t, w) => t + w.under + w.over, 0), allW = wts.reduce((t, w) => t + w.checked, 0)
-  const nTests = wts.reduce((t, w) => t + w.tests.length, 0)
+  const cw = wtCompliance(wts), yields = cookYields(wts)
   const excel = async () => {
     const bytes = await xlsxBytes(kpiSheets(s, date, now))
     download(new File([bytes], 'ER-Ops-Summary-' + date + '.xlsx', { type: XLSX_TYPE }))
   }
   const tiles: { part: string; cls: string; big: string; small: string }[] = [
-    { part: tr('1 · Pesos'), cls: !allW ? 'grey' : outW / allW > 0.1 ? 'bad' : outW ? 'warn' : 'ok', big: allW ? tr('{0} de {1} fuera', outW, allW) : tr('sin pruebas'), small: allW ? (nTests === 1 ? tr('1 prueba') : tr('{0} pruebas', nTests)) + ' · ' + (wts.length === 1 ? tr('1 código') : tr('{0} códigos', wts.length)) : tr('RTE anota los pesos con ⚖ Peso') },
+    { part: tr('1 · Pesos'), cls: !allW && !cw.due ? 'grey' : (allW && outW / allW > 0.1) || (cw.pct != null && cw.pct < 0.9) ? 'bad' : outW || (cw.pct != null && cw.pct < 1) ? 'warn' : 'ok', big: allW ? tr('{0} de {1} fuera', outW, allW) : cw.due ? tr('sin pesos') : tr('sin pruebas'), small: cw.due ? tr('{0} de {1} pruebas hechas', cw.done, cw.due) : allW ? tr('pesados contra el objetivo') : tr('Spiral y RTE pesan con ⚖ Peso') },
     { part: tr('2 · Cortes'), cls: 'grey', big: tr('pendiente'), small: tr('esperando los pedidos de Julio') },
     { part: tr('3 · Productividad'), cls: lab.total.written ? 'go' : 'grey', big: lab.total.perHour == null ? '—' : tr('{0} cajas/h-p', lab.total.perHour), small: lab.total.written ? tr('{0} de {1} vinieron · {2} temporales', lab.total.showed, lab.total.scheduled, lab.total.temps) : tr('nadie anotado en la asistencia') },
     { part: tr('4 · Costco MVM'), cls: !plan ? 'grey' : day.pct == null ? 'grey' : day.pct >= 1 ? 'ok' : day.pct >= 0.9 ? 'warn' : 'bad', big: tr('{0} cajas', n0(day.cases)), small: plan ? tr('plan {0} · {1}', n0(day.planCases), pc(day.pct)) : tr('falta cargar el planner') },
@@ -61,11 +61,15 @@ export function KpiView({ s, now, today, admin }: { s: State; now: number; today
 
       <article className="kpi-sec">
         <h3>{tr('1 · Pesos y rendimiento')}</h3>
-        <p className="hint">{tr('Lo que RTE anota con el botón ⚖ Peso de cada línea: los pouches sobre o bajo de peso, y los pesos que escribieron contra el objetivo de cada código (lo pone un manager con el peso que diga QA). Crudo y cocido se agregan cuando QA mande sus objetivos.')}</p>
+        <p className="hint">{tr('Lo que las líneas pesan con ⚖ Peso: Spiral 10 bolas crudas antes de cada cocinador (Spiral y Racks) y 10 cocinadas al salir, RTE 10 pouches, cada hora mientras corre el código. Pruebas = las hechas completas de las que tocaban por las horas que corrió el código. Cada peso se compara con el objetivo de QA.')}</p>
         {wts.length > 0 ? <div className="scroll"><table className="kpi-tbl">
-          <thead><tr><th>{tr('Código')}</th><th className="n">{tr('Pruebas')}</th><th className="n">{tr('Revisados')}</th><th className="n">{tr('Pesados')}</th><th className="n">{tr('Promedio (oz)')}</th><th className="n">{tr('Mín · Máx')}</th><th className="n">{tr('Objetivo (oz)')}</th><th className="n">{tr('Bajos')}</th><th className="n">{tr('Sobre')}</th></tr></thead>
-          <tbody>{wts.map((w) => <tr key={w.code}><td>{w.code}</td><td className="n">{w.tests.length}</td><td className="n">{w.checked}</td><td className="n">{w.n}</td><td className="n">{w.avg ?? '—'}{w.avgPct != null && <small className={Math.abs(w.avgPct) > 0.02 ? 'red' : ''}> ({(w.avgPct > 0 ? '+' : '') + Math.round(w.avgPct * 1000) / 10}%)</small>}</td><td className="n">{w.min == null ? '—' : w.min + ' · ' + w.max}</td><td className="n">{w.target ? w.target.pouch + ' ± ' + w.target.tol : '—'}</td><td className={'n' + (w.under ? ' red' : '')}>{w.under}</td><td className={'n' + (w.over ? ' red' : '')}>{w.over}</td></tr>)}</tbody>
+          <thead><tr><th>{tr('Código')}</th><th>{tr('Qué se pesó')}</th><th className="n">{tr('Pruebas')}</th><th className="n">{tr('Pesados')}</th><th className="n">{tr('Promedio (oz)')}</th><th className="n">{tr('Mín · Máx')}</th><th className="n">{tr('Objetivo (oz)')}</th><th className="n">{tr('Bajos')}</th><th className="n">{tr('Sobre')}</th><th className="n">{tr('% en peso')}</th></tr></thead>
+          <tbody>{wts.map((w) => { const miss = w.due != null && w.complete + w.skipped.length < w.due; return <tr key={w.dept + w.code + w.label}><td>{DEPT_LOOK[w.dept].emoji} {w.code}</td><td>{w.label}</td><td className={'n' + (miss ? ' red' : '')}>{wtDoneText(w)}{w.short > 0 && <small className="amber"> · {tr('{0} incompletas', w.short)}</small>}{w.skipped.length > 0 && <small> · {tr('{0} sin usar', w.skipped.length)}</small>}</td><td className="n">{w.n}</td><td className="n">{w.avg ?? '—'}{w.avgPct != null && <small className={Math.abs(w.avgPct) > 0.02 ? 'red' : ''}> ({(w.avgPct > 0 ? '+' : '') + Math.round(w.avgPct * 1000) / 10}%)</small>}</td><td className="n">{w.min == null ? '—' : w.min + ' · ' + w.max}</td><td className="n">{w.target ? w.target.pouch + ' ± ' + w.target.tol : '—'}</td><td className={'n' + (w.under ? ' red' : '')}>{w.under}</td><td className={'n' + (w.over ? ' red' : '')}>{w.over}</td><td className={'n' + (w.okPct != null && w.okPct < 0.9 ? ' red' : '')}>{pc(w.okPct)}</td></tr> })}</tbody>
         </table></div> : <p className="hint">{tr('No hay pruebas de peso este día.')}</p>}
+        {yields.length > 0 && <div className="scroll"><table className="kpi-tbl">
+          <thead><tr><th>{tr('Rendimiento de cocción')}</th><th>{tr('Código')}</th><th className="n">{tr('Crudo (oz)')}</th><th className="n">{tr('Cocinado (oz)')}</th><th className="n">{tr('Cocinado ÷ crudo')}</th><th className="n">{tr('Se pierde')}</th></tr></thead>
+          <tbody>{yields.map((y) => <tr key={y.code + y.cook}><td>{cookText(y.cook)}</td><td>{y.code}</td><td className="n">{y.raw}</td><td className="n">{y.cooked}</td><td className="n">{pc(y.pct)}</td><td className="n">{pc(1 - y.pct)}</td></tr>)}</tbody>
+        </table></div>}
         <Note s={s} date={date} part="weights" ro={viewOnly} />
       </article>
 

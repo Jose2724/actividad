@@ -2,6 +2,7 @@ import { apartLabel, apartWord, binWord, casesText, CFG, cfgFor, cfgOf, fmtDur, 
 import { filterTitle, reportOf, spanShifts, type ReportFilter } from './report'
 import { avanceRows, n1, pending, mfoText } from './avance'
 import { tr } from './i18n'
+import { cookYields, wtDoneText, wtOfReport, wtShift, wtSum } from './kpi'
 
 type Libs = { jsPDF: typeof import('jspdf').jsPDF; autoTable: typeof import('jspdf-autotable').default }
 let libs: Libs | null = null
@@ -15,7 +16,7 @@ const fmtDate = (d: string) => { const [y, m, dd] = d.split('-'); return m + '/'
  * The parts of the report a file may carry (Jose, 2026-10-21: "escoger si quiero solo descargar la asistencia o otra
  * cosa en específica y no todo de una vez"): every part by default
  */
-export type Part = 'resumen' | 'codigo' | 'pallets' | 'bins' | 'unidades' | 'paros' | 'asistencia' | 'avance' | 'cambios'
+export type Part = 'resumen' | 'codigo' | 'pallets' | 'bins' | 'unidades' | 'paros' | 'asistencia' | 'pesos' | 'avance' | 'cambios'
 export function buildPdf(s: State, date: string, now: number, by: string, f: ReportFilter = {}, parts?: Set<Part>) {
   const has = (p: Part) => !parts || parts.has(p)
   if (!libs) return null
@@ -168,6 +169,31 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
       startY: y + 10, theme: 'grid', styles: { font: 'helvetica', fontSize: 9, cellPadding: 5, textColor: [22, 32, 42] }, headStyles: { fillColor: [179, 38, 30], textColor: 255, fontStyle: 'bold' },
       head: [[tr('Depto'), tr('Línea'), tr('Razón'), tr('Detalle'), ...(sh ? [tr('Turno')] : []), tr('Inicio'), tr('Fin'), tr('Duración'), tr('Registró')]],
       body: stops.map((x) => [x.dept, lineName(x), tr(x.reason), noteLabel(x.note) || '—', ...(sh ? [spanShifts(rep.plan, x.startedAt, x.endedAt ?? now)] : []), fmtTime(x.startedAt), x.endedAt ? fmtTime(x.endedAt) : tr('en curso'), fmtDur(x.ms), x.by]),
+    })
+  }
+  // the weights (2026-10-29): each code and what was weighed against what was due, the cook yield, then each test
+  const wt = has('pesos') ? wtOfReport(s, date, now, { dept: only ?? '', code: rep.code, line: rep.line, shift: rep.shift }) : null
+  if (wt && wt.rows.length) {
+    const y = after() + 28, o = (x: number | null) => (x == null ? '—' : String(Math.round(x * 100) / 100)), p = (x: number | null) => (x == null ? '—' : Math.round(x * 1000) / 10 + '%')
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(22, 32, 42)
+    doc.text(tr('Pesos'), 40, y)
+    autoTable(doc, {
+      startY: y + 10, theme: 'grid', styles: { font: 'helvetica', fontSize: 9, cellPadding: 4, textColor: [22, 32, 42] }, headStyles: { fillColor: teal, textColor: 255, fontStyle: 'bold' },
+      head: [[tr('Cuarto'), tr('Código'), tr('Qué se pesó'), tr('Pruebas'), tr('Pesados'), tr('Promedio (oz)'), tr('Objetivo (oz)'), tr('Mín · Máx'), tr('Bajos'), tr('Sobre'), tr('% en peso')]],
+      body: wt.rows.map((w) => [w.dept, w.code, w.label, wtDoneText(w), String(w.n), o(w.avg), w.target ? w.target.pouch + ' ± ' + w.target.tol : '—', w.min == null ? '—' : o(w.min) + ' · ' + o(w.max), String(w.under), String(w.over), p(w.okPct)]),
+      didParseCell: (c) => { const w = wt.rows[c.row.index]; if (c.section === 'body' && w && ((c.column.index === 3 && w.due != null && w.complete + w.skipped.length < w.due) || (c.column.index === 8 && w.under))) c.cell.styles.textColor = [185, 28, 28] },
+    })
+    const yields = cookYields(wt.rows)
+    if (yields.length) autoTable(doc, {
+      startY: after() + 10, theme: 'grid', styles: { font: 'helvetica', fontSize: 9, cellPadding: 4, textColor: [22, 32, 42] }, headStyles: { fillColor: [91, 107, 122], textColor: 255, fontStyle: 'bold' }, tableWidth: 480,
+      head: [[tr('Rendimiento de cocción'), tr('Código'), tr('Crudo (oz)'), tr('Cocinado (oz)'), tr('Cocinado ÷ crudo'), tr('Se pierde')]],
+      body: yields.map((x) => [x.cook === 'racks' ? 'Racks' : 'Spiral', x.code, o(x.raw), o(x.cooked), p(x.pct), p(1 - x.pct)]),
+    })
+    if (wt.tests.length) autoTable(doc, {
+      startY: after() + 10, theme: 'grid', styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 3, textColor: [22, 32, 42] }, headStyles: { fillColor: [91, 107, 122], textColor: 255, fontStyle: 'bold' },
+      head: [[tr('Hora'), tr('Turno'), tr('Línea'), tr('Código'), tr('Qué'), tr('Pesos (oz)'), tr('Promedio'), tr('Bajos'), tr('Sobre'), tr('Anotó')]],
+      body: wt.tests.map(({ w, t }) => { const x = wtSum(t.entries, w.target); return [fmtTime(t.at), String(wtShift(s, t)), lineNameOf(s, t.lineId, t.line), t.code, w.label, t.skip ? tr('no se usó esa hora') : t.entries.map((e) => (e.w != null ? o(e.w) : '') + (e.k === 'sobre' ? '▲' : e.k === 'bajo' ? '▼' : '')).join('  '), t.skip ? '' : o(x.avg), t.skip ? '' : String(x.under), t.skip ? '' : String(x.over), t.by] }),
+      columnStyles: { 5: { cellWidth: 230 } },
     })
   }
   // the day's progress, as the office's AVANCE sheet (the manager's report only)

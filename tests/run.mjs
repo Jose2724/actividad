@@ -5039,7 +5039,7 @@ section('Reporte KPI del día: el plan de Costco del planner, lo real del 0889 y
     eq('lo real escrito a mano en el planner no se lee (lo tiene Actividad)', JSON.stringify(p).includes('1679'), false)
     eq('un archivo que no es el planner se dice', typeof m.parsePlanner('a,b\n1,2'), 'string')
     // QA's target sheet (2026-10-26): every code starts with its target; a manager's own still wins
-    eq('sin objetivo escrito, el de la hoja de QA: 0889 48 oz por pouch y 18.8 oz por 8 bolas; un código que no está, nada', [m.weightTarget(st(), '0889'), m.weightTarget(st(), '0889', 'ball'), m.weightTarget(st(), '7093', 'ball'), m.weightTarget(st(), '9999')], [{ pouch: 48, tol: 1 }, { pouch: 18.8, tol: 0.4 }, null, null])
+    eq('sin objetivo escrito, el de la hoja de QA: 0889 48 oz por pouch y 2.10–2.40 oz por bola cocinada; un código que no está, nada', [m.weightTarget(st(), '0889'), m.weightTarget(st(), '0889', 'ball'), m.weightTarget(st(), '7093', 'ball'), m.weightTarget(st(), '9999')], [{ pouch: 48, tol: 1 }, { pouch: 2.25, tol: 0.15 }, null, null])
     m.setWeightTarget('0889', 47.5, 0.5)
     eq('el objetivo que pone un manager manda sobre el de la hoja', m.weightTarget(st(), '0889'), { pouch: 47.5, tol: 0.5 })
     // the real planner (2026-10-26): a months row over the batches by weekday above the table, and a title across two years
@@ -5538,49 +5538,105 @@ section('El programa del día pone tope a las mezclas de un código (la oficina,
     eq('Packing, RTE y MFO no llevan este tope', m.programCapOf(st(), DAY, 'Packing', '889', '6292'), null)
   })
 }
-section('Spiral pesa 8 bolas cada hora, en oz, y el aviso se ajusta en Ajustes (Jose, 2026-10-23)')
+section('Pesos de QA cada hora (Jose, 2026-10-29): Spiral pesa 10 bolas crudas antes de cada cocinador (Spiral y Racks) y 10 cocinadas al salir, RTE 10 pouches con su peso, solo con el 0889; al KPI y al reporte')
 {
   const sw = await device('spiral-weights', { user: 'Supervisor Spiral' })
   sw.use((m) => {
     const st = () => m.store.get()
+    const sent = (id) => JSON.parse(m.outbox.items().find((i) => i.key === 'wt:' + id)?.row.after ?? '{}')
     clock = T0
     if (!st().lines.some((l) => l.dept === 'Spiral')) m.addLine('Spiral', 'Línea 1')
     m.startRun(st().lines.find((l) => l.dept === 'Spiral'), '889', '6292', DAY, null)
     const run = () => st().runs.find((r) => r.dept === 'Spiral')
-    eq('Spiral: cada hora y 8 bolas, sin que nadie lo ponga', m.weightRuleOf(st(), 'Spiral'), { every: 60, count: 8 })
-    eq('RTE y los demás: sin aviso', [m.weightRuleOf(st(), 'RTE').every, m.weightRuleOf(st(), 'Packing').every], [0, 0])
-    eq('el primer aviso, una hora después de empezar el código', m.weightDueAt(st(), run()), T0 + 60 * M)
-    clock = T0 + 70 * M
-    const t = m.weightNew(run())
-    eq('una prueba de Spiral es de bolas', t.kind, 'ball')
-    m.weightSave(t, [1.02, 0.98, 1.0, 1.01, 0.99, 1.03, 0.97, 1.0].map((w) => ({ w })))
-    eq('con la prueba hecha, el aviso vuelve una hora después de ella', m.weightDueAt(st(), run()), T0 + 130 * M)
-    m.setWeightTarget('889', 1.0, 0.02, 'ball')
-    eq('el objetivo de las bolas es aparte del de los pouches del mismo código', [m.weightTarget(st(), '889', 'ball'), m.weightTarget(st(), '889')], [{ pouch: 1, tol: 0.02 }, null])
-    const w = m.weightsOf(st(), DAY)
-    eq('el reporte KPI la cuenta como bolas del 889, con su objetivo: 8 pesadas, 1 bajo (0.97) y 1 sobre (1.03)', w.map((x) => [x.code, x.kind, x.n, x.under, x.over]), [['889', 'ball', 8, 1, 1]])
-    // Kitchen weighs its raw meatballs the same way (2026-10-28): every hour, 8, each against the 0889's raw weight until a manager sets the code's own
+    eq('Spiral y RTE: cada hora y 10, sin que nadie lo ponga; Kitchen como estaba (8); los demás sin aviso', [m.weightRuleOf(st(), 'Spiral'), m.weightRuleOf(st(), 'RTE'), m.weightRuleOf(st(), 'Kitchen'), m.weightRuleOf(st(), 'Packing').every], [{ every: 60, count: 10 }, { every: 60, count: 10 }, { every: 60, count: 8 }, 0])
+    eq('cada hora Spiral pesa cuatro cosas: crudo y cocinado, en Spiral y en Racks', m.weightStepsOf('Spiral').map(m.stepText), ['Crudo · Spiral', 'Cocinado · Spiral', 'Crudo · Racks', 'Cocinado · Racks'])
+    eq('el primer aviso, una hora después de empezar el código (889 es el 0889); antes nada', [m.weightDueAt(st(), run()), m.weightDueSteps(st(), run(), T0 + 59 * M).length, m.weightDueSteps(st(), run(), T0 + 60 * M).length], [T0 + 60 * M, 0, 4])
+    eq('los objetivos de QA valen para 889 y 0889: crudo 2.60–2.80, cocinado 2.10–2.40 POR BOLA (antes 8 juntas), pouch 48 ± 1', [m.weightTarget(st(), '889', 'raw'), m.weightTarget(st(), '889', 'ball'), m.weightTarget(st(), '0889', 'ball', 'racks'), m.weightTarget(st(), '889')], [{ pouch: 2.7, tol: 0.1 }, { pouch: 2.25, tol: 0.15 }, { pouch: 2.25, tol: 0.15 }, { pouch: 48, tol: 1 }])
+    clock = T0 + 60 * M
+    const raw = m.weightNew(run(), { kind: 'raw', cook: 'spiral' })
+    eq('una prueba nueva sabe qué es y en qué cocinador', [raw.kind, raw.cook], ['raw', 'spiral'])
+    clock = T0 + 62 * M
+    const ten = [2.7, 2.72, 2.68, 2.7, 2.55, 2.71, 2.9, 2.69, 2.7, 2.7]
+    m.weightSave(raw, ten.slice(0, 4).map((w) => ({ w })))
+    eq('a medias (4 de 10): la ventana que se vuelve a abrir sigue con la misma prueba', m.weightOpen(st(), run(), { kind: 'raw', cook: 'spiral' }, T0 + 65 * M)?.id, raw.id)
+    clock = T0 + 66 * M
+    m.weightSave(raw, ten.map((w) => ({ w })))
+    eq('la hora de la prueba es la de su primer peso, no la de abrir la ventana', st().weights.find((x) => x.id === raw.id).at, T0 + 62 * M)
+    eq('completa: ya no está a medias, cuenta como hecha esta hora, y faltan las otras tres', [m.weightOpen(st(), run(), { kind: 'raw', cook: 'spiral' }, clock), m.weightThisHour(st(), run(), { kind: 'raw', cook: 'spiral' }, clock)?.id, m.weightDueSteps(st(), run(), clock).map(m.stepText)], [null, raw.id, ['Cocinado · Spiral', 'Crudo · Racks', 'Cocinado · Racks']])
+    const cooked = m.weightNew(run(), { kind: 'ball', cook: 'spiral' })
+    m.weightSave(cooked, [2.35, 2.36, 2.34, 2.05, 2.35, 2.41, 2.35, 2.33, 2.37, 2.35].map((w) => ({ w })))
+    eq('cada bola cocinada contra 2.10–2.40: 2.09 bajo, 2.41 sobre, 2.10 y 2.40 bien', [2.09, 2.1, 2.25, 2.4, 2.41].map((w) => m.weightClass(w, m.weightTarget(st(), '889', 'ball'))), ['bajo', 'ok', 'ok', 'ok', 'sobre'])
+    const sr = m.weightNew(run(), { kind: 'raw', cook: 'racks' }), sc = m.weightNew(run(), { kind: 'ball', cook: 'racks' })
+    m.weightSkip(sr, true); m.weightSkip(sc, true)
+    eq('Racks no cocinó esta hora: se dice y ya no pide pesar', m.weightDueSteps(st(), run(), clock).length, 0)
+    eq('lo que sube dice el cocinador, y si no se usó (sin pesos)', [sent(cooked.id).cook, sent(sr.id).skip, sent(sr.id).entries, sent(sr.id).cook], ['spiral', true, [], 'racks'])
+    m.weightSkip(sc, false)
+    eq('"Deshacer" lo vuelve a pedir; decirlo otra vez lo quita', [m.weightDueSteps(st(), run(), clock).map(m.stepText), (m.weightSkip(sc, true), m.weightDueSteps(st(), run(), clock).length)], [['Cocinado · Racks'], 0])
+    eq('el aviso vuelve una hora después de cada prueba (la primera, la cruda de las 4:02)', m.weightDueAt(st(), run()), T0 + 122 * M)
+    // the KPI of the day, at 6:10 PM (3 h 10 min of 0889: 3 tests of each due)
+    clock = T0 + 190 * M
+    const rows = m.weightsOf(st(), DAY, clock).filter((x) => x.dept === 'Spiral')
+    eq('el KPI: cada prueba de Spiral, las hechas de las que tocaban, pesados, promedio, mín, máx, bajos y sobre', rows.map((x) => [x.code, x.label, x.complete, x.skipped.length, x.due, x.n, x.avg, x.min, x.max, x.under, x.over]),
+      [['889', 'Crudo · Spiral', 1, 0, 3, 10, 2.705, 2.55, 2.9, 1, 1], ['889', 'Cocinado · Spiral', 1, 0, 3, 10, 2.326, 2.05, 2.41, 1, 1], ['889', 'Crudo · Racks', 0, 1, 3, 0, null, null, null, 0, 0], ['889', 'Cocinado · Racks', 0, 1, 3, 0, null, null, null, 0, 0]])
+    eq('% en peso (8 de 10) y lo hecho de lo que tocaba en todo Spiral: 4 de 12', [rows[0].okPct, m.wtCompliance(rows), m.wtDoneText(rows[0])], [0.8, { due: 12, done: 4, pct: 4 / 12 }, '1 de 3'])
+    eq('el rendimiento de cocción de Spiral: cocinado ÷ crudo', m.cookYields(rows).map((y) => [y.cook, y.raw, y.cooked, Math.round(y.pct * 10000) / 10000]), [['spiral', 2.705, 2.326, 0.8599]])
+    // a test left half-way is counted apart (made, not complete)
+    clock = T0 + 200 * M
+    const half = m.weightNew(run(), { kind: 'raw', cook: 'spiral' })
+    m.weightSave(half, [{ w: 2.7 }, { w: 2.7 }, { w: 2.7 }])
+    eq('una prueba de 3 bolas queda incompleta: no cuenta como hecha', ((r) => [r.complete, r.short, r.tests.length])(m.weightsOf(st(), DAY, clock)[0]), [1, 1, 2])
+    // RTE: only 0889 has the hourly test; each pouch weighed
+    for (const n of ['Línea 1', 'Línea 2']) if (!st().lines.some((l) => l.dept === 'RTE' && l.name === n)) m.addLine('RTE', n)
+    clock = T0
+    const rl = (n) => st().lines.find((l) => l.dept === 'RTE' && l.name === n)
+    m.startRun(rl('Línea 1'), '0889', '6300', DAY, 240)
+    m.startRun(rl('Línea 2'), '2286', '6300', DAY, 156)
+    const rr = (c) => st().runs.find((r) => r.dept === 'RTE' && r.code === c)
+    eq('RTE: el 0889 pesa sus pouches cada hora; el 2286 no tiene aviso (el botón sigue)', [m.weightDueSteps(st(), rr('0889'), T0 + 60 * M).map(m.stepText), m.weightDueAt(st(), rr('2286')), m.weightNew(rr('2286')).kind], [['Pouch'], null, 'pouch'])
+    m.setWeighedCodes('RTE', ['0889', '2286'])
+    eq('en Ajustes se agregan códigos: el 2286 también pide; una lista vacía no se guarda como "ninguno"', [m.weighedCodes(st(), 'RTE'), m.weightDueAt(st(), rr('2286'))], [['0889', '2286'], T0 + 60 * M])
+    m.setWeighedCodes('RTE', ['0889'])
+    clock = T0 + 61 * M
+    const p = m.weightNew(rr('0889'))
+    m.weightSave(p, [48.2, 47.1, 46.8, 48, 49.3, 48.5, 47.9, 48, 48.1, 47.6].map((w) => ({ w })))
+    const R = m.wtOfReport(st(), DAY, T0 + 125 * M, { dept: 'RTE' })
+    eq('el reporte de RTE: solo sus códigos; el 0889 con 1 de 2 pruebas, 1 bajo (46.8) y 1 sobre (49.3)', R.rows.map((x) => [x.code, x.label, m.wtDoneText(x), x.under, x.over]), [['0889', 'Pouch', '1 de 2', 1, 1]])
+    eq('el reporte filtrado por la otra línea o el otro turno no lista la prueba', [m.wtOfReport(st(), DAY, clock, { dept: 'RTE', line: rl('Línea 2').id }).tests.length, m.wtOfReport(st(), DAY, clock, { dept: 'RTE', shift: m.wtShift(st(), p) === 1 ? 2 : 1 }).tests.length, m.wtOfReport(st(), DAY, clock, { dept: 'RTE', code: '889' }).tests.length], [0, 0, 1])
+    // the Excel of the KPI: the summary row and the Pesos sheet with each weight in its column
+    const sh = m.kpiSheets(st(), DAY, T0 + 190 * M), pes = sh.find((x) => x.name === 'Pesos')
+    const res = sh[0].rows.find((r) => r[0]?.t === '1 · Pesos')
+    eq('el resumen del KPI dice los fuera de peso y las pruebas hechas de las que tocaban', res[1].t, '6 de 33 pesados fuera de peso · 5 de 15 pruebas hechas')
+    const head = pes.rows.findIndex((r) => r[0]?.t === 'Hora'), first = pes.rows[head + 1]
+    eq('la hoja Pesos: cada prueba con su hora, turno, qué se pesó y cada peso en su columna (el bajo en rojo, el sobre en ámbar)', [pes.rows[2].map((c) => c?.t ?? c).slice(0, 4), first.slice(2, 8).map((c) => c?.t ?? c), first.slice(15).length, first[15 + 2].s, first[15 + 4].s], [['Cuarto', 'Código', 'Qué se pesó', 'Pruebas hechas'], ['RTE', 'Línea 1', '0889', '6300', 'Pouch', '10'], 10, m.X.nBad, m.X.nWarn])
+    eq('una prueba que no se usó dice eso en la hoja', pes.rows.some((r) => r[7]?.t === 'No se usó esa hora' && r[6] === 'Crudo · Racks'), true)
+    // what another tablet sends arrives with its cooker; a cooker on another room is not kept
+    m.applyRemote('act_changes', { id: 'wt:RK1', at: iso(T0 + 70 * M), by_name: 'Otro', dept: 'Spiral', what: 'Peso', before: '', after: JSON.stringify({ date: DAY, lineId: 'x', line: 'Línea 2', code: '0889', lot: '6292', runId: 'r9', kind: 'ball', cook: 'racks', unit: 'oz', entries: [{ w: 2.33 }] }), ref_table: 'act_weights', ref_key: 'RK1', deleted: false, updated_at: iso(T0 + 70 * M), updated_by: 'Otro' })
+    m.applyRemote('act_changes', { id: 'wt:RK2', at: iso(T0 + 70 * M), by_name: 'Otro', dept: 'RTE', what: 'Peso', before: '', after: JSON.stringify({ date: DAY, lineId: 'x', line: 'Línea 2', code: '0889', lot: '6292', runId: 'r8', kind: 'pouch', cook: 'racks', skip: true, unit: 'oz', entries: [] }), ref_table: 'act_weights', ref_key: 'RK2', deleted: false, updated_at: iso(T0 + 70 * M), updated_by: 'Otro' })
+    eq('lo de otra tablet llega con su cocinador; un cocinador en RTE no se guarda', ['RK1', 'RK2'].map((id) => ((x) => x && [x.kind, x.cook ?? '', !!x.skip])(st().weights.find((y) => y.id === id))), [['ball', 'racks', false], ['pouch', '', true]])
+    // Kitchen weighs its raw meatballs as before (2026-10-28): every code, 8, against the 0889's raw weight until a manager sets the code's own
+    clock = T0
     if (!st().lines.some((l) => l.dept === 'Kitchen')) m.addLine('Kitchen', 'Mezcla 1')
     m.startRun(st().lines.find((l) => l.dept === 'Kitchen'), '2286', '6300', DAY, null)
     const kr = () => st().runs.find((r) => r.dept === 'Kitchen')
-    eq('Kitchen: cada hora y 8 bolas, sin que nadie lo ponga', m.weightRuleOf(st(), 'Kitchen'), { every: 60, count: 8 })
     const kt = m.weightNew(kr())
-    eq('una prueba de Kitchen es de bolas crudas', kt.kind, 'raw')
+    eq('Kitchen no cambia: una prueba es de bolas crudas, sin cocinador, y todo código pide', [kt.kind, kt.cook ?? '', m.weightDueAt(st(), kr())], ['raw', '', T0 + 60 * M])
     eq('un código de mezcla pesa como la 0889 cruda (2.7 ± 0.1); la 0889 misma y la 4911, lo de la hoja', [m.weightTarget(st(), '2286', 'raw'), m.weightTarget(st(), '0889', 'raw'), m.weightTarget(st(), '4911', 'raw'), m.weightTarget(st(), '2286')], [{ pouch: 2.7, tol: 0.1 }, { pouch: 2.7, tol: 0.1 }, { pouch: 1.25, tol: 0.05 }, null])
     m.weightSave(kt, [2.7, 2.55, 2.9].map((w) => ({ w })))
-    eq('el reporte KPI la cuenta como bolas crudas del 2286: 3 pesadas, 1 bajo y 1 sobre', m.weightsOf(st(), DAY).filter((x) => x.kind === 'raw').map((x) => [x.code, x.n, x.under, x.over]), [['2286', 3, 1, 1]])
+    eq('el KPI la cuenta como bolas crudas de Kitchen del 2286: 3 pesadas, 1 bajo y 1 sobre', m.weightsOf(st(), DAY, clock).filter((x) => x.dept === 'Kitchen').map((x) => [x.code, x.label, x.n, x.under, x.over]), [['2286', 'Crudo', 3, 1, 1]])
     m.setWeightTarget('2286', 2.5, 0.1, 'raw')
-    eq('el objetivo crudo que pone un manager manda, aparte del de bolas cocidas y del de pouches', [m.weightTarget(st(), '2286', 'raw'), m.weightTarget(st(), '2286', 'ball'), m.weightTarget(st(), '2286')], [{ pouch: 2.5, tol: 0.1 }, null, null])
+    m.setWeightTarget('889', 2.4, 0.05, 'ball', 'racks')
+    eq('el objetivo que pone un manager manda: el crudo del 2286 aparte; el cocinado de Racks aparte del de Spiral', [m.weightTarget(st(), '2286', 'raw'), m.weightTarget(st(), '2286', 'ball'), m.weightTarget(st(), '0889', 'ball', 'racks'), m.weightTarget(st(), '0889', 'ball', 'spiral')], [{ pouch: 2.5, tol: 0.1 }, null, { pouch: 2.4, tol: 0.05 }, { pouch: 2.25, tol: 0.15 }])
     m.setWeightRule('Spiral', 30, 10)
     const up = m.outbox.items().find((i) => i.key === 'opt:wt:Spiral')
-    eq('en Ajustes se cambia a cada 30 min y 10 bolas: sube y el aviso se mueve', [m.weightRuleOf(st(), 'Spiral'), up.row.per_hour, up.row.per_shift, m.weightDueAt(st(), run())], [{ every: 30, count: 10 }, 30, 10, T0 + 100 * M])
+    eq('en Ajustes se cambia a cada 30 min: sube y el aviso se mueve (el cocinado y Racks de las 4:06, + 30)', [m.weightRuleOf(st(), 'Spiral'), up.row.per_hour, up.row.per_shift, m.weightDueAt(st(), run())], [{ every: 30, count: 10 }, 30, 10, T0 + 96 * M])
     m.setWeightRule('Spiral', 0, 8)
     eq('con 0 minutos no hay aviso', m.weightDueAt(st(), run()), null)
     m.applyRemote('act_targets', { dept: 'opt:wt:RTE', per_hour: 120, per_shift: 5, updated_at: iso(T0 + 90 * M), updated_by: 'Jose' })
     eq('lo que pone otra computadora llega', m.weightRuleOf(st(), 'RTE'), { every: 120, count: 5 })
   })
   const back = await device('spiral-weights-again', { seed: JSON.parse(disks.get('spiral-weights').get('act_v1')), user: 'Supervisor Spiral' })
-  eq('al volver a abrir: los ajustes y la prueba de bolas siguen', back.use((m) => [m.weightRuleOf(m.store.get(), 'Spiral'), m.weightRuleOf(m.store.get(), 'RTE'), m.store.get().weights.filter((x) => x.kind === 'ball').length]), [{ every: 0, count: 8 }, { every: 120, count: 5 }, 1])
+  eq('al volver a abrir: los ajustes, los códigos y las pruebas con su cocinador y lo que no se usó siguen', back.use((m) => [m.weightRuleOf(m.store.get(), 'Spiral'), m.weightRuleOf(m.store.get(), 'RTE'), m.weighedCodes(m.store.get(), 'RTE'), m.store.get().weights.filter((x) => x.dept === 'Spiral' && !x.deleted && x.id !== 'RK1').map((x) => [x.kind, x.cook, !!x.skip, x.entries.length])]),
+    [{ every: 0, count: 8 }, { every: 120, count: 5 }, ['0889'], [['raw', 'spiral', false, 10], ['ball', 'spiral', false, 10], ['raw', 'racks', true, 0], ['ball', 'racks', true, 0], ['raw', 'spiral', false, 3]]])
 }
 section('Spiral anota la carne que echa, en libras y con su lote, y el reporte la suma por código con las libras por mezcla (Jose, 2026-10-23)')
 {
