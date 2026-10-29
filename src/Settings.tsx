@@ -8,7 +8,7 @@ import { supabase } from './supabase'
 import { syncStore } from './sync'
 import { consumeOn, setConsumeOn } from './store'
 import { cartCratesOf, setAllCartCrates, setCartCrates } from './store'
-import { kpiPut, lunchOf, setLunch } from './store'
+import { attWriteOn, kpiPut, lunchOf, setAttWriteOn, setLunch } from './store'
 import { laborAccess, seesLabor } from './kpi'
 import { lbCaseOn, loadQaLbPerCase, QA_LB_PER_CASE, setLbCaseOn, normCode } from './store'
 import { ATT_DEFAULT, attExpectedOf, attShifts, clearShiftMark, plantCut, roomMark, setAttExpected, setAttGate, setAttView, setShiftMark, setWeightRule, weightRuleOf, setSlowRule, slowRuleOf, setSlowLineOn, slowLineOn, slowUnitOf } from './store'
@@ -306,6 +306,7 @@ function AttendanceSettings({ s, date, viewOnly, admin, name }: { s: State; date
       </div>
     )}
     {admin && <LaborAccess s={s} />}
+    {seesLabor(s, admin, name) && <AttWriteSettings s={s} readOnly={viewOnly} />}
     {seesLabor(s, admin, name) && <LunchSettings s={s} readOnly={viewOnly} />}
     {gateAsk && <ConfirmDialog title={tr('¿Asistencia obligatoria para empezar?')} text={tr('Desde ahora, en todos los cuartos, ningún supervisor puede empezar un código ni un Set up sin haberse anotado como supervisor del turno en la asistencia. Se puede apagar aquí mismo cuando quieras.')} yes={tr('Prender')} onYes={() => { setAttGate(true); setGateAsk(false) }} onNo={() => setGateAsk(false)} />}
     {asking && <ConfirmDialog title={tr('¿Que todos vean la asistencia?')} text={tr('Desde ahora la tarjeta de asistencia sale en el piso de todos los cuartos, y en el reporte y sus archivos. Se puede apagar aquí mismo cuando quieras.')} yes={tr('Prender para todos')} onYes={() => { setAttView(true); setAsking(false) }} onNo={() => setAsking(false)} />}
@@ -356,6 +357,18 @@ function LaborAccess({ s }: { s: State }) {
           </form>
         </>
       )}
+    </div>
+  )
+}
+
+/** the hour a person is written is the hour they came (Jose, 2026-10-29: the supervisors write each one as they see them come) */
+function AttWriteSettings({ s, readOnly }: { s: State; readOnly: boolean }) {
+  const on = attWriteOn(s)
+  return (
+    <div className="setcard">
+      <div className="sethead"><h3>{tr('La hora en que se anota es la hora de llegada')}</h3><span className={'rc-state' + (on ? ' on' : '')}>{on ? tr('Prendido') : tr('Apagado')}</span></div>
+      <label className="switch"><span>{tr('Contar las horas desde que se anota a cada persona')}</span><input type="checkbox" role="switch" checked={on} disabled={readOnly} onChange={(e) => setAttWriteOn(e.target.checked)} /></label>
+      <p className="hint">{tr('Prendido: las horas de cada persona cuentan desde la hora en que el supervisor la anotó (nunca antes del inicio del turno). Si alguien llegó a tiempo y lo anotaron después, el supervisor toca "Cambiar la hora de llegada" › "Llegó a la hora del turno". Apagado: cuentan desde el inicio del turno, y "Llegó tarde" es para los que llegaron tarde.')}</p>
     </div>
   )
 }

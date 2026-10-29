@@ -5090,6 +5090,33 @@ section('Reporte KPI del día: el plan de Costco del planner, lo real del 0889 y
       m.attSetCame(b, w.from + 45 * M)
       clock = was
     }
+    // the hour written is the hour they came (a switch), and one written by hand where another room sent them (2026-10-29)
+    {
+      const was = clock, hrs = (id) => Math.round(m.hoursOf(st(), st().attendance.find((x) => x.id === id), clock) * 100) / 100
+      // the shift, with the lunch still on from above (30 min)
+      const full = Math.round(((w.to - w.from) / 3600000) * 100) / 100 - 0.5
+      clock = w.from + 30 * M
+      const c = m.attAdd(DAY, 'Packing', 1, 'Carla')
+      clock = w.to + 3600000
+      eq('apagado: quien se anotó 30 min tarde cuenta desde el inicio del turno', hrs(c), full)
+      m.setAttWriteOn(true)
+      eq('prendido: cuenta desde que se anotó, y sube como ajuste', [hrs(c), m.outbox.items().find((i) => i.key === 'opt:attwrite').row.per_hour], [full - 0.5, 1])
+      m.attSetCame(c, m.workSpan(st(), DAY, 'Packing', 1).from)
+      eq('"llegó a la hora del turno" con el interruptor prendido: el turno entero', hrs(c), full)
+      m.applyRemote('act_targets', { dept: 'opt:attwrite', per_hour: 0, per_shift: null, updated_at: iso(clock + M) })
+      eq('apagado desde otra computadora: llega', m.attWriteOn(st()), false)
+      clock = w.from
+      const d = m.attAdd(DAY, 'Kitchen', 1, 'Dora Ruiz')
+      clock = w.from + 110 * M
+      eq('ya mandada a Packing, Packing no la puede escribir otra vez', (m.attRemove(d, 'otro', 'Packing'), m.attAdd(DAY, 'Packing', 1, 'dora  ruiz')), '')
+      m.attBack(d)
+      const d2 = m.attAdd(DAY, 'Packing', 1, 'dora  ruiz')
+      clock = w.from + 120 * M
+      m.attRemove(d, 'otro', 'Packing')
+      clock = w.to + 3600000
+      eq('escrita a mano en Packing antes de que Kitchen marcara el traslado: cuenta desde el traslado, no desde el inicio del turno', hrs(d2), full - 2)
+      clock = was
+    }
     // who has them (Jose, 2026-10-29: only him first, then everybody or the people he chooses)
     eq('la hora de llegada y el lunch: al principio solo el admin', [m.seesLabor(st(), true, 'Jose Garcia'), m.seesLabor(st(), false, 'Ana')], [true, false])
     m.kpiPut('labor-access', { all: false, names: ['Ana López'] })
@@ -5110,7 +5137,7 @@ section('Reporte KPI del día: el plan de Costco del planner, lo real del 0889 y
   })
   const back = await device('kpi-again', { seed: JSON.parse(disks.get('kpi').get('act_v1')), user: 'Jose' })
   eq('al volver a abrir: el plan, la lista, las notas y el temporal siguen', back.use((m) => [Object.keys(m.costcoPlan(m.store.get()).days).length, m.kpiNames(m.store.get()), m.kpiNote(m.store.get(), DAY, 'costco'), m.store.get().attendance.filter((x) => x.temp).length]), [60, ['Edgar Carhuapoma'], 'Corrió todo el turno sin cambio de código', 1])
-  eq('al volver a abrir: la hora de llegada y el lunch siguen', back.use((m) => [m.store.get().attendance.filter((x) => x.came).length, m.lunchOf(m.store.get()).min, m.lunchOf(m.store.get()).after]), [1, 30, 5])
+  eq('al volver a abrir: la hora de llegada y el lunch siguen', back.use((m) => [m.store.get().attendance.filter((x) => x.came).length, m.lunchOf(m.store.get()).min, m.lunchOf(m.store.get()).after]), [2, 30, 5])
 }
 section('Pesos en RTE: el operador escribe el peso de cada pouch, se guarda al momento, y dice bajo o sobre (Jose, 2026-10-22)')
 {

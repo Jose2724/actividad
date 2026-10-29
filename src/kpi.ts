@@ -1,4 +1,4 @@
-import { attExpectedOf, attOf, attShifts, CFG, dayBefore, DEPTS, deptToday, entryClass, fmtTime, kpiGet, lbCaseOn, lbPerCaseOf, lunchOf, shiftsOf, weightTarget, weightTestsOf, type WeightTest, wtWeights, type AttEntry, type Dept, type State } from './store'
+import { attExpectedOf, attOf, attSentAt, attShifts, attWriteOn, CFG, dayBefore, DEPTS, deptToday, entryClass, fmtTime, kpiGet, lbCaseOn, lbPerCaseOf, lunchOf, shiftsOf, weightTarget, weightTestsOf, type WeightTest, wtWeights, type AttEntry, type Dept, type State } from './store'
 import { reportOf } from './report'
 import { X, xDay, xN, xT, type Cell, type Sheet } from './xlsx'
 import { tr } from './i18n'
@@ -131,12 +131,13 @@ export function workSpan(s: State, date: string, dept: Dept, k: 1 | 2) {
 }
 /**
  * the hours a person worked in the room on a shift: from the shift's start, or from when they came (the hour the
- * supervisor wrote, or when another room sent them), to its end, when they left, or now; the plant's lunch taken away
+ * supervisor wrote, when they were written if the plant says so, or when another room sent them), to its end, when they left, or now; the plant's lunch taken away
  * from whoever stayed long enough for it (Ajustes: lunchOf)
  */
 export function hoursOf(s: State, x: AttEntry, now: number) {
   const w = workSpan(s, x.date, x.dept, x.shift)
-  const from = Math.max(w.from, x.via || x.from ? x.at : 0, x.came ?? 0)
+  // sent from another room: from then (written here by hand too); the hour they came, or when written when that switch is on
+  const from = Math.max(w.from, x.via || x.from ? x.at : attSentAt(s, x), x.came ?? (attWriteOn(s) ? x.at : 0))
   const to = Math.min(x.gone ? x.gone.at : w.to, now)
   const h = Math.max(0, to - from) / 3_600_000, l = lunchOf(s)
   return l.min > 0 && h >= l.after ? Math.max(0, h - l.min / 60) : h

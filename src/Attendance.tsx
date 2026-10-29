@@ -1,9 +1,9 @@
 import { useRef, useState } from 'react'
-import { attAccept, attAdd, attBack, attDelete, attSetCame, attendanceOf, attExpectedOf, attLineText, attMoveLine, attOf, attRemove, attSetSup, attSetTemp, attSupOf, user, byLineName, DEPTS, fmtTime, setAttExpected, type AttEntry, type Dept, type State } from './store'
+import { attAccept, attAdd, attBack, attDelete, attSetCame, attWriteOn, attendanceOf, attExpectedOf, attLineText, attMoveLine, attOf, attRemove, attSetSup, attSetTemp, attSupOf, user, byLineName, DEPTS, fmtTime, setAttExpected, type AttEntry, type Dept, type State } from './store'
 import { useWho } from './App'
 import { DEPT_LOOK, deptVars } from './look'
 import { tr } from './i18n'
-import { hourOnShift, seesLabor } from './kpi'
+import { hourOnShift, seesLabor, workSpan } from './kpi'
 
 /**
  * A room's attendance on the floor (Santiago, 2026-10-20: "que cada supervisor registre las personas ... nombre o
@@ -54,6 +54,13 @@ export function AttendanceDialog({ s, dept, date, shift: inCourse, edit, note = 
   const [addSup, setAddSup] = useState(false)
   const sup = attSupOf(s, date, dept, shift), me = user.get().trim()
   const labor = seesLabor(s, !!who.admin, me)
+  // the hour written counts as the hour they came (Ajustes): then "llegó a la hora del turno" is written as the shift's start
+  const writeIsCame = attWriteOn(s)
+  const onTime = (x: AttEntry) => {
+    attSetCame(x.id, writeIsCame ? workSpan(s, x.date, x.dept, x.shift).from : null)
+    setOut(null)
+    setSaid(tr('{0}: llegó a la hora del turno.', x.name))
+  }
   const [said, setSaid] = useState('')
   const [editingN, setEditingN] = useState<string | null>(null)
   const box = useRef<HTMLInputElement>(null)
@@ -152,14 +159,14 @@ export function AttendanceDialog({ s, dept, date, shift: inCourse, edit, note = 
                     <button type="button" className="btn xs soft" onClick={() => { setOut({ id: x.id, mode: 'move' }); setSaid('') }}>{tr('⇄ Trasladar')}</button>
                     <button type="button" className="btn xs" onClick={() => { setOut({ id: x.id, mode: 'out' }); setSaid('') }}>{tr('✕ Sacar')}</button>
                     <button type="button" className="lnk sm" onClick={() => attSetTemp(x.id, !x.temp)}>{x.temp ? tr('No es temporal') : tr('Es temporal')}</button>
-                    {labor && <button type="button" className="lnk sm" onClick={() => { setOut({ id: x.id, mode: 'came' }); setCameHm(''); setSaid('') }}>{x.came ? tr('🕐 Cambiar la hora de llegada') : tr('🕐 Llegó tarde')}</button>}
+                    {labor && <button type="button" className="lnk sm" onClick={() => { setOut({ id: x.id, mode: 'came' }); setCameHm(''); setSaid('') }}>{x.came || writeIsCame ? tr('🕐 Cambiar la hora de llegada') : tr('🕐 Llegó tarde')}</button>}
                   </>}
                   {out?.id === x.id && out.mode === 'came' && (
                     <form className="att-out" onSubmit={(e) => { e.preventDefault(); saveCame(x) }}>
                       <span>{tr('¿A qué hora llegó {0}?', x.name)}</span>
                       <input type="time" value={cameHm} aria-label={tr('¿A qué hora llegó {0}?', x.name)} onChange={(e) => setCameHm(e.target.value)} />
                       <button type="submit" className="btn sm primary" disabled={hourOnShift(s, x, cameHm) == null}>{tr('Guardar')}</button>
-                      {x.came && <button type="button" className="btn sm soft" onClick={() => { attSetCame(x.id, null); setOut(null); setSaid(tr('{0}: llegó a la hora del turno.', x.name)) }}>{tr('Llegó a la hora del turno')}</button>}
+                      {(x.came || writeIsCame) && <button type="button" className="btn sm soft" onClick={() => onTime(x)}>{tr('Llegó a la hora del turno')}</button>}
                       <button type="button" className="btn sm" onClick={() => setOut(null)}>{tr('Cancelar')}</button>
                     </form>
                   )}
