@@ -5416,6 +5416,19 @@ section('Mensajes entre un cuarto y la oficina (Jose, 2026-10-28: el operador es
   const back = await device('chat-office-again', { seed: JSON.parse(disks.get('chat-office').get('act_v1')), user: 'Oficina' })
   eq('al volver a abrir sigue', back.use((m) => m.chatOf(m.store.get(), 'Packing').map((x) => x.text)), ['Hoy primero el 0889'])
   eq('el visto de cada lado sobrevive a la recarga', back.use((m) => [m.chatSeenOf(m.store.get(), 'Packing', 'office')?.at, m.chatSeenOf(m.store.get(), 'Packing', 'room')?.by]), [T0 + M, 'Sup Packing'])
+  // a photo with a message (2026-10-28): its path goes with the message; with no words it says "📷 Foto" for whoever cannot show it
+  const ph = await device('chat-photo', { user: 'Oficina' })
+  ph.use((m) => {
+    localStorage.setItem('act_role', 'mgr')
+    const st = () => m.store.get()
+    clock = T0
+    const a = m.sendChat('Packing', '', 'Packing/abc.jpg'), b = m.sendChat('Packing', 'Mira esto', 'Packing/def.jpg')
+    eq('una foto sola, y una con texto', [st().chat.find((x) => x.id === a).img, st().chat.find((x) => x.id === a).text, JSON.parse(m.outbox.items().find((i) => i.key === 'chat:' + a).row.after), JSON.parse(m.outbox.items().find((i) => i.key === 'chat:' + b).row.after)], ['Packing/abc.jpg', '', { text: '📷 Foto', side: 'office', img: 'Packing/abc.jpg' }, { text: 'Mira esto', side: 'office', img: 'Packing/def.jpg' }])
+    eq('sin foto ni texto no hay mensaje', m.sendChat('Packing', '  ', ''), '')
+    m.applyRemote('act_changes', { id: 'chat:p2', at: iso(T0 + M), by_name: 'Sup Packing', dept: 'Packing', what: 'Mensaje de Packing', before: '', after: JSON.stringify({ text: '📷 Foto', side: 'room', img: 'Packing/p2.jpg' }), ref_table: 'act_chat', ref_key: 'p2', deleted: false, updated_at: iso(T0 + M) })
+    eq('una foto del cuarto llega con su archivo, y cuenta como no leída', [m.chatOf(st(), 'Packing').find((x) => x.id === 'p2').img, m.chatUnread(st(), 'Packing', 'office', 0)], ['Packing/p2.jpg', 1])
+  })
+  eq('las fotos sobreviven a la recarga', (await device('chat-photo-again', { seed: JSON.parse(disks.get('chat-photo').get('act_v1')), user: 'Oficina' })).use((m) => m.chatOf(m.store.get(), 'Packing').map((x) => x.img ?? '').sort()), ['Packing/abc.jpg', 'Packing/def.jpg', 'Packing/p2.jpg'])
   const op = await device('chat-op', { user: 'Sup Packing' })
   op.use((m) => {
     localStorage.setItem('act_role', 'op'); localStorage.setItem('act_dept', 'Packing')

@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
-import { CHAT_ROOMS, chatOf, chatSeenOf, chatUnread, dayOf, fmtTime, markChatSeen, sendChat, writesRoom, type ChatRoom, type Dept, type State } from './store'
+import { CHAT_PHOTO_TEXT, CHAT_ROOMS, chatOf, chatSeenOf, chatUnread, dayOf, fmtTime, markChatSeen, sendChat, uid, writesRoom, type ChatRoom, type Dept, type State } from './store'
+import { supabase } from './supabase'
 import { DEPT_LOOK, FREEZER_LOOK, lookVars } from './look'
 
 /** a room's look, the freezer's too */
@@ -36,10 +37,11 @@ export function Chat({ s, home }: { s: State; home: Dept }) {
   useEffect(() => { if (open && last > seenOf(side, open)) { markSeen(side, open, last); bump((n) => n + 1) } }, [open, last])
   // and the other side is told how far this one has looked (store.ts, markChatSeen; once per new message)
   useEffect(() => { if (open && last) markChatSeen(open, last) }, [open, last])
-  // a message that just came from the other side: a short buzz on devices that can
+  // a message that just came from the other side: a short buzz on devices that can, and a tone (Jose, 2026-10-28: "que
+  // suene también cuando llegue un mensaje"; the browser lets a page sound only after it was touched once)
   const total = rooms.reduce((t, d) => t + unread[d], 0)
   const prev = useRef(total)
-  useEffect(() => { if (total > prev.current) { try { (navigator as Navigator & { vibrate?: (ms: number) => boolean }).vibrate?.(150) } catch { /* no */ } } prev.current = total }, [total])
+  useEffect(() => { if (total > prev.current) { try { (navigator as Navigator & { vibrate?: (ms: number) => boolean }).vibrate?.(150) } catch { /* no */ } chime() } prev.current = total }, [total])
   if (hidden) {
     return (
       <button type="button" className="chat-peek" onClick={() => setHidden(false)} aria-label={tr('Mostrar los mensajes')} title={tr('Mostrar los mensajes')}>
@@ -64,6 +66,60 @@ export function Chat({ s, home }: { s: State; home: Dept }) {
   )
 }
 
+/** two short notes, made here (no file to load); nothing when the page may not sound yet */
+let audio: AudioContext | null = null
+function chime() {
+  try {
+    const Ctx = window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+    if (!Ctx) return
+    audio = audio ?? new Ctx()
+    if (audio.state === 'suspended') void audio.resume().catch(() => undefined)
+    const at = audio.currentTime
+    for (const [f, t0] of [[880, 0], [1175, 0.14]] as const) {
+      const o = audio.createOscillator(), g = audio.createGain()
+      o.type = 'sine'; o.frequency.value = f
+      g.gain.setValueAtTime(0.0001, at + t0); g.gain.exponentialRampToValueAtTime(0.25, at + t0 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, at + t0 + 0.16)
+      o.connect(g).connect(audio.destination); o.start(at + t0); o.stop(at + t0 + 0.18)
+    }
+  } catch { /* no sound here */ }
+}
+
+// ---- photos (Jose, 2026-10-28: "que se puedan agregar imágenes, como yo pego aquí, o dar a un + para buscar alguna") ----
+/** the photo made small enough to send (longest side `max`, JPEG): a tablet's camera gives 4,000 px and megabytes */
+async function shrink(file: Blob, max: number): Promise<Blob> {
+  try {
+    const bmp = await createImageBitmap(file)
+    const k = Math.min(1, max / Math.max(bmp.width, bmp.height))
+    const cv = document.createElement('canvas')
+    cv.width = Math.max(1, Math.round(bmp.width * k)); cv.height = Math.max(1, Math.round(bmp.height * k))
+    cv.getContext('2d')?.drawImage(bmp, 0, 0, cv.width, cv.height)
+    bmp.close()
+    return await new Promise<Blob>((r) => cv.toBlob((b) => r(b ?? file), 'image/jpeg', 0.82))
+  } catch { return file }
+}
+const asDataUrl = (b: Blob) => new Promise<string>((r, j) => { const fr = new FileReader(); fr.onload = () => r(String(fr.result)); fr.onerror = () => j(fr.error); fr.readAsDataURL(b) })
+const BUCKET = 'act_chat'
+/** a link to see a photo of the bucket, good for an hour, kept while it is (a data: URL is itself) */
+const links = new Map<string, { url: string; until: number }>()
+async function photoUrl(path: string): Promise<string> {
+  if (path.startsWith('data:')) return path
+  const had = links.get(path)
+  if (had && had.until > Date.now()) return had.url
+  if (!supabase) return ''
+  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, 3600)
+  if (error || !data?.signedUrl) return ''
+  links.set(path, { url: data.signedUrl, until: Date.now() + 3300_000 })
+  return data.signedUrl
+}
+function ChatImg({ path, onOpen }: { path: string; onOpen: (url: string) => void }) {
+  const [url, setUrl] = useState(path.startsWith('data:') ? path : links.get(path)?.url ?? '')
+  const [gone, setGone] = useState(false)
+  useEffect(() => { let on = true; if (!url) void photoUrl(path).then((u) => { if (on) { if (u) setUrl(u); else setGone(true) } }); return () => { on = false } }, [path]) // eslint-disable-line react-hooks/exhaustive-deps
+  if (gone) return <span className="chat-img-gone">📷 {tr('Foto que este aparato no puede traer ahora')}</span>
+  if (!url) return <span className="chat-img-wait">📷 …</span>
+  return <img className="chat-img" src={url} alt={tr('Foto')} onClick={() => onOpen(url)} onError={() => { links.delete(path); setGone(true) }} />
+}
+
 function ChatWindow({ s, dept, side, onClose }: { s: State; dept: ChatRoom; side: 'room' | 'office'; onClose: () => void }) {
   const who = useWho()
   const canWrite = who.role !== 'viewer' && writesRoom(dept)
@@ -73,9 +129,40 @@ function ChatWindow({ s, dept, side, onClose }: { s: State; dept: ChatRoom; side
   const theirs = dept === 'Freezer' && side === 'office' ? null : chatSeenOf(s, dept, side === 'room' ? 'office' : 'room') ?? null
   const seenMark = (at: number) => (dept === 'Freezer' && side === 'office' ? null : theirs && theirs.at >= at ? <small className="chat-seen on">✓✓ {tr('Visto · {0} · {1}', theirs.by, fmtTime(theirs.seenAt))}</small> : <small className="chat-seen">✓ {tr('Sin ver todavía')}</small>)
   const [text, setText] = useState('')
+  // a photo picked (pasted, or found with +) and not sent yet; busy = what the sending is doing or what went wrong
+  const [pic, setPic] = useState<{ blob: Blob; url: string } | null>(null)
+  const [busy, setBusy] = useState('')
+  const [zoom, setZoom] = useState('')
   const end = useRef<HTMLDivElement>(null)
-  useEffect(() => { end.current?.scrollIntoView({ block: 'end' }) }, [list.length, dept])
-  const send = () => { if (sendChat(dept, text)) setText('') }
+  useEffect(() => { end.current?.scrollIntoView({ block: 'end' }) }, [list.length, dept, pic])
+  const takeFile = async (f: Blob | null | undefined) => {
+    if (!f || !/^image\//.test(f.type)) return
+    const small = await shrink(f, supabase ? 1280 : 640)
+    setPic((was) => { if (was) URL.revokeObjectURL(was.url); return { blob: small, url: URL.createObjectURL(small) } })
+    setBusy('')
+  }
+  const dropPic = () => { setPic((was) => { if (was) URL.revokeObjectURL(was.url); return null }); setBusy('') }
+  const onPaste = (e: React.ClipboardEvent) => { const f = [...(e.clipboardData?.files ?? [])].find((x) => /^image\//.test(x.type)); if (f) { e.preventDefault(); void takeFile(f) } }
+  const [sending, setSending] = useState(false)
+  const send = async () => {
+    if (sending || (!text.trim() && !pic)) return
+    let img = ''
+    if (pic) {
+      setSending(true)
+      try {
+        if (supabase) {
+          // the photo goes to the bucket first, under its room (the server's rules are the chat's), then the message names it
+          const path = dept + '/' + uid() + '.jpg'
+          setBusy(tr('Subiendo la foto…'))
+          const { error } = await supabase.storage.from(BUCKET).upload(path, pic.blob, { contentType: 'image/jpeg', upsert: false })
+          if (error) { setBusy(tr('No se pudo mandar la foto ({0}). ¿Hay señal? Vuelve a intentar.', error.message)); setSending(false); return }
+          img = path
+        } else img = await asDataUrl(pic.blob)
+      } catch (e) { setBusy(tr('No se pudo mandar la foto ({0}). ¿Hay señal? Vuelve a intentar.', String((e as Error)?.message ?? e))); setSending(false); return }
+    }
+    if (sendChat(dept, text, img)) { setText(''); dropPic() }
+    setSending(false)
+  }
   return (
     <div className={'chat-win' + (side === 'office' ? ' office' : '')} style={lookVars(lookOf(dept))} role="dialog" aria-label={tr('Mensajes · {0}', dept)}>
       <div className="chat-head">
@@ -91,7 +178,8 @@ function ChatWindow({ s, dept, side, onClose }: { s: State; dept: ChatRoom; side
             <Fragment key={x.id}>
               {day !== before && <div className="chat-day">{longDate(day)}</div>}
               <div className={'chat-msg ' + (x.side === side ? 'mine' : 'theirs')}>
-                <div className="chat-bubble">{x.text}</div>
+                {x.img && <ChatImg path={x.img} onOpen={setZoom} />}
+                {(x.text && !(x.img && x.text === CHAT_PHOTO_TEXT)) && <div className="chat-bubble">{x.text}</div>}
                 <small>{x.by} · {fmtTime(x.at)}</small>
                 {x.side === side && seenMark(x.at)}
               </div>
@@ -100,9 +188,22 @@ function ChatWindow({ s, dept, side, onClose }: { s: State; dept: ChatRoom; side
         })}
         <div ref={end} />
       </div>
+      {canWrite && (pic || busy) && (
+        <div className="chat-pic">
+          {pic && <img src={pic.url} alt="" />}
+          {pic && !sending && <button type="button" className="chat-pic-x" onClick={dropPic} aria-label={tr('Quitar la foto')}>×</button>}
+          {busy && <small className={sending ? '' : 'err'}>{busy}</small>}
+        </div>
+      )}
       {canWrite
-        ? <form className="chat-form" onSubmit={(e) => { e.preventDefault(); send() }}><input value={text} maxLength={600} placeholder={tr('Escribe un mensaje…')} aria-label={tr('Escribe un mensaje…')} autoComplete="off" onChange={(e) => setText(e.target.value)} /><button type="submit" className="chat-send" disabled={!text.trim()} aria-label={tr('Mandar')}>➤</button></form>
+        ? <form className="chat-form" onSubmit={(e) => { e.preventDefault(); void send() }}>
+            {/* a photo: found on the device (a tablet offers its camera too), or pasted into the box */}
+            <label className="chat-plus" title={tr('Mandar una foto')}><input type="file" accept="image/*" onChange={(e) => { void takeFile(e.target.files?.[0]); e.target.value = '' }} /><span aria-hidden="true">+</span><span className="sr-only">{tr('Mandar una foto')}</span></label>
+            <input value={text} maxLength={600} placeholder={pic ? tr('Un texto con la foto (opcional)') : tr('Escribe un mensaje…')} aria-label={tr('Escribe un mensaje…')} autoComplete="off" onChange={(e) => setText(e.target.value)} onPaste={onPaste} />
+            <button type="submit" className="chat-send" disabled={sending || (!text.trim() && !pic)} aria-label={tr('Mandar')}>➤</button>
+          </form>
         : <p className="chat-ro">{tr('Solo ver: aquí no se escribe.')}</p>}
+      {zoom && <div className="veil chat-zoom" onClick={() => setZoom('')} role="dialog" aria-label={tr('Foto')}><img src={zoom} alt={tr('Foto')} /><button type="button" className="chat-x" onClick={() => setZoom('')} aria-label={tr('Cerrar')}>×</button></div>}
     </div>
   )
 }

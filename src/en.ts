@@ -2640,6 +2640,14 @@ export const EN: Record<string, string> = {
   // whether the other side saw the message (2026-10-28)
   "Visto · {0} · {1}": "Seen · {0} · {1}",
   "Sin ver todavía": "Not seen yet",
+  // photos in the chat (2026-10-28)
+  "Foto": "Photo",
+  "Mandar una foto": "Send a photo",
+  "Quitar la foto": "Remove the photo",
+  "Subiendo la foto…": "Uploading the photo…",
+  "No se pudo mandar la foto ({0}). ¿Hay señal? Vuelve a intentar.": "The photo could not be sent ({0}). Is there signal? Try again.",
+  "Un texto con la foto (opcional)": "A text with the photo (optional)",
+  "Foto que este aparato no puede traer ahora": "A photo this device cannot fetch now",
   "🔴 Ritmo bajo: {0} {1} por hora en la última hora · mínimo {2}": "🔴 Slow: {0} {1} per hour in the last hour · minimum {2}",
   "bolas crudas": "raw meatballs",
   "Lo dice QA. Con 2.7 y 0.1: menos de 2.6 es bajo, más de 2.8 es sobre.": "QA says it. With 2.7 and 0.1: under 2.6 is low, over 2.8 is high.",

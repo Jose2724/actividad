@@ -2136,6 +2136,12 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 .chat-form input{flex:1;min-width:0;border:1px solid var(--line);border-radius:22px;padding:10px 14px;font-size:16px}
 .chat-send{width:44px;height:44px;flex:none;border-radius:50%;background:var(--d,var(--accent));color:#fff;border:0;font-size:18px}
 .chat-send:disabled{opacity:.4}
+.chat-plus{width:44px;height:44px;flex:none;border-radius:50%;border:1.5px solid var(--d-edge,var(--line));background:var(--surface);color:var(--d-ink,var(--ink));font-size:26px;font-weight:700;display:flex;align-items:center;justify-content:center;cursor:pointer;line-height:1}.chat-plus input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.chat-pic{display:flex;align-items:center;gap:10px;padding:8px 12px;border-top:1px solid var(--line);background:var(--surface);position:relative}.chat-pic img{height:64px;max-width:120px;border-radius:10px;object-fit:cover;border:1px solid var(--line)}.chat-pic small{color:var(--muted);font-size:12.5px}.chat-pic small.err{color:#b91c1c;font-weight:700}
+.chat-pic-x{width:28px;height:28px;border-radius:50%;border:1px solid var(--line);background:var(--surface);font-size:18px;line-height:1;padding:0}
+.chat-img{max-width:100%;max-height:260px;border-radius:12px;border:1px solid var(--line);cursor:zoom-in;display:block;background:#fff}.chat-msg.mine .chat-img{border-color:transparent}.chat-img+.chat-bubble{margin-top:4px}
+.chat-img-wait,.chat-img-gone{font-size:13px;color:var(--muted);padding:6px 10px;background:var(--surface);border:1px dashed var(--line);border-radius:10px}
+.chat-zoom{display:flex;align-items:center;justify-content:center;cursor:zoom-out;z-index:60}.chat-zoom img{max-width:96vw;max-height:92vh;border-radius:8px;box-shadow:0 10px 40px rgba(0,0,0,.5)}.chat-zoom .chat-x{position:fixed;top:10px;right:14px;font-size:34px}
 .chat-ro{padding:10px;color:var(--muted);font-size:13px;text-align:center;margin:0;border-top:1px solid var(--line)}
 .chat-hide{width:28px;height:28px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--muted);font-size:16px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0;box-shadow:0 2px 8px rgba(0,0,0,.18);margin-right:12px}
 .chat-fabs.many .chat-hide{margin-right:9px}
@@ -2158,3 +2164,4 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 .dlg.attgate-dlg h3{position:static;margin:0;padding:0}
 .dlg.attgate-dlg p{font-size:16px;color:var(--ink)}
 .dlg.attgate-dlg .btn.big{width:100%;min-height:56px;font-size:18px;margin-top:4px}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
