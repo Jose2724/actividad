@@ -1951,8 +1951,8 @@ function PlanDialog({ s, dept, today, unit, onClose }: { s: State; dept: Dept; t
                     {dept === 'Spiral' && <select value={l.unit} aria-label={tr('Unidad')} onChange={(e) => change(i, { unit: e.target.value as SpiralUnit })}>{SPIRAL_UNITS.map((u) => <option key={u} value={u}>{measureUnit(u)}</option>)}</select>}
                     {/* the lot, offered as the day's (lotFor) and free to change or clear: the only box the app fills in for the person (Jose, 2026-10-19) */}
                     <input value={l.lot} inputMode="numeric" maxLength={PLAN_LOT_MAX} placeholder={tr('sin lote')} autoComplete="off" aria-label={tr('Lote')} onChange={(e) => change(i, { lot: e.target.value })} />
-                    {/* the program's last day (2026-10-28): blank = that day only; never before its first day, at most 14 days on */}
-                    <input type="date" value={l.to} min={dayAfter(l.from ?? date)} max={lastDay(l.from ?? date)} aria-label={tr('Hasta')} onChange={(e) => change(i, { to: e.target.value && e.target.value > (l.from ?? date) ? e.target.value : '' })} />
+                    {/* the program's last day (2026-10-28): blank, or the first day itself, = that day only (Jose, 2026-10-28: "necesito poner hoy"); at most 14 days on */}
+                    <input type="date" value={l.to} min={l.from ?? date} max={lastDay(l.from ?? date)} aria-label={tr('Hasta')} onChange={(e) => change(i, { to: e.target.value && e.target.value > (l.from ?? date) ? e.target.value : '' })} />
                   </div>
                   {l.from && <p className="hint planfrom">📅 {trx('Programa de varios días: empezó el {0}{1}. Lo que se cambie aquí cambia todo el programa.', shortDay(l.from), l.to ? ' ' + tr('y va hasta el {0}', shortDay(l.to)) : '')}</p>}
                   {normCode(l.code) && (
