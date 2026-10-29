@@ -1257,7 +1257,10 @@ function OrdersCard({ s, mgr, onAdd }: { s: State; mgr: boolean; onAdd?: (o: Ord
   const needle = plainText(q)
   const hits = (o: Order) => !needle || [o.po, o.customer, o.dest, o.code, productOf(s, o.code)?.name ?? ''].some((t) => plainText(String(t ?? '')).includes(needle))
   const isState = (x: ReturnType<typeof rowOf>, k: '' | OrderState | 'left') => (!k ? true : k === 'left' ? x.st === 'todo' || x.st === 'going' : x.st === k)
-  const rows = open.map(rowOf).filter((x) => hits(x.o))
+  // the started first (amber), then the not started (white), the complete last (green) (Jose, 2026-10-29: "amarillo
+  // arriba, blanco medio y verde todo abajo"); within each, the urgent first and the nearest ship date (byShip)
+  const stRank: Record<OrderState, number> = { going: 0, todo: 1, open: 1, done: 2 }
+  const rows = open.map(rowOf).filter((x) => hits(x.o)).sort((a, b) => stRank[a.st] - stRank[b.st])
   const codes = [...new Map(rows.map((x) => [normCode(x.o.code), x.o.code])).entries()].sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }))
   const codeNow = codes.some(([k]) => k === fCode) ? fCode : ''
   const ofCode = rows.filter((x) => !codeNow || normCode(x.o.code) === codeNow)
