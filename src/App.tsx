@@ -1877,8 +1877,9 @@ function PlanDialog({ s, dept, today, unit, onClose }: { s: State; dept: Dept; t
   // from = the day the row's program started when it is not the day being programmed (a program of several days seen
   // from one of its later days: it is changed where it started); to = its last day ('' = that day only)
   type Line = { code: string; qty: string; unit: SpiralUnit; lot: string; order?: string | null; from?: string; to: string }
-  const blank = (d: string): Line => ({ code: '', qty: '', unit: 'mezclas', lot: lotFor(d), to: '' })
-  const draftOf = (date: string): Line[] => [...planOf(s, date, dept).sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }) || byPlanLot(a, b)).map((p) => ({ code: productOf(s, p.code)?.code ?? p.code, qty: String(p.qty), unit: productOf(s, p.code)?.spiralUnit ?? 'mezclas', lot: p.lot, order: p.orderId ?? null, ...(p.date !== date ? { from: p.date } : {}), to: p.endDate ?? '' })), blank(date)]
+  // ("Hasta" comes filled with the day itself, a day's program, so a longer one is only a change of it: Jose, 2026-10-28)
+  const blank = (d: string): Line => ({ code: '', qty: '', unit: 'mezclas', lot: lotFor(d), to: d })
+  const draftOf = (date: string): Line[] => [...planOf(s, date, dept).sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }) || byPlanLot(a, b)).map((p) => ({ code: productOf(s, p.code)?.code ?? p.code, qty: String(p.qty), unit: productOf(s, p.code)?.spiralUnit ?? 'mezclas', lot: p.lot, order: p.orderId ?? null, ...(p.date !== date ? { from: p.date } : {}), to: p.endDate ?? p.date })), blank(date)]
   const lastDay = (from: string) => { const x = new Date(from + 'T12:00:00'); x.setDate(x.getDate() + PLAN_SPAN_MAX); return dayOf(x.getTime()) }
   const [date, setDate] = useState(today)
   const [lines, setLines] = useState<Line[]>(() => draftOf(today))
