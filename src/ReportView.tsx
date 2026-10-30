@@ -1561,8 +1561,8 @@ function WeightsView({ k }: { k: Kit }) {
         <div className="scroll"><table className="wt-rp-tbl">
           <thead><tr><th>{tr('Código')}</th><th>{tr('Departamento')}</th><th className="n">{tr('Veces revisado')}</th><th className="n">{tr('% en peso')}</th><th className="n">{tr('Crudo prom. (oz)')}</th><th className="n">{tr('Cocinado prom. (oz)')}</th><th className="n">{tr('Pouch prom. (oz)')}</th><th>{tr('Resultado')}</th></tr></thead>
           <tbody>{summaryRows.map((x) => (
-            <tr key={x.code + x.dept}>
-              <td><b>{x.code}</b></td><td>{x.dept || '—'}</td><td className="n">{x.times}</td>
+            <tr key={x.code + x.where}>
+              <td><b>{x.code}</b></td><td>{x.where || '—'}</td><td className="n">{x.times}</td>
               <td className="n"><span className={'wt-ok ' + (x.okPct == null ? '' : x.okPct < 0.9 ? 'bad' : x.okPct < 1 ? 'warn' : 'good')}>{x.okPct == null ? '—' : Math.round(x.okPct * 1000) / 10 + '%'}</span></td>
               {avgCell(x.raw)}{avgCell(x.cooked)}{avgCell(x.pouch)}
               <td className={x.action ? 'red' : x.pending ? 'amber' : x.times ? 'ok' : ''}>{x.result}</td>

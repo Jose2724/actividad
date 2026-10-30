@@ -5759,7 +5759,7 @@ section('Pesos escritos con otro código o como crudo: se corrigen desde el Repo
     const hoja = m.wtSummarySheet(st(), sumRows(), DAY)
     const libro = m.wtSummaryBook(st(), sumRows(), DAY), ctl = libro[1], txt = ctl.rows.flat().map((c) => m.cellText(c))
     eq('el libro: el resumen y una hoja de control por código pesado', libro.map((x) => x.name), ['Resumen', 'Control de peso 0889', 'Control de peso 2234'])
-    eq('la hoja de control lleva cada hora, su promedio, el total y el objetivo', [txt.includes('KITCHEN COCINADO'), txt.includes('RTE POUCH'), txt.includes('HORA'), txt.includes('PROM. TOTAL'), txt.includes('48–52')], [true, true, true, true, true])
+    eq('la hoja de control lleva cada hora, su promedio, el total y el objetivo', [txt.includes('COCINADO'), txt.includes('RTE POUCH'), txt.includes('HORA'), txt.includes('PROM. TOTAL'), txt.includes('48–52'), txt.includes('Racks'), txt.includes('Comentarios / acciones correctivas')], [true, true, true, true, true, true, true])
     eq('la gráfica lee el % en peso de cada departamento, y el 2234 sin target no se juzga', ((c) => [m.cellText(hoja.rows[c.from - 1][c.cat]), hoja.rows[c.from - 1][c.val].v, hoja.rows[c.to - 1][c.cat] !== undefined, m.wtSummary(st(), sumRows()).at(-1).okPct])(hoja.chart), [' Kitchen 0889'.trim(), 0.667, true, null])
     eq('es una hoja y dice cómo leerla', [hoja.name, hoja.rows.flat().some((c) => m.cellText(c).startsWith('Cómo leerlo')), hoja.rows.flat().some((c) => m.cellText(c) === '1 de 2 códigos necesitan acción correctiva.')], ['Resumen', true, true])
     const sent = JSON.parse(m.outbox.items().find((i) => i.key === 'wt:' + a.id)?.row.after ?? '{}')

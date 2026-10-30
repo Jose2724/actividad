@@ -344,7 +344,7 @@ const wtLegendRows = (): Cell[][] => [
 ].map((r) => (r.length === 2 && typeof r[1] === 'string' ? [r[0], xT(r[1], X.note)] : r))
 /** an average of one thing of a code against QA's range; ok null = nothing weighed, or no range to judge it by */
 export type WtAvg = { avg: number | null; n: number; range: string; ok: 'ok' | 'under' | 'over' | null }
-export type WtSummaryRow = { code: string; dept: Dept | ''; times: number; okPct: number | null; raw: WtAvg; cooked: WtAvg; pouch: WtAvg; result: string; action: boolean; pending: boolean }
+export type WtSummaryRow = { code: string; dept: Dept | ''; where: string; times: number; okPct: number | null; raw: WtAvg; cooked: WtAvg; pouch: WtAvg; result: string; action: boolean; pending: boolean }
 /** only these (Jose, 2026-10-30: "que solo sea de los códigos 0889 y 2234, nada más"), both always, weighed or not */
 const WT_SUMMARY_CODES = ['0889', '2234']
 /**
@@ -360,9 +360,10 @@ export function wtSummary(s: State, rows: WtRow[]): WtSummaryRow[] {
   const mine = rows.filter((w) => w.tests.length)
   return WT_SUMMARY_CODES.flatMap((code) => {
     const all = mine.filter((w) => normCode(w.code) === normCode(code))
-    const rooms: (Dept | '')[] = DEPTS.filter((d) => all.some((w) => w.dept === d))
-    return (rooms.length ? rooms : ['' as const]).map((dept): WtSummaryRow => {
-    const of = all.filter((w) => w.dept === dept)
+    // (Spiral's two cookers apart, Spiral first: Santiago's sheet, 2026-10-30)
+    const rooms: { dept: Dept | ''; cook: string }[] = DEPTS.flatMap((d) => [...new Set(all.filter((w) => w.dept === d).map((w) => w.cook ?? ''))].sort().reverse().map((cook) => ({ dept: d, cook })))
+    return (rooms.length ? rooms : [{ dept: '' as const, cook: '' }]).map(({ dept, cook }): WtSummaryRow => {
+    const of = all.filter((w) => w.dept === dept && (w.cook ?? '') === cook)
     const part = (kind: WeightTest['kind']): WtAvg => {
       const ws = of.filter((w) => w.kind === kind).flatMap((w) => w.tests.flatMap((t) => t.entries.flatMap((e) => (e.w != null ? [e.w] : []))))
       // (a target nobody at QA gave is not shown to the heads as QA's: the 2234 waits for it)
@@ -380,7 +381,7 @@ export function wtSummary(s: State, rows: WtRow[]): WtSummaryRow[] {
     const hours = (kind: WeightTest['kind']) => new Set(of.filter((w) => w.kind === kind).flatMap((w) => w.tests.map((t) => Math.floor(t.at / 3_600_000)))).size
     const entries = of.flatMap((w) => w.tests.flatMap((t) => t.entries.map((e) => ({ e, target: w.target }))))
     const judgedW = entries.filter((x) => x.target), inW = judgedW.filter((x) => entryClass(x.e, x.target) === 'ok').length
-    return { code, dept, times: Math.max(hours('raw'), hours('ball'), hours('pouch')), okPct: judgedW.length && of.every((w) => wtOfficial(s, code, w.kind)) ? inW / judgedW.length : null, raw, cooked, pouch, result: (out.length ? tr('Acción correctiva: {0}', out.join(' · ')) : !of.length ? tr('No se pesó este día') : !judged ? tr('Falta el target de QA') : tr('Dentro del rango de QA')) + (judged && open_.length ? ' · ' + tr('falta el target de: {0}', open_.join(', ')) : ''), action: out.length > 0, pending: open_.length > 0 }
+    return { code, dept, where: dept + (cook ? ' · ' + cookText(cook as Cook) : ''), times: Math.max(hours('raw'), hours('ball'), hours('pouch')), okPct: judgedW.length && of.every((w) => wtOfficial(s, code, w.kind)) ? inW / judgedW.length : null, raw, cooked, pouch, result: (out.length ? tr('Acción correctiva: {0}', out.join(' · ')) : !of.length ? tr('No se pesó este día') : !judged ? tr('Falta el target de QA') : tr('Dentro del rango de QA')) + (judged && open_.length ? ' · ' + tr('falta el target de: {0}', open_.join(', ')) : ''), action: out.length > 0, pending: open_.length > 0 }
     })
   })
 }
@@ -400,7 +401,7 @@ export function wtSummarySheet(s: State, rows: WtRow[], date: string): Sheet {
     row([tr('Código'), tr('Departamento'), tr('Veces revisado'), tr('% en peso'), tr('Crudo prom. (oz)'), tr('Rango QA'), tr('Cocinado prom. (oz)'), tr('Rango QA'), tr('Pouch prom. (oz)'), tr('Rango QA'), tr('Resultado'), tr('Acción tomada')].map((x) => xT(x, X.wHead)), 48)
     const avg = (x: WtAvg): Cell => (x.avg == null ? xT('—', X.wCell) : xN(x.avg, x.ok == null ? X.wD : x.ok === 'ok' ? X.wDg : x.ok === 'under' ? X.wDr : X.wDa))
     const range = (x: WtAvg): Cell => xT(x.avg == null ? '—' : x.range || tr('Pendiente'), X.wCell)
-    for (const x of list) row([xT(x.code, X.wCell), xT(x.dept || '—', x.dept ? wtRoom(x.dept) : X.wCell), xN(x.times, X.wN), wtPct(x.okPct), avg(x.raw), range(x.raw), avg(x.cooked), range(x.cooked), avg(x.pouch), range(x.pouch), xT(x.result, x.action ? X.wBadW : x.pending ? X.wWarnW : x.times ? X.wGoodW : X.wLeft), xT('', X.wCell), xT((x.dept || '') + ' ' + x.code, X.wHide)], 52)
+    for (const x of list) row([xT(x.code, X.wCell), xT(x.where || '—', x.dept ? wtRoom(x.dept) : X.wCell), xN(x.times, X.wN), wtPct(x.okPct), avg(x.raw), range(x.raw), avg(x.cooked), range(x.cooked), avg(x.pouch), range(x.pouch), xT(x.result, x.action ? X.wBadW : x.pending ? X.wWarnW : x.times ? X.wGoodW : X.wLeft), xT('', X.wCell), xT(x.where + ' ' + x.code, X.wHide)], 52)
     row([])
     // the chart, when some room can be judged: how much of each room's weights fell inside QA's range
     const to = out.length - 1, from = to - list.length + 1, at = out.length + 1, tall = Math.max(9, list.length * 2 + 3)
@@ -414,13 +415,15 @@ export function wtSummarySheet(s: State, rows: WtRow[], date: string): Sheet {
     const note = kpiNote(s, date, 'weights')
     if (note) { row([]); across(tr('Notas: {0}', note), X.note, 48) }
   }
-  return { name: tr('Resumen'), rows: out, freeze: 0, page: { widths: [9, 13, 10, 9, 10, 11, 11, 11, 10, 11, 42, 24], heights, merges }, ...(chart ? { chart } : {}) }
+  return { name: tr('Resumen'), rows: out, freeze: 0, page: { widths: [9, 17, 10, 9, 10, 11, 11, 11, 10, 11, 42, 24], heights, merges }, ...(chart ? { chart } : {}) }
 }
 /**
  * A code's day as the plant's own Weight Control sheet, the one Santiago keeps (Jose, 2026-10-30: "así como está en el
- * sheet de Santiago"): each hour in its block, TIME and its weights, its AVG in yellow, a TOTAL AVG under each group,
- * meatballs on the left and RTE's pouches on the right. Target and difference go beside each AVG; the difference is how
- * far the average is outside QA's range, 0 inside it. A weight outside the range keeps its red or amber
+ * sheet de Santiago", and his update of the same day): Kitchen, whose cooked balls are the Racks', with RTE's pouches
+ * on its right, then Spiral with its cooked and its raw, Spiral and Racks apart. Each hour in its block, TIME and its
+ * weights, its AVG in yellow, a TOTAL AVG under each group; beside each AVG the target, the difference (how far the
+ * average is outside QA's range, 0 inside it) and room for comments and corrective actions. A weight outside the range
+ * keeps its red or amber
  */
 export function wtControlSheet(s: State, rows: WtRow[], code: string, date: string): Sheet | null {
   const of = rows.filter((w) => normCode(w.code) === normCode(code) && w.tests.length)
@@ -430,8 +433,8 @@ export function wtControlSheet(s: State, rows: WtRow[], code: string, date: stri
   const put = (r: number, c: number, v: Cell) => { (g[r] ??= [])[c] = v }
   const span = (r: number, c: number, r2: number, c2: number) => merges.push(colName(c) + (r + 1) + ':' + colName(c2) + (r2 + 1))
   const avgOf = (ws: number[]) => (ws.length ? ws.reduce((a, b) => a + b, 0) / ws.length : null)
-  const word = (k: WeightTest['kind']) => (k === 'raw' ? tr('CRUDO') : k === 'ball' ? tr('COCINADO') : tr('POUCH'))
-  const sides = (c0: number, r: number) => { const a = c0 + 2 + most; put(r, a, xT(tr('PROM.'), X.wcBold)); put(r, a + 1, xT(tr('Objetivo'), X.wcBold)); put(r, a + 2, xT(tr('Diferencia'), X.wcBold)) }
+  const word = (k: WeightTest['kind']) => (k === 'raw' ? tr('CRUDO') : k === 'ball' ? tr('COCINADO') : 'RTE ' + tr('POUCH'))
+  const sides = (c0: number, r: number) => { const a = c0 + 2 + most; put(r, a, xT(tr('PROM.'), X.wcBold)); put(r, a + 1, xT(tr('Objetivo'), X.wcBold)); put(r, a + 2, xT(tr('Diferencia'), X.wcBold)); put(r, a + 3, xT(tr('Comentarios / acciones correctivas'), X.wcBold)) }
   // the target and how far the average is from it, in the two cells after the average
   const judge = (r: number, c: number, avg: number | null, w: WtRow, rows2 = 1) => {
     const t = wtOfficial(s, w.code, w.kind) && w.target ? w.target : null, range = t ? wtRange(t) : null
@@ -444,7 +447,7 @@ export function wtControlSheet(s: State, rows: WtRow[], code: string, date: stri
   }
   const group = (r0: number, c0: number, w: WtRow) => {
     let r = r0
-    const label = (w.cook ? cookText(w.cook).toUpperCase() : w.dept.toUpperCase()) + ' ' + word(w.kind)
+    const label = word(w.kind)
     for (const t of [...w.tests].sort((a, b) => a.at - b.at)) {
       put(r, c0, xT(label, X.wcLabel)); put(r + 1, c0, xT('', X.wcLabel)); span(r, c0, r + 1, c0)
       put(r, c0 + 1, xT(tr('HORA'), X.wcHead)); put(r + 1, c0 + 1, xT(fmtTime(t.at), X.wcTime))
@@ -457,6 +460,7 @@ export function wtControlSheet(s: State, rows: WtRow[], code: string, date: stri
       const a = c0 + 2 + most
       put(r, a, avg == null ? xT('—', X.wcAvg) : xN(Math.round(avg * 10000) / 10000, X.wcAvg)); put(r + 1, a, xT('', X.wcAvg)); span(r, a, r + 1, a)
       judge(r, a + 1, avg, w, 2)
+      put(r, a + 3, xT('', X.wcText)); put(r + 1, a + 3, xT('', X.wcText)); span(r, a + 3, r + 1, a + 3)
       r += 2
     }
     const all = w.tests.flatMap((t) => t.entries.flatMap((e) => (e.w != null ? [e.w] : []))), total = avgOf(all), a = c0 + 2 + most
@@ -465,17 +469,25 @@ export function wtControlSheet(s: State, rows: WtRow[], code: string, date: stri
     judge(r, a + 1, total, w)
     return r + 1
   }
-  const leftN = 2 + most + 3, right = leftN + 1, lastC = right + leftN - 1
-  put(0, 0, xT(tr('CONTROL DE PESO · {0}', code) + ' · ' + niceDay(date), X.wcBand))
-  for (let c = 1; c <= lastC; c++) put(0, c, xT('', X.wcBand))
-  span(0, 0, 0, lastC); heights[0] = 26
-  let rl = 2, rr = 2
-  const balls = of.filter((w) => w.kind !== 'pouch'), bags = of.filter((w) => w.kind === 'pouch')
-  if (balls.length) sides(0, 1)
-  if (bags.length) sides(right, 1)
-  for (const w of balls) { rl = group(rl, 0, w) + 1; if (w !== balls[balls.length - 1]) { sides(0, rl); rl++ } }
-  for (const w of bags) { rr = group(rr, right, w) + 1; if (w !== bags[bags.length - 1]) { sides(right, rr); rr++ } }
-  const side = [10, 9, ...Array.from({ length: most }, () => 7.5), 9, 11, 10]
+  const leftN = 2 + most + 4, right = leftN + 1, lastC = right + leftN - 1
+  const band = (r: number, text: string) => { put(r, 0, xT(text, X.wcBand)); for (let c = 1; c < leftN; c++) put(r, c, xT('', X.wcBand)); span(r, 0, r, leftN - 1); heights[r] = 26 }
+  // a group's own line: its place, its code, and the heads of its columns
+  const head = (r: number, c0: number, place: string) => { put(r, c0, xT(place, X.wcBold)); put(r, c0 + 1, xT(tr('CÓDIGO'), X.wcBold)); put(r, c0 + 2, xT(code, X.wcBold)); sides(c0, r) }
+  const order = (w: WtRow) => (w.kind === 'ball' ? 0 : 2) + (w.cook === 'racks' ? 1 : 0)
+  const balls = of.filter((w) => w.kind !== 'pouch').sort((a, b) => order(a) - order(b)), bags = of.filter((w) => w.kind === 'pouch')
+  const place = (w: WtRow) => (w.cook ? cookText(w.cook) : w.dept === 'Kitchen' && w.kind === 'ball' ? 'Racks' : w.dept)
+  let rl = 0
+  for (const dept of ['Kitchen', 'Spiral'] as Dept[]) {
+    const mine = balls.filter((w) => w.dept === dept)
+    if (!mine.length && !(dept === 'Kitchen' && bags.length)) continue
+    band(rl, tr('CONTROL DE PESO · {0}', code) + ' · ' + niceDay(date) + ' · ' + dept.toUpperCase()); rl++
+    if (!mine.length) rl += 2
+    for (const w of mine) { head(rl, 0, place(w)); rl = group(rl + 1, 0, w) + 1 }
+  }
+  put(0, right, xT(tr('CONTROL DE PESO · {0}', code) + ' · RTE', X.wcBand)); for (let c = right + 1; c <= lastC; c++) put(0, c, xT('', X.wcBand)); span(0, right, 0, lastC)
+  let rr = 1
+  for (const w of bags) { head(rr, right, 'RTE'); rr = group(rr + 1, right, w) + 1 }
+  const side = [10, 9, ...Array.from({ length: most }, () => 7.5), 9, 11, 10, 24]
   return { name: tr('Control de peso {0}', code), rows: Array.from({ length: g.length }, (_, i) => Array.from(g[i] ?? [])), freeze: 0, page: { widths: [...side, 3, ...side], heights, merges } }
 }
 /** the file of the one-page button: the summary first, then each code as the plant's own sheet */
