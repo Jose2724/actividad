@@ -401,14 +401,16 @@ export function wtSummarySheet(s: State, rows: WtRow[], date: string): Sheet {
     row([tr('Código'), tr('Departamento'), tr('Veces revisado'), tr('% en peso'), tr('Crudo prom. (oz)'), tr('Rango QA'), tr('Cocinado prom. (oz)'), tr('Rango QA'), tr('Pouch prom. (oz)'), tr('Rango QA'), tr('Resultado'), tr('Acción tomada')].map((x) => xT(x, X.wHead)), 48)
     const avg = (x: WtAvg): Cell => (x.avg == null ? xT('—', X.wCell) : xN(x.avg, x.ok == null ? X.wD : x.ok === 'ok' ? X.wDg : x.ok === 'under' ? X.wDr : X.wDa))
     const range = (x: WtAvg): Cell => xT(x.avg == null ? '—' : x.range || tr('Pendiente'), X.wCell)
-    for (const x of list) row([xT(x.code, X.wCell), xT(x.where || '—', x.dept ? wtRoom(x.dept) : X.wCell), xN(x.times, X.wN), wtPct(x.okPct), avg(x.raw), range(x.raw), avg(x.cooked), range(x.cooked), avg(x.pouch), range(x.pouch), xT(x.result, x.action ? X.wBadW : x.pending ? X.wWarnW : x.times ? X.wGoodW : X.wLeft), xT('', X.wCell), xT(x.where + ' ' + x.code, X.wHide)], 52)
+    // the chart reads a block of its own, in white, with only what can be judged: a code not weighed is not a 0% (Jose, 2026-10-30)
+    const shown = list.filter((x) => x.okPct != null)
+    list.forEach((x, i) => row([xT(x.code, X.wCell), xT(x.where || '—', x.dept ? wtRoom(x.dept) : X.wCell), xN(x.times, X.wN), wtPct(x.okPct), avg(x.raw), range(x.raw), avg(x.cooked), range(x.cooked), avg(x.pouch), range(x.pouch), xT(x.result, x.action ? X.wBadW : x.pending ? X.wWarnW : x.times ? X.wGoodW : X.wLeft), xT('', X.wCell), ...(shown[i] ? [xT(shown[i].where + ' ' + shown[i].code, X.wHide), xN(Math.round((shown[i].okPct as number) * 1000) / 1000, X.wHide)] : [])], 52))
     row([])
     // the chart, when some room can be judged: how much of each room's weights fell inside QA's range
-    const to = out.length - 1, from = to - list.length + 1, at = out.length + 1, tall = Math.max(9, list.length * 2 + 3)
-    if (list.some((x) => x.okPct != null)) {
+    const from = out.length - 1 - list.length + 1, to = from + shown.length - 1, at = out.length + 1, tall = Math.max(9, shown.length * 2 + 3)
+    if (shown.length) {
       for (let i = 0; i < tall; i++) row([])
       row([])
-      chart = { title: tr('% de pesos dentro del rango de QA, por departamento'), series: tr('% en peso'), cat: 12, val: 3, from, to, at, pct: true, cols: 11, height: tall }
+      chart = { title: tr('% de pesos dentro del rango de QA, por departamento'), series: tr('% en peso'), cat: 12, val: 13, from, to, at, pct: true, cols: 11, height: tall }
     }
     across(tr('Cómo leerlo: "Veces revisado" = cuántas horas se pesó ese código. "Prom." = el promedio de todos los pesos del día, en onzas. "% en peso" = de todos los pesos, cuántos cayeron dentro del rango. Pouch = la bolsa terminada. Rango QA = el mínimo y el máximo permitido.'), X.note, 34)
     across(tr('Verde = el promedio está dentro del rango. Rojo = bajo el rango. Ámbar = sobre el rango. Si está rojo o ámbar se necesita una acción correctiva: anótala en "Acción tomada".'), X.note, 34)
