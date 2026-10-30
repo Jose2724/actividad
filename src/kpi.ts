@@ -1,4 +1,4 @@
-import { attExpectedOf, attOf, attSentAt, attShifts, attWriteOn, CFG, cookText, dayBefore, DEPTS, deptToday, entryClass, fmtTime, kpiGet, lbCaseOn, lbPerCaseOf, lunchOf, normCode, sameStep, shiftAt, shiftsOf, stepKey, stepText, weighedCodes, weighsCode, weightAllStepsOf, weightRuleFor, weightStepsFor, weightTarget, wtRangeText, type Cook, type WeightTest, type WtStep, type AttEntry, type Dept, type State } from './store'
+import { wtOfficial, wtRange, attExpectedOf, attOf, attSentAt, attShifts, attWriteOn, CFG, cookText, dayBefore, DEPTS, deptToday, entryClass, fmtTime, kpiGet, lbCaseOn, lbPerCaseOf, lunchOf, normCode, sameStep, shiftAt, shiftsOf, stepKey, stepText, weighedCodes, weighsCode, weightAllStepsOf, weightRuleFor, weightStepsFor, weightTarget, wtRangeText, type Cook, type WeightTest, type WtStep, type AttEntry, type Dept, type State } from './store'
 import { reportOf } from './report'
 import { X, xDay, xN, xT, type Cell, type Sheet } from './xlsx'
 import { locale, tr } from './i18n'
@@ -315,7 +315,7 @@ const wtLegendRows = (): Cell[][] => [
   headRow(tr('Resumen de cada código'), tr('Qué significa')),
   [tr('Cuarto'), tr('El departamento que pesó.')],
   [tr('Código'), tr('El producto.')],
-  [tr('Qué se pesó'), tr('Crudo, Cocinado o Pouch. En Spiral también dice el cocinador: Spiral o Racks.')],
+  [tr('Qué se pesó'), tr('Crudo, Cocinado, Pouch o Bola en pouch. En Spiral también dice el cocinador: Spiral o Racks.')],
   [tr('Pruebas hechas'), tr('Cuántas pruebas se completaron. "3 de 4" = 3 hechas de las 4 que tocaban; un número solo = las hechas, sin comparar con las que tocaban. Una prueba son varios pesos tomados en la misma hora.')],
   [tr('Incompletas'), tr('Pruebas empezadas con menos pesos de los que se pedían.')],
   [tr('Pesados'), tr('Cuántos pesos se tomaron en total.')],
@@ -342,6 +342,60 @@ const wtLegendRows = (): Cell[][] => [
   [tr('Anotó'), tr('Quien anotó los pesos.')],
   ['#1, #2…', tr('Cada peso en onzas, en el orden en que se tomó. Rojo = bajo, ámbar = sobre.')],
 ].map((r) => (r.length === 2 && typeof r[1] === 'string' ? [r[0], xT(r[1], X.note)] : r))
+/** an average of one thing of a code against QA's range; ok null = nothing weighed, or no range to judge it by */
+export type WtAvg = { avg: number | null; n: number; range: string; ok: 'ok' | 'under' | 'over' | null }
+export type WtSummaryRow = { code: string; times: number; raw: WtAvg; cooked: WtAvg; pouched: WtAvg; result: string; action: boolean }
+/** only these (Jose, 2026-10-30: "que solo sea de los códigos 0889 y 2234, nada más"), both always, weighed or not */
+const WT_SUMMARY_CODES = ['0889', '2234']
+/**
+ * What the plant's heads asked for (their whiteboard, 2026-10-30: "16 times · Raw Avg · Cooked Avg · Cooked pouch Avg",
+ * QA's ranges, "Corrective action"; Jose: they do not want so much data, they want the summary and it has to explain
+ * itself): one line per meatball code, whichever room or cooker weighed it. Times = the different hours it was checked
+ * (each check weighs several things in several places); an average against the range decides the colour and the
+ * corrective action. The bag's ounces are not here: they are another measure, in the full Excel
+ */
+export function wtSummary(s: State, rows: WtRow[]): WtSummaryRow[] {
+  const mine = rows.filter((w) => w.kind !== 'pouch' && w.tests.length)
+  return WT_SUMMARY_CODES.map((code) => {
+    const of = mine.filter((w) => normCode(w.code) === normCode(code))
+    const part = (kind: WeightTest['kind']): WtAvg => {
+      const ws = of.filter((w) => w.kind === kind).flatMap((w) => w.tests.flatMap((t) => t.entries.flatMap((e) => (e.w != null ? [e.w] : []))))
+      // (a target nobody at QA gave is not shown to the heads as QA's: the 2234 waits for it)
+      const t = wtOfficial(s, code, kind) ? weightTarget(s, code, kind) : null, avg = ws.length ? Math.round((ws.reduce((a, b) => a + b, 0) / ws.length) * 100) / 100 : null
+      const r = t ? wtRange(t) : null
+      return { avg, n: ws.length, range: t ? wtRangeText(t) : '', ok: avg == null || !r ? null : avg < r.min ? 'under' : avg > r.max ? 'over' : 'ok' }
+    }
+    const raw = part('raw'), cooked = part('ball'), pouched = part('pouched')
+    const say = (name: string, x: WtAvg) => (x.ok === 'under' ? [tr('{0} bajo el rango de QA', name)] : x.ok === 'over' ? [tr('{0} sobre el rango de QA', name)] : [])
+    const out = [...say(tr('Crudo'), raw), ...say(tr('Cocinado'), cooked), ...say(tr('Bola en pouch'), pouched)]
+    const judged = [raw, cooked, pouched].some((x) => x.ok != null)
+    return { code, times: new Set(of.flatMap((w) => w.tests.map((t) => Math.floor(t.at / 3_600_000)))).size, raw, cooked, pouched, result: out.length ? tr('Acción correctiva: {0}', out.join(' · ')) : !of.length ? tr('No se pesó este día') : !judged ? tr('Falta el target de QA') : tr('Dentro del rango de QA'), action: out.length > 0 }
+  })
+}
+/** the summary as one page: nothing else in the file, and it says how to read itself */
+export function wtSummarySheet(s: State, rows: WtRow[], date: string): Sheet {
+  const list = wtSummary(s, rows), out: Cell[][] = [], heights: Record<number, number> = {}, merges: string[] = []
+  const row = (cells: Cell[], ht?: number) => { if (ht) heights[out.length] = ht; out.push(cells); return out.length }
+  const across = (text: string, style: number, ht: number) => { const r = row([xT(text, style), ...Array.from({ length: 9 }, () => xT('', style))], ht); merges.push('A' + r + ':J' + r) }
+  across(tr('Resumen de pesos'), X.wBand, 32)
+  across(niceDay(date), X.wSub, 21)
+  row([])
+  const out_ = list.filter((x) => x.action).length
+  {
+    across(out_ ? tr('{0} de {1} códigos necesitan acción correctiva.', out_, list.length) : list.some((x) => x.times) ? tr('Todos los promedios están dentro del rango de QA.') : tr('Este día no hay pesos de bolas.'), X.wSay, 26)
+    row([])
+    row([tr('Código'), tr('Veces revisado'), tr('Crudo prom. (oz)'), tr('Rango QA'), tr('Cocinado prom. (oz)'), tr('Rango QA'), tr('Bola en pouch prom. (oz)'), tr('Rango QA'), tr('Resultado'), tr('Acción tomada')].map((x) => xT(x, X.wHead)), 48)
+    const avg = (x: WtAvg): Cell => (x.avg == null ? xT(tr('No se pesó'), X.wCell) : xN(x.avg, x.ok == null ? X.wD : x.ok === 'ok' ? X.wDg : x.ok === 'under' ? X.wDr : X.wDa))
+    const range = (x: WtAvg): Cell => xT(x.range || tr('Pendiente'), X.wCell)
+    for (const x of list) row([xT(x.code, X.wCell), xN(x.times, X.wN), avg(x.raw), range(x.raw), avg(x.cooked), range(x.cooked), avg(x.pouched), range(x.pouched), xT(x.result, x.action ? X.bad : x.times ? X.good : X.wCell), xT('', X.wCell)], 42)
+    row([])
+    across(tr('Cómo leerlo: "Veces revisado" = las horas distintas en que se pesó ese código. "Prom." = el promedio de todos los pesos del día, en onzas. Rango QA = el mínimo y el máximo permitido.'), X.note, 34)
+    across(tr('Verde = el promedio está dentro del rango. Rojo = bajo el rango. Ámbar = sobre el rango. Si está rojo o ámbar se necesita una acción correctiva: anótala en "Acción tomada".'), X.note, 34)
+    const note = kpiNote(s, date, 'weights')
+    if (note) { row([]); across(tr('Notas: {0}', note), X.note, 48) }
+  }
+  return { name: tr('Resumen'), rows: out, freeze: 0, page: { widths: [10, 10, 11, 12, 11, 12, 12, 12, 36, 26], heights, merges } }
+}
 const WT_LAST = 'P' // the band reaches the last column of the tables
 const WT_WIDTHS = [11, 9, 19, 11, 11, 9, 10, 9, 9, 11, 8, 8, 8, 13, 12, 18]
 const wtRoom = (d: Dept) => (d === 'Kitchen' ? X.wKitchen : d === 'RTE' ? X.wRTE : d === 'Spiral' ? X.wSpiral : X.wCell)

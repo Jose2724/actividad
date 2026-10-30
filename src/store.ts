@@ -1193,7 +1193,7 @@ export type WtEntry = { w?: number; k?: 'sobre' | 'bajo' }
 export type WeightTest = { id: string; date: string; dept: Dept; lineId: string; line: string; code: string; lot: string; runId: string
   /** pouch: RTE's finished pouches; ball: Spiral's cooked meatballs, so many each hour (2026-10-23); raw: Kitchen's
    *  meatballs before the oven, the same way (Jose, 2026-10-28: "que Kitchen también pueda pesar las meatballs en oz") */
-  kind: 'pouch' | 'ball' | 'raw'; unit: 'oz'
+  kind: 'pouch' | 'ball' | 'raw' | 'pouched'; unit: 'oz'
   /** Spiral's two cookers (Jose, 2026-10-29: "Spiral y racks son los dos que cocinan diferente"): the balls are weighed
    *  raw before going into each one and cooked when they come out; none on the other rooms and on Spiral's first tests */
   cook?: Cook
@@ -1220,7 +1220,7 @@ function wtEntries(x: { entries?: unknown; weights?: unknown; unit?: unknown }):
 }
 function wtFrom(x: (Partial<WeightTest> & { weights?: unknown; unit?: unknown }) | null | undefined): WeightTest | null {
   if (!x || typeof x !== 'object' || typeof x.id !== 'string' || !x.id || !(DEPTS as unknown[]).includes(x.dept) || !isDay(String(x.date ?? '')) || !normCode(String(x.code ?? ''))) return null
-  return { id: x.id, date: String(x.date), dept: x.dept as Dept, lineId: String(x.lineId ?? ''), line: String(x.line ?? ''), code: String(x.code).trim().toUpperCase(), lot: String(x.lot ?? ''), runId: String(x.runId ?? ''), kind: x.kind === 'ball' ? 'ball' : x.kind === 'raw' ? 'raw' : 'pouch', unit: 'oz', ...(x.dept === 'Spiral' && (x.cook === 'spiral' || x.cook === 'racks') ? { cook: x.cook } : {}), ...(x.skip === true ? { skip: true as const } : {}), ...(Number(x.need) > 0 ? { need: Math.round(Number(x.need)) } : {}), entries: wtEntries(x), at: Number(x.at) || 0, by: String(x.by ?? ''), ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
+  return { id: x.id, date: String(x.date), dept: x.dept as Dept, lineId: String(x.lineId ?? ''), line: String(x.line ?? ''), code: String(x.code).trim().toUpperCase(), lot: String(x.lot ?? ''), runId: String(x.runId ?? ''), kind: x.kind === 'ball' ? 'ball' : x.kind === 'raw' ? 'raw' : x.kind === 'pouched' ? 'pouched' : 'pouch', unit: 'oz', ...(x.dept === 'Spiral' && (x.cook === 'spiral' || x.cook === 'racks') ? { cook: x.cook } : {}), ...(x.skip === true ? { skip: true as const } : {}), ...(Number(x.need) > 0 ? { need: Math.round(Number(x.need)) } : {}), entries: wtEntries(x), at: Number(x.at) || 0, by: String(x.by ?? ''), ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
 }
 /** the weights typed in a test (the entries with a number) */
 export const wtWeights = (t: WeightTest) => t.entries.flatMap((e) => (e.w != null ? [e.w] : []))
@@ -1470,9 +1470,10 @@ const targetKey = (code: string, kind: WeightTest['kind'], cook?: Cook) => 'targ
  */
 const QA_TARGETS: Record<string, Partial<Record<WeightTest['kind'], WeightTarget>>> = {
   // 2.4 oz meatballs (Costco Jumbo and the like)
-  // (0889 from QA through Jose, 2026-10-29: raw 2.60–2.80 oz, cooked 2.10–2.40 oz a ball; to be confirmed)
+  // (0889 from Yas's Target Specifications, the sheet to follow, Jose 2026-10-30: raw 2.60–2.80 oz, cooked 2.30–2.40 oz a ball)
   // (and the pouch 48–52 oz, never under 48: Jose, 2026-10-29 "48 oz y máximo 52 oz en RTE", "no puede tener mínimo de tolerancia")
-  '0889': { pouch: { pouch: 50, tol: 2 }, ball: { pouch: 2.25, tol: 0.15 }, raw: { pouch: 2.7, tol: 0.1 } },
+  // (a meatball taken out of a pouch has no target: Yas's sheet does not say one, and only that sheet goes; a manager writes it in Ajustes › KPI)
+  '0889': { pouch: { pouch: 50, tol: 2 }, ball: { pouch: 2.35, tol: 0.05 }, raw: { pouch: 2.7, tol: 0.1 } },
   '685': { pouch: { pouch: 48, tol: 1 }, ball: { pouch: 2.35, tol: 0.05 }, raw: { pouch: 2.7, tol: 0.1 } },
   '4139': { pouch: { pouch: 72, tol: 1 }, ball: { pouch: 2.35, tol: 0.05 }, raw: { pouch: 2.7, tol: 0.1 } },
   // 2.2 and 2.0 oz
@@ -1485,7 +1486,7 @@ const QA_TARGETS: Record<string, Partial<Record<WeightTest['kind'], WeightTarget
   '4914': { pouch: { pouch: 16, tol: 1 }, ball: { pouch: 1.05, tol: 0.05 }, raw: { pouch: 1.25, tol: 0.05 } },
   '8441': { pouch: { pouch: 72, tol: 1 }, ball: { pouch: 1.05, tol: 0.05 }, raw: { pouch: 1.25, tol: 0.05 } },
   // (2234 from QA through Jose, 2026-10-29: raw 1.20–1.30, cooked "1.1 1.3 1.4" read as 1.10–1.40 and the pouch 72 oz, never
-  // under, its maximum not said yet (76, as the 0889's +4): both to be confirmed; Ajustes › KPI changes them)
+  // under, its maximum not said yet (76, as the 0889's +4): to be confirmed, and Yas's sheet of 2026-10-30 does not have it; Ajustes › KPI changes them)
   '2234': { pouch: { pouch: 74, tol: 2 }, ball: { pouch: 1.25, tol: 0.15 }, raw: { pouch: 1.25, tol: 0.05 } },
   '3293': { pouch: { pouch: 48, tol: 1 }, ball: { pouch: 1.05, tol: 0.05 }, raw: { pouch: 1.25, tol: 0.05 } },
   '3187': { pouch: { pouch: 72, tol: 1 }, ball: { pouch: 1.05, tol: 0.05 }, raw: { pouch: 1.25, tol: 0.05 } },
@@ -1527,7 +1528,9 @@ export const clearWeightTarget = (code: string, kind: WeightTest['kind'] = 'pouc
  * ranges are the sheet's; a bag's range is not (the sheet says only its ounces: ±1 was put to have one), but the 0889's
  * 48–52 QA gave; the 2234's cooked range and its bag's maximum were read from words still to be confirmed
  */
-export const qaSure = (code: string, kind: WeightTest['kind']) => { const n = normCode(code); return kind === 'pouch' ? n === '889' : !(n === '2234' && kind === 'ball') }
+export const qaSure = (code: string, kind: WeightTest['kind']) => { const n = normCode(code); return n === '2234' || kind === 'pouched' ? false : kind === 'pouch' ? n === '889' : true }
+/** a target that can be shown as QA's: a sure one of the table, or one a manager wrote (2026-10-30: the 2234 is not on Yas's sheet) */
+export const wtOfficial = (s: State, code: string, kind: WeightTest['kind']) => qaSure(code, kind) || !!kpiGet(s, targetKey(code, kind))
 /** sure: QA said it (always for one a manager set); false = an estimate of the table, to ask QA for */
 export type WtTargetRow = { code: string; step: WtStep; target: WeightTarget; qa: WeightTarget | null; set: { by: string; at: number } | null; sure: boolean }
 export function weightTargetsList(s: State): WtTargetRow[] {
@@ -1536,14 +1539,14 @@ export function weightTargetsList(s: State): WtTargetRow[] {
   for (const [code, kinds] of Object.entries(QA_TARGETS)) for (const [kind, t] of Object.entries(kinds) as [WeightTest['kind'], WeightTarget][]) rows.set(key(code, { kind }), { code, step: { kind }, target: t, qa: t, set: null, sure: qaSure(code, kind) })
   for (const x of s.kpi ?? []) {
     if (x.deleted || !x.key.startsWith('target:')) continue
-    const parts = x.key.slice('target:'.length).split(':'), kind: WeightTest['kind'] = parts.length > 1 && (parts[0] === 'raw' || parts[0] === 'ball') ? parts[0] : 'pouch'
+    const parts = x.key.slice('target:'.length).split(':'), kind: WeightTest['kind'] = parts.length > 1 && (parts[0] === 'raw' || parts[0] === 'ball' || parts[0] === 'pouched') ? parts[0] : 'pouch'
     const cook = parts.length > 2 && (parts[1] === 'spiral' || parts[1] === 'racks') ? parts[1] : undefined, code = String(x.data.code ?? parts[parts.length - 1])
     const st: WtStep = { kind, ...(cook ? { cook } : {}) }, t = weightTarget(s, code, kind, cook)
     if (!t) continue
     const was = rows.get(key(code, st))
     rows.set(key(code, st), { code: was?.code ?? code, step: st, target: t, qa: was?.qa ?? null, set: { by: x.by, at: x.at }, sure: true })
   }
-  const order = (st: WtStep) => ['pouch', 'raw', 'ball'].indexOf(st.kind) * 3 + (st.cook ? COOKS.indexOf(st.cook) + 1 : 0)
+  const order = (st: WtStep) => ['pouch', 'pouched', 'raw', 'ball'].indexOf(st.kind) * 3 + (st.cook ? COOKS.indexOf(st.cook) + 1 : 0)
   return [...rows.values()].sort((a, b) => normCode(a.code).localeCompare(normCode(b.code), 'en', { numeric: true }) || order(a.step) - order(b.step))
 }
 /**
@@ -1582,7 +1585,7 @@ export const WEIGHT_CODES_DEFAULT: Partial<Record<Dept, string[]>> = { Spiral: [
 export type WtKind = WeightTest['kind']
 export type WtCodeRule = { code: string; every: number; count: number; kinds: WtKind[] }
 /** what a room can be asked to weigh, in the order the screens say it */
-export const wtKindsOf = (dept: Dept): WtKind[] => (dept === 'RTE' ? ['pouch', 'raw', 'ball'] : dept === 'Spiral' || dept === 'Kitchen' ? ['raw', 'ball'] : [])
+export const wtKindsOf = (dept: Dept): WtKind[] => (dept === 'RTE' ? ['pouch', 'pouched', 'raw', 'ball'] : dept === 'Spiral' || dept === 'Kitchen' ? ['raw', 'ball'] : [])
 const WT_KINDS_DEFAULT: Partial<Record<Dept, WtKind[]>> = { Spiral: ['raw', 'ball'], RTE: ['pouch'], Kitchen: ['raw'] }
 const cleanKinds = (dept: Dept, v: unknown): WtKind[] => { const l = wtKindsOf(dept).filter((k) => Array.isArray(v) && v.includes(k)); return l.length ? l : WT_KINDS_DEFAULT[dept] ?? [] }
 /** what a room weighs of a code it does not list one by one (of every code, where it weighs them all) */
@@ -1632,7 +1635,7 @@ export const sameStep = (x: WtStep, y: WtStep) => x.kind === y.kind && (x.cook ?
 /** a cooker's name as the floor says it */
 export const cookText = (c: Cook) => (c === 'racks' ? 'Racks' : 'Spiral')
 /** what a step weighs, as the screens and the files say it: "Crudo · Racks", "Cocinado · Spiral", "Pouch" */
-export const stepText = (x: WtStep) => (x.kind === 'pouch' ? tr('Pouch') : (x.kind === 'raw' ? tr('Crudo') : tr('Cocinado')) + (x.cook ? ' · ' + cookText(x.cook) : ''))
+export const stepText = (x: WtStep) => (x.kind === 'pouch' ? tr('Pouch') : x.kind === 'pouched' ? tr('Bola en pouch') : (x.kind === 'raw' ? tr('Crudo') : tr('Cocinado')) + (x.cook ? ' · ' + cookText(x.cook) : ''))
 // ---- the slow-line signal (Jose, 2026-10-28: "que parpadee la línea que no esté haciendo 1000 pouches por hora", "es algo más símbolo que un dato": the card goes red and back so the people know they have to move) ----
 /**
  * A room's minimum per hour (0 = no signal), set in Ajustes for everybody; under 'opt:slow:<room>' in act_targets

@@ -4,7 +4,7 @@ import { cookText as cookTextOf, entryClass as entryClassOf, expiryOf, wtRangeTe
 import { avanceRows, mfoText, mfoWord, pending } from './avance'
 import { codeLabel, FAMILY_SHOWN, reasonCodeOf } from './reasons'
 import { cellText, loadZip, X, xDur, xN, xPct, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
-import { cookYields, hoursOf, seesLabor, wtCompliance, wtDoneText, wtOfReport, wtSheetRows, wtSheets, wtShift, wtSum, type WtRow } from './kpi'
+import { cookYields, hoursOf, seesLabor, weightsOf, wtCompliance, wtDoneText, wtOfReport, wtSheetRows, wtSheets, wtShift, wtSum, wtSummarySheet, type WtRow } from './kpi'
 import { attendanceOf, attLineText, attMovesText, attOf, attShifts, attStateText } from './store'
 import { consumesOf, inventoryOf, stepText, weightsFix, weightTarget, wtKindsOf, type Dept as RoomDept } from './store'
 import { pctText } from './Attendance'
@@ -1530,10 +1530,16 @@ function PalletsView({ k }: { k: Kit }) {
  * chip. The room and code chosen choose the codes; the line and the shift, the tests listed
  */
 function WeightsView({ k }: { k: Kit }) {
-  const { s, wt, rep, date, mgr } = k
+  const { s, wt, rep, date, mgr, now } = k
   const who = useWho(), canFix = mgr && who.role !== 'viewer'
   const [fixing, setFixing] = useState<WtRow | null>(null)
   // the three sheets, as the room and code chosen; made from what is on screen when tapped
+  // the one page for the plant's heads: every room's weights of the day, whatever the filters show
+  const summary = async () => {
+    const page = () => xlsxNow([wtSummarySheet(s, weightsOf(s, date, now), date)])
+    const bytes = page() ?? (await loadZip(), page())
+    if (bytes) download(new File([bytes], tr('Resumen-de-pesos') + '-' + date + '.xlsx', { type: XLSX_TYPE }))
+  }
   const sheets = async () => {
     const bytes = xlsxNow(wtSheets(s, wt.rows, date)) ?? (await loadZip(), xlsxNow(wtSheets(s, wt.rows, date)))
     if (bytes) download(new File([bytes], tr('Pesos') + '-' + date + '.xlsx', { type: XLSX_TYPE }))
@@ -1545,7 +1551,7 @@ function WeightsView({ k }: { k: Kit }) {
   const late = (r: WtRow) => r.due != null && r.complete + r.skipped.length < r.due
   return (
     <>
-      {wt.rows.length > 0 && <div className="btns"><button type="button" className="btn soft" onClick={() => void sheets()}>{tr('⬇ Excel de pesos: Turno 1, Turno 2 y Todos')}</button></div>}
+      {wt.rows.length > 0 && <div className="btns"><button type="button" className="btn primary" onClick={() => void summary()}>{tr('⬇ Resumen de una hoja')}</button><button type="button" className="btn soft" onClick={() => void sheets()}>{tr('⬇ Excel de pesos: Turno 1, Turno 2 y Todos')}</button></div>}
       {fixing && <WeightsFixDialog s={s} row={fixing} onClose={() => setFixing(null)} />}
       {cw.due > 0 && <p className={'wt-rp-sum ' + (cw.done < cw.due ? 'bad' : 'ok')}>{tr('{0} de {1} pruebas hechas', cw.done, cw.due)}{cw.done < cw.due ? ' · ' + tr('faltaron {0}', cw.due - cw.done) : ' · ' + tr('todas')}</p>}
       {groups.map((g) => (

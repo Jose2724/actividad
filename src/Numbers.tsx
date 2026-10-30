@@ -14,7 +14,7 @@ export type NumberId = 'duracion' | 'trabajando' | 'parado' | 'setup' | 'causas'
   | 'hecho' | 'corrida' | 'waste' | 'turnos' | 'meta' | 'lenta' | 'carne' | 'consumo'
   | 'avance' | 'avance-estado' | 'lote-esperado' | 'lote-perdida' | 'lote-colores' | 'orden'
   | 'po-pallets' | 'po-completo' | 'vence' | 'pallet-unido' | 'hold'
-  | 'peso-pruebas' | 'peso-bien' | 'peso-rinde' | 'peso-color' | 'asistencia'
+  | 'peso-resumen' | 'peso-pruebas' | 'peso-bien' | 'peso-rinde' | 'peso-color' | 'asistencia'
   | 'kpi-horas' | 'kpi-prod' | 'kpi-costco' | 'kpi-mes'
 type Group = 'tiempo' | 'prod' | 'avance' | 'lotes' | 'pedidos' | 'pesos' | 'gente' | 'kpi'
 type Item = { id: NumberId; group: Group; title: string; means: string; math: string; eg?: string }
@@ -124,6 +124,9 @@ const items = (): Item[] => [
     means: tr('Una unidad detenida por un manager o la oficina.'),
     math: tr('Al ponerla se escoge: descontarla (sale de lo hecho mientras está en hold) o que siga contando.') },
 
+  { id: 'peso-resumen', group: 'pesos', title: tr('Resumen de pesos de una hoja'),
+    means: tr('Una línea por código de bolas, para quien no necesita el detalle.'),
+    math: tr('Veces revisado = las horas distintas en que se pesó el código. Cada promedio junta todos los pesos del día de crudo, de cocinado o de bola en pouch, de todos los cuartos y cocinadores. Si un promedio queda fuera del rango de QA, pide acción correctiva. Puede dar bien aunque algún peso se haya salido: eso se ve en el Excel completo.') },
   { id: 'peso-pruebas', group: 'pesos', title: tr('Pruebas: "3 de 4"'),
     means: tr('Cuántas pruebas de peso se hicieron de las que tocaban.'),
     math: tr('Las que tocaban = el tiempo que corrió el código ÷ cada cuánto se pesa, sin decimales, corrida por corrida. Una prueba cuenta cuando tiene todos los pesos que se pidieron. "Incompletas" = empezadas con menos pesos. Decir que un cocinador no se usó esa hora cuenta como hecha. Se cuenta desde el 30 de octubre de 2026.'),
