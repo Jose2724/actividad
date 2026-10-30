@@ -366,7 +366,7 @@ export function wtSummary(s: State, rows: WtRow[]): WtSummaryRow[] {
     const of = all.filter((w) => w.dept === dept && (w.cook ?? '') === cook)
     const part = (kind: WeightTest['kind']): WtAvg => {
       const ws = of.filter((w) => w.kind === kind).flatMap((w) => w.tests.flatMap((t) => t.entries.flatMap((e) => (e.w != null ? [e.w] : []))))
-      // (a target nobody at QA gave is not shown to the heads as QA's: the 2234 waits for it)
+      // (a target nobody gave is not shown to the heads as QA's)
       const t = wtOfficial(s, code, kind) ? weightTarget(s, code, kind) : null, avg = ws.length ? Math.round((ws.reduce((a, b) => a + b, 0) / ws.length) * 100) / 100 : null
       const r = t ? wtRange(t) : null
       return { avg, n: ws.length, range: t ? wtRangeText(t) : '', ok: avg == null || !r ? null : avg < r.min ? 'under' : avg > r.max ? 'over' : 'ok' }

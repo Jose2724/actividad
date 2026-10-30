@@ -1529,8 +1529,12 @@ export const clearWeightTarget = (code: string, kind: WeightTest['kind'] = 'pouc
  * 48–52 QA gave; the 2234's cooked range and its bag's maximum were read from words still to be confirmed
  */
 export const qaSure = (code: string, kind: WeightTest['kind']) => { const n = normCode(code); return n === '2234' || kind === 'pouched' ? false : kind === 'pouch' ? n === '889' : true }
-/** a target that can be shown as QA's: a sure one of the table, or one a manager wrote (2026-10-30: the 2234 is not on Yas's sheet) */
-export const wtOfficial = (s: State, code: string, kind: WeightTest['kind']) => qaSure(code, kind) || !!kpiGet(s, targetKey(code, kind))
+/**
+ * a target the reports judge by: a sure one of the table, one a manager wrote, or the 2234's as Ajustes › KPI shows them
+ * (Jose, 2026-10-30: Yas's sheet does not have it, "coge los datos que salen en el KPI y cuando se tenga que cambiar yo
+ * lo cambio"; they stay marked to confirm there)
+ */
+export const wtOfficial = (s: State, code: string, kind: WeightTest['kind']) => qaSure(code, kind) || normCode(code) === '2234' || !!kpiGet(s, targetKey(code, kind))
 /** sure: QA said it (always for one a manager set); false = an estimate of the table, to ask QA for */
 export type WtTargetRow = { code: string; step: WtStep; target: WeightTarget; qa: WeightTarget | null; set: { by: string; at: number } | null; sure: boolean }
 export function weightTargetsList(s: State): WtTargetRow[] {
