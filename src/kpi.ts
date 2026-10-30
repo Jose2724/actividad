@@ -375,7 +375,7 @@ function wtReportSheet(s: State, name: string, rows: WtRow[], date: string): She
   const a = row(tileRow(0, X.wTileL), 18), b = row(tileRow(1, X.wTileV), 32)
   for (const t of tiles) if (t[2] !== t[3]) merges.push(t[2] + a + ':' + t[3] + a, t[2] + b + ':' + t[3] + b)
   sec(tr('Resumen de cada código'))
-  const head = (...t: string[]) => row(t.map((x) => xT(x, X.wHead)), 33)
+  const head = (...t: string[]) => row(t.map((x) => xT(x, X.wHead)), 48) // (three lines: "Cooked average (oz)" in a narrow column)
   head(tr('Cuarto'), tr('Código'), tr('Qué se pesó'), tr('Pruebas hechas'), tr('Incompletas'), tr('Pesados'), tr('Promedio (oz)'), tr('Mínimo'), tr('Máximo'), tr('Objetivo (oz)'), tr('Bien'), tr('Bajos'), tr('Sobre'), tr('% en peso'), tr('Promedio vs objetivo'))
   const from = out.length + 1
   for (const w of rows) row([xT(w.dept, wtRoom(w.dept)), xT(w.code, X.wCell), xT(w.label, X.wCell), xT(wtDoneText(w), w.due && w.complete + w.skipped.length < w.due ? X.bad : X.wCell), xN(w.short, w.short ? X.wNa : X.wN), xN(w.n, X.wN), w.avg == null ? xT('—', X.wCell) : xN(w.avg, X.wD), w.min == null ? xT('—', X.wCell) : xN(w.min, X.wD), w.max == null ? xT('—', X.wCell) : xN(w.max, X.wD), xT(wtRangeText(w.target) || '—', X.wCell), xN(w.good, w.good ? X.wNg : X.wN), xN(w.under, w.under ? X.wNr : X.wN), xN(w.over, w.over ? X.wNa : X.wN), wtPct(w.okPct), w.avgPct == null ? xT('—', X.wCell) : { v: Math.round(w.avgPct * 1000) / 1000, s: X.wP, t: pc(w.avgPct) }, xT(w.dept + ' ' + w.code + ' · ' + w.label, X.wHide)], 20)
