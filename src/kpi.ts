@@ -355,6 +355,51 @@ export type WtSummaryRow = { code: string; dept: Dept | ''; where: string; times
  * the colour and the corrective action; a bag under its minimum asks for one too, whatever the average (QA, 2026-10-29:
  * never under 48)
  */
+const wtPart = (s: State, of: WtRow[], code: string, kind: WeightTest['kind']): WtAvg => {
+  const ws = of.filter((w) => w.kind === kind).flatMap((w) => w.tests.flatMap((t) => t.entries.flatMap((e) => (e.w != null ? [e.w] : []))))
+  // (a target nobody gave is not shown to the heads as QA's)
+  const t = wtOfficial(s, code, kind) ? weightTarget(s, code, kind) : null, avg = ws.length ? Math.round((ws.reduce((a, b) => a + b, 0) / ws.length) * 100) / 100 : null
+  const r = t ? wtRange(t) : null
+  return { avg, n: ws.length, range: t ? wtRangeText(t) : '', ok: avg == null || !r ? null : avg < r.min ? 'under' : avg > r.max ? 'over' : 'ok' }
+}
+const wtSay = (name: string, x: WtAvg) => (x.ok === 'under' ? [tr('{0} bajo el rango de QA', name)] : x.ok === 'over' ? [tr('{0} sobre el rango de QA', name)] : [])
+export type WtBoardRow = { code: string; times: number; raw: WtAvg; cooked: WtAvg; pouch: WtAvg; result: string; action: boolean; weighed: boolean }
+/**
+ * What the whiteboard asked for, plainly (Jose, 2026-10-30: "mucha información ... más intuitivo, con menos información"):
+ * one line per code over the whole plant, how many times it was checked and the three averages against QA's range
+ */
+export function wtBoard(s: State, rows: WtRow[]): WtBoardRow[] {
+  const mine = rows.filter((w) => w.tests.length)
+  return WT_ASKED_CODES.map((code) => {
+    const of = mine.filter((w) => normCode(w.code) === normCode(code))
+    const raw = wtPart(s, of, code, 'raw'), cooked = wtPart(s, of, code, 'ball'), pouch = wtPart(s, of, code, 'pouch')
+    const hours = (k: WeightTest['kind']) => new Set(of.filter((w) => w.kind === k).flatMap((w) => w.tests.map((t) => Math.floor(t.at / 3_600_000)))).size
+    const light = pouch.range ? of.filter((w) => w.kind === 'pouch').reduce((t, w) => t + w.under, 0) : 0
+    const out = [...wtSay(tr('Crudo'), raw), ...wtSay(tr('Cocinado'), cooked), ...wtSay(tr('Pouch'), pouch), ...(light && pouch.ok !== 'under' ? [light === 1 ? tr('1 pouch bajo el mínimo') : tr('{0} pouches bajo el mínimo', light)] : [])]
+    return { code, times: Math.max(hours('raw'), hours('ball'), hours('pouch')), raw, cooked, pouch, result: !of.length ? tr('No se pesó este día') : out.length ? tr('Acción correctiva: {0}', out.join(' · ')) : tr('Todo dentro del rango de QA.'), action: out.length > 0, weighed: of.length > 0 }
+  })
+}
+/** the first thing they read: the whiteboard's line per code, in big numbers, and nothing else */
+export function wtBoardSheet(s: State, rows: WtRow[], date: string): Sheet {
+  const out: Cell[][] = [], heights: Record<number, number> = {}, merges: string[] = []
+  const row = (cells: Cell[], ht?: number) => { if (ht) heights[out.length] = ht; out.push(cells); return out.length }
+  const across = (text: string, style: number, ht: number) => { const r = row([xT(text, style), ...Array.from({ length: 4 }, () => xT('', style))], ht); merges.push('A' + r + ':E' + r) }
+  across(tr('Resumen de pesos'), X.wBand, 34)
+  across(niceDay(date), X.wSub, 22)
+  row([])
+  row([tr('Código'), tr('Veces revisado'), tr('Crudo prom.'), tr('Cocinado prom.'), tr('Pouch prom.')].map((x) => xT(x, X.wHead)), 30)
+  const big = (x: WtAvg): Cell => (x.avg == null ? xT('—', X.wBigN) : xT(x.avg.toFixed(2) + (x.ok === 'ok' ? ' ✓' : x.ok ? ' ✗' : ''), x.ok === 'ok' ? X.wBigG : x.ok === 'under' ? X.wBigR : x.ok === 'over' ? X.wBigA : X.wBigN))
+  const qa = (x: WtAvg): Cell => xT(x.avg == null ? '' : x.range ? tr('QA {0} oz', x.range) : tr('Falta el target de QA'), X.wcText)
+  for (const x of wtBoard(s, rows)) {
+    const r = row([xT(x.code, X.wBigN), xT(x.weighed ? String(x.times) : '0', X.wBigN), big(x.raw), big(x.cooked), big(x.pouch)], 48)
+    row([xT('', X.wcText), xT(tr('veces'), X.wcText), qa(x.raw), qa(x.cooked), qa(x.pouch)], 20)
+    merges.push('A' + r + ':A' + (r + 1))
+    across(x.result, x.action ? X.wBadW : x.weighed ? X.wGoodW : X.wLeft, 26)
+    row([], 10)
+  }
+  across(tr('Cada número es el promedio de todos los pesos del día, en onzas. ✓ verde = dentro del rango de QA. ✗ rojo = bajo el rango. ✗ ámbar = sobre el rango.'), X.note, 34)
+  return { name: tr('Resumen'), rows: out, freeze: 0, page: { widths: [16, 16, 24, 24, 24], heights, merges } }
+}
 export function wtSummary(s: State, rows: WtRow[]): WtSummaryRow[] {
   const mine = rows.filter((w) => w.tests.length)
   return WT_ASKED_CODES.flatMap((code) => {
@@ -365,17 +410,9 @@ export function wtSummary(s: State, rows: WtRow[]): WtSummaryRow[] {
     for (const w of all) if (!rooms.some((x) => x.dept === w.dept && x.cook === (w.cook ?? ''))) rooms.push({ dept: w.dept, cook: w.cook ?? '' })
     return rooms.map(({ dept, cook }): WtSummaryRow => {
     const of = all.filter((w) => w.dept === dept && (w.cook ?? '') === cook)
-    const part = (kind: WeightTest['kind']): WtAvg => {
-      const ws = of.filter((w) => w.kind === kind).flatMap((w) => w.tests.flatMap((t) => t.entries.flatMap((e) => (e.w != null ? [e.w] : []))))
-      // (a target nobody gave is not shown to the heads as QA's)
-      const t = wtOfficial(s, code, kind) ? weightTarget(s, code, kind) : null, avg = ws.length ? Math.round((ws.reduce((a, b) => a + b, 0) / ws.length) * 100) / 100 : null
-      const r = t ? wtRange(t) : null
-      return { avg, n: ws.length, range: t ? wtRangeText(t) : '', ok: avg == null || !r ? null : avg < r.min ? 'under' : avg > r.max ? 'over' : 'ok' }
-    }
-    const raw = part('raw'), cooked = part('ball'), pouch = part('pouch')
+    const raw = wtPart(s, of, code, 'raw'), cooked = wtPart(s, of, code, 'ball'), pouch = wtPart(s, of, code, 'pouch')
     const light = pouch.range ? of.filter((w) => w.kind === 'pouch').reduce((t, w) => t + w.under, 0) : 0
-    const say = (name: string, x: WtAvg) => (x.ok === 'under' ? [tr('{0} bajo el rango de QA', name)] : x.ok === 'over' ? [tr('{0} sobre el rango de QA', name)] : [])
-    const out = [...say(tr('Crudo'), raw), ...say(tr('Cocinado'), cooked), ...say(tr('Pouch'), pouch), ...(light && pouch.ok !== 'under' ? [light === 1 ? tr('1 pouch bajo el mínimo') : tr('{0} pouches bajo el mínimo', light)] : [])]
+    const out = [...wtSay(tr('Crudo'), raw), ...wtSay(tr('Cocinado'), cooked), ...wtSay(tr('Pouch'), pouch), ...(light && pouch.ok !== 'under' ? [light === 1 ? tr('1 pouch bajo el mínimo') : tr('{0} pouches bajo el mínimo', light)] : [])]
     const judged = [raw, cooked, pouch].some((x) => x.ok != null)
     // (what was weighed with no target of QA is said, never read as fine)
     const open_ = ([[tr('Crudo'), raw], [tr('Cocinado'), cooked], [tr('Pouch'), pouch]] as [string, WtAvg][]).filter(([, x]) => x.avg != null && x.ok == null).map(([t]) => t)
@@ -418,7 +455,7 @@ export function wtSummarySheet(s: State, rows: WtRow[], date: string): Sheet {
     const note = kpiNote(s, date, 'weights')
     if (note) { row([]); across(tr('Notas: {0}', note), X.note, 48) }
   }
-  return { name: tr('Resumen'), rows: out, freeze: 0, page: { widths: [9, 17, 10, 9, 10, 11, 11, 11, 10, 11, 42, 24], heights, merges }, ...(chart ? { chart } : {}) }
+  return { name: tr('Por departamento'), rows: out, freeze: 0, page: { widths: [9, 17, 10, 9, 10, 11, 11, 11, 10, 11, 42, 24], heights, merges }, ...(chart ? { chart } : {}) }
 }
 /**
  * A code's day as the plant's own Weight Control sheet, the one Santiago keeps (Jose, 2026-10-30: "así como está en el
@@ -504,7 +541,7 @@ export function wtControlSheet(s: State, rows: WtRow[], code: string, date: stri
   return { name: tr('Control de peso {0}', code), rows: Array.from({ length: g.length }, (_, i) => Array.from(g[i] ?? [])), freeze: 0, page: { widths: [...side(nL), 3, ...side(nR)], heights, merges } }
 }
 /** the file of the one-page button: the summary first, then each code as the plant's own sheet */
-export const wtSummaryBook = (s: State, rows: WtRow[], date: string): Sheet[] => [wtSummarySheet(s, rows, date), ...WT_ASKED_CODES.map((c) => wtControlSheet(s, rows, c, date))]
+export const wtSummaryBook = (s: State, rows: WtRow[], date: string): Sheet[] => [wtBoardSheet(s, rows, date), wtSummarySheet(s, rows, date), ...WT_ASKED_CODES.map((c) => wtControlSheet(s, rows, c, date))]
 const WT_LAST = 'P' // the band reaches the last column of the tables
 const WT_WIDTHS = [11, 9, 19, 11, 11, 9, 10, 9, 9, 11, 8, 8, 8, 13, 12, 18]
 const wtRoom = (d: Dept) => (d === 'Kitchen' ? X.wKitchen : d === 'RTE' ? X.wRTE : d === 'Spiral' ? X.wSpiral : X.wCell)

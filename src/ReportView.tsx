@@ -4,7 +4,7 @@ import { cookText as cookTextOf, entryClass as entryClassOf, expiryOf, wtRangeTe
 import { avanceRows, mfoText, mfoWord, pending } from './avance'
 import { codeLabel, FAMILY_SHOWN, reasonCodeOf } from './reasons'
 import { cellText, loadZip, X, xDur, xN, xPct, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
-import { cookYields, hoursOf, seesLabor, weightsOf, wtCompliance, wtDoneText, wtOfReport, wtSheetRows, wtSheets, wtShift, wtSum, wtSummary, wtSummaryBook, type WtAvg, type WtRow } from './kpi'
+import { cookYields, hoursOf, seesLabor, weightsOf, wtCompliance, wtDoneText, wtOfReport, wtSheetRows, wtSheets, wtShift, wtSum, wtBoard, wtSummary, wtSummaryBook, type WtAvg, type WtRow } from './kpi'
 import { attendanceOf, attLineText, attMovesText, attOf, attShifts, attStateText } from './store'
 import { COOKS, consumesOf, inventoryOf, stepText, weightEdit, weightsFix, weightTarget, wtKindsOf, wtPicksCode, type Cook, type Dept as RoomDept, type WeightTest, type WtEntry } from './store'
 import { pctText } from './Attendance'
@@ -1536,6 +1536,8 @@ function WeightsView({ k }: { k: Kit }) {
   const [editing, setEditing] = useState<{ t: WeightTest; w: WtRow } | null>(null)
   // the summary on the screen, to see it and decide without opening a file (Jose, 2026-10-30)
   const summaryRows = useMemo(() => wtSummary(s, weightsOf(s, date, now)), [s, date])
+  const boardRows = useMemo(() => wtBoard(s, weightsOf(s, date, now)), [s, date])
+  const bigCell = (label: string, x: WtAvg) => <div className={'wt-big ' + (x.ok === 'ok' ? 'ok' : x.ok === 'under' ? 'bad' : x.ok === 'over' ? 'warn' : '')}><small>{label}</small><b>{x.avg == null ? '—' : x.avg.toFixed(2) + (x.ok === 'ok' ? ' ✓' : x.ok ? ' ✗' : '')}</b><small>{x.avg == null ? '' : x.range ? tr('QA {0} oz', x.range) : tr('Falta el target de QA')}</small></div>
   // Kitchen's tests under a mix code reach neither code: said here, not in the file for the heads
   const mixed = [...new Set(wt.rows.filter((r) => wtPicksCode(r.dept, r.code) && r.tests.length).map((r) => r.code))]
   const avgCell = (x: WtAvg) => <td className={'n' + (x.ok === 'ok' ? ' ok' : x.ok === 'under' ? ' red' : x.ok === 'over' ? ' amber' : '')}>{x.avg == null ? '—' : <b>{x.avg.toFixed(2)}</b>}{x.avg != null && <small> {x.range || tr('Pendiente')}</small>}</td>
@@ -1560,9 +1562,16 @@ function WeightsView({ k }: { k: Kit }) {
       {wt.rows.length > 0 && <div className="btns"><button type="button" className="btn primary" onClick={() => void summary()}>{tr('⬇ Resumen y control de peso')}</button><button type="button" className="btn soft" onClick={() => void sheets()}>{tr('⬇ Excel de pesos: Turno 1, Turno 2 y Todos')}</button></div>}
       {fixing && <WeightsFixDialog s={s} row={fixing} onClose={() => setFixing(null)} />}
       {editing && <WeightTestDialog s={s} test={editing.t} row={editing.w} onClose={() => setEditing(null)} />}
+      <div className="wt-board">{boardRows.map((x) => (
+        <article key={x.code} className="wt-boardrow">
+          <div className="wt-boardhead"><b>{x.code}</b><span>{tr('{0} veces', x.times)}</span></div>
+          <div className="wt-bigs">{bigCell(tr('Crudo prom.'), x.raw)}{bigCell(tr('Cocinado prom.'), x.cooked)}{bigCell(tr('Pouch prom.'), x.pouch)}</div>
+          <p className={x.action ? 'red' : x.weighed ? 'ok' : 'muted'}>{x.result}</p>
+        </article>
+      ))}</div>
       {mixed.length > 0 && <p className="hint amber">{tr('Kitchen tiene pesos con el código {0}: no salen en el resumen. Toca Corregir y ponles 0889 o 2234.', mixed.join(', '))}</p>}
       <article className="wt-rp">
-        <h3>{tr('Resumen de pesos')} <WhatIs id="peso-resumen" /></h3>
+        <h3>{tr('Por departamento')} <WhatIs id="peso-resumen" /></h3>
         <div className="scroll"><table className="wt-rp-tbl">
           <thead><tr><th>{tr('Código')}</th><th>{tr('Departamento')}</th><th className="n">{tr('Veces revisado')}</th><th className="n">{tr('% en peso')}</th><th className="n">{tr('Crudo prom. (oz)')}</th><th className="n">{tr('Cocinado prom. (oz)')}</th><th className="n">{tr('Pouch prom. (oz)')}</th><th>{tr('Resultado')}</th></tr></thead>
           <tbody>{summaryRows.map((x) => (

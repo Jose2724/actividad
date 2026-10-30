@@ -3134,4 +3134,12 @@ export const EN: Record<string, string> = {
   "Cocinador": "Cooker",
   "Sin cocinador": "No cooker",
   "Spiral: sin cocinador": "Spiral: no cooker recorded",
+  "Crudo prom.": "Raw Avg",
+  "Cocinado prom.": "Cooked Avg",
+  "Pouch prom.": "Pouch Avg",
+  "QA {0} oz": "QA {0} oz",
+  "veces": "times",
+  "{0} veces": "{0} times",
+  "Por departamento": "By department",
+  "Cada número es el promedio de todos los pesos del día, en onzas. ✓ verde = dentro del rango de QA. ✗ rojo = bajo el rango. ✗ ámbar = sobre el rango.": "Each number is the average of all the day's weights, in ounces. Green ✓ = inside the QA range. Red ✗ = under the range. Amber ✗ = over the range.",
 }
