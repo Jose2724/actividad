@@ -1270,15 +1270,17 @@ export function weightsFix(ids: string[], code: string, kind: WeightTest['kind']
 }
 /**
  * One test put right from the report (Jose, 2026-10-30, the real day read 242 for 2.42 and 98 for 0.98, and a test of
- * 2234 went in under 0889): its weights, its code and what was weighed; its hour, line and who took it stay. A weight
- * left blank goes, at least one stays. In the history, with what it said before
+ * 2234 went in under 0889): its weights, its code, what was weighed and Spiral's cooker (the tests of before the cookers
+ * were asked have none, so they read apart: Jose, 2026-10-30); its hour, line and who took it stay. A weight left blank
+ * goes, at least one stays. In the history, with what it said before
  */
-export function weightEdit(id: string, entries: WtEntry[], code: string, kind: WeightTest['kind']): boolean {
+export function weightEdit(id: string, entries: WtEntry[], code: string, kind: WeightTest['kind'], cook?: Cook): boolean {
   const was = (state.weights ?? []).find((x) => x.id === id && !x.deleted), c = code.trim().toUpperCase(), es = wtEntries({ entries, unit: 'oz' })
   if (!was || !c || !es.length) return false
-  const say = (x: { code: string; kind: WeightTest['kind']; entries: WtEntry[] }) => x.code + ' · ' + stepText({ kind: x.kind }) + ' · ' + x.entries.map((e) => e.w ?? (e.k === 'sobre' ? '▲' : '▼')).join(', ')
-  if (say(was) === say({ code: c, kind, entries: es })) return false
-  const x: WeightTest = { ...was, code: c, kind, entries: es, updatedAt: stamp(was) }
+  const say = (x: { code: string; kind: WeightTest['kind']; cook?: Cook; entries: WtEntry[] }) => x.code + ' · ' + stepText({ kind: x.kind, ...(x.cook ? { cook: x.cook } : {}) }) + ' · ' + x.entries.map((e) => e.w ?? (e.k === 'sobre' ? '▲' : '▼')).join(', ')
+  const k = cook ?? was.cook
+  if (say(was) === say({ code: c, kind, entries: es, ...(k ? { cook: k } : {}) })) return false
+  const x: WeightTest = { ...was, code: c, kind, entries: es, ...(k ? { cook: k } : {}), updatedAt: stamp(was) }
   batch(() => {
     set({ ...state, weights: [...(state.weights ?? []).filter((y) => y.id !== id), x] })
     push('act_changes', WT_ID + x.id, rowOfWt(x))

@@ -6,7 +6,7 @@ import { codeLabel, FAMILY_SHOWN, reasonCodeOf } from './reasons'
 import { cellText, loadZip, X, xDur, xN, xPct, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 import { cookYields, hoursOf, seesLabor, weightsOf, wtCompliance, wtDoneText, wtOfReport, wtSheetRows, wtSheets, wtShift, wtSum, wtSummary, wtSummaryBook, type WtAvg, type WtRow } from './kpi'
 import { attendanceOf, attLineText, attMovesText, attOf, attShifts, attStateText } from './store'
-import { consumesOf, inventoryOf, stepText, weightEdit, weightsFix, weightTarget, wtKindsOf, wtPicksCode, type Dept as RoomDept, type WeightTest, type WtEntry } from './store'
+import { COOKS, consumesOf, inventoryOf, stepText, weightEdit, weightsFix, weightTarget, wtKindsOf, wtPicksCode, type Cook, type Dept as RoomDept, type WeightTest, type WtEntry } from './store'
 import { pctText } from './Attendance'
 import { buildPdf, loadPdf, type Part } from './pdf'
 import { homeScreenApple, type Kind } from './send'
@@ -1644,7 +1644,8 @@ function WeightTestDialog({ s, test, row, onClose }: { s: State; test: WeightTes
   const [texts, setTexts] = useState(() => test.entries.map((e) => (e.w != null ? String(e.w) : '')))
   const [code, setCode] = useState(test.code)
   const [kind, setKind] = useState(test.kind)
-  const clean = code.trim().toUpperCase(), target = weightTarget(s, clean, kind, test.cook)
+  const [cook, setCook] = useState<Cook | ''>(test.cook ?? '')
+  const clean = code.trim().toUpperCase(), target = weightTarget(s, clean, kind, cook || undefined)
   const num = (t: string) => Number(t.replace(',', '.'))
   // (a mark of the old buttons, with no number, stays as it was unless a weight is written over it)
   const entries = test.entries.flatMap((e, i): WtEntry[] => (texts[i].trim() ? [{ w: num(texts[i]) }] : e.w == null ? [e] : []))
@@ -1657,6 +1658,7 @@ function WeightTestDialog({ s, test, row, onClose }: { s: State; test: WeightTes
         <div className="wt-editbar">
           <label>{tr('Código')} <input value={code} onChange={(e) => setCode(e.target.value.replace(/[^\w-]/g, ''))} /></label>
           <label>{tr('Qué se pesó')} <select value={kind} onChange={(e) => setKind(e.target.value as WtRow['kind'])}>{wtKindsOf(row.dept).map((x) => <option key={x} value={x}>{stepText({ kind: x })}</option>)}</select></label>
+          {row.dept === 'Spiral' && <label>{tr('Cocinador')} <select value={cook} onChange={(e) => setCook(e.target.value as Cook | '')}>{!test.cook && <option value="">{tr('Sin cocinador')}</option>}{COOKS.map((c) => <option key={c} value={c}>{cookTextOf(c)}</option>)}</select></label>}
         </div>
         <div className="wt-edits">{texts.map((t, i) => { const c = t.trim() && target ? entryClassOf({ w: num(t) }, target) : ''; return (
           <label key={i} className={'wt-edit ' + c}>#{i + 1} <input inputMode="decimal" value={t} placeholder={test.entries[i].k ? (test.entries[i].k === 'sobre' ? '▲' : '▼') : ''} onChange={(e) => setTexts(texts.map((x, j) => (j === i ? e.target.value.replace(/[^\d.,]/g, '') : x)))} /></label>
@@ -1664,7 +1666,7 @@ function WeightTestDialog({ s, test, row, onClose }: { s: State; test: WeightTes
         <p className="hint">{target ? tr('Objetivo con esto: {0} oz', wtRangeText(target)) : tr('Este código no tiene objetivo para eso: ponlo en Ajustes › KPI.')}</p>
         <div className="dbtns">
           <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
-          <button type="button" className="btn primary" disabled={!clean || bad || none} onClick={() => { weightEdit(test.id, entries, clean, kind); onClose() }}>{tr('Guardar')}</button>
+          <button type="button" className="btn primary" disabled={!clean || bad || none} onClick={() => { weightEdit(test.id, entries, clean, kind, cook || undefined); onClose() }}>{tr('Guardar')}</button>
         </div>
       </div>
     </div>
