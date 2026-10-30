@@ -400,7 +400,10 @@ export function wtBoardSheet(s: State, rows: WtRow[], date: string): Sheet {
     across(x.result, x.action ? X.wBadW : x.weighed ? X.wGoodW : X.wLeft, 26)
     row([], 10)
   }
-  across(tr('Cada número es el promedio de todos los pesos del día, en onzas. ✓ verde = dentro del rango de QA. ✗ rojo = bajo el rango. ✗ ámbar = sobre el rango.'), X.note, 34)
+  // what the colours say, in the colours themselves (Jose, 2026-10-30: "que los colores digan qué significa")
+  { const r = row([xT(tr('Colores'), X.wcBold), xT('', X.wcBold), xT(tr('✓ Dentro del objetivo'), X.wGoodW), xT(tr('✗ Bajo el objetivo'), X.wBadW), xT(tr('✗ Sobre el objetivo'), X.wWarnW)], 28); merges.push('A' + r + ':B' + r) }
+  row([], 8)
+  across(tr('Cada número es el promedio de todos los pesos del día, en onzas.'), X.note, 22)
   return { name: tr('Resumen'), rows: out, freeze: 0, page: { widths: [16, 16, 27, 27, 27], heights, merges } }
 }
 export function wtSummary(s: State, rows: WtRow[]): WtSummaryRow[] {

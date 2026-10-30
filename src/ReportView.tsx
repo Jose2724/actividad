@@ -1569,6 +1569,7 @@ function WeightsView({ k }: { k: Kit }) {
           <p className={x.action ? 'red' : x.weighed ? 'ok' : 'muted'}>{x.result}</p>
         </article>
       ))}</div>
+      <div className="wt-legend"><span className="ok">{tr('✓ Dentro del objetivo')}</span><span className="bad">{tr('✗ Bajo el objetivo')}</span><span className="warn">{tr('✗ Sobre el objetivo')}</span></div>
       {mixed.length > 0 && <p className="hint amber">{tr('Kitchen tiene pesos con el código {0}: no salen en el resumen. Toca Corregir y ponles 0889 o 2234.', mixed.join(', '))}</p>}
       <article className="wt-rp">
         <h3>{tr('Por departamento')} <WhatIs id="peso-resumen" /></h3>

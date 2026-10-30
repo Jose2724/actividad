@@ -5780,6 +5780,7 @@ section('Pesos escritos con otro código o como crudo: se corrigen desde el Repo
     const tablero = m.wtBoard(st(), sumRows())
     eq('el resumen del pizarrón: una línea por código, sumando cuartos, con veces y los tres promedios', tablero.map((x) => [x.code, x.weighed, x.cooked.ok != null, x.pouch.avg != null, typeof x.result]), [['0889', true, true, true, 'string'], ['2234', true, false, true, 'string']])
     eq('su hoja es corta: título, día, encabezado y nada de departamentos', ((h) => [h.name, h.rows.flat().map((c) => m.cellText(c)).includes('Kitchen'), h.rows.flat().map((c) => m.cellText(c)).includes('Objetivo 2.60–2.80 oz')])(m.wtBoardSheet(st(), sumRows(), DAY)), ['Resumen', false, true])
+    eq('el resumen dice qué significa cada color', ['✓ Dentro del objetivo', '✗ Bajo el objetivo', '✗ Sobre el objetivo'].map((t) => m.wtBoardSheet(st(), sumRows(), DAY).rows.flat().map((c) => m.cellText(c)).includes(t)), [true, true, true])
     eq('es una hoja y dice cómo leerla', [hoja.name, hoja.rows.flat().some((c) => m.cellText(c).startsWith('Cómo leerlo')), hoja.rows.flat().some((c) => m.cellText(c) === '1 de 2 códigos necesitan acción correctiva.')], ['Por departamento', true, true])
     const sent = JSON.parse(m.outbox.items().find((i) => i.key === 'wt:' + a.id)?.row.after ?? '{}')
     eq('la corrección sube al servidor', [sent.code, sent.kind, sent.entries.length], ['0889', 'ball', 4])
