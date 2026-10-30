@@ -1,4 +1,4 @@
-import { apartOf, binOf, binWord, CFG, cfgOf, DEPTS, expiryOf, fmtDur, fmtTime, kindOf, lineLabel, lineNameOf, normCode, noteLabel, noteOf, orderLabel, orderOfId, orderPallets, palletPo, plainDay, plainText, runInShift, runStats, SETUP, shiftAt, shiftPieces, shiftsOf, stopSpans, unitQty, waitsForCode, whoText, type Change, type Dept, type Run, type ShiftHours, type State, type Unit, meatsOf} from './store'
+import { apartOf, binOf, binWord, CFG, cfgOf, countedUnits, DEPTS, expiryOf, joinedInto, fmtDur, fmtTime, kindOf, lineLabel, lineNameOf, normCode, noteLabel, noteOf, orderLabel, orderOfId, orderPallets, palletPo, plainDay, plainText, runInShift, runStats, SETUP, shiftAt, shiftPieces, shiftsOf, stopSpans, unitQty, waitsForCode, whoText, type Change, type Dept, type Run, type ShiftHours, type State, type Unit, meatsOf} from './store'
 import { clockNow } from './clock'
 import { xDay, xDur, xTime, type Cell } from './xlsx'
 import { phrase, tr } from './i18n'
@@ -87,7 +87,8 @@ export function reportOf(s: State, date: string, now: number, f: ReportFilter = 
     // the lots this line of the report is about: the one chosen, or every lot the run has touched
     // the first and the last moment of the run that count in what is in view (all of it, or its part in one shift)
     const from = sh ? sh.from : r.startedAt, to = sh ? sh.to : r.endedAt ?? now
-    return { r, st, view, from, to, units: view.units.length, timed: k ? mine.length : r.units.length, qty, waste, parts, lots: lot || [...runLots(s, r)].filter(Boolean).join(', '), shifts: spanShifts(plan, r.startedAt, r.endedAt ?? now), here: !sh || sh.touched || mine.length > 0 }
+    // (a short pallet finished by another is that one's pallet, 2026-10-29: its cases count here, not as a pallet)
+    return { r, st, view, from, to, units: countedUnits(view.units).length, timed: k ? mine.length : r.units.length, qty, waste, parts, lots: lot || [...runLots(s, r)].filter(Boolean).join(', '), shifts: spanShifts(plan, r.startedAt, r.endedAt ?? now), here: !sh || sh.touched || mine.length > 0 }
   }
   const rowsOf = (k: 0 | 1 | 2) => kept.map((r) => rowOf(r, k)).filter((x) => x.here)
   const rows = rowsOf(shift), runs = rows.map((x) => x.r)
@@ -186,13 +187,20 @@ export function reportOf(s: State, date: string, now: number, f: ReportFilter = 
   // place among that order's pallets (3/12). The pallet a line is building is there too, while it is built (open).
   // With a lot chosen, the pallets that hold it, whole.
   // (note: the comment typed on the pallet, '' = none; the pallet being built has none yet)
-  const palletOf = (r: Run, n: number, at: number, parts: { lot: string; qty: number | null; tag: string }[], po: string | undefined, by: string, open: boolean, note = '') => {
+  const palletOf = (r: Run, n: number, at: number, parts: { lot: string; qty: number | null; tag: string; from?: string }[], po: string | undefined, by: string, open: boolean, note = '', part = '') => {
     const o = orderOfId(s, po), seq = o ? orderPallets(s, o.id, r.perUnit) : null
-    const of: [number, number | null] | null = seq ? [open ? seq.done.length + 1 : seq.done.indexOf(at) + 1, seq.need] : null
-    return { r, n, at, parts, total: parts.reduce((t, p) => t + (p.qty ?? 0), 0), order: o ? orderLabel(o) : '', of, shift: shiftAt(planOf(r.dept), at), by, open, note }
+    const of: [number, number | null] | null = seq && !part ? [open ? seq.done.length + 1 : seq.done.indexOf(at) + 1, seq.need] : null
+    return { r, n, at, parts, total: parts.reduce((t, p) => t + (p.qty ?? 0), 0), order: o ? orderLabel(o) : '', of, shift: shiftAt(planOf(r.dept), at), by, open, note, part }
   }
+  // a short pallet another one finished (2026-10-29) goes with it, each part saying its shift and who made it; alone,
+  // only when the pallet that finished it is not in view (another day, line or filter), saying whose part it is
+  const inView = (into: { run: string; at: number }) => rows.some((y) => y.r.id === into.run && y.view.units.some((v) => v.at === into.at))
+  const joinedParts = (r: Run, u: Unit) => joinedInto(s, r.id, u.at).flatMap((j) => unitParts(s, j.r, j.u).map((p) => ({ ...p, from: tr('turno {0} · {1}', shiftAt(planOf(j.r.dept), j.u.at), j.u.by || '—') })))
+  const partOf = (into: { run: string; at: number }) => { const f = s.runs.find((y) => y.id === into.run), fu = f?.units.find((v) => v.at === into.at); return f && fu ? tr('parte del pallet que terminó {0} ({1}, {2})', fu.by || '—', lineNameOf(s, f.lineId, f.line), f.date) : tr('parte de otro pallet') }
   const pallets = rows.filter((x) => x.r.dept === 'Packing' && !binOf(x.r)).flatMap((x) => {
-    const done = x.view.units.map((u) => palletOf(x.r, x.r.units.indexOf(u) + 1, u.at, unitParts(s, x.r, u), u.po, u.by, false, u.note ?? ''))
+    const done = x.view.units.filter((u) => !u.into || !inView(u.into)).map((u) => (u.into
+      ? palletOf(x.r, x.r.units.indexOf(u) + 1, u.at, unitParts(s, x.r, u), u.po, u.by, false, u.note ?? '', partOf(u.into))
+      : palletOf(x.r, x.r.units.indexOf(u) + 1, u.at, [...unitParts(s, x.r, u), ...joinedParts(x.r, u)], u.po, u.by, false, u.note ?? '')))
     const o = x.r.endedAt ? null : x.r.extra?.open, last = o?.parts.length ? o.parts[o.parts.length - 1] : null
     const building = o && last && (!lot || o.parts.some((p) => p.lot === lot)) && (!shift || o.parts.some((p) => shiftAt(planOf(x.r.dept), p.at) === shift)) ? [palletOf(x.r, x.r.units.length + 1, last.at, o.parts, palletPo(s, x.r), last.by, true)] : []
     return [...done, ...building]
@@ -261,7 +269,7 @@ export function runsSheet(s: State, rep: Report): Cell[][] {
 export function palletsSheet(s: State, rep: Report): Cell[][] {
   const T = (ms: number) => xTime(ms, fmtTime(ms))
   return [[tr('Pallet'), tr('Línea'), tr('Código'), tr('Lote'), tr('Vence'), tr('Cajas'), tr('Tag'), tr('Total del pallet'), 'PO', tr('Pallet del PO'), tr('Hora'), tr('Turno'), tr('Registró'), tr('Comentario')],
-    ...rep.pallets.flatMap((p) => p.parts.map((x, i): Cell[] => [p.n, lineNameOf(s, p.r.lineId, p.r.line), p.r.code, x.lot, ((e) => (e ? xDay(e) : ''))(expiryOf(s, p.r.code, x.lot, p.r.date)), x.qty ?? '', x.tag, i === 0 ? p.total : '', p.order, p.of ? (p.of[1] ? tr('pallet {0} de {1}', p.of[0], p.of[1]) : String(p.of[0])) : '', p.open ? tr('en armado') : T(p.at), p.shift, p.by, i === 0 ? p.note : '']))]
+    ...rep.pallets.flatMap((p) => p.parts.map((x, i): Cell[] => [p.n, lineNameOf(s, p.r.lineId, p.r.line), p.r.code, x.lot, ((e) => (e ? xDay(e) : ''))(expiryOf(s, p.r.code, x.lot, p.r.date)), x.qty ?? '', x.tag + ('from' in x && x.from ? ' (' + x.from + ')' : ''), i === 0 ? p.total : '', p.order, p.of ? (p.of[1] ? tr('pallet {0} de {1}', p.of[0], p.of[1]) : String(p.of[0])) : '', p.open ? tr('en armado') : T(p.at), p.shift, p.by, i === 0 ? [p.part, p.note].filter(Boolean).join(' · ') : '']))]
 }
 export function unitsSheet(s: State, rep: Report): Cell[][] {
   const T = (ms: number) => xTime(ms, fmtTime(ms)), D = (ms: number) => xDur(ms, fmtDur(ms))

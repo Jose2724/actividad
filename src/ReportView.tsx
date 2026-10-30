@@ -1465,12 +1465,12 @@ function PalletsView({ k }: { k: Kit }) {
                     {p.parts.map((x, i) => (
                       <tr key={i}>
                         {i === 0 && acts(spanOf(p.r), p.r.dept, () => setDetail({ runId: p.r.id, at: unitAt }), () => setEditRun({ id: p.r.id, at: unitAt }), span)}
-                        {i === 0 && <td rowSpan={span}><b>{hl(p.n, toks)}</b>{p.open && <small className="building">{tr('en armado')}</small>}{span > 1 && <small className="manylots">{trx('{0} lotes', span)}</small>}</td>}
+                        {i === 0 && <td rowSpan={span}><b>{p.part ? '↳' : hl(p.n, toks)}</b>{p.part && <small className="joined">{p.part}</small>}{p.open && <small className="building">{tr('en armado')}</small>}{span > 1 && <small className="manylots">{trx('{0} lotes', span)}</small>}</td>}
                         {i === 0 && <td rowSpan={span}><b className="code">{hl(p.r.code, toks)}</b></td>}
                         <td className={(rep.lot && x.lot === rep.lot ? 'hit' : '') + (span > 1 ? ' part' : '')}>{span > 1 && <small className="lotno">{tr('lote {0} de {1}', i + 1, span)}</small>}{hl(x.lot, toks)}{looksLikeTwoLots(x.lot) && <small className="twolots-mark" title={tr('Parece dos lotes escritos juntos: se separan desde Corregir, con ✎ en el pallet, poniendo las cajas de cada lote.')}>{tr('¿dos lotes juntos?')}</small>}</td>
                         <td>{((e) => (e ? shortDay(e) : '—'))(expiryOf(s, p.r.code, x.lot, p.r.date))}</td>
                         <td className="num">{x.qty != null ? fmtN(x.qty) : '—'}</td>
-                        <td>{x.tag ? hl(x.tag, toks) : <span className="notag">{tr('sin tag')}</span>}</td>
+                        <td>{x.tag ? hl(x.tag, toks) : <span className="notag">{tr('sin tag')}</span>}{'from' in x && x.from && <small className="joined"> · {x.from}</small>}</td>
                         {i === 0 && <td rowSpan={span} className="num"><b>{fmtN(p.total)}</b></td>}
                         {i === 0 && <td rowSpan={span}>{p.order ? <>{hl(p.order, toks)}{p.of && <b className="pof">{ofText(p.of)}</b>}</> : '—'}</td>}
                         {i === 0 && <td rowSpan={span}>{hl(lineNameOf(s, p.r.lineId, p.r.line), toks)}</td>}

@@ -57,7 +57,13 @@ export type Line = { id: string; dept: Dept; name: string; updatedAt: number; de
  * person. Kept as that one is: '' = it had one and it was cleared on purpose (the key stays, so a merge tells it from
  * a version written by a build of before, which drops what it does not know: see unitOf, noteBack and mergeRun)
  */
-export type Unit = { at: number; qty: number | null; ref: string; by: string; lots?: LotPart[]; po?: string; note?: string }
+/**
+ * into (Jose, 2026-10-29, Packing's PO 117973674 read "3 de 2": the first shift left a pallet short at 32 and the second
+ * put the 16 it lacked on that same pallet, registered as a new one): a short pallet that another one finished. Its
+ * cases are still its own, with its shift and who made them; the pallet is the one that finished it ("el que terminó
+ * la paleta, a ese se le da esa paleta"), which shows these parts with its own. Packing's pallets only
+ */
+export type Unit = { at: number; qty: number | null; ref: string; by: string; lots?: LotPart[]; po?: string; note?: string; into?: { run: string; at: number } }
 /** the part of a unit that belongs to one lot: a pallet can carry cases of two lots of the same product */
 export type LotPart = { lot: string; qty: number; tag?: string }
 /** the lots written on a unit, as they are kept: only real ones (a lot, and a quantity above zero); none = the run's lot */
@@ -68,7 +74,7 @@ export const cleanLots = (x: unknown): LotPart[] | undefined => {
 }
 /** a unit as it is kept, whatever shape it arrives in (an older version of the app, the server) */
 // (the comment last, also when it is '': the same unit read from the server and from this device is written the same)
-const unitOf = (u: Partial<Unit>): Unit => { const lots = cleanLots(u.lots); return { at: u.at ?? 0, qty: u.qty ?? null, ref: u.ref ?? '', by: u.by ?? '', ...(lots ? { lots } : {}), ...(typeof u.po === 'string' && u.po ? { po: u.po } : {}), ...(typeof u.note === 'string' ? { note: cleanNote(u.note) } : {}) } }
+const unitOf = (u: Partial<Unit>): Unit => { const lots = cleanLots(u.lots); return { at: u.at ?? 0, qty: u.qty ?? null, ref: u.ref ?? '', by: u.by ?? '', ...(lots ? { lots } : {}), ...(typeof u.po === 'string' && u.po ? { po: u.po } : {}), ...(typeof u.note === 'string' ? { note: cleanNote(u.note) } : {}), ...(u.into && typeof u.into === 'object' && typeof u.into.run === 'string' && u.into.run && Number(u.into.at) > 0 ? { into: { run: u.into.run, at: Number(u.into.at) } } : {}) } }
 /** "6283: 20 + 6284: 16" */
 export const lotsText = (lots: LotPart[] | undefined) => (lots?.length ? lots.map((l) => l.lot + ': ' + l.qty + (l.tag ? ' (tag ' + l.tag + ')' : '')).join(' + ') : '')
 /**
@@ -2016,7 +2022,7 @@ export const palletPo = (s: State, r: Run) => (typeof r.extra?.open?.po === 'str
 /** the pallets an order has, in the order they were finished, and how many it needs (its cases ÷ cases per pallet) */
 export function orderPallets(s: State, orderId: string, perPallet?: number | null) {
   const o = s.orders.find((x) => x.id === orderId)
-  const units = orderRunsOf(s, orderId).flatMap((r) => r.units.filter((u) => u.po === orderId)).sort((a, b) => a.at - b.at)
+  const units = orderRunsOf(s, orderId).flatMap((r) => r.units.filter((u) => u.po === orderId && !u.into)).sort((a, b) => a.at - b.at)
   const done = units.map((u) => u.at)
   // the size of a pallet of this order: the line's; else the biggest of what its runs said at start, the biggest pallet
   // made for it, and Productos' — a pallet never holds more than its size, so the biggest seen is the real one
@@ -2865,6 +2871,57 @@ export function deleteOrder(id: string) {
 export function loosePalletsOf(s: State, code: string) {
   return s.runs.filter((r) => !r.deleted && r.dept === 'Packing' && !binOf(r) && normCode(r.code) === normCode(code))
     .flatMap((r) => r.units.filter((u) => !orderOfId(s, u.po)).map((u) => ({ r, u }))).sort((a, b) => b.u.at - a.u.at)
+}
+// ---- a short pallet finished by another (2026-10-29) ----
+/** the units that count as pallets (or carts, mezclas…): all but the short pallets another one finished */
+export const countedUnits = (units: Unit[]) => units.filter((u) => !u.into)
+/** the short pallets joined into a pallet, with their runs: its other parts */
+export function joinedInto(s: State, runId: string, at: number): { r: Run; u: Unit }[] {
+  return s.runs.flatMap((r) => (r.deleted ? [] : r.units.filter((u) => u.into?.run === runId && u.into.at === at).map((u) => ({ r, u }))))
+}
+/** what a pallet holds with the parts joined into it (its cases and theirs) */
+export const palletTotal = (s: State, r: Run, u: Unit) => unitQty(s, r, u) + joinedInto(s, r.id, u.at).reduce((t, x) => t + unitQty(s, x.r, x.u), 0)
+/** a pallet's size: its run's cases per pallet, else Productos' */
+const palletSize = (s: State, r: Run) => r.perUnit || productOf(s, r.code)?.casesPerPallet || 0
+/**
+ * the short pallets a pallet of a run could have finished: Packing's pallets of the same code of the last three days,
+ * not joined to another and with none joined to them, with fewer cases than a pallet holds and room for this one's
+ * (when its cases are known), of the same PO (or both without), the newest first; never the pallet itself
+ */
+export function palletsToFinish(s: State, r: Run, po: string, qty: number | null, but?: number): { r: Run; u: Unit; size: number }[] {
+  if (r.dept !== 'Packing' || binOf(r)) return []
+  const from = dayBefore(dayBefore(r.date))
+  return s.runs.filter((x) => !x.deleted && x.dept === 'Packing' && !binOf(x) && normCode(x.code) === normCode(r.code) && x.date >= from && x.date <= r.date)
+    .flatMap((x) => x.units.map((u) => ({ r: x, u, size: palletSize(s, x) })))
+    .filter(({ r: x, u, size }) => !(x.id === r.id && u.at === but) && !u.into && size > 0 && unitQty(s, x, u) < size && (qty == null || unitQty(s, x, u) + qty <= size) && (u.po ?? '') === (po ?? '') && !joinedInto(s, x.id, u.at).length)
+    .sort((a, b) => b.u.at - a.u.at)
+}
+/**
+ * a short pallet joined into the pallet that finished it: its cases stay its own (its shift, who made them), the
+ * pallet goes to the one that finished it. The one that finishes takes the short one's PO when it has none. Not a
+ * pallet already joined, nor one with others joined to it (no chains), nor of another code or another PO.
+ */
+export function joinPallet(shortRun: string, shortAt: number, finRun: string, finAt: number): boolean {
+  const a = run(shortRun), b = run(finRun)
+  const su = a?.units.find((u) => u.at === shortAt), fu = b?.units.find((u) => u.at === finAt)
+  if (!a || !b || !su || !fu || (a.id === b.id && shortAt === finAt) || a.dept !== 'Packing' || b.dept !== 'Packing' || binOf(a) || binOf(b) || normCode(a.code) !== normCode(b.code)) return false
+  if (su.into || fu.into || joinedInto(state, a.id, shortAt).length || (su.po && fu.po && su.po !== fu.po)) return false
+  batch(() => {
+    if (su.po && !fu.po) { const now = run(finRun)!; putRun({ ...now, units: now.units.map((u) => (u.at === finAt ? { ...u, po: su.po } : u)) }) }
+    const now = run(shortRun)!
+    putRun({ ...now, units: now.units.map((u) => (u.at === shortAt ? { ...u, into: { run: finRun, at: finAt } } : u)) })
+  })
+  const n = (x: Run, at: number) => x.units.findIndex((u) => u.at === at) + 1
+  logChange(a.dept, 'Corrida ' + a.code + ' del ' + a.date + ' (' + a.dept + ', ' + lineNameOf(state, a.lineId, a.line) + ') · Pallet ' + n(a, shortAt) + ' · lo terminó otro pallet', '', tr('Pallet {0} de {1} ({2}, {3})', n(b, finAt), lineNameOf(state, b.lineId, b.line), b.date, fu.by || '—'), 'act_runs', a.id)
+  return true
+}
+/** a short pallet taken back from the pallet it was joined to: a pallet of its own again */
+export function unjoinPallet(shortRun: string, shortAt: number): boolean {
+  const a = run(shortRun), su = a?.units.find((u) => u.at === shortAt)
+  if (!a || !su?.into) return false
+  putRun({ ...a, units: a.units.map((u) => { if (u.at !== shortAt) return u; const { into: _was, ...rest } = u; return rest }) })
+  logChange(a.dept, 'Corrida ' + a.code + ' del ' + a.date + ' (' + a.dept + ', ' + lineNameOf(state, a.lineId, a.line) + ') · Pallet ' + (a.units.findIndex((u) => u.at === shortAt) + 1) + ' · otra vez pallet aparte', tr('lo terminó otro pallet'), '', 'act_runs', a.id)
+  return true
 }
 export function setUnitOrder(runId: string, at: number, orderId: string): boolean {
   const r = run(runId), i = r ? r.units.findIndex((u) => u.at === at) : -1
@@ -4425,12 +4482,12 @@ export function deptToday(s: State, dept: Dept, date: string, now: number, lineI
   const codes = new Map<string, { code: string; units: number; qty: number; waste: number; lines: string[] }>()
   for (const r of runs) {
     const e = codes.get(normCode(r.code)) ?? { code: r.code, units: 0, qty: 0, waste: 0, lines: [] }
-    e.units += r.units.length; e.qty += measure(r); e.waste = Math.round((e.waste + r.waste) * 100) / 100
+    e.units += countedUnits(r.units).length; e.qty += measure(r); e.waste = Math.round((e.waste + r.waste) * 100) / 100
     const ln = lineNameOf(s, r.lineId, r.line)
     if (!e.lines.includes(ln)) e.lines.push(ln)
     codes.set(normCode(r.code), e)
   }
-  const units = runs.reduce((t, r) => t + r.units.length, 0), qty = runs.reduce((t, r) => t + measure(r), 0)
+  const units = runs.reduce((t, r) => t + countedUnits(r.units).length, 0), qty = runs.reduce((t, r) => t + measure(r), 0)
   const first = runs.length ? Math.min(...runs.map((r) => r.startedAt)) : 0
   const allEnded = all.length > 0 && all.every((r) => r.endedAt)
   const hours = first ? Math.max(0, (allEnded ? Math.max(...runs.map((r) => r.endedAt ?? 0)) : now) - first) / 3_600_000 : 0
@@ -4450,14 +4507,14 @@ export function deptToday(s: State, dept: Dept, date: string, now: number, lineI
   const until = nextCut(plan, now)
   const inTurn = (u: Unit) => u.at >= since && u.at < until
   const shiftQty = liveRuns.reduce((t, r) => t + r.units.filter(inTurn).reduce((a, u) => a + one(r, u), 0), 0)
-  const shiftUnits = liveRuns.reduce((t, r) => t + r.units.filter(inTurn).length, 0)
+  const shiftUnits = liveRuns.reduce((t, r) => t + countedUnits(r.units).filter(inTurn).length, 0)
   // what the shift in course has made of each code: one it has running is there from zero, before its first unit
   const turn = new Map<string, { code: string; units: number; qty: number; lines: string[] }>()
   for (const r of liveRuns) {
     const made = r.units.filter(inTurn)
     if (!made.length && !mine.includes(r)) continue
     const e = turn.get(normCode(r.code)) ?? { code: r.code, units: 0, qty: 0, lines: [] }
-    e.units += made.length; e.qty += made.reduce((a, u) => a + one(r, u), 0)
+    e.units += countedUnits(made).length; e.qty += made.reduce((a, u) => a + one(r, u), 0)
     const ln = lineNameOf(s, r.lineId, r.line)
     if (!e.lines.includes(ln)) e.lines.push(ln)
     turn.set(normCode(r.code), e)

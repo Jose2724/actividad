@@ -4,7 +4,7 @@ import { PLAN_NOTE_MAX, PLAN_SPAN_MAX, attGated, attOf, lineSlow, addLine, plant
 import { avanceLots, avanceRange, avanceRows, datesBetween, lotAcrossDays, lotRows, lotsKnown, mfoList, mfoText, mfoWord, n1, pending, type AvancePart, type AvanceRow, type MfoMade } from './avance'
 import { loadZip, type Cell } from './xlsx'
 
-import { orderFullWhy, loosePalletsOf, setUnitOrder, type Unit, expiryOf, orderCodeOf, orderCodeOk, orderCodesList, fmtN, looksLikeTwoLots, plainText, viewOnly, whoText, askFirst, usualFor, usualOf, type QtyCheck } from './store'
+import { joinedInto, palletTotal, joinPallet, palletsToFinish, orderFullWhy, loosePalletsOf, setUnitOrder, type Unit, expiryOf, orderCodeOf, orderCodeOk, orderCodesList, fmtN, looksLikeTwoLots, plainText, viewOnly, whoText, askFirst, usualFor, usualOf, type QtyCheck } from './store'
 import { loadPdf } from './pdf'
 import { sharePick, shareProblem, type Kind } from './send'
 import { runLots, spanShifts, unitParts } from './report'
@@ -1393,7 +1393,10 @@ function OrderPalletsDialog({ s, order, onAdd, onClose }: { s: State; order: Ord
   const [loose, setLoose] = useState(false) // giving it the pallets of its code that went without a PO
   const who = useWho(), looseN = !order.closed && can('fix') && writesIn(who, 'Packing') ? loosePalletsOf(s, order.code).length : 0
   const addTo = adding?.run ? s.runs.find((r) => r.id === adding.run && !r.deleted) : undefined
-  const list = orderRunsOf(s, order.id).flatMap((r) => r.units.filter((u) => u.po === order.id).map((u) => ({ r, u, parts: unitParts(s, r, u), here: s.runs.some((x) => x.id === r.id) }))).sort((a, b) => a.u.at - b.u.at)
+  // a short pallet another one finished (2026-10-29) goes inside that one, each part with its shift and who made it
+  const shown = (into: { run: string; at: number }) => orderRunsOf(s, order.id).some((r) => r.id === into.run && r.units.some((u) => u.at === into.at && u.po === order.id))
+  const joined = (r: Run, u: Unit) => joinedInto(s, r.id, u.at).flatMap((j) => unitParts(s, j.r, j.u).map((p) => ({ ...p, from: tr('turno {0} · {1}', shiftAt(shiftsOf(s, j.r.date, j.r.dept), j.u.at), j.u.by || '—') })))
+  const list = orderRunsOf(s, order.id).flatMap((r) => r.units.filter((u) => u.po === order.id && !(u.into && shown(u.into))).map((u) => ({ r, u, parts: [...unitParts(s, r, u).map((p) => ({ ...p, from: '' })), ...joined(r, u)], here: s.runs.some((x) => x.id === r.id) }))).sort((a, b) => a.u.at - b.u.at)
   const made = orderMade(s, order.id), seq = orderPallets(s, order.id), left = order.cases != null ? order.cases - made : null
   const run = editRun ? s.runs.find((r) => r.id === editRun) : undefined
   const notes = list.some((x) => !!x.u.note) // (a pallet's comment, Jose 2026-10-18: a column only when one has it)
@@ -1412,7 +1415,7 @@ function OrderPalletsDialog({ s, order, onAdd, onClose }: { s: State; order: Ord
             <table className="pallets">
               <thead><tr><th>#</th><th>{tr('Fecha')}</th><th>{tr('Línea')}</th><th>{tr('Lote')}</th><th>{tr('Vence')}</th><th className="num">{tr('Cajas')}</th><th>{tr('Tag')}</th><th className="num">{tr('Total')}</th><th>{tr('Hora')}</th><th>{tr('Por')}</th>{notes && <th>{tr('Comentario')}</th>}<th></th></tr></thead>
               {list.map((x, k) => {
-                const parts = x.parts.length ? x.parts : [{ lot: x.r.lot, qty: x.u.qty, tag: x.u.ref }], span = parts.length
+                const parts = x.parts.length ? x.parts : [{ lot: x.r.lot, qty: x.u.qty, tag: x.u.ref, from: '' }], span = parts.length
                 const fresh = added.includes(x.r.id + ':' + x.u.at)
                 return (
                   <tbody key={x.r.id + ':' + x.u.at}>
@@ -1422,8 +1425,8 @@ function OrderPalletsDialog({ s, order, onAdd, onClose }: { s: State; order: Ord
                         {i === 0 && <td rowSpan={span}><b>{k + 1}</b>{seq.need ? <small className="ofn">/{seq.need}</small> : null}{span > 1 && <small className="onelot">{tr('1 pallet · {0} lotes', span)}</small>}</td>}
                         {i === 0 && <td rowSpan={span}>{shortDay(x.r.date)}</td>}
                         {i === 0 && <td rowSpan={span}>{lineNameOf(s, x.r.lineId, x.r.line)}</td>}
-                        <td>{p.lot || '—'}</td><td>{((e) => (e ? <span className={'vence' + (order.shipBy && e < order.shipBy ? ' red' : '')}>{shortDay(e)}</span> : '—'))(expiryOf(s, order.code, p.lot, x.r.date))}</td><td className="num">{p.qty != null ? fmtN(p.qty) : '—'}</td><td>{p.tag || <span className="notag">{tr('sin tag')}</span>}</td>
-                        {i === 0 && <td rowSpan={span} className="num"><b>{fmtN(unitQty(s, x.r, x.u))}</b></td>}
+                        <td>{p.lot || '—'}</td><td>{((e) => (e ? <span className={'vence' + (order.shipBy && e < order.shipBy ? ' red' : '')}>{shortDay(e)}</span> : '—'))(expiryOf(s, order.code, p.lot, x.r.date))}</td><td className="num">{p.qty != null ? fmtN(p.qty) : '—'}</td><td>{p.tag || <span className="notag">{tr('sin tag')}</span>}{p.from && <small className="joined"> · {p.from}</small>}</td>
+                        {i === 0 && <td rowSpan={span} className="num"><b>{fmtN(palletTotal(s, x.r, x.u))}</b></td>}
                         {i === 0 && <td rowSpan={span}>{fmtTime(x.u.at)}</td>}
                         {i === 0 && <td rowSpan={span}>{x.u.by || '—'}</td>}
                         {i === 0 && notes && <td rowSpan={span} className="unote">{x.u.note ? '💬 ' + x.u.note : '—'}</td>}
@@ -2415,9 +2418,34 @@ function PalletDoneDialog({ s, run, onClose, onSaved }: { s: State; run: Run; on
   // typed, saves it short with the reason written on it (the report's Incompletos shows them with it)
   const [shortAsk, setShortAsk] = useState(false)
   const short = !!usualPallet && total < usualPallet
-  const save = () => { if (!ok) return; if (tooBig) { setBinAsk(true); return } if (short) { setShortAsk(true); return } if (isPallet === total) { record(); return } sure.check([{ key: 'pallet', n: total, usual: usualPallet, unit: tr('cajas'), per: 'pallet', total: lots > 1 }], record) }
+  // a short pallet may be the rest of another short one of the same code and PO, put on that same pallet (Jose,
+  // 2026-10-29: the second shift put 16 cases on the first shift's pallet of 32 and it read as a third pallet of a PO of
+  // two): asked first; "sí" saves it and joins that one into it (each keeps its shift and who made it; the pallet is
+  // this one's, "el que terminó la paleta, a ese se le da")
+  const toFinish = short ? palletsToFinish(s, run, po, total).slice(0, 4) : []
+  const [finishAsk, setFinishAsk] = useState(false), [apart, setApart] = useState(false)
+  const recordFinish = (c: { r: Run; u: Unit }) => { if (palletDone(run.id, rows.map((r, i) => ({ lot: r.lot, qty: nums[i], tag: r.tag })), po, note)) { const now = store.get().runs.find((x) => x.id === run.id), u = now?.units[now.units.length - 1]; if (u) joinPallet(c.r.id, c.u.at, run.id, u.at); onSaved() } }
+  const save = (sep = apart) => { if (!ok) return; if (tooBig) { setBinAsk(true); return } if (short && !sep && toFinish.length) { setFinishAsk(true); return } if (short) { setShortAsk(true); return } if (isPallet === total) { record(); return } sure.check([{ key: 'pallet', n: total, usual: usualPallet, unit: tr('cajas'), per: 'pallet', total: lots > 1 }], record) }
   if (doneNote) return <NoticeDialog title={tr('✓ PO completo')} text={doneNote} onClose={onSaved} />
   if (shortAsk) return <ShortPalletDialog n={total} full={usualPallet ?? 0} code={run.code} po={pick && !pick.full ? pick.label.split(' · ')[0] : ''} last={pick && !pick.full && pick.need && pick.n >= pick.need ? { n: pick.n, need: pick.need, left: (() => { const o = orderOfId(s, pick.id); return o?.cases != null ? o.cases - orderMade(s, o.id) : 0 })() } : null} onBack={() => setShortAsk(false)} onMore={() => { setShortAsk(false); setAdded(true); setRows([...rows, { lot: '', qty: '', tag: '' }]) }} onShort={(why) => { setShortAsk(false); record(why) }} />
+  if (finishAsk) return (
+    <div className="veil" onClick={() => setFinishAsk(false)}>
+      <div className="dlg" onClick={(e) => e.stopPropagation()}>
+        <h3>{tr('¿Este pallet completa otro?')}</h3>
+        <p>{tr('Este pallet lleva {0} cajas. Estos pallets del {1} quedaron cortos y le caben. Si las cajas se pusieron en uno de ellos, tócalo: queda un solo pallet, y cada parte sigue con su turno y quien la hizo.', fmtN(total), run.code)}</p>
+        <div className="finish-list">{toFinish.map((c) => { const n = c.r.units.findIndex((u) => u.at === c.u.at) + 1, k = shiftAt(shiftsOf(s, c.r.date, c.r.dept), c.u.at); return (
+          <button key={c.r.id + ':' + c.u.at} type="button" className="btn soft" onClick={() => recordFinish(c)}>
+            <b>{tr('Sí, completa el pallet {0} de {1}', n, lineNameOf(s, c.r.lineId, c.r.line))}</b>
+            <small>{tr('{0} de {1} cajas', fmtN(unitQty(s, c.r, c.u)), fmtN(c.size))}{c.u.ref ? ' · ' + tr('tag {0}', c.u.ref) : ''} · {c.u.by || '—'} · {tr('turno {0}', k)} · {shortDay(c.r.date)} {fmtTime(c.u.at)} · {tr('con este: {0} cajas', fmtN(unitQty(s, c.r, c.u) + total))}</small>
+          </button>
+        ) })}</div>
+        <div className="dbtns">
+          <button type="button" className="btn" onClick={() => setFinishAsk(false)}>{tr('‹ Volver')}</button>
+          <button type="button" className="btn primary" onClick={() => { setFinishAsk(false); setApart(true); save(true) }}>{tr('No, es un pallet aparte')}</button>
+        </div>
+      </div>
+    </div>
+  )
   if (binAsk) return <BinAskDialog s={s} run={run} n={total} usual={usualPallet ?? 0} onBack={() => setBinAsk(false)} onPallet={() => { setIsPallet(total); setBinAsk(false); record() }} onBin={onSaved} />
   return (
     <div className="veil" onClick={onClose}>

@@ -5683,6 +5683,38 @@ section('Pedidos (PO): solo los códigos que van en pedidos, y cada lote con su 
     eq('el porqué de un PO que no lleva más: tiene todas sus cajas; con sus pallets y cajas que faltan sigue llevando', [m.orderFullWhy(st(), oid), m.orderFull(st(), o2)], ['BJ · PO 117973674 ya tiene todas sus cajas (2 de 2 pallets · 44 de 44 cajas): no lleva más pallets.', false])
   })
 }
+section('Un pallet corto que otro terminó: un solo pallet, cada parte con su turno y quien la hizo (Jose, 2026-10-29: el PO 117973674 salía "3 de 2")')
+{
+  const pj = await device('pallet-join', { user: 'Christ' })
+  pj.use((m) => {
+    const st = () => m.store.get()
+    clock = T0
+    for (const n of ['Línea 2', 'Línea 3']) if (!st().lines.some((l) => l.dept === 'Packing' && l.name === n)) m.addLine('Packing', n)
+    const ln = (n) => st().lines.find((l) => l.dept === 'Packing' && l.name === n)
+    const oid = m.saveOrder(null, { customer: "BJ'S", po: '117973674', code: '3293', cases: 96, shipBy: '2026-11-02', dest: '' })
+    clock = new Date(2026, 9, 10, 13, 0).getTime(); m.startRun(ln('Línea 2'), '3293', '6300', DAY, 48)
+    const r2 = () => st().runs.find((r) => r.lineId === ln('Línea 2').id)
+    clock = new Date(2026, 9, 10, 14, 24).getTime(); m.unitDone(r2().id, 48, '1762', undefined, oid)
+    clock = new Date(2026, 9, 10, 14, 41).getTime(); m.unitDone(r2().id, 32, '1763', undefined, oid)
+    m.endRun(r2().id)
+    clock = new Date(2026, 9, 10, 16, 0).getTime(); m.startRun(ln('Línea 3'), '3293', '6300', DAY, 48)
+    const r3 = () => st().runs.find((r) => r.lineId === ln('Línea 3').id)
+    eq('el pallet corto de 32 del PO le cabe a uno de 16 de la otra línea; a uno de 20 no', [m.palletsToFinish(st(), r3(), oid, 16).map((x) => x.u.ref), m.palletsToFinish(st(), r3(), oid, 20).length, m.palletsToFinish(st(), r3(), '', 16).length], [['1763'], 0, 0])
+    clock = new Date(2026, 9, 10, 16, 7).getTime(); m.unitDone(r3().id, 16, '1764', undefined, oid)
+    const fin = r3().units[0], short = r2().units[1]
+    eq('sin unir: "3 de 2"', [m.orderPallets(st(), oid).done.length, m.orderPallets(st(), oid).need], [3, 2])
+    eq('se une: el PO tiene 2 de 2 pallets y sus 96 cajas; el que terminó lleva 48', [m.joinPallet(r2().id, short.at, r3().id, fin.at), m.orderPallets(st(), oid).done.length, m.orderMade(st(), oid), m.palletTotal(st(), r3(), r3().units[0]), m.joinedInto(st(), r3().id, fin.at).map((x) => x.u.ref)], [true, 2, 96, 48, ['1763']])
+    const rep = m.reportOf(st(), DAY, clock)
+    eq('el reporte: 2 pallets en Packing; el de Christ con sus 16 y los 32 del primer turno (cada parte dice su turno y quién)', [rep.pallets.length, rep.pallets[1].parts.map((p) => [p.qty, p.tag, p.from ?? '']), rep.pallets[1].total, rep.pallets[1].by], [2, [[16, '1764', ''], [32, '1763', 'turno 1 · Christ']], 48, 'Christ'])
+    const pk = rep.byDept.find((d) => d.dept === 'Packing')
+    eq('las cajas siguen de cada uno (96 en el día); los pallets del día son 2', [pk.qty, pk.units], [96, 2])
+    eq('no se une dos veces, ni a sí mismo, ni en cadena', [m.joinPallet(r2().id, short.at, r3().id, fin.at), m.joinPallet(r3().id, fin.at, r3().id, fin.at), m.joinPallet(r2().id, r2().units[0].at, r2().id, short.at)], [false, false, false])
+    eq('separar: vuelve a ser pallet aparte ("3 de 2")', [m.unjoinPallet(r2().id, short.at), m.orderPallets(st(), oid).done.length], [true, 3])
+    m.joinPallet(r2().id, short.at, r3().id, fin.at)
+  })
+  const back = await device('pallet-join-again', { seed: JSON.parse(disks.get('pallet-join').get('act_v1')), user: 'Christ' })
+  eq('al volver a abrir, la unión sigue', back.use((m) => m.store.get().runs.flatMap((r) => r.units.filter((u) => u.into)).length), 1)
+}
 section('Spiral anota la carne que echa, en libras y con su lote, y el reporte la suma por código con las libras por mezcla (Jose, 2026-10-23)')
 {
   const mt = await device('spiral-meat', { user: 'Supervisor Spiral' })

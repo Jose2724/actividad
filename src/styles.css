@@ -2205,3 +2205,8 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 .kpi-q{min-height:38px;font-size:16px;width:160px}
 .kpi-add{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:end;background:#f8fafc;border:1px solid var(--line);border-radius:12px;padding:10px}
 .kpi-add label{display:grid;gap:2px;font-size:13px;font-weight:700}.kpi-add input{width:110px;min-height:38px;font-size:16px}.kpi-add select{min-height:38px;font-size:15px}
+
+/* a short pallet another one finished (2026-10-29): its part said in small, the choice of which one it finished */
+.joined{display:block;color:#6d28d9;font-weight:600}
+.finish-list{display:grid;gap:8px}.finish-list .btn{display:grid;gap:2px;text-align:left;min-height:56px}.finish-list small{font-weight:600}
+.joinsel{display:block;margin-top:4px;font-size:13px}
