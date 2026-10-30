@@ -37,13 +37,13 @@ export function Chat({ s, home }: { s: State; home: Dept }) {
   useEffect(() => { if (open && last > seenOf(side, open)) { markSeen(side, open, last); bump((n) => n + 1) } }, [open, last])
   // and the other side is told how far this one has looked (store.ts, markChatSeen; once per new message)
   useEffect(() => { if (open && last) markChatSeen(open, last) }, [open, last])
-  // a message that just came from the other side: a short buzz on devices that can, and a tone (Jose, 2026-10-28: "que
-  // suene también cuando llegue un mensaje"; the browser lets a page sound only after it was touched once)
+  // a message that just came from the other side: a short buzz on devices that can (the tone of 2026-10-28 was taken
+  // away, Jose 2026-10-30: "puede quitar el sonido de los chat directo")
   const total = rooms.reduce((t, d) => t + unread[d], 0)
   const prev = useRef(total)
   useEffect(() => { if (total > prev.current) ring(); prev.current = total }, [total])
-  // and again every 5 seconds, with the button's zoom, until the conversation is opened (Jose, 2026-10-29: "que suene ...
-  // que vibre así como un zumbido ... que noten cuando hay un mensaje nuevo")
+  // and again every 5 seconds, with the button's zoom, until the conversation is opened (Jose, 2026-10-29: "que vibre así
+  // como un zumbido ... que noten cuando hay un mensaje nuevo")
   const ringing = hidden ? total > 0 : rooms.some((d) => unread[d] > 0 && open !== d)
   useEffect(() => { if (!ringing) return; const id = window.setInterval(ring, 5000); return () => window.clearInterval(id) }, [ringing])
   if (hidden) {
@@ -70,25 +70,8 @@ export function Chat({ s, home }: { s: State; home: Dept }) {
   )
 }
 
-/** two short notes, made here (no file to load); nothing when the page may not sound yet */
-let audio: AudioContext | null = null
-/** a message waiting: a buzz on devices that can (Android; an iPhone cannot) and the tone */
-function ring() { try { (navigator as Navigator & { vibrate?: (p: number[]) => boolean }).vibrate?.([120, 60, 120]) } catch { /* no */ } chime() }
-function chime() {
-  try {
-    const Ctx = window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
-    if (!Ctx) return
-    audio = audio ?? new Ctx()
-    if (audio.state === 'suspended') void audio.resume().catch(() => undefined)
-    const at = audio.currentTime
-    for (const [f, t0] of [[880, 0], [1175, 0.14]] as const) {
-      const o = audio.createOscillator(), g = audio.createGain()
-      o.type = 'sine'; o.frequency.value = f
-      g.gain.setValueAtTime(0.0001, at + t0); g.gain.exponentialRampToValueAtTime(0.25, at + t0 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, at + t0 + 0.16)
-      o.connect(g).connect(audio.destination); o.start(at + t0); o.stop(at + t0 + 0.18)
-    }
-  } catch { /* no sound here */ }
-}
+/** a message waiting: a buzz on devices that can (Android; an iPhone cannot) */
+function ring() { try { (navigator as Navigator & { vibrate?: (p: number[]) => boolean }).vibrate?.([120, 60, 120]) } catch { /* no */ } }
 
 // ---- photos (Jose, 2026-10-28: "que se puedan agregar imágenes, como yo pego aquí, o dar a un + para buscar alguna") ----
 /** the photo made small enough to send (longest side `max`, JPEG): a tablet's camera gives 4,000 px and megabytes */
