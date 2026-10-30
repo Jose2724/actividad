@@ -295,6 +295,24 @@ export function wtSheetRows(s: State, wts: WtRow[], detail: { w: WtRow; t: Weigh
     }),
   ]
 }
+/** rows with only what one shift weighed, worked out again from its tests (nothing is due by shift) */
+export function wtRowsOfShift(s: State, rows: WtRow[], k: 1 | 2): WtRow[] {
+  return rows.flatMap((w) => {
+    const tests = w.tests.filter((t) => wtShift(s, t) === k), skipped = w.skipped.filter((t) => wtShift(s, t) === k)
+    if (!tests.length && !skipped.length) return []
+    const complete = tests.filter((t) => t.entries.length >= (t.need ?? 1)).length
+    return [{ ...w, ...wtSum(tests.flatMap((t) => t.entries), w.target), tests, skipped, complete, short: tests.length - complete, due: null }]
+  })
+}
+/**
+ * The day's weights to send (Jose, 2026-10-30: "los del turno 1 todos los pesos, el turno 2 todos los pesos y una
+ * combinación, así ellos eligen lo que necesitan"): a sheet per shift and one with the two together
+ */
+export const wtSheets = (s: State, rows: WtRow[]): Sheet[] => [
+  { name: tr('Turno {0}', 1), rows: wtSheetRows(s, wtRowsOfShift(s, rows, 1), wtTests(wtRowsOfShift(s, rows, 1))), freeze: 1 },
+  { name: tr('Turno {0}', 2), rows: wtSheetRows(s, wtRowsOfShift(s, rows, 2), wtTests(wtRowsOfShift(s, rows, 2))), freeze: 1 },
+  { name: tr('Todos'), rows: wtSheetRows(s, rows, wtTests(rows)), freeze: 1 },
+]
 /**
  * One sheet per part, a purple header row, the numbers as numbers with thousands, red / green / amber by what they say,
  * each part's note in a wrapped cell, and two charts Excel draws itself: Costco's planned vs made cases by day, and the

@@ -5700,6 +5700,37 @@ section('Pedidos (PO): solo los códigos que van en pedidos, y cada lote con su 
     eq('el porqué de un PO que no lleva más: tiene todas sus cajas; con sus pallets y cajas que faltan sigue llevando', [m.orderFullWhy(st(), oid), m.orderFull(st(), o2)], ['BJ · PO 117973674 ya tiene todas sus cajas (2 de 2 pallets · 44 de 44 cajas): no lleva más pallets.', false])
   })
 }
+section('Pesos escritos con otro código o como crudo: se corrigen desde el Reporte, y el Excel sale por turno (Jose, 2026-10-30)')
+{
+  const d = await device('wt-fix', { user: 'Ana' })
+  d.use((m) => {
+    clock = T0
+    const st = () => m.store.get()
+    if (!st().lines.some((l) => l.dept === 'Kitchen')) m.addLine('Kitchen', 'Mezcla 1')
+    m.startRun(st().lines.find((l) => l.dept === 'Kitchen'), '2286', '6300', DAY, null)
+    const r = st().runs.find((x) => x.dept === 'Kitchen')
+    const a = m.weightNew(r)
+    m.weightSave(a, [2.2, 2.3, 2.45, 2.0].map((w) => ({ w })))
+    clock = T0 + 3 * 60 * M
+    const b = m.weightNew(r)
+    m.weightSave(b, [2.2, 2.3].map((w) => ({ w })))
+    const row = () => m.weightsOf(st(), DAY, clock).filter((x) => x.dept === 'Kitchen')
+    eq('antes: 2286 crudo', row().map((x) => [x.code, x.kind, x.tests.length]), [['2286', 'raw', 2]])
+    eq('corrige las dos pruebas', m.weightsFix(row()[0].tests.map((t) => t.id), '0889', 'ball'), 2)
+    eq('quedan como 0889 cocinado, con los mismos pesos, y se juzgan contra 2.1 a 2.4', row().map((x) => [x.code, x.kind, x.label, x.n, x.good, x.under, x.over, m.wtRangeText(x.target)]), [['0889', 'ball', 'Cocinado', 6, 4, 1, 1, '2.1–2.4']])
+    eq('corregir otra vez lo mismo no cambia nada', m.weightsFix(row()[0].tests.map((t) => t.id), '0889', 'ball'), 0)
+    eq('queda en Cambios', st().changes.some((c) => c.what.includes('2 pruebas') && c.before.includes('2286') && c.after.includes('0889')), true)
+    eq('el código de la corrida no se toca', st().runs.find((x) => x.id === r.id).code, '2286')
+    const sh = m.wtSheets(st(), row())
+    eq('el Excel trae Turno 1, Turno 2 y Todos', sh.map((x) => x.name), ['Turno 1', 'Turno 2', 'Todos'])
+    const of = (k) => m.wtRowsOfShift(st(), row(), k).map((x) => [x.n, x.good, x.tests.length])
+    const k1 = m.wtShift(st(), st().weights.find((x) => x.id === a.id)), k2 = m.wtShift(st(), st().weights.find((x) => x.id === b.id))
+    eq('las pruebas de cada turno suman las del día', [...of(1), ...of(2)].reduce((t, x) => t + x[2], 0), 2)
+    eq('una hoja de turno no pide pruebas', m.wtRowsOfShift(st(), row(), k1).every((x) => x.due === null) && m.wtRowsOfShift(st(), row(), k2).every((x) => x.due === null), true)
+    const sent = JSON.parse(m.outbox.items().find((i) => i.key === 'wt:' + a.id)?.row.after ?? '{}')
+    eq('la corrección sube al servidor', [sent.code, sent.kind, sent.entries.length], ['0889', 'ball', 4])
+  })
+}
 section('Un pallet corto que otro terminó: un solo pallet, cada parte con su turno y quien la hizo (Jose, 2026-10-29: el PO 117973674 salía "3 de 2")')
 {
   const pj = await device('pallet-join', { user: 'Christ' })

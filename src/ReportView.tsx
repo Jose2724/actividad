@@ -4,9 +4,9 @@ import { cookText as cookTextOf, entryClass as entryClassOf, expiryOf, wtRangeTe
 import { avanceRows, mfoText, mfoWord, pending } from './avance'
 import { codeLabel, FAMILY_SHOWN, reasonCodeOf } from './reasons'
 import { cellText, loadZip, X, xDur, xN, xPct, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
-import { cookYields, hoursOf, seesLabor, wtCompliance, wtDoneText, wtOfReport, wtSheetRows, wtShift, wtSum, type WtRow } from './kpi'
+import { cookYields, hoursOf, seesLabor, wtCompliance, wtDoneText, wtOfReport, wtSheetRows, wtSheets, wtShift, wtSum, type WtRow } from './kpi'
 import { attendanceOf, attLineText, attMovesText, attOf, attShifts, attStateText } from './store'
-import { consumesOf, inventoryOf, type Dept as RoomDept } from './store'
+import { consumesOf, inventoryOf, stepText, weightsFix, weightTarget, wtKindsOf, type Dept as RoomDept } from './store'
 import { pctText } from './Attendance'
 import { buildPdf, loadPdf, type Part } from './pdf'
 import { homeScreenApple, type Kind } from './send'
@@ -1530,7 +1530,14 @@ function PalletsView({ k }: { k: Kit }) {
  * chip. The room and code chosen choose the codes; the line and the shift, the tests listed
  */
 function WeightsView({ k }: { k: Kit }) {
-  const { s, wt, rep } = k
+  const { s, wt, rep, date, mgr } = k
+  const who = useWho(), canFix = mgr && who.role !== 'viewer'
+  const [fixing, setFixing] = useState<WtRow | null>(null)
+  // the three sheets, as the room and code chosen; made from what is on screen when tapped
+  const sheets = async () => {
+    const bytes = xlsxNow(wtSheets(s, wt.rows)) ?? (await loadZip(), xlsxNow(wtSheets(s, wt.rows)))
+    if (bytes) download(new File([bytes], tr('Pesos') + '-' + date + '.xlsx', { type: XLSX_TYPE }))
+  }
   const groups = [...new Set(wt.rows.map((r) => r.dept + '|' + normCode(r.code)))].map((g) => wt.rows.filter((r) => r.dept + '|' + normCode(r.code) === g))
   const yields = cookYields(wt.rows), cw = wtCompliance(wt.rows)
   const oz = (x: number | null) => (x == null ? '—' : String(Math.round(x * 100) / 100))
@@ -1538,6 +1545,8 @@ function WeightsView({ k }: { k: Kit }) {
   const late = (r: WtRow) => r.due != null && r.complete + r.skipped.length < r.due
   return (
     <>
+      {wt.rows.length > 0 && <div className="btns"><button type="button" className="btn soft" onClick={() => void sheets()}>{tr('⬇ Excel de pesos: Turno 1, Turno 2 y Todos')}</button></div>}
+      {fixing && <WeightsFixDialog s={s} row={fixing} onClose={() => setFixing(null)} />}
       {cw.due > 0 && <p className={'wt-rp-sum ' + (cw.done < cw.due ? 'bad' : 'ok')}>{tr('{0} de {1} pruebas hechas', cw.done, cw.due)}{cw.done < cw.due ? ' · ' + tr('faltaron {0}', cw.due - cw.done) : ' · ' + tr('todas')}</p>}
       {groups.map((g) => (
         <article key={g[0].dept + g[0].code} className="wt-rp" style={deptVars(g[0].dept)}>
@@ -1546,7 +1555,7 @@ function WeightsView({ k }: { k: Kit }) {
             <thead><tr><th>{tr('Qué se pesó')}</th><th className="n">{tr('Pruebas')}</th><th className="n">{tr('Pesados')}</th><th className="n">{tr('Promedio')}</th><th className="n">{tr('Objetivo')}</th><th className="n">{tr('Mín · Máx')}</th><th className="n">✓ {tr('Bien')}</th><th className="n">▼ {tr('Bajos')}</th><th className="n">▲ {tr('Sobre')}</th><th className="n">{tr('% en peso')}</th></tr></thead>
             <tbody>{g.map((r) => (
               <tr key={r.label}>
-                <td><b>{r.label}</b></td>
+                <td><b>{r.label}</b>{canFix && r.tests.length + r.skipped.length > 0 && <> <button type="button" className="lnk sm" onClick={() => setFixing(r)}>{tr('Corregir')}</button></>}</td>
                 <td className={'n' + (late(r) ? ' red' : '')}>{wtDoneText(r)}{r.short > 0 && <small className="amber"> · {tr('{0} incompletas', r.short)}</small>}{r.skipped.length > 0 && <small> · {tr('{0} sin usar', r.skipped.length)}</small>}</td>
                 <td className="n">{r.n}</td>
                 <td className="n"><b>{oz(r.avg)}</b>{r.avgPct != null && <small className={Math.abs(r.avgPct) > 0.02 ? 'red' : ''}> {(r.avgPct > 0 ? '+' : '') + Math.round(r.avgPct * 1000) / 10}%</small>}</td>
@@ -1575,6 +1584,30 @@ function WeightsView({ k }: { k: Kit }) {
       </table></div> : <p className="hint">{tr('Ninguna prueba con lo que estás viendo.')}</p>}
       <p className="hint">{tr('Pruebas = las completas (o un cocinador que no se usó) de las que tocaban: una por cada hora que corrió el código. Rojo = bajo el objetivo, ámbar = sobre. En el Excel va la hoja "Pesos", con cada peso en su columna.')}</p>
     </>
+  )
+}
+
+/** a row of the day's weights put under another code, or as raw or cooked: its weights stay as typed (2026-10-30) */
+function WeightsFixDialog({ s, row, onClose }: { s: State; row: WtRow; onClose: () => void }) {
+  const [code, setCode] = useState(row.code)
+  const [kind, setKind] = useState(row.kind)
+  const clean = code.trim().toUpperCase(), ids = [...row.tests, ...row.skipped].map((t) => t.id)
+  const target = wtRangeText(weightTarget(s, clean, kind, row.cook))
+  const same = normCode(clean) === normCode(row.code) && clean === row.code.toUpperCase() && kind === row.kind
+  return (
+    <div className="veil" onClick={onClose}>
+      <div className="dlg" onClick={(e) => e.stopPropagation()}>
+        <h3>{tr('Corregir pesos · {0} · {1}', row.code, row.label)}</h3>
+        <p>{tr('Son {0} pruebas de este día en {1}. Los pesos quedan como se escribieron, con su hora y quien los tomó. Solo cambia el código y qué se pesó, y se juzgan contra ese objetivo. Queda en Cambios.', ids.length, row.dept)}</p>
+        <label>{tr('Código')} <input value={code} autoFocus onChange={(e) => setCode(e.target.value.replace(/[^\w-]/g, ''))} /></label>
+        <label>{tr('Qué se pesó')} <select value={kind} onChange={(e) => setKind(e.target.value as WtRow['kind'])}>{wtKindsOf(row.dept).map((x) => <option key={x} value={x}>{stepText({ kind: x })}</option>)}</select></label>
+        <p className="hint">{target ? tr('Objetivo con esto: {0} oz', target) : tr('Este código no tiene objetivo para eso: ponlo en Ajustes › KPI.')}</p>
+        <div className="dbtns">
+          <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
+          <button type="button" className="btn primary" disabled={!clean || same} onClick={() => { weightsFix(ids, clean, kind); onClose() }}>{tr('Corregir {0} pruebas', ids.length)}</button>
+        </div>
+      </div>
+    </div>
   )
 }
 

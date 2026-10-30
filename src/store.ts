@@ -1251,6 +1251,23 @@ export function weightSkip(t: WeightTest, on: boolean) {
   set({ ...state, weights: [...(state.weights ?? []).filter((y) => y.id !== t.id), x] })
   push('act_changes', WT_ID + x.id, rowOfWt(x))
 }
+/**
+ * weights written under the wrong code or as the wrong thing, put right from the report (Jose, 2026-10-30: the floor
+ * wrote 2286 for 0889, and the Kitchen's are cooked, not raw): the weights stay as typed, with their hour, line and who
+ * took them; what changes is the code and what was weighed, so they are judged against that target. In the history
+ */
+export function weightsFix(ids: string[], code: string, kind: WeightTest['kind']): number {
+  const c = code.trim().toUpperCase(), list = (state.weights ?? []).filter((x) => ids.includes(x.id) && !x.deleted && (x.code !== c || x.kind !== kind))
+  if (!c || !list.length) return 0
+  const fixed = list.map((x): WeightTest => ({ ...x, code: c, kind, updatedAt: stamp(x) }))
+  batch(() => {
+    set({ ...state, weights: [...(state.weights ?? []).filter((y) => !list.some((x) => x.id === y.id)), ...fixed] })
+    for (const x of fixed) push('act_changes', WT_ID + x.id, rowOfWt(x))
+  })
+  const was = list[0]
+  logChange(was.dept, 'Pesos del ' + was.date + ' · ' + list.length + (list.length === 1 ? ' prueba' : ' pruebas'), was.code + ' · ' + stepText({ kind: was.kind }), c + ' · ' + stepText({ kind }), WT_REF, was.id)
+  return list.length
+}
 // ---- the meat Spiral uses (2026-10-23: "que ponga la cantidad de carne que usan para hacer esas mezclas, en libras, y su lote") ----
 /**
  * Each time Spiral puts meat in, the line records how many pounds and the meat's lot (one kind of meat, one lot each

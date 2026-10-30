@@ -3033,4 +3033,10 @@ export const EN: Record<string, string> = {
   "Ejemplo": "Example",
   "¿Qué es esto?": "What is this?",
   "ⓘ Qué significa": "ⓘ What it means",
+  "⬇ Excel de pesos: Turno 1, Turno 2 y Todos": "⬇ Weights Excel: Shift 1, Shift 2 and All",
+  "Corregir pesos · {0} · {1}": "Correct weights · {0} · {1}",
+  "Son {0} pruebas de este día en {1}. Los pesos quedan como se escribieron, con su hora y quien los tomó. Solo cambia el código y qué se pesó, y se juzgan contra ese objetivo. Queda en Cambios.": "These are {0} checks of this day in {1}. The weights stay as typed, with their hour and who took them. Only the code and what was weighed change, and they are judged against that target. It stays in Changes.",
+  "Objetivo con esto: {0} oz": "Target with this: {0} oz",
+  "Este código no tiene objetivo para eso: ponlo en Ajustes › KPI.": "This code has no target for that: set it in Settings › KPI.",
+  "Corregir {0} pruebas": "Correct {0} checks",
 }
