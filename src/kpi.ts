@@ -382,7 +382,7 @@ export function wtSummary(s: State, rows: WtRow[]): WtSummaryRow[] {
     const hours = (kind: WeightTest['kind']) => new Set(of.filter((w) => w.kind === kind).flatMap((w) => w.tests.map((t) => Math.floor(t.at / 3_600_000)))).size
     const entries = of.flatMap((w) => w.tests.flatMap((t) => t.entries.map((e) => ({ e, target: w.target }))))
     const judgedW = entries.filter((x) => x.target), inW = judgedW.filter((x) => entryClass(x.e, x.target) === 'ok').length
-    return { code, dept, where: dept + (cook ? ': ' + cookText(cook as Cook) : ''), times: Math.max(hours('raw'), hours('ball'), hours('pouch')), okPct: judgedW.length && of.every((w) => wtOfficial(s, code, w.kind)) ? inW / judgedW.length : null, raw, cooked, pouch, result: (out.length ? tr('Acción correctiva: {0}', out.join(' · ')) : !of.length ? tr('No se pesó este día') : !judged ? tr('Falta el target de QA') : tr('Dentro del rango de QA')) + (judged && open_.length ? ' · ' + tr('falta el target de: {0}', open_.join(', ')) : ''), action: out.length > 0, pending: open_.length > 0 }
+    return { code, dept, where: cook ? dept + ': ' + cookText(cook as Cook) : dept === 'Spiral' ? tr('Spiral: sin cocinador') : dept, times: Math.max(hours('raw'), hours('ball'), hours('pouch')), okPct: judgedW.length && of.every((w) => wtOfficial(s, code, w.kind)) ? inW / judgedW.length : null, raw, cooked, pouch, result: (out.length ? tr('Acción correctiva: {0}', out.join(' · ')) : !of.length ? tr('No se pesó este día') : !judged ? tr('Falta el target de QA') : tr('Dentro del rango de QA')) + (judged && open_.length ? ' · ' + tr('falta el target de: {0}', open_.join(', ')) : ''), action: out.length > 0, pending: open_.length > 0 }
     })
   })
 }
@@ -485,14 +485,16 @@ export function wtControlSheet(s: State, rows: WtRow[], code: string, date: stri
   const title = (name: string) => name + ' · ' + tr('CONTROL DE PESO · {0}', code) + ' · ' + niceDay(date)
   const sections: { name: string; list: WtRow[] }[] = [
     { name: 'Kitchen', list: balls.filter((w) => w.dept === 'Kitchen') },
-    { name: 'Spiral: Spiral', list: balls.filter((w) => w.dept === 'Spiral' && w.cook !== 'racks') },
+    { name: 'Spiral: Spiral', list: balls.filter((w) => w.dept === 'Spiral' && w.cook === 'spiral') },
     { name: 'Spiral: Racks', list: balls.filter((w) => w.dept === 'Spiral' && w.cook === 'racks') },
+    // (the tests of before the cookers were asked, 2026-10-29: said apart, not taken for either)
+    ...(balls.some((w) => w.dept === 'Spiral' && !w.cook) ? [{ name: tr('Spiral: sin cocinador'), list: balls.filter((w) => w.dept === 'Spiral' && !w.cook) }] : []),
   ]
   let rl = 0
+  // every block with its own title, so nobody asks whose it is (Jose, 2026-10-30)
   for (const x of sections) {
-    band(rl, title(x.name)); rl++
-    if (!x.list.length) { put(rl, 0, xT(tr('No se pesó este día'), X.wcText)); for (let c = 1; c < leftN; c++) put(rl, c, xT('', X.wcText)); span(rl, 0, rl, leftN - 1); rl += 2 }
-    for (const w of x.list) { head(rl, 0); rl = group(rl + 1, 0, w) + 1 }
+    if (!x.list.length) { band(rl, title(x.name)); rl++; put(rl, 0, xT(tr('No se pesó este día'), X.wcText)); for (let c = 1; c < leftN; c++) put(rl, c, xT('', X.wcText)); span(rl, 0, rl, leftN - 1); rl += 2 }
+    for (const w of x.list) { band(rl, title(x.name + ' · ' + word(w.kind))); rl++; head(rl, 0); rl = group(rl + 1, 0, w) + 1 }
   }
   put(0, right, xT(title('RTE'), X.wcBand)); for (let c = right + 1; c <= lastC; c++) put(0, c, xT('', X.wcBand)); span(0, right, 0, lastC)
   let rr = 1

@@ -3133,4 +3133,5 @@ export const EN: Record<string, string> = {
   "Kitchen tiene pesos con el código {0}: no salen en el resumen. Toca Corregir y ponles 0889 o 2234.": "Kitchen has weights under code {0}: they are not in the summary. Tap Correct and give them 0889 or 2234.",
   "Cocinador": "Cooker",
   "Sin cocinador": "No cooker",
+  "Spiral: sin cocinador": "Spiral: no cooker recorded",
 }
