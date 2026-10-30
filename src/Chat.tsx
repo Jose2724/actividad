@@ -41,10 +41,14 @@ export function Chat({ s, home }: { s: State; home: Dept }) {
   // suene también cuando llegue un mensaje"; the browser lets a page sound only after it was touched once)
   const total = rooms.reduce((t, d) => t + unread[d], 0)
   const prev = useRef(total)
-  useEffect(() => { if (total > prev.current) { try { (navigator as Navigator & { vibrate?: (ms: number) => boolean }).vibrate?.(150) } catch { /* no */ } chime() } prev.current = total }, [total])
+  useEffect(() => { if (total > prev.current) ring(); prev.current = total }, [total])
+  // and again every 5 seconds, with the button's zoom, until the conversation is opened (Jose, 2026-10-29: "que suene ...
+  // que vibre así como un zumbido ... que noten cuando hay un mensaje nuevo")
+  const ringing = hidden ? total > 0 : rooms.some((d) => unread[d] > 0 && open !== d)
+  useEffect(() => { if (!ringing) return; const id = window.setInterval(ring, 5000); return () => window.clearInterval(id) }, [ringing])
   if (hidden) {
     return (
-      <button type="button" className="chat-peek" onClick={() => setHidden(false)} aria-label={tr('Mostrar los mensajes')} title={tr('Mostrar los mensajes')}>
+      <button type="button" className={'chat-peek' + (total > 0 ? ' new' : '')} onClick={() => setHidden(false)} aria-label={tr('Mostrar los mensajes')} title={tr('Mostrar los mensajes')}>
         ‹{total > 0 && <i className="chat-badge">{total}</i>}
       </button>
     )
@@ -54,7 +58,7 @@ export function Chat({ s, home }: { s: State; home: Dept }) {
       <div className={'chat-fabs' + (side === 'office' ? ' many' : '') + (open ? ' has-open' : '')}>
         <button type="button" className="chat-hide" onClick={() => setHidden(true)} aria-label={tr('Ocultar los mensajes')} title={tr('Ocultar los mensajes')}>×</button>
         {rooms.map((d) => (
-          <button key={d} type="button" className={'chat-fab' + (open === d ? ' on' : '')} style={lookVars(lookOf(d))} aria-label={tr('Mensajes · {0}', d)} title={tr('Mensajes · {0}', d)} onClick={() => setOpen(open === d ? null : d)}>
+          <button key={d} type="button" className={'chat-fab' + (open === d ? ' on' : '') + (unread[d] > 0 && open !== d ? ' new' : '')} style={lookVars(lookOf(d))} aria-label={tr('Mensajes · {0}', d)} title={tr('Mensajes · {0}', d)} onClick={() => setOpen(open === d ? null : d)}>
             <span className="chat-fab-ico" aria-hidden="true">{side === 'room' ? '💬' : lookOf(d).emoji}</span>
             {side === 'office' && <small className="chat-fab-name">{d}</small>}
             {unread[d] > 0 && <i className="chat-badge">{unread[d]}</i>}
@@ -68,6 +72,8 @@ export function Chat({ s, home }: { s: State; home: Dept }) {
 
 /** two short notes, made here (no file to load); nothing when the page may not sound yet */
 let audio: AudioContext | null = null
+/** a message waiting: a buzz on devices that can (Android; an iPhone cannot) and the tone */
+function ring() { try { (navigator as Navigator & { vibrate?: (p: number[]) => boolean }).vibrate?.([120, 60, 120]) } catch { /* no */ } chime() }
 function chime() {
   try {
     const Ctx = window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext

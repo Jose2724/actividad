@@ -2157,6 +2157,9 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 .chat-fabs.many .chat-hide{margin-right:9px}
 .chat-peek{position:fixed;right:0;bottom:24px;width:34px;height:44px;border-radius:22px 0 0 22px;border:1px solid var(--line);border-right:0;background:var(--surface);color:var(--muted);font-size:24px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0 4px 2px 0;box-shadow:0 4px 14px rgba(0,0,0,.18);z-index:15}
 .chat-peek .chat-badge{top:-6px;left:-6px;right:auto}
+/* a conversation with a message not read yet: its button zooms and shakes once every 5 seconds, with the tone, until it is opened (Jose, 2026-10-29) */
+.chat-fab.new,.chat-peek.new{animation:chatzoom 5s ease-in-out infinite}
+@keyframes chatzoom{0%,16%,100%{transform:scale(1) rotate(0)}3%{transform:scale(1.3) rotate(-12deg)}5%{transform:scale(1.3) rotate(12deg)}7%{transform:scale(1.3) rotate(-12deg)}9%{transform:scale(1.25) rotate(10deg)}11%{transform:scale(1.15) rotate(-6deg)}13%{transform:scale(1.05) rotate(3deg)}}
 /* a phone (Jose's iPhone, 2026-10-28: the window ran off the screen beside the buttons): the window takes the width, the buttons wait behind it */
 @media (max-width:640px){.chat-win,.chat-win.office{left:8px;right:8px;width:auto;bottom:8px;height:min(78dvh,calc(100dvh - 16px));border-radius:16px}.chat-fabs.has-open{display:none}}
 @media print{.chat-fabs,.chat-win,.chat-peek{display:none}}
