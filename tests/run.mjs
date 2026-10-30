@@ -5743,7 +5743,9 @@ section('Pesos escritos con otro código o como crudo: se corrigen desde el Repo
     eq('el 2234 se juzga con lo que dice Ajustes › KPI (Jose, 2026-10-30), y lo que no tiene target no: la bola en pouch', [m.wtOfficial(st(), '2234', 'pouch'), m.wtOfficial(st(), '2234', 'ball'), m.wtOfficial(st(), '2234', 'raw'), m.wtOfficial(st(), '0889', 'ball'), m.wtOfficial(st(), '0889', 'pouched')], [true, true, true, true, false])
     m.setWeightTarget('0889', 2.25, 0.15, 'ball')
     const sum = m.wtSummary(st(), sumRows())
-    eq('una línea por código y departamento, con la bolsa de 48 oz como Pouch', sum.map((x) => [x.code, x.dept, x.times, x.cooked.avg, x.cooked.ok, x.pouch.avg, x.pouch.range, x.pouch.ok, x.action]), [['0889', 'Kitchen', 2, 2.24, 'ok', null, '48–52', null, false], ['0889', 'RTE', 1, null, '2.3–2.4', 50, '48–52', 'ok', false], ['2234', '', 0, null, '', null, '72–76', null, false]].map(([c, d, t, av, , pa, pr, po, ac]) => [c, d, t, av, av == null ? null : 'ok', pa, pr, po, ac]))
+    const cuatro = ['Kitchen', 'RTE', 'Spiral: Spiral', 'Spiral: Racks']
+    eq('siempre salen los cuatro títulos de cada código, pesados o no', sum.map((x) => x.code + ' ' + x.where), [...cuatro.map((n) => '0889 ' + n), ...cuatro.map((n) => '2234 ' + n)])
+    eq('cada fila pesada con lo suyo, la bolsa de 48 oz como Pouch', sum.filter((x) => x.times).map((x) => [x.code, x.dept, x.times, x.cooked.avg, x.cooked.ok, x.pouch.avg, x.pouch.range, x.pouch.ok, x.action]), [['0889', 'Kitchen', 2, 2.24, 'ok', null, '48–52', null, false], ['0889', 'RTE', 1, null, null, 50, '48–52', 'ok', false]])
     eq('dentro del rango lo dice, y el que no se pesó también', [sum[0].result, sum[1].result, sum[2].result], ['Dentro del rango de QA', 'Dentro del rango de QA', 'No se pesó este día'])
     m.setWeightTarget('0889', 2.375, 0.025, 'ball')
     const fuera = m.wtSummary(st(), sumRows())[0]
@@ -5755,7 +5757,7 @@ section('Pesos escritos con otro código o como crudo: se corrigen desde el Repo
     m.startRun(st().lines.find((l) => l.dept === 'RTE'), '2234', '6300', DAY, 240)
     clock = T0 + 5 * 60 * M
     m.weightSave(m.weightNew(st().runs.find((x) => x.code === '2234'), { kind: 'pouch' }), [73].map((w) => ({ w })))
-    const sinT = m.wtSummary(st(), sumRows()).find((x) => x.code === '2234')
+    const sinT = m.wtSummary(st(), sumRows()).find((x) => x.code === '2234' && x.dept === 'RTE')
     eq('el 2234 se compara con 72–76 de Ajustes › KPI', [sinT.pouch.ok, sinT.pouch.range, sinT.pending, sinT.result], ['ok', '72–76', false, 'Dentro del rango de QA'])
     const hoja = m.wtSummarySheet(st(), sumRows(), DAY)
     const libro = m.wtSummaryBook(st(), sumRows(), DAY), ctl = libro[1], txt = ctl.rows.flat().map((c) => m.cellText(c))
@@ -5765,10 +5767,12 @@ section('Pesos escritos con otro código o como crudo: se corrigen desde el Repo
     eq('lo que no se pesó no sale en la gráfica: no es un 0%', ((c) => c.to - c.from + 1)(m.wtSummarySheet(st(), sumRows().filter((w) => w.code !== '2234'), DAY).chart), 2)
     const hasta = (name) => m.wtControlSheet(st(), sumRows(), '0889', DAY).rows.flat().map((c) => m.cellText(c)).includes(name)
     m.setWeighedCodes('RTE', [{ code: '0889', every: 60, count: 5 }])
-    eq('la hoja lleva los pesos que dice Ajustes › KPI, con su título: 5 en RTE y Kitchen sigue con los suyos', [hasta('peso 5'), m.wtControlSheet(st(), sumRows(), '0889', DAY).rows[2].filter((c) => /^peso /.test(m.cellText(c))).length], [true, 8 + 5])
+    eq('la hoja lleva los pesos que dice Ajustes › KPI, con su título: 5 en RTE, y a la izquierda los 10 de Spiral', [hasta('peso 5'), m.wtControlSheet(st(), sumRows(), '0889', DAY).rows[2].filter((c) => /^peso /.test(m.cellText(c))).length], [true, 10 + 5])
     m.setWeighedCodes('RTE', [{ code: '0889', every: 60, count: 12 }])
     eq('si se cambia a 12, sale hasta peso 12', hasta('peso 12'), true)
     m.setWeighedCodes('RTE', ['0889', '2234'])
+    const vacia = m.wtControlSheet(st(), [], '2234', DAY).rows.flat().map((c) => m.cellText(c))
+    eq('la hoja de control sale aunque nada se haya pesado, con sus títulos', ['Kitchen', 'Spiral: Spiral', 'Spiral: Racks', 'RTE'].map((n) => vacia.some((t) => t.startsWith(n + ' · '))).concat(vacia.includes('No se pesó este día')), [true, true, true, true, true])
     eq('es una hoja y dice cómo leerla', [hoja.name, hoja.rows.flat().some((c) => m.cellText(c).startsWith('Cómo leerlo')), hoja.rows.flat().some((c) => m.cellText(c) === '1 de 2 códigos necesitan acción correctiva.')], ['Resumen', true, true])
     const sent = JSON.parse(m.outbox.items().find((i) => i.key === 'wt:' + a.id)?.row.after ?? '{}')
     eq('la corrección sube al servidor', [sent.code, sent.kind, sent.entries.length], ['0889', 'ball', 4])

@@ -6,7 +6,7 @@ import { codeLabel, FAMILY_SHOWN, reasonCodeOf } from './reasons'
 import { cellText, loadZip, X, xDur, xN, xPct, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 import { cookYields, hoursOf, seesLabor, weightsOf, wtCompliance, wtDoneText, wtOfReport, wtSheetRows, wtSheets, wtShift, wtSum, wtSummary, wtSummaryBook, type WtAvg, type WtRow } from './kpi'
 import { attendanceOf, attLineText, attMovesText, attOf, attShifts, attStateText } from './store'
-import { consumesOf, inventoryOf, stepText, weightEdit, weightsFix, weightTarget, wtKindsOf, type Dept as RoomDept, type WeightTest, type WtEntry } from './store'
+import { consumesOf, inventoryOf, stepText, weightEdit, weightsFix, weightTarget, wtKindsOf, wtPicksCode, type Dept as RoomDept, type WeightTest, type WtEntry } from './store'
 import { pctText } from './Attendance'
 import { buildPdf, loadPdf, type Part } from './pdf'
 import { homeScreenApple, type Kind } from './send'
@@ -1536,6 +1536,8 @@ function WeightsView({ k }: { k: Kit }) {
   const [editing, setEditing] = useState<{ t: WeightTest; w: WtRow } | null>(null)
   // the summary on the screen, to see it and decide without opening a file (Jose, 2026-10-30)
   const summaryRows = useMemo(() => wtSummary(s, weightsOf(s, date, now)), [s, date])
+  // Kitchen's tests under a mix code reach neither code: said here, not in the file for the heads
+  const mixed = [...new Set(wt.rows.filter((r) => wtPicksCode(r.dept, r.code) && r.tests.length).map((r) => r.code))]
   const avgCell = (x: WtAvg) => <td className={'n' + (x.ok === 'ok' ? ' ok' : x.ok === 'under' ? ' red' : x.ok === 'over' ? ' amber' : '')}>{x.avg == null ? '—' : <b>{x.avg.toFixed(2)}</b>}{x.avg != null && <small> {x.range || tr('Pendiente')}</small>}</td>
   // the three sheets, as the room and code chosen; made from what is on screen when tapped
   // the one page for the plant's heads: every room's weights of the day, whatever the filters show
@@ -1558,6 +1560,7 @@ function WeightsView({ k }: { k: Kit }) {
       {wt.rows.length > 0 && <div className="btns"><button type="button" className="btn primary" onClick={() => void summary()}>{tr('⬇ Resumen y control de peso')}</button><button type="button" className="btn soft" onClick={() => void sheets()}>{tr('⬇ Excel de pesos: Turno 1, Turno 2 y Todos')}</button></div>}
       {fixing && <WeightsFixDialog s={s} row={fixing} onClose={() => setFixing(null)} />}
       {editing && <WeightTestDialog s={s} test={editing.t} row={editing.w} onClose={() => setEditing(null)} />}
+      {mixed.length > 0 && <p className="hint amber">{tr('Kitchen tiene pesos con el código {0}: no salen en el resumen. Toca Corregir y ponles 0889 o 2234.', mixed.join(', '))}</p>}
       <article className="wt-rp">
         <h3>{tr('Resumen de pesos')} <WhatIs id="peso-resumen" /></h3>
         <div className="scroll"><table className="wt-rp-tbl">

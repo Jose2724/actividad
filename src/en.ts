@@ -3130,4 +3130,5 @@ export const EN: Record<string, string> = {
   "Sí, guardar {0}": "Yes, save {0}",
   "Corregir prueba · {0} · {1}": "Correct check · {0} · {1}",
   "La hora, la línea y quien la tomó no cambian. Lo que corrijas queda en Cambios con lo que decía antes. Un peso en blanco se quita.": "The time, the line and who took it do not change. What you correct stays in Changes with what it said before. A weight left blank is removed.",
+  "Kitchen tiene pesos con el código {0}: no salen en el resumen. Toca Corregir y ponles 0889 o 2234.": "Kitchen has weights under code {0}: they are not in the summary. Tap Correct and give them 0889 or 2234.",
 }
