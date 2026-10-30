@@ -380,7 +380,7 @@ export function wtSummary(s: State, rows: WtRow[]): WtSummaryRow[] {
     const hours = (kind: WeightTest['kind']) => new Set(of.filter((w) => w.kind === kind).flatMap((w) => w.tests.map((t) => Math.floor(t.at / 3_600_000)))).size
     const entries = of.flatMap((w) => w.tests.flatMap((t) => t.entries.map((e) => ({ e, target: w.target }))))
     const judgedW = entries.filter((x) => x.target), inW = judgedW.filter((x) => entryClass(x.e, x.target) === 'ok').length
-    return { code, dept, where: dept + (cook ? ' · ' + cookText(cook as Cook) : ''), times: Math.max(hours('raw'), hours('ball'), hours('pouch')), okPct: judgedW.length && of.every((w) => wtOfficial(s, code, w.kind)) ? inW / judgedW.length : null, raw, cooked, pouch, result: (out.length ? tr('Acción correctiva: {0}', out.join(' · ')) : !of.length ? tr('No se pesó este día') : !judged ? tr('Falta el target de QA') : tr('Dentro del rango de QA')) + (judged && open_.length ? ' · ' + tr('falta el target de: {0}', open_.join(', ')) : ''), action: out.length > 0, pending: open_.length > 0 }
+    return { code, dept, where: dept + (cook ? ': ' + cookText(cook as Cook) : ''), times: Math.max(hours('raw'), hours('ball'), hours('pouch')), okPct: judgedW.length && of.every((w) => wtOfficial(s, code, w.kind)) ? inW / judgedW.length : null, raw, cooked, pouch, result: (out.length ? tr('Acción correctiva: {0}', out.join(' · ')) : !of.length ? tr('No se pesó este día') : !judged ? tr('Falta el target de QA') : tr('Dentro del rango de QA')) + (judged && open_.length ? ' · ' + tr('falta el target de: {0}', open_.join(', ')) : ''), action: out.length > 0, pending: open_.length > 0 }
     })
   })
 }
@@ -473,21 +473,26 @@ export function wtControlSheet(s: State, rows: WtRow[], code: string, date: stri
   const leftN = 2 + most + 4, right = leftN + 1, lastC = right + leftN - 1
   const band = (r: number, text: string) => { put(r, 0, xT(text, X.wcBand)); for (let c = 1; c < leftN; c++) put(r, c, xT('', X.wcBand)); span(r, 0, r, leftN - 1); heights[r] = 26 }
   // a group's own line: its place, its code, and the heads of its columns
-  const head = (r: number, c0: number, place: string) => { put(r, c0, xT(place, X.wcBold)); put(r, c0 + 1, xT(tr('CÓDIGO'), X.wcBold)); put(r, c0 + 2, xT(code, X.wcBold)); sides(c0, r) }
+  const head = (r: number, c0: number) => { put(r, c0 + 1, xT(tr('CÓDIGO'), X.wcBold)); put(r, c0 + 2, xT(code, X.wcBold)); sides(c0, r) }
   const order = (w: WtRow) => (w.kind === 'ball' ? 0 : 2) + (w.cook === 'racks' ? 1 : 0)
   const balls = of.filter((w) => w.kind !== 'pouch').sort((a, b) => order(a) - order(b)), bags = of.filter((w) => w.kind === 'pouch')
-  const place = (w: WtRow) => (w.cook ? cookText(w.cook) : w.dept === 'Kitchen' && w.kind === 'ball' ? 'Racks' : w.dept)
+  // each with its title (Jose, 2026-10-30: Kitchen, RTE, "Spiral: Spiral" and "Spiral: Racks", the two inside the room of Spiral)
+  const title = (name: string) => name + ' · ' + tr('CONTROL DE PESO · {0}', code) + ' · ' + niceDay(date)
+  const sections: { name: string; list: WtRow[] }[] = [
+    { name: 'Kitchen', list: balls.filter((w) => w.dept === 'Kitchen') },
+    { name: 'Spiral: Spiral', list: balls.filter((w) => w.dept === 'Spiral' && w.cook !== 'racks') },
+    { name: 'Spiral: Racks', list: balls.filter((w) => w.dept === 'Spiral' && w.cook === 'racks') },
+  ]
   let rl = 0
-  for (const dept of ['Kitchen', 'Spiral'] as Dept[]) {
-    const mine = balls.filter((w) => w.dept === dept)
-    if (!mine.length && !(dept === 'Kitchen' && bags.length)) continue
-    band(rl, tr('CONTROL DE PESO · {0}', code) + ' · ' + niceDay(date) + ' · ' + dept.toUpperCase()); rl++
-    if (!mine.length) rl += 2
-    for (const w of mine) { head(rl, 0, place(w)); rl = group(rl + 1, 0, w) + 1 }
+  for (const x of sections) {
+    if (!x.list.length && !(x.name === 'Kitchen' && bags.length)) continue
+    band(rl, title(x.name)); rl++
+    if (!x.list.length) rl += 2
+    for (const w of x.list) { head(rl, 0); rl = group(rl + 1, 0, w) + 1 }
   }
-  put(0, right, xT(tr('CONTROL DE PESO · {0}', code) + ' · RTE', X.wcBand)); for (let c = right + 1; c <= lastC; c++) put(0, c, xT('', X.wcBand)); span(0, right, 0, lastC)
+  put(0, right, xT(title('RTE'), X.wcBand)); for (let c = right + 1; c <= lastC; c++) put(0, c, xT('', X.wcBand)); span(0, right, 0, lastC)
   let rr = 1
-  for (const w of bags) { head(rr, right, 'RTE'); rr = group(rr + 1, right, w) + 1 }
+  for (const w of bags) { head(rr, right); rr = group(rr + 1, right, w) + 1 }
   const side = [10, 9, ...Array.from({ length: most }, () => 7.5), 9, 11, 10, 24]
   return { name: tr('Control de peso {0}', code), rows: Array.from({ length: g.length }, (_, i) => Array.from(g[i] ?? [])), freeze: 0, page: { widths: [...side, 3, ...side], heights, merges } }
 }
