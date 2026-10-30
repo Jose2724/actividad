@@ -5668,6 +5668,19 @@ section('Pedidos (PO): solo los códigos que van en pedidos, y cada lote con su 
     eq('en Ajustes se cambia la lista: el 2286 entra con 30 días, un código repetido se queda una vez', [m.orderCodesList(st()), m.orderCodeOk(st(), '2286'), m.orderCodeOk(st(), '4911')], [[{ code: '0889', days: 50 }, { code: '2286', days: 30 }], true, false])
     m.setOrderCodes([])
     eq('sin códigos, un pedido acepta cualquiera', m.orderCodeOk(st(), '7777'), true)
+    // the pallets of a code that went without a PO, given to one from its window (2026-10-29)
+    clock = T0
+    if (!st().lines.some((l) => l.dept === 'Packing')) m.addLine('Packing', 'Línea 1')
+    const oid = m.saveOrder(null, { customer: 'BJ', po: '117973674', code: '2010', cases: 44, shipBy: '2026-11-02', dest: '' })
+    m.startRun(st().lines.find((l) => l.dept === 'Packing'), '2010', '6300', DAY, 22)
+    const pr = () => st().runs.find((r) => r.dept === 'Packing' && r.code === '2010')
+    for (const k of [1, 2, 3]) { clock = T0 + k * 10 * M; m.unitDone(pr().id, 22, 'T' + k) }
+    clock = T0 + 40 * M; m.unitDone(pr().id, 22, 'T4', undefined, oid)
+    eq('los pallets sin PO del 2010: tres, el más nuevo primero; el que ya tiene PO no', m.loosePalletsOf(st(), '2010').map((x) => x.u.ref), ['T3', 'T2', 'T1'])
+    eq('se ponen en el PO hasta que se llena: el primero entra (44 cajas = 2 pallets de 22), el segundo ya no', [m.setUnitOrder(pr().id, T0 + 10 * M, oid), m.setUnitOrder(pr().id, T0 + 20 * M, oid), m.loosePalletsOf(st(), '2010').map((x) => x.u.ref), m.orderFullText(st(), oid)], [true, false, ['T3', 'T2'], '2 de 2 pallets · 44 de 44 cajas'])
+    const o2 = m.saveOrder(null, { customer: 'BJ', po: '117973675', code: '2010', cases: 44, shipBy: '', dest: '' })
+    m.setUnitOrder(pr().id, T0 + 20 * M, o2); clock = T0 + 50 * M; m.unitDone(pr().id, 10, 'T5', undefined, o2)
+    eq('el porqué de un PO que no lleva más: con todas sus cajas; o con sus pallets aunque le falten cajas (van en el último)', [m.orderFullWhy(st(), oid), m.orderFullWhy(st(), o2)], ['BJ · PO 117973674 ya tiene todas sus cajas (2 de 2 pallets · 44 de 44 cajas): no lleva más pallets.', 'BJ · PO 117973675 ya tiene sus 2 pallets (2 de 2 pallets · 32 de 44 cajas) aunque le faltan 12 cajas. Un PO no lleva más pallets de los que pide: lo que falta va en su último pallet. Súbele las cajas a ese pallet con Corregir, o si un pallet que no es de este PO quedó en él, quítaselo y entonces sí entra este.'])
   })
 }
 section('Spiral anota la carne que echa, en libras y con su lote, y el reporte la suma por código con las libras por mezcla (Jose, 2026-10-23)')

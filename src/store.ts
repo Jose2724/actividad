@@ -2068,6 +2068,18 @@ export function orderOver(s: State, list: { po: string; qty: number | null }[], 
   return ''
 }
 /** how an order stands, said: "10 de 10 pallets", "480 de 480 cajas" */
+/**
+ * why an order takes no more pallets, said to whoever tried (Packing, 2026-10-29: "no me permite seleccionarlo ... un
+ * mensajito que diga por qué"): all its cases, or all its pallets though cases are still missing (those go in its last
+ * pallet, the office's rule of 2026-10-27, not in one more)
+ */
+export function orderFullWhy(s: State, orderId: string, perPallet?: number | null): string {
+  const o = s.orders.find((x) => x.id === orderId)
+  if (!o) return ''
+  const seq = orderPallets(s, orderId, perPallet), made = orderMade(s, orderId), label = orderLabel(o)
+  if (o.cases == null || made >= o.cases || seq.need == null) return tr('{0} ya tiene todas sus cajas ({1}): no lleva más pallets.', label, orderFullText(s, orderId, perPallet))
+  return tr('{0} ya tiene sus {1} pallets ({2}) aunque le faltan {3} cajas. Un PO no lleva más pallets de los que pide: lo que falta va en su último pallet. Súbele las cajas a ese pallet con Corregir, o si un pallet que no es de este PO quedó en él, quítaselo y entonces sí entra este.', label, seq.need, orderFullText(s, orderId, perPallet), fmtN(o.cases - made))
+}
 export function orderFullText(s: State, orderId: string, perPallet?: number | null): string {
   const o = s.orders.find((x) => x.id === orderId)
   if (!o) return ''
@@ -2851,6 +2863,14 @@ export function deleteOrder(id: string) {
   logChange(null, 'Pedido borrado', orderText(o), '', ORDER_LOG, id + ':d')
 }
 /** which order a unit already recorded goes to ('' = none): a correction */
+/**
+ * Packing's pallets of a code that carry no order, or one that is gone (Jose, 2026-10-29: to give them to a PO from its
+ * window), the newest first: the pallets of the runs on this device, not their bins
+ */
+export function loosePalletsOf(s: State, code: string) {
+  return s.runs.filter((r) => !r.deleted && r.dept === 'Packing' && !binOf(r) && normCode(r.code) === normCode(code))
+    .flatMap((r) => r.units.filter((u) => !orderOfId(s, u.po)).map((u) => ({ r, u }))).sort((a, b) => b.u.at - a.u.at)
+}
 export function setUnitOrder(runId: string, at: number, orderId: string): boolean {
   const r = run(runId), i = r ? r.units.findIndex((u) => u.at === at) : -1
   if (!r || i < 0) return false

@@ -1,8 +1,8 @@
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
-import { addRunLater, dayBefore, lineTimes, runsOnLine, shiftAt, shiftsOf, turnOf, addUnit, applyDraft, draftChecks, draftUnitOf, NOTE_MAX, usualFor, usualOf, wasteProblem, BIN_WORDS, binOf, binWord, byLineName, cfgFor, checkLaterPallets, DEPTS, fmtN, kindClass, LATER_MAX, laterPalletUnits, laterPoFits, laterStart, laterToOrder, MFO_WORDS, tagTwice, unitStartPo, type LaterPalletRow, plainDay, planRows, SPIRAL_UNITS, type Dept, byShip, CFG, cfgOf, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, reasonText, setUnitOrder, splitStop, store, updateRun, updateStop, type Order, type Run, type State, type Stop, lineLabel, orderFull, orderFullText, orderOver } from './store'
+import { orderFullWhy, addRunLater, dayBefore, lineTimes, runsOnLine, shiftAt, shiftsOf, turnOf, addUnit, applyDraft, draftChecks, draftUnitOf, NOTE_MAX, usualFor, usualOf, wasteProblem, BIN_WORDS, binOf, binWord, byLineName, cfgFor, checkLaterPallets, DEPTS, fmtN, kindClass, LATER_MAX, laterPalletUnits, laterPoFits, laterStart, laterToOrder, MFO_WORDS, tagTwice, unitStartPo, type LaterPalletRow, plainDay, planRows, SPIRAL_UNITS, type Dept, byShip, CFG, cfgOf, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, reasonText, setUnitOrder, splitStop, store, updateRun, updateStop, type Order, type Run, type State, type Stop, lineLabel, orderFull, orderFullText, orderOver } from './store'
 import { clockNow } from './clock'
 import { unitStartLot } from './report'
-import { ConfirmDialog, LotsDialog, useCan, useSure, useWho, type SureBox } from './App'
+import { ConfirmDialog, LotsDialog, NoticeDialog, useCan, useSure, useWho, type SureBox } from './App'
 import { writesIn } from './powers'
 import { HoldButton } from './Holds'
 import { holdOf } from './store'
@@ -57,6 +57,8 @@ export function RunEditor({ s, run, mgr, focusAt, onClose }: { s: State; run: Ru
   const lines = s.lines.filter((l) => l.dept === run.dept).sort(byLineName)
   const [lineId, setLineId] = useState(run.lineId)
   const [problem, setProblem] = useState('')
+  // why a PO chosen for a pallet takes no more pallets: said in a window, where it is seen (2026-10-29)
+  const [fullWhy, setFullWhy] = useState('')
   const sure = useSure()
   // What was changed here to more than twice the usual is asked about before saving, one box at a time (Jose,
   // 2026-10-18): the quantity per unit and each unit whose quantity or lots changed (see draftChecks). What was not
@@ -110,7 +112,7 @@ export function RunEditor({ s, run, mgr, focusAt, onClose }: { s: State; run: Ru
                   {cfg.refLabel && !tagsInLots && <td><input className="num" value={u.ref} onChange={(e) => setUnits(units.map((x, k) => (k === i ? { ...x, ref: e.target.value } : x)))} autoComplete="off" /></td>}
                   {withOrders && (() => {
                     const po = run.units.find((x) => x.at === u.at)?.po, known = po && s.orders.some((o) => o.id === po) ? po : ''
-                    return <td><select value={known} onChange={(e) => { if (!setUnitOrder(run.id, u.at, e.target.value)) setProblem(tr('Ese PO ya está completo ({0}): no lleva más pallets.', orderFullText(s, e.target.value, run.perUnit))) }}><option value="">{tr('Sin pedido')}</option>{ordersFor(po).map((o) => { const full = o.id !== known && orderFull(s, o.id, run.perUnit, { runId: run.id, at: u.at }); return <option key={o.id} value={o.id} disabled={full}>{orderLabel(o)}{full ? ' · ' + tr('✓ completo: {0}', orderFullText(s, o.id, run.perUnit)) : ''}</option> })}</select></td>
+                    return <td><select value={known} onChange={(e) => { if (!setUnitOrder(run.id, u.at, e.target.value)) setFullWhy(orderFullWhy(s, e.target.value, run.perUnit)) }}><option value="">{tr('Sin pedido')}</option>{ordersFor(po).map((o) => { const full = o.id !== known && orderFull(s, o.id, run.perUnit, { runId: run.id, at: u.at }); return <option key={o.id} value={o.id}>{orderLabel(o)}{full ? ' · ' + tr('✓ completo: {0}', orderFullText(s, o.id, run.perUnit)) : ''}</option> })}</select></td>
                   })()}
                   <td>{u.by || '—'}</td>
                   <td className="unote">{u.note && <span>💬 {u.note}</span>} <button type="button" className="lnk" title={tr('Cambiar el comentario de esta unidad')} onClick={() => (cfg.lots ? setLotsOf(i) : setNoting(i))}>{u.note ? '✎' : tr('+ Comentario')}</button></td>
@@ -126,6 +128,7 @@ export function RunEditor({ s, run, mgr, focusAt, onClose }: { s: State; run: Ru
         <p className="hint">{tr('Quita con ✕ una unidad tocada de más. Los cambios quedan al tocar Guardar.')}{later > 0 && ' ' + tr('Mientras corregías se {0}', (later === 1 ? tr('registró 1 {0} más: se conserva.', cfg.unit.toLowerCase()) : tr('registraron {0} {1} más: se conservan.', later, cfg.plural.toLowerCase())))}</p>
         {can('del') && <p className="hint">{tr('Si la línea no estaba trabajando y se tocó por error, "Borrar corrida" la saca del reporte. Todo cambio queda en el historial con tu nombre.')}</p>}
         {problem && <span className="err">{problem}</span>}
+        {fullWhy && <NoticeDialog title={tr('Ese PO no lleva más pallets')} text={fullWhy} onClose={() => setFullWhy('')} />}
         <div className="dbtns spread">
           <div className="btns">
             {mgr && <button type="button" className="btn soft" onClick={() => setAdding(true)}>{trx('+ Agregar {0}', cfg.unit.toLowerCase())}</button>}

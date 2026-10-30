@@ -4,7 +4,7 @@ import { PLAN_NOTE_MAX, PLAN_SPAN_MAX, attGated, attOf, lineSlow, addLine, plant
 import { avanceLots, avanceRange, avanceRows, datesBetween, lotAcrossDays, lotRows, lotsKnown, mfoList, mfoText, mfoWord, n1, pending, type AvancePart, type AvanceRow, type MfoMade } from './avance'
 import { loadZip, type Cell } from './xlsx'
 
-import { expiryOf, orderCodeOf, orderCodeOk, orderCodesList, fmtN, looksLikeTwoLots, plainText, viewOnly, whoText, askFirst, usualFor, usualOf, type QtyCheck } from './store'
+import { orderFullWhy, loosePalletsOf, setUnitOrder, type Unit, expiryOf, orderCodeOf, orderCodeOk, orderCodesList, fmtN, looksLikeTwoLots, plainText, viewOnly, whoText, askFirst, usualFor, usualOf, type QtyCheck } from './store'
 import { loadPdf } from './pdf'
 import { sharePick, shareProblem, type Kind } from './send'
 import { runLots, spanShifts, unitParts } from './report'
@@ -1390,6 +1390,8 @@ function OrderPalletsDialog({ s, order, onAdd, onClose }: { s: State; order: Ord
   // adding a pallet: {} = choosing where it goes, { run } = adding it to that run
   const [adding, setAdding] = useState<{ run?: string } | null>(null)
   const [added, setAdded] = useState<string[]>([]) // the pallets added from here ("run:moment"), marked in the list
+  const [loose, setLoose] = useState(false) // giving it the pallets of its code that went without a PO
+  const who = useWho(), looseN = !order.closed && can('fix') && writesIn(who, 'Packing') ? loosePalletsOf(s, order.code).length : 0
   const addTo = adding?.run ? s.runs.find((r) => r.id === adding.run && !r.deleted) : undefined
   const list = orderRunsOf(s, order.id).flatMap((r) => r.units.filter((u) => u.po === order.id).map((u) => ({ r, u, parts: unitParts(s, r, u), here: s.runs.some((x) => x.id === r.id) }))).sort((a, b) => a.u.at - b.u.at)
   const made = orderMade(s, order.id), seq = orderPallets(s, order.id), left = order.cases != null ? order.cases - made : null
@@ -1437,14 +1439,84 @@ function OrderPalletsDialog({ s, order, onAdd, onClose }: { s: State; order: Ord
         {list.some((x) => !x.here) && <p className="hint">{tr('Los pallets de días que este aparato ya no guarda se traen del servidor: se ven aquí y se corrigen abriendo ese día en el Reporte.')}</p>}
         {onAdd ? (
           <div className="dbtns spread">
-            <button type="button" className="btn soft" onClick={() => setAdding({})}>{tr('+ Agregar pallet a este PO')}</button>
+            <div className="btns">
+              <button type="button" className="btn soft" onClick={() => setAdding({})}>{tr('+ Agregar pallet a este PO')}</button>
+              {looseN > 0 && <button type="button" className="btn soft" onClick={() => setLoose(true)}>{tr('＋ Pallets sin PO del {0} ({1})', order.code, looseN)}</button>}
+            </div>
             <button type="button" className="btn" onClick={onClose}>{tr('Cerrar')}</button>
           </div>
         ) : <div className="dbtns"><button type="button" className="btn" onClick={onClose}>{tr('Cerrar')}</button></div>}
         {run && <RunEditor s={s} run={run} mgr={can('fix')} onClose={() => setEditRun(null)} />}
+        {loose && <LoosePalletsDialog s={s} order={order} onClose={() => setLoose(false)} />}
         {onAdd && adding && !adding.run && <OrderAddChooser s={s} order={order} onPick={(id) => setAdding({ run: id })} onNew={() => { setAdding(null); onAdd() }} onClose={() => setAdding(null)} />}
         {/* the pallet's hour has to fall inside the run's (AddUnitDialog's rule); "Agregar y otro" keeps it open */}
         {addTo && <AddUnitDialog s={s} run={addTo} startPo={order.id} onClose={() => setAdding(null)} onAdded={(at, more) => { setAdded((l) => [...l, addTo.id + ':' + at]); if (!more) setAdding(null) }} />}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * The pallets of an order's code that went without a PO, given to it from its window (Jose, 2026-10-29: "un botón para
+ * poner los que salen sin PO de este código producto seleccionado"): Packing's pallets of that code on this device that
+ * carry no order (or one that is gone), the newest first, each with its day, line, lots and when they expire, cases and
+ * tag. The ones ticked go to this order in that order until it is full (its pallets or its cases, the office's rule):
+ * what does not fit stays without a PO and the window says so. Only the pallets this person may correct are offered:
+ * the other shift's, without the power for it, are counted and left out, as "Agregar pallet" leaves them out
+ */
+function LoosePalletsDialog({ s, order, onClose }: { s: State; order: Order; onClose: () => void }) {
+  const who = useWho()
+  const now = clockNow()
+  const all = loosePalletsOf(s, order.code).map((x) => ({ ...x, parts: unitParts(s, x.r, x.u) }))
+  const may = all.filter((x) => canShift(who, spanShifts(shiftsOf(s, x.r.date, x.r.dept), x.r.startedAt, x.r.endedAt ?? now)))
+  const [picked, setPicked] = useState<string[]>([])
+  const [said, setSaid] = useState('')
+  const key = (x: { r: Run; u: Unit }) => x.r.id + ':' + x.u.at
+  const flip = (k: string) => setPicked((l) => (l.includes(k) ? l.filter((y) => y !== k) : [...l, k]))
+  const give = () => {
+    let n = 0, left = 0
+    for (const x of may.filter((y) => picked.includes(key(y))).sort((a, b) => a.u.at - b.u.at)) { if (setUnitOrder(x.r.id, x.u.at, order.id)) n++; else left++ }
+    setPicked([])
+    setSaid(left ? tr('Se pusieron {0} en este PO; {1} quedaron sin PO.', n, left) + ' ' + orderFullWhy(s, order.id) : n === 1 ? tr('Se puso 1 pallet en este PO.') : tr('Se pusieron {0} pallets en este PO.', n))
+  }
+  const full = orderFull(s, order.id)
+  return (
+    <div className="veil" onClick={onClose}>
+      <div className="dlg wide" onClick={(e) => e.stopPropagation()}>
+        <h3>{trx('Pallets sin PO del {0}', <span className="code">{order.code}</span>)}</h3>
+        <p className="fromorder">{trx('Para el pedido {0}: {1}.', <b>{orderLabel(order)}</b>, orderFullText(s, order.id))}</p>
+        {full && <p className="hint amber">{orderFullWhy(s, order.id)}</p>}
+        {said && <p className="hint ok">{said}</p>}
+        {may.length === 0 ? <p className="hint">{all.length ? tr('Los pallets sin PO de este código son del otro turno: los corrige quien tiene ese turno o un manager.') : tr('No hay pallets sin PO de este código en este aparato (guarda los últimos 14 días).')}</p> : (
+          <div className="twrap">
+            <table className="pallets">
+              <thead><tr><th></th><th>{tr('Fecha')}</th><th>{tr('Línea')}</th><th>{tr('Lote')}</th><th>{tr('Vence')}</th><th className="num">{tr('Cajas')}</th><th>{tr('Tag')}</th><th>{tr('Hora')}</th><th>{tr('Por')}</th></tr></thead>
+              {may.map((x) => {
+                const k = key(x), parts = x.parts.length ? x.parts : [{ lot: x.r.lot, qty: x.u.qty, tag: x.u.ref }], span = parts.length
+                return (
+                  <tbody key={k} className={picked.includes(k) ? 'rp-focus' : undefined} onClick={() => !full && flip(k)}>
+                    {parts.map((p, i) => (
+                      <tr key={i}>
+                        {i === 0 && <td rowSpan={span}><input type="checkbox" checked={picked.includes(k)} disabled={full} aria-label={tr('Poner este pallet en el PO')} onChange={() => flip(k)} onClick={(e) => e.stopPropagation()} /></td>}
+                        {i === 0 && <td rowSpan={span}>{shortDay(x.r.date)}</td>}
+                        {i === 0 && <td rowSpan={span}>{lineNameOf(s, x.r.lineId, x.r.line)}</td>}
+                        <td>{p.lot || '—'}</td><td>{((e) => (e ? <span className={'vence' + (order.shipBy && e < order.shipBy ? ' red' : '')}>{shortDay(e)}</span> : '—'))(expiryOf(s, order.code, p.lot, x.r.date))}</td>
+                        <td className="num">{p.qty != null ? fmtN(p.qty) : '—'}</td><td>{p.tag || <span className="notag">{tr('sin tag')}</span>}</td>
+                        {i === 0 && <td rowSpan={span}>{fmtTime(x.u.at)}</td>}
+                        {i === 0 && <td rowSpan={span}>{x.u.by || '—'}</td>}
+                      </tr>
+                    ))}
+                  </tbody>
+                )
+              })}
+            </table>
+          </div>
+        )}
+        {all.length > may.length && may.length > 0 && <p className="hint">{tr('{0} más son del otro turno: los corrige quien tiene ese turno o un manager.', all.length - may.length)}</p>}
+        <div className="dbtns">
+          <button type="button" className="btn" onClick={onClose}>{tr('Cerrar')}</button>
+          {may.length > 0 && <button type="button" className="btn primary" disabled={!picked.length || full} onClick={give}>{!picked.length ? tr('Escoge los pallets') : picked.length === 1 ? tr('Poner 1 pallet en este PO') : tr('Poner {0} pallets en este PO', picked.length)}</button>}
+        </div>
       </div>
     </div>
   )
