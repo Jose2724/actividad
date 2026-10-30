@@ -304,14 +304,51 @@ export function wtRowsOfShift(s: State, rows: WtRow[], k: 1 | 2): WtRow[] {
     return [{ ...w, ...wtSum(tests.flatMap((t) => t.entries), w.target), tests, skipped, complete, short: tests.length - complete, due: null }]
   })
 }
+/** what each column of those sheets says, for whoever receives them (Jose, 2026-10-30: "para que ellos sepan qué están leyendo") */
+const wtLegendRows = (): Cell[][] => [
+  headRow(tr('Las hojas'), tr('Qué significa')),
+  [tr('Turno {0}', 1), xT(tr('Solo lo que pesó ese turno. La de Turno 2 es igual.'), X.note)],
+  [tr('Todos'), xT(tr('Los dos turnos juntos.'), X.note)],
+  [],
+  headRow(tr('Resumen de cada código'), tr('Qué significa')),
+  [tr('Cuarto'), tr('El departamento que pesó.')],
+  [tr('Código'), tr('El producto.')],
+  [tr('Qué se pesó'), tr('Crudo, Cocinado o Pouch. En Spiral también dice el cocinador: Spiral o Racks.')],
+  [tr('Pruebas hechas'), tr('Cuántas pruebas se completaron. "3 de 4" = 3 hechas de las 4 que tocaban; un número solo = las hechas, sin comparar con las que tocaban. Una prueba son varios pesos tomados en la misma hora.')],
+  [tr('Incompletas'), tr('Pruebas empezadas con menos pesos de los que se pedían.')],
+  [tr('Pesados'), tr('Cuántos pesos se tomaron en total.')],
+  [tr('Promedio (oz)'), tr('La suma de los pesos ÷ cuántos son, en onzas.')],
+  [tr('Mínimo'), tr('El peso más bajo que se tomó.')],
+  [tr('Máximo'), tr('El peso más alto que se tomó.')],
+  [tr('Objetivo (oz)'), tr('El rango de QA, en onzas: de lo mínimo a lo máximo permitido.')],
+  [tr('Bien'), tr('Pesos dentro del rango de QA.')],
+  [tr('Bajos'), tr('Pesos por debajo del mínimo de QA. Salen en rojo.')],
+  [tr('Sobre'), tr('Pesos por encima del máximo de QA. Salen en ámbar.')],
+  [tr('% en peso'), tr('Bien ÷ pesados. Verde = 100%, ámbar = menos de 100%, rojo = menos de 90%.')],
+  [tr('Promedio vs objetivo'), tr('Cuánto se aleja el promedio del centro del rango. Positivo = más pesado, negativo = más liviano.')],
+  headRow(tr('Rendimiento de cocción'), tr('Qué significa')),
+  [tr('Rendimiento de cocción'), tr('El cocinador: Spiral o Racks.')],
+  [tr('Crudo promedio (oz)'), tr('El promedio de las bolas crudas antes de ese cocinador.')],
+  [tr('Cocinado promedio (oz)'), tr('El promedio de las bolas cocinadas al salir de ese cocinador.')],
+  [tr('Cocinado ÷ crudo'), tr('Cuánto del peso queda después de cocinar.')],
+  [tr('Se pierde'), tr('Cuánto del peso se va al cocinar: 100% − lo anterior.')],
+  headRow(tr('Cada prueba'), tr('Qué significa')),
+  [tr('Hora'), tr('La hora en que se tomó la prueba.')],
+  [tr('Turno'), tr('El turno de esa hora.')],
+  [tr('Línea'), tr('La línea donde se pesó.')],
+  [tr('Lote'), tr('El lote que corría.')],
+  [tr('Anotó'), tr('Quien anotó los pesos.')],
+  ['#1, #2…', tr('Cada peso en onzas, en el orden en que se tomó. Rojo = bajo, ámbar = sobre.')],
+].map((r, i) => (i && r.length === 2 && typeof r[1] === 'string' ? [r[0], xT(r[1], X.note)] : r))
 /**
  * The day's weights to send (Jose, 2026-10-30: "los del turno 1 todos los pesos, el turno 2 todos los pesos y una
- * combinación, así ellos eligen lo que necesitan"): a sheet per shift and one with the two together
+ * combinación, así ellos eligen lo que necesitan"): a sheet per shift, one with the two together, and what each column means
  */
 export const wtSheets = (s: State, rows: WtRow[]): Sheet[] => [
   { name: tr('Turno {0}', 1), rows: wtSheetRows(s, wtRowsOfShift(s, rows, 1), wtTests(wtRowsOfShift(s, rows, 1))), freeze: 1 },
   { name: tr('Turno {0}', 2), rows: wtSheetRows(s, wtRowsOfShift(s, rows, 2), wtTests(wtRowsOfShift(s, rows, 2))), freeze: 1 },
   { name: tr('Todos'), rows: wtSheetRows(s, rows, wtTests(rows)), freeze: 1 },
+  { name: tr('Qué significa'), rows: wtLegendRows(), freeze: 1 },
 ]
 /**
  * One sheet per part, a purple header row, the numbers as numbers with thousands, red / green / amber by what they say,
