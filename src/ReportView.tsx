@@ -1535,7 +1535,7 @@ function WeightsView({ k }: { k: Kit }) {
   const [fixing, setFixing] = useState<WtRow | null>(null)
   // the three sheets, as the room and code chosen; made from what is on screen when tapped
   const sheets = async () => {
-    const bytes = xlsxNow(wtSheets(s, wt.rows)) ?? (await loadZip(), xlsxNow(wtSheets(s, wt.rows)))
+    const bytes = xlsxNow(wtSheets(s, wt.rows, date)) ?? (await loadZip(), xlsxNow(wtSheets(s, wt.rows, date)))
     if (bytes) download(new File([bytes], tr('Pesos') + '-' + date + '.xlsx', { type: XLSX_TYPE }))
   }
   const groups = [...new Set(wt.rows.map((r) => r.dept + '|' + normCode(r.code)))].map((g) => wt.rows.filter((r) => r.dept + '|' + normCode(r.code) === g))

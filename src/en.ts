@@ -3069,4 +3069,11 @@ export const EN: Record<string, string> = {
   "Solo lo que pesó ese turno. La de Turno 2 es igual.": "Only what that shift weighed. The Shift 2 sheet is the same.",
   "Los dos turnos juntos.": "The two shifts together.",
   "Resumen de cada código": "Summary of each code",
+  "Reporte de pesos": "Weights report",
+  "Este turno no tiene pesos.": "This shift has no weights.",
+  "De {0} pesos, {1} salieron bien ({2}). Bajos: {3}. Sobre: {4}.": "Of {0} weights, {1} were in weight ({2}). Under: {3}. Over: {4}.",
+  "Lo que más se salió: {0} · {1} · {2}, con {3} en peso.": "Furthest off: {0} · {1} · {2}, with {3} in weight.",
+  "Todo dentro del rango de QA.": "All inside QA's range.",
+  "% en peso de cada código: la parte de los pesos que salió dentro del rango de QA": "% in weight of each code: the share of the weights inside QA's range",
+  "Qué significa cada columna": "What each column means",
 }

@@ -1,7 +1,7 @@
 import { attExpectedOf, attOf, attSentAt, attShifts, attWriteOn, CFG, cookText, dayBefore, DEPTS, deptToday, entryClass, fmtTime, kpiGet, lbCaseOn, lbPerCaseOf, lunchOf, normCode, sameStep, shiftAt, shiftsOf, stepKey, stepText, weighedCodes, weighsCode, weightAllStepsOf, weightRuleFor, weightStepsFor, weightTarget, wtRangeText, type Cook, type WeightTest, type WtStep, type AttEntry, type Dept, type State } from './store'
 import { reportOf } from './report'
 import { X, xDay, xN, xT, type Cell, type Sheet } from './xlsx'
-import { tr } from './i18n'
+import { locale, tr } from './i18n'
 
 /**
  * The Daily KPI Report (2026-10-22): the COO's "New Expectations - Daily KPI Reporting" for East Rutherford, built for
@@ -306,6 +306,8 @@ export function wtRowsOfShift(s: State, rows: WtRow[], k: 1 | 2): WtRow[] {
 }
 /** what each column of those sheets says, for whoever receives them (Jose, 2026-10-30: "para que ellos sepan qué están leyendo") */
 const wtLegendRows = (): Cell[][] => [
+  [xT(tr('Qué significa cada columna'), X.title)],
+  [],
   headRow(tr('Las hojas'), tr('Qué significa')),
   [tr('Turno {0}', 1), xT(tr('Solo lo que pesó ese turno. La de Turno 2 es igual.'), X.note)],
   [tr('Todos'), xT(tr('Los dos turnos juntos.'), X.note)],
@@ -339,15 +341,74 @@ const wtLegendRows = (): Cell[][] => [
   [tr('Lote'), tr('El lote que corría.')],
   [tr('Anotó'), tr('Quien anotó los pesos.')],
   ['#1, #2…', tr('Cada peso en onzas, en el orden en que se tomó. Rojo = bajo, ámbar = sobre.')],
-].map((r, i) => (i && r.length === 2 && typeof r[1] === 'string' ? [r[0], xT(r[1], X.note)] : r))
+].map((r) => (r.length === 2 && typeof r[1] === 'string' ? [r[0], xT(r[1], X.note)] : r))
+const WT_LAST = 'P' // the band reaches the last column of the tables
+const WT_WIDTHS = [11, 9, 19, 11, 11, 9, 10, 9, 9, 11, 8, 8, 8, 13, 12, 18]
+const wtRoom = (d: Dept) => (d === 'Kitchen' ? X.wKitchen : d === 'RTE' ? X.wRTE : d === 'Spiral' ? X.wSpiral : X.wCell)
+const wtPct = (x: number | null): Cell => (x == null ? xT('—', X.wCell) : { v: Math.round(x * 1000) / 1000, s: x < 0.9 ? X.wPr : x < 1 ? X.wPa : X.wPg, t: pc(x) })
+const niceDay = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+/**
+ * One sheet of the weights Excel, made to be read by whoever receives it (Jose, 2026-10-30: "más bonito ... con
+ * gráficas, pero que se entienda"): a band with the day, one line in words, the totals as tiles, each code with its %
+ * in weight and a chart of it, the cook yield, and every test under it, by code and hour, each weight in green, red or
+ * amber. The columns of the tables line up, so the eye goes down one column. The chart's names are in a white column
+ * (P of the summary): a chart reads its names from cells
+ */
+function wtReportSheet(s: State, name: string, rows: WtRow[], date: string): Sheet {
+  const out: Cell[][] = [], heights: Record<number, number> = {}, merges: string[] = []
+  const row = (cells: Cell[], ht?: number) => { if (ht) heights[out.length] = ht; out.push(cells); return out.length }
+  const fill = (s0: number, n: number): Cell[] => Array.from({ length: n }, () => xT('', s0))
+  const across = (text: string, style: number, ht: number) => { const r = row([xT(text, style), ...fill(style, 15)], ht); merges.push('A' + r + ':' + WT_LAST + r); return r }
+  const sec = (text: string) => { row([]); row([xT(text, X.wSec), ...fill(X.wSec, 15)], 22) }
+  across(tr('Reporte de pesos'), X.wBand, 30)
+  across(niceDay(date) + ' · ' + name, X.wSub, 21)
+  const n = rows.reduce((t, w) => t + w.checked, 0), good = rows.reduce((t, w) => t + w.good, 0), under = rows.reduce((t, w) => t + w.under, 0), over = rows.reduce((t, w) => t + w.over, 0)
+  const tests = rows.reduce((t, w) => t + w.complete + w.skipped.length, 0)
+  if (!n) { row([]); across(tr('Este turno no tiene pesos.'), X.wSay, 24); return { name, rows: out, freeze: 0, page: { widths: WT_WIDTHS, heights, merges } } }
+  // in words, what anybody asks first
+  const worst = rows.filter((w) => w.okPct != null && w.okPct < 1).sort((a, b) => (a.okPct as number) - (b.okPct as number))[0]
+  const say = tr('De {0} pesos, {1} salieron bien ({2}). Bajos: {3}. Sobre: {4}.', n, good, pc(good / n), under, over) + (worst ? ' ' + tr('Lo que más se salió: {0} · {1} · {2}, con {3} en peso.', worst.dept, worst.code, worst.label, pc(worst.okPct)) : ' ' + tr('Todo dentro del rango de QA.'))
+  row([]); across(say, X.wSay, 36); row([])
+  // the tiles: each over the columns that give it room
+  const tiles: [string, string, string, string][] = [[tr('Pruebas hechas'), String(tests), 'A', 'B'], [tr('Pesados'), String(n), 'C', 'C'], [tr('Bien'), String(good), 'D', 'E'], [tr('Bajos'), String(under), 'F', 'G'], [tr('Sobre'), String(over), 'H', 'I'], [tr('% en peso'), pc(good / n), 'J', 'K']]
+  const cols = 'ABCDEFGHIJK'.split(''), tileRow = (i: 0 | 1, st: number): Cell[] => cols.map((c) => { const t = tiles.find((x) => x[2] === c); return xT(t ? t[i] : '', st) })
+  const a = row(tileRow(0, X.wTileL), 18), b = row(tileRow(1, X.wTileV), 32)
+  for (const t of tiles) if (t[2] !== t[3]) merges.push(t[2] + a + ':' + t[3] + a, t[2] + b + ':' + t[3] + b)
+  sec(tr('Resumen de cada código'))
+  const head = (...t: string[]) => row(t.map((x) => xT(x, X.wHead)), 33)
+  head(tr('Cuarto'), tr('Código'), tr('Qué se pesó'), tr('Pruebas hechas'), tr('Incompletas'), tr('Pesados'), tr('Promedio (oz)'), tr('Mínimo'), tr('Máximo'), tr('Objetivo (oz)'), tr('Bien'), tr('Bajos'), tr('Sobre'), tr('% en peso'), tr('Promedio vs objetivo'))
+  const from = out.length + 1
+  for (const w of rows) row([xT(w.dept, wtRoom(w.dept)), xT(w.code, X.wCell), xT(w.label, X.wCell), xT(wtDoneText(w), w.due && w.complete + w.skipped.length < w.due ? X.bad : X.wCell), xN(w.short, w.short ? X.wNa : X.wN), xN(w.n, X.wN), w.avg == null ? xT('—', X.wCell) : xN(w.avg, X.wD), w.min == null ? xT('—', X.wCell) : xN(w.min, X.wD), w.max == null ? xT('—', X.wCell) : xN(w.max, X.wD), xT(wtRangeText(w.target) || '—', X.wCell), xN(w.good, w.good ? X.wNg : X.wN), xN(w.under, w.under ? X.wNr : X.wN), xN(w.over, w.over ? X.wNa : X.wN), wtPct(w.okPct), w.avgPct == null ? xT('—', X.wCell) : { v: Math.round(w.avgPct * 1000) / 1000, s: X.wP, t: pc(w.avgPct) }, xT(w.dept + ' ' + w.code + ' · ' + w.label, X.wHide)], 20)
+  const to = out.length
+  // the chart, in the rows left for it
+  row([]); const at = out.length + 1, tall = Math.max(9, rows.length * 2 + 4)
+  for (let i = 0; i < tall; i++) row([])
+  const yields = cookYields(rows)
+  if (yields.length) {
+    sec(tr('Rendimiento de cocción'))
+    head(tr('Rendimiento de cocción'), tr('Código'), tr('Crudo promedio (oz)'), tr('Cocinado promedio (oz)'), tr('Cocinado ÷ crudo'), tr('Se pierde'))
+    for (const y of yields) row([xT(cookText(y.cook), X.wCell), xT(y.code, X.wCell), xN(y.raw, X.wD), xN(y.cooked, X.wD), { v: Math.round(y.pct * 1000) / 1000, s: X.wP, t: pc(y.pct) }, { v: Math.round((1 - y.pct) * 1000) / 1000, s: X.wP, t: pc(1 - y.pct) }], 20)
+  }
+  sec(tr('Cada prueba'))
+  const most = Math.min(20, Math.max(0, ...rows.flatMap((w) => w.tests.map((t) => t.entries.length))))
+  head(tr('Cuarto'), tr('Código'), tr('Qué se pesó'), tr('Hora'), tr('Turno'), tr('Pesados'), tr('Promedio (oz)'), tr('Mínimo'), tr('Máximo'), tr('Objetivo (oz)'), tr('Bien'), tr('Bajos'), tr('Sobre'), tr('Línea'), tr('Lote'), tr('Anotó'), ...Array.from({ length: most }, (_, i) => '#' + (i + 1)))
+  for (const w of rows) for (const t of [...w.tests, ...w.skipped].sort((p, q) => p.at - q.at)) {
+    const x = wtSum(t.entries, w.target), by: Cell[] = [xT(t.line, X.wCell), xT(t.lot, X.wCell), xT(t.by, X.wCell)]
+    const first: Cell[] = [xT(w.dept, wtRoom(w.dept)), xT(t.code, X.wCell), xT(w.label, X.wCell), xT(fmtTime(t.at), X.wCell), xN(wtShift(s, t), X.wN)]
+    if (t.skip) { row([...first, xT(tr('No se usó esa hora'), X.wCell), ...fill(X.wCell, 7), ...by], 20); merges.push('F' + out.length + ':M' + out.length); continue }
+    row([...first, xN(x.n, X.wN), x.avg == null ? xT('—', X.wCell) : xN(x.avg, X.wD), x.min == null ? xT('—', X.wCell) : xN(x.min, X.wD), x.max == null ? xT('—', X.wCell) : xN(x.max, X.wD), xT(wtRangeText(w.target) || '—', X.wCell), xN(x.good, x.good ? X.wNg : X.wN), xN(x.under, x.under ? X.wNr : X.wN), xN(x.over, x.over ? X.wNa : X.wN), ...by,
+      ...t.entries.slice(0, most).map((e): Cell => { const k = entryClass(e, w.target); return e.w == null ? xT(e.k === 'sobre' ? '▲' : e.k === 'bajo' ? '▼' : '', X.wCell) : xN(e.w, k === 'bajo' ? X.wDr : k === 'sobre' ? X.wDa : k === 'ok' ? X.wDg : X.wD) })], 20)
+  }
+  return { name, rows: out, freeze: 0, page: { widths: [...WT_WIDTHS, ...Array.from({ length: most }, () => 8)], heights, merges }, chart: { title: tr('% en peso de cada código: la parte de los pesos que salió dentro del rango de QA'), series: tr('% en peso'), cat: 15, val: 13, from, to, at, pct: true, cols: 14, height: tall } }
+}
 /**
  * The day's weights to send (Jose, 2026-10-30: "los del turno 1 todos los pesos, el turno 2 todos los pesos y una
  * combinación, así ellos eligen lo que necesitan"): a sheet per shift, one with the two together, and what each column means
  */
-export const wtSheets = (s: State, rows: WtRow[]): Sheet[] => [
-  { name: tr('Turno {0}', 1), rows: wtSheetRows(s, wtRowsOfShift(s, rows, 1), wtTests(wtRowsOfShift(s, rows, 1))), freeze: 1 },
-  { name: tr('Turno {0}', 2), rows: wtSheetRows(s, wtRowsOfShift(s, rows, 2), wtTests(wtRowsOfShift(s, rows, 2))), freeze: 1 },
-  { name: tr('Todos'), rows: wtSheetRows(s, rows, wtTests(rows)), freeze: 1 },
+export const wtSheets = (s: State, rows: WtRow[], date: string): Sheet[] => [
+  wtReportSheet(s, tr('Turno {0}', 1), wtRowsOfShift(s, rows, 1), date),
+  wtReportSheet(s, tr('Turno {0}', 2), wtRowsOfShift(s, rows, 2), date),
+  wtReportSheet(s, tr('Todos'), rows, date),
   { name: tr('Qué significa'), rows: wtLegendRows(), freeze: 1 },
 ]
 /**
