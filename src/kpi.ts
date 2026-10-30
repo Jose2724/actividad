@@ -1,6 +1,6 @@
 import { wtOfficial, wtRange, attExpectedOf, attOf, attSentAt, attShifts, attWriteOn, CFG, cookText, dayBefore, DEPTS, deptToday, entryClass, fmtTime, kpiGet, lbCaseOn, lbPerCaseOf, lunchOf, normCode, sameStep, shiftAt, shiftsOf, stepKey, stepText, weighedCodes, weighsCode, weightAllStepsOf, weightRuleFor, weightStepsFor, weightTarget, wtRangeText, type Cook, type WeightTest, type WtStep, type AttEntry, type Dept, type State } from './store'
 import { reportOf } from './report'
-import { X, xDay, xN, xT, type Cell, type Sheet } from './xlsx'
+import { colName, X, xDay, xN, xT, type Cell, type Sheet } from './xlsx'
 import { locale, tr } from './i18n'
 
 /**
@@ -416,6 +416,70 @@ export function wtSummarySheet(s: State, rows: WtRow[], date: string): Sheet {
   }
   return { name: tr('Resumen'), rows: out, freeze: 0, page: { widths: [9, 13, 10, 9, 10, 11, 11, 11, 10, 11, 42, 24], heights, merges }, ...(chart ? { chart } : {}) }
 }
+/**
+ * A code's day as the plant's own Weight Control sheet, the one Santiago keeps (Jose, 2026-10-30: "así como está en el
+ * sheet de Santiago"): each hour in its block, TIME and its weights, its AVG in yellow, a TOTAL AVG under each group,
+ * meatballs on the left and RTE's pouches on the right. Target and difference go beside each AVG; the difference is how
+ * far the average is outside QA's range, 0 inside it. A weight outside the range keeps its red or amber
+ */
+export function wtControlSheet(s: State, rows: WtRow[], code: string, date: string): Sheet | null {
+  const of = rows.filter((w) => normCode(w.code) === normCode(code) && w.tests.length)
+  if (!of.length) return null
+  const most = Math.max(8, Math.min(12, ...[0], Math.max(0, ...of.flatMap((w) => w.tests.map((t) => t.entries.length)))))
+  const g: Cell[][] = [], heights: Record<number, number> = {}, merges: string[] = []
+  const put = (r: number, c: number, v: Cell) => { (g[r] ??= [])[c] = v }
+  const span = (r: number, c: number, r2: number, c2: number) => merges.push(colName(c) + (r + 1) + ':' + colName(c2) + (r2 + 1))
+  const avgOf = (ws: number[]) => (ws.length ? ws.reduce((a, b) => a + b, 0) / ws.length : null)
+  const word = (k: WeightTest['kind']) => (k === 'raw' ? tr('CRUDO') : k === 'ball' ? tr('COCINADO') : tr('POUCH'))
+  const sides = (c0: number, r: number) => { const a = c0 + 2 + most; put(r, a, xT(tr('PROM.'), X.wcBold)); put(r, a + 1, xT(tr('Objetivo'), X.wcBold)); put(r, a + 2, xT(tr('Diferencia'), X.wcBold)) }
+  // the target and how far the average is from it, in the two cells after the average
+  const judge = (r: number, c: number, avg: number | null, w: WtRow, rows2 = 1) => {
+    const t = wtOfficial(s, w.code, w.kind) && w.target ? w.target : null, range = t ? wtRange(t) : null
+    put(r, c, xT(t ? wtRangeText(t) : tr('Pendiente'), X.wcText))
+    // (to two decimals, as QA writes its ranges and as the summary judges: both sheets say the same)
+    const two = avg == null ? null : Math.round(avg * 100) / 100
+    const d = two == null || !range ? null : Math.round((two < range.min ? two - range.min : two > range.max ? two - range.max : 0) * 100) / 100
+    put(r, c + 1, d == null ? xT('—', X.wcText) : { v: d, s: d === 0 ? X.wDg : d < 0 ? X.wDr : X.wDa, t: String(d) })
+    if (rows2 > 1) { put(r + 1, c, xT('', X.wcText)); put(r + 1, c + 1, xT('', X.wcText)); span(r, c, r + 1, c); span(r, c + 1, r + 1, c + 1) }
+  }
+  const group = (r0: number, c0: number, w: WtRow) => {
+    let r = r0
+    const label = (w.cook ? cookText(w.cook).toUpperCase() : w.dept.toUpperCase()) + ' ' + word(w.kind)
+    for (const t of [...w.tests].sort((a, b) => a.at - b.at)) {
+      put(r, c0, xT(label, X.wcLabel)); put(r + 1, c0, xT('', X.wcLabel)); span(r, c0, r + 1, c0)
+      put(r, c0 + 1, xT(tr('HORA'), X.wcHead)); put(r + 1, c0 + 1, xT(fmtTime(t.at), X.wcTime))
+      const ws = t.entries.flatMap((e) => (e.w != null ? [e.w] : [])), avg = avgOf(ws)
+      for (let i = 0; i < most; i++) {
+        put(r, c0 + 2 + i, xT(String(i + 1), X.wcHead))
+        const e = t.entries[i], k = e ? entryClass(e, w.target) : ''
+        put(r + 1, c0 + 2 + i, !e ? xT('', X.wcTime) : e.w == null ? xT(e.k === 'sobre' ? '▲' : '▼', X.wcTime) : xN(e.w, k === 'bajo' ? X.wDr : k === 'sobre' ? X.wDa : X.wcW))
+      }
+      const a = c0 + 2 + most
+      put(r, a, avg == null ? xT('—', X.wcAvg) : xN(Math.round(avg * 10000) / 10000, X.wcAvg)); put(r + 1, a, xT('', X.wcAvg)); span(r, a, r + 1, a)
+      judge(r, a + 1, avg, w, 2)
+      r += 2
+    }
+    const all = w.tests.flatMap((t) => t.entries.flatMap((e) => (e.w != null ? [e.w] : []))), total = avgOf(all), a = c0 + 2 + most
+    put(r, a - 1, xT(tr('PROM. TOTAL'), X.wcBold))
+    put(r, a, total == null ? xT('—', X.wcTotal) : xN(Math.round(total * 10000) / 10000, X.wcTotal))
+    judge(r, a + 1, total, w)
+    return r + 1
+  }
+  const leftN = 2 + most + 3, right = leftN + 1, lastC = right + leftN - 1
+  put(0, 0, xT(tr('CONTROL DE PESO · {0}', code) + ' · ' + niceDay(date), X.wcBand))
+  for (let c = 1; c <= lastC; c++) put(0, c, xT('', X.wcBand))
+  span(0, 0, 0, lastC); heights[0] = 26
+  let rl = 2, rr = 2
+  const balls = of.filter((w) => w.kind !== 'pouch'), bags = of.filter((w) => w.kind === 'pouch')
+  if (balls.length) sides(0, 1)
+  if (bags.length) sides(right, 1)
+  for (const w of balls) { rl = group(rl, 0, w) + 1; if (w !== balls[balls.length - 1]) { sides(0, rl); rl++ } }
+  for (const w of bags) { rr = group(rr, right, w) + 1; if (w !== bags[bags.length - 1]) { sides(right, rr); rr++ } }
+  const side = [10, 9, ...Array.from({ length: most }, () => 7.5), 9, 11, 10]
+  return { name: tr('Control de peso {0}', code), rows: Array.from({ length: g.length }, (_, i) => Array.from(g[i] ?? [])), freeze: 0, page: { widths: [...side, 3, ...side], heights, merges } }
+}
+/** the file of the one-page button: the summary first, then each code as the plant's own sheet */
+export const wtSummaryBook = (s: State, rows: WtRow[], date: string): Sheet[] => [wtSummarySheet(s, rows, date), ...WT_SUMMARY_CODES.flatMap((c) => { const x = wtControlSheet(s, rows, c, date); return x ? [x] : [] })]
 const WT_LAST = 'P' // the band reaches the last column of the tables
 const WT_WIDTHS = [11, 9, 19, 11, 11, 9, 10, 9, 9, 11, 8, 8, 8, 13, 12, 18]
 const wtRoom = (d: Dept) => (d === 'Kitchen' ? X.wKitchen : d === 'RTE' ? X.wRTE : d === 'Spiral' ? X.wSpiral : X.wCell)

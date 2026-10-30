@@ -4,7 +4,7 @@ import { cookText as cookTextOf, entryClass as entryClassOf, expiryOf, wtRangeTe
 import { avanceRows, mfoText, mfoWord, pending } from './avance'
 import { codeLabel, FAMILY_SHOWN, reasonCodeOf } from './reasons'
 import { cellText, loadZip, X, xDur, xN, xPct, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
-import { cookYields, hoursOf, seesLabor, weightsOf, wtCompliance, wtDoneText, wtOfReport, wtSheetRows, wtSheets, wtShift, wtSum, wtSummary, wtSummarySheet, type WtAvg, type WtRow } from './kpi'
+import { cookYields, hoursOf, seesLabor, weightsOf, wtCompliance, wtDoneText, wtOfReport, wtSheetRows, wtSheets, wtShift, wtSum, wtSummary, wtSummaryBook, type WtAvg, type WtRow } from './kpi'
 import { attendanceOf, attLineText, attMovesText, attOf, attShifts, attStateText } from './store'
 import { consumesOf, inventoryOf, stepText, weightsFix, weightTarget, wtKindsOf, type Dept as RoomDept } from './store'
 import { pctText } from './Attendance'
@@ -1539,7 +1539,7 @@ function WeightsView({ k }: { k: Kit }) {
   // the three sheets, as the room and code chosen; made from what is on screen when tapped
   // the one page for the plant's heads: every room's weights of the day, whatever the filters show
   const summary = async () => {
-    const page = () => xlsxNow([wtSummarySheet(s, weightsOf(s, date, now), date)])
+    const page = () => xlsxNow(wtSummaryBook(s, weightsOf(s, date, now), date))
     const bytes = page() ?? (await loadZip(), page())
     if (bytes) download(new File([bytes], tr('Resumen-de-pesos') + '-' + date + '.xlsx', { type: XLSX_TYPE }))
   }
@@ -1554,7 +1554,7 @@ function WeightsView({ k }: { k: Kit }) {
   const late = (r: WtRow) => r.due != null && r.complete + r.skipped.length < r.due
   return (
     <>
-      {wt.rows.length > 0 && <div className="btns"><button type="button" className="btn primary" onClick={() => void summary()}>{tr('⬇ Resumen de una hoja')}</button><button type="button" className="btn soft" onClick={() => void sheets()}>{tr('⬇ Excel de pesos: Turno 1, Turno 2 y Todos')}</button></div>}
+      {wt.rows.length > 0 && <div className="btns"><button type="button" className="btn primary" onClick={() => void summary()}>{tr('⬇ Resumen y control de peso')}</button><button type="button" className="btn soft" onClick={() => void sheets()}>{tr('⬇ Excel de pesos: Turno 1, Turno 2 y Todos')}</button></div>}
       {fixing && <WeightsFixDialog s={s} row={fixing} onClose={() => setFixing(null)} />}
       <article className="wt-rp">
         <h3>{tr('Resumen de pesos')} <WhatIs id="peso-resumen" /></h3>

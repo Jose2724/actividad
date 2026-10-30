@@ -3111,4 +3111,13 @@ export const EN: Record<string, string> = {
   "1 pouch bajo el mínimo": "1 pouch under the minimum",
   "{0} pouches bajo el mínimo": "{0} pouches under the minimum",
   "% de pesos dentro del rango de QA, por departamento": "% of weights inside the QA range, by department",
+  "CRUDO": "RAW",
+  "COCINADO": "COOKED",
+  "POUCH": "POUCH",
+  "PROM.": "AVG",
+  "HORA": "TIME",
+  "PROM. TOTAL": "TOTAL AVG",
+  "CONTROL DE PESO · {0}": "WEIGHT CONTROL · {0}",
+  "Control de peso {0}": "Weight Control {0}",
+  "⬇ Resumen y control de peso": "⬇ Summary and weight control",
 }
