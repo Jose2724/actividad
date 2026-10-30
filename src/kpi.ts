@@ -393,14 +393,14 @@ export function wtSummarySheet(s: State, rows: WtRow[], date: string): Sheet {
     row([tr('Código'), tr('Veces revisado'), tr('Crudo prom. (oz)'), tr('Rango QA'), tr('Cocinado prom. (oz)'), tr('Rango QA'), tr('Pouch prom. (oz)'), tr('Rango QA'), tr('Resultado'), tr('Acción tomada')].map((x) => xT(x, X.wHead)), 48)
     const avg = (x: WtAvg): Cell => (x.avg == null ? xT(tr('No se pesó'), X.wCell) : xN(x.avg, x.ok == null ? X.wD : x.ok === 'ok' ? X.wDg : x.ok === 'under' ? X.wDr : X.wDa))
     const range = (x: WtAvg): Cell => xT(x.range || tr('Pendiente'), X.wCell)
-    for (const x of list) row([xT(x.code, X.wCell), xN(x.times, X.wN), avg(x.raw), range(x.raw), avg(x.cooked), range(x.cooked), avg(x.pouch), range(x.pouch), xT(x.result, x.action ? X.bad : x.pending ? X.warn : x.times ? X.good : X.wCell), xT('', X.wCell)], 42)
+    for (const x of list) row([xT(x.code, X.wCell), xN(x.times, X.wN), avg(x.raw), range(x.raw), avg(x.cooked), range(x.cooked), avg(x.pouch), range(x.pouch), xT(x.result, x.action ? X.wBadW : x.pending ? X.wWarnW : x.times ? X.wGoodW : X.wLeft), xT('', X.wCell)], 52)
     row([])
     across(tr('Cómo leerlo: "Veces revisado" = cuántas horas se pesó ese código. "Prom." = el promedio de todos los pesos del día, en onzas. Pouch = la bolsa terminada. Rango QA = el mínimo y el máximo permitido.'), X.note, 34)
     across(tr('Verde = el promedio está dentro del rango. Rojo = bajo el rango. Ámbar = sobre el rango. Si está rojo o ámbar se necesita una acción correctiva: anótala en "Acción tomada".'), X.note, 34)
     const note = kpiNote(s, date, 'weights')
     if (note) { row([]); across(tr('Notas: {0}', note), X.note, 48) }
   }
-  return { name: tr('Resumen'), rows: out, freeze: 0, page: { widths: [10, 10, 11, 12, 11, 12, 12, 12, 36, 26], heights, merges } }
+  return { name: tr('Resumen'), rows: out, freeze: 0, page: { widths: [10, 10, 11, 12, 11, 12, 12, 12, 42, 26], heights, merges } }
 }
 const WT_LAST = 'P' // the band reaches the last column of the tables
 const WT_WIDTHS = [11, 9, 19, 11, 11, 9, 10, 9, 9, 11, 8, 8, 8, 13, 12, 18]
