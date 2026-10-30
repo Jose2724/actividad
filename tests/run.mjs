@@ -5742,7 +5742,7 @@ section('Pesos escritos con otro código o como crudo: se corrigen desde el Repo
     eq('el 2234 se juzga con lo que dice Ajustes › KPI (Jose, 2026-10-30), y lo que no tiene target no: la bola en pouch', [m.wtOfficial(st(), '2234', 'pouch'), m.wtOfficial(st(), '2234', 'ball'), m.wtOfficial(st(), '2234', 'raw'), m.wtOfficial(st(), '0889', 'ball'), m.wtOfficial(st(), '0889', 'pouched')], [true, true, true, true, false])
     m.setWeightTarget('0889', 2.25, 0.15, 'ball')
     const sum = m.wtSummary(st(), sumRows())
-    eq('una línea por código y departamento, con la bolsa de 48 oz como Pouch', sum.map((x) => [x.code, x.dept, x.times, x.cooked.avg, x.cooked.ok, x.pouch.avg, x.pouch.range, x.pouch.ok, x.action]), [['0889', 'Kitchen', 2, 2.24, 'ok', null, '48–52', null, false], ['0889', 'RTE', 1, null, '2.3–2.4', 50, '48–52', 'ok', false], ['2234', '', 0, null, '', null, '', null, false]].map(([c, d, t, av, , pa, pr, po, ac]) => [c, d, t, av, av == null ? null : 'ok', pa, pr, po, ac]))
+    eq('una línea por código y departamento, con la bolsa de 48 oz como Pouch', sum.map((x) => [x.code, x.dept, x.times, x.cooked.avg, x.cooked.ok, x.pouch.avg, x.pouch.range, x.pouch.ok, x.action]), [['0889', 'Kitchen', 2, 2.24, 'ok', null, '48–52', null, false], ['0889', 'RTE', 1, null, '2.3–2.4', 50, '48–52', 'ok', false], ['2234', '', 0, null, '', null, '72–76', null, false]].map(([c, d, t, av, , pa, pr, po, ac]) => [c, d, t, av, av == null ? null : 'ok', pa, pr, po, ac]))
     eq('dentro del rango lo dice, y el que no se pesó también', [sum[0].result, sum[1].result, sum[2].result], ['Dentro del rango de QA', 'Dentro del rango de QA', 'No se pesó este día'])
     m.setWeightTarget('0889', 2.375, 0.025, 'ball')
     const fuera = m.wtSummary(st(), sumRows())[0]
