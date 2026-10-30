@@ -3148,4 +3148,6 @@ export const EN: Record<string, string> = {
   "✗ Bajo el objetivo": "✗ Under the target",
   "✗ Sobre el objetivo": "✗ Over the target",
   "Cada número es el promedio de todos los pesos del día, en onzas.": "Each number is the average of all the day's weights, in ounces.",
+  "1 peso sospechoso, en morado: revísalo": "1 suspicious weight, in purple: check it",
+  "{0} pesos sospechosos, en morado: revísalos": "{0} suspicious weights, in purple: check them",
 }

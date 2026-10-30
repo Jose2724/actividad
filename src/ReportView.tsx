@@ -6,7 +6,7 @@ import { codeLabel, FAMILY_SHOWN, reasonCodeOf } from './reasons'
 import { cellText, loadZip, X, xDur, xN, xPct, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 import { cookYields, hoursOf, seesLabor, weightsOf, wtCompliance, wtDoneText, wtOfReport, wtSheetRows, wtSheets, wtShift, wtSum, wtBoard, wtRangeLong, wtSummary, wtSummaryBook, type WtAvg, type WtRow } from './kpi'
 import { attendanceOf, attLineText, attMovesText, attOf, attShifts, attStateText } from './store'
-import { COOKS, consumesOf, inventoryOf, stepText, weightEdit, weightsFix, weightTarget, wtKindsOf, wtPicksCode, type Cook, type Dept as RoomDept, type WeightTest, type WtEntry } from './store'
+import { COOKS, consumesOf, inventoryOf, stepText, weightEdit, weightsFix, weightTarget, wtKindsOf, wtOdd, wtPicksCode, type Cook, type Dept as RoomDept, type WeightTest, type WtEntry } from './store'
 import { pctText } from './Attendance'
 import { buildPdf, loadPdf, type Part } from './pdf'
 import { homeScreenApple, type Kind } from './send'
@@ -1537,6 +1537,8 @@ function WeightsView({ k }: { k: Kit }) {
   // the summary on the screen, to see it and decide without opening a file (Jose, 2026-10-30)
   const summaryRows = useMemo(() => wtSummary(s, weightsOf(s, date, now)), [s, date])
   const boardRows = useMemo(() => wtBoard(s, weightsOf(s, date, now)), [s, date])
+  // the weights too far from their range, in purple, to find them at once (Jose, 2026-10-30); not in the file for the heads
+  const oddN = wt.tests.reduce((n, { w, t }) => n + t.entries.filter((e) => e.w != null && wtOdd(e.w, w.target)).length, 0)
   const bigCell = (label: string, x: WtAvg) => <div className={'wt-big ' + (x.ok === 'ok' ? 'ok' : x.ok === 'under' ? 'bad' : x.ok === 'over' ? 'warn' : '')}><small>{label}</small><b>{x.avg == null ? '—' : x.avg.toFixed(2) + (x.ok === 'ok' ? ' ✓' : x.ok ? ' ✗' : '')}</b><strong>{x.range ? tr('Objetivo {0} oz', wtRangeLong(x.range)) : tr('Falta el target de QA')}</strong></div>
   // Kitchen's tests under a mix code reach neither code: said here, not in the file for the heads
   const mixed = [...new Set(wt.rows.filter((r) => wtPicksCode(r.dept, r.code) && r.tests.length).map((r) => r.code))]
@@ -1610,12 +1612,13 @@ function WeightsView({ k }: { k: Kit }) {
         </article>
       ))}
       <h3>{tr('Cada prueba')}{rep.shift ? ' · ' + tr('Turno {0}', rep.shift) : ''} <WhatIs id="peso-pruebas" /></h3>
+      {oddN > 0 && <p className="wt-oddsay">{oddN === 1 ? tr('1 peso sospechoso, en morado: revísalo') : tr('{0} pesos sospechosos, en morado: revísalos', oddN)}</p>}
       {wt.tests.length ? <div className="scroll"><table className="wt-rp-tbl each">
         <thead><tr><th>{tr('Hora')}</th><th>{tr('Turno')}</th><th>{tr('Línea')}</th><th>{tr('Código')}</th><th>{tr('Qué')}</th><th>{tr('Pesos (oz)')}</th><th className="n">{tr('Promedio')}</th><th className="n">✓</th><th className="n">▼</th><th className="n">▲</th><th>{tr('Anotó')}</th>{canFix && <th />}</tr></thead>
         <tbody>{wt.tests.map(({ w, t }) => { const x = wtSum(t.entries, w.target); return (
           <tr key={t.id}>
             <td>{fmtTime(t.at)}</td><td>{wtShift(s, t)}</td><td>{lineNameOf(s, t.lineId, t.line)}</td><td>{t.code}{t.lot ? <small> · {t.lot}</small> : null}</td><td>{w.label}</td>
-            <td>{t.skip ? <i className="muted">{tr('no se usó esa hora')}</i> : <span className="wt-chips">{t.entries.map((e, i) => { const c = entryClassOf(e, w.target); return <span key={i} className={'wt-chip ' + (c || 'none')}>{e.w != null ? oz(e.w) : c === 'sobre' ? '▲' : '▼'}</span> })}</span>}</td>
+            <td>{t.skip ? <i className="muted">{tr('no se usó esa hora')}</i> : <span className="wt-chips">{t.entries.map((e, i) => { const c = entryClassOf(e, w.target); return <span key={i} className={'wt-chip ' + (c || 'none') + (e.w != null && wtOdd(e.w, w.target) ? ' odd' : '')}>{e.w != null ? oz(e.w) : c === 'sobre' ? '▲' : '▼'}</span> })}</span>}</td>
             <td className="n">{t.skip ? '' : oz(x.avg)}</td><td className={'n' + (x.good ? ' ok' : '')}>{t.skip ? '' : x.good}</td><td className={'n' + (x.under ? ' red' : '')}>{t.skip ? '' : x.under}</td><td className={'n' + (x.over ? ' amber' : '')}>{t.skip ? '' : x.over}</td><td>{t.by}</td>{canFix && <td>{!t.skip && <button type="button" className="btn sm soft" onClick={() => setEditing({ t, w })}>{tr('Corregir')}</button>}</td>}
           </tr>
         ) })}</tbody>
