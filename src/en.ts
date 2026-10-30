@@ -3122,4 +3122,6 @@ export const EN: Record<string, string> = {
   "⬇ Resumen y control de peso": "⬇ Summary and weight control",
   "Comentarios / acciones correctivas": "Comments / corrective actions",
   "CÓDIGO": "CODE",
+  "¿De qué código son estas bolas?": "Which code are these meatballs?",
+  "Escoge primero el código.": "Pick the code first.",
 }

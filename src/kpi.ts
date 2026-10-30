@@ -1,4 +1,4 @@
-import { wtOfficial, wtRange, attExpectedOf, attOf, attSentAt, attShifts, attWriteOn, CFG, cookText, dayBefore, DEPTS, deptToday, entryClass, fmtTime, kpiGet, lbCaseOn, lbPerCaseOf, lunchOf, normCode, sameStep, shiftAt, shiftsOf, stepKey, stepText, weighedCodes, weighsCode, weightAllStepsOf, weightRuleFor, weightStepsFor, weightTarget, wtRangeText, type Cook, type WeightTest, type WtStep, type AttEntry, type Dept, type State } from './store'
+import { WT_ASKED_CODES, wtOfficial, wtPicksCode, wtRange, attExpectedOf, attOf, attSentAt, attShifts, attWriteOn, CFG, cookText, dayBefore, DEPTS, deptToday, entryClass, fmtTime, kpiGet, lbCaseOn, lbPerCaseOf, lunchOf, normCode, sameStep, shiftAt, shiftsOf, stepKey, stepText, weighedCodes, weighsCode, weightAllStepsOf, weightRuleFor, weightStepsFor, weightTarget, wtRangeText, type Cook, type WeightTest, type WtStep, type AttEntry, type Dept, type State } from './store'
 import { reportOf } from './report'
 import { colName, X, xDay, xN, xT, type Cell, type Sheet } from './xlsx'
 import { locale, tr } from './i18n'
@@ -221,7 +221,7 @@ export function weightsOf(s: State, date: string, now = Date.now()): WtRow[] {
   const key = (dept: Dept, code: string, st: WtStep) => dept + '|' + normCode(code) + '|' + stepKey(st)
   for (const t of [...all].sort((a, b) => a.at - b.at)) { const k = key(t.dept, t.code, t); if (!groups.has(k)) groups.set(k, { dept: t.dept, code: t.code, step: { kind: t.kind, ...(t.cook ? { cook: t.cook } : {}) } }) }
   for (const r of s.runs) {
-    if (r.deleted || r.date !== date || !weighedCodes(s, r.dept) || !weighsCode(s, r.dept, r.code)) continue
+    if (r.deleted || r.date !== date || !weighedCodes(s, r.dept) || !weighsCode(s, r.dept, r.code) || wtPicksCode(r.dept, r.code)) continue
     for (const st of weightStepsFor(s, r.dept, r.code)) { const k = key(r.dept, r.code, st); if (!groups.has(k)) groups.set(k, { dept: r.dept, code: r.code, step: st }) }
   }
   const order = (g: { dept: Dept; code: string; step: WtStep }) => [DEPTS.indexOf(g.dept), weightAllStepsOf(g.dept).findIndex((x) => sameStep(x, g.step))] as const
@@ -345,8 +345,7 @@ const wtLegendRows = (): Cell[][] => [
 /** an average of one thing of a code against QA's range; ok null = nothing weighed, or no range to judge it by */
 export type WtAvg = { avg: number | null; n: number; range: string; ok: 'ok' | 'under' | 'over' | null }
 export type WtSummaryRow = { code: string; dept: Dept | ''; where: string; times: number; okPct: number | null; raw: WtAvg; cooked: WtAvg; pouch: WtAvg; result: string; action: boolean; pending: boolean }
-/** only these (Jose, 2026-10-30: "que solo sea de los códigos 0889 y 2234, nada más"), both always, weighed or not */
-const WT_SUMMARY_CODES = ['0889', '2234']
+// (only WT_ASKED_CODES, Jose, 2026-10-30: "que solo sea de los códigos 0889 y 2234, nada más"; both always, weighed or not)
 /**
  * What the plant's heads asked for (their whiteboard, 2026-10-30: "16 times · Raw Avg · Cooked Avg · Cooked pouch Avg",
  * QA's ranges, "Corrective action"; Jose: they do not want so much data, they want the summary and it has to explain
@@ -358,7 +357,7 @@ const WT_SUMMARY_CODES = ['0889', '2234']
  */
 export function wtSummary(s: State, rows: WtRow[]): WtSummaryRow[] {
   const mine = rows.filter((w) => w.tests.length)
-  return WT_SUMMARY_CODES.flatMap((code) => {
+  return WT_ASKED_CODES.flatMap((code) => {
     const all = mine.filter((w) => normCode(w.code) === normCode(code))
     // (Spiral's two cookers apart, Spiral first: Santiago's sheet, 2026-10-30)
     const rooms: { dept: Dept | ''; cook: string }[] = DEPTS.flatMap((d) => [...new Set(all.filter((w) => w.dept === d).map((w) => w.cook ?? ''))].sort().reverse().map((cook) => ({ dept: d, cook })))
@@ -493,7 +492,7 @@ export function wtControlSheet(s: State, rows: WtRow[], code: string, date: stri
   return { name: tr('Control de peso {0}', code), rows: Array.from({ length: g.length }, (_, i) => Array.from(g[i] ?? [])), freeze: 0, page: { widths: [...side, 3, ...side], heights, merges } }
 }
 /** the file of the one-page button: the summary first, then each code as the plant's own sheet */
-export const wtSummaryBook = (s: State, rows: WtRow[], date: string): Sheet[] => [wtSummarySheet(s, rows, date), ...WT_SUMMARY_CODES.flatMap((c) => { const x = wtControlSheet(s, rows, c, date); return x ? [x] : [] })]
+export const wtSummaryBook = (s: State, rows: WtRow[], date: string): Sheet[] => [wtSummarySheet(s, rows, date), ...WT_ASKED_CODES.flatMap((c) => { const x = wtControlSheet(s, rows, c, date); return x ? [x] : [] })]
 const WT_LAST = 'P' // the band reaches the last column of the tables
 const WT_WIDTHS = [11, 9, 19, 11, 11, 9, 10, 9, 9, 11, 8, 8, 8, 13, 12, 18]
 const wtRoom = (d: Dept) => (d === 'Kitchen' ? X.wKitchen : d === 'RTE' ? X.wRTE : d === 'Spiral' ? X.wSpiral : X.wCell)

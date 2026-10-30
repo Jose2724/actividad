@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { cookText, entryClass, fmtTime, lineLabel, sameStep, setWeightTarget, stepKey, stepText, weightDueSteps, weightNew, weightOpen, weightRuleFor, weightSave, weightSkip, weightStepsFor, weightStepsOf, weightTarget, weightThisHour, wtRange, wtWeights, type Cook, type Run, type State, type WeightTest, type WtEntry, type WtStep } from './store'
+import { WT_ASKED_CODES, wtAsked, wtPicksCode, cookText, entryClass, fmtTime, lineLabel, sameStep, setWeightTarget, stepKey, stepText, weightDueSteps, weightNew, weightOpen, weightRuleFor, weightSave, weightSkip, weightStepsFor, weightStepsOf, weightTarget, weightThisHour, wtRange, wtWeights, type Cook, type Run, type State, type WeightTest, type WtEntry, type WtStep } from './store'
 import { useWho } from './App'
 import { tr } from './i18n'
 
@@ -68,6 +68,9 @@ function WeightDialog({ s, run, now, onClose }: { s: State; run: Run; now: numbe
   const due = weightDueSteps(s, run, now)
   // the tests begun in this window (by step), and the steps asked to be weighed again although done this hour
   const fresh = useRef<Record<string, WeightTest>>({})
+  // Kitchen's mix codes: the product is asked once in the window, a test begun keeps its own
+  const asks = wtPicksCode(run.dept, run.code)
+  const [picked, setPicked] = useState('')
   const [started, setStarted] = useState<Record<string, string>>({})
   const [again, setAgain] = useState<Record<string, boolean>>({})
   const testOf = (st: WtStep): WeightTest | null => {
@@ -89,12 +92,13 @@ function WeightDialog({ s, run, now, onClose }: { s: State; run: Run; now: numbe
   const [targeting, setTargeting] = useState(false)
   const box = useRef<HTMLInputElement>(null)
   const ball = pick.kind !== 'pouch'
-  const t = weightTarget(s, run.code, pick.kind, pick.cook)
+  const wCode = !asks ? run.code : test && wtAsked(test.code) ? test.code : picked
+  const t = weightTarget(s, wCode || run.code, pick.kind, pick.cook)
   const earlier = (s.weights ?? []).filter((x) => !x.deleted && x.runId === run.id && x.id !== test?.id && (x.entries.length > 0 || x.skip)).sort((a, b) => b.at - a.at)
   const save = (list: WtEntry[]) => {
     const k = stepKey(pick)
     if (test) { weightSave(test, list); return }
-    const x = fresh.current[k] ?? (fresh.current[k] = { ...weightNew(run, pick), ...(rule.count > 0 ? { need: rule.count } : {}) })
+    const x = fresh.current[k] ?? (fresh.current[k] = { ...weightNew(run, pick), code: wCode, ...(rule.count > 0 ? { need: rule.count } : {}) })
     setStarted((m) => ({ ...m, [k]: x.id }))
     weightSave(x, list)
   }
@@ -102,7 +106,7 @@ function WeightDialog({ s, run, now, onClose }: { s: State; run: Run; now: numbe
   // under and over are not needed any more, "la misma app sabe cuáles están bajos y subidos")
   const add = () => {
     const typed = text.trim(), w = Number(typed.replace(',', '.'))
-    if (!(w > 0 && w < 2000)) { setBad(true); return }
+    if (!wCode || !(w > 0 && w < 2000)) { setBad(true); return }
     const e: WtEntry = { w }
     save([...entries, e]); setText(''); setBad(false)
     // (Spiral: the tenth ball moves on to the next test still to do this hour)
@@ -122,6 +126,12 @@ function WeightDialog({ s, run, now, onClose }: { s: State; run: Run; now: numbe
     <div className="veil rc-veil" onClick={onClose}>
       <div className="dlg wt-dlg" onClick={(e) => e.stopPropagation()}>
         <h3>{tr('⚖ Peso · {0} · {1}', lineLabel(run.line), run.code)}{run.lot ? ' · ' + tr('lote {0}', test?.lot || run.lot) : ''}</h3>
+        {asks && (
+          <div className="wt-code">
+            <b>{tr('¿De qué código son estas bolas?')}</b>
+            <div className="chips">{WT_ASKED_CODES.map((c) => <button key={c} type="button" className={'chip' + (wCode === c ? ' on' : '')} disabled={!!test?.entries.length} onClick={() => setPicked(c)}>{c}</button>)}</div>
+          </div>
+        )}
         {many && (
           <div className="wt-steps">
             {steps.map((st) => {
@@ -146,12 +156,12 @@ function WeightDialog({ s, run, now, onClose }: { s: State; run: Run; now: numbe
             : <p className="hint">{tr('Pesa {0} pouches, uno por uno, y escribe el peso de cada uno en onzas (oz). La app dice si está bajo o sobre.', rule.count || 10)}</p>}
           {rule.count > 0 && <div className="wt-count"><b>{tr('{0} de {1}', Math.min(entries.length, rule.count), rule.count)}</b>{entries.length >= rule.count ? <span className="ok">{tr('✓ Prueba completa')}</span> : <span>{tr('faltan {0}', rule.count - entries.length)}</span>}</div>}
           <form className="wt-add" onSubmit={(e) => { e.preventDefault(); add() }}>
-            <input ref={box} autoFocus inputMode="decimal" value={text} placeholder={ball ? tr('Peso de la bola (oz)') : tr('Peso del pouch (oz)')} aria-label={ball ? tr('Peso de la bola (oz)') : tr('Peso del pouch (oz)')} onChange={(e) => { setText(e.target.value.replace(/[^\d.,]/g, '')); setBad(false) }} />
+            <input ref={box} autoFocus disabled={!wCode} inputMode="decimal" value={text} placeholder={ball ? tr('Peso de la bola (oz)') : tr('Peso del pouch (oz)')} aria-label={ball ? tr('Peso de la bola (oz)') : tr('Peso del pouch (oz)')} onChange={(e) => { setText(e.target.value.replace(/[^\d.,]/g, '')); setBad(false) }} />
             <button type="submit" className="btn primary" disabled={!text}>{tr('+ Agregar')}</button>
           </form>
           {many && pick.cook && cookFree(pick.cook) && <p className="hint"><button type="button" className="lnk sm" onClick={() => skipCook(pick.cook as Cook)}>{tr('{0} no cocinó esta hora', cookText(pick.cook))}</button></p>}
         </>}
-        <p className="hint">{t ? (pick.kind === 'raw' ? tr('Objetivo: entre {0} y {1} oz por bola cruda.', oz(wtRange(t).min), oz(wtRange(t).max)) : pick.kind === 'pouched' ? tr('Objetivo: entre {0} y {1} oz por bola sacada del pouch.', oz(wtRange(t).min), oz(wtRange(t).max)) : ball ? tr('Objetivo: entre {0} y {1} oz por bola cocinada.', oz(wtRange(t).min), oz(wtRange(t).max)) : tr('Objetivo: entre {0} y {1} oz por pouch, con el plástico.', oz(wtRange(t).min), oz(wtRange(t).max))) : tr('Este código todavía no tiene peso objetivo: un peso escrito con "+ Agregar" se guarda sin decir bajo o sobre.')}
+        <p className="hint">{asks && !wCode ? tr('Escoge primero el código.') : t ? (pick.kind === 'raw' ? tr('Objetivo: entre {0} y {1} oz por bola cruda.', oz(wtRange(t).min), oz(wtRange(t).max)) : pick.kind === 'pouched' ? tr('Objetivo: entre {0} y {1} oz por bola sacada del pouch.', oz(wtRange(t).min), oz(wtRange(t).max)) : ball ? tr('Objetivo: entre {0} y {1} oz por bola cocinada.', oz(wtRange(t).min), oz(wtRange(t).max)) : tr('Objetivo: entre {0} y {1} oz por pouch, con el plástico.', oz(wtRange(t).min), oz(wtRange(t).max))) : tr('Este código todavía no tiene peso objetivo: un peso escrito con "+ Agregar" se guarda sin decir bajo o sobre.')}
           {boss && <> <button type="button" className="lnk sm" onClick={() => setTargeting(true)}>{tr('✎ Objetivo')}</button></>}</p>
         {bad && <p className="hint red">{tr('Escribe el peso en onzas, por ejemplo 48.5')}</p>}
         {entries.length > 0 && (
@@ -169,11 +179,11 @@ function WeightDialog({ s, run, now, onClose }: { s: State; run: Run; now: numbe
         {earlier.length > 0 && (
           <>
             <h4>{tr('Antes en este código')}</h4>
-            <ul className="wt-earlier">{earlier.slice(0, 8).map((x) => <li key={x.id}>{fmtTime(x.at)} · {testText(x, weightTarget(s, run.code, x.kind, x.cook), namesSteps(s, run))} <small>· {x.by}</small></li>)}</ul>
+            <ul className="wt-earlier">{earlier.slice(0, 8).map((x) => <li key={x.id}>{fmtTime(x.at)} · {testText(x, weightTarget(s, x.code, x.kind, x.cook), namesSteps(s, run))} <small>· {x.by}</small></li>)}</ul>
           </>
         )}
         <div className="dbtns"><button type="button" className="btn primary" onClick={onClose}>{tr('Listo')}</button></div>
-        {targeting && <TargetDialog code={run.code} step={pick} now={t} onClose={() => setTargeting(false)} />}
+        {targeting && <TargetDialog code={wCode || run.code} step={pick} now={t} onClose={() => setTargeting(false)} />}
       </div>
     </div>
   )

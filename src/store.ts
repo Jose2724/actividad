@@ -1590,7 +1590,18 @@ export type WtKind = WeightTest['kind']
 export type WtCodeRule = { code: string; every: number; count: number; kinds: WtKind[] }
 /** what a room can be asked to weigh, in the order the screens say it */
 export const wtKindsOf = (dept: Dept): WtKind[] => (dept === 'RTE' ? ['pouch', 'raw', 'ball'] : dept === 'Spiral' || dept === 'Kitchen' ? ['raw', 'ball'] : [])
-const WT_KINDS_DEFAULT: Partial<Record<Dept, WtKind[]>> = { Spiral: ['raw', 'ball'], RTE: ['pouch'], Kitchen: ['raw'] }
+// (Kitchen's are cooked, its manager through Jose, 2026-10-30)
+const WT_KINDS_DEFAULT: Partial<Record<Dept, WtKind[]>> = { Spiral: ['raw', 'ball'], RTE: ['pouch'], Kitchen: ['ball'] }
+/** the codes the plant's heads ask to see weighed (Jose, 2026-10-30: "ahora mismo solo nos están pidiendo dos códigos") */
+export const WT_ASKED_CODES = ['0889', '2234']
+export const wtAsked = (code: string) => WT_ASKED_CODES.some((c) => normCode(c) === normCode(code))
+/**
+ * Kitchen runs its mix codes (2286), not the product's, so what it weighs would fall under neither of those: its window
+ * asks which of them the balls are (Jose, 2026-10-30: "tenemos que poner los códigos", "falta Kitchen"), and a mix code
+ * takes the rule of the first of them. Never guessed: the operator picks it
+ */
+export const wtPicksCode = (dept: Dept, code: string) => dept === 'Kitchen' && !wtAsked(code)
+const ruleCode = (dept: Dept, code: string) => (wtPicksCode(dept, code) ? WT_ASKED_CODES[0] : code)
 const cleanKinds = (dept: Dept, v: unknown): WtKind[] => { const l = wtKindsOf(dept).filter((k) => Array.isArray(v) && v.includes(k)); return l.length ? l : WT_KINDS_DEFAULT[dept] ?? [] }
 /** what a room weighs of a code it does not list one by one (of every code, where it weighs them all) */
 export const weightRoomKinds = (s: State, dept: Dept) => cleanKinds(dept, kpiGet(s, 'wt-codes:' + dept)?.data.kinds)
@@ -1604,9 +1615,9 @@ export function weighedRules(s: State, dept: Dept): WtCodeRule[] | null {
   return list.map((code) => { const r = rules[normCode(code)], count = n(r?.count, room.count); return { code, every: n(r?.every, room.every), count: count > 0 ? count : 10, kinds: r?.kinds ? cleanKinds(dept, r.kinds) : weightRoomKinds(s, dept) } })
 }
 export const weighedCodes = (s: State, dept: Dept): string[] | null => weighedRules(s, dept)?.map((x) => x.code) ?? null
-export const weighsCode = (s: State, dept: Dept, code: string) => { const c = weighedCodes(s, dept); return !c || c.some((x) => normCode(x) === normCode(code)) }
+export const weighsCode = (s: State, dept: Dept, code: string) => { const c = weighedCodes(s, dept), n = normCode(ruleCode(dept, code)); return !c || c.some((x) => normCode(x) === n) }
 /** how often and how many a code is weighed: its own when its room lists it, else the room's */
-export const weightRuleFor = (s: State, dept: Dept, code: string) => { const r = weighedRules(s, dept)?.find((x) => normCode(x.code) === normCode(code)); return r ? { every: r.every, count: r.count } : weightRuleOf(s, dept) }
+export const weightRuleFor = (s: State, dept: Dept, code: string) => { const n = normCode(ruleCode(dept, code)), r = weighedRules(s, dept)?.find((x) => normCode(x.code) === n); return r ? { every: r.every, count: r.count } : weightRuleOf(s, dept) }
 /** the codes a room weighs, each with its minutes and count (a plain code takes the room's); none = every code */
 export function setWeighedCodes(dept: Dept, rows: (string | (Omit<WtCodeRule, 'kinds'> & { kinds?: WtKind[] }))[]) {
   const list = rows.map((x) => (typeof x === 'string' ? { code: x } : x)).map((x) => ({ ...x, code: x.code.trim().toUpperCase() })).filter((x) => x.code)
@@ -1633,7 +1644,7 @@ export const weightStepsOf = (dept: Dept): WtStep[] => stepsOfKinds(dept, WT_KIN
 /** every step a room could weigh, in the order the report says them */
 export const weightAllStepsOf = (dept: Dept) => stepsOfKinds(dept, wtKindsOf(dept))
 /** the steps of a code in a room: what Ajustes says of it, or of the room */
-export const weightStepsFor = (s: State, dept: Dept, code: string) => stepsOfKinds(dept, weighedRules(s, dept)?.find((x) => normCode(x.code) === normCode(code))?.kinds ?? weightRoomKinds(s, dept))
+export const weightStepsFor = (s: State, dept: Dept, code: string) => { const n = normCode(ruleCode(dept, code)); return stepsOfKinds(dept, weighedRules(s, dept)?.find((x) => normCode(x.code) === n)?.kinds ?? weightRoomKinds(s, dept)) }
 export const stepKey = (x: WtStep) => x.kind + (x.cook ? ':' + x.cook : '')
 export const sameStep = (x: WtStep, y: WtStep) => x.kind === y.kind && (x.cook ?? '') === (y.cook ?? '')
 /** a cooker's name as the floor says it */
