@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { cookText, entryClass, fmtTime, lineLabel, sameStep, setWeightTarget, stepKey, stepText, weightDueSteps, weightNew, weightOpen, weightRuleFor, weightSave, weightSkip, weightStepsOf, weightTarget, weightThisHour, wtRange, wtWeights, type Cook, type Run, type State, type WeightTest, type WtEntry, type WtStep } from './store'
+import { cookText, entryClass, fmtTime, lineLabel, sameStep, setWeightTarget, stepKey, stepText, weightDueSteps, weightNew, weightOpen, weightRuleFor, weightSave, weightSkip, weightStepsFor, weightStepsOf, weightTarget, weightThisHour, wtRange, wtWeights, type Cook, type Run, type State, type WeightTest, type WtEntry, type WtStep } from './store'
 import { useWho } from './App'
 import { tr } from './i18n'
 
@@ -18,6 +18,8 @@ const MARK = { bajo: '▼', ok: '✓', sobre: '▲', '': '' } as const
 const countText = (kind: WeightTest['kind'], n: number) => (kind !== 'pouch' ? (n === 1 ? tr('1 bola') : tr('{0} bolas', n)) : n === 1 ? tr('1 pouch') : tr('{0} pouches', n))
 /** which rooms weigh meatballs rather than pouches (Spiral raw and cooked, Kitchen raw since 2026-10-28) */
 export const weighsBalls = (dept: Run['dept']) => dept === 'Spiral' || dept === 'Kitchen'
+/** whether what is weighed has to be said: more than one thing, or not what the room usually weighs (Ajustes › KPI, 2026-10-30) */
+const namesSteps = (s: State, run: Run) => { const l = weightStepsFor(s, run.dept, run.code), usual = weightStepsOf(run.dept)[0]; return l.length > 1 || !usual || !sameStep(l[0], usual) }
 const avgOf = (ws: number[]) => (ws.length ? ws.reduce((a, b) => a + b, 0) / ws.length : null)
 
 export function WeightButton({ s, run, now }: { s: State; run: Run; now: number }) {
@@ -38,11 +40,11 @@ export function WeightButton({ s, run, now }: { s: State; run: Run; now: number 
  */
 export function WeightReminder({ s, run, now }: { s: State; run: Run; now: number }) {
   const [open, setOpen] = useState(false)
-  const due = weightDueSteps(s, run, now), rule = weightRuleFor(s, run.dept, run.code), many = weightStepsOf(run.dept).length > 1
+  const due = weightDueSteps(s, run, now), rule = weightRuleFor(s, run.dept, run.code), named = namesSteps(s, run)
   // (the window stays open, the same test, once the first weight puts the reminder away: it closes with Listo)
   if (!due.length && !open) return null
-  const n = weighsBalls(run.dept) ? (rule.count === 1 ? tr('1 bola') : tr('{0} bolas', rule.count)) : rule.count ? tr('{0} pouches', rule.count) : tr('los pouches')
-  const what = many ? n + ' · ' + due.map(stepText).join(', ') : n
+  const n = (due.length ? due.every((x) => x.kind !== 'pouch') : weighsBalls(run.dept)) ? (rule.count === 1 ? tr('1 bola') : tr('{0} bolas', rule.count)) : rule.count ? tr('{0} pouches', rule.count) : tr('los pouches')
+  const what = named ? n + ' · ' + due.map(stepText).join(', ') : n
   return (
     <>
       {due.length > 0 && <button type="button" className="wt-remind" onClick={() => setOpen(true)}>{rule.every === 60 ? tr('⚖ Ya pasó 1 hora: pesen {0} y escriban su peso', what) : tr('⚖ Ya pasaron {0} min: pesen {1} y escriban su peso', rule.every, what)}<b>{tr('Pesar ahora')}</b></button>}
@@ -62,7 +64,7 @@ function testText(x: WeightTest, t: ReturnType<typeof weightTarget>, many: boole
 function WeightDialog({ s, run, now, onClose }: { s: State; run: Run; now: number; onClose: () => void }) {
   const who = useWho()
   const boss = !!who.admin || who.role === 'mgr' || who.role === 'office'
-  const steps = weightStepsOf(run.dept), many = steps.length > 1, rule = weightRuleFor(s, run.dept, run.code)
+  const steps = weightStepsFor(s, run.dept, run.code), many = steps.length > 1, rule = weightRuleFor(s, run.dept, run.code)
   const due = weightDueSteps(s, run, now)
   // the tests begun in this window (by step), and the steps asked to be weighed again although done this hour
   const fresh = useRef<Record<string, WeightTest>>({})
@@ -140,7 +142,7 @@ function WeightDialog({ s, run, now, onClose }: { s: State; run: Run; now: numbe
             </div>
           </div>
         ) : <>
-          {ball ? <p className="hint">{pick.kind === 'raw' ? (pick.cook ? tr('Pesa {0} bolas crudas, una por una, antes de que entren a {1}, y escribe el peso de cada una en onzas (oz).', rule.count || 10, cookText(pick.cook)) : rule.count ? tr('Pesa {0} bolas crudas, una por una, y escribe el peso de cada una en onzas (oz).', rule.count) : tr('Pesa las bolas crudas, una por una, y escribe el peso de cada una en onzas (oz).')) : pick.cook ? tr('Pesa {0} bolas cocinadas, una por una, al salir de {1}, y escribe el peso de cada una en onzas (oz).', rule.count || 10, cookText(pick.cook)) : rule.count ? tr('Pesa {0} bolas, una por una, y escribe el peso de cada una en onzas (oz).', rule.count) : tr('Pesa las bolas, una por una, y escribe el peso de cada una en onzas (oz).')}</p>
+          {ball ? <p className="hint">{pick.kind === 'raw' ? (pick.cook ? tr('Pesa {0} bolas crudas, una por una, antes de que entren a {1}, y escribe el peso de cada una en onzas (oz).', rule.count || 10, cookText(pick.cook)) : rule.count ? tr('Pesa {0} bolas crudas, una por una, y escribe el peso de cada una en onzas (oz).', rule.count) : tr('Pesa las bolas crudas, una por una, y escribe el peso de cada una en onzas (oz).')) : pick.cook ? tr('Pesa {0} bolas cocinadas, una por una, al salir de {1}, y escribe el peso de cada una en onzas (oz).', rule.count || 10, cookText(pick.cook)) : rule.count ? tr('Pesa {0} bolas cocinadas, una por una, y escribe el peso de cada una en onzas (oz).', rule.count) : tr('Pesa las bolas cocinadas, una por una, y escribe el peso de cada una en onzas (oz).')}</p>
             : <p className="hint">{tr('Pesa {0} pouches, uno por uno, y escribe el peso de cada uno en onzas (oz). La app dice si está bajo o sobre.', rule.count || 10)}</p>}
           {rule.count > 0 && <div className="wt-count"><b>{tr('{0} de {1}', Math.min(entries.length, rule.count), rule.count)}</b>{entries.length >= rule.count ? <span className="ok">{tr('✓ Prueba completa')}</span> : <span>{tr('faltan {0}', rule.count - entries.length)}</span>}</div>}
           <form className="wt-add" onSubmit={(e) => { e.preventDefault(); add() }}>
@@ -167,7 +169,7 @@ function WeightDialog({ s, run, now, onClose }: { s: State; run: Run; now: numbe
         {earlier.length > 0 && (
           <>
             <h4>{tr('Antes en este código')}</h4>
-            <ul className="wt-earlier">{earlier.slice(0, 8).map((x) => <li key={x.id}>{fmtTime(x.at)} · {testText(x, weightTarget(s, run.code, x.kind, x.cook), many)} <small>· {x.by}</small></li>)}</ul>
+            <ul className="wt-earlier">{earlier.slice(0, 8).map((x) => <li key={x.id}>{fmtTime(x.at)} · {testText(x, weightTarget(s, run.code, x.kind, x.cook), namesSteps(s, run))} <small>· {x.by}</small></li>)}</ul>
           </>
         )}
         <div className="dbtns"><button type="button" className="btn primary" onClick={onClose}>{tr('Listo')}</button></div>

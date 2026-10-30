@@ -2831,7 +2831,7 @@ export const EN: Record<string, string> = {
   "cuándo una línea va lenta": "when a line is slow",
   "bolas, crudas y cocinadas, en Spiral y en Racks": "balls, raw and cooked, in Spiral and in Racks",
   "Qué se pesa cada hora": "What is weighed every hour",
-  "Por cuarto: los códigos que se pesan, cada cuántos minutos sale el aviso y cuántos se pesan cada vez. Lo que corre con otro código no pide pesar (el botón ⚖ Peso sigue ahí). Con 0 minutos no sale aviso. El KPI cuenta las pruebas que tocaban con esto.": "By room: the codes that are weighed, every how many minutes the reminder shows and how many are weighed each time. Other codes do not ask to weigh (the ⚖ Weight button is still there). With 0 minutes no reminder shows. The KPI counts the checks due with this.",
+  "Por cuarto: los códigos que se pesan, si se pesa crudo o cocinado, cada cuántos minutos sale el aviso y cuántos se pesan cada vez. Lo que corre con otro código no pide pesar (el botón ⚖ Peso sigue ahí). Con 0 minutos no sale aviso. El KPI cuenta las pruebas que tocaban con esto.": "By room: the codes that are weighed, whether raw or cooked, every how many minutes the reminder shows and how many are weighed each time. Other codes do not ask to weigh (the ⚖ Weight button is still there). With 0 minutes no reminder shows. The KPI counts the checks due with this.",
   "Solo algunos códigos": "Only some codes",
   "Aviso cada (min)": "Reminder every (min)",
   "Cuántos cada vez": "How many each time",
@@ -2899,4 +2899,7 @@ export const EN: Record<string, string> = {
   "parte de otro pallet": "part of another pallet",
   "Pallet {0} de {1} ({2}, {3})": "Pallet {0} of {1} ({2}, {3})",
   "lo terminó otro pallet": "another pallet finished it",
+  "bolas, en Spiral y en Racks": "balls, in Spiral and in Racks",
+  "Pesa {0} bolas cocinadas, una por una, y escribe el peso de cada una en onzas (oz).": "Weigh {0} cooked meatballs, one by one, and type each one's weight in ounces (oz).",
+  "Pesa las bolas cocinadas, una por una, y escribe el peso de cada una en onzas (oz).": "Weigh the cooked meatballs, one by one, and type each one's weight in ounces (oz).",
 }

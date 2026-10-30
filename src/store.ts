@@ -1226,7 +1226,7 @@ function wtFrom(x: (Partial<WeightTest> & { weights?: unknown; unit?: unknown })
 export const wtWeights = (t: WeightTest) => t.entries.flatMap((e) => (e.w != null ? [e.w] : []))
 const rowOfWt = (x: WeightTest) => ({ id: WT_ID + x.id, at: iso(x.at), by_name: x.by, dept: x.dept, what: 'Peso', before: '', after: JSON.stringify({ date: x.date, lineId: x.lineId, line: x.line, code: x.code, lot: x.lot, runId: x.runId, kind: x.kind, ...(x.cook ? { cook: x.cook } : {}), ...(x.skip ? { skip: true } : {}), ...(x.need ? { need: x.need } : {}), unit: 'oz', entries: x.entries, weights: wtWeights(x) }), ref_table: WT_REF, ref_key: x.id, deleted: !!x.deleted, updated_at: iso(x.updatedAt), updated_by: user.get() })
 /** a new test on a run, of one of its room's steps (the room's first one when none is said); nothing is saved until its first entry */
-export const weightNew = (run: Run, step?: WtStep): WeightTest => { const st = step ?? weightStepsOf(run.dept)[0] ?? { kind: 'pouch' as const }; return { id: uid(), date: run.date, dept: run.dept, lineId: run.lineId, line: run.line, code: run.code, lot: lotNowOf(run), runId: run.id, kind: st.kind, ...(st.cook ? { cook: st.cook } : {}), unit: 'oz', entries: [], at: clockNow(), by: user.get(), updatedAt: 0 } }
+export const weightNew = (run: Run, step?: WtStep): WeightTest => { const st = step ?? weightStepsFor(state, run.dept, run.code)[0] ?? { kind: 'pouch' as const }; return { id: uid(), date: run.date, dept: run.dept, lineId: run.lineId, line: run.line, code: run.code, lot: lotNowOf(run), runId: run.id, kind: st.kind, ...(st.cook ? { cook: st.cook } : {}), unit: 'oz', entries: [], at: clockNow(), by: user.get(), updatedAt: 0 } }
 /**
  * a test saved with the entries it has now (the first one saves it; each next one writes it again); none = taken away.
  * Its hour is the first entry's (2026-10-29: the window may stand open a while before anyone weighs)
@@ -1559,39 +1559,57 @@ export const WEIGHT_CODES_DEFAULT: Partial<Record<Dept, string[]>> = { Spiral: [
 /**
  * each code a room weighs, with how often and how many (Jose, 2026-10-29: in Ajustes › KPI "agregar diferente código,
  * hora y cantidad ... y así no tener que venir aquí de nuevo"): its own minutes and count when a manager gave them,
- * else the room's rule. null = every code, with the room's rule (Kitchen)
+ * else the room's rule. null = every code, with the room's rule (Kitchen). kinds (Jose, 2026-10-30: "poner o elegir si
+ * es cocinada o cruda, para todos los departamentos"): what is weighed of it, raw and/or cooked (RTE also its pouches)
  */
-export type WtCodeRule = { code: string; every: number; count: number }
+export type WtKind = WeightTest['kind']
+export type WtCodeRule = { code: string; every: number; count: number; kinds: WtKind[] }
+/** what a room can be asked to weigh, in the order the screens say it */
+export const wtKindsOf = (dept: Dept): WtKind[] => (dept === 'RTE' ? ['pouch', 'raw', 'ball'] : dept === 'Spiral' || dept === 'Kitchen' ? ['raw', 'ball'] : [])
+const WT_KINDS_DEFAULT: Partial<Record<Dept, WtKind[]>> = { Spiral: ['raw', 'ball'], RTE: ['pouch'], Kitchen: ['raw'] }
+const cleanKinds = (dept: Dept, v: unknown): WtKind[] => { const l = wtKindsOf(dept).filter((k) => Array.isArray(v) && v.includes(k)); return l.length ? l : WT_KINDS_DEFAULT[dept] ?? [] }
+/** what a room weighs of a code it does not list one by one (of every code, where it weighs them all) */
+export const weightRoomKinds = (s: State, dept: Dept) => cleanKinds(dept, kpiGet(s, 'wt-codes:' + dept)?.data.kinds)
 export function weighedRules(s: State, dept: Dept): WtCodeRule[] | null {
   const d = kpiGet(s, 'wt-codes:' + dept)?.data, room = weightRuleOf(s, dept)
   const list = d && Array.isArray(d.codes) ? d.codes.map(String).filter(Boolean) : WEIGHT_CODES_DEFAULT[dept] ?? null
   if (!list || !list.length) return null
-  const rules = (d?.rules && typeof d.rules === 'object' ? d.rules : {}) as Record<string, { every?: unknown; count?: unknown }>
+  const rules = (d?.rules && typeof d.rules === 'object' ? d.rules : {}) as Record<string, { every?: unknown; count?: unknown; kinds?: unknown }>
   const n = (v: unknown, or: number) => (Number.isInteger(Number(v)) && Number(v) >= 0 && v !== null && v !== '' ? Number(v) : or)
   // (a code weighed every hour always weighs some: a room's count of 0, from the old settings, reads as 10)
-  return list.map((code) => { const r = rules[normCode(code)], count = n(r?.count, room.count); return { code, every: n(r?.every, room.every), count: count > 0 ? count : 10 } })
+  return list.map((code) => { const r = rules[normCode(code)], count = n(r?.count, room.count); return { code, every: n(r?.every, room.every), count: count > 0 ? count : 10, kinds: r?.kinds ? cleanKinds(dept, r.kinds) : weightRoomKinds(s, dept) } })
 }
 export const weighedCodes = (s: State, dept: Dept): string[] | null => weighedRules(s, dept)?.map((x) => x.code) ?? null
 export const weighsCode = (s: State, dept: Dept, code: string) => { const c = weighedCodes(s, dept); return !c || c.some((x) => normCode(x) === normCode(code)) }
 /** how often and how many a code is weighed: its own when its room lists it, else the room's */
 export const weightRuleFor = (s: State, dept: Dept, code: string) => { const r = weighedRules(s, dept)?.find((x) => normCode(x.code) === normCode(code)); return r ? { every: r.every, count: r.count } : weightRuleOf(s, dept) }
 /** the codes a room weighs, each with its minutes and count (a plain code takes the room's); none = every code */
-export function setWeighedCodes(dept: Dept, rows: (string | WtCodeRule)[]) {
+export function setWeighedCodes(dept: Dept, rows: (string | (Omit<WtCodeRule, 'kinds'> & { kinds?: WtKind[] }))[]) {
   const list = rows.map((x) => (typeof x === 'string' ? { code: x } : x)).map((x) => ({ ...x, code: x.code.trim().toUpperCase() })).filter((x) => x.code)
-  const seen = new Set<string>(), codes: string[] = [], rules: Record<string, { every: number; count: number }> = {}
+  const seen = new Set<string>(), codes: string[] = [], rules: Record<string, { every: number; count: number; kinds?: WtKind[] }> = {}
   for (const x of list) {
     if (seen.has(normCode(x.code))) continue
     seen.add(normCode(x.code)); codes.push(x.code)
-    if ('every' in x) rules[normCode(x.code)] = { every: Math.max(0, Math.round(x.every)), count: Math.max(0, Math.round(x.count)) }
+    if ('every' in x) rules[normCode(x.code)] = { every: Math.max(0, Math.round(x.every)), count: Math.max(0, Math.round(x.count)), ...(x.kinds ? { kinds: cleanKinds(dept, x.kinds) } : {}) }
   }
-  kpiPut('wt-codes:' + dept, { codes, rules })
+  const was = kpiGet(state, 'wt-codes:' + dept)?.data.kinds
+  kpiPut('wt-codes:' + dept, { ...(was ? { kinds: was } : {}), codes, rules })
 }
+/** what a room weighs of every code, where it does not list them (its list, if it has one, stays) */
+export const setWeightRoomKinds = (dept: Dept, kinds: WtKind[]) => kpiPut('wt-codes:' + dept, { ...kpiGet(state, 'wt-codes:' + dept)?.data, kinds: cleanKinds(dept, kinds) })
 /**
  * What a room weighs each time (2026-10-29): Spiral, the balls raw before each cooker and cooked out of it (Spiral and
- * Racks: four tests an hour); RTE its finished pouches; Kitchen its raw balls
+ * Racks: four tests an hour); RTE its finished pouches; Kitchen its raw balls. Those are the defaults: Ajustes › KPI
+ * says raw, cooked or both per code (2026-10-30), and Spiral weighs what was chosen at each cooker
  */
 export type WtStep = { kind: WeightTest['kind']; cook?: Cook }
-export const weightStepsOf = (dept: Dept): WtStep[] => (dept === 'Spiral' ? COOKS.flatMap((cook) => [{ kind: 'raw' as const, cook }, { kind: 'ball' as const, cook }]) : dept === 'RTE' ? [{ kind: 'pouch' }] : dept === 'Kitchen' ? [{ kind: 'raw' }] : [])
+const stepsOfKinds = (dept: Dept, kinds: WtKind[]): WtStep[] => (dept === 'Spiral' ? COOKS.flatMap((cook) => kinds.map((kind) => ({ kind, cook }))) : kinds.map((kind) => ({ kind })))
+/** a room's usual steps, as nobody chose otherwise */
+export const weightStepsOf = (dept: Dept): WtStep[] => stepsOfKinds(dept, WT_KINDS_DEFAULT[dept] ?? [])
+/** every step a room could weigh, in the order the report says them */
+export const weightAllStepsOf = (dept: Dept) => stepsOfKinds(dept, wtKindsOf(dept))
+/** the steps of a code in a room: what Ajustes says of it, or of the room */
+export const weightStepsFor = (s: State, dept: Dept, code: string) => stepsOfKinds(dept, weighedRules(s, dept)?.find((x) => normCode(x.code) === normCode(code))?.kinds ?? weightRoomKinds(s, dept))
 export const stepKey = (x: WtStep) => x.kind + (x.cook ? ':' + x.cook : '')
 export const sameStep = (x: WtStep, y: WtStep) => x.kind === y.kind && (x.cook ?? '') === (y.cook ?? '')
 /** a cooker's name as the floor says it */
@@ -1677,11 +1695,11 @@ export function stepDueAt(s: State, r: Run, step: WtStep): number | null {
 }
 /** when a line's next weight test is due (the first of its steps); null = no reminder */
 export function weightDueAt(s: State, r: Run): number | null {
-  const all = weightStepsOf(r.dept).map((x) => stepDueAt(s, r, x)).filter((x): x is number => x != null)
+  const all = weightStepsFor(s, r.dept, r.code).map((x) => stepDueAt(s, r, x)).filter((x): x is number => x != null)
   return all.length ? Math.min(...all) : null
 }
 /** the steps of a line's weighing that are due now */
-export const weightDueSteps = (s: State, r: Run, now: number) => weightStepsOf(r.dept).filter((x) => { const d = stepDueAt(s, r, x); return d != null && now >= d })
+export const weightDueSteps = (s: State, r: Run, now: number) => weightStepsFor(s, r.dept, r.code).filter((x) => { const d = stepDueAt(s, r, x); return d != null && now >= d })
 /** the test of a step done within the room's time on this line (complete, half-way, or a cooker not used); null = none yet */
 export function weightThisHour(s: State, r: Run, step: WtStep, now: number): WeightTest | null {
   const rule = weightRuleFor(s, r.dept, r.code), span = (rule.every || 60) * 60_000

@@ -11,7 +11,7 @@ import { cartCratesOf, setAllCartCrates, setCartCrates, orderCodesList, setOrder
 import { attWriteOn, kpiPut, lunchOf, setAttWriteOn, setLunch } from './store'
 import { laborAccess, seesLabor } from './kpi'
 import { lbCaseOn, loadQaLbPerCase, QA_LB_PER_CASE, setLbCaseOn, normCode } from './store'
-import { ATT_DEFAULT, attExpectedOf, attShifts, clearShiftMark, plantCut, roomMark, setAttExpected, setAttGate, setAttView, setShiftMark, setWeightRule, weightRuleOf, setWeighedCodes, weighedRules, weightTargetsList, setWeightTarget, clearWeightTarget, stepKey, stepText, wtRange, wtRangeText, type WtCodeRule, type WtStep, type WtTargetRow, setSlowRule, slowRuleOf, setSlowLineOn, slowLineOn, slowUnitOf } from './store'
+import { ATT_DEFAULT, attExpectedOf, attShifts, clearShiftMark, plantCut, roomMark, setAttExpected, setAttGate, setAttView, setShiftMark, setWeightRule, weightRuleOf, setWeighedCodes, setWeightRoomKinds, weighedRules, weightRoomKinds, wtKindsOf, weightTargetsList, setWeightTarget, clearWeightTarget, stepKey, stepText, wtRange, wtRangeText, type WtCodeRule, type WtKind, type WtStep, type WtTargetRow, setSlowRule, slowRuleOf, setSlowLineOn, slowLineOn, slowUnitOf } from './store'
 import { BUILD } from './update'
 import { clockOffText, clockState } from './clock'
 import { fmtTime } from './clock-fmt'
@@ -621,45 +621,54 @@ function SlowRoom({ s, dept, viewOnly }: { s: State; dept: Dept; viewOnly: boole
  * it (minimum and maximum), over QA's sheet. A manager changes them; whoever only looks sees them
  */
 function KpiSettings({ s, viewOnly }: { s: State; viewOnly: boolean }) {
-  const rooms: { dept: Dept; what: string }[] = [{ dept: 'Spiral', what: tr('bolas, crudas y cocinadas, en Spiral y en Racks') }, { dept: 'RTE', what: tr('pouches') }, { dept: 'Kitchen', what: tr('bolas crudas') }]
+  const rooms: { dept: Dept; what: string }[] = [{ dept: 'Spiral', what: tr('bolas, en Spiral y en Racks') }, { dept: 'RTE', what: tr('pouches') }, { dept: 'Kitchen', what: tr('bolas') }]
   return (
     <>
       <div className="setcard wide">
         <div className="sethead"><h3>{tr('Qué se pesa cada hora')}</h3></div>
-        <p className="hint">{tr('Por cuarto: los códigos que se pesan, cada cuántos minutos sale el aviso y cuántos se pesan cada vez. Lo que corre con otro código no pide pesar (el botón ⚖ Peso sigue ahí). Con 0 minutos no sale aviso. El KPI cuenta las pruebas que tocaban con esto.')}</p>
+        <p className="hint">{tr('Por cuarto: los códigos que se pesan, si se pesa crudo o cocinado, cada cuántos minutos sale el aviso y cuántos se pesan cada vez. Lo que corre con otro código no pide pesar (el botón ⚖ Peso sigue ahí). Con 0 minutos no sale aviso. El KPI cuenta las pruebas que tocaban con esto.')}</p>
         {rooms.map((r) => <WeighPlan key={r.dept} s={s} dept={r.dept} what={r.what} ro={viewOnly} />)}
       </div>
       <TargetsCard s={s} ro={viewOnly} />
     </>
   )
 }
-type PlanRow = { code: string; every: string; count: string }
+type PlanRow = { code: string; every: string; count: string; kinds: WtKind[] }
+/** raw, cooked (RTE, also its pouches): one or more, never none */
+function KindChips({ dept, kinds, ro, onChange }: { dept: Dept; kinds: WtKind[]; ro: boolean; onChange: (k: WtKind[]) => void }) {
+  const flip = (k: WtKind) => onChange(wtKindsOf(dept).filter((x) => (x === k ? !kinds.includes(x) : kinds.includes(x))))
+  return <div className="kpi-kinds">{wtKindsOf(dept).map((k) => { const on = kinds.includes(k); return <label key={k} className={'chip' + (on ? ' on' : '')}><input type="checkbox" checked={on} disabled={ro || (on && kinds.length === 1)} onChange={() => flip(k)} /> {stepText({ kind: k })}</label> })}</div>
+}
 function WeighPlan({ s, dept, what, ro }: { s: State; dept: Dept; what: string; ro: boolean }) {
-  const now = weighedRules(s, dept), room = weightRuleOf(s, dept)
-  const toRows = (x: WtCodeRule[] | null): PlanRow[] | null => (x ? x.map((r) => ({ code: r.code, every: String(r.every), count: String(r.count) })) : null)
+  const now = weighedRules(s, dept), room = weightRuleOf(s, dept), roomKinds = weightRoomKinds(s, dept)
+  const toRows = (x: WtCodeRule[] | null): PlanRow[] | null => (x ? x.map((r) => ({ code: r.code, every: String(r.every), count: String(r.count), kinds: r.kinds })) : null)
   const [rows, setRows] = useState<PlanRow[] | null>(() => toRows(now))
   // (what another computer saves comes in: the table follows it)
   const nowKey = JSON.stringify(now), [seen, setSeen] = useState(nowKey)
   if (seen !== nowKey) { setSeen(nowKey); setRows(toRows(now)) }
-  const clean = rows?.filter((r) => r.code.trim()).map((r) => ({ code: r.code.trim().toUpperCase(), every: Number(r.every) || 0, count: Number(r.count) || 0 })) ?? null
-  const changed = JSON.stringify(clean) !== JSON.stringify(now?.map((r) => ({ code: r.code.toUpperCase(), every: r.every, count: r.count })) ?? null)
-  const put = (i: number, k: keyof PlanRow, v: string) => setRows((x) => (x ?? []).map((r, j) => (j === i ? { ...r, [k]: k === 'code' ? v.replace(/[^\w-]/g, '') : v.replace(/\D/g, '') } : r)))
-  const blank = (): PlanRow => ({ code: '', every: String(room.every || 60), count: String(room.count || 10) })
+  const clean = rows?.filter((r) => r.code.trim()).map((r) => ({ code: r.code.trim().toUpperCase(), every: Number(r.every) || 0, count: Number(r.count) || 0, kinds: r.kinds })) ?? null
+  const changed = JSON.stringify(clean) !== JSON.stringify(now?.map((r) => ({ code: r.code.toUpperCase(), every: r.every, count: r.count, kinds: r.kinds })) ?? null)
+  const putKinds = (i: number, kinds: WtKind[]) => setRows((x) => (x ?? []).map((r, j) => (j === i ? { ...r, kinds } : r)))
+  const kindsText = (k: WtKind[]) => k.map((x) => stepText({ kind: x })).join(' + ')
+  const put = (i: number, k: 'code' | 'every' | 'count', v: string) => setRows((x) => (x ?? []).map((r, j) => (j === i ? { ...r, [k]: k === 'code' ? v.replace(/[^\w-]/g, '') : v.replace(/\D/g, '') } : r)))
+  const blank = (): PlanRow => ({ code: '', every: String(room.every || 60), count: String(room.count || 10), kinds: roomKinds })
   return (
     <div className="kpi-plan" style={deptVars(dept)}>
       <h4>{DEPT_LOOK[dept].emoji} {dept} <small>· {what}</small></h4>
       {rows === null ? (
         <>
           <WeightRuleRow s={s} dept={dept} what={what} viewOnly={ro} label={tr('Todos los códigos')} />
+          <div className="kpi-kindrow"><b>{tr('Qué se pesa')}</b> <KindChips dept={dept} kinds={roomKinds} ro={ro} onChange={(k) => setWeightRoomKinds(dept, k)} /></div>
           {!ro && <div className="btns"><button type="button" className="btn sm soft" onClick={() => setRows([blank()])}>{tr('Solo algunos códigos')}</button></div>}
         </>
       ) : (
         <>
           <div className="scroll"><table className="kpi-set">
-            <thead><tr><th>{tr('Código')}</th><th>{tr('Aviso cada (min)')}</th><th>{tr('Cuántos cada vez')}</th>{!ro && <th />}</tr></thead>
+            <thead><tr><th>{tr('Código')}</th><th>{tr('Qué se pesa')}</th><th>{tr('Aviso cada (min)')}</th><th>{tr('Cuántos cada vez')}</th>{!ro && <th />}</tr></thead>
             <tbody>{rows.map((r, i) => (
               <tr key={i}>
                 <td><input value={r.code} disabled={ro} placeholder="0889" aria-label={tr('Código')} onChange={(e) => put(i, 'code', e.target.value)} /></td>
+                <td><KindChips dept={dept} kinds={r.kinds} ro={ro} onChange={(k) => putKinds(i, k)} /></td>
                 <td><input inputMode="numeric" value={r.every} disabled={ro} aria-label={tr('Aviso cada (min)')} onChange={(e) => put(i, 'every', e.target.value)} /></td>
                 <td><input inputMode="numeric" value={r.count} disabled={ro} aria-label={tr('Cuántos cada vez')} onChange={(e) => put(i, 'count', e.target.value)} /></td>
                 {!ro && <td><button type="button" className="btn xs" aria-label={tr('Quitar')} onClick={() => setRows(rows.filter((_, j) => j !== i))}>✕</button></td>}
@@ -681,7 +690,7 @@ function WeighPlan({ s, dept, what, ro }: { s: State; dept: Dept; what: string; 
           {!!rows && !clean?.length && <small className="red">{tr('Escribe al menos un código, o escoge "Pesar todos los códigos".')}</small>}
         </div>
       )}
-      {(now || rows !== null) && <small className="muted">{now ? tr('Ahora: {0}', now.map((r) => tr('{0} cada {1} min, {2}', r.code, r.every, r.count)).join(' · ')) : tr('Ahora: todos los códigos, cada {0} min, {1}', room.every, room.count)}</small>}
+      {(now || rows !== null) && <small className="muted">{now ? tr('Ahora: {0}', now.map((r) => tr('{0} cada {1} min, {2}', r.code, r.every, r.count) + ' (' + kindsText(r.kinds) + ')').join(' · ')) : tr('Ahora: todos los códigos, cada {0} min, {1}', room.every, room.count) + ' (' + kindsText(roomKinds) + ')'}</small>}
     </div>
   )
 }

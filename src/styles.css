@@ -2203,6 +2203,8 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 .kpi-set th{text-align:left;font-size:12px;color:var(--muted);padding:4px 8px;border-bottom:1.5px solid var(--line);white-space:nowrap}
 .kpi-set td{padding:5px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
 .kpi-set .n{text-align:right}
+.kpi-kinds{display:flex;gap:6px}.kpi-kinds .chip{display:inline-flex;align-items:center;gap:6px;min-height:38px;padding:0 12px;font-size:14px;cursor:pointer;white-space:nowrap}.kpi-kinds .chip:not(.on){background:#e2e8f0;border-color:#94a3b8}.kpi-kinds .chip input{width:18px;height:18px;min-height:0;margin:0}
+.kpi-kindrow{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .kpi-set input{width:90px;min-height:38px;font-size:16px}
 .kpi-set.targets{width:100%}.kpi-set.targets tr.set td{background:#fdf4ff}.kpi-set.targets tr.unsure td{background:#fffbeb}.kpi-unsure{color:#92400e;font-weight:700}
 .kpi-q{min-height:38px;font-size:16px;width:160px}

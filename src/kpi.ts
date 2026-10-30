@@ -1,4 +1,4 @@
-import { attExpectedOf, attOf, attSentAt, attShifts, attWriteOn, CFG, cookText, dayBefore, DEPTS, deptToday, entryClass, fmtTime, kpiGet, lbCaseOn, lbPerCaseOf, lunchOf, normCode, sameStep, shiftAt, shiftsOf, stepKey, stepText, weighedCodes, weighsCode, weightRuleFor, weightStepsOf, weightTarget, wtRangeText, type Cook, type WeightTest, type WtStep, type AttEntry, type Dept, type State } from './store'
+import { attExpectedOf, attOf, attSentAt, attShifts, attWriteOn, CFG, cookText, dayBefore, DEPTS, deptToday, entryClass, fmtTime, kpiGet, lbCaseOn, lbPerCaseOf, lunchOf, normCode, sameStep, shiftAt, shiftsOf, stepKey, stepText, weighedCodes, weighsCode, weightAllStepsOf, weightRuleFor, weightStepsFor, weightTarget, wtRangeText, type Cook, type WeightTest, type WtStep, type AttEntry, type Dept, type State } from './store'
 import { reportOf } from './report'
 import { X, xDay, xN, xT, type Cell, type Sheet } from './xlsx'
 import { tr } from './i18n'
@@ -222,15 +222,17 @@ export function weightsOf(s: State, date: string, now = Date.now()): WtRow[] {
   for (const t of [...all].sort((a, b) => a.at - b.at)) { const k = key(t.dept, t.code, t); if (!groups.has(k)) groups.set(k, { dept: t.dept, code: t.code, step: { kind: t.kind, ...(t.cook ? { cook: t.cook } : {}) } }) }
   for (const r of s.runs) {
     if (r.deleted || r.date !== date || !weighedCodes(s, r.dept) || !weighsCode(s, r.dept, r.code)) continue
-    for (const st of weightStepsOf(r.dept)) { const k = key(r.dept, r.code, st); if (!groups.has(k)) groups.set(k, { dept: r.dept, code: r.code, step: st }) }
+    for (const st of weightStepsFor(s, r.dept, r.code)) { const k = key(r.dept, r.code, st); if (!groups.has(k)) groups.set(k, { dept: r.dept, code: r.code, step: st }) }
   }
-  const order = (g: { dept: Dept; code: string; step: WtStep }) => [DEPTS.indexOf(g.dept), weightStepsOf(g.dept).findIndex((x) => sameStep(x, g.step))] as const
+  const order = (g: { dept: Dept; code: string; step: WtStep }) => [DEPTS.indexOf(g.dept), weightAllStepsOf(g.dept).findIndex((x) => sameStep(x, g.step))] as const
   return [...groups.values()].sort((a, b) => order(a)[0] - order(b)[0] || normCode(a.code).localeCompare(normCode(b.code), 'en', { numeric: true }) || order(a)[1] - order(b)[1]).map((g): WtRow => {
     const mine = all.filter((t) => t.dept === g.dept && normCode(t.code) === normCode(g.code) && sameStep(t, g.step)).sort((a, b) => a.at - b.at)
     const tests = mine.filter((t) => t.entries.length > 0), target = weightTarget(s, g.code, g.step.kind, g.step.cook), count = weightRuleFor(s, g.dept, g.code).count
     // (a test is complete with as many weights as were asked when it was made; one of before that kept no count, as it was)
     const complete = tests.filter((t) => t.entries.length >= (t.need ?? (t.date < wtCountedFrom(s) ? 1 : count))).length
-    return { ...wtSum(tests.flatMap((t) => t.entries), target), dept: g.dept, code: g.code, kind: g.step.kind, ...(g.step.cook ? { cook: g.step.cook } : {}), label: stepText(g.step), tests, skipped: mine.filter((t) => t.skip), complete, short: tests.length - complete, due: weightsDue(s, date, g.dept, g.code, now), target }
+    // (what was weighed although Ajustes no longer asks for it stays in the report, with nothing due)
+    const asked = weightStepsFor(s, g.dept, g.code).some((x) => sameStep(x, g.step))
+    return { ...wtSum(tests.flatMap((t) => t.entries), target), dept: g.dept, code: g.code, kind: g.step.kind, ...(g.step.cook ? { cook: g.step.cook } : {}), label: stepText(g.step), tests, skipped: mine.filter((t) => t.skip), complete, short: tests.length - complete, due: asked ? weightsDue(s, date, g.dept, g.code, now) : null, target }
   })
 }
 /** Spiral's cook yield by cooker (2026-10-29): the cooked balls' average over the raw ones' (cooked ÷ raw), and what was lost */
