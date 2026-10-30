@@ -2862,4 +2862,5 @@ export const EN: Record<string, string> = {
   "Solo estos códigos se pueden poner en un pedido de Packing; los demás van en el Programa. La vigencia (días) da la fecha en que vence cada lote: el día del lote + esos días, y sale en los pallets de cada pedido y en el Reporte.": "Only these codes can be put in a Packing order; the rest go in the Program. The shelf life (days) gives the day each lot expires: the lot's day + those days, shown on each order's pallets and in the Report.",
   "Vigencia (días)": "Shelf life (days)",
   "Sin códigos: un pedido acepta cualquier código.": "No codes: an order takes any code.",
+  "✓ completo: {0}": "\u2713 complete: {0}",
 }

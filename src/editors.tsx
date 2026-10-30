@@ -110,7 +110,7 @@ export function RunEditor({ s, run, mgr, focusAt, onClose }: { s: State; run: Ru
                   {cfg.refLabel && !tagsInLots && <td><input className="num" value={u.ref} onChange={(e) => setUnits(units.map((x, k) => (k === i ? { ...x, ref: e.target.value } : x)))} autoComplete="off" /></td>}
                   {withOrders && (() => {
                     const po = run.units.find((x) => x.at === u.at)?.po, known = po && s.orders.some((o) => o.id === po) ? po : ''
-                    return <td><select value={known} onChange={(e) => { if (!setUnitOrder(run.id, u.at, e.target.value)) setProblem(tr('Ese PO ya está completo ({0}): no lleva más pallets.', orderFullText(s, e.target.value, run.perUnit))) }}><option value="">{tr('Sin pedido')}</option>{ordersFor(po).map((o) => <option key={o.id} value={o.id} disabled={o.id !== known && orderFull(s, o.id, run.perUnit, { runId: run.id, at: u.at })}>{orderLabel(o)}</option>)}</select></td>
+                    return <td><select value={known} onChange={(e) => { if (!setUnitOrder(run.id, u.at, e.target.value)) setProblem(tr('Ese PO ya está completo ({0}): no lleva más pallets.', orderFullText(s, e.target.value, run.perUnit))) }}><option value="">{tr('Sin pedido')}</option>{ordersFor(po).map((o) => { const full = o.id !== known && orderFull(s, o.id, run.perUnit, { runId: run.id, at: u.at }); return <option key={o.id} value={o.id} disabled={full}>{orderLabel(o)}{full ? ' · ' + tr('✓ completo: {0}', orderFullText(s, o.id, run.perUnit)) : ''}</option> })}</select></td>
                   })()}
                   <td>{u.by || '—'}</td>
                   <td className="unote">{u.note && <span>💬 {u.note}</span>} <button type="button" className="lnk" title={tr('Cambiar el comentario de esta unidad')} onClick={() => (cfg.lots ? setLotsOf(i) : setNoting(i))}>{u.note ? '✎' : tr('+ Comentario')}</button></td>
@@ -272,7 +272,7 @@ export function AddUnitDialog({ s, run, startPo, onClose, onAdded }: { s: State;
             </>
           )}
           {orders.length > 0 && (
-            <label>{tr('Pedido')}{' '}<select value={po} onChange={(e) => { hold(false); setPo(e.target.value) }}><option value="">{tr('Sin pedido')}</option>{orders.map((o) => <option key={o.id} value={o.id} disabled={orderFull(s, o.id, run.perUnit)}>{orderLabel(o)}{orderFull(s, o.id, run.perUnit) ? ' · ' + tr('✓ completo') : ''}</option>)}</select></label>
+            <label>{tr('Pedido')}{' '}<select value={po} onChange={(e) => { hold(false); setPo(e.target.value) }}><option value="">{tr('Sin pedido')}</option>{orders.map((o) => <option key={o.id} value={o.id} disabled={orderFull(s, o.id, run.perUnit)}>{orderLabel(o)}{orderFull(s, o.id, run.perUnit) ? ' · ' + tr('✓ completo: {0}', orderFullText(s, o.id, run.perUnit)) : ''}</option>)}</select></label>
           )}
           <NoteBox value={note} onChange={(v) => { hold(false); setNote(v) }} />
           {/* how many were added from this window: its place is kept from the start (empty until then), so the
