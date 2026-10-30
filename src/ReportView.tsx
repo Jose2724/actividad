@@ -4,7 +4,7 @@ import { cookText as cookTextOf, entryClass as entryClassOf, expiryOf, wtRangeTe
 import { avanceRows, mfoText, mfoWord, pending } from './avance'
 import { codeLabel, FAMILY_SHOWN, reasonCodeOf } from './reasons'
 import { cellText, loadZip, X, xDur, xN, xPct, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
-import { cookYields, hoursOf, seesLabor, weightsOf, wtCompliance, wtDoneText, wtOfReport, wtSheetRows, wtSheets, wtShift, wtSum, wtBoard, wtSummary, wtSummaryBook, type WtAvg, type WtRow } from './kpi'
+import { cookYields, hoursOf, seesLabor, weightsOf, wtCompliance, wtDoneText, wtOfReport, wtSheetRows, wtSheets, wtShift, wtSum, wtBoard, wtRangeLong, wtSummary, wtSummaryBook, type WtAvg, type WtRow } from './kpi'
 import { attendanceOf, attLineText, attMovesText, attOf, attShifts, attStateText } from './store'
 import { COOKS, consumesOf, inventoryOf, stepText, weightEdit, weightsFix, weightTarget, wtKindsOf, wtPicksCode, type Cook, type Dept as RoomDept, type WeightTest, type WtEntry } from './store'
 import { pctText } from './Attendance'
@@ -1537,7 +1537,7 @@ function WeightsView({ k }: { k: Kit }) {
   // the summary on the screen, to see it and decide without opening a file (Jose, 2026-10-30)
   const summaryRows = useMemo(() => wtSummary(s, weightsOf(s, date, now)), [s, date])
   const boardRows = useMemo(() => wtBoard(s, weightsOf(s, date, now)), [s, date])
-  const bigCell = (label: string, x: WtAvg) => <div className={'wt-big ' + (x.ok === 'ok' ? 'ok' : x.ok === 'under' ? 'bad' : x.ok === 'over' ? 'warn' : '')}><small>{label}</small><b>{x.avg == null ? '—' : x.avg.toFixed(2) + (x.ok === 'ok' ? ' ✓' : x.ok ? ' ✗' : '')}</b><small>{x.avg == null ? '' : x.range ? tr('QA {0} oz', x.range) : tr('Falta el target de QA')}</small></div>
+  const bigCell = (label: string, x: WtAvg) => <div className={'wt-big ' + (x.ok === 'ok' ? 'ok' : x.ok === 'under' ? 'bad' : x.ok === 'over' ? 'warn' : '')}><small>{label}</small><b>{x.avg == null ? '—' : x.avg.toFixed(2) + (x.ok === 'ok' ? ' ✓' : x.ok ? ' ✗' : '')}</b><strong>{x.range ? tr('Objetivo {0} oz', wtRangeLong(x.range)) : tr('Falta el target de QA')}</strong></div>
   // Kitchen's tests under a mix code reach neither code: said here, not in the file for the heads
   const mixed = [...new Set(wt.rows.filter((r) => wtPicksCode(r.dept, r.code) && r.tests.length).map((r) => r.code))]
   const avgCell = (x: WtAvg) => <td className={'n' + (x.ok === 'ok' ? ' ok' : x.ok === 'under' ? ' red' : x.ok === 'over' ? ' amber' : '')}>{x.avg == null ? '—' : <b>{x.avg.toFixed(2)}</b>}{x.avg != null && <small> {x.range || tr('Pendiente')}</small>}</td>

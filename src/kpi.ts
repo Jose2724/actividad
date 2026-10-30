@@ -363,6 +363,8 @@ const wtPart = (s: State, of: WtRow[], code: string, kind: WeightTest['kind']): 
   return { avg, n: ws.length, range: t ? wtRangeText(t) : '', ok: avg == null || !r ? null : avg < r.min ? 'under' : avg > r.max ? 'over' : 'ok' }
 }
 const wtSay = (name: string, x: WtAvg) => (x.ok === 'under' ? [tr('{0} bajo el rango de QA', name)] : x.ok === 'over' ? [tr('{0} sobre el rango de QA', name)] : [])
+/** a range as QA writes it: 2.60–2.80 (a bag's stays 48–52) */
+export const wtRangeLong = (r: string) => r.split('–').map((n) => (Number(n) < 10 ? Number(n).toFixed(2) : n)).join('–')
 export type WtBoardRow = { code: string; times: number; raw: WtAvg; cooked: WtAvg; pouch: WtAvg; result: string; action: boolean; weighed: boolean }
 /**
  * What the whiteboard asked for, plainly (Jose, 2026-10-30: "mucha información ... más intuitivo, con menos información"):
@@ -389,16 +391,17 @@ export function wtBoardSheet(s: State, rows: WtRow[], date: string): Sheet {
   row([])
   row([tr('Código'), tr('Veces revisado'), tr('Crudo prom.'), tr('Cocinado prom.'), tr('Pouch prom.')].map((x) => xT(x, X.wHead)), 30)
   const big = (x: WtAvg): Cell => (x.avg == null ? xT('—', X.wBigN) : xT(x.avg.toFixed(2) + (x.ok === 'ok' ? ' ✓' : x.ok ? ' ✗' : ''), x.ok === 'ok' ? X.wBigG : x.ok === 'under' ? X.wBigR : x.ok === 'over' ? X.wBigA : X.wBigN))
-  const qa = (x: WtAvg): Cell => xT(x.avg == null ? '' : x.range ? tr('QA {0} oz', x.range) : tr('Falta el target de QA'), X.wcText)
+  // (the target as big as can be read at a glance, Jose 2026-10-30, also when nothing was weighed)
+  const qa = (x: WtAvg): Cell => xT(x.range ? tr('Objetivo {0} oz', wtRangeLong(x.range)) : tr('Falta el target de QA'), X.wTarget)
   for (const x of wtBoard(s, rows)) {
     const r = row([xT(x.code, X.wBigN), xT(x.weighed ? String(x.times) : '0', X.wBigN), big(x.raw), big(x.cooked), big(x.pouch)], 48)
-    row([xT('', X.wcText), xT(tr('veces'), X.wcText), qa(x.raw), qa(x.cooked), qa(x.pouch)], 20)
+    row([xT('', X.wcText), xT(tr('veces'), X.wTarget), qa(x.raw), qa(x.cooked), qa(x.pouch)], 30)
     merges.push('A' + r + ':A' + (r + 1))
     across(x.result, x.action ? X.wBadW : x.weighed ? X.wGoodW : X.wLeft, 26)
     row([], 10)
   }
   across(tr('Cada número es el promedio de todos los pesos del día, en onzas. ✓ verde = dentro del rango de QA. ✗ rojo = bajo el rango. ✗ ámbar = sobre el rango.'), X.note, 34)
-  return { name: tr('Resumen'), rows: out, freeze: 0, page: { widths: [16, 16, 24, 24, 24], heights, merges } }
+  return { name: tr('Resumen'), rows: out, freeze: 0, page: { widths: [16, 16, 27, 27, 27], heights, merges } }
 }
 export function wtSummary(s: State, rows: WtRow[]): WtSummaryRow[] {
   const mine = rows.filter((w) => w.tests.length)
