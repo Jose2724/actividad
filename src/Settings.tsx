@@ -694,7 +694,7 @@ function WeighPlan({ s, dept, what, ro }: { s: State; dept: Dept; what: string; 
     </div>
   )
 }
-const STEP_CHOICES: WtStep[] = [{ kind: 'pouch' }, { kind: 'pouched' }, { kind: 'raw' }, { kind: 'ball' }, { kind: 'raw', cook: 'spiral' }, { kind: 'ball', cook: 'spiral' }, { kind: 'raw', cook: 'racks' }, { kind: 'ball', cook: 'racks' }]
+const STEP_CHOICES: WtStep[] = [{ kind: 'pouch' }, { kind: 'raw' }, { kind: 'ball' }, { kind: 'raw', cook: 'spiral' }, { kind: 'ball', cook: 'spiral' }, { kind: 'raw', cook: 'racks' }, { kind: 'ball', cook: 'racks' }]
 const numOz = (t: string) => Number(t.replace(',', '.'))
 const ozText = (x: number) => String(Math.round(x * 1000) / 1000)
 /** the targets: QA's sheet and what a manager set, each changed, taken back to QA, or added for a new code */

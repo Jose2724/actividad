@@ -1472,7 +1472,7 @@ const QA_TARGETS: Record<string, Partial<Record<WeightTest['kind'], WeightTarget
   // 2.4 oz meatballs (Costco Jumbo and the like)
   // (0889 from Yas's Target Specifications, the sheet to follow, Jose 2026-10-30: raw 2.60–2.80 oz, cooked 2.30–2.40 oz a ball)
   // (and the pouch 48–52 oz, never under 48: Jose, 2026-10-29 "48 oz y máximo 52 oz en RTE", "no puede tener mínimo de tolerancia")
-  // (a meatball taken out of a pouch has no target: Yas's sheet does not say one, and only that sheet goes; a manager writes it in Ajustes › KPI)
+  // ('pouched' is not offered: the whiteboard's "pouch Avg 3.0" was the bag, 3 lb = 48 oz, as Santiago's sheet showed the same day)
   '0889': { pouch: { pouch: 50, tol: 2 }, ball: { pouch: 2.35, tol: 0.05 }, raw: { pouch: 2.7, tol: 0.1 } },
   '685': { pouch: { pouch: 48, tol: 1 }, ball: { pouch: 2.35, tol: 0.05 }, raw: { pouch: 2.7, tol: 0.1 } },
   '4139': { pouch: { pouch: 72, tol: 1 }, ball: { pouch: 2.35, tol: 0.05 }, raw: { pouch: 2.7, tol: 0.1 } },
@@ -1585,7 +1585,7 @@ export const WEIGHT_CODES_DEFAULT: Partial<Record<Dept, string[]>> = { Spiral: [
 export type WtKind = WeightTest['kind']
 export type WtCodeRule = { code: string; every: number; count: number; kinds: WtKind[] }
 /** what a room can be asked to weigh, in the order the screens say it */
-export const wtKindsOf = (dept: Dept): WtKind[] => (dept === 'RTE' ? ['pouch', 'pouched', 'raw', 'ball'] : dept === 'Spiral' || dept === 'Kitchen' ? ['raw', 'ball'] : [])
+export const wtKindsOf = (dept: Dept): WtKind[] => (dept === 'RTE' ? ['pouch', 'raw', 'ball'] : dept === 'Spiral' || dept === 'Kitchen' ? ['raw', 'ball'] : [])
 const WT_KINDS_DEFAULT: Partial<Record<Dept, WtKind[]>> = { Spiral: ['raw', 'ball'], RTE: ['pouch'], Kitchen: ['raw'] }
 const cleanKinds = (dept: Dept, v: unknown): WtKind[] => { const l = wtKindsOf(dept).filter((k) => Array.isArray(v) && v.includes(k)); return l.length ? l : WT_KINDS_DEFAULT[dept] ?? [] }
 /** what a room weighs of a code it does not list one by one (of every code, where it weighs them all) */
