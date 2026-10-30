@@ -125,8 +125,8 @@ const items = (): Item[] => [
     math: tr('Al ponerla se escoge: descontarla (sale de lo hecho mientras está en hold) o que siga contando.') },
 
   { id: 'peso-resumen', group: 'pesos', title: tr('Resumen de pesos de una hoja'),
-    means: tr('Una línea por código de bolas, para quien no necesita el detalle.'),
-    math: tr('Veces revisado = cuántas horas se pesó el código, contando lo que más veces se pesó. Cada promedio junta todos los pesos del día de crudo, de cocinado o de pouch (la bolsa terminada), de todos los cuartos y cocinadores. Pide acción correctiva si un promedio queda fuera del rango de QA, o si un pouch quedó bajo su mínimo. Un peso suelto de bola fuera de rango no cambia el resultado: eso se ve en el Excel completo.') },
+    means: tr('Una línea por código y departamento, para quien no necesita el detalle.'),
+    math: tr('Veces revisado = cuántas horas se pesó el código, contando lo que más veces se pesó. Cada promedio junta todos los pesos del día de crudo, de cocinado o de pouch (la bolsa terminada) de ese departamento, con sus cocinadores. Pide acción correctiva si un promedio queda fuera del rango de QA, o si un pouch quedó bajo su mínimo. Un peso suelto de bola fuera de rango no cambia el resultado: eso se ve en el Excel completo.') },
   { id: 'peso-pruebas', group: 'pesos', title: tr('Pruebas: "3 de 4"'),
     means: tr('Cuántas pruebas de peso se hicieron de las que tocaban.'),
     math: tr('Las que tocaban = el tiempo que corrió el código ÷ cada cuánto se pesa, sin decimales, corrida por corrida. Una prueba cuenta cuando tiene todos los pesos que se pidieron. "Incompletas" = empezadas con menos pesos. Decir que un cocinador no se usó esa hora cuenta como hecha. Se cuenta desde el 30 de octubre de 2026.'),

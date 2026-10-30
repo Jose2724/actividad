@@ -5742,21 +5742,22 @@ section('Pesos escritos con otro código o como crudo: se corrigen desde el Repo
     eq('sin target de QA no se juzga: el 2234 no está en la hoja de Yas; el 0889 sí', [m.wtOfficial(st(), '2234', 'pouch'), m.wtOfficial(st(), '2234', 'ball'), m.wtOfficial(st(), '2234', 'raw'), m.wtOfficial(st(), '0889', 'ball'), m.wtOfficial(st(), '0889', 'pouch')], [false, false, false, true, true])
     m.setWeightTarget('0889', 2.25, 0.15, 'ball')
     const sum = m.wtSummary(st(), sumRows())
-    eq('una línea por código, de todos los cuartos, con la bolsa de 48 oz como Pouch', sum.map((x) => [x.code, x.times, x.cooked.avg, x.cooked.ok, x.pouch.avg, x.pouch.range, x.pouch.ok, x.raw.avg, x.action]), [['0889', 2, 2.24, 'ok', 50, '48–52', 'ok', null, false], ['2234', 0, null, null, null, '', null, null, false]])
-    eq('dentro del rango lo dice, y el que no se pesó también', [sum[0].result, sum[1].result], ['Dentro del rango de QA', 'No se pesó este día'])
+    eq('una línea por código y departamento, con la bolsa de 48 oz como Pouch', sum.map((x) => [x.code, x.dept, x.times, x.cooked.avg, x.cooked.ok, x.pouch.avg, x.pouch.range, x.pouch.ok, x.action]), [['0889', 'Kitchen', 2, 2.24, 'ok', null, '48–52', null, false], ['0889', 'RTE', 1, null, '2.3–2.4', 50, '48–52', 'ok', false], ['2234', '', 0, null, '', null, '', null, false]].map(([c, d, t, av, , pa, pr, po, ac]) => [c, d, t, av, av == null ? null : 'ok', pa, pr, po, ac]))
+    eq('dentro del rango lo dice, y el que no se pesó también', [sum[0].result, sum[1].result, sum[2].result], ['Dentro del rango de QA', 'Dentro del rango de QA', 'No se pesó este día'])
     m.setWeightTarget('0889', 2.375, 0.025, 'ball')
     const fuera = m.wtSummary(st(), sumRows())[0]
     eq('fuera del rango pide acción correctiva', [fuera.cooked.ok, fuera.action, fuera.result], ['under', true, 'Acción correctiva: Cocinado bajo el rango de QA'])
     m.setWeightTarget('0889', 2.25, 0.15, 'ball')
     m.weightSave(m.weightNew(rte, { kind: 'pouch' }), [47.5, 52, 52, 51].map((w) => ({ w })))
-    const leve = m.wtSummary(st(), sumRows())[0]
+    const leve = m.wtSummary(st(), sumRows()).find((x) => x.dept === 'RTE')
     eq('el promedio de los pouches está bien, pero uno bajo 48 pide acción', [leve.pouch.ok, leve.action, leve.result], ['ok', true, 'Acción correctiva: 1 pouch bajo el mínimo'])
     m.startRun(st().lines.find((l) => l.dept === 'RTE'), '2234', '6300', DAY, 240)
     clock = T0 + 5 * 60 * M
     m.weightSave(m.weightNew(st().runs.find((x) => x.code === '2234'), { kind: 'pouch' }), [73].map((w) => ({ w })))
-    const sinT = m.wtSummary(st(), sumRows())[1]
+    const sinT = m.wtSummary(st(), sumRows()).find((x) => x.code === '2234')
     eq('lo pesado sin target de QA se dice, nunca sale como bien', [sinT.pouch.ok, sinT.pouch.range, sinT.pending, sinT.result], [null, '', true, 'Falta el target de QA'])
     const hoja = m.wtSummarySheet(st(), sumRows(), DAY)
+    eq('la gráfica lee el % en peso de cada departamento, y el 2234 sin target no se juzga', ((c) => [m.cellText(hoja.rows[c.from - 1][c.cat]), hoja.rows[c.from - 1][c.val].v, hoja.rows[c.to - 1][c.cat] !== undefined, m.wtSummary(st(), sumRows()).at(-1).okPct])(hoja.chart), [' Kitchen 0889'.trim(), 0.667, true, null])
     eq('es una hoja y dice cómo leerla', [hoja.name, hoja.rows.flat().some((c) => m.cellText(c).startsWith('Cómo leerlo')), hoja.rows.flat().some((c) => m.cellText(c) === '1 de 2 códigos necesitan acción correctiva.')], ['Resumen', true, true])
     const sent = JSON.parse(m.outbox.items().find((i) => i.key === 'wt:' + a.id)?.row.after ?? '{}')
     eq('la corrección sube al servidor', [sent.code, sent.kind, sent.entries.length], ['0889', 'ball', 4])

@@ -4,7 +4,7 @@ import { cookText as cookTextOf, entryClass as entryClassOf, expiryOf, wtRangeTe
 import { avanceRows, mfoText, mfoWord, pending } from './avance'
 import { codeLabel, FAMILY_SHOWN, reasonCodeOf } from './reasons'
 import { cellText, loadZip, X, xDur, xN, xPct, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
-import { cookYields, hoursOf, seesLabor, weightsOf, wtCompliance, wtDoneText, wtOfReport, wtSheetRows, wtSheets, wtShift, wtSum, wtSummarySheet, type WtRow } from './kpi'
+import { cookYields, hoursOf, seesLabor, weightsOf, wtCompliance, wtDoneText, wtOfReport, wtSheetRows, wtSheets, wtShift, wtSum, wtSummary, wtSummarySheet, type WtAvg, type WtRow } from './kpi'
 import { attendanceOf, attLineText, attMovesText, attOf, attShifts, attStateText } from './store'
 import { consumesOf, inventoryOf, stepText, weightsFix, weightTarget, wtKindsOf, type Dept as RoomDept } from './store'
 import { pctText } from './Attendance'
@@ -1533,6 +1533,9 @@ function WeightsView({ k }: { k: Kit }) {
   const { s, wt, rep, date, mgr, now } = k
   const who = useWho(), canFix = mgr && who.role !== 'viewer'
   const [fixing, setFixing] = useState<WtRow | null>(null)
+  // the summary on the screen, to see it and decide without opening a file (Jose, 2026-10-30)
+  const summaryRows = useMemo(() => wtSummary(s, weightsOf(s, date, now)), [s, date])
+  const avgCell = (x: WtAvg) => <td className={'n' + (x.ok === 'ok' ? ' ok' : x.ok === 'under' ? ' red' : x.ok === 'over' ? ' amber' : '')}>{x.avg == null ? '—' : <b>{x.avg.toFixed(2)}</b>}{x.avg != null && <small> {x.range || tr('Pendiente')}</small>}</td>
   // the three sheets, as the room and code chosen; made from what is on screen when tapped
   // the one page for the plant's heads: every room's weights of the day, whatever the filters show
   const summary = async () => {
@@ -1553,6 +1556,20 @@ function WeightsView({ k }: { k: Kit }) {
     <>
       {wt.rows.length > 0 && <div className="btns"><button type="button" className="btn primary" onClick={() => void summary()}>{tr('⬇ Resumen de una hoja')}</button><button type="button" className="btn soft" onClick={() => void sheets()}>{tr('⬇ Excel de pesos: Turno 1, Turno 2 y Todos')}</button></div>}
       {fixing && <WeightsFixDialog s={s} row={fixing} onClose={() => setFixing(null)} />}
+      <article className="wt-rp">
+        <h3>{tr('Resumen de pesos')} <WhatIs id="peso-resumen" /></h3>
+        <div className="scroll"><table className="wt-rp-tbl">
+          <thead><tr><th>{tr('Código')}</th><th>{tr('Departamento')}</th><th className="n">{tr('Veces revisado')}</th><th className="n">{tr('% en peso')}</th><th className="n">{tr('Crudo prom. (oz)')}</th><th className="n">{tr('Cocinado prom. (oz)')}</th><th className="n">{tr('Pouch prom. (oz)')}</th><th>{tr('Resultado')}</th></tr></thead>
+          <tbody>{summaryRows.map((x) => (
+            <tr key={x.code + x.dept}>
+              <td><b>{x.code}</b></td><td>{x.dept || '—'}</td><td className="n">{x.times}</td>
+              <td className="n"><span className={'wt-ok ' + (x.okPct == null ? '' : x.okPct < 0.9 ? 'bad' : x.okPct < 1 ? 'warn' : 'good')}>{x.okPct == null ? '—' : Math.round(x.okPct * 1000) / 10 + '%'}</span></td>
+              {avgCell(x.raw)}{avgCell(x.cooked)}{avgCell(x.pouch)}
+              <td className={x.action ? 'red' : x.pending ? 'amber' : x.times ? 'ok' : ''}>{x.result}</td>
+            </tr>
+          ))}</tbody>
+        </table></div>
+      </article>
       {cw.due > 0 && <p className={'wt-rp-sum ' + (cw.done < cw.due ? 'bad' : 'ok')}>{tr('{0} de {1} pruebas hechas', cw.done, cw.due)}{cw.done < cw.due ? ' · ' + tr('faltaron {0}', cw.due - cw.done) : ' · ' + tr('todas')}</p>}
       {groups.map((g) => (
         <article key={g[0].dept + g[0].code} className="wt-rp" style={deptVars(g[0].dept)}>
