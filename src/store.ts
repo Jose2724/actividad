@@ -2038,31 +2038,30 @@ export function orderPallets(s: State, orderId: string, perPallet?: number | nul
  * cases has no end. `but` = a pallet already given to it that is being corrected (it does not count against itself).
  * The pallet that completes it may carry a few cases more: that one is taken; the next one is not.
  */
-export function orderFull(s: State, orderId: string, perPallet?: number | null, but?: { runId: string; at: number }): boolean {
+export function orderFull(s: State, orderId: string, _perPallet?: number | null, but?: { runId: string; at: number }): boolean {
   const o = s.orders.find((x) => x.id === orderId)
   if (!o || o.cases == null) return false
-  const seq = orderPallets(s, orderId, perPallet)
   const mine = but ? orderRunsOf(s, orderId).find((r) => r.id === but.runId)?.units.find((u) => u.at === but.at && u.po === orderId) : undefined
   const r = but ? orderRunsOf(s, orderId).find((x) => x.id === but.runId) : undefined
-  const pallets = seq.done.length - (mine ? 1 : 0), made = orderMade(s, orderId) - (mine && r ? unitQty(s, r, mine) : 0)
-  // by its cases, or by its pallets: a PO of 3 pallets never takes a 4th, short ones or not — what its cases still lack
-  // goes in its last pallet (the office via Jose, 2026-10-27: "las pallets deben terminar completas; que si son 3 o 10
-  // pallets no se pase a más"); before, short pallets let it run to 4 or 5
-  return made >= o.cases || (seq.need != null && pallets >= seq.need)
+  const made = orderMade(s, orderId) - (mine && r ? unitQty(s, r, mine) : 0)
+  // by its cases: it takes pallets while cases are missing (Jose, 2026-10-29, after Packing could not give the cases a
+  // PO still lacked: "sí, que permita completar"). From 2026-10-27 to then a PO of 3 pallets never took a 4th, short ones
+  // or not; its "de N pallets" is still said, as what it requires
+  return made >= o.cases
 }
 /**
- * the first order a list of pallets to give would go beyond ('' = none): more pallets than it still needs, or cases
- * after one that already completes it (the pallet that completes it may carry a few more). For a record added after
+ * the first order a list of pallets to give would go beyond ('' = none): a pallet after one that already completes its
+ * cases (the pallet that completes it may carry a few more). For a record added after
  * the fact, and for what its window says
  */
-export function orderOver(s: State, list: { po: string; qty: number | null }[], perPallet?: number | null): string {
+export function orderOver(s: State, list: { po: string; qty: number | null }[], _perPallet?: number | null): string {
   const given = new Map<string, { n: number; cases: number }>()
   for (const u of list) {
     if (!u.po) continue
     const o = s.orders.find((x) => x.id === u.po)
     if (!o || o.cases == null) continue
-    const g = given.get(u.po) ?? { n: 0, cases: 0 }, seq = orderPallets(s, u.po, perPallet)
-    if (orderMade(s, u.po) + g.cases >= o.cases || (seq.need != null && seq.done.length + g.n >= seq.need)) return u.po
+    const g = given.get(u.po) ?? { n: 0, cases: 0 }
+    if (orderMade(s, u.po) + g.cases >= o.cases) return u.po
     given.set(u.po, { n: g.n + 1, cases: g.cases + (u.qty ?? 0) })
   }
   return ''
@@ -2070,15 +2069,11 @@ export function orderOver(s: State, list: { po: string; qty: number | null }[], 
 /** how an order stands, said: "10 de 10 pallets", "480 de 480 cajas" */
 /**
  * why an order takes no more pallets, said to whoever tried (Packing, 2026-10-29: "no me permite seleccionarlo ... un
- * mensajito que diga por qué"): all its cases, or all its pallets though cases are still missing (those go in its last
- * pallet, the office's rule of 2026-10-27, not in one more)
+ * mensajito que diga por qué"): it has all its cases
  */
 export function orderFullWhy(s: State, orderId: string, perPallet?: number | null): string {
   const o = s.orders.find((x) => x.id === orderId)
-  if (!o) return ''
-  const seq = orderPallets(s, orderId, perPallet), made = orderMade(s, orderId), label = orderLabel(o)
-  if (o.cases == null || made >= o.cases || seq.need == null) return tr('{0} ya tiene todas sus cajas ({1}): no lleva más pallets.', label, orderFullText(s, orderId, perPallet))
-  return tr('{0} ya tiene sus {1} pallets ({2}) aunque le faltan {3} cajas. Un PO no lleva más pallets de los que pide: lo que falta va en su último pallet. Súbele las cajas a ese pallet con Corregir, o si un pallet que no es de este PO quedó en él, quítaselo y entonces sí entra este.', label, seq.need, orderFullText(s, orderId, perPallet), fmtN(o.cases - made))
+  return o ? tr('{0} ya tiene todas sus cajas ({1}): no lleva más pallets.', orderLabel(o), orderFullText(s, orderId, perPallet)) : ''
 }
 export function orderFullText(s: State, orderId: string, perPallet?: number | null): string {
   const o = s.orders.find((x) => x.id === orderId)

@@ -5230,9 +5230,9 @@ section('Lo que un PO requería y lo que se hizo (la oficina, 2026-10-27: 150 ca
     eq('sin pallets: requiere 3 de 50, ninguno parcial', [m.orderPallets(st(), oid, run().perUnit).std, m.orderPallets(st(), oid, run().perUnit).partial, m.orderPallets(st(), oid, run().perUnit).size], [3, 0, 50])
     const took = [50, 50, 3, 30, 20].map((q, i) => { clock = T0 + (i + 1) * 10 * M; return m.palletDone(run().id, [{ lot: '6291', qty: q, tag: 'T' + i }], oid) })
     const q = m.orderPallets(st(), oid)
-    eq('requería 3 pallets de 50: el tercero (corto, de 3) lo completa por pallets y el cuarto y el quinto no entran (la oficina, 2026-10-27: "que si son 3 o 10 pallets no se pase a más"); le faltan 47 cajas, que van en su último pallet', [took, q.done.length, q.need, q.std, q.size, q.partial, m.orderMade(st(), oid), m.orderFull(st(), oid), m.orderFullText(st(), oid)], [[true, true, true, false, false], 3, 3, 3, 50, 1, 103, true, '3 de 3 pallets · 103 de 150 cajas'])
+    eq('requería 3 pallets de 50; desde 2026-10-29 un PO lleva pallets mientras le falten cajas (Jose: "sí, que permita completar"): con el tercero corto (3) le faltaban 47, entran el cuarto y el quinto, y el quinto lo completa (puede pasarse un poco)', [took, q.done.length, q.need, q.std, q.size, q.partial, m.orderMade(st(), oid), m.orderFull(st(), oid), m.orderFullText(st(), oid)], [[true, true, true, true, true], 5, 3, 3, 50, 3, 153, true, '5 de 3 pallets · 153 de 150 cajas'])
     eq('un registro agregado después con otro pallet para ese PO tampoco pasa', m.orderOver(st(), [{ po: oid, qty: 47 }]), oid)
-    eq('un pallet que ya es suyo se puede corregir (no cuenta contra sí mismo)', m.orderFull(st(), oid, 50, { runId: run().id, at: q.done[2] }), false)
+    eq('un pallet que ya es suyo se puede corregir (no cuenta contra sí mismo)', m.orderFull(st(), oid, 50, { runId: run().id, at: q.done[4] }), false)
     // Productos says 8 to the pallet (wrong, as the office found it): the pallets made, of 50, win over it
     m.saveProduct(st().products.length, { code: '1999', name: 'X', pouchesPerCase: 8, casesPerMix: 14, cratesPerCart: 24, pouchesPerCrate: 0, casesPerPallet: 8, updatedAt: 0 })
     eq('con Productos en 8 por pallet (mal), los pallets hechos de 50 mandan: sigue requiriendo 3', [m.orderPallets(st(), oid).need, m.orderPallets(st(), oid).size], [3, 50])
@@ -5680,7 +5680,7 @@ section('Pedidos (PO): solo los códigos que van en pedidos, y cada lote con su 
     eq('se ponen en el PO hasta que se llena: el primero entra (44 cajas = 2 pallets de 22), el segundo ya no', [m.setUnitOrder(pr().id, T0 + 10 * M, oid), m.setUnitOrder(pr().id, T0 + 20 * M, oid), m.loosePalletsOf(st(), '2010').map((x) => x.u.ref), m.orderFullText(st(), oid)], [true, false, ['T3', 'T2'], '2 de 2 pallets · 44 de 44 cajas'])
     const o2 = m.saveOrder(null, { customer: 'BJ', po: '117973675', code: '2010', cases: 44, shipBy: '', dest: '' })
     m.setUnitOrder(pr().id, T0 + 20 * M, o2); clock = T0 + 50 * M; m.unitDone(pr().id, 10, 'T5', undefined, o2)
-    eq('el porqué de un PO que no lleva más: con todas sus cajas; o con sus pallets aunque le falten cajas (van en el último)', [m.orderFullWhy(st(), oid), m.orderFullWhy(st(), o2)], ['BJ · PO 117973674 ya tiene todas sus cajas (2 de 2 pallets · 44 de 44 cajas): no lleva más pallets.', 'BJ · PO 117973675 ya tiene sus 2 pallets (2 de 2 pallets · 32 de 44 cajas) aunque le faltan 12 cajas. Un PO no lleva más pallets de los que pide: lo que falta va en su último pallet. Súbele las cajas a ese pallet con Corregir, o si un pallet que no es de este PO quedó en él, quítaselo y entonces sí entra este.'])
+    eq('el porqué de un PO que no lleva más: tiene todas sus cajas; con sus pallets y cajas que faltan sigue llevando', [m.orderFullWhy(st(), oid), m.orderFull(st(), o2)], ['BJ · PO 117973674 ya tiene todas sus cajas (2 de 2 pallets · 44 de 44 cajas): no lleva más pallets.', false])
   })
 }
 section('Spiral anota la carne que echa, en libras y con su lote, y el reporte la suma por código con las libras por mezcla (Jose, 2026-10-23)')
