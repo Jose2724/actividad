@@ -6,7 +6,7 @@ import { codeLabel, FAMILY_SHOWN, reasonCodeOf } from './reasons'
 import { cellText, loadZip, X, xDur, xN, xPct, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 import { cookYields, hoursOf, seesLabor, weightsOf, wtCompliance, wtDoneText, wtOfReport, wtSheetRows, wtSheets, wtShift, wtSum, wtSummary, wtSummaryBook, type WtAvg, type WtRow } from './kpi'
 import { attendanceOf, attLineText, attMovesText, attOf, attShifts, attStateText } from './store'
-import { consumesOf, inventoryOf, stepText, weightsFix, weightTarget, wtKindsOf, type Dept as RoomDept } from './store'
+import { consumesOf, inventoryOf, stepText, weightEdit, weightsFix, weightTarget, wtKindsOf, type Dept as RoomDept, type WeightTest, type WtEntry } from './store'
 import { pctText } from './Attendance'
 import { buildPdf, loadPdf, type Part } from './pdf'
 import { homeScreenApple, type Kind } from './send'
@@ -1533,6 +1533,7 @@ function WeightsView({ k }: { k: Kit }) {
   const { s, wt, rep, date, mgr, now } = k
   const who = useWho(), canFix = mgr && who.role !== 'viewer'
   const [fixing, setFixing] = useState<WtRow | null>(null)
+  const [editing, setEditing] = useState<{ t: WeightTest; w: WtRow } | null>(null)
   // the summary on the screen, to see it and decide without opening a file (Jose, 2026-10-30)
   const summaryRows = useMemo(() => wtSummary(s, weightsOf(s, date, now)), [s, date])
   const avgCell = (x: WtAvg) => <td className={'n' + (x.ok === 'ok' ? ' ok' : x.ok === 'under' ? ' red' : x.ok === 'over' ? ' amber' : '')}>{x.avg == null ? '—' : <b>{x.avg.toFixed(2)}</b>}{x.avg != null && <small> {x.range || tr('Pendiente')}</small>}</td>
@@ -1556,6 +1557,7 @@ function WeightsView({ k }: { k: Kit }) {
     <>
       {wt.rows.length > 0 && <div className="btns"><button type="button" className="btn primary" onClick={() => void summary()}>{tr('⬇ Resumen y control de peso')}</button><button type="button" className="btn soft" onClick={() => void sheets()}>{tr('⬇ Excel de pesos: Turno 1, Turno 2 y Todos')}</button></div>}
       {fixing && <WeightsFixDialog s={s} row={fixing} onClose={() => setFixing(null)} />}
+      {editing && <WeightTestDialog s={s} test={editing.t} row={editing.w} onClose={() => setEditing(null)} />}
       <article className="wt-rp">
         <h3>{tr('Resumen de pesos')} <WhatIs id="peso-resumen" /></h3>
         <div className="scroll"><table className="wt-rp-tbl">
@@ -1596,12 +1598,12 @@ function WeightsView({ k }: { k: Kit }) {
       ))}
       <h3>{tr('Cada prueba')}{rep.shift ? ' · ' + tr('Turno {0}', rep.shift) : ''} <WhatIs id="peso-pruebas" /></h3>
       {wt.tests.length ? <div className="scroll"><table className="wt-rp-tbl each">
-        <thead><tr><th>{tr('Hora')}</th><th>{tr('Turno')}</th><th>{tr('Línea')}</th><th>{tr('Código')}</th><th>{tr('Qué')}</th><th>{tr('Pesos (oz)')}</th><th className="n">{tr('Promedio')}</th><th className="n">✓</th><th className="n">▼</th><th className="n">▲</th><th>{tr('Anotó')}</th></tr></thead>
+        <thead><tr><th>{tr('Hora')}</th><th>{tr('Turno')}</th><th>{tr('Línea')}</th><th>{tr('Código')}</th><th>{tr('Qué')}</th><th>{tr('Pesos (oz)')}</th><th className="n">{tr('Promedio')}</th><th className="n">✓</th><th className="n">▼</th><th className="n">▲</th><th>{tr('Anotó')}</th>{canFix && <th />}</tr></thead>
         <tbody>{wt.tests.map(({ w, t }) => { const x = wtSum(t.entries, w.target); return (
           <tr key={t.id}>
             <td>{fmtTime(t.at)}</td><td>{wtShift(s, t)}</td><td>{lineNameOf(s, t.lineId, t.line)}</td><td>{t.code}{t.lot ? <small> · {t.lot}</small> : null}</td><td>{w.label}</td>
             <td>{t.skip ? <i className="muted">{tr('no se usó esa hora')}</i> : <span className="wt-chips">{t.entries.map((e, i) => { const c = entryClassOf(e, w.target); return <span key={i} className={'wt-chip ' + (c || 'none')}>{e.w != null ? oz(e.w) : c === 'sobre' ? '▲' : '▼'}</span> })}</span>}</td>
-            <td className="n">{t.skip ? '' : oz(x.avg)}</td><td className={'n' + (x.good ? ' ok' : '')}>{t.skip ? '' : x.good}</td><td className={'n' + (x.under ? ' red' : '')}>{t.skip ? '' : x.under}</td><td className={'n' + (x.over ? ' amber' : '')}>{t.skip ? '' : x.over}</td><td>{t.by}</td>
+            <td className="n">{t.skip ? '' : oz(x.avg)}</td><td className={'n' + (x.good ? ' ok' : '')}>{t.skip ? '' : x.good}</td><td className={'n' + (x.under ? ' red' : '')}>{t.skip ? '' : x.under}</td><td className={'n' + (x.over ? ' amber' : '')}>{t.skip ? '' : x.over}</td><td>{t.by}</td>{canFix && <td>{!t.skip && <button type="button" className="btn sm soft" onClick={() => setEditing({ t, w })}>{tr('Corregir')}</button>}</td>}
           </tr>
         ) })}</tbody>
       </table></div> : <p className="hint">{tr('Ninguna prueba con lo que estás viendo.')}</p>}
@@ -1628,6 +1630,38 @@ function WeightsFixDialog({ s, row, onClose }: { s: State; row: WtRow; onClose: 
         <div className="dbtns">
           <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
           <button type="button" className="btn primary" disabled={!clean || same} onClick={() => { weightsFix(ids, clean, kind); onClose() }}>{tr('Corregir {0} pruebas', ids.length)}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** one test put right: its weights, its code, what was weighed; a weight left blank goes (2026-10-30) */
+function WeightTestDialog({ s, test, row, onClose }: { s: State; test: WeightTest; row: WtRow; onClose: () => void }) {
+  const [texts, setTexts] = useState(() => test.entries.map((e) => (e.w != null ? String(e.w) : '')))
+  const [code, setCode] = useState(test.code)
+  const [kind, setKind] = useState(test.kind)
+  const clean = code.trim().toUpperCase(), target = weightTarget(s, clean, kind, test.cook)
+  const num = (t: string) => Number(t.replace(',', '.'))
+  // (a mark of the old buttons, with no number, stays as it was unless a weight is written over it)
+  const entries = test.entries.flatMap((e, i): WtEntry[] => (texts[i].trim() ? [{ w: num(texts[i]) }] : e.w == null ? [e] : []))
+  const bad = texts.some((t) => t.trim() && !(num(t) > 0 && num(t) < 2000)), none = !entries.length
+  return (
+    <div className="veil" onClick={onClose}>
+      <div className="dlg" onClick={(e) => e.stopPropagation()}>
+        <h3>{tr('Corregir prueba · {0} · {1}', fmtTime(test.at), test.line)}</h3>
+        <p>{tr('La hora, la línea y quien la tomó no cambian. Lo que corrijas queda en Cambios con lo que decía antes. Un peso en blanco se quita.')}</p>
+        <div className="wt-editbar">
+          <label>{tr('Código')} <input value={code} onChange={(e) => setCode(e.target.value.replace(/[^\w-]/g, ''))} /></label>
+          <label>{tr('Qué se pesó')} <select value={kind} onChange={(e) => setKind(e.target.value as WtRow['kind'])}>{wtKindsOf(row.dept).map((x) => <option key={x} value={x}>{stepText({ kind: x })}</option>)}</select></label>
+        </div>
+        <div className="wt-edits">{texts.map((t, i) => { const c = t.trim() && target ? entryClassOf({ w: num(t) }, target) : ''; return (
+          <label key={i} className={'wt-edit ' + c}>#{i + 1} <input inputMode="decimal" value={t} placeholder={test.entries[i].k ? (test.entries[i].k === 'sobre' ? '▲' : '▼') : ''} onChange={(e) => setTexts(texts.map((x, j) => (j === i ? e.target.value.replace(/[^\d.,]/g, '') : x)))} /></label>
+        ) })}</div>
+        <p className="hint">{target ? tr('Objetivo con esto: {0} oz', wtRangeText(target)) : tr('Este código no tiene objetivo para eso: ponlo en Ajustes › KPI.')}</p>
+        <div className="dbtns">
+          <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
+          <button type="button" className="btn primary" disabled={!clean || bad || none} onClick={() => { weightEdit(test.id, entries, clean, kind); onClose() }}>{tr('Guardar')}</button>
         </div>
       </div>
     </div>

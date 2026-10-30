@@ -1268,6 +1268,26 @@ export function weightsFix(ids: string[], code: string, kind: WeightTest['kind']
   logChange(was.dept, 'Pesos del ' + was.date + ' · ' + list.length + (list.length === 1 ? ' prueba' : ' pruebas'), was.code + ' · ' + stepText({ kind: was.kind }), c + ' · ' + stepText({ kind }), WT_REF, was.id)
   return list.length
 }
+/**
+ * One test put right from the report (Jose, 2026-10-30, the real day read 242 for 2.42 and 98 for 0.98, and a test of
+ * 2234 went in under 0889): its weights, its code and what was weighed; its hour, line and who took it stay. A weight
+ * left blank goes, at least one stays. In the history, with what it said before
+ */
+export function weightEdit(id: string, entries: WtEntry[], code: string, kind: WeightTest['kind']): boolean {
+  const was = (state.weights ?? []).find((x) => x.id === id && !x.deleted), c = code.trim().toUpperCase(), es = wtEntries({ entries, unit: 'oz' })
+  if (!was || !c || !es.length) return false
+  const say = (x: { code: string; kind: WeightTest['kind']; entries: WtEntry[] }) => x.code + ' · ' + stepText({ kind: x.kind }) + ' · ' + x.entries.map((e) => e.w ?? (e.k === 'sobre' ? '▲' : '▼')).join(', ')
+  if (say(was) === say({ code: c, kind, entries: es })) return false
+  const x: WeightTest = { ...was, code: c, kind, entries: es, updatedAt: stamp(was) }
+  batch(() => {
+    set({ ...state, weights: [...(state.weights ?? []).filter((y) => y.id !== id), x] })
+    push('act_changes', WT_ID + x.id, rowOfWt(x))
+  })
+  logChange(was.dept, 'Prueba de peso del ' + was.date + ' · ' + fmtTime(was.at), say(was), say(x), WT_REF, id)
+  return true
+}
+/** a weight too far from its target to be taken at its word (half the minimum, or half as much again as the maximum): 242 for 2.42 */
+export const wtOdd = (w: number, t: WeightTarget | null) => !!t && (w < wtRange(t).min / 2 || w > wtRange(t).max * 1.5)
 // ---- the meat Spiral uses (2026-10-23: "que ponga la cantidad de carne que usan para hacer esas mezclas, en libras, y su lote") ----
 /**
  * Each time Spiral puts meat in, the line records how many pounds and the meat's lot (one kind of meat, one lot each

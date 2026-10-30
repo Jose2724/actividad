@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { WT_ASKED_CODES, wtAsked, wtPicksCode, cookText, entryClass, fmtTime, lineLabel, sameStep, setWeightTarget, stepKey, stepText, weightDueSteps, weightNew, weightOpen, weightRuleFor, weightSave, weightSkip, weightStepsFor, weightStepsOf, weightTarget, weightThisHour, wtRange, wtWeights, type Cook, type Run, type State, type WeightTest, type WtEntry, type WtStep } from './store'
+import { WT_ASKED_CODES, wtAsked, wtPicksCode, cookText, entryClass, fmtTime, lineLabel, sameStep, setWeightTarget, stepKey, stepText, weightDueSteps, weightNew, weightOpen, weightRuleFor, weightSave, weightSkip, weightStepsFor, weightStepsOf, weightTarget, weightThisHour, wtOdd, wtRange, wtRangeText, wtWeights, type Cook, type Run, type State, type WeightTest, type WtEntry, type WtStep } from './store'
 import { useWho } from './App'
 import { tr } from './i18n'
 
@@ -89,6 +89,7 @@ function WeightDialog({ s, run, now, onClose }: { s: State; run: Run; now: numbe
   const entries = test?.entries ?? []
   const [text, setText] = useState('')
   const [bad, setBad] = useState(false)
+  const [odd, setOdd] = useState<number | null>(null)
   const [targeting, setTargeting] = useState(false)
   const box = useRef<HTMLInputElement>(null)
   const ball = pick.kind !== 'pouch'
@@ -104,16 +105,19 @@ function WeightDialog({ s, run, now, onClose }: { s: State; run: Run; now: numbe
   }
   // every weight typed: the app says under, in weight or over by the target (Jose, 2026-10-29: the two buttons of
   // under and over are not needed any more, "la misma app sabe cuáles están bajos y subidos")
-  const add = () => {
+  const add = (sure = false) => {
     const typed = text.trim(), w = Number(typed.replace(',', '.'))
     if (!wCode || !(w > 0 && w < 2000)) { setBad(true); return }
+    // (a slip of the finger, 242 for 2.42, spoiled a whole day's averages: Jose, 2026-10-30)
+    if (!sure && wtOdd(w, t)) { setOdd(w); return }
+    setOdd(null)
     const e: WtEntry = { w }
     save([...entries, e]); setText(''); setBad(false)
     // (Spiral: the tenth ball moves on to the next test still to do this hour)
     if (many && rule.count && entries.length + 1 === rule.count) { const next = firstToDo(pick); if (next) setPick(next) }
     box.current?.focus()
   }
-  const choose = (st: WtStep) => { setPick(st); setText(''); setBad(false) }
+  const choose = (st: WtStep) => { setPick(st); setText(''); setBad(false); setOdd(null) }
   /** a cooker that did not cook this hour: its raw and cooked tests not done are said so */
   const skipCook = (c: Cook) => {
     for (const st of steps.filter((x) => x.cook === c)) { const z = stateOf(st); if (!z.done && !z.t?.entries.length) weightSkip(z.t ?? weightNew(run, st), true) }
@@ -156,9 +160,18 @@ function WeightDialog({ s, run, now, onClose }: { s: State; run: Run; now: numbe
             : <p className="hint">{tr('Pesa {0} pouches, uno por uno, y escribe el peso de cada uno en onzas (oz). La app dice si está bajo o sobre.', rule.count || 10)}</p>}
           {rule.count > 0 && <div className="wt-count"><b>{tr('{0} de {1}', Math.min(entries.length, rule.count), rule.count)}</b>{entries.length >= rule.count ? <span className="ok">{tr('✓ Prueba completa')}</span> : <span>{tr('faltan {0}', rule.count - entries.length)}</span>}</div>}
           <form className="wt-add" onSubmit={(e) => { e.preventDefault(); add() }}>
-            <input ref={box} autoFocus disabled={!wCode} inputMode="decimal" value={text} placeholder={ball ? tr('Peso de la bola (oz)') : tr('Peso del pouch (oz)')} aria-label={ball ? tr('Peso de la bola (oz)') : tr('Peso del pouch (oz)')} onChange={(e) => { setText(e.target.value.replace(/[^\d.,]/g, '')); setBad(false) }} />
+            <input ref={box} autoFocus disabled={!wCode} inputMode="decimal" value={text} placeholder={ball ? tr('Peso de la bola (oz)') : tr('Peso del pouch (oz)')} aria-label={ball ? tr('Peso de la bola (oz)') : tr('Peso del pouch (oz)')} onChange={(e) => { setText(e.target.value.replace(/[^\d.,]/g, '')); setBad(false); setOdd(null) }} />
             <button type="submit" className="btn primary" disabled={!text}>{tr('+ Agregar')}</button>
           </form>
+          {odd != null && t && (
+            <div className="wt-odd">
+              <b>{tr('¿Seguro? {0} oz está muy lejos del rango {1}.', odd, wtRangeText(t))}</b>
+              <div className="btns">
+                <button type="button" className="btn primary" onClick={() => { setOdd(null); box.current?.focus() }}>{tr('Lo corrijo')}</button>
+                <button type="button" className="btn" onClick={() => add(true)}>{tr('Sí, guardar {0}', odd)}</button>
+              </div>
+            </div>
+          )}
           {many && pick.cook && cookFree(pick.cook) && <p className="hint"><button type="button" className="lnk sm" onClick={() => skipCook(pick.cook as Cook)}>{tr('{0} no cocinó esta hora', cookText(pick.cook))}</button></p>}
         </>}
         <p className="hint">{asks && !wCode ? tr('Escoge primero el código.') : t ? (pick.kind === 'raw' ? tr('Objetivo: entre {0} y {1} oz por bola cruda.', oz(wtRange(t).min), oz(wtRange(t).max)) : pick.kind === 'pouched' ? tr('Objetivo: entre {0} y {1} oz por bola sacada del pouch.', oz(wtRange(t).min), oz(wtRange(t).max)) : ball ? tr('Objetivo: entre {0} y {1} oz por bola cocinada.', oz(wtRange(t).min), oz(wtRange(t).max)) : tr('Objetivo: entre {0} y {1} oz por pouch, con el plástico.', oz(wtRange(t).min), oz(wtRange(t).max))) : tr('Este código todavía no tiene peso objetivo: un peso escrito con "+ Agregar" se guarda sin decir bajo o sobre.')}

@@ -497,7 +497,7 @@ export function wtControlSheet(s: State, rows: WtRow[], code: string, date: stri
   put(0, right, xT(title('RTE'), X.wcBand)); for (let c = right + 1; c <= lastC; c++) put(0, c, xT('', X.wcBand)); span(0, right, 0, lastC)
   let rr = 1
   for (const w of bags) { head(rr, right); rr = group(rr + 1, right, w) + 1 }
-  const side = (n: number) => [10, 9, ...Array.from({ length: n }, () => 9.5), 9, 11, 10, 24]
+  const side = (n: number) => [10, 9, ...Array.from({ length: n }, () => 9.5), 9, 11, 10, 32]
   return { name: tr('Control de peso {0}', code), rows: Array.from({ length: g.length }, (_, i) => Array.from(g[i] ?? [])), freeze: 0, page: { widths: [...side(nL), 3, ...side(nR)], heights, merges } }
 }
 /** the file of the one-page button: the summary first, then each code as the plant's own sheet */

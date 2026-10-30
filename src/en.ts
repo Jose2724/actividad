@@ -3125,4 +3125,9 @@ export const EN: Record<string, string> = {
   "¿De qué código son estas bolas?": "Which code are these meatballs?",
   "Escoge primero el código.": "Pick the code first.",
   "peso {0}": "weight {0}",
+  "¿Seguro? {0} oz está muy lejos del rango {1}.": "Are you sure? {0} oz is very far from the range {1}.",
+  "Lo corrijo": "I'll fix it",
+  "Sí, guardar {0}": "Yes, save {0}",
+  "Corregir prueba · {0} · {1}": "Correct check · {0} · {1}",
+  "La hora, la línea y quien la tomó no cambian. Lo que corrijas queda en Cambios con lo que decía antes. Un peso en blanco se quita.": "The time, the line and who took it do not change. What you correct stays in Changes with what it said before. A weight left blank is removed.",
 }
