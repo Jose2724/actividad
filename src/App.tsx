@@ -25,6 +25,7 @@ import { ProgramToday, programRooms } from './ProgramToday'
 import { LotesView } from './LotesView'
 import { KpiView } from './KpiView'
 import { WeightButton, WeightReminder, weighsBalls } from './Weights'
+import { WhatIs } from './Numbers'
 import { MeatButton } from './Meat'
 import { ConsumeButton, ConsumeEndDialog, ConsumeStartDialog } from './Consume'
 import { consumeAdd, consumeOn, consumesPending, openRun as openRunOn, store as theStore } from './store'
@@ -584,7 +585,7 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
           <button type="button" className={tab === 'rep' ? 'on' : ''} onClick={() => setTab('rep')}>{tr('Reporte')}</button>
           <button type="button" className={'settab' + (tab === 'set' ? ' on' : '')} onClick={() => setTab('set')} aria-label={tr('Ajustes')}><span className="gear">⚙</span><span className="word">{tr('Ajustes')}</span></button>
         </nav>
-        <div className="me"><SyncDot /> <span className="who">{name}</span><span className="where">{viewOnly ? tr('Solo ver') : mgr ? tr('Manager') : home}</span> {mgr && <QrLink label="QR" />}<LangSwitch /><button type="button" className="lnk" onClick={() => setLeaving(true)}>{supabase ? tr('Salir') : tr('Cambiar')}</button></div>
+        <div className="me"><SyncDot /> <span className="who">{name}</span><span className="where">{viewOnly ? tr('Solo ver') : mgr ? tr('Manager') : home}</span> {mgr && <QrLink label="QR" />}<WhatIs label={tr('ⓘ Qué significa')} /><LangSwitch /><button type="button" className="lnk" onClick={() => setLeaving(true)}>{supabase ? tr('Salir') : tr('Cambiar')}</button></div>
       </header>
       {leaving && <LeaveDialog onYes={() => { setLeaving(false); onLogout() }} onNo={() => setLeaving(false)} />}
       {/* a view that fails to draw says so, and the rest of the app stays (see ViewGuard) */}

@@ -5,6 +5,7 @@ import { COSTCO_CODE, cookYields, costcoLast, costcoMonth, costcoPlan, kpiNames,
 import { download, useViewOnly } from './App'
 import { xlsxBytes, XLSX_TYPE } from './xlsx'
 import { DEPT_LOOK } from './look'
+import { WhatIs } from './Numbers'
 import { locale, tr } from './i18n'
 
 /**
@@ -60,7 +61,7 @@ export function KpiView({ s, now, today, admin }: { s: State; now: number; today
       <div className="kpi-tiles">{tiles.map((t) => <div key={t.part} className={'kpi-tile ' + t.cls}><label>{t.part}</label><b>{t.big}</b><small>{t.small}</small></div>)}</div>
 
       <article className="kpi-sec">
-        <h3>{tr('1 · Pesos y rendimiento')}</h3>
+        <h3>{tr('1 · Pesos y rendimiento')} <WhatIs id="peso-bien" /></h3>
         <p className="hint">{tr('Lo que las líneas pesan con ⚖ Peso: Spiral 10 bolas crudas antes de cada cocinador (Spiral y Racks) y 10 cocinadas al salir, RTE 10 pouches, cada hora mientras corre el código. Pruebas = las hechas completas de las que tocaban por las horas que corrió el código. Cada peso se compara con el objetivo de QA.')}</p>
         {wts.length > 0 ? <div className="scroll"><table className="kpi-tbl">
           <thead><tr><th>{tr('Código')}</th><th>{tr('Qué se pesó')}</th><th className="n">{tr('Pruebas')}</th><th className="n">{tr('Pesados')}</th><th className="n">{tr('Promedio (oz)')}</th><th className="n">{tr('Mín · Máx')}</th><th className="n">{tr('Objetivo (oz)')}</th><th className="n">{tr('Bien')}</th><th className="n">{tr('Bajos')}</th><th className="n">{tr('Sobre')}</th><th className="n">{tr('% en peso')}</th></tr></thead>
@@ -80,7 +81,7 @@ export function KpiView({ s, now, today, admin }: { s: State; now: number; today
       </article>
 
       <article className="kpi-sec">
-        <h3>{tr('3 · Productividad laboral')}</h3>
+        <h3>{tr('3 · Productividad laboral')} <WhatIs id="kpi-prod" /></h3>
         <p className="hint">{tr('Programados = las personas esperadas de cada cuarto; vinieron, los temporales y las horas salen de la Asistencia que anotan los supervisores; la producción, de E.R. - Ops Summary.')}</p>
         {!s.attView.on && <p className="hint amber">{tr('La Asistencia todavía solo la ves tú: para que los supervisores anoten a su gente, préndela para todos en Ajustes › Asistencia.')}</p>}
         <div className="scroll"><table className="kpi-tbl">
@@ -95,7 +96,7 @@ export function KpiView({ s, now, today, admin }: { s: State; now: number; today
       </article>
 
       <article className="kpi-sec">
-        <h3>{tr('4 · Costco MVM tracker ({0})', COSTCO_CODE)}</h3>
+        <h3>{tr('4 · Costco MVM tracker ({0})', COSTCO_CODE)} <WhatIs id="kpi-costco" /></h3>
         <p className="hint">{tr('Lo planeado sale del planner de Yasbelth; lo hecho, de E.R. - Ops Summary: las mezclas de Spiral y las cajas de Packing del {0}. Nadie tiene que escribirlo.', COSTCO_CODE)}</p>
         <PlanLoader s={s} ro={viewOnly} />
         {plan && (

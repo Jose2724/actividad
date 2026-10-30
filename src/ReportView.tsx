@@ -16,6 +16,7 @@ import { AddRunDialog, AddUnitDialog, RunEditor, StopEditor } from './editors'
 import { supabase } from './supabase'
 import { fetchPurged } from './sync'
 import { addDays, DayNote, download, howMany, libraries, longDate, MISSING, NoticeDialog, SendDialog, shortDay, ShiftsDialog, useCan, useDay, useWho, WipeDayDialog } from './App'
+import { WhatIs } from './Numbers'
 import { DEPT_LOOK, deptVars } from './look'
 import { HoldButton } from './Holds'
 import { ColMenu, useColFilters } from './ColFilter'
@@ -867,7 +868,7 @@ function GeneralView({ k }: { k: Kit }) {
     <>
       {rep.byDept.length > 1 && (
         <>
-          <h3>{tr('Todos los departamentos')}</h3>
+          <h3>{tr('Todos los departamentos')} <WhatIs id="trabajando" /></h3>
           <div className="rp-plant">
             <button type="button" className="rp-tile" onClick={() => go('code')}><span className="lab">{tr('Códigos')}</span><b>{rep.distinct}</b><small>{rows.length} {rows.length === 1 ? tr('corrida') : tr('corridas')}</small></button>
             <button type="button" className="rp-tile" onClick={() => go('rec', { rec: 'runs' })}><span className="lab">{tr('Trabajando')}</span><b>{fmtDur(working)}</b><small>{linesText(rep.lines)}</small></button>
@@ -883,7 +884,7 @@ function GeneralView({ k }: { k: Kit }) {
       {/* what the "Parado" total is made of: each cause opens its stops */}
       {rep.reasons.length > 0 && (
         <>
-          <h3>{tr('Parado por causa')}</h3>
+          <h3>{tr('Parado por causa')} <WhatIs id="causas" /></h3>
           <div className="reasons">
             {rep.reasons.map((x) => (
               <div key={x.reason} className="reason">
@@ -969,7 +970,7 @@ function AttendanceWhere({ k }: { k: Kit }) {
   const people = (d: Dept) => (rep.shift ? [rep.shift] : attShifts(s, date)).flatMap((x) => attOf(s, date, d, x))
   return (
     <>
-      <h3>{tr('Asistencia')}{rep.shift ? ' · ' + tr('Turno {0}', rep.shift) : ''}</h3>
+      <h3>{tr('Asistencia')}{rep.shift ? ' · ' + tr('Turno {0}', rep.shift) : ''} <WhatIs id="asistencia" /></h3>
       <div className="att-rep">
         <div className="att-row head"><span>{tr('Cuarto')}</span><span>{tr('Esperados')}</span><span>{tr('Vinieron')}</span><span>{tr('% Asistencia')}</span><span>{tr('% Falta')}</span><span>{tr('Faltan')}</span><span className="att-barcol" /></div>
         {a.rows.map((r) => (
@@ -1025,7 +1026,7 @@ function ConsumeWhere({ k }: { k: Kit }) {
   const what = (x: { product: string; prodLot: string; labelDate: string }) => x.product + (x.prodLot ? ' · ' + tr('lote {0}', x.prodLot) : '') + (x.labelDate ? ' · ' + x.labelDate : '')
   return (
     <>
-      <h3>{tr('⚖ Consumo')}</h3>
+      <h3>{tr('⚖ Consumo')} <WhatIs id="consumo" /></h3>
       {list.length > 0 && <ul className="meat-each">{list.map((x) => <li key={x.id}>{fmtTime(x.at)} · {x.dept} · {lineNameOf(s, x.lineId, x.line)} · <b>{x.code}</b> {tr('lote {0}', x.lot)} · <b>{lb(x.lb)} lb</b> {what(x)}{x.left == null ? <span className="muted"> · {tr('sin decir qué quedó')}</span> : x.left > 0 ? <b className="amber"> · {tr('quedaron {0} lb', lb(x.left))}</b> : <span className="ok"> · {tr('se consumió todo')}</span>} <small>· {x.by}</small></li>)}</ul>}
       {inv.length > 0 && <>
         <h4>{tr('Inventario ahora')}</h4>
@@ -1043,7 +1044,7 @@ function MeatWhere({ k }: { k: Kit }) {
   const lb = (n: number) => (Math.round(n * 100) / 100).toLocaleString('en-US')
   return (
     <>
-      <h3>{tr('🥩 Carne de Spiral')}{rep.shift ? ' · ' + tr('Turno {0}', rep.shift) : ''}</h3>
+      <h3>{tr('🥩 Carne de Spiral')}{rep.shift ? ' · ' + tr('Turno {0}', rep.shift) : ''} <WhatIs id="carne" /></h3>
       <div className="meat-rep">
         <div className="meat-row head"><span>{tr('Código')}</span><span>{tr('Libras de carne')}</span><span>{tr('Mezclas')}</span><span>{tr('Libras por mezcla')}</span><span>{tr('Lotes de carne')}</span></div>
         {m.byCode.map((c) => <div key={c.code} className="meat-row"><b>{c.code}</b><span>{lb(c.lb)} lb</span><span>{c.mixes}</span><b>{c.perMix == null ? '—' : lb(c.perMix) + ' lb'}</b><span>{c.lots.join(', ') || '—'}</span></div>)}
@@ -1080,7 +1081,7 @@ function StopsWhere({ k }: { k: Kit }) {
   const toLine = (d: Dept, l: Line, cause = '!setup') => go('rec', { rec: 'stops', dept: d, line: l.lineId ?? '', cause })
   return (
     <>
-      <h3>{tr('¿Dónde están los paros?')}</h3>
+      <h3>{tr('¿Dónde están los paros?')} <WhatIs id="donde" /></h3>
       <div className="rp-where">
         {rooms.map((r) => (
           <div key={r.dept} className="rp-where-room" style={deptVars(r.dept)}>
@@ -1166,7 +1167,7 @@ function CodePareto({ k }: { k: Kit }) {
   const top = p.rows[0].ms || 1, pct = (ms: number) => (p.total > 0 ? Math.round((ms / p.total) * 100) + '%' : '')
   return (
     <>
-      <h3>{tr('Paros por código (Reason Codes)')}</h3>
+      <h3>{tr('Paros por código (Reason Codes)')} <WhatIs id="codigos" /></h3>
       <div className="rc-totals">
         <span className="rc-tot rc-planned"><small>{tr('Planeado')}</small><b>{fmtDur(p.planned)}</b><i>{pct(p.planned)}</i></span>
         <span className="rc-tot rc-unplanned"><small>{tr('No planeado')}</small><b>{fmtDur(p.unplanned)}</b><i>{pct(p.unplanned)}</i></span>
@@ -1381,7 +1382,7 @@ function ShiftsView({ k }: { k: Kit }) {
   const { rep, shiftCols, unitsText, binsN, hrs, cap, setFShift } = k
   return (
     <>
-      <h3>{rep.shift ? tr('Por departamento · Turno {0}', rep.shift) : tr('Total del día y cada turno')}</h3>
+      <h3>{rep.shift ? tr('Por departamento · Turno {0}', rep.shift) : tr('Total del día y cada turno')} <WhatIs id="turnos" /></h3>
       {rep.shift > 0 && <p className="hint rp-oneshift">{tr('Con un turno elegido se ve ese turno solo.')} <button type="button" className="btn sm" onClick={() => setFShift(0)}>{tr('Ver los dos turnos')}</button></p>}
       <div className="deptgrid">
         {rep.byDept.map((d) => {
@@ -1561,7 +1562,7 @@ function WeightsView({ k }: { k: Kit }) {
           {yields.filter((y) => y.dept === g[0].dept && normCode(y.code) === normCode(g[0].code)).map((y) => <p key={y.cook} className="wt-yield">{tr('Rendimiento {0}: {1} oz crudo → {2} oz cocinado = {3} (se pierde {4})', cookTextOf(y.cook), oz(y.raw), oz(y.cooked), pc(y.pct), pc(1 - y.pct))}</p>)}
         </article>
       ))}
-      <h3>{tr('Cada prueba')}{rep.shift ? ' · ' + tr('Turno {0}', rep.shift) : ''}</h3>
+      <h3>{tr('Cada prueba')}{rep.shift ? ' · ' + tr('Turno {0}', rep.shift) : ''} <WhatIs id="peso-pruebas" /></h3>
       {wt.tests.length ? <div className="scroll"><table className="wt-rp-tbl each">
         <thead><tr><th>{tr('Hora')}</th><th>{tr('Turno')}</th><th>{tr('Línea')}</th><th>{tr('Código')}</th><th>{tr('Qué')}</th><th>{tr('Pesos (oz)')}</th><th className="n">{tr('Promedio')}</th><th className="n">✓</th><th className="n">▼</th><th className="n">▲</th><th>{tr('Anotó')}</th></tr></thead>
         <tbody>{wt.tests.map(({ w, t }) => { const x = wtSum(t.entries, w.target); return (
