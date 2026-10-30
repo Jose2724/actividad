@@ -5749,6 +5749,9 @@ section('Pesos escritos con otro código o como crudo: se corrigen desde el Repo
     m.setWeightTarget('0889', 2.375, 0.025, 'ball')
     const fuera = m.wtSummary(st(), sumRows())[0]
     eq('fuera del rango pide acción correctiva', [fuera.cooked.ok, fuera.action, fuera.result], ['under', true, 'Acción correctiva: Cocinado bajo el rango de QA'])
+    m.weightSave(m.weightNew(rte, { kind: 'raw' }), [{ w: 2.7 }])
+    m.clearWeightTarget('0889', 'pouched')
+    eq('lo pesado sin target de QA se dice, nunca sale como bien', ((x) => [x.pouched.ok, x.pouched.range, x.pending, x.result])(m.wtSummary(st(), sumRows())[0]), [null, '', true, 'Acción correctiva: Cocinado bajo el rango de QA · falta el target de: Bola en pouch'])
     const hoja = m.wtSummarySheet(st(), sumRows(), DAY)
     eq('es una hoja y dice cómo leerla', [hoja.name, hoja.rows.flat().some((c) => m.cellText(c).startsWith('Cómo leerlo')), hoja.rows.flat().some((c) => m.cellText(c) === '1 de 2 códigos necesitan acción correctiva.')], ['Resumen', true, true])
     eq('la bola en pouch se guarda y sube con su clase', [...st().weights].map((x) => x.kind).filter((k) => k === 'pouched').length, 1)

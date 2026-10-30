@@ -344,7 +344,7 @@ const wtLegendRows = (): Cell[][] => [
 ].map((r) => (r.length === 2 && typeof r[1] === 'string' ? [r[0], xT(r[1], X.note)] : r))
 /** an average of one thing of a code against QA's range; ok null = nothing weighed, or no range to judge it by */
 export type WtAvg = { avg: number | null; n: number; range: string; ok: 'ok' | 'under' | 'over' | null }
-export type WtSummaryRow = { code: string; times: number; raw: WtAvg; cooked: WtAvg; pouched: WtAvg; result: string; action: boolean }
+export type WtSummaryRow = { code: string; times: number; raw: WtAvg; cooked: WtAvg; pouched: WtAvg; result: string; action: boolean; pending: boolean }
 /** only these (Jose, 2026-10-30: "que solo sea de los códigos 0889 y 2234, nada más"), both always, weighed or not */
 const WT_SUMMARY_CODES = ['0889', '2234']
 /**
@@ -369,7 +369,9 @@ export function wtSummary(s: State, rows: WtRow[]): WtSummaryRow[] {
     const say = (name: string, x: WtAvg) => (x.ok === 'under' ? [tr('{0} bajo el rango de QA', name)] : x.ok === 'over' ? [tr('{0} sobre el rango de QA', name)] : [])
     const out = [...say(tr('Crudo'), raw), ...say(tr('Cocinado'), cooked), ...say(tr('Bola en pouch'), pouched)]
     const judged = [raw, cooked, pouched].some((x) => x.ok != null)
-    return { code, times: new Set(of.flatMap((w) => w.tests.map((t) => Math.floor(t.at / 3_600_000)))).size, raw, cooked, pouched, result: out.length ? tr('Acción correctiva: {0}', out.join(' · ')) : !of.length ? tr('No se pesó este día') : !judged ? tr('Falta el target de QA') : tr('Dentro del rango de QA'), action: out.length > 0 }
+    // (what was weighed with no target of QA is said, never read as fine)
+    const open_ = ([[tr('Crudo'), raw], [tr('Cocinado'), cooked], [tr('Bola en pouch'), pouched]] as [string, WtAvg][]).filter(([, x]) => x.avg != null && x.ok == null).map(([t]) => t)
+    return { code, times: new Set(of.flatMap((w) => w.tests.map((t) => Math.floor(t.at / 3_600_000)))).size, raw, cooked, pouched, result: (out.length ? tr('Acción correctiva: {0}', out.join(' · ')) : !of.length ? tr('No se pesó este día') : !judged ? tr('Falta el target de QA') : tr('Dentro del rango de QA')) + (judged && open_.length ? ' · ' + tr('falta el target de: {0}', open_.join(', ')) : ''), action: out.length > 0, pending: open_.length > 0 }
   })
 }
 /** the summary as one page: nothing else in the file, and it says how to read itself */
@@ -382,12 +384,12 @@ export function wtSummarySheet(s: State, rows: WtRow[], date: string): Sheet {
   row([])
   const out_ = list.filter((x) => x.action).length
   {
-    across(out_ ? tr('{0} de {1} códigos necesitan acción correctiva.', out_, list.length) : list.some((x) => x.times) ? tr('Todos los promedios están dentro del rango de QA.') : tr('Este día no hay pesos de bolas.'), X.wSay, 26)
+    across(out_ ? tr('{0} de {1} códigos necesitan acción correctiva.', out_, list.length) : list.some((x) => x.pending) ? tr('Ningún promedio está fuera del rango de QA, pero a algunos todavía les falta su target.') : list.some((x) => x.times) ? tr('Todos los promedios están dentro del rango de QA.') : tr('Este día no hay pesos de bolas.'), X.wSay, 26)
     row([])
     row([tr('Código'), tr('Veces revisado'), tr('Crudo prom. (oz)'), tr('Rango QA'), tr('Cocinado prom. (oz)'), tr('Rango QA'), tr('Bola en pouch prom. (oz)'), tr('Rango QA'), tr('Resultado'), tr('Acción tomada')].map((x) => xT(x, X.wHead)), 48)
     const avg = (x: WtAvg): Cell => (x.avg == null ? xT(tr('No se pesó'), X.wCell) : xN(x.avg, x.ok == null ? X.wD : x.ok === 'ok' ? X.wDg : x.ok === 'under' ? X.wDr : X.wDa))
     const range = (x: WtAvg): Cell => xT(x.range || tr('Pendiente'), X.wCell)
-    for (const x of list) row([xT(x.code, X.wCell), xN(x.times, X.wN), avg(x.raw), range(x.raw), avg(x.cooked), range(x.cooked), avg(x.pouched), range(x.pouched), xT(x.result, x.action ? X.bad : x.times ? X.good : X.wCell), xT('', X.wCell)], 42)
+    for (const x of list) row([xT(x.code, X.wCell), xN(x.times, X.wN), avg(x.raw), range(x.raw), avg(x.cooked), range(x.cooked), avg(x.pouched), range(x.pouched), xT(x.result, x.action ? X.bad : x.pending ? X.warn : x.times ? X.good : X.wCell), xT('', X.wCell)], 42)
     row([])
     across(tr('Cómo leerlo: "Veces revisado" = las horas distintas en que se pesó ese código. "Prom." = el promedio de todos los pesos del día, en onzas. Rango QA = el mínimo y el máximo permitido.'), X.note, 34)
     across(tr('Verde = el promedio está dentro del rango. Rojo = bajo el rango. Ámbar = sobre el rango. Si está rojo o ámbar se necesita una acción correctiva: anótala en "Acción tomada".'), X.note, 34)

@@ -3106,4 +3106,6 @@ export const EN: Record<string, string> = {
   "Veces revisado = las horas distintas en que se pesó el código. Cada promedio junta todos los pesos del día de crudo, de cocinado o de bola en pouch, de todos los cuartos y cocinadores. Si un promedio queda fuera del rango de QA, pide acción correctiva. Puede dar bien aunque algún peso se haya salido: eso se ve en el Excel completo.": "Times checked = the different hours the code was weighed. Each average takes all the day's raw, cooked or pouched weights, from every room and cooker. An average outside the QA range asks for corrective action. It can read fine though some weight went out: that shows in the full Excel.",
   "No se pesó este día": "Not weighed this day",
   "Falta el target de QA": "QA target missing",
+  "falta el target de: {0}": "target missing for: {0}",
+  "Ningún promedio está fuera del rango de QA, pero a algunos todavía les falta su target.": "No average is outside the QA range, but some still have no target.",
 }
