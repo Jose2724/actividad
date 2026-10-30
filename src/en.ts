@@ -3124,4 +3124,5 @@ export const EN: Record<string, string> = {
   "CÓDIGO": "CODE",
   "¿De qué código son estas bolas?": "Which code are these meatballs?",
   "Escoge primero el código.": "Pick the code first.",
+  "peso {0}": "weight {0}",
 }

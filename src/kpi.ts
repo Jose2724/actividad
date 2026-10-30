@@ -429,13 +429,16 @@ export function wtSummarySheet(s: State, rows: WtRow[], date: string): Sheet {
 export function wtControlSheet(s: State, rows: WtRow[], code: string, date: string): Sheet | null {
   const of = rows.filter((w) => normCode(w.code) === normCode(code) && w.tests.length)
   if (!of.length) return null
-  const most = Math.max(8, Math.min(12, ...[0], Math.max(0, ...of.flatMap((w) => w.tests.map((t) => t.entries.length)))))
+  // as many weights as Ajustes › KPI asks of each side (Jose, 2026-10-30: 5, 8 or 10, "no sabemos quién está correcto"), or
+  // more if some test has them
+  const widest = (list: WtRow[]) => Math.min(20, Math.max(1, ...list.flatMap((w) => [weightRuleFor(s, w.dept, w.code).count, ...w.tests.map((t) => t.entries.length)])))
+  const nL = widest(of.filter((w) => w.kind !== 'pouch')), nR = widest(of.filter((w) => w.kind === 'pouch')), nAt = (c0: number) => (c0 === 0 ? nL : nR)
   const g: Cell[][] = [], heights: Record<number, number> = {}, merges: string[] = []
   const put = (r: number, c: number, v: Cell) => { (g[r] ??= [])[c] = v }
   const span = (r: number, c: number, r2: number, c2: number) => merges.push(colName(c) + (r + 1) + ':' + colName(c2) + (r2 + 1))
   const avgOf = (ws: number[]) => (ws.length ? ws.reduce((a, b) => a + b, 0) / ws.length : null)
   const word = (k: WeightTest['kind']) => (k === 'raw' ? tr('CRUDO') : k === 'ball' ? tr('COCINADO') : 'RTE ' + tr('POUCH'))
-  const sides = (c0: number, r: number) => { const a = c0 + 2 + most; put(r, a, xT(tr('PROM.'), X.wcBold)); put(r, a + 1, xT(tr('Objetivo'), X.wcBold)); put(r, a + 2, xT(tr('Diferencia'), X.wcBold)); put(r, a + 3, xT(tr('Comentarios / acciones correctivas'), X.wcBold)) }
+  const sides = (c0: number, r: number) => { const a = c0 + 2 + nAt(c0); put(r, a, xT(tr('PROM.'), X.wcBold)); put(r, a + 1, xT(tr('Objetivo'), X.wcBold)); put(r, a + 2, xT(tr('Diferencia'), X.wcBold)); put(r, a + 3, xT(tr('Comentarios / acciones correctivas'), X.wcBold)) }
   // the target and how far the average is from it, in the two cells after the average
   const judge = (r: number, c: number, avg: number | null, w: WtRow, rows2 = 1) => {
     const t = wtOfficial(s, w.code, w.kind) && w.target ? w.target : null, range = t ? wtRange(t) : null
@@ -448,13 +451,14 @@ export function wtControlSheet(s: State, rows: WtRow[], code: string, date: stri
   }
   const group = (r0: number, c0: number, w: WtRow) => {
     let r = r0
+    const most = nAt(c0)
     const label = word(w.kind)
     for (const t of [...w.tests].sort((a, b) => a.at - b.at)) {
       put(r, c0, xT(label, X.wcLabel)); put(r + 1, c0, xT('', X.wcLabel)); span(r, c0, r + 1, c0)
       put(r, c0 + 1, xT(tr('HORA'), X.wcHead)); put(r + 1, c0 + 1, xT(fmtTime(t.at), X.wcTime))
       const ws = t.entries.flatMap((e) => (e.w != null ? [e.w] : [])), avg = avgOf(ws)
       for (let i = 0; i < most; i++) {
-        put(r, c0 + 2 + i, xT(String(i + 1), X.wcHead))
+        put(r, c0 + 2 + i, xT(tr('peso {0}', i + 1), X.wcHead))
         const e = t.entries[i], k = e ? entryClass(e, w.target) : ''
         put(r + 1, c0 + 2 + i, !e ? xT('', X.wcTime) : e.w == null ? xT(e.k === 'sobre' ? '▲' : '▼', X.wcTime) : xN(e.w, k === 'bajo' ? X.wDr : k === 'sobre' ? X.wDa : X.wcW))
       }
@@ -470,7 +474,7 @@ export function wtControlSheet(s: State, rows: WtRow[], code: string, date: stri
     judge(r, a + 1, total, w)
     return r + 1
   }
-  const leftN = 2 + most + 4, right = leftN + 1, lastC = right + leftN - 1
+  const leftN = 2 + nL + 4, right = leftN + 1, lastC = right + 2 + nR + 3
   const band = (r: number, text: string) => { put(r, 0, xT(text, X.wcBand)); for (let c = 1; c < leftN; c++) put(r, c, xT('', X.wcBand)); span(r, 0, r, leftN - 1); heights[r] = 26 }
   // a group's own line: its place, its code, and the heads of its columns
   const head = (r: number, c0: number) => { put(r, c0 + 1, xT(tr('CÓDIGO'), X.wcBold)); put(r, c0 + 2, xT(code, X.wcBold)); sides(c0, r) }
@@ -493,8 +497,8 @@ export function wtControlSheet(s: State, rows: WtRow[], code: string, date: stri
   put(0, right, xT(title('RTE'), X.wcBand)); for (let c = right + 1; c <= lastC; c++) put(0, c, xT('', X.wcBand)); span(0, right, 0, lastC)
   let rr = 1
   for (const w of bags) { head(rr, right); rr = group(rr + 1, right, w) + 1 }
-  const side = [10, 9, ...Array.from({ length: most }, () => 7.5), 9, 11, 10, 24]
-  return { name: tr('Control de peso {0}', code), rows: Array.from({ length: g.length }, (_, i) => Array.from(g[i] ?? [])), freeze: 0, page: { widths: [...side, 3, ...side], heights, merges } }
+  const side = (n: number) => [10, 9, ...Array.from({ length: n }, () => 9.5), 9, 11, 10, 24]
+  return { name: tr('Control de peso {0}', code), rows: Array.from({ length: g.length }, (_, i) => Array.from(g[i] ?? [])), freeze: 0, page: { widths: [...side(nL), 3, ...side(nR)], heights, merges } }
 }
 /** the file of the one-page button: the summary first, then each code as the plant's own sheet */
 export const wtSummaryBook = (s: State, rows: WtRow[], date: string): Sheet[] => [wtSummarySheet(s, rows, date), ...WT_ASKED_CODES.flatMap((c) => { const x = wtControlSheet(s, rows, c, date); return x ? [x] : [] })]
