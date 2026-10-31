@@ -466,8 +466,8 @@ export function wtSummarySheet(s: State, rows: WtRow[], date: string): Sheet {
 /**
  * A code's day as the plant's own Weight Control sheet, the one Santiago keeps (Jose, 2026-10-30: "así como está en el
  * sheet de Santiago", and his update of the same day): Kitchen, whose cooked balls are the Racks', with RTE's pouches
- * on its right, then Spiral with its cooked and its raw, Spiral and Racks apart. Each hour in its block, TIME and its
- * weights, its AVG in yellow, a TOTAL AVG under each group; beside each AVG the target, the difference (how far the
+ * on its right, then Spiral with its cooked and its raw, Spiral and Racks apart. Each hour in its block, what was
+ * weighed and the hour in the plant's purple (Jose, 2026-10-30), its weights, its AVG in yellow, a TOTAL AVG under each group; beside each AVG the target, the difference (how far the
  * average is outside QA's range, 0 inside it) and room for comments and corrective actions. A weight outside the range
  * keeps its red or amber
  */
@@ -499,7 +499,7 @@ export function wtControlSheet(s: State, rows: WtRow[], code: string, date: stri
     const label = word(w.kind)
     for (const t of [...w.tests].sort((a, b) => a.at - b.at)) {
       put(r, c0, xT(label, X.wcLabel)); put(r + 1, c0, xT('', X.wcLabel)); span(r, c0, r + 1, c0)
-      put(r, c0 + 1, xT(tr('HORA'), X.wcHead)); put(r + 1, c0 + 1, xT(fmtTime(t.at), X.wcTime))
+      put(r, c0 + 1, xT(fmtTime(t.at), X.wcLabel)); put(r + 1, c0 + 1, xT('', X.wcLabel)); span(r, c0 + 1, r + 1, c0 + 1)
       const ws = t.entries.flatMap((e) => (e.w != null ? [e.w] : [])), avg = avgOf(ws)
       for (let i = 0; i < most; i++) {
         put(r, c0 + 2 + i, xT(tr('peso {0}', i + 1), X.wcHead))

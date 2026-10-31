@@ -3115,7 +3115,6 @@ export const EN: Record<string, string> = {
   "COCINADO": "COOKED",
   "POUCH": "POUCH",
   "PROM.": "AVG",
-  "HORA": "TIME",
   "PROM. TOTAL": "TOTAL AVG",
   "CONTROL DE PESO · {0}": "WEIGHT CONTROL · {0}",
   "Control de peso {0}": "Weight Control {0}",
