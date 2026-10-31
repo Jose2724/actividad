@@ -1288,6 +1288,41 @@ export function weightEdit(id: string, entries: WtEntry[], code: string, kind: W
   logChange(was.dept, 'Prueba de peso del ' + was.date + ' · ' + fmtTime(was.at), say(was), say(x), WT_REF, id)
   return true
 }
+/** one line of a sheet weighed on paper: its hour and its weights, or what stops it from being read */
+export type WtPaperLine = { text: string; hm: string; weights: number[]; problem: '' | 'hora' | 'pesos' }
+/**
+ * A sheet weighed on paper (Jose, 2026-10-30: "lo apuntaron a mano porque se le dificultó a la persona"), one line per
+ * hour: "6:05 PM 2.3 2.6 2,4". The hour says AM or PM (or is 13:00 and over): nothing is guessed. A weight may carry
+ * the comma the sheet was written with
+ */
+export function wtPaperLines(text: string): WtPaperLine[] {
+  return text.split(/\r?\n/).map((x) => x.trim()).filter(Boolean).map((line): WtPaperLine => {
+    const m = /^(\d{1,2}):(\d{2})\s*(?:([ap])\.?\s?m?\.?(?![a-z]))?[\s:–-]*/i.exec(line)
+    const h = Number(m?.[1]), min = Number(m?.[2]), ap = m?.[3]?.toLowerCase()
+    if (!m || min > 59 || h > 23 || (ap ? h < 1 || h > 12 : h < 13)) return { text: line, hm: '', weights: [], problem: 'hora' }
+    const h24 = ap ? (h % 12) + (ap === 'p' ? 12 : 0) : h, hm = String(h24).padStart(2, '0') + ':' + m[2]
+    const weights = line.slice(m[0].length).split(/[\s;|/]+/).flatMap((t) => { const c = t.replace(/,+$/, ''); return c.includes('.') ? c.split(',') : [c.replace(',', '.')] }).filter(Boolean).map(Number)
+    return weights.length && weights.every(okWeight) ? { text: line, hm, weights, problem: '' } : { text: line, hm, weights: [], problem: 'pesos' }
+  })
+}
+/** the moment of an hour of a day of work: what is past midnight and before the night's change is still that day's */
+export const wtPaperAt = (s: State, date: string, hm: string) => nearDay(new Date(date + 'T00:00:00').getTime() + nightMs(s, date) + 12 * 3_600_000, hm)
+/**
+ * A paper sheet's lines saved as tests of that day, each with its own hour and no run (none is needed to read them):
+ * by who typed them, said as "(papel)", and in the history. The same test twice is saved once
+ */
+export function weightPaperAdd(o: { date: string; dept: Dept; lineId: string; line: string; code: string; kind: WeightTest['kind']; cook?: Cook }, lines: { hm: string; weights: number[] }[]): number {
+  const code = o.code.trim().toUpperCase(), count = weightRuleFor(state, o.dept, code).count, had = state.weights ?? []
+  const made = lines.map((l): WeightTest => ({ id: uid(), date: o.date, dept: o.dept, lineId: o.lineId, line: o.line, code, lot: '', runId: '', kind: o.kind, ...(o.cook ? { cook: o.cook } : {}), unit: 'oz', ...(count > 0 ? { need: count } : {}), entries: wtEntries({ entries: l.weights.map((w) => ({ w })), unit: 'oz' }), at: wtPaperAt(state, o.date, l.hm), by: user.get() + ' (papel)', updatedAt: stamp(undefined) }))
+  const fresh = made.filter((x) => x.entries.length && !had.some((y) => !y.deleted && y.date === x.date && y.dept === x.dept && y.at === x.at && y.kind === x.kind && y.cook === x.cook && normCode(y.code) === normCode(code) && wtWeights(y).join() === wtWeights(x).join()))
+  if (!fresh.length) return 0
+  batch(() => {
+    set({ ...state, weights: [...had, ...fresh] })
+    for (const x of fresh) push('act_changes', WT_ID + x.id, rowOfWt(x))
+  })
+  logChange(o.dept, 'Pesos de papel del ' + o.date, '', fresh.length + (fresh.length === 1 ? ' prueba · ' : ' pruebas · ') + code + ' · ' + stepText({ kind: o.kind, ...(o.cook ? { cook: o.cook } : {}) }), WT_REF, fresh[0].id)
+  return fresh.length
+}
 /** a weight too far from its target to be taken at its word (half the minimum, or half as much again as the maximum): 242 for 2.42 */
 export const wtOdd = (w: number, t: WeightTarget | null) => !!t && (w < wtRange(t).min / 2 || w > wtRange(t).max * 1.5)
 // ---- the meat Spiral uses (2026-10-23: "que ponga la cantidad de carne que usan para hacer esas mezclas, en libras, y su lote") ----

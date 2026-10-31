@@ -243,7 +243,7 @@ export function cookYields(rows: WtRow[]) {
   })
 }
 /** the shift a test was made on */
-export const wtShift = (s: State, t: WeightTest) => shiftAt(shiftsOf(s, t.date), t.at)
+export const wtShift = (s: State, t: Pick<WeightTest, 'date' | 'at'>) => shiftAt(shiftsOf(s, t.date), t.at)
 /** the tests done (complete, or a cooker said not used) out of those due, over every row that has a count */
 export function wtCompliance(rows: WtRow[]) {
   const counted = rows.filter((r) => r.due != null && r.due > 0)

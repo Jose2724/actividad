@@ -6,7 +6,7 @@ import { codeLabel, FAMILY_SHOWN, reasonCodeOf } from './reasons'
 import { cellText, loadZip, X, xDur, xN, xPct, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 import { cookYields, hoursOf, seesLabor, weightsOf, wtCompliance, wtDoneText, wtOfReport, wtSheetRows, wtSheets, wtShift, wtSum, wtBoard, wtRangeLong, wtSummary, wtSummaryBook, type WtAvg, type WtRow } from './kpi'
 import { attendanceOf, attLineText, attMovesText, attOf, attShifts, attStateText } from './store'
-import { COOKS, consumesOf, inventoryOf, stepText, weightEdit, weightsFix, weightTarget, wtKindsOf, wtOdd, wtPicksCode, type Cook, type Dept as RoomDept, type WeightTest, type WtEntry } from './store'
+import { byLineName, COOKS, consumesOf, inventoryOf, stepText, weightEdit, weightPaperAdd, weightsFix, weightTarget, wtKindsOf, wtOdd, wtPaperAt, wtPaperLines, wtPicksCode, type Cook, type Dept as RoomDept, type WeightTest, type WtEntry } from './store'
 import { pctText } from './Attendance'
 import { buildPdf, loadPdf, type Part } from './pdf'
 import { homeScreenApple, type Kind } from './send'
@@ -1534,6 +1534,7 @@ function WeightsView({ k }: { k: Kit }) {
   const who = useWho(), canFix = mgr && who.role !== 'viewer'
   const [fixing, setFixing] = useState<WtRow | null>(null)
   const [editing, setEditing] = useState<{ t: WeightTest; w: WtRow } | null>(null)
+  const [paper, setPaper] = useState(false)
   // the summary on the screen, to see it and decide without opening a file (Jose, 2026-10-30)
   const summaryRows = useMemo(() => wtSummary(s, weightsOf(s, date, now)), [s, date])
   const boardRows = useMemo(() => wtBoard(s, weightsOf(s, date, now)), [s, date])
@@ -1561,7 +1562,8 @@ function WeightsView({ k }: { k: Kit }) {
   const late = (r: WtRow) => r.due != null && r.complete + r.skipped.length < r.due
   return (
     <>
-      {wt.rows.length > 0 && <div className="btns"><button type="button" className="btn primary" onClick={() => void summary()}>{tr('⬇ Resumen y control de peso')}</button><button type="button" className="btn soft" onClick={() => void sheets()}>{tr('⬇ Excel de pesos: Turno 1, Turno 2 y Todos')}</button></div>}
+      {(wt.rows.length > 0 || canFix) && <div className="btns">{wt.rows.length > 0 && <><button type="button" className="btn primary" onClick={() => void summary()}>{tr('⬇ Resumen y control de peso')}</button><button type="button" className="btn soft" onClick={() => void sheets()}>{tr('⬇ Excel de pesos: Turno 1, Turno 2 y Todos')}</button></>}{canFix && <button type="button" className="btn soft" onClick={() => setPaper(true)}>{tr('📝 Agregar pesos de papel')}</button>}</div>}
+      {paper && <WeightPaperDialog s={s} date={date} onClose={() => setPaper(false)} />}
       {fixing && <WeightsFixDialog s={s} row={fixing} onClose={() => setFixing(null)} />}
       {editing && <WeightTestDialog s={s} test={editing.t} row={editing.w} onClose={() => setEditing(null)} />}
       <div className="wt-board">{boardRows.map((x) => (
@@ -1680,6 +1682,55 @@ function WeightTestDialog({ s, test, row, onClose }: { s: State; test: WeightTes
         <div className="dbtns">
           <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
           <button type="button" className="btn primary" disabled={!clean || bad || none} onClick={() => { weightEdit(test.id, entries, clean, kind, cook || undefined); onClose() }}>{tr('Guardar')}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** a sheet weighed by hand, typed with its own hours: one line per hour, each weight seen before it is saved (2026-10-30) */
+function WeightPaperDialog({ s, date, onClose }: { s: State; date: string; onClose: () => void }) {
+  const [dept, setDept] = useState<RoomDept | ''>('')
+  const [lineId, setLineId] = useState('')
+  const [cook, setCook] = useState<Cook | ''>('')
+  const [code, setCode] = useState('')
+  const [kind, setKind] = useState<WtRow['kind'] | ''>('')
+  const [text, setText] = useState('')
+  const clean = code.trim().toUpperCase(), lines = wtPaperLines(text)
+  const room = s.lines.filter((l) => l.dept === dept && !l.deleted).sort(byLineName)
+  const target = kind && clean ? weightTarget(s, clean, kind, cook || undefined) : null
+  const ok = !!dept && !!clean && !!kind && (dept !== 'Spiral' || !!cook) && lines.length > 0 && lines.every((l) => !l.problem)
+  const oz = (x: number | null) => (x == null ? '—' : String(Math.round(x * 100) / 100))
+  const save = () => {
+    if (!ok || !dept || !kind) return
+    weightPaperAdd({ date, dept, lineId, line: room.find((l) => l.id === lineId)?.name ?? '', code: clean, kind, ...(cook ? { cook } : {}) }, lines)
+    onClose()
+  }
+  return (
+    <div className="veil" onClick={onClose}>
+      <div className="dlg wide wt-paper" onClick={(e) => e.stopPropagation()}>
+        <h3>{tr('Pesos de papel · {0}', date)}</h3>
+        <p>{tr('Para una prueba que se apuntó a mano. Queda en este día, con la hora de la hoja, con tu nombre y la palabra papel, y en Cambios.')}</p>
+        <div className="wt-editbar">
+          <label>{tr('Departamento')} <select value={dept} onChange={(e) => { setDept(e.target.value as RoomDept | ''); setLineId(''); setCook(''); setKind('') }}><option value="">{tr('Elige')}</option>{DEPTS.filter((d) => wtKindsOf(d).length).map((d) => <option key={d} value={d}>{d}</option>)}</select></label>
+          {dept === 'Spiral' && <label>{tr('Cocinador')} <select value={cook} onChange={(e) => setCook(e.target.value as Cook | '')}><option value="">{tr('Elige')}</option>{COOKS.map((c) => <option key={c} value={c}>{cookTextOf(c)}</option>)}</select></label>}
+          {room.length > 0 && <label>{tr('Línea')} <select value={lineId} onChange={(e) => setLineId(e.target.value)}><option value="">{tr('Sin decir')}</option>{room.map((l) => <option key={l.id} value={l.id}>{lineLabel(l.name)}</option>)}</select></label>}
+          <label>{tr('Código')} <input value={code} placeholder="0889" onChange={(e) => setCode(e.target.value.replace(/[^\w-]/g, ''))} /></label>
+          <label>{tr('Qué se pesó')} <select value={kind} disabled={!dept} onChange={(e) => setKind(e.target.value as WtRow['kind'] | '')}><option value="">{tr('Elige')}</option>{dept ? wtKindsOf(dept).map((x) => <option key={x} value={x}>{stepText({ kind: x })}</option>) : null}</select></label>
+        </div>
+        <label>{tr('Una línea por cada hora, con AM o PM y sus pesos')} <textarea value={text} rows={7} placeholder={'6:05 PM 2.3 2.6 2.4 2.6 2.2\n6:47 PM 2.4 2.2 2.3 2.3 2.4'} onChange={(e) => setText(e.target.value)} /></label>
+        {lines.length > 0 && <div className="scroll"><table className="wt-rp-tbl each">
+          <thead><tr><th>{tr('Hora')}</th><th>{tr('Turno')}</th><th>{tr('Pesos (oz)')}</th><th className="n">{tr('Pesados')}</th><th className="n">{tr('Promedio')}</th></tr></thead>
+          <tbody>{lines.map((l, i) => {
+            if (l.problem) return <tr key={i}><td colSpan={5} className="red">{l.problem === 'hora' ? tr('Esta línea no dice la hora con AM o PM: {0}', l.text) : tr('En esta línea hay un peso que no se entiende: {0}', l.text)}</td></tr>
+            const at = wtPaperAt(s, date, l.hm), entries: WtEntry[] = l.weights.map((w) => ({ w })), x = wtSum(entries, target)
+            return <tr key={i}><td>{fmtTime(at)}</td><td>{wtShift(s, { date, at })}</td><td><span className="wt-chips">{entries.map((e, j) => <span key={j} className={'wt-chip ' + (entryClassOf(e, target) || 'none') + (wtOdd(e.w as number, target) ? ' odd' : '')}>{oz(e.w as number)}</span>)}</span></td><td className="n">{x.n}</td><td className="n">{oz(x.avg)}</td></tr>
+          })}</tbody>
+        </table></div>}
+        {!!kind && !!clean && <p className="hint">{target ? tr('Objetivo con esto: {0} oz', wtRangeText(target)) : tr('Este código no tiene objetivo para eso: ponlo en Ajustes › KPI.')}</p>}
+        <div className="dbtns">
+          <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
+          <button type="button" className="btn primary" disabled={!ok} onClick={save}>{!lines.length ? tr('Guardar') : lines.length === 1 ? tr('Guardar 1 prueba') : tr('Guardar {0} pruebas', lines.length)}</button>
         </div>
       </div>
     </div>

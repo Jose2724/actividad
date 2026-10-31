@@ -5805,6 +5805,15 @@ section('Pesos escritos con otro código o como crudo: se corrigen desde el Repo
     eq('sin decir cocinador, el que tenía se queda', [m.weightEdit(vieja.id, [{ w: 2.7 }], '0889', 'raw'), st().weights.find((x) => x.id === vieja.id).cook], [true, 'racks'])
     const q = m.weightTarget(st(), '0889', 'raw')
     eq('la tablet duda de un peso muy lejos del rango: 242 y 1.0 sí; 2.9 no; sin rango no', [m.wtOdd(242, q), m.wtOdd(1, q), m.wtOdd(2.9, q), m.wtOdd(16, m.weightTarget(st(), '0889')), m.wtOdd(242, null)], [true, true, false, true, false])
+    // los pesos de papel (2026-10-30: la hoja de Santiago, de 6:05 a 11:10 PM)
+    eq('la hoja se lee línea por línea: coma o punto, AM o PM; lo que no se entiende se dice', m.wtPaperLines('6:05 PM 2.3 2,6 2.4\n\n  7:45 pm: 2.5, 2.4\n7:45 2.5\n8:45 PM 2.5 x\n12:10 am 2.3\n18:05 2.3').map((l) => [l.hm, l.weights, l.problem]), [['18:05', [2.3, 2.6, 2.4], ''], ['19:45', [2.5, 2.4], ''], ['', [], 'hora'], ['20:45', [], 'pesos'], ['00:10', [2.3], ''], ['18:05', [2.3], '']])
+    const papel = { date: DAY, dept: 'Kitchen', lineId: '', line: '', code: '0889', kind: 'ball' }, hojaP = [{ hm: '18:05', weights: [2.3, 2.6, 2.4, 2.6, 2.2, 2.3, 2.3, 2.5, 2.3, 2.2] }, { hm: '23:10', weights: [2.3, 2.6, 2.6, 2.4, 2.4, 2.2, 2.2, 2.5, 2.4, 2.4] }]
+    eq('cada hora es una prueba; guardar la misma hoja otra vez no duplica', [m.weightPaperAdd(papel, hojaP), m.weightPaperAdd(papel, hojaP)], [2, 0])
+    const deP = st().weights.filter((x) => x.by.endsWith(' (papel)')).sort((a, b) => a.at - b.at)
+    eq('quedan en su día, a su hora, en turno 2, con los 10 pesos', deP.map((x) => [x.date, new Date(x.at).getHours(), m.wtShift(st(), x), x.entries.length, x.runId]), [[DAY, 18, 2, 10, ''], [DAY, 23, 2, 10, '']])
+    eq('lo de pasada la medianoche sigue siendo de ese día', m.plainDay(st(), m.wtPaperAt(st(), DAY, '01:30')), DAY)
+    const subP = JSON.parse(m.outbox.items().find((i) => i.key === 'wt:' + deP[0].id)?.row.after ?? '{}')
+    eq('suben al servidor, salen en el control de peso y quedan en Cambios', [subP.entries.length, subP.code, m.wtControlSheet(st(), sumRows(), '0889', DAY).rows.flat().map((c) => m.cellText(c)).includes(m.fmtTime(deP[1].at)), st().changes.some((c) => c.what === 'Pesos de papel del ' + DAY && c.after.startsWith('2 pruebas · 0889'))], [10, '0889', true, true])
   })
 }
 section('Un pallet corto que otro terminó: un solo pallet, cada parte con su turno y quien la hizo (Jose, 2026-10-29: el PO 117973674 salía "3 de 2")')
