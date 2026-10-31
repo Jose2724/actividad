@@ -467,7 +467,7 @@ export function wtSummarySheet(s: State, rows: WtRow[], date: string): Sheet {
  * A code's day as the plant's own Weight Control sheet, the one Santiago keeps (Jose, 2026-10-30: "así como está en el
  * sheet de Santiago", and his update of the same day): Kitchen, whose cooked balls are the Racks', with RTE's pouches
  * on its right, then Spiral with its cooked and its raw, Spiral and Racks apart. Each hour in its block, what was
- * weighed and the hour in the plant's purple (Jose, 2026-10-30), its weights, its AVG in yellow, a TOTAL AVG under each group; beside each AVG the target, the difference (how far the
+ * weighed and the hour in a lighter purple than the plant's (Jose, 2026-10-30), its weights, its AVG in yellow, a TOTAL AVG under each group; beside each AVG the target, the difference (how far the
  * average is outside QA's range, 0 inside it) and room for comments and corrective actions. A weight outside the range
  * keeps its red or amber
  */
