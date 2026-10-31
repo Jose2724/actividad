@@ -469,7 +469,7 @@ export function wtSummarySheet(s: State, rows: WtRow[], date: string): Sheet {
  * with RTE's pouches on its right, then Spiral with its cooked and its raw, Spiral and Racks apart. One table for each:
  * a band, the heads once, one row per hour with a strong line under it, what was weighed down the side, a TOTAL AVG
  * closing the table. Beside each AVG the target, the difference (how far the average is outside QA's range, 0 inside
- * it) and room for comments and corrective actions. Green, red and amber are the result; everything else is purple
+ * it) and room for comments and corrective actions. Green, red and amber are the result, the average stays in yellow; everything else is purple
  */
 export function wtControlSheet(s: State, rows: WtRow[], code: string, date: string): Sheet {
   const of = rows.filter((w) => normCode(w.code) === normCode(code) && w.tests.length)
