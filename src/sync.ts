@@ -176,6 +176,7 @@ const listing = (t: Table, narrow: (q: Q) => Q) => (from: number, to: number) =>
 }
 const DAY = 86_400_000
 const midnight = (date: string) => new Date(date + 'T00:00:00').getTime()
+const nextMidnight = (date: string) => { const d = new Date(date + 'T00:00:00'); d.setDate(d.getDate() + 1); return d.getTime() } // (the day the clocks go back has 25 hours)
 const iso = (ms: number) => new Date(ms).toISOString()
 /**
  * what a device asks for the first time (or after it was emptied): only the days it keeps, plus whatever is still
@@ -192,7 +193,7 @@ export const firstPull = (day0: string): Partial<Record<Table, (q: Q) => Q>> => 
 export const dayPull = (date: string): [Table, (q: Q) => Q][] => [
   ['act_runs', (q) => q.eq('date', date)],
   ['act_stops', (q) => q.gte('started_at', iso(midnight(date) - DAY)).lt('started_at', iso(midnight(date) + 2 * DAY))],
-  ['act_changes', (q) => q.gte('at', iso(midnight(date))).lt('at', iso(midnight(date) + DAY))],
+  ['act_changes', (q) => q.gte('at', iso(midnight(date))).lt('at', iso(nextMidnight(date)))],
   ['act_schedule', (q) => q.eq('date', date)],
   ['act_plan', (q) => q.eq('date', date)],
 ]

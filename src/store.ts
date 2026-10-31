@@ -483,6 +483,12 @@ export function uid(): string {
 }
 const pad = (n: number) => String(n).padStart(2, '0')
 export const dayOf = (ms: number) => { const d = new Date(ms); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) }
+/**
+ * a moment by the clock on the wall: so many minutes past the midnight of a date, some days later if asked. Never
+ * midnight + minutes: the Sunday the clocks go back has 25 hours and the one they go forward 23, and the hand-overs of
+ * that day would fall an hour off (2026-11-01, the first time, with both shifts working)
+ */
+export const wallAt = (date: string, min: number, days = 0) => { const [y, m, d] = date.split('-').map(Number), whole = Math.floor(min); return new Date(y, m - 1, d + days, 0, whole, 0, Math.round((min - whole) * 60_000)).getTime() }
 export const today = () => dayOf(clockNow())
 // ---- the codes that go in a customer's order (PO), and their shelf life (2026-10-29) ----
 /**
@@ -1306,7 +1312,7 @@ export function wtPaperLines(text: string): WtPaperLine[] {
   })
 }
 /** the moment of an hour of a day of work: what is past midnight and before the night's change is still that day's */
-export const wtPaperAt = (s: State, date: string, hm: string) => nearDay(new Date(date + 'T00:00:00').getTime() + nightMs(s, date) + 12 * 3_600_000, hm)
+export const wtPaperAt = (s: State, date: string, hm: string) => nearDay(wallAt(date, nightMs(s, date) / 60_000 + 720), hm)
 /**
  * A paper sheet's lines saved as tests of that day, each with its own hour and no run (none is needed to read them):
  * by who typed them, said as "(papel)", and in the history. The same test twice is saved once
@@ -2279,7 +2285,7 @@ export const CUT_WINDOW = 4 * 3_600_000
 export function plantCut(s: State, date: string): number | null {
   const h = shiftsOf(s, date)
   if (h.only) return null
-  return new Date(date + 'T00:00:00').getTime() + Math.round(shiftCuts(h).toSecond * 60_000)
+  return wallAt(date, shiftCuts(h).toSecond)
 }
 /** a moment a room's hand-over of that day may be put at */
 export const inCutWindow = (s: State, date: string, at: number) => { const p = plantCut(s, date); return p != null && Math.abs(at - p) <= CUT_WINDOW }
@@ -2438,9 +2444,9 @@ function clash(r: Run, a: number, b: number) {
 }
 /** a shift's stretch of a day of work, by its room's own hours (its hand-over, see ShiftMark) */
 export function shiftWindow(s: State, date: string, dept: Dept, k: 1 | 2): { from: number; to: number } {
-  const h = shiftsOf(s, date, dept), { toFirst, toSecond } = shiftCuts(h), d0 = new Date(date + 'T00:00:00').getTime(), at = (m: number) => d0 + Math.round(m * 60_000)
-  if (h.only) return { from: at(toFirst), to: at(toFirst) + 86_400_000 }
-  return k === 1 ? { from: at(toFirst), to: at(toSecond) } : { from: at(toSecond), to: at(toFirst) + 86_400_000 }
+  const h = shiftsOf(s, date, dept), { toFirst, toSecond } = shiftCuts(h)
+  if (h.only) return { from: wallAt(date, toFirst), to: wallAt(date, toFirst, 1) }
+  return k === 1 ? { from: wallAt(date, toFirst), to: wallAt(date, toSecond) } : { from: wallAt(date, toSecond), to: wallAt(date, toFirst, 1) }
 }
 /**
  * The stretches of a shift in which a line had no code (up to now: what has not happened yet is not free to add), and
@@ -3154,9 +3160,8 @@ export function shiftAt(h: ShiftHours, at: number): 1 | 2 {
 }
 /** the hand-overs of the calendar days around a moment, in order */
 function cutsNear(h: ShiftHours, at: number) {
-  const { toFirst, toSecond } = shiftCuts(h), d = new Date(at), cuts = h.only ? [toFirst] : [toFirst, toSecond]
-  d.setHours(0, 0, 0, 0)
-  return [-1, 0, 1].flatMap((day) => cuts.map((c) => d.getTime() + day * 86_400_000 + Math.round(c * 60_000))).sort((a, b) => a - b)
+  const { toFirst, toSecond } = shiftCuts(h), date = dayOf(at), cuts = h.only ? [toFirst] : [toFirst, toSecond]
+  return [-1, 0, 1].flatMap((day) => cuts.map((c) => wallAt(date, c, day))).sort((a, b) => a - b)
 }
 /** the first hand-over after a moment, and the last one at or before it */
 const nextCut = (h: ShiftHours, at: number) => cutsNear(h, at).find((t) => t > at) ?? at + 86_400_000
@@ -3190,14 +3195,12 @@ function without(a: number, b: number, out: Span[]): Span[] {
  */
 function gapsNear(h: ShiftHours, a: number, b: number) {
   const f = mins(h.first), len1 = ahead(f, mins(h.firstEnd)), gap1 = h.only ? 0 : ahead(mins(h.firstEnd), mins(h.second)), len2 = ahead(mins(h.second), mins(h.secondEnd)), gap2 = ahead(mins(h.secondEnd), f)
-  const d = new Date(a)
-  d.setHours(0, 0, 0, 0)
+  const date = dayOf(a), g1 = f + len1, g2 = g1 + gap1 + len2
   const out: Span[] = []
-  for (let day = d.getTime() - 86_400_000; day <= b; day += 86_400_000) {
-    const g1 = day + (f + len1) * 60_000, g2 = g1 + (gap1 + len2) * 60_000
+  for (let day = -1; wallAt(date, 0, day) <= b; day++) {
     // (a room that said its own hand-over was not away between the shifts: one went on until the other came)
-    if (gap1 > 0 && h.cut2 == null) out.push({ from: g1, to: g1 + gap1 * 60_000 })
-    if (gap2 > 0) out.push({ from: g2, to: g2 + gap2 * 60_000 })
+    if (gap1 > 0 && h.cut2 == null) out.push({ from: wallAt(date, g1, day), to: wallAt(date, g1 + gap1, day) })
+    if (gap2 > 0) out.push({ from: wallAt(date, g2, day), to: wallAt(date, g2 + gap2, day) })
   }
   return out.filter((g) => g.to > a && g.from < b)
 }
@@ -3276,7 +3279,7 @@ const nightMs = (s: State, date: string) => { const c = shiftCuts(shiftsOf(s, da
  * a day of work lasts until the second shift hands over to the first: a shift that runs past midnight keeps its date
  * and its lot, and the morning shift is never handed yesterday's date, even when it starts a little before its hour
  */
-const dayEnds = (s: State, date: string) => { const d = new Date(date + 'T00:00:00'); d.setDate(d.getDate() + 1); return d.getTime() + nightMs(s, dayOf(d.getTime())) }
+const dayEnds = (s: State, date: string) => { const next = dayOf(wallAt(date, 0, 1)); return wallAt(next, nightMs(s, next) / 60_000) }
 export type WorkDay = { date: string; started: { at: number; by: string } | null }
 /**
  * the day in course: the one somebody started ("Empezar el día") while it lasts; otherwise the calendar's, where the
@@ -3287,7 +3290,7 @@ export function workDay(s: State, now = clockNow()): WorkDay {
   return m ? { date: m.refKey, started: { at: m.at, by: m.by } } : { date: plainDay(s, now), started: null }
 }
 /** the day of work a moment falls in while nobody has started one: the calendar's, with the night still on the day before */
-export const plainDay = (s: State, at: number) => dayOf(at - nightMs(s, dayOf(at)))
+export const plainDay = (s: State, at: number) => { const d = dayOf(at); return at < wallAt(d, nightMs(s, d) / 60_000) ? dayOf(wallAt(d, 0, -1)) : d }
 /** "3:30 AM": the hour of the night at which a day of work gives way to the next */
 export const nightText = (s: State, date: string) => minuteText(nightMs(s, date) / 60_000)
 /** the last thing recorded on a run: its last unit, its start, or the moment its line was stopped and left */

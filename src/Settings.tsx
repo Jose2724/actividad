@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore } from 'react'
-import { type ViewOpt, byLineName, CFG, dayShiftsText, DEPTS, lineLabel, lotFor, managerPin, nightText, openRun, removedLines, removeLine, reset, resetRecords, restoreLine, setDayShifts, setLineRules, setProgramView, setReasonCodes, shiftGoalOf, shiftHours, shiftSpan, shiftsOf, turnOf, uploadAll, weekOf, type Dept, type Line, type State, type WorkDay, setViewOpt } from './store'
+import { type ViewOpt, wallAt, byLineName, CFG, dayShiftsText, DEPTS, lineLabel, lotFor, managerPin, nightText, openRun, removedLines, removeLine, reset, resetRecords, restoreLine, setDayShifts, setLineRules, setProgramView, setReasonCodes, shiftGoalOf, shiftHours, shiftSpan, shiftsOf, turnOf, uploadAll, weekOf, type Dept, type Line, type State, type WorkDay, setViewOpt } from './store'
 import { ConfirmDialog, LangSwitch, LineNameDialog, longDate, NoticeDialog, Products, QrLink, ShiftsDialog, StartDayDialog, StopDialog, TargetDialog, useCan, useWho } from './App'
 import { Employees } from './Employees'
 import { DEPT_LOOK, deptVars } from './look'
@@ -177,7 +177,7 @@ function RoomCuts({ s, day }: { s: State; day: WorkDay }) {
   const hm = (at: number) => { const d = new Date(at); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') }
   const save = (d: Dept) => {
     const v = typed[d]; if (!v) return
-    const [h, m] = v.split(':').map(Number), at = new Date(day.date + 'T00:00:00').getTime() + (h * 60 + m) * 60_000
+    const [h, m] = v.split(':').map(Number), at = wallAt(day.date, h * 60 + m)
     if (!setShiftMark(day.date, d, at, 'manual')) { setBad(d); return }
     setBad(null); setTyped({ ...typed, [d]: undefined })
   }

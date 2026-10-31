@@ -1,4 +1,4 @@
-import { WT_ASKED_CODES, wtOfficial, wtPicksCode, wtRange, attExpectedOf, attOf, attSentAt, attShifts, attWriteOn, CFG, cookText, dayBefore, DEPTS, deptToday, entryClass, fmtTime, kpiGet, lbCaseOn, lbPerCaseOf, lunchOf, normCode, sameStep, shiftAt, shiftsOf, stepKey, stepText, weighedCodes, weighsCode, weightAllStepsOf, weightRuleFor, weightStepsFor, weightTarget, wtRangeText, type Cook, type WeightTest, type WtStep, type AttEntry, type Dept, type State } from './store'
+import { wallAt, WT_ASKED_CODES, wtOfficial, wtPicksCode, wtRange, attExpectedOf, attOf, attSentAt, attShifts, attWriteOn, CFG, cookText, dayBefore, DEPTS, deptToday, entryClass, fmtTime, kpiGet, lbCaseOn, lbPerCaseOf, lunchOf, normCode, sameStep, shiftAt, shiftsOf, stepKey, stepText, weighedCodes, weighsCode, weightAllStepsOf, weightRuleFor, weightStepsFor, weightTarget, wtRangeText, type Cook, type WeightTest, type WtStep, type AttEntry, type Dept, type State } from './store'
 import { reportOf } from './report'
 import { colName, X, xDay, xN, xT, type Cell, type Sheet } from './xlsx'
 import { locale, tr } from './i18n'
@@ -121,13 +121,11 @@ export const costcoLast = (s: State, date: string, now: number, n = 7) => { cons
  * the shifts: what a person on it works. The 2nd shift's end after midnight is the next day
  */
 export function workSpan(s: State, date: string, dept: Dept, k: 1 | 2) {
-  const h = shiftsOf(s, date, dept), d0 = new Date(date + 'T00:00:00').getTime()
+  const h = shiftsOf(s, date, dept)
   const min = (t: string) => { const [a, b] = String(t).split(':').map(Number); return (a || 0) * 60 + (b || 0) }
   const [a, b] = k === 1 ? [h.first, h.firstEnd] : [h.second, h.secondEnd]
-  let from = d0 + min(a) * 60_000, to = d0 + min(b) * 60_000
-  if (k === 2 && min(h.second) < min(h.first)) { from += 86_400_000; to += 86_400_000 }
-  if (to <= from) to += 86_400_000
-  return { from, to }
+  const next = k === 2 && min(h.second) < min(h.first) ? 1 : 0, from = wallAt(date, min(a), next), to = wallAt(date, min(b), next)
+  return { from, to: to <= from ? wallAt(date, min(b), next + 1) : to }
 }
 /**
  * the hours a person worked in the room on a shift: from the shift's start, or from when they came (the hour the
@@ -146,8 +144,7 @@ export function hoursOf(s: State, x: AttEntry, now: number) {
 export function hourOnShift(s: State, x: AttEntry, hm: string): number | null {
   const m = /^(\d{1,2}):(\d{2})$/.exec(hm.trim())
   if (!m || +m[1] > 23 || +m[2] > 59) return null
-  const w = workSpan(s, x.date, x.dept, x.shift), d0 = new Date(x.date + 'T00:00:00').getTime()
-  const at = (days: number) => { const d = new Date(d0 + days * 86_400_000); d.setHours(+m[1], +m[2], 0, 0); return d.getTime() }
+  const w = workSpan(s, x.date, x.dept, x.shift), at = (days: number) => wallAt(x.date, +m[1] * 60 + +m[2], days)
   const off = (t: number) => (t < w.from ? w.from - t : t > w.to ? t - w.to : 0)
   return [at(0), at(1)].sort((p, q) => off(p) - off(q))[0]
 }

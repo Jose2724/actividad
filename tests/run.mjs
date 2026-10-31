@@ -1716,6 +1716,32 @@ section('Calendario de planta: días de un solo turno (la semana, y un día apar
     eq('lo que llega sin sentido no entra', [(m.applyRemote('act_targets', { dept: 'shiftweek:2026-12-01', per_hour: 4444444, per_shift: null, updated_at: new Date(oct(17, 17, 2)).toISOString() }), st().shiftWeeks.some((x) => x.from === '2026-12-01')), (m.applyRemote('act_targets', { dept: 'shiftday:2026-12-01', per_hour: 7, per_shift: null, updated_at: new Date(oct(17, 17, 2)).toISOString() }), st().dayShifts.some((x) => x.date === '2026-12-01'))], [false, false])
   })
 }
+section('Los días del cambio de hora: los turnos se cortan a su hora de reloj, aunque el día tenga 25 o 23 horas')
+{
+  // 2026-11-01, the first time for the app, and a Sunday worked by both shifts: the hand-over fell at 2:15 PM on the clock
+  const zone = process.env.TZ
+  process.env.TZ = 'America/New_York'
+  const dst = await device('dst', { user: 'Jose', usual: true })
+  dst.use((m) => {
+    const st = () => m.store.get(), SUN = '2026-11-01', at = (d, h, min = 0) => new Date(2026, 10, d, h, min).getTime()
+    eq('ese domingo tiene 25 horas', (at(2, 0) - at(1, 0)) / 3_600_000, 25)
+    const w1 = m.shiftWindow(st(), SUN, 'RTE', 1), w2 = m.shiftWindow(st(), SUN, 'RTE', 2)
+    eq('el turno 1 va de 3:30 AM a 3:15 PM y el 2 hasta las 3:30 AM del lunes', [w1.from, w1.to, w2.from, w2.to], [at(1, 3, 30), at(1, 15, 15), at(1, 15, 15), at(2, 3, 30)])
+    const t230 = m.turnOf(st(), SUN, at(1, 14, 30), 'RTE'), t320 = m.turnOf(st(), SUN, at(1, 15, 20), 'RTE')
+    eq('a las 2:30 PM sigue el turno 1 y no ha empezado de cero', [t230.shift, t230.since, t230.until], [1, at(1, 3, 30), at(1, 15, 15)])
+    eq('a las 3:20 PM es el turno 2, desde las 3:15', [t320.shift, t320.since, t320.until], [2, at(1, 15, 15), at(2, 3, 30)])
+    eq('un rato que cruza la entrega se parte a las 3:15 PM', m.shiftPieces(m.shiftsOf(st(), SUN), at(1, 8), at(1, 17)).map((p) => [p.shift, p.from, p.to]), [[1, at(1, 8), at(1, 15, 15)], [2, at(1, 15, 15), at(1, 17)]])
+    eq('el corte de la planta y el de la noche', [m.plantCut(st(), SUN), m.plainDay(st(), at(1, 3, 0)), m.plainDay(st(), at(1, 3, 45)), m.plainDay(st(), at(2, 1, 0))], [at(1, 15, 15), '2026-10-31', SUN, SUN])
+    eq('las horas de cada turno', [m.workSpan(st(), SUN, 'RTE', 1), m.workSpan(st(), SUN, 'RTE', 2)], [{ from: at(1, 6), to: at(1, 15) }, { from: at(1, 15, 30), to: at(2, 1) }])
+    eq('una hora después de medianoche es del lunes', m.hourOnShift(st(), { date: SUN, dept: 'RTE', shift: 2 }, '00:30'), at(2, 0, 30))
+    const spring = new Date(2027, 2, 14, 15, 15).getTime(), day23 = (new Date(2027, 2, 15).getTime() - new Date(2027, 2, 14).getTime()) / 3_600_000
+    eq('y el de marzo, de 23 horas', [day23, m.shiftWindow(st(), '2027-03-14', 'RTE', 1).to], [23, spring])
+    const sat = m.shiftWindow(st(), '2026-10-31', 'RTE', 2)
+    eq('el sábado antes termina a las 3:30 AM del domingo por el reloj', [sat.from, sat.to], [new Date(2026, 9, 31, 15, 15).getTime(), at(1, 3, 30)])
+  })
+  if (zone === undefined) delete process.env.TZ; else process.env.TZ = zone
+}
+
 section('Un día de un solo turno que trabaja desde la mañana: todo es de ese turno, y el tiempo no se corta a las 3')
 {
   // Jose, 2026-10-17: on Sunday the second shift works from 6 AM to 6 PM or more, and all of it is the second shift's,
