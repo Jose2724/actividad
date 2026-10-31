@@ -404,6 +404,8 @@ export function wtBoardSheet(s: State, rows: WtRow[], date: string): Sheet {
   { const r = row([xT(tr('Colores'), X.wcBold), xT('', X.wcBold), xT(tr('✓ Dentro del objetivo'), X.wGoodW), xT(tr('✗ Bajo el objetivo'), X.wBadW), xT(tr('✗ Sobre el objetivo'), X.wWarnW)], 28); merges.push('A' + r + ':B' + r) }
   row([], 8)
   across(tr('Cada número es el promedio de todos los pesos del día, en onzas.'), X.note, 22)
+  const note = kpiNote(s, date, 'weights')
+  if (note) { row([], 8); across(tr('Notas: {0}', note), X.note, 48) }
   return { name: tr('Resumen'), rows: out, freeze: 0, page: { widths: [16, 16, 27, 27, 27], heights, merges } }
 }
 export function wtSummary(s: State, rows: WtRow[]): WtSummaryRow[] {
@@ -551,8 +553,11 @@ export function wtControlSheet(s: State, rows: WtRow[], code: string, date: stri
   const side = (n: number) => [10, 9, ...Array.from({ length: n }, () => 9.5), 9, 11, 10, 32]
   return { name: tr('Control de peso {0}', code), rows: Array.from({ length: g.length }, (_, i) => Array.from(g[i] ?? [])), freeze: 0, page: { widths: [...side(nL), 3, ...side(nR)], heights, merges } }
 }
-/** the file of the one-page button: the summary first, then each code as the plant's own sheet */
-export const wtSummaryBook = (s: State, rows: WtRow[], date: string): Sheet[] => [wtBoardSheet(s, rows, date), wtSummarySheet(s, rows, date), ...WT_ASKED_CODES.map((c) => wtControlSheet(s, rows, c, date))]
+/**
+ * the file of the one-page button: the summary, then each code as the plant's own sheet. The By department sheet
+ * (wtSummarySheet) stays out of it for now (Jose, 2026-10-31: "si un día lo necesito te lo pido"): it goes back in here
+ */
+export const wtSummaryBook = (s: State, rows: WtRow[], date: string): Sheet[] => [wtBoardSheet(s, rows, date), ...WT_ASKED_CODES.map((c) => wtControlSheet(s, rows, c, date))]
 const WT_LAST = 'P' // the band reaches the last column of the tables
 const WT_WIDTHS = [11, 9, 19, 11, 11, 9, 10, 9, 9, 11, 8, 8, 8, 13, 12, 18]
 const wtRoom = (d: Dept) => (d === 'Kitchen' ? X.wKitchen : d === 'RTE' ? X.wRTE : d === 'Spiral' ? X.wSpiral : X.wCell)
