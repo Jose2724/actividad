@@ -469,7 +469,7 @@ export function wtSummarySheet(s: State, rows: WtRow[], date: string): Sheet {
  * on its right, then Spiral with its cooked and its raw, Spiral and Racks apart. Each hour in its block, what was
  * weighed and the hour in a lighter purple than the plant's (Jose, 2026-10-30), its weights, its AVG in yellow, a TOTAL AVG under each group; beside each AVG the target, the difference (how far the
  * average is outside QA's range, 0 inside it) and room for comments and corrective actions. A weight outside the range
- * keeps its red or amber
+ * keeps its red or amber; what says nothing of the result goes in lilac (the boss, 2026-10-30)
  */
 export function wtControlSheet(s: State, rows: WtRow[], code: string, date: string): Sheet {
   const of = rows.filter((w) => normCode(w.code) === normCode(code) && w.tests.length)
@@ -504,7 +504,7 @@ export function wtControlSheet(s: State, rows: WtRow[], code: string, date: stri
       for (let i = 0; i < most; i++) {
         put(r, c0 + 2 + i, xT(tr('peso {0}', i + 1), X.wcHead))
         const e = t.entries[i], k = e ? entryClass(e, w.target) : ''
-        put(r + 1, c0 + 2 + i, !e ? xT('', X.wcTime) : e.w == null ? xT(e.k === 'sobre' ? '▲' : '▼', X.wcTime) : xN(e.w, k === 'bajo' ? X.wDr : k === 'sobre' ? X.wDa : X.wcW))
+        put(r + 1, c0 + 2 + i, !e ? xT('', X.wcEmpty) : e.w == null ? (e.k === 'sobre' ? xT('▲', X.wDa) : xT('▼', X.wDr)) : xN(e.w, k === 'bajo' ? X.wDr : k === 'sobre' ? X.wDa : X.wcW))
       }
       const a = c0 + 2 + most
       put(r, a, avg == null ? xT('—', X.wcAvg) : xN(Math.round(avg * 10000) / 10000, X.wcAvg)); put(r + 1, a, xT('', X.wcAvg)); span(r, a, r + 1, a)

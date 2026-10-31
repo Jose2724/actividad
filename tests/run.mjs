@@ -5768,6 +5768,8 @@ section('Pesos escritos con otro código o como crudo: se corrigen desde el Repo
     const celdas = (sh) => sh.rows.flatMap((r) => r).filter((c) => c && typeof c === 'object')
     const horaDe = celdas(ctl).filter((c) => /^\d+:\d\d [AP]M$/.test(c.t))
     eq('la hora va sola y en morado, igual que lo que se pesó, en todos los departamentos (Jose, 2026-10-30)', [horaDe.length > 0, horaDe.every((c) => c.s === m.X.wcLabel), ['COCINADO', 'RTE POUCH'].every((w) => celdas(ctl).some((c) => c.t === w && c.s === m.X.wcLabel))], [true, true, true])
+    const fuerita = celdas(m.wtControlSheet(st(), sumRows().map((w) => ({ ...w, tests: w.tests.map((t) => ({ ...t, entries: [{ w: null, k: 'sobre' }, { w: null, k: 'bajo' }] })) })), '0889', DAY))
+    eq('lo que dice el resultado conserva su color y lo demás va en lila: la marca de fuera de escala, los títulos, el espacio sin peso', [fuerita.some((c) => c.t === '▲' && c.s === m.X.wDa), fuerita.some((c) => c.t === '▼' && c.s === m.X.wDr), fuerita.some((c) => c.t === 'peso 1' && c.s === m.X.wcHead), fuerita.some((c) => c.t === '' && c.s === m.X.wcEmpty)], [true, true, true, true])
     const hasta = (name) => m.wtControlSheet(st(), sumRows(), '0889', DAY).rows.flat().map((c) => m.cellText(c)).includes(name)
     m.setWeighedCodes('RTE', [{ code: '0889', every: 60, count: 5 }])
     eq('la hoja lleva los pesos que dice Ajustes › KPI, con su título: 5 en RTE, y a la izquierda los 10 de Spiral', [hasta('peso 5'), m.wtControlSheet(st(), sumRows(), '0889', DAY).rows[2].filter((c) => /^peso /.test(m.cellText(c))).length], [true, 10 + 5])
