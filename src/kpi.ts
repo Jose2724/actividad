@@ -464,12 +464,12 @@ export function wtSummarySheet(s: State, rows: WtRow[], date: string): Sheet {
   return { name: tr('Por departamento'), rows: out, freeze: 0, page: { widths: [9, 17, 10, 9, 10, 11, 11, 11, 10, 11, 42, 24], heights, merges }, ...(chart ? { chart } : {}) }
 }
 /**
- * A code's day as the plant's own Weight Control sheet, the one Santiago keeps (Jose, 2026-10-30: "así como está en el
- * sheet de Santiago", and his update of the same day): Kitchen, whose cooked balls are the Racks', with RTE's pouches
- * on its right, then Spiral with its cooked and its raw, Spiral and Racks apart. Each hour in its block, what was
- * weighed and the hour in a lighter purple than the plant's (Jose, 2026-10-30), its weights, its AVG in yellow, a TOTAL AVG under each group; beside each AVG the target, the difference (how far the
- * average is outside QA's range, 0 inside it) and room for comments and corrective actions. A weight outside the range
- * keeps its red or amber; what says nothing of the result goes in lilac (the boss, 2026-10-30)
+ * A code's day as the plant's Weight Control sheet (Jose, 2026-10-30: first "así como está en el sheet de Santiago",
+ * then another look, "que se note bien donde empieza y termina la fila"): Kitchen, whose cooked balls are the Racks',
+ * with RTE's pouches on its right, then Spiral with its cooked and its raw, Spiral and Racks apart. One table for each:
+ * a band, the heads once, one row per hour with a strong line under it, what was weighed down the side, a TOTAL AVG
+ * closing the table. Beside each AVG the target, the difference (how far the average is outside QA's range, 0 inside
+ * it) and room for comments and corrective actions. Green, red and amber are the result; everything else is purple
  */
 export function wtControlSheet(s: State, rows: WtRow[], code: string, date: string): Sheet {
   const of = rows.filter((w) => normCode(w.code) === normCode(code) && w.tests.length)
@@ -482,46 +482,50 @@ export function wtControlSheet(s: State, rows: WtRow[], code: string, date: stri
   const span = (r: number, c: number, r2: number, c2: number) => merges.push(colName(c) + (r + 1) + ':' + colName(c2) + (r2 + 1))
   const avgOf = (ws: number[]) => (ws.length ? ws.reduce((a, b) => a + b, 0) / ws.length : null)
   const word = (k: WeightTest['kind']) => (k === 'raw' ? tr('CRUDO') : k === 'ball' ? tr('COCINADO') : 'RTE ' + tr('POUCH'))
-  const sides = (c0: number, r: number) => { const a = c0 + 2 + nAt(c0); put(r, a, xT(tr('PROM.'), X.wcBold)); put(r, a + 1, xT(tr('Objetivo'), X.wcBold)); put(r, a + 2, xT(tr('Diferencia'), X.wcBold)); put(r, a + 3, xT(tr('Comentarios / acciones correctivas'), X.wcBold)) }
+  const tall = (r: number) => { heights[r] = 30 }
   // the target and how far the average is from it, in the two cells after the average
-  const judge = (r: number, c: number, avg: number | null, w: WtRow, rows2 = 1) => {
+  const judge = (r: number, c: number, avg: number | null, w: WtRow, plain: number) => {
     const t = wtOfficial(s, w.code, w.kind) && w.target ? w.target : null, range = t ? wtRange(t) : null
-    put(r, c, xT(t ? wtRangeText(t) : tr('Pendiente'), X.wcText))
+    put(r, c, xT(t ? wtRangeText(t) : tr('Pendiente'), plain))
     // (to two decimals, as QA writes its ranges and as the summary judges: both sheets say the same)
     const two = avg == null ? null : Math.round(avg * 100) / 100
     const d = two == null || !range ? null : Math.round((two < range.min ? two - range.min : two > range.max ? two - range.max : 0) * 100) / 100
-    put(r, c + 1, d == null ? xT('—', X.wcText) : { v: d, s: d === 0 ? X.wDg : d < 0 ? X.wDr : X.wDa, t: String(d) })
-    if (rows2 > 1) { put(r + 1, c, xT('', X.wcText)); put(r + 1, c + 1, xT('', X.wcText)); span(r, c, r + 1, c); span(r, c + 1, r + 1, c + 1) }
+    put(r, c + 1, d == null ? xT('—', plain) : { v: d, s: d === 0 ? X.wcDg : d < 0 ? X.wcDr : X.wcDa, t: String(d) })
   }
   const group = (r0: number, c0: number, w: WtRow) => {
+    const most = nAt(c0), a = c0 + 2 + most, tests = [...w.tests].sort((x, y) => x.at - y.at)
     let r = r0
-    const most = nAt(c0)
-    const label = word(w.kind)
-    for (const t of [...w.tests].sort((a, b) => a.at - b.at)) {
-      put(r, c0, xT(label, X.wcLabel)); put(r + 1, c0, xT('', X.wcLabel)); span(r, c0, r + 1, c0)
-      put(r, c0 + 1, xT(fmtTime(t.at), X.wcLabel)); put(r + 1, c0 + 1, xT('', X.wcLabel)); span(r, c0 + 1, r + 1, c0 + 1)
+    for (const t of tests) {
+      const plain = (r - r0) % 2 ? X.wcRowZ : X.wcRow // every other row a shade, so the eye keeps to its own
+      put(r, c0, xT(r === r0 ? word(w.kind) : '', X.wcLabel))
+      put(r, c0 + 1, xT(fmtTime(t.at), X.wcLabel))
       const ws = t.entries.flatMap((e) => (e.w != null ? [e.w] : [])), avg = avgOf(ws)
       for (let i = 0; i < most; i++) {
-        put(r, c0 + 2 + i, xT(tr('peso {0}', i + 1), X.wcHead))
         const e = t.entries[i], k = e ? entryClass(e, w.target) : ''
-        put(r + 1, c0 + 2 + i, !e ? xT('', X.wcEmpty) : e.w == null ? (e.k === 'sobre' ? xT('▲', X.wDa) : xT('▼', X.wDr)) : xN(e.w, k === 'bajo' ? X.wDr : k === 'sobre' ? X.wDa : X.wcW))
+        put(r, c0 + 2 + i, !e ? xT('', plain) : e.w == null ? (e.k === 'sobre' ? xT('▲', X.wcDa) : xT('▼', X.wcDr)) : xN(e.w, k === 'bajo' ? X.wcDr : k === 'sobre' ? X.wcDa : X.wcW))
       }
-      const a = c0 + 2 + most
-      put(r, a, avg == null ? xT('—', X.wcAvg) : xN(Math.round(avg * 10000) / 10000, X.wcAvg)); put(r + 1, a, xT('', X.wcAvg)); span(r, a, r + 1, a)
-      judge(r, a + 1, avg, w, 2)
-      put(r, a + 3, xT('', X.wcText)); put(r + 1, a + 3, xT('', X.wcText)); span(r, a + 3, r + 1, a + 3)
-      r += 2
+      put(r, a, avg == null ? xT('—', X.wcAvg) : xN(Math.round(avg * 10000) / 10000, X.wcAvg))
+      judge(r, a + 1, avg, w, plain)
+      put(r, a + 3, xT('', plain))
+      tall(r); r++
     }
-    const all = w.tests.flatMap((t) => t.entries.flatMap((e) => (e.w != null ? [e.w] : []))), total = avgOf(all), a = c0 + 2 + most
-    put(r, a - 1, xT(tr('PROM. TOTAL'), X.wcBold))
+    if (r - r0 > 1) span(r0, c0, r - 1, c0)
+    const all = w.tests.flatMap((t) => t.entries.flatMap((e) => (e.w != null ? [e.w] : []))), total = avgOf(all)
+    put(r, c0, xT(tr('PROM. TOTAL'), X.wcTotalL)); for (let c = c0 + 1; c < a; c++) put(r, c, xT('', X.wcTotalL)); span(r, c0, r, a - 1)
     put(r, a, total == null ? xT('—', X.wcTotal) : xN(Math.round(total * 10000) / 10000, X.wcTotal))
-    judge(r, a + 1, total, w)
+    judge(r, a + 1, total, w, X.wcHead)
+    put(r, a + 3, xT('', X.wcHead))
+    tall(r)
     return r + 1
   }
   const leftN = 2 + nL + 4, right = leftN + 1, lastC = right + 2 + nR + 3
-  const band = (r: number, text: string) => { put(r, 0, xT(text, X.wcBand)); for (let c = 1; c < leftN; c++) put(r, c, xT('', X.wcBand)); span(r, 0, r, leftN - 1); heights[r] = 26 }
-  // a group's own line: its place, its code, and the heads of its columns
-  const head = (r: number, c0: number) => { put(r, c0 + 1, xT(tr('CÓDIGO'), X.wcBold)); put(r, c0 + 2, xT(code, X.wcBold)); sides(c0, r) }
+  const band = (r: number, text: string) => { put(r, 0, xT(text, X.wcBand)); for (let c = 1; c < leftN; c++) put(r, c, xT('', X.wcBand)); span(r, 0, r, leftN - 1); tall(r) }
+  // the heads of a table, once
+  const head = (r: number, c0: number) => {
+    const n = nAt(c0), heads = [tr('Qué se pesó'), tr('Hora'), ...Array.from({ length: n }, (_, i) => tr('peso {0}', i + 1)), tr('PROM.'), tr('Objetivo'), tr('Diferencia'), tr('Comentarios / acciones correctivas')]
+    heads.forEach((h, i) => put(r, c0 + i, xT(h, X.wcHead)))
+    tall(r)
+  }
   const order = (w: WtRow) => (w.kind === 'ball' ? 0 : 2) + (w.cook === 'racks' ? 1 : 0)
   const balls = of.filter((w) => w.kind !== 'pouch').sort((a, b) => order(a) - order(b)), bags = of.filter((w) => w.kind === 'pouch')
   // each with its title (Jose, 2026-10-30: Kitchen, RTE, "Spiral: Spiral" and "Spiral: Racks", the two inside the room of Spiral)
@@ -543,6 +547,7 @@ export function wtControlSheet(s: State, rows: WtRow[], code: string, date: stri
   let rr = 1
   if (!bags.length) { put(rr, right, xT(tr('No se pesó este día'), X.wcText)); for (let c = right + 1; c <= lastC; c++) put(rr, c, xT('', X.wcText)); span(rr, right, rr, lastC) }
   for (const w of bags) { head(rr, right); rr = group(rr + 1, right, w) + 1 }
+  tall(0)
   const side = (n: number) => [10, 9, ...Array.from({ length: n }, () => 9.5), 9, 11, 10, 32]
   return { name: tr('Control de peso {0}', code), rows: Array.from({ length: g.length }, (_, i) => Array.from(g[i] ?? [])), freeze: 0, page: { widths: [...side(nL), 3, ...side(nR)], heights, merges } }
 }

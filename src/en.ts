@@ -3120,7 +3120,6 @@ export const EN: Record<string, string> = {
   "Control de peso {0}": "Weight Control {0}",
   "⬇ Resumen y control de peso": "⬇ Summary and weight control",
   "Comentarios / acciones correctivas": "Comments / corrective actions",
-  "CÓDIGO": "CODE",
   "¿De qué código son estas bolas?": "Which code are these meatballs?",
   "Escoge primero el código.": "Pick the code first.",
   "peso {0}": "weight {0}",
