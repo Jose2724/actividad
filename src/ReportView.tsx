@@ -6,8 +6,9 @@ import { codeLabel, FAMILY_SHOWN, reasonCodeOf } from './reasons'
 import { cellText, loadZip, X, xDur, xN, xPct, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 import { cookYields, hoursOf, seesLabor, weightsOf, wtCompliance, wtDoneText, wtOfReport, wtSheetRows, wtSheets, wtShift, wtSum, wtBoard, wtRangeLong, wtSummary, wtSummaryBook, type WtAvg, type WtRow } from './kpi'
 import { attendanceOf, attLineText, attMovesText, attOf, attShifts, attStateText } from './store'
-import { byLineName, COOKS, consumesOf, inventoryOf, stepText, weightEdit, weightPaperAdd, weightsFix, weightTarget, wtKindsOf, wtOdd, wtPaperAt, wtPaperLines, wtPicksCode, type Cook, type Dept as RoomDept, type WeightTest, type WtEntry } from './store'
-import { miniSheet, miniTables, miniWeek } from './miniKpi'
+import { awayDay, byLineName, COOKS, consumesOf, inventoryOf, stepText, weightEdit, weightPaperAdd, weightsFix, weightTarget, wtKindsOf, wtOdd, wtPaperAt, wtPaperLines, wtPicksCode, type Cook, type Dept as RoomDept, type WeightTest, type WtEntry } from './store'
+import { MINI_WEEKS, miniBook, miniSpan, miniTables, miniWeek } from './miniKpi'
+import { loadDay } from './sync'
 import { pctText } from './Attendance'
 import { buildPdf, loadPdf, type Part } from './pdf'
 import { homeScreenApple, type Kind } from './send'
@@ -1739,13 +1740,27 @@ function WeightPaperDialog({ s, date, onClose }: { s: State; date: string; onClo
   )
 }
 
-/** Santiago's week: the tables of src/miniKpi.ts, of the week the report's date falls in; what they count is chosen in Ajustes › Mini KPI */
+/** the days on their way from the server: a date asked twice waits for the same answer (awayDay is false while it comes) */
+const miniComing = new Map<string, Promise<boolean>>()
+const miniBring = (d: string) => { const asked = miniComing.get(d); if (asked || !awayDay(d)) return asked; const p = loadDay(d).finally(() => miniComing.delete(d)); miniComing.set(d, p); return p }
+
+/** Santiago's week: the tables of src/miniKpi.ts, of the week the report's date falls in; what they count is chosen in Ajustes › Mini KPI. The Excel adds a summary against the last weeks, which a device may not hold: they are brought when the tab opens */
 function MiniKpiView({ k }: { k: Kit }) {
-  const { s, date, now } = k
+  const { s, date, now, today, pickDate } = k
   const [shift, setShift] = useState<1 | 2>(2)
   const week = useMemo(() => miniWeek(s, date, shift, now), [s, date, shift])
+  const [bringing, setBringing] = useState(false)
+  const [failed, setFailed] = useState(0)
+  useEffect(() => {
+    let current = true
+    const asked = miniSpan(date).map(miniBring).filter((p): p is Promise<boolean> => !!p)
+    setFailed(0)
+    setBringing(asked.length > 0)
+    if (asked.length) void Promise.all(asked).then((ok) => { if (current) { setBringing(false); setFailed(ok.filter((x) => !x).length) } })
+    return () => { current = false }
+  }, [date])
   const excel = async () => {
-    const page = () => xlsxNow([miniSheet(week)])
+    const page = () => xlsxNow(miniBook(s, date, shift, now))
     const bytes = page() ?? (await loadZip(), page())
     if (bytes) download(new File([bytes], tr('Mini-KPI') + '-' + week.days[0] + '.xlsx', { type: XLSX_TYPE }))
   }
@@ -1753,12 +1768,15 @@ function MiniKpiView({ k }: { k: Kit }) {
     <>
       <div className="btns">
         <div className="seg" role="group" aria-label={tr('Turno')}>{([1, 2] as const).map((n) => <button key={n} type="button" className={shift === n ? 'on' : ''} aria-pressed={shift === n} onClick={() => setShift(n)}>{tr('Turno {0}', n)}</button>)}</div>
-        <button type="button" className="btn primary" onClick={() => void excel()}>{tr('⬇ Excel del Mini KPI')}</button> <WhatIs id="mini" />
+        <button type="button" className="btn soft" onClick={() => pickDate(addDays(week.days[0], -7))}>{tr('‹ Semana anterior')}</button>
+        <button type="button" className="btn soft" disabled={addDays(week.days[0], 7) > today} onClick={() => pickDate(addDays(week.days[0], 7))}>{tr('Semana siguiente ›')}</button>
+        <button type="button" className="btn primary" disabled={bringing} onClick={() => void excel()}>{bringing ? tr('Trayendo las semanas…') : tr('⬇ Excel del Mini KPI')}</button> <WhatIs id="mini" />
       </div>
-      <p className="hint">{tr('Semana del {0} al {1}. Cambia la fecha del reporte para ver otra semana; se ven los últimos 14 días.', week.days[0], week.days[5])}</p>
+      <p className="hint">{tr('Semana del {0} al {1}. El Excel trae un Resumen con gráficas que compara los días y las últimas {2} semanas.', week.days[0], week.days[5], MINI_WEEKS)}</p>
+      {failed > 0 && <p className="hint red">{tr('No se pudieron traer {0} días del servidor: esas semanas salen vacías en el Excel. Vuelve a abrir esta pestaña cuando haya señal.', failed)}</p>}
       {miniTables(week).map((t) => (
         <article key={t.title} className="wt-rp">
-          <h3>{t.title}</h3>
+          <h3>{t.title} <WhatIs id={t.id} /></h3>
           {t.rows.length ? <div className="scroll"><table className="wt-rp-tbl mini">
             <thead><tr>{t.head.map((h) => <th key={h}>{h}</th>)}</tr></thead>
             <tbody>{t.rows.map((r, i) => <tr key={i}>{r.map((c, j) => <td key={j} className={c.c === 'bad' ? 'red' : c.c === 'warn' ? 'amber' : c.c ?? ''}>{j === 0 ? <b>{c.t}</b> : c.t}</td>)}</tr>)}</tbody>

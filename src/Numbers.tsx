@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useWho } from './App'
 import { tr } from './i18n'
+import { miniGuide } from './miniKpi'
 
 /**
  * What each number means and how it is worked out (Jose, 2026-10-30: "que podamos ver un link para que nos explique la
@@ -16,6 +17,7 @@ export type NumberId = 'duracion' | 'trabajando' | 'parado' | 'setup' | 'causas'
   | 'po-pallets' | 'po-completo' | 'vence' | 'pallet-unido' | 'hold'
   | 'peso-resumen' | 'peso-pruebas' | 'peso-bien' | 'peso-rinde' | 'peso-color' | 'asistencia'
   | 'kpi-horas' | 'kpi-prod' | 'kpi-costco' | 'kpi-mes' | 'mini'
+  | 'mini-arranque' | 'mini-prod' | 'mini-paros' | 'mini-causas' | 'mini-mec' | 'mini-consumo' | 'mini-waste' | 'mini-pesos'
 type Group = 'tiempo' | 'prod' | 'avance' | 'lotes' | 'pedidos' | 'pesos' | 'gente' | 'kpi'
 type Item = { id: NumberId; group: Group; title: string; means: string; math: string; eg?: string }
 
@@ -165,8 +167,9 @@ const items = (): Item[] => [
     eg: tr('Plan 20,000, hecho 12,000 y quedan 8 días: 1,000 por día.') },
   { id: 'mini', group: 'kpi', title: tr('Mini KPI de la semana'),
     means: tr('La semana de un turno, de domingo a viernes, por departamento y por día.'),
-    math: tr('Arranque = la hora en que empezó cada línea (o la primera del cuarto), desde el código o el Set up, como diga Ajustes; rojo pasados los minutos de gracia. Producción = lo hecho contra la meta de ese día × las horas que corrió sin paros: la meta de la línea, y si no tiene, la del cuarto. Paros % = el tiempo parado que cuenta ÷ todo el tiempo que las líneas tuvieron un código. Lo contado en otra medida no entra en el % de producción.'),
+    math: tr('Son 8 tablas, cada una con su explicación aquí abajo. El Excel trae además el Resumen, que compara la semana con la anterior y con las últimas 4 en gráficas.'),
     eg: tr('Meta 12 por hora, 1 hora corriendo y 6 mezclas = 6 de 12, 50%.') },
+  ...miniGuide().map((x) => ({ ...x, group: 'kpi' as const, title: tr('Mini KPI · {0}', x.title) })),
 ]
 
 function NumbersDialog({ start, onClose }: { start?: NumberId; onClose: () => void }) {

@@ -5948,6 +5948,59 @@ section('Mini KPI de Santiago (Jose, 2026-10-31): la semana de un turno, de domi
     eq('una corrida olvidada se cierra en su último registro, no ahora', st().runs.find((r) => r.id === ab.id).endedAt, new Date(D2 + 'T18:30:00').getTime())
   })
 }
+section('Mini KPI: el Resumen del Excel compara los días y las últimas semanas con gráficas (Jose, 2026-11-01)')
+{
+  const g = await device('mini-summary', { user: 'Jose' })
+  await g.use(async (m) => {
+    const st = () => m.store.get()
+    const at = (d, h) => { clock = new Date(d + 'T' + h + ':00').getTime() }
+    localStorage.setItem('act_role', 'mgr')
+    m.addLine('RTE', 'Línea 1'); m.addLine('RTE', 'Línea 2')
+    const l1 = st().lines.find((l) => l.name === 'Línea 1'), l2 = st().lines.find((l) => l.name === 'Línea 2')
+    const W1 = '2026-10-12', W2 = '2026-10-19'
+    at(W1, '10:00'); m.setLineShiftGoal(l1, 2, 1000, null)
+    const shift = (line, d, made, stopMin = 0) => {
+      at(d, '15:45'); m.startRun(line, 'A1', '6200', d, 500)
+      const id = st().runs.find((r) => r.lineId === line.id && !r.endedAt).id
+      at(d, '16:45'); m.addUnit(id, { at: clock, qty: made })
+      if (stopMin) { m.startStop('RTE', line.id, 'Mecánico', ''); clock += stopMin * M; m.endStop(st().stops.find((x) => !x.endedAt).id) }
+      m.endRun(id, false)
+    }
+    shift(l1, W1, 800)            // 800 of 1000
+    shift(l2, W1, 300)            // no goal: said apart, out of the %
+    shift(l1, W2, 1100, 30)       // 1100 of 1000, and half an hour stopped
+    at(W2, '20:00')
+    const r = (w, tit, dep) => m.miniTables(w).find((x) => x.title.startsWith(tit)).rows.find((c) => c[0].t.startsWith(dep))
+    const w1 = m.miniWeek(st(), W1, 2, clock)
+    eq('una línea sin meta no se pierde: va aparte y fuera del %', r(w1, 'Producción', 'RTE')[2].t, '800 / 1,000 · 80% + 300 sin meta')
+    // a day with no goal must not lift the week: only the days with a goal are compared
+    at(W2, '20:30')
+    const w2 = m.miniWeek(st(), W2, 2, clock)
+    eq('las semanas: de domingo, la del reporte al final', m.miniSundays(W2), ['2026-09-27', '2026-10-04', '2026-10-11', '2026-10-18'])
+    eq('los días a traer son 4 semanas de 6 días', [m.miniSpan(W2).length, m.miniSpan(W2)[0], m.miniSpan(W2)[23]], [24, '2026-09-27', '2026-10-23'])
+    const book = m.miniBook(st(), W2, 2, clock), sum = book[0], text = sum.rows.flat().map((c) => m.cellText(c))
+    eq('tres hojas, primero el Resumen', book.map((x) => x.name), ['Resumen', 'Mini KPI', 'Qué significa'])
+    eq('seis gráficas: 2 de días (líneas) y 4 de semanas (columnas)', sum.charts.map((c) => c.kind), ['line', 'line', 'col', 'col', 'col', 'col'])
+    const rowOf = (first, n = 0) => sum.rows.filter((x) => m.cellText(x[0]) === first)[n]
+    const room = rowOf('RTE')
+    eq('la semana contra la pasada: 110%, 30 puntos arriba, en verde', [room[2].v, m.cellText(room[3]), room[3].s === m.X.wPg], [1.1, '▲ +30 pts', true])
+    eq('los paros subieron: en rojo (subir es lo malo)', [Math.round(room[4].v * 1000) / 10, m.cellText(room[5]).startsWith('▲ +'), room[5].s === m.X.wPr], [33.3, true, true])
+    eq('el resumen en palabras', text.some((x) => x.includes('Cumplió la meta: RTE.') && x.includes('Paros sobre 15%: RTE.') && x.includes('Arrancó tarde: RTE.')), true)
+    // each chart reads its own table
+    for (const c of sum.charts) eq('la gráfica "' + c.title + '" lee su tabla: su título encabeza las columnas', [m.cellText(sum.rows[c.from - 2][0]), c.to - c.from + 1 === (c.kind === 'line' ? 6 : 5)], [c.title, true])
+    const day = sum.charts[0], mon = sum.rows[day.from], sun = sum.rows[day.from - 1]
+    eq('un día sin dato queda vacío, no en cero (si no, la línea caería a 0)', [m.cellText(sun[2]), mon[2].v, mon[6].v], ['', 1.1, 1])
+    const wk = sum.charts[2], rte = sum.rows[wk.from]
+    eq('las semanas de % de la meta: RTE 80% y luego 110%; las de antes vacías', [m.cellText(rte[0]), rte.slice(1, 5).map((c) => (c.v == null ? null : Math.round(c.v * 100) / 100))], ['RTE', [null, null, 0.8, 1.1]])
+    const z = await m.loadZip(), files = z.unzipSync(await m.xlsxBytes(book))
+    const part = (f) => z.strFromU8(files[f] ?? new Uint8Array())
+    eq('el archivo lleva las 6 gráficas, cada una declarada y enlazada', [Object.keys(files).filter((f) => f.startsWith('xl/charts/')).length, (part('[Content_Types].xml').match(/drawingml\.chart\+xml/g) ?? []).length, (part('xl/drawings/_rels/drawing1.xml.rels').match(/<Relationship /g) ?? []).length, (part('xl/drawings/drawing1.xml').match(/<xdr:twoCellAnchor>/g) ?? []).length], [6, 6, 6, 6])
+    eq('la de líneas: con huecos, y la meta punteada sin puntos', [part('xl/charts/chart1.xml').includes('<c:lineChart>'), part('xl/charts/chart1.xml').includes('<c:dispBlanksAs val="gap"/>'), part('xl/charts/chart1.xml').includes('<a:prstDash val="dash"/>')], [true, true, true])
+    eq('la de semanas: solo la última semana lleva el número', (part('xl/charts/chart1_3.xml').match(/<c:dLbls>/g) ?? []).length, 1)
+    eq('la celda vacía de una tabla no lleva texto', part('xl/worksheets/sheet1.xml').includes('<is><t xml:space="preserve"></t></is>'), false)
+    eq('la explicación: las 8 tablas, en el Excel y en la ventana', [m.miniGuide().length, m.miniTables(w2).every((t) => m.miniGuide().some((g) => g.id === t.id)), book[2].rows.length], [8, true, 11])
+  })
+}
 section('Reglas de paros por turno (Santiago por Jose, 2026-10-31: no Break, solo Lunch de 30 min; Otra bloqueada; nombre del mecánico; por ahora Turno 2)')
 {
   const g = await device('stop-rules', { user: 'Op' })
