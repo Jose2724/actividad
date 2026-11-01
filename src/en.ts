@@ -3362,7 +3362,6 @@ export const EN: Record<string, string> = {
   "De otro cuarto": "From another room",
   "Lista de empleados": "Employee list",
   "Vacía": "Empty",
-  "Con la lista cargada, los supervisores tocan el nombre en la asistencia en vez de escribirlo. Si alguien no está, lo pueden seguir escribiendo.": "With the list loaded, supervisors tap the name in the attendance instead of typing it. Someone who is not on it can still be typed.",
   "Es el cuarto": "It is the room",
   "Ninguno": "None",
   "supervisor o líder": "supervisor or lead",
@@ -3377,4 +3376,6 @@ export const EN: Record<string, string> = {
   "📋 Pegar la lista": "📋 Paste the list",
   "Toca a quien vino · {0} en la lista": "Tap who came · {0} on the list",
   "Sin área, no se guardan: {0}": "No area, not saved: {0}",
+  "Tocar los nombres en la asistencia": "Tap the names in the attendance",
+  "Prendido: los supervisores tocan el nombre en la asistencia en vez de escribirlo, y a quien no esté lo pueden seguir escribiendo. Apagado: la asistencia sigue como siempre y la lista se queda guardada.": "On: supervisors tap the name in the attendance instead of typing it, and someone who is not there can still be typed. Off: the attendance stays as always and the list stays kept.",
 }

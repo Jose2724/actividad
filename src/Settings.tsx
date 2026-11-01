@@ -6,7 +6,7 @@ import { DEPT_LOOK, deptVars } from './look'
 import { Devices } from './DevicesView'
 import { supabase } from './supabase'
 import { syncStore } from './sync'
-import { consumeOn, rosterOf, rosterParse, rosterRoom, setConsumeOn, setRoster } from './store'
+import { consumeOn, rosterOf, rosterOn, rosterParse, rosterRoom, setConsumeOn, setRoster, setRosterOn } from './store'
 import { cartCratesOf, setAllCartCrates, setCartCrates, orderCodesList, setOrderCodes, type OrderCode } from './store'
 import { miniOpts, setMiniOpts, type MiniOpts } from './miniKpi'
 import { attWriteOn, kpiPut, LUNCH_MIN, lunchOf, setAttWriteOn, setLunch, setStopRules } from './store'
@@ -304,7 +304,8 @@ function RosterCard({ s, viewOnly }: { s: State; viewOnly: boolean }) {
   return (
     <div className="setcard">
       <div className="sethead"><h3>{tr('Lista de empleados')}</h3><span className={'rc-state' + (r.people.length ? ' on' : '')}>{r.people.length ? howMany(r.people.length) : tr('Vacía')}</span></div>
-      <p className="hint">{tr('Con la lista cargada, los supervisores tocan el nombre en la asistencia en vez de escribirlo. Si alguien no está, lo pueden seguir escribiendo.')}</p>
+      <label className="switch"><span>{tr('Tocar los nombres en la asistencia')}</span><input type="checkbox" role="switch" checked={rosterOn(s)} disabled={viewOnly} onChange={(e) => setRosterOn(e.target.checked)} /></label>
+      <p className="hint">{tr('Prendido: los supervisores tocan el nombre en la asistencia en vez de escribirlo, y a quien no esté lo pueden seguir escribiendo. Apagado: la asistencia sigue como siempre y la lista se queda guardada.')}</p>
       <div className="chips">{([1, 2] as const).map((k) => <button key={k} type="button" className={'chip' + (shift === k ? ' on' : '')} onClick={() => setShift(k)}>{tr('Turno {0}', k)}</button>)}</div>
       {codes.map((c) => {
         const mine = r.people.filter((p) => p.code === c).sort((a, b) => a.name.localeCompare(b.name))

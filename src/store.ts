@@ -1203,6 +1203,9 @@ export function rosterOf(s: State, shift: 1 | 2): Roster {
   return { people: Array.isArray(d?.people) ? d.people : [], rooms: d?.rooms && typeof d.rooms === 'object' ? d.rooms : {} }
 }
 export const setRoster = (shift: 1 | 2, r: Roster) => kpiPut(ROSTER_KEY + shift, r)
+/** a switch in Ajustes, off until Jose turns it on (2026-11-01: the floor is writing the attendance and must not be surprised); off, the list stays kept and the window is as always */
+export const rosterOn = (s: State) => !!kpiGet(s, 'roster-on')?.data.on
+export const setRosterOn = (on: boolean) => kpiPut('roster-on', { on })
 export const rosterRoom = (r: Roster, code: string): Dept | '' => r.rooms[code] ?? rosterGuess(code)
 const ROSTER_CODE = /^[a-z]+\s*([12])\s*-\s*[a-z]+$/i
 /** the plant's list as pasted from Excel: a line per person, the columns by tabs; a line with no area of a shift is told back, not guessed */
@@ -1229,7 +1232,7 @@ export function attPeople(s: State, date: string, dept: Dept, shift: 1 | 2, type
   const want = plain(typed.trim())
   const left = r.people.filter((p) => !here.has(attKey(p.name)) && (!want || plain(p.name).includes(want))).sort((a, b) => a.name.localeCompare(b.name))
   const tag = (p: RosterPerson) => ({ ...p, in: where.get(attKey(p.name)) ?? ('' as Dept | '') })
-  return { mine: left.filter((p) => rosterRoom(r, p.code) === dept).map(tag), others: want ? left.filter((p) => rosterRoom(r, p.code) !== dept).map(tag) : [], loaded: r.people.length > 0 }
+  return { mine: left.filter((p) => rosterRoom(r, p.code) === dept).map(tag), others: want ? left.filter((p) => rosterRoom(r, p.code) !== dept).map(tag) : [], loaded: rosterOn(s) && r.people.length > 0 }
 }
 // ---- weight tests (2026-10-22: "botones en RTE para que los operadores registren la que está baja y subida de weight") ----
 /**
