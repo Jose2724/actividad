@@ -33,10 +33,11 @@ export type Cell = string | number | null | undefined | { v: number; s: number; 
  * kind 'line' (the week's summary, 2026-11-01): a line with dots per series, a day with no value left as a gap.
  * What the summary needs of its own: left (the column it starts at, cols being the one it ends at), fmt (a number format;
  * unlike pct the values may pass 100%), colors (one per series), labels (which series write their values on the marks)
- * and refs (series that are a target, not data: a grey dashed line with no dots).
+ * and refs (series that are a target, not data: a grey dashed line with no dots). stack (2026-11-01): columns one on
+ * top of the other, the parts of a whole.
  */
 export type Chart = { title: string; series: string | string[]; cat: number; val: number | number[]; from: number; to: number; at: number; pct?: boolean; kind?: 'bar' | 'col' | 'line'; cols?: number; height?: number
-  left?: number; fmt?: string; colors?: string[]; labels?: 'all' | 'last' | 'none'; refs?: number[] }
+  left?: number; fmt?: string; colors?: string[]; labels?: 'all' | 'last' | 'first' | 'none'; refs?: number[]; stack?: boolean }
 export type Sheet = { name: string; rows: Cell[][]; chart?: Chart; charts?: Chart[]; freeze?: number
   /** a report to read (the weights Excel, 2026-10-30): no grid, its own column widths, row heights (by row, from 0), merged cells ("A1:P1"), and printed lying down on one page wide */
   page?: { widths: number[]; heights: Record<number, number>; merges: string[] } }
@@ -110,14 +111,14 @@ function chartXml(sh: Sheet, c: Chart, name: string): string {
     const fill = one ? '' : `<c:spPr><a:solidFill><a:srgbClr val="${color}"/></a:solidFill></c:spPr>`
     const stroke = `<c:spPr><a:ln w="${isRef ? 15875 : 28575}" cap="rnd"><a:solidFill><a:srgbClr val="${color}"/></a:solidFill>${isRef ? '<a:prstDash val="dash"/>' : ''}<a:round/></a:ln></c:spPr>`
     const dot = isRef ? '<c:marker><c:symbol val="none"/></c:marker>' : `<c:marker><c:symbol val="circle"/><c:size val="7"/><c:spPr><a:solidFill><a:srgbClr val="${color}"/></a:solidFill><a:ln w="9525"><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill></a:ln></c:spPr></c:marker>`
-    const labels = c.labels === 'none' || (c.labels === 'last' && k < vals.length - 1) ? '' : `<c:dLbls><c:numFmt formatCode="${fmt}" sourceLinked="0"/><c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr><c:showLegendKey val="0"/><c:showVal val="1"/><c:showCatName val="0"/><c:showSerName val="0"/><c:showPercent val="0"/><c:showBubbleSize val="0"/></c:dLbls>`
+    const labels = c.labels === 'none' || (c.labels === 'last' && k < vals.length - 1) || (c.labels === 'first' && k > 0) ? '' : `<c:dLbls><c:numFmt formatCode="${fmt}" sourceLinked="0"/><c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr><c:showLegendKey val="0"/><c:showVal val="1"/><c:showCatName val="0"/><c:showSerName val="0"/><c:showPercent val="0"/><c:showBubbleSize val="0"/></c:dLbls>`
     const data = `<c:cat><c:strRef><c:f>${esc(ref(c.cat))}</c:f><c:strCache><c:ptCount val="${rows.length}"/>${cats}</c:strCache></c:strRef></c:cat><c:val><c:numRef><c:f>${esc(ref(v))}</c:f><c:numCache><c:formatCode>${fmt}</c:formatCode><c:ptCount val="${rows.length}"/>${pts}</c:numCache></c:numRef></c:val>`
     const opens = `<c:ser><c:idx val="${k}"/><c:order val="${k}"/><c:tx><c:v>${esc(names[k] ?? '')}</c:v></c:tx>`
     return line ? `${opens}${stroke}${dot}${labels}${data}<c:smooth val="0"/></c:ser>` : `${opens}${fill}<c:invertIfNegative val="0"/>${labels}${data}</c:ser>`
   }).join('')
   const plot = line
     ? `<c:lineChart><c:grouping val="standard"/><c:varyColors val="0"/>${sers}<c:marker val="1"/><c:axId val="500000001"/><c:axId val="500000002"/></c:lineChart>`
-    : `<c:barChart><c:barDir val="${col ? 'col' : 'bar'}"/><c:grouping val="clustered"/><c:varyColors val="${one ? 1 : 0}"/>${sers}<c:gapWidth val="${vals.length > 1 ? 80 : 60}"/>${vals.length > 1 ? '<c:overlap val="-10"/>' : ''}<c:axId val="500000001"/><c:axId val="500000002"/></c:barChart>`
+    : `<c:barChart><c:barDir val="${col ? 'col' : 'bar'}"/><c:grouping val="${c.stack ? 'stacked' : 'clustered'}"/><c:varyColors val="${one ? 1 : 0}"/>${sers}<c:gapWidth val="${vals.length > 1 ? 80 : 60}"/>${c.stack ? '<c:overlap val="100"/>' : vals.length > 1 ? '<c:overlap val="-10"/>' : ''}<c:axId val="500000001"/><c:axId val="500000002"/></c:barChart>`
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><c:roundedCorners val="0"/><c:chart><c:title><c:tx><c:rich><a:bodyPr/><a:p><a:r><a:rPr b="1"><a:solidFill><a:srgbClr val="581447"/></a:solidFill></a:rPr><a:t>${esc(c.title)}</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title><c:autoTitleDeleted val="0"/><c:plotArea><c:layout/>${plot}<c:catAx><c:axId val="500000001"/><c:scaling><c:orientation val="${col ? 'minMax' : 'maxMin'}"/></c:scaling><c:delete val="0"/><c:axPos val="${col ? 'b' : 'l'}"/><c:numFmt formatCode="General" sourceLinked="0"/><c:tickLblPos val="nextTo"/><c:crossAx val="500000002"/><c:crosses val="autoZero"/><c:auto val="1"/><c:lblAlgn val="ctr"/><c:lblOffset val="100"/></c:catAx><c:valAx><c:axId val="500000002"/><c:scaling><c:orientation val="minMax"/>${c.pct ? '<c:max val="1"/><c:min val="0"/>' : c.fmt ? '<c:min val="0"/>' : ''}</c:scaling><c:delete val="0"/><c:axPos val="${col ? 'l' : 'b'}"/><c:majorGridlines><c:spPr><a:ln><a:solidFill><a:srgbClr val="E5E7EB"/></a:solidFill></a:ln></c:spPr></c:majorGridlines><c:numFmt formatCode="${fmt}" sourceLinked="0"/><c:tickLblPos val="nextTo"/><c:crossAx val="500000001"/><c:crosses val="autoZero"/><c:crossBetween val="between"/></c:valAx></c:plotArea><c:legend><c:legendPos val="b"/><c:overlay val="0"/></c:legend><c:plotVisOnly val="1"/>${line ? '<c:dispBlanksAs val="gap"/>' : ''}</c:chart></c:chartSpace>`
 }

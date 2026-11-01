@@ -5980,31 +5980,36 @@ section('Mini KPI: el Resumen del Excel compara los días y las últimas semanas
     eq('los días a traer son 4 semanas de 6 días', [m.miniSpan(W2).length, m.miniSpan(W2)[0], m.miniSpan(W2)[23]], [24, '2026-09-27', '2026-10-23'])
     const book = m.miniBook(st(), W2, 2, clock), sum = book[0], text = sum.rows.flat().map((c) => m.cellText(c))
     eq('el Resumen, una hoja por departamento y la explicación', book.map((x) => x.name), ['Resumen', 'Kitchen', 'Spiral', 'RTE', 'MFO', 'Packing', 'Qué significa'])
-    eq('seis gráficas: 2 de días (líneas) y 4 de semanas (columnas)', sum.charts.map((c) => c.kind), ['line', 'line', 'col', 'col', 'col', 'col'])
+    eq('diez gráficas: 2 de días (líneas) y las de semanas y cuartos (columnas)', sum.charts.map((c) => c.kind), ['line', 'line', 'col', 'col', 'col', 'col', 'col', 'col', 'col', 'col'])
     const rowOf = (first, n = 0) => sum.rows.filter((x) => m.cellText(x[0]) === first)[n]
     const room = rowOf('RTE')
     eq('la semana contra la pasada: 110%, 30 puntos arriba, en verde', [room[2].v, m.cellText(room[3]), room[3].s === m.X.wPg], [1.1, '▲ +30 pts', true])
     eq('los paros subieron: en rojo (subir es lo malo)', [Math.round(room[4].v * 1000) / 10, m.cellText(room[5]).startsWith('▲ +'), room[5].s === m.X.wPr], [33.3, true, true])
     eq('el resumen en palabras', text.some((x) => x.includes('Cumplió la meta: RTE.') && x.includes('Paros sobre 15%: RTE.') && x.includes('Arrancó tarde: RTE.')), true)
     // each chart reads its own table
-    for (const c of sum.charts) eq('la gráfica "' + c.title + '" lee su tabla: su título encabeza las columnas', [m.cellText(sum.rows[c.from - 2][0]), c.to - c.from + 1 === (c.kind === 'line' ? 6 : 5)], [c.title, true])
+    for (const c of sum.charts.slice(0, 8)) eq('la gráfica "' + c.title + '" lee su tabla: su título encabeza las columnas', [m.cellText(sum.rows[c.from - 2][0]), c.to - c.from + 1 === (c.kind === 'line' ? 6 : 5)], [c.title, true])
     const day = sum.charts[0], mon = sum.rows[day.from], sun = sum.rows[day.from - 1]
     eq('un día sin dato queda vacío, no en cero (si no, la línea caería a 0)', [m.cellText(sun[2]), mon[2].v, mon[6].v], ['', 1.1, 1])
     const wk = sum.charts[2], rte = sum.rows[wk.from]
     eq('las semanas de % de la meta: RTE 80% y luego 110%; las de antes vacías', [m.cellText(rte[0]), rte.slice(1, 5).map((c) => (c.v == null ? null : Math.round(c.v * 100) / 100))], ['RTE', [null, null, 0.8, 1.1]])
     const z = await m.loadZip(), files = z.unzipSync(await m.xlsxBytes(book))
     const part = (f) => z.strFromU8(files[f] ?? new Uint8Array())
-    eq('el archivo lleva las 6 gráficas, cada una declarada y enlazada', [Object.keys(files).filter((f) => f.startsWith('xl/charts/')).length - 20, (part('[Content_Types].xml').match(/drawingml\.chart\+xml/g) ?? []).length - 20, (part('xl/drawings/_rels/drawing1.xml.rels').match(/<Relationship /g) ?? []).length, (part('xl/drawings/drawing1.xml').match(/<xdr:twoCellAnchor>/g) ?? []).length], [6, 6, 6, 6])
+    eq('el archivo lleva las 6 gráficas, cada una declarada y enlazada', [Object.keys(files).filter((f) => f.startsWith('xl/charts/')).length - 30, (part('[Content_Types].xml').match(/drawingml\.chart\+xml/g) ?? []).length - 30, (part('xl/drawings/_rels/drawing1.xml.rels').match(/<Relationship /g) ?? []).length, (part('xl/drawings/drawing1.xml').match(/<xdr:twoCellAnchor>/g) ?? []).length], [10, 10, 10, 10])
     eq('la de líneas: con huecos, y la meta punteada sin puntos', [part('xl/charts/chart1.xml').includes('<c:lineChart>'), part('xl/charts/chart1.xml').includes('<c:dispBlanksAs val="gap"/>'), part('xl/charts/chart1.xml').includes('<a:prstDash val="dash"/>')], [true, true, true])
     eq('la de semanas: solo la última semana lleva el número', (part('xl/charts/chart1_3.xml').match(/<c:dLbls>/g) ?? []).length, 1)
     eq('la celda vacía de una tabla no lleva texto', part('xl/worksheets/sheet1.xml').includes('<is><t xml:space="preserve"></t></is>'), false)
-    eq('la explicación: las 9 tablas, en el Excel y en la ventana', [m.miniGuide().length, m.miniTables(w2).every((t) => m.miniGuide().some((g) => g.id === t.id)), book[book.length - 1].rows.length], [9, true, 12])
+    eq('la explicación: las 9 tablas, en el Excel y en la ventana', [m.miniGuide().length, m.miniTables(w2).every((t) => m.miniGuide().some((g) => g.id === t.id)), book[book.length - 1].rows.length], [10, true, 13])
     // each room on its own sheet (Santiago, 2026-11-01)
     const hoja = book.find((x) => x.name === 'RTE'), dias = hoja.charts[0], lunes = hoja.rows[dias.from], semana = hoja.rows[dias.to]
-    eq('cada hoja de cuarto lleva 4 gráficas, y la del día lee su propia tabla', [hoja.charts.map((c) => c.kind), m.cellText(hoja.rows[dias.from - 2][0]), dias.to - dias.from + 1, m.cellText(semana[0])], [['line', 'line', 'col', 'col'], 'Día', 6, 'Semana'])
+    eq('cada hoja de cuarto lleva 4 gráficas, y la del día lee su propia tabla', [hoja.charts.map((c) => c.kind), m.cellText(hoja.rows[dias.from - 2][0]), dias.to - dias.from + 1, m.cellText(semana[0])], [['line', 'line', 'col', 'col', 'col', 'col'], 'Día', 6, 'Semana'])
     eq('el lunes de RTE: 1100 hechos, meta 1000, 110%', [lunes[3].v, lunes[4].v, Math.round(lunes[5].v * 100) / 100], [1100, 1000, 1.1])
     eq('la hoja de un cuarto solo trae lo suyo', book.find((x) => x.name === 'Kitchen').rows.flat().map((c) => m.cellText(c)).includes('RTE'), false)
-    eq('las horas de la meta y del límite no se ven pero están para la línea de la gráfica', [lunes[14].s === m.X.wHide, lunes[14].v, lunes[15].v], [true, 1, 0.15])
+    eq('las horas de la meta y del límite no se ven pero están para la línea de la gráfica', [lunes[16].s === m.X.wHide, lunes[16].v, lunes[17].v], [true, 1, 0.15])
+    // worked and stopped (Santiago, 2026-11-01): the parts add up to all the time the lines had a code
+    eq('el lunes de RTE: 1 hora trabajada y media parada, en la hoja de RTE', [lunes[6].v, lunes[7].v, Math.round(lunes[10].v * 1000) / 1000], [1, 0.5, 0.333])
+    const horas = sum.charts.find((c) => c.stack && !c.pct), rteHoras = sum.rows[horas.from - 1 + ['Kitchen', 'RTE'].indexOf('RTE')]
+    eq('en el Resumen, cuarto contra cuarto: las partes dan el total, y los % dan 100', [m.cellText(rteHoras[0]), rteHoras[1].v, rteHoras[2].v, rteHoras[5].v, Math.round((rteHoras[6].v + rteHoras[7].v + rteHoras[8].v + rteHoras[9].v) * 1000) / 1000], ['RTE', 1, 0.5, 1.5, 1])
+    eq('las gráficas de partes van apiladas, con el % hasta 100', [part('xl/charts/chart1_9.xml').includes('<c:grouping val="stacked"/>'), part('xl/charts/chart1_9.xml').includes('<c:overlap val="100"/>'), part('xl/charts/chart1_10.xml').includes('<c:max val="1"/>')], [true, true, true])
   })
 }
 section('Mini KPI con la semana real de Jose (2026-11-01): el domingo de la mañana, el Break, el arranque de Santiago, lo que no se pesó')
@@ -6040,6 +6045,7 @@ section('Mini KPI con la semana real de Jose (2026-11-01): el domingo de la mañ
     m.setMiniOpts({ ...m.miniOpts(st()), lunch: true })
     eq('con Lunch y Break prendido en Ajustes sí cuenta', row('Paros: %')[1].t, Math.round((40 / 113) * 1000) / 10 + '% · 40:00')
     eq('lo que nadie pesó no dice 0 lb', row('Consumo')[1].t, 'Sin pesar → 0 mezclas')
+    eq('las horas del domingo: 1 h 13 trabajada, 10 minutos parada; el Break no entra en ninguna', row('Horas')[1].t, '1.22 h · 0.17 h parado')
   })
 }
 section('Reglas de paros por turno (Santiago por Jose, 2026-10-31: no Break, solo Lunch de 30 min; Otra bloqueada; nombre del mecánico; por ahora Turno 2)')
