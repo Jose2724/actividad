@@ -1327,9 +1327,9 @@ section('Parar: tres causas y "Otra"')
 const qk = await device('qk', { user: 'Nino' })
 qk.use((m) => {
   const st = () => m.store.get()
-  eq('"Parar" ofrece tres causas en cada departamento', m.DEPTS.map((d) => m.CFG[d].quick.length), [3, 3, 3, 3, 3])
-  eq('las de RTE: lo mecánico, el plástico y el break', m.CFG.RTE.quick, ['Problema mecánico', 'Sin plástico', 'Break'])
-  eq('las tres están también en la lista completa, al principio, y "Otra" no es una causa guardada', m.DEPTS.map((d) => [m.CFG[d].reasons.slice(0, 3).join() === m.CFG[d].quick.join(), m.CFG[d].reasons.includes('Otra'), new Set(m.CFG[d].reasons).size === m.CFG[d].reasons.length]), m.DEPTS.map(() => [true, false, true]))
+  eq('"Parar" ofrece cuatro causas en cada departamento: Lunch también (Jose, 2026-11-01)', m.DEPTS.map((d) => m.CFG[d].quick.length), [4, 4, 4, 4, 4])
+  eq('las de RTE: lo mecánico, el plástico, el break y el lunch', m.CFG.RTE.quick, ['Problema mecánico', 'Sin plástico', 'Break', 'Lunch'])
+  eq('las cuatro están también en la lista completa, al principio, y "Otra" no es una causa guardada', m.DEPTS.map((d) => [m.CFG[d].reasons.slice(0, 4).join() === m.CFG[d].quick.join(), m.CFG[d].reasons.includes('Otra'), new Set(m.CFG[d].reasons).size === m.CFG[d].reasons.length]), m.DEPTS.map(() => [true, false, true]))
   eq('una causa escrita a mano que ya es del departamento se guarda con su nombre de siempre', [m.tidyReason('RTE', 'break'), m.tidyReason('RTE', ' SET-UP '), m.tidyReason('RTE', 'setup'), m.tidyReason('RTE', 'sin plastico'), m.tidyReason('RTE', 'LIMPIEZA')], ['Break', 'Set up', 'Set up', 'Sin plástico', 'Limpieza'])
   eq('una que no está en la lista queda como se escribió, sin espacios de más', [m.tidyReason('RTE', '  Se rompió   la banda '), m.tidyReason('RTE', 'Falta de salsa'), m.tidyReason('RTE', ''), m.tidyReason('Kitchen', 'sin plastico')], ['Se rompió la banda', 'Falta de salsa', '', 'sin plastico'])
   clock = T0
