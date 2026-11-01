@@ -5,7 +5,7 @@ import { unitStartLot } from './report'
 import { ConfirmDialog, LotsDialog, NoticeDialog, useCan, useSure, useWho, type SureBox } from './App'
 import { writesIn } from './powers'
 import { HoldButton } from './Holds'
-import { ASK_MANAGER, holdOf, isMechanical, mechanicOf, mechNote, SETUP, stopRulesAt, stopRulesList } from './store'
+import { ASK_MANAGER, closeAtLastRecord, holdOf, lastRecordOf, isMechanical, mechanicOf, mechNote, SETUP, stopRulesAt, stopRulesList } from './store'
 import { CodePicker, codeReady, DetailNeeded, detailHint } from './CodePicker'
 import { reasonCodeOf } from './reasons'
 import { tr } from './i18n'
@@ -140,6 +140,7 @@ export function RunEditor({ s, run, mgr, focusAt, onClose }: { s: State; run: Ru
         <div className="dbtns spread">
           <div className="btns">
             {mgr && <button type="button" className="btn soft" onClick={() => setAdding(true)}>{trx('+ Agregar {0}', cfg.unit.toLowerCase())}</button>}
+            {mgr && !run.endedAt && <button type="button" className="btn soft" onClick={() => { closeAtLastRecord(run.id); onClose() }}>{tr('⏹ Cerrar a las {0} (su último registro)', fmtTime(lastRecordOf(s, run)))}</button>}
             {run.endedAt && <button type="button" className="btn" disabled={lineBusy} title={lineBusy ? tr('La línea ya corre otro código') : ''} onClick={() => { updateRun(run.id, { endedAt: null }); onClose() }}>{tr('Reabrir código')}</button>}
             {can('del') && <button type="button" className="btn danger" onClick={() => setDropping(true)}>{tr('🗑 Borrar corrida')}</button>}
           </div>

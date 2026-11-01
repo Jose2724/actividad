@@ -7,6 +7,7 @@ import { cellText, loadZip, X, xDur, xN, xPct, xTime, xlsxNow, XLSX_TYPE, type C
 import { cookYields, hoursOf, seesLabor, weightsOf, wtCompliance, wtDoneText, wtOfReport, wtSheetRows, wtSheets, wtShift, wtSum, wtBoard, wtRangeLong, wtSummary, wtSummaryBook, type WtAvg, type WtRow } from './kpi'
 import { attendanceOf, attLineText, attMovesText, attOf, attShifts, attStateText } from './store'
 import { byLineName, COOKS, consumesOf, inventoryOf, stepText, weightEdit, weightPaperAdd, weightsFix, weightTarget, wtKindsOf, wtOdd, wtPaperAt, wtPaperLines, wtPicksCode, type Cook, type Dept as RoomDept, type WeightTest, type WtEntry } from './store'
+import { miniSheet, miniTables, miniWeek } from './miniKpi'
 import { pctText } from './Attendance'
 import { buildPdf, loadPdf, type Part } from './pdf'
 import { homeScreenApple, type Kind } from './send'
@@ -36,7 +37,7 @@ import { trx } from './trx'
  */
 
 /** the parts of the report, one tab each */
-type View = 'gen' | 'code' | 'shift' | 'pal' | 'wt' | 'rec' | 'chg'
+type View = 'gen' | 'code' | 'shift' | 'pal' | 'wt' | 'mini' | 'rec' | 'chg'
 /** the three lists of Registros, and the two of Pallets */
 type RecSub = 'runs' | 'units' | 'stops'
 type PalSub = 'pallets' | 'bins'
@@ -113,12 +114,13 @@ const onScreen = (hits: Hit[]) => hits.filter((h) => !(h.kind === 'unit' && h.de
 const none = (v: unknown) => (v === '—' ? 'c-none' : undefined)
 
 /** what each part of the report is called, and what it holds (said under the tabs and in the help) */
-const viewLabel = (v: View) => (v === 'gen' ? tr('General') : v === 'code' ? tr('Por código') : v === 'shift' ? tr('Por turno') : v === 'pal' ? '📦 ' + tr('Pallets') : v === 'wt' ? '⚖ ' + tr('Pesos') : v === 'rec' ? tr('Registros') : tr('Cambios'))
+const viewLabel = (v: View) => (v === 'gen' ? tr('General') : v === 'code' ? tr('Por código') : v === 'shift' ? tr('Por turno') : v === 'pal' ? '📦 ' + tr('Pallets') : v === 'wt' ? '⚖ ' + tr('Pesos') : v === 'mini' ? '📅 ' + tr('Mini KPI') : v === 'rec' ? tr('Registros') : tr('Cambios'))
 const viewSub = (v: View) => (v === 'gen' ? tr('Lo hecho por cada departamento, cada turno y por qué se paró.')
   : v === 'code' ? tr('Cada código con sus lotes, como en el Excel. Toca un código o un lote para ver solo eso; toca lo hecho para ver cada unidad.')
     : v === 'shift' ? tr('Cada departamento con el día completo y cada turno: lo hecho, el reloj y la suma de sus líneas.')
       : v === 'pal' ? tr('Los pallets de Packing uno por uno, con sus lotes, tags y PO, y sus bins aparte.')
         : v === 'wt' ? tr('Lo que se pesó: cada código con sus pruebas hechas de las que tocaban, el promedio contra el objetivo, los bajos y sobre, y cada prueba con sus pesos.')
+        : v === 'mini' ? tr('La semana de un turno, de domingo a viernes: arranque, producción contra la meta, paros, consumo, waste y pesos.')
         : v === 'rec' ? tr('Cada corrida, cada unidad y cada paro: para buscar, ver, corregir o agregar.')
           : tr('Quién corrigió o cambió qué, y a qué hora.'))
 const STOPS_NOTE = () => tr('El Parado de las tarjetas cuenta solo el tiempo parado mientras la línea tenía un código; en Registros › Paros sale cada paro completo.')
@@ -440,7 +442,7 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
   // a room's column in the lists only when more than one room is in view
   const manyRooms = !dept
   // ---- the parts: which ones this person has, and how many things each holds (or how many the search found in it) ----
-  const views: View[] = ['gen', 'code', 'shift', ...(!only || only === 'Packing' ? ['pal' as const] : []), ...(wt.rows.length ? ['wt' as const] : []), 'rec', ...(mgr ? ['chg' as const] : [])]
+  const views: View[] = ['gen', 'code', 'shift', ...(!only || only === 'Packing' ? ['pal' as const] : []), ...(wt.rows.length ? ['wt' as const] : []), ...(mgr ? ['mini' as const] : []), 'rec', ...(mgr ? ['chg' as const] : [])]
   const v: View = views.includes(view) ? view : 'gen'
   const hitCount = (x: View) => (x === 'code' ? hitsOf('code').length : x === 'pal' ? hitsOf('pallet', 'bin').length : x === 'rec' ? hitsOf('unit', 'run', 'stop').length : x === 'chg' ? hitsOf('change').length : null)
   const tabs = views.map((x) => {
@@ -610,7 +612,7 @@ export function Report(props: ReportProps) {
       <div className="rp-sub"><span>{viewSub(v)}</span><button type="button" className="btn sm" onClick={() => setHelp(true)}>ⓘ {tr('Cómo leer este reporte')}</button></div>
       <div id="rp-panel" role="tabpanel" aria-labelledby={'rp-tab-' + v} className="rp-panel">
         {/* (a day, or a filter, with no code but with stops: every part says so and Registros opens on them) */}
-        {v === 'chg' ? <ChangesView k={k} /> : v === 'wt' ? <WeightsView k={k} /> : k.searching && (v === 'gen' || v === 'shift') ? <SearchResults k={k} />
+        {v === 'chg' ? <ChangesView k={k} /> : v === 'wt' ? <WeightsView k={k} /> : v === 'mini' ? <MiniKpiView k={k} /> : k.searching && (v === 'gen' || v === 'shift') ? <SearchResults k={k} />
           : rows.length === 0 ? (v === 'rec' && k.stops.length > 0 ? <RecordsView k={k} /> : <EmptyDay k={k} />)
             : v === 'gen' ? <GeneralView k={k} /> : v === 'code' ? <CodesView k={k} /> : v === 'shift' ? <ShiftsView k={k} /> : v === 'pal' ? <PalletsView k={k} /> : <RecordsView k={k} />}
       </div>
@@ -1734,6 +1736,37 @@ function WeightPaperDialog({ s, date, onClose }: { s: State; date: string; onClo
         </div>
       </div>
     </div>
+  )
+}
+
+/** Santiago's week: the tables of src/miniKpi.ts, of the week the report's date falls in; what they count is chosen in Ajustes › Mini KPI */
+function MiniKpiView({ k }: { k: Kit }) {
+  const { s, date, now } = k
+  const [shift, setShift] = useState<1 | 2>(2)
+  const week = useMemo(() => miniWeek(s, date, shift, now), [s, date, shift])
+  const excel = async () => {
+    const page = () => xlsxNow([miniSheet(week)])
+    const bytes = page() ?? (await loadZip(), page())
+    if (bytes) download(new File([bytes], tr('Mini-KPI') + '-' + week.days[0] + '.xlsx', { type: XLSX_TYPE }))
+  }
+  return (
+    <>
+      <div className="btns">
+        <div className="seg" role="group" aria-label={tr('Turno')}>{([1, 2] as const).map((n) => <button key={n} type="button" className={shift === n ? 'on' : ''} aria-pressed={shift === n} onClick={() => setShift(n)}>{tr('Turno {0}', n)}</button>)}</div>
+        <button type="button" className="btn primary" onClick={() => void excel()}>{tr('⬇ Excel del Mini KPI')}</button> <WhatIs id="mini" />
+      </div>
+      <p className="hint">{tr('Semana del {0} al {1}. Cambia la fecha del reporte para ver otra semana; se ven los últimos 14 días.', week.days[0], week.days[5])}</p>
+      {miniTables(week).map((t) => (
+        <article key={t.title} className="wt-rp">
+          <h3>{t.title}</h3>
+          {t.rows.length ? <div className="scroll"><table className="wt-rp-tbl mini">
+            <thead><tr>{t.head.map((h) => <th key={h}>{h}</th>)}</tr></thead>
+            <tbody>{t.rows.map((r, i) => <tr key={i}>{r.map((c, j) => <td key={j} className={c.c === 'bad' ? 'red' : c.c === 'warn' ? 'amber' : c.c ?? ''}>{j === 0 ? <b>{c.t}</b> : c.t}</td>)}</tr>)}</tbody>
+          </table></div> : <p className="hint">{tr('Nada esta semana')}</p>}
+          {t.note && <p className="hint">{t.note}</p>}
+        </article>
+      ))}
+    </>
   )
 }
 

@@ -15,7 +15,7 @@ export type NumberId = 'duracion' | 'trabajando' | 'parado' | 'setup' | 'causas'
   | 'avance' | 'avance-estado' | 'lote-esperado' | 'lote-perdida' | 'lote-colores' | 'orden'
   | 'po-pallets' | 'po-completo' | 'vence' | 'pallet-unido' | 'hold'
   | 'peso-resumen' | 'peso-pruebas' | 'peso-bien' | 'peso-rinde' | 'peso-color' | 'asistencia'
-  | 'kpi-horas' | 'kpi-prod' | 'kpi-costco' | 'kpi-mes'
+  | 'kpi-horas' | 'kpi-prod' | 'kpi-costco' | 'kpi-mes' | 'mini'
 type Group = 'tiempo' | 'prod' | 'avance' | 'lotes' | 'pedidos' | 'pesos' | 'gente' | 'kpi'
 type Item = { id: NumberId; group: Group; title: string; means: string; math: string; eg?: string }
 
@@ -163,6 +163,10 @@ const items = (): Item[] => [
     means: tr('Cómo va el mes y cuánto hace falta por día para cumplirlo.'),
     math: tr('Plan del mes = la suma de los días planeados. Hecho en el mes = las cajas hasta ese día. Necesario por día = (plan del mes − hecho) ÷ los días planeados que quedan, redondeado hacia arriba. Forecast = lo que dice el planner.'),
     eg: tr('Plan 20,000, hecho 12,000 y quedan 8 días: 1,000 por día.') },
+  { id: 'mini', group: 'kpi', title: tr('Mini KPI de la semana'),
+    means: tr('La semana de un turno, de domingo a viernes, por departamento y por día.'),
+    math: tr('Arranque = la hora en que empezó cada línea (o la primera del cuarto), desde el código o el Set up, como diga Ajustes; rojo pasados los minutos de gracia. Producción = lo hecho contra la meta de ese día × las horas que corrió sin paros: la meta de la línea, y si no tiene, la del cuarto. Paros % = el tiempo parado que cuenta ÷ todo el tiempo que las líneas tuvieron un código. Lo contado en otra medida no entra en el % de producción.'),
+    eg: tr('Meta 12 por hora, 1 hora corriendo y 6 mezclas = 6 de 12, 50%.') },
 ]
 
 function NumbersDialog({ start, onClose }: { start?: NumberId; onClose: () => void }) {

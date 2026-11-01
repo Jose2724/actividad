@@ -33,7 +33,8 @@ export const CFG: Record<Dept, DeptCfg> = {
 /** the words of a run: its room's, or those of a bin when a Packing line fills bins */
 export function cfgOf(r: Pick<Run, 'dept' | 'extra'>): DeptCfg {
   const m = measureOf(r)
-  if (m) return { ...CFG.Spiral, qty: 'ask', qtyQ: m === 'lb' ? tr('¿Cuántas libras lleva esta mezcla?') : tr('¿Cuántas cajas lleva esta mezcla?'), qtyUnit: measureUnit(m), perUnitLabel: '' }
+  // (the button in the run's own word: Jose, 2026-10-31, a line of cases said "Mezcla lista")
+  if (m) return { ...CFG.Spiral, qty: 'ask', done: m === 'lb' ? tr('Libras listas') : tr('Caja lista'), qtyQ: m === 'lb' ? tr('¿Cuántas libras hicieron?') : tr('¿Cuántas cajas hicieron?'), qtyUnit: measureUnit(m), perUnitLabel: '' }
   // MFO: every line fills bins, and each bin says what it holds as the operators type it: platos (the room's usual),
   // copas, or pounds for the products that are weighed. Nothing is turned into cases (Jose, 2026-10-17). A run of
   // before that day has no word: its bins counted cases
@@ -1995,6 +1996,8 @@ export const stopRulesList = (dept: Dept) => CFG[dept].reasons.filter((r) => r !
 export const stopChoices = (s: State, dept: Dept) => { const rules = stopRulesAt(s, dept); return { rules, free: !rules || role.get() !== 'op', reasons: rules ? stopRulesList(dept) : CFG[dept].quick } }
 /** a mechanical stop, as the room's own list words it ("Problema mecánico", "Máquina corta o rompe paquetes (mecánico)") */
 export const isMechanical = (reason: string) => /mec[aá]nico/i.test(reason)
+/** a time of a day of work as a moment: what is past midnight and before the night's change is still that day's */
+export const wallOfDay = (s: State, date: string, hm: string) => wtPaperAt(s, date, hm)
 /** the mechanic goes first in the stop's note, so the report can read it and the detail stays: "Mecánico: Luis · la banda" */
 export const mechNote = (name: string, detail = '') => MECH_TAG + name.trim() + (detail.trim() ? ' · ' + detail.trim() : '')
 export const mechanicOf = (note: string) => (note.startsWith(MECH_TAG) ? note.slice(MECH_TAG.length).split(' · ')[0].trim() : '')
@@ -3404,6 +3407,13 @@ export function restorePurged(purgeId: string, rows: { runs: Row[]; stops: Row[]
   return { runs: runs.length, stops: stops.length }
 }
 /** a run nobody finished is closed at its last record (its last unit, or the moment it was stopped), not at "now" */
+/** when a run last recorded something: where one left open by mistake really ended */
+export const lastRecordOf = (s: State, r: Run) => lastRecord(s, r)
+/**
+ * a run left open by mistake closed where it really ended, its last record, not now (Jose, 2026-10-31: "no quiero que
+ * ese tiempo perdido se calcule en el reporte"; Terminar código would count every hour until now)
+ */
+export function closeAtLastRecord(id: string) { const r = run(id); if (r && !r.endedAt) finishLeft(r) }
 function finishLeft(r: Run) {
   const open = state.stops.filter((x) => !x.endedAt && x.dept === r.dept && x.lineId === r.lineId)
   const end = lastRecord(state, r)
@@ -4552,6 +4562,8 @@ export const targetOf = (s: State, dept: Dept) => s.targets.find((t) => t.dept =
  * card. It travels in act_targets like the room's, under the key "line:<id>".
  */
 const LINE_KEY = 'line:'
+/** the key a line's goal in a shift goes by, here and in the history */
+export const lineGoalKey = (lineId: string, shift: 1 | 2) => LINE_KEY + lineId + '@' + shift
 export const lineTargetOf = (s: State, lineId: string) => s.lineTargets.find((t) => t.lineId === lineId)
 // ---- the goals of each shift ----
 /**

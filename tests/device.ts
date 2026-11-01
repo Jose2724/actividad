@@ -2,6 +2,7 @@
 // several times (each load is a separate tablet with its own memory).
 export * from '../src/store'
 export * from '../src/kpi'
+export * from '../src/miniKpi'
 export * from '../src/avance'
 export * from '../src/outbox'
 export * from '../src/reasons'

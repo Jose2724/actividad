@@ -8,6 +8,7 @@ import { supabase } from './supabase'
 import { syncStore } from './sync'
 import { consumeOn, setConsumeOn } from './store'
 import { cartCratesOf, setAllCartCrates, setCartCrates, orderCodesList, setOrderCodes, type OrderCode } from './store'
+import { miniOpts, setMiniOpts, type MiniOpts } from './miniKpi'
 import { attWriteOn, kpiPut, LUNCH_MIN, lunchOf, setAttWriteOn, setLunch, setStopRules } from './store'
 import { laborAccess, seesLabor } from './kpi'
 import { lbCaseOn, loadQaLbPerCase, QA_LB_PER_CASE, setLbCaseOn, normCode } from './store'
@@ -26,7 +27,7 @@ import { trx } from './trx'
  * powers allow; the last one, this device, is everybody's. The dialogs that do the work are the same ones the floor
  * and the report already use, so one rule holds everywhere.
  */
-export type SettingsKey = 'shifts' | 'day' | 'lines' | 'stops' | 'program' | 'attendance' | 'weights' | 'kpi' | 'consumo' | 'products' | 'goals' | 'people' | 'devices' | 'device'
+export type SettingsKey = 'shifts' | 'day' | 'lines' | 'stops' | 'mini' | 'program' | 'attendance' | 'weights' | 'kpi' | 'consumo' | 'products' | 'goals' | 'people' | 'devices' | 'device'
 const fmtN = (x: number) => Math.round(x).toLocaleString('en-US')
 
 export function settingsSections(can: (p: 'shifts' | 'day' | 'products' | 'goals' | 'people') => boolean, mgr: boolean, viewOnly: boolean, admin = false, attOn = false): { key: SettingsKey; title: string; sub: string }[] {
@@ -37,6 +38,7 @@ export function settingsSections(can: (p: 'shifts' | 'day' | 'products' | 'goals
     // (whoever only looks sees the list and whether it is on, without the switch)
     ...(mgr ? [{ key: 'stops' as const, title: tr('Paros'), sub: tr('reglas por turno y Reason Codes') }] : []),
     ...(mgr ? [{ key: 'kpi' as const, title: tr('KPI'), sub: tr('pesos: qué códigos, cada cuánto, cuántos y el objetivo') }] : []),
+    ...(mgr ? [{ key: 'mini' as const, title: tr('Mini KPI'), sub: tr('arranque, paros y medidas de la semana') }] : []),
     ...(mgr ? [{ key: 'weights' as const, title: tr('Ritmo mínimo'), sub: tr('cuándo una línea va lenta') }] : []),
     ...(mgr ? [{ key: 'consumo' as const, title: tr('Consumo'), sub: tr('pesar lo que entra antes de empezar') }] : []),
     ...(mgr && (admin || attOn) ? [{ key: 'attendance' as const, title: tr('Asistencia'), sub: tr('personas esperadas por cuarto y turno') }] : []),
@@ -62,6 +64,7 @@ export function Settings({ s, now, day, name, home, mgr, admin, viewOnly, meId, 
         {sec === 'shifts' && <ShiftsSettings s={s} day={day} />}
         {sec === 'day' && <DaySettings s={s} now={now} day={day} />}
         {sec === 'lines' && <LinesSettings s={s} />}
+        {sec === 'mini' && <MiniSettings s={s} viewOnly={viewOnly} />}
         {sec === 'stops' && <StopRulesSettings s={s} viewOnly={viewOnly} />}
         {sec === 'stops' && <StopCodesSettings s={s} viewOnly={viewOnly} />}
         {sec === 'program' && <><ProgramViewSettings s={s} /><ViewOptSettings s={s} name="lotes" /><ViewOptSettings s={s} name="flujo" /></>}
@@ -439,6 +442,40 @@ function ProgramViewSettings({ s }: { s: State }) {
         <p className="hint">{tr('Prendido: la ven todos: los managers y la oficina con todos los cuartos, cada operador con el suyo.')}</p>
       </div>
       {asking && <ConfirmDialog title={tr('¿Que todos vean el Programa del día?')} text={tr('Desde ahora la pestaña Programa sale en todas las tablets y computadoras. Se puede apagar aquí mismo cuando quieras.')} yes={tr('Prender para todos')} onYes={() => { setProgramView(true); setAsking(false) }} onNo={() => setAsking(false)} />}
+    </>
+  )
+}
+
+/** what the mini KPI counts, chosen here so no reading of it has to be programmed again (Jose, 2026-10-31) */
+function MiniSettings({ s, viewOnly }: { s: State; viewOnly: boolean }) {
+  const o = miniOpts(s), put = (p: Partial<MiniOpts>) => setMiniOpts({ ...o, ...p })
+  const choice = <K extends keyof MiniOpts>(key: K, label: string, opts: [MiniOpts[K], string][]) => (
+    <label className="minirow"><span>{label}</span><select value={String(o[key])} disabled={viewOnly} onChange={(e) => put({ [key]: e.target.value } as Partial<MiniOpts>)}>{opts.map(([v, t]) => <option key={String(v)} value={String(v)}>{t}</option>)}</select></label>
+  )
+  const check = (key: 'setup' | 'clean' | 'lunch', label: string) => <label className="switch"><span>{label}</span><input type="checkbox" role="switch" checked={o[key]} disabled={viewOnly} onChange={(e) => put({ [key]: e.target.checked })} /></label>
+  const num = (key: 'grace' | 'limit', label: string) => <label className="minirow"><span>{label}</span><input inputMode="numeric" value={o[key]} disabled={viewOnly} onChange={(e) => put({ [key]: Number(e.target.value.replace(/\D/g, '')) || 0 })} /></label>
+  return (
+    <>
+      <div className="setcard">
+        <div className="sethead"><h3>{tr('Arranque')}</h3></div>
+        {choice('from', tr('Se cuenta desde'), [['code', tr('Que empieza el código')], ['setup', tr('Que empieza el Set up')]])}
+        {choice('by', tr('En cada cuarto'), [['line', tr('Promedio de sus líneas')], ['room', tr('Solo la primera línea')]])}
+        {num('grace', tr('Minutos antes de salir en rojo'))}
+      </div>
+      <div className="setcard">
+        <div className="sethead"><h3>{tr('Paros')}</h3></div>
+        {num('limit', tr('Rojo cuando pase de este %'))}
+        {check('clean', tr('Limpieza cuenta como paro'))}
+        {check('setup', tr('Set up cuenta como paro'))}
+        {check('lunch', tr('Lunch cuenta como paro'))}
+        <p className="hint">{tr('Mecánico, No personal y las demás razones siempre cuentan.')}</p>
+      </div>
+      <div className="setcard">
+        <div className="sethead"><h3>{tr('Consumo')}</h3></div>
+        {choice('inUnit', tr('Lo que entra se ve en'), [['lb', tr('Libras')], ['kg', tr('Kilos')], ['oz', tr('Onzas')]])}
+        {choice('outUnit', tr('Lo que sale se ve en'), [['mezclas', tr('Mezclas')], ['lb', tr('Libras')], ['cajas', tr('Cajas')]])}
+        <p className="hint">{tr('Lo que entra se pesa en libras y aquí solo cambia cómo se ve. Lo que sale muestra lo que se registró en esa medida: si una línea contó en cajas, sale en Cajas y no en Mezclas.')}</p>
+      </div>
     </>
   )
 }

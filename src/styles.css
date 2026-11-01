@@ -632,6 +632,8 @@ table.pallets th.num,table.pallets td.num{text-align:right;font-variant-numeric:
 .chip.setupchip.on{background:#b26a00;border-color:#b26a00;color:#fff}
 .setuphint{color:var(--amber);font-size:14px}
 .chip.askchip{background:#ede9fe;border-color:#7c3aed;color:#4c1d95}.chip.askchip.on{background:#6d28d9;border-color:#6d28d9;color:#fff}
+.minirow{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;font-weight:600}.minirow select,.minirow input{min-height:42px;font-size:16px;min-width:190px}.minirow input{width:90px;min-width:90px}
+.wt-rp-tbl.mini td{white-space:nowrap}.wt-rp-tbl.mini td.ok{background:#dcfce7;color:#15803d}.wt-rp-tbl.mini td.red{background:#fde2e1;color:#b91c1c}.wt-rp-tbl.mini td.amber{background:#fef3c7;color:#b45309}
 .lunchover{margin-left:8px;padding:2px 8px;border-radius:8px;background:#b91c1c;color:#fff;font-size:13px}
 .stopwait{display:flex;flex-wrap:wrap;align-items:center;gap:8px;background:#ede9fe;color:#4c1d95;border:1.5px solid #7c3aed;border-radius:12px;padding:10px 14px}
 .tile small.both{white-space:normal;line-height:1.2}
