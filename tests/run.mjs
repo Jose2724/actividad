@@ -6012,6 +6012,43 @@ section('Mini KPI: el Resumen del Excel compara los días y las últimas semanas
     eq('las partes van una al lado de otra (Jose, 2026-11-01), cada una con su número, sin decir 0, y a todo lo ancho', [part('xl/charts/chart1_9.xml').includes('<c:grouping val="clustered"/>'), (part('xl/charts/chart1_9.xml').match(/<c:dLbls>/g) ?? []).length, part('xl/charts/chart1_9.xml').includes('formatCode="0.0;;"'), part('xl/charts/chart1_10.xml').includes('<c:max val="1"/>'), horas.cols], [true, 4, true, true, 11])
   })
 }
+section('La lista de empleados: la asistencia se toca, no se escribe (Santiago por Jose, 2026-11-01)')
+{
+  const g = await device('roster', { user: 'Jose' })
+  g.use((m) => {
+    const st = () => m.store.get()
+    localStorage.setItem('act_role', 'mgr')
+    // every name here is made up
+    const pegado = ['Employee Name\tJob Title\tDepartment\tProduction Code', 'Ana Uno\tProduction Associate I 6B\tProduction\tRTE2-ER', 'Beto Dos\tSupervisor, Production 5A\tProduction\tRTE2-ER', 'Carla Núñez\tProduction Lead 5A\tProduction\tPack2-ER', 'Dario Cuatro\tProduction Associate I 6B\tProduction\tRaw2-ER', 'Elsa Cinco\tProduction Associate I 6B\tProduction\tProd2-ER', 'Fito Seis\tProduction Associate I 6B\tProduction\tMFO1-ER', 'Sin Area\tProduction Associate I 6B\tProduction', '', 'Ana Uno\tProduction Associate I 6B\tProduction\tRTE2-ER'].join('\r\n')
+    const p = m.rosterParse(pegado)
+    eq('se lee lo pegado de Excel: sin encabezado ni repetidos, el número del área dice el turno', [p.lists[2].map((x) => x.name), p.lists[1].map((x) => x.name), p.bad], [['Ana Uno', 'Beto Dos', 'Carla Núñez', 'Dario Cuatro', 'Elsa Cinco'], ['Fito Seis'], ['Sin Area']])
+    eq('supervisores y líderes quedan marcados', p.lists[2].filter((x) => x.lead).map((x) => x.name), ['Beto Dos', 'Carla Núñez'])
+    const D = DAY
+    eq('sin lista cargada no hay nada que tocar', m.attPeople(st(), D, 'RTE', 2).loaded, false)
+    m.setRoster(2, { people: p.lists[2], rooms: {} })
+    const nombres = (x) => x.map((y) => y.name)
+    eq('cada cuarto ve a los suyos', [nombres(m.attPeople(st(), D, 'RTE', 2).mine), nombres(m.attPeople(st(), D, 'Packing', 2).mine), nombres(m.attPeople(st(), D, 'Kitchen', 2).mine), nombres(m.attPeople(st(), D, 'Spiral', 2).mine), m.attPeople(st(), D, 'RTE', 1).loaded], [['Ana Uno', 'Beto Dos'], ['Carla Núñez'], ['Dario Cuatro'], ['Elsa Cinco'], false])
+    m.setRoster(2, { people: p.lists[2], rooms: { 'Raw2-ER': 'Spiral', 'Prod2-ER': 'Kitchen' } })
+    eq('el cuarto de cada área se cambia en Ajustes, sin programar', [nombres(m.attPeople(st(), D, 'Kitchen', 2).mine), nombres(m.attPeople(st(), D, 'Spiral', 2).mine)], [['Elsa Cinco'], ['Dario Cuatro']])
+    eq('al escribir también salen los de otro cuarto, sin importar los acentos', [nombres(m.attPeople(st(), D, 'RTE', 2, 'nunez').others), nombres(m.attPeople(st(), D, 'RTE', 2, 'nunez').mine)], [['Carla Núñez'], []])
+    m.attAdd(D, 'RTE', 2, 'Ana Uno')
+    eq('quien ya se tocó sale de la lista de su cuarto', nombres(m.attPeople(st(), D, 'RTE', 2).mine), ['Beto Dos'])
+    m.attAdd(D, 'RTE', 2, 'Carla Núñez')
+    eq('quien ya está en otro cuarto lo dice, para no contarlo dos veces', m.attPeople(st(), D, 'Packing', 2).mine.map((x) => [x.name, x.in]), [['Carla Núñez', 'RTE']])
+    const otro = m.attOf(st(), D, 'RTE', 2).find((x) => x.name === 'Ana Uno')
+    m.attRemove(otro.id, 'casa')
+    eq('quien se fue a su casa no vuelve a la lista: se deshace donde está', nombres(m.attPeople(st(), D, 'RTE', 2).mine), ['Beto Dos'])
+    m.attAdd(D, 'RTE', 2, 'Alguien Nuevo')
+    eq('quien no está en la lista se puede seguir escribiendo', m.attOf(st(), D, 'RTE', 2).some((x) => x.name === 'Alguien Nuevo'), true)
+    eq('la lista de empleados no toca a nadie más', m.rosterOf(st(), 2).people.length, 5)
+    m.setRoster(2, { ...m.rosterOf(st(), 2), people: m.rosterOf(st(), 2).people.filter((x) => x.name !== 'Beto Dos') })
+    eq('quitar a alguien de la lista no quita lo ya anotado, y deja de salir', [nombres(m.attPeople(st(), D, 'RTE', 2).mine), m.attOf(st(), D, 'RTE', 2).length], [[], 3])
+    m.applyRemote('act_changes', { id: 'kpi:roster:1', at: iso(T0 + 70 * M), by_name: 'Oficina', dept: null, what: 'KPI', before: '', after: JSON.stringify({ people: [{ name: 'Gina Siete', code: 'RTE1-ER' }], rooms: {} }), ref_table: 'act_kpi', ref_key: 'roster:1', deleted: false, updated_at: iso(T0 + 70 * M), updated_by: 'Oficina' })
+    eq('la lista que carga otro aparato llega', nombres(m.attPeople(st(), D, 'RTE', 1).mine), ['Gina Siete'])
+  })
+  const back = await device('roster-again', { seed: JSON.parse(disks.get('roster').get('act_v1')), user: 'Op' })
+  eq('al volver a abrir sigue la lista', back.use((m) => m.rosterOf(m.store.get(), 2).people.length), 4)
+}
 section('Mini KPI con la semana real de Jose (2026-11-01): el domingo de la mañana, el Break, el arranque de Santiago, lo que no se pesó')
 {
   const g = await device('mini-real', { user: 'Jose' })

@@ -6,7 +6,7 @@ import { DEPT_LOOK, deptVars } from './look'
 import { Devices } from './DevicesView'
 import { supabase } from './supabase'
 import { syncStore } from './sync'
-import { consumeOn, setConsumeOn } from './store'
+import { consumeOn, rosterOf, rosterParse, rosterRoom, setConsumeOn, setRoster } from './store'
 import { cartCratesOf, setAllCartCrates, setCartCrates, orderCodesList, setOrderCodes, type OrderCode } from './store'
 import { miniOpts, setMiniOpts, type MiniOpts } from './miniKpi'
 import { attWriteOn, kpiPut, LUNCH_MIN, lunchOf, setAttWriteOn, setLunch, setStopRules } from './store'
@@ -281,6 +281,61 @@ function LinesSettings({ s }: { s: State }) {
  * history, as from the attendance window on the floor). The managers and the office write it; "Solo ver" reads it.
  * The plant's number of the shift is the rooms' added up, as the attendance total.
  */
+const howMany = (n: number) => (n === 1 ? tr('1 persona') : tr('{0} personas', n))
+/** the people of each shift (Santiago, 2026-11-01): pasted from the plant's Employee List, kept on the server, tapped in the attendance */
+function RosterCard({ s, viewOnly }: { s: State; viewOnly: boolean }) {
+  const [shift, setShift] = useState<1 | 2>(2)
+  const [text, setText] = useState('')
+  const [pasting, setPasting] = useState(false)
+  const [added, setAdded] = useState('')
+  const [addCode, setAddCode] = useState('')
+  const r = rosterOf(s, shift), codes = [...new Set(r.people.map((p) => p.code))].sort(), parsed = text.trim() ? rosterParse(text) : null
+  const n1 = parsed?.lists[1].length ?? 0, n2 = parsed?.lists[2].length ?? 0
+  const save = () => {
+    if (!parsed) return
+    for (const k of [1, 2] as const) if (parsed.lists[k].length) setRoster(k, { people: parsed.lists[k], rooms: rosterOf(s, k).rooms })
+    setText(''); setPasting(false); setShift(n2 || !n1 ? 2 : 1)
+  }
+  const add = () => {
+    const name = added.replace(/\s+/g, ' ').trim().slice(0, 60), code = addCode || codes[0]
+    if (!name || !code || r.people.some((p) => p.name.toLowerCase() === name.toLowerCase())) return
+    setRoster(shift, { ...r, people: [...r.people, { name, code }] }); setAdded('')
+  }
+  return (
+    <div className="setcard">
+      <div className="sethead"><h3>{tr('Lista de empleados')}</h3><span className={'rc-state' + (r.people.length ? ' on' : '')}>{r.people.length ? howMany(r.people.length) : tr('Vacía')}</span></div>
+      <p className="hint">{tr('Con la lista cargada, los supervisores tocan el nombre en la asistencia en vez de escribirlo. Si alguien no está, lo pueden seguir escribiendo.')}</p>
+      <div className="chips">{([1, 2] as const).map((k) => <button key={k} type="button" className={'chip' + (shift === k ? ' on' : '')} onClick={() => setShift(k)}>{tr('Turno {0}', k)}</button>)}</div>
+      {codes.map((c) => {
+        const mine = r.people.filter((p) => p.code === c).sort((a, b) => a.name.localeCompare(b.name))
+        return (
+          <details key={c} className="roster-area">
+            <summary><b>{c}</b> · {howMany(mine.length)}</summary>
+            <label className="minirow"><span>{tr('Es el cuarto')}</span><select value={rosterRoom(r, c)} disabled={viewOnly} onChange={(e) => setRoster(shift, { ...r, rooms: { ...r.rooms, [c]: e.target.value as Dept | '' } })}><option value="">{tr('Ninguno')}</option>{DEPTS.map((d) => <option key={d} value={d}>{d}</option>)}</select></label>
+            <ul className="roster-list">{mine.map((p) => <li key={p.name}><span>{p.name}{p.lead && <small> · {tr('supervisor o líder')}</small>}</span>{!viewOnly && <button type="button" className="lnk sm" aria-label={tr('Quitar a {0}', p.name)} onClick={() => setRoster(shift, { ...r, people: r.people.filter((x) => x.name !== p.name) })}>{tr('Quitar')}</button>}</li>)}</ul>
+          </details>
+        )
+      })}
+      {!viewOnly && codes.length > 0 && (
+        <form className="roster-add" onSubmit={(e) => { e.preventDefault(); add() }}>
+          <input value={added} maxLength={60} placeholder={tr('Nombre de alguien nuevo')} aria-label={tr('Nombre de alguien nuevo')} onChange={(e) => setAdded(e.target.value)} />
+          <select value={addCode || codes[0]} aria-label={tr('Área')} onChange={(e) => setAddCode(e.target.value)}>{codes.map((c) => <option key={c} value={c}>{c}</option>)}</select>
+          <button type="submit" className="btn soft" disabled={!added.trim()}>{tr('+ Agregar')}</button>
+        </form>
+      )}
+      {!viewOnly && (pasting ? (
+        <div className="roster-paste">
+          <p className="hint">{tr('Copia de Excel las filas de la lista (Employee List) y pégalas aquí. Reemplaza la lista del turno que traigan: el número del área dice el turno (RTE2-ER es Turno 2).')}</p>
+          <textarea rows={8} value={text} aria-label={tr('Pega aquí la lista')} placeholder={tr('Pega aquí la lista')} onChange={(e) => setText(e.target.value)} />
+          {parsed && <p className="hint">{tr('Se leyeron {0} del Turno 1 y {1} del Turno 2.', n1, n2)}</p>}
+          {!!parsed?.bad.length && <p className="hint red">{tr('Sin área, no se guardan: {0}', parsed.bad.slice(0, 5).join(', '))}</p>}
+          <div className="btns"><button type="button" className="btn" onClick={() => { setPasting(false); setText('') }}>{tr('Cancelar')}</button><button type="button" className="btn primary" disabled={!n1 && !n2} onClick={save}>{tr('✓ Guardar la lista')}</button></div>
+        </div>
+      ) : <div className="btns"><button type="button" className="btn soft" onClick={() => setPasting(true)}>{r.people.length ? tr('📋 Pegar otra lista') : tr('📋 Pegar la lista')}</button></div>)}
+    </div>
+  )
+}
+
 function AttendanceSettings({ s, date, viewOnly, admin, name }: { s: State; date: string; viewOnly: boolean; admin: boolean; name: string }) {
   const [asking, setAsking] = useState(false)
   const now = (d: Dept, k: 1 | 2) => String(attExpectedOf(s, d, k))
@@ -317,6 +372,7 @@ function AttendanceSettings({ s, date, viewOnly, admin, name }: { s: State; date
     {seesLabor(s, admin, name) && <LunchSettings s={s} readOnly={viewOnly} />}
     {gateAsk && <ConfirmDialog title={tr('¿Asistencia obligatoria para empezar?')} text={tr('Desde ahora, en todos los cuartos, ningún supervisor puede empezar un código ni un Set up sin haberse anotado como supervisor del turno en la asistencia. Se puede apagar aquí mismo cuando quieras.')} yes={tr('Prender')} onYes={() => { setAttGate(true); setGateAsk(false) }} onNo={() => setGateAsk(false)} />}
     {asking && <ConfirmDialog title={tr('¿Que todos vean la asistencia?')} text={tr('Desde ahora la tarjeta de asistencia sale en el piso de todos los cuartos, y en el reporte y sus archivos. Se puede apagar aquí mismo cuando quieras.')} yes={tr('Prender para todos')} onYes={() => { setAttView(true); setAsking(false) }} onNo={() => setAsking(false)} />}
+    <RosterCard s={s} viewOnly={viewOnly} />
     <div className="setcard">
       <div className="sethead"><h3>{tr('Asistencia · personas esperadas')}</h3></div>
       <p className="hint">{tr('Cuántas personas espera cada cuarto en cada turno. Con esto la tarjeta de asistencia del piso y el reporte sacan el % de faltas. Se quedan así hasta que alguien las cambie otra vez.')}</p>

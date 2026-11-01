@@ -1187,6 +1187,50 @@ export function kpiPut(key: string, data: Record<string, unknown>, deleted = fal
   set({ ...state, kpi: [...(state.kpi ?? []).filter((y) => y.key !== key), x] })
   push('act_changes', KPI_ID + key, { id: KPI_ID + key, at: iso(x.at), by_name: x.by, dept: null, what: 'KPI', before: '', after: JSON.stringify(data), ref_table: KPI_REF, ref_key: key, deleted, updated_at: iso(x.updatedAt), updated_by: user.get() })
 }
+// ---- the people of each shift ----
+/**
+ * Who works in each shift, so the supervisor taps a name instead of typing it (Santiago through Jose, 2026-11-01). The
+ * names never go in the code, which anyone can read: they are kept on the server with the KPI's records, one per shift,
+ * and loaded in Ajustes by pasting the plant's Employee List. code = the list's area ("RTE2-ER"), whose number says the
+ * shift; rooms = the room of each area, chosen in Ajustes because the list's words are not always the app's
+ */
+export type RosterPerson = { name: string; code: string; lead?: boolean }
+export type Roster = { people: RosterPerson[]; rooms: Record<string, Dept | ''> }
+const ROSTER_KEY = 'roster:'
+const rosterGuess = (code: string): Dept | '' => { const c = code.toLowerCase(); return c.startsWith('mfo') ? 'MFO' : c.startsWith('rte') ? 'RTE' : c.startsWith('pack') ? 'Packing' : c.startsWith('raw') ? 'Kitchen' : c.startsWith('prod') ? 'Spiral' : '' }
+export function rosterOf(s: State, shift: 1 | 2): Roster {
+  const d = kpiGet(s, ROSTER_KEY + shift)?.data as Partial<Roster> | undefined
+  return { people: Array.isArray(d?.people) ? d.people : [], rooms: d?.rooms && typeof d.rooms === 'object' ? d.rooms : {} }
+}
+export const setRoster = (shift: 1 | 2, r: Roster) => kpiPut(ROSTER_KEY + shift, r)
+export const rosterRoom = (r: Roster, code: string): Dept | '' => r.rooms[code] ?? rosterGuess(code)
+const ROSTER_CODE = /^[a-z]+\s*([12])\s*-\s*[a-z]+$/i
+/** the plant's list as pasted from Excel: a line per person, the columns by tabs; a line with no area of a shift is told back, not guessed */
+export function rosterParse(text: string) {
+  const lists: Record<1 | 2, RosterPerson[]> = { 1: [], 2: [] }, bad: string[] = []
+  for (const line of text.split(/\r?\n/)) {
+    const cells = line.split(/\t|;/).map((c) => c.replace(/\s+/g, ' ').trim()).filter(Boolean)
+    if (!cells.length || /^(employee name|nombre)$/i.test(cells[0])) continue
+    const code = cells.slice(1).find((c) => ROSTER_CODE.test(c)), name = cells[0].slice(0, 60)
+    if (!code) { bad.push(name); continue }
+    const shift = Number(ROSTER_CODE.exec(code)?.[1]) as 1 | 2
+    if (lists[shift].some((p) => attKey(p.name) === attKey(name))) continue
+    lists[shift].push({ name, code: code.replace(/\s+/g, ''), ...(cells.slice(1).some((c) => c !== code && /supervisor|lead/i.test(c)) ? { lead: true } : {}) })
+  }
+  return { lists, bad }
+}
+/**
+ * The names to tap in a room's attendance: its people of the shift not written yet. While someone types, also those
+ * of the other rooms; one already written in another room says where, to be moved from there and not counted twice
+ */
+export function attPeople(s: State, date: string, dept: Dept, shift: 1 | 2, typed = '') {
+  const r = rosterOf(s, shift), here = new Set(attOf(s, date, dept, shift).map((x) => attKey(x.name))), where = new Map<string, Dept>()
+  for (const d of DEPTS) if (d !== dept) for (const x of attOf(s, date, d, shift)) if (!x.gone) where.set(attKey(x.name), d)
+  const want = plain(typed.trim())
+  const left = r.people.filter((p) => !here.has(attKey(p.name)) && (!want || plain(p.name).includes(want))).sort((a, b) => a.name.localeCompare(b.name))
+  const tag = (p: RosterPerson) => ({ ...p, in: where.get(attKey(p.name)) ?? ('' as Dept | '') })
+  return { mine: left.filter((p) => rosterRoom(r, p.code) === dept).map(tag), others: want ? left.filter((p) => rosterRoom(r, p.code) !== dept).map(tag) : [], loaded: r.people.length > 0 }
+}
 // ---- weight tests (2026-10-22: "botones en RTE para que los operadores registren la que está baja y subida de weight") ----
 /**
  * A weight test on a line: every hour or at each changeover the operator checks several finished pouches. Each pouch is

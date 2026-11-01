@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { attAccept, attAdd, attBack, attDelete, attSetCame, attWriteOn, attendanceOf, attExpectedOf, attLineText, attMoveLine, attOf, attRemove, attSetSup, attSetTemp, attSupOf, user, byLineName, DEPTS, fmtTime, setAttExpected, type AttEntry, type Dept, type State } from './store'
+import { attAccept, attAdd, attBack, attDelete, attPeople, attSetCame, attWriteOn, attendanceOf, attExpectedOf, attLineText, attMoveLine, attOf, attRemove, attSetSup, attSetTemp, attSupOf, user, byLineName, DEPTS, fmtTime, setAttExpected, type AttEntry, type Dept, type State } from './store'
 import { useWho } from './App'
 import { DEPT_LOOK, deptVars } from './look'
 import { tr } from './i18n'
@@ -8,7 +8,7 @@ import { hourOnShift, seesLabor, workSpan } from './kpi'
 /**
  * A room's attendance on the floor (Santiago, 2026-10-20: "que cada supervisor registre las personas ... nombre o
  * números y según la cantidad muestre" expected, actual and % missing). The card says it at a glance; its window is
- * where the supervisor writes each person (a name or a number, Enter adds the next), takes one out who went to cover
+ * where the supervisor taps each person of the shift's list, or writes one who is not on it (a name or a number, Enter adds the next), takes one out who went to cover
  * another room or went home (the % is worked out again, and the person stays in the list, marked), or deletes one
  * written by mistake. The people expected are a fixed number per room and shift that the managers and the office
  * change here (store.ts, ATT_DEFAULT and setAttExpected).
@@ -79,6 +79,12 @@ export function AttendanceDialog({ s, dept, date, shift: inCourse, edit, note = 
     setName(''); setTwice(''); setSaid(''); setAddSup(false)
     box.current?.focus()
   }
+  // a name tapped from the shift's list (Santiago, 2026-11-01): a supervisor or lead of the list is written as such
+  const pick = attPeople(s, date, dept, shift, name)
+  const tap = (p: { name: string; lead?: boolean }) => {
+    if (!attAdd(date, dept, shift, p.name, '', lines.some((l) => l.id === addLine) ? addLine : '', false, !!p.lead)) { setTwice(p.name); return }
+    setName(''); setTwice(''); setSaid('')
+  }
   // gone to another room: they show up there by themselves ("viene de"), on the line chosen; nobody there has to write them
   const take = (x: AttEntry, why: 'otro' | 'casa', to: Dept | '' = '', toLine = '') => {
     attRemove(x.id, why, to, false, toLine)
@@ -132,6 +138,16 @@ export function AttendanceDialog({ s, dept, date, shift: inCourse, edit, note = 
             <input ref={box} value={name} maxLength={60} placeholder={tr('Nombre o número de la persona')} autoComplete="off" aria-label={tr('Nombre o número de la persona')} onChange={(e) => { setName(e.target.value); setTwice('') }} />
             <button type="submit" className="btn primary" disabled={!name.trim()}>{tr('+ Anotar')}</button>
           </form>
+          {pick.loaded && (
+            <div className="att-pick">
+              {pick.mine.length > 0 ? <p className="att-lab">{tr('Toca a quien vino · {0} en la lista', pick.mine.length)}</p> : !name.trim() && <p className="hint ok">{tr('✓ Ya están anotados todos los de la lista.')}</p>}
+              <div className="att-names">{pick.mine.map((p) => <button key={p.name} type="button" className="btn sm soft" disabled={!!p.in} onClick={() => tap(p)}>{p.name}{p.in ? ' · ' + tr('ya en {0}', p.in) : ''}</button>)}</div>
+              {pick.others.length > 0 && <>
+                <p className="att-lab">{tr('De otro cuarto')}</p>
+                <div className="att-names">{pick.others.map((p) => <button key={p.name} type="button" className="btn sm" disabled={!!p.in} onClick={() => tap(p)}>{p.name}{p.in ? ' · ' + tr('ya en {0}', p.in) : ''}</button>)}</div>
+              </>}
+            </div>
+          )}
           </>
         )}
         {twice && <p className="hint amber">{tr('{0} ya está anotado en este turno.', twice)}</p>}

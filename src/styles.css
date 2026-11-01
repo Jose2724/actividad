@@ -2248,3 +2248,7 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 .joined{display:block;color:#6d28d9;font-weight:600}
 .finish-list{display:grid;gap:8px}.finish-list .btn{display:grid;gap:2px;text-align:left;min-height:56px}.finish-list small{font-weight:600}
 .joinsel{display:block;margin-top:4px;font-size:13px}
+/* the shift's people to tap in the attendance (2026-11-01) */
+.att-pick{margin:8px 0;padding:8px;border:1px solid var(--line);border-radius:12px}.att-pick .att-lab{margin:0 0 6px}.att-names{display:flex;flex-wrap:wrap;gap:6px;max-height:240px;overflow-y:auto}.att-names .btn{min-height:40px}
+.roster-area{border-top:1px solid var(--line);padding:8px 0}.roster-area summary{cursor:pointer;min-height:32px}.roster-list{list-style:none;margin:6px 0 0;padding:0}.roster-list li{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:3px 0}
+.roster-add{display:flex;flex-wrap:wrap;gap:6px;padding:8px 0}.roster-add input{flex:1;min-width:160px}.roster-paste textarea{width:100%;box-sizing:border-box;font-size:14px}
