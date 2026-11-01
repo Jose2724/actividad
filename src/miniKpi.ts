@@ -233,7 +233,9 @@ export function miniSummary(weeks: MiniWeek[]): Sheet {
   const workTo = out.length
   across(tr('Las horas suman las líneas: 3 líneas de 8 horas son 24 horas. Por eso un cuarto con más líneas tiene más horas: para comparar cuartos, mira el %.'), X.note, 32)
   gap()
-  const workAt = gap(TALL)
+  const wide = { left: 0, cols: 11, height: TALL }, workAt = gap(TALL)
+  gap()
+  const workAt2 = gap(TALL)
   gap()
 
   // ---- the charts: a place for them now, their numbers at the foot of the sheet ----
@@ -290,8 +292,8 @@ export function miniSummary(weeks: MiniWeek[]): Sheet {
   charts.push({ ...weekTable(tr('Waste por día (lb) por semana'), (x) => (x.waste == null ? null : round1(x.waste)), X.wD, '0.0'), at: weekAt2, ...right })
   charts.push({ ...weekTable(tr('Horas trabajadas por semana'), (x) => (x.days ? hoursOf(x.worked) : null), X.wD, '0'), at: weekAt3, ...left })
   charts.push({ ...weekTable(tr('Horas paradas por semana'), (x) => (x.days ? hoursOf(x.stopped) : null), X.wD, '0'), at: weekAt3, ...right })
-  charts.push({ title: tr('Horas de cada cuarto: trabajado y parado'), series: workParts(), cat: 0, val: [1, 2, 3, 4], from: workFrom, to: workTo, at: workAt, kind: 'col', stack: true, fmt: '0', colors: WORK_COLORS, labels: 'first', ...left })
-  charts.push({ title: tr('% del tiempo de cada cuarto'), series: workParts(), cat: 0, val: [6, 7, 8, 9], from: workFrom, to: workTo, at: workAt, kind: 'col', stack: true, pct: true, colors: WORK_COLORS, labels: 'first', ...right })
+  charts.push({ title: tr('Horas de cada cuarto: trabajado y parado'), series: workParts(), cat: 0, val: [1, 2, 3, 4], from: workFrom, to: workTo, at: workAt, kind: 'col', fmt: '0', labelFmt: '0.0;;', colors: WORK_COLORS, ...wide })
+  charts.push({ title: tr('% del tiempo de cada cuarto'), series: workParts(), cat: 0, val: [6, 7, 8, 9], from: workFrom, to: workTo, at: workAt2, kind: 'col', pct: true, labelFmt: '0.0%;;', colors: WORK_COLORS, ...wide })
   if (!weeks.every(whole)) across(tr('Las semanas que no se pudieron traer completas del servidor salen vacías.'), X.note, 22)
   return { name: tr('Resumen'), rows: out, charts, freeze: 0, page: { widths: [17, 14, 12, 13, 12, 13, 11, 13, 13, 13, 13], heights, merges } }
 }
@@ -362,8 +364,10 @@ export function miniRoomSheet(weeks: MiniWeek[], dept: Dept): Sheet {
   gap()
 
   // ---- the charts ----
-  const TALL = 15, left = { left: 0, cols: 6, height: TALL }, right = { left: 6, cols: COLS, height: TALL }, stops = [tr('Paros'), tr('Lunch y Break')]
+  const TALL = 15, left = { left: 0, cols: 6, height: TALL }, right = { left: 6, cols: COLS, height: TALL }, wide = { left: 0, cols: COLS, height: TALL }, stops = [tr('Paros'), tr('Lunch y Break')]
   const workAt = gap(TALL)
+  gap()
+  const workAt2 = gap(TALL)
   gap()
   const dayAt = gap(TALL)
   gap()
@@ -373,8 +377,8 @@ export function miniRoomSheet(weeks: MiniWeek[], dept: Dept): Sheet {
   charts.push({ title: tr('Paros y Lunch por día'), series: [tr('Límite ({0}%)', o.limit), ...stops], cat: 0, val: [HIDE_LIMIT, 10, 11], from, to, at: dayAt, kind: 'line', fmt: '0%', colors: [REF_COLOR, color, WEEK_COLORS[3]], labels: 'none', refs: [0], ...right })
   charts.push({ title: tr('% de la meta por semana'), series: [tr('% de la meta')], cat: 0, val: [1], from: weekFrom, to: weekTo, at: weekAt, kind: 'col', fmt: '0%', colors: [color], ...left })
   charts.push({ title: tr('Paros y Lunch por semana'), series: stops, cat: 0, val: [2, 3], from: weekFrom, to: weekTo, at: weekAt, kind: 'col', fmt: '0%', colors: [color, WEEK_COLORS[3]], ...right })
-  charts.push({ title: tr('Horas trabajadas y paradas por día'), series: workParts(), cat: 0, val: [6, 7, 8, 9], from, to, at: workAt, kind: 'col', stack: true, fmt: '0.0', colors: WORK_COLORS, labels: 'first', ...left })
-  charts.push({ title: tr('Horas trabajadas y paradas por semana'), series: workParts(), cat: 0, val: [6, 7, 8, 9], from: weekFrom, to: weekTo, at: workAt, kind: 'col', stack: true, fmt: '0', colors: WORK_COLORS, labels: 'first', ...right })
+  charts.push({ title: tr('Horas trabajadas y paradas por día'), series: workParts(), cat: 0, val: [6, 7, 8, 9], from, to, at: workAt, kind: 'col', fmt: '0', labelFmt: '0.0;;', colors: WORK_COLORS, ...wide })
+  charts.push({ title: tr('Horas trabajadas y paradas por semana'), series: workParts(), cat: 0, val: [6, 7, 8, 9], from: weekFrom, to: weekTo, at: workAt2, kind: 'col', fmt: '0', labelFmt: '0.0;;', colors: WORK_COLORS, ...wide })
 
   // ---- who came to its mechanical stops ----
   across(tr('Paros mecánicos'), X.wSec, 24)

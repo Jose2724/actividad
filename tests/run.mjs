@@ -6007,9 +6007,9 @@ section('Mini KPI: el Resumen del Excel compara los días y las últimas semanas
     eq('las horas de la meta y del límite no se ven pero están para la línea de la gráfica', [lunes[16].s === m.X.wHide, lunes[16].v, lunes[17].v], [true, 1, 0.15])
     // worked and stopped (Santiago, 2026-11-01): the parts add up to all the time the lines had a code
     eq('el lunes de RTE: 1 hora trabajada y media parada, en la hoja de RTE', [lunes[6].v, lunes[7].v, Math.round(lunes[10].v * 1000) / 1000], [1, 0.5, 0.333])
-    const horas = sum.charts.find((c) => c.stack && !c.pct), rteHoras = sum.rows[horas.from - 1 + ['Kitchen', 'RTE'].indexOf('RTE')]
+    const horas = sum.charts[8], rteHoras = sum.rows[horas.from - 1 + ['Kitchen', 'RTE'].indexOf('RTE')]
     eq('en el Resumen, cuarto contra cuarto: las partes dan el total, y los % dan 100', [m.cellText(rteHoras[0]), rteHoras[1].v, rteHoras[2].v, rteHoras[5].v, Math.round((rteHoras[6].v + rteHoras[7].v + rteHoras[8].v + rteHoras[9].v) * 1000) / 1000], ['RTE', 1, 0.5, 1.5, 1])
-    eq('las gráficas de partes van apiladas, con el % hasta 100', [part('xl/charts/chart1_9.xml').includes('<c:grouping val="stacked"/>'), part('xl/charts/chart1_9.xml').includes('<c:overlap val="100"/>'), part('xl/charts/chart1_10.xml').includes('<c:max val="1"/>')], [true, true, true])
+    eq('las partes van una al lado de otra (Jose, 2026-11-01), cada una con su número, sin decir 0, y a todo lo ancho', [part('xl/charts/chart1_9.xml').includes('<c:grouping val="clustered"/>'), (part('xl/charts/chart1_9.xml').match(/<c:dLbls>/g) ?? []).length, part('xl/charts/chart1_9.xml').includes('formatCode="0.0;;"'), part('xl/charts/chart1_10.xml').includes('<c:max val="1"/>'), horas.cols], [true, 4, true, true, 11])
   })
 }
 section('Mini KPI con la semana real de Jose (2026-11-01): el domingo de la mañana, el Break, el arranque de Santiago, lo que no se pesó')
