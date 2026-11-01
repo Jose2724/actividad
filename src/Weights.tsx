@@ -70,7 +70,8 @@ export function WeightNoteButton({ s, date, now }: { s: State; date: string; now
   )
 }
 function WeightNoteDialog({ s, date, now, onClose }: { s: State; date: string; now: number; onClose: () => void }) {
-  const [code, setCode] = useState('')
+  // (0889 chosen from the start, Jose 2026-11-01: most of what Kitchen weighs)
+  const [code, setCode] = useState(WT_ASKED_CODES[0])
   const [kind, setKind] = useState<WtStep['kind'] | ''>('')
   const [hm, setHm] = useState('')
   const [text, setText] = useState('')
