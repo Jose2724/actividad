@@ -5,7 +5,7 @@ import { unitStartLot } from './report'
 import { ConfirmDialog, LotsDialog, NoticeDialog, useCan, useSure, useWho, type SureBox } from './App'
 import { writesIn } from './powers'
 import { HoldButton } from './Holds'
-import { holdOf } from './store'
+import { ASK_MANAGER, holdOf, isMechanical, mechanicOf, mechNote, stopRulesAt, stopRulesList } from './store'
 import { CodePicker, codeReady, DetailNeeded, detailHint } from './CodePicker'
 import { reasonCodeOf } from './reasons'
 import { tr } from './i18n'
@@ -314,10 +314,12 @@ export function AddUnitDialog({ s, run, startPo, onClose, onAdded }: { s: State;
 export function StopEditor({ stop, mgr, onClose }: { stop: Stop; mgr: boolean; onClose: () => void }) {
   const can = useCan()
   const st = useSyncExternalStore(store.subscribe, store.get), codes = st.reasonCodes.on
-  const reasons = CFG[stop.dept].reasons
+  // (under the shift's rules an operator chooses from the list, as when stopping; the manager keeps "Otra")
+  const rulesOn = stopRulesAt(st, stop.dept, stop.startedAt), free = !rulesOn || mgr, waiting = stop.reason === ASK_MANAGER
+  const reasons = CFG[stop.dept].reasons.filter((r) => !rulesOn || r === stop.reason || stopRulesList(stop.dept).includes(r) || (mgr && r === SETUP))
   const known = reasons.includes(stop.reason)
   // how the form opened: saving applies only what was changed since (a stop ended on the line meanwhile stays ended)
-  const [opened] = useState(() => ({ reason: known ? stop.reason : 'Otra', other: known ? '' : stop.reason, note: stop.note, start: hm(stop.startedAt), end: stop.endedAt ? hm(stop.endedAt) : '' }))
+  const [opened] = useState(() => ({ reason: waiting ? '' : known ? stop.reason : 'Otra', other: known || waiting ? '' : stop.reason, note: stop.note, start: hm(stop.startedAt), end: stop.endedAt ? hm(stop.endedAt) : '' }))
   const [reason, setReason] = useState(opened.reason)
   const [other, setOther] = useState(opened.other)
   // the code chosen in code mode ('' = none yet: a stop of before the codes)
@@ -327,13 +329,16 @@ export function StopEditor({ stop, mgr, onClose }: { stop: Stop; mgr: boolean; o
   const [end, setEnd] = useState(opened.end)
   const [dropping, setDropping] = useState(false)
   const [dividing, setDividing] = useState(false)
-  const ok = codes ? codeReady(code, note) : reason === 'Otra' ? other.trim().length > 0 : !!reason
+  const [mechanic, setMechanic] = useState('')
+  const askName = rulesOn && !codes && isMechanical(reason === 'Otra' ? other : reason) && !mechanicOf(note)
+  const ok = (codes ? codeReady(code, note) : reason === 'Otra' ? other.trim().length > 0 : !!reason) && (!askName || !!mechanic.trim())
   if (dividing) return <StopSplitter stop={stop} onBack={() => setDividing(false)} onClose={onClose} />
   const save = () => {
     const patch: Parameters<typeof updateStop>[1] = {}
     const text = (r: string, o: string) => (r === 'Otra' ? o.trim() : r)
     if (codes ? code !== stop.reason : text(reason, other) !== text(opened.reason, opened.other)) patch.reason = codes ? code : text(reason, other)
-    if (note.trim() !== opened.note.trim()) patch.note = note.trim()
+    const noteNow = askName ? mechNote(mechanic, note) : note.trim()
+    if (noteNow !== opened.note.trim()) patch.note = noteNow
     // a time left as it was keeps its seconds; a changed one is read from HH:MM on the day nearest to the old moment
     const startedAt = start !== opened.start ? nearDay(stop.startedAt, start) : stop.startedAt
     if (startedAt !== stop.startedAt) patch.startedAt = startedAt
@@ -355,8 +360,10 @@ export function StopEditor({ stop, mgr, onClose }: { stop: Stop; mgr: boolean; o
           </>
         ) : (
           <>
-            <div className="chips">{[...reasons, 'Otra'].map((r) => <button key={r} type="button" className={'chip' + (reason === r ? ' on' : '')} onClick={() => setReason(r)}>{tr(r)}</button>)}</div>
+            {waiting && <p className="rc-old">{tr('Este paro espera la razón del manager.')}</p>}
+            <div className="chips">{[...reasons.filter((r) => r !== stop.reason || !waiting), ...(free ? ['Otra'] : [])].map((r) => <button key={r} type="button" className={'chip' + (reason === r ? ' on' : '')} onClick={() => setReason(r)}>{tr(r)}</button>)}</div>
             {reason === 'Otra' && <input placeholder={tr('Escribe la razón')} value={other} onChange={(e) => setOther(e.target.value)} />}
+            {askName && <input placeholder={tr('Nombre del mecánico')} aria-label={tr('Nombre del mecánico')} value={mechanic} onChange={(e) => setMechanic(e.target.value)} />}
           </>
         )}
         <input placeholder={codes ? detailHint(code) : tr('Detalle (opcional)')} value={note} onChange={(e) => setNote(e.target.value)} />

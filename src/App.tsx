@@ -9,6 +9,7 @@ import { loadPdf } from './pdf'
 import { sharePick, shareProblem, type Kind } from './send'
 import { runLots, spanShifts, unitParts } from './report'
 import { canDo, canShift, keepsPin, writesIn, type Power, type Who } from './powers'
+import { ASK_MANAGER, isMechanical, LUNCH, LUNCH_MIN, lunchOver, mechNote, stopChoices, stopsWaiting, type Stop } from './store'
 import { AddRunDialog, AddUnitDialog, NoteBox, RunEditor, StopEditor } from './editors'
 import { CodePicker, codeReady, DetailNeeded, detailHint } from './CodePicker'
 import { fetchMe, finishSignOut, loginEmail, rememberedMe, rememberedUser, rememberMe, rememberUser, signedOut, signOutHere, supabase, type Me } from './supabase'
@@ -2122,6 +2123,7 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
   const ds = deptStop(s, dept)
   const can = useCan(), who = useWho(), viewOnly = who.role === 'viewer'
   const [stopAll, setStopAll] = useState(false)
+  const [waitingStop, setWaitingStop] = useState('')
   const [adding, setAdding] = useState(false)
   const [leaving, setLeaving] = useState(false)
   const [editRun, setEditRun] = useState<string | null>(null)
@@ -2220,8 +2222,10 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
       )}
       {starting2 && <ConfirmDialog title={tr('¿Empieza el Turno 2 en {0}?', dept)} text={tr('Desde ahora ({0}) lo que {1} registre cuenta para el Turno 2; lo de antes queda en el Turno 1. Los demás cuartos siguen con su propio cambio de turno. Si fue un error, un manager lo corrige en Ajustes › Día de trabajo.', fmtTime(now), dept)} yes={tr('▶ Empezar Turno 2')} onYes={() => { startSecondShift(dept); setStarting2(false) }} onNo={() => setStarting2(false)} />}
       {mark && nearCut && <p className="hint shiftmark">{trx('Cambio de turno de {0} hoy: {1} ({2}).', dept, <b>{fmtTime(mark.at)}</b>, mark.how === 'fin' ? tr('Terminar turno') : mark.how === 'inicio' ? tr('Empezar Turno 2') : tr('puesto a mano'))}</p>}
-      {ds && <div className="deptstop">{trx('⏸ Todo {0} parado · {1}{2} · desde {3} · {4}', dept, <b>{reasonText(s, ds.reason)}</b>, ds.note && ' · ' + noteLabel(ds.note), fmtTime(ds.startedAt), ds.by)} {can('fix') && <button type="button" className="lnk" onClick={() => setEditStop(true)}>{tr('Corregir')}</button>}</div>}
+      {ds && <div className="deptstop">{trx('⏸ Todo {0} parado · {1}{2} · desde {3} · {4}', dept, <b>{reasonText(s, ds.reason)}</b>, ds.note && ' · ' + noteLabel(ds.note), fmtTime(ds.startedAt), ds.by)}{lunchOver(s, ds, now) && <b className="lunchover">{tr('pasó de {0} min', LUNCH_MIN)}</b>} {can('fix') && <button type="button" className="lnk" onClick={() => setEditStop(true)}>{tr('Corregir')}</button>}</div>}
       {editStop && ds && <StopEditor stop={ds} mgr={can('fix')} onClose={() => setEditStop(false)} />}
+      {!viewOnly && can('fix') && stopsWaiting(s, dept).length > 0 && <div className="stopwait"><b>{tr('Paros que esperan tu razón')}</b>{stopsWaiting(s, dept).map((x) => <button key={x.id} type="button" className="btn sm soft" onClick={() => setWaitingStop(x.id)}>{lineNameOf(s, x.lineId)} · {fmtTime(x.startedAt)}</button>)}</div>}
+      {waitingStop && s.stops.some((x) => x.id === waitingStop) && <StopEditor stop={s.stops.find((x) => x.id === waitingStop) as Stop} mgr={can('fix')} onClose={() => setWaitingStop('')} />}
       {!viewOnly && can('fix') && duplicateLines(s, dept).map((g) => (
         <div key={g[0].id} className="dupbar">
           <span>{trx('Hay {0} líneas que se llaman {1} en {2}. Casi siempre una es una copia, hecha en una tablet que no tenía las líneas del cuarto.', g.length, <b>{lineLabel(g[0].name)}</b>, dept)}</span>
@@ -2298,7 +2302,7 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
       )}
       {editing && <RunEditor s={s} run={editing} mgr={can('fix')} onClose={() => setEditRun(null)} />}
       {addingRun && <AddRunDialog s={s} date={day.date} dept={dept} order={addingRun.po ? s.orders.find((o) => o.id === addingRun.po) : undefined} onClose={() => setAddingRun(null)} onAdded={() => setAddingRun(null)} />}
-      {stopAll && <StopDialog title={tr('Parar todo {0}', dept)} reasons={CFG[dept].quick} codes={s.reasonCodes.on} onClose={() => setStopAll(false)} onPick={(reason, note) => startStop(dept, null, reason, note) && setStopAll(false)} />}
+      {stopAll && <StopDialog title={tr('Parar todo {0}', dept)} {...stopChoices(s, dept)} codes={s.reasonCodes.on} onClose={() => setStopAll(false)} onPick={(reason, note) => startStop(dept, null, reason, note) && setStopAll(false)} />}
     </section>
   )
 }
@@ -3123,7 +3127,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         </div>
       )}
       {inSetup && stop && <div className="setupbar running">⏱ <b>{reasonText(s, stop.reason)}</b>{stop.note && ' · ' + noteLabel(stop.note)} · <b>{fmtDur(stopTime(s, stop, now))}</b> <small>{trx('desde las {0}', fmtTime(stop.startedAt))}</small>{!quiet && <button type="button" className="lnk sm" onClick={() => setFixingStop(true)}>{tr('Corregir')}</button>}</div>}
-      {stop && !inSetup && <div className={'stopbar' + tap} {...tapProps(goLine({ code: '', line: stop.lineId ?? '', view: 'rec', rec: 'stops', cause: stop.reason }))}>⏸ <b>{reasonText(s, stop.reason)}</b>{stop.note && ' · ' + noteLabel(stop.note)} · <b>{fmtDur(stopTime(s, stop, now))}</b>{stop.lineId === null && ' ' + tr('· todo el departamento')}{!quiet && stop.lineId === line.id && <button type="button" className="lnk sm" onClick={(e) => { e.stopPropagation(); setFixingStop(true) }}>{tr('Corregir')}</button>}</div>}
+      {stop && !inSetup && <div className={'stopbar' + tap} {...tapProps(goLine({ code: '', line: stop.lineId ?? '', view: 'rec', rec: 'stops', cause: stop.reason }))}>⏸ <b>{reasonText(s, stop.reason)}</b>{stop.note && ' · ' + noteLabel(stop.note)} · <b>{fmtDur(stopTime(s, stop, now))}</b>{lunchOver(s, stop, now) && <b className="lunchover">{tr('pasó de {0} min', LUNCH_MIN)}</b>}{stop.lineId === null && ' ' + tr('· todo el departamento')}{!quiet && stop.lineId === line.id && <button type="button" className="lnk sm" onClick={(e) => { e.stopPropagation(); setFixingStop(true) }}>{tr('Corregir')}</button>}</div>}
       {fixing && <RunEditor s={s} run={run} mgr={mgr} onClose={() => setFixing(false)} />}
       {fixingStop && stop && <StopEditor stop={stop} mgr={mgr} onClose={() => setFixingStop(false)} />}
       {/* what is made, big: how many units and how much they carry (with its cases, where pouches are counted); then the
@@ -3177,7 +3181,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         summary={tr('Lleva {0} · trabajando {1}{2}', madeText(run, st.qty), fmtDur(st.working), (st.down ? ' ' + tr('· parado {0}', fmtDur(st.down)) : '')) + '.'}
         onClose={() => setEnding(false)} onDone={(next) => { endRun(run.id, next); setEnding(false) }}
         onMissing={(next) => { setEnding(false); if (pallets) { setEndAfter(next); setPacking('done') } else if (rc.qty === 'ask') { setEndAfter(next); setCounting(true) } else { record(rc.qty === 'auto' ? run.perUnit : null); endRun(run.id, next) } }} />}
-      {asking && <StopDialog title={tr('Parar {0} · {1}', lineLabel(line.name), run.code)} reasons={cfg.quick} setup codes={s.reasonCodes.on} onClose={() => setAsking(false)} onPick={(reason, note) => startStop(line.dept, line.id, reason, note) && setAsking(false)} />}
+      {asking && <StopDialog title={tr('Parar {0} · {1}', lineLabel(line.name), run.code)} {...stopChoices(s, line.dept)} setup codes={s.reasonCodes.on} onClose={() => setAsking(false)} onPick={(reason, note) => startStop(line.dept, line.id, reason, note) && setAsking(false)} />}
       {fillUi}
       {counting && (rc.lots
         ? <LotsDialog title={rc.qtyQ} unit={rc.qtyUnit} refLabel={rc.refLabel} lot={run.lot} qty={run.perUnit} usual={usualOf(s, run)} per={runWord} orders={orderOptions} order={nextOrder} onClose={() => { setCounting(false); setEndAfter(null) }} onPick={(q, ref, lots, po, note) => { record(q, ref, lots, po, note); setCounting(false); if (endAfter !== null) { setEndAfter(null); endRun(run.id, endAfter) } }} />
@@ -3232,13 +3236,16 @@ function EndDialog({ cfg, code, line, summary, lastAt, onMissing, onDone, onClos
 /**
  * stopping a line or the department: its three usual causes and "Otra", where any other one is typed. With the Reason
  * Codes on (Ajustes; Jose, 2026-10-20) only a code of the plant's list, chosen by category (see CodePicker), and no
- * "Otra": the detail stays optional, except with OTH-01. PLN-03 is the Set up, offered where the Set up is (a line)
+ * "Otra": the detail stays optional, except with OTH-01. PLN-03 is the Set up, offered where the Set up is (a line).
+ * With the shift's rules on (rules, see stopRulesAt) the room's whole list; "Otra" only for a manager (free), the others
+ * get "Avisar al manager"; a mechanical stop asks for the mechanic's name
  */
-export function StopDialog({ title, intro, reasons, setup, codes, onClose, onPick }: { title: string; intro?: string; reasons: string[]; setup?: boolean; codes?: boolean; onClose: () => void; onPick: (reason: string, note: string) => void }) {
+export function StopDialog({ title, intro, reasons, setup, codes, rules, free = true, onClose, onPick }: { title: string; intro?: string; reasons: string[]; setup?: boolean; codes?: boolean; rules?: boolean; free?: boolean; onClose: () => void; onPick: (reason: string, note: string) => void }) {
   const [reason, setReason] = useState('')
   const [note, setNote] = useState('')
-  const other = !codes && reason === 'Otra', isSetup = reason === SETUP
-  const ok = codes ? codeReady(reason, note) : other ? note.trim().length > 0 : !!reason
+  const [mechanic, setMechanic] = useState('')
+  const other = !codes && reason === 'Otra', isSetup = reason === SETUP, asks = reason === ASK_MANAGER, mech = !codes && !!rules && isMechanical(reason)
+  const ok = codes ? codeReady(reason, note) : other ? note.trim().length > 0 : mech ? !!mechanic.trim() : !!reason
   return (
     <div className={'veil' + (codes ? ' rc-veil' : '')} onClick={onClose}>
       <div className={'dlg' + (codes ? ' rc-dlg' : '')} onClick={(e) => e.stopPropagation()}>
@@ -3249,15 +3256,19 @@ export function StopDialog({ title, intro, reasons, setup, codes, onClose, onPic
         <div className="chips big">
           {reasons.map((r) => <button key={r} type="button" className={'chip' + (reason === r ? ' on' : '')} onClick={() => setReason(r)}>{tr(r)}</button>)}
           {setup && <button type="button" className={'chip setupchip' + (isSetup ? ' on' : '')} onClick={() => setReason(SETUP)}>{tr('⏱ Set up')}</button>}
-          <button type="button" className={'chip' + (other ? ' on' : '')} onClick={() => setReason('Otra')}>{tr('Otra')}</button>
+          {free && <button type="button" className={'chip' + (other ? ' on' : '')} onClick={() => setReason('Otra')}>{tr('Otra')}</button>}
+          {!free && <button type="button" className={'chip askchip' + (asks ? ' on' : '')} onClick={() => setReason(ASK_MANAGER)}>{tr('🙋 Avisar al manager')}</button>}
         </div>
         )}
+        {asks && <p className="setuphint">{tr('El paro empieza a contar ahora. Ve donde tu manager y dile la razón: él la escribe.')}</p>}
+        {reason === LUNCH && <p className="setuphint">{tr('El lunch es de {0} minutos.', LUNCH_MIN)}</p>}
+        {mech && <input autoFocus placeholder={tr('Nombre del mecánico')} aria-label={tr('Nombre del mecánico')} value={mechanic} onChange={(e) => setMechanic(e.target.value)} />}
         {isSetup && <p className="setuphint">{tr('El Set up no cuenta como parado: se ve en amarillo y en el reporte sale aparte.')}</p>}
-        <input placeholder={codes ? detailHint(reason) : other ? tr('Escribe la razón') : tr('Detalle (opcional)')} value={note} onChange={(e) => setNote(e.target.value)} />
+        {!asks && <input placeholder={codes ? detailHint(reason) : other ? tr('Escribe la razón') : tr('Detalle (opcional)')} value={note} onChange={(e) => setNote(e.target.value)} />}
         {codes && <DetailNeeded reason={reason} note={note} />}
         <div className="dbtns">
           <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
-          <button type="button" className={'btn ' + (isSetup ? 'setupgo' : 'danger')} disabled={!ok} onClick={() => onPick(other ? note.trim() : reason, other ? '' : note.trim())}>{isSetup ? tr('⏱ Empezar Set up') : tr('⏸ Confirmar paro')}</button>
+          <button type="button" className={'btn ' + (isSetup ? 'setupgo' : 'danger')} disabled={!ok} onClick={() => onPick(other ? note.trim() : reason, other || asks ? '' : mech ? mechNote(mechanic, note) : note.trim())}>{isSetup ? tr('⏱ Empezar Set up') : tr('⏸ Confirmar paro')}</button>
         </div>
       </div>
     </div>

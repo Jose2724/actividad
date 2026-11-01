@@ -8,7 +8,7 @@ import { supabase } from './supabase'
 import { syncStore } from './sync'
 import { consumeOn, setConsumeOn } from './store'
 import { cartCratesOf, setAllCartCrates, setCartCrates, orderCodesList, setOrderCodes, type OrderCode } from './store'
-import { attWriteOn, kpiPut, lunchOf, setAttWriteOn, setLunch } from './store'
+import { attWriteOn, kpiPut, LUNCH_MIN, lunchOf, setAttWriteOn, setLunch, setStopRules } from './store'
 import { laborAccess, seesLabor } from './kpi'
 import { lbCaseOn, loadQaLbPerCase, QA_LB_PER_CASE, setLbCaseOn, normCode } from './store'
 import { ATT_DEFAULT, attExpectedOf, attShifts, clearShiftMark, plantCut, roomMark, setAttExpected, setAttGate, setAttView, setShiftMark, setWeightRule, weightRuleOf, setWeighedCodes, setWeightRoomKinds, weighedRules, weightRoomKinds, wtKindsOf, weightTargetsList, setWeightTarget, clearWeightTarget, stepKey, stepText, wtRange, wtRangeText, type WtCodeRule, type WtKind, type WtStep, type WtTargetRow, setSlowRule, slowRuleOf, setSlowLineOn, slowLineOn, slowUnitOf } from './store'
@@ -35,7 +35,7 @@ export function settingsSections(can: (p: 'shifts' | 'day' | 'products' | 'goals
     ...(can('day') ? [{ key: 'day' as const, title: tr('Día de trabajo'), sub: tr('fecha, hora de inicio, lote') }] : []),
     ...(mgr && !viewOnly ? [{ key: 'lines' as const, title: tr('Líneas'), sub: tr('las líneas de cada cuarto') }] : []),
     // (whoever only looks sees the list and whether it is on, without the switch)
-    ...(mgr ? [{ key: 'stops' as const, title: tr('Códigos de paro'), sub: tr('Reason Codes: prender o apagar') }] : []),
+    ...(mgr ? [{ key: 'stops' as const, title: tr('Paros'), sub: tr('reglas por turno y Reason Codes') }] : []),
     ...(mgr ? [{ key: 'kpi' as const, title: tr('KPI'), sub: tr('pesos: qué códigos, cada cuánto, cuántos y el objetivo') }] : []),
     ...(mgr ? [{ key: 'weights' as const, title: tr('Ritmo mínimo'), sub: tr('cuándo una línea va lenta') }] : []),
     ...(mgr ? [{ key: 'consumo' as const, title: tr('Consumo'), sub: tr('pesar lo que entra antes de empezar') }] : []),
@@ -62,6 +62,7 @@ export function Settings({ s, now, day, name, home, mgr, admin, viewOnly, meId, 
         {sec === 'shifts' && <ShiftsSettings s={s} day={day} />}
         {sec === 'day' && <DaySettings s={s} now={now} day={day} />}
         {sec === 'lines' && <LinesSettings s={s} />}
+        {sec === 'stops' && <StopRulesSettings s={s} viewOnly={viewOnly} />}
         {sec === 'stops' && <StopCodesSettings s={s} viewOnly={viewOnly} />}
         {sec === 'program' && <><ProgramViewSettings s={s} /><ViewOptSettings s={s} name="lotes" /><ViewOptSettings s={s} name="flujo" /></>}
         {sec === 'weights' && <SlowSettings s={s} viewOnly={viewOnly} />}
@@ -438,6 +439,22 @@ function ProgramViewSettings({ s }: { s: State }) {
         <p className="hint">{tr('Prendido: la ven todos: los managers y la oficina con todos los cuartos, cada operador con el suyo.')}</p>
       </div>
       {asking && <ConfirmDialog title={tr('¿Que todos vean el Programa del día?')} text={tr('Desde ahora la pestaña Programa sale en todas las tablets y computadoras. Se puede apagar aquí mismo cuando quieras.')} yes={tr('Prender para todos')} onYes={() => { setProgramView(true); setAsking(false) }} onNo={() => setAsking(false)} />}
+    </>
+  )
+}
+
+/** one switch per shift: Lunch for Break, "Otra" left to the manager, the mechanic's name (Jose, 2026-10-31) */
+function StopRulesSettings({ s, viewOnly }: { s: State; viewOnly: boolean }) {
+  const [asking, setAsking] = useState<1 | 2 | 0>(0)
+  return (
+    <>
+      <div className="setcard">
+        <div className="sethead"><h3>{tr('Reglas de paros por turno')}</h3></div>
+        {([1, 2] as const).map((k) => <label key={k} className="switch"><span>{tr('Turno {0}', k)}</span><input type="checkbox" role="switch" checked={s.stopRules[k - 1].on} disabled={viewOnly} onChange={(e) => (e.target.checked ? setAsking(k) : setStopRules(k, false))} /></label>)}
+        <p className="hint">{tr('Prendidas: no hay Break, solo Lunch de {0} minutos, que avisa si se pasa pero no termina solo. Los operadores eligen de la lista de su cuarto y no hay "Otra": con "Avisar al manager" el paro empieza a contar sin razón y el manager la escribe. Un paro mecánico pide el nombre del mecánico.', LUNCH_MIN)}</p>
+        {s.reasonCodes.on && <p className="hint red">{tr('Los códigos de paro están encendidos: estas reglas no aplican mientras sigan así.')}</p>}
+      </div>
+      {asking > 0 && <ConfirmDialog title={tr('¿Prender las reglas de paros en el Turno {0}?', asking)} text={tr('Desde ahora las tablets de todos los cuartos las siguen durante ese turno. Se puede apagar aquí mismo cuando quieras.')} yes={tr('Prender')} onYes={() => { setStopRules(asking as 1 | 2, true); setAsking(0) }} onNo={() => setAsking(0)} />}
     </>
   )
 }

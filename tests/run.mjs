@@ -5904,6 +5904,45 @@ section('Spiral anota la carne que echa, en libras y con su lote, y el reporte l
   const back = await device('spiral-meat-again', { seed: JSON.parse(disks.get('spiral-meat').get('act_v1')), user: 'Supervisor Spiral' })
   eq('al volver a abrir: la carne sigue', back.use((m) => m.meatsOf(m.store.get(), DAY).map((x) => [x.lb, x.meatLot])), [[450, 'BF-1023'], [300, 'BF-2000']])
 }
+section('Reglas de paros por turno (Santiago por Jose, 2026-10-31: no Break, solo Lunch de 30 min; Otra bloqueada; nombre del mecánico; por ahora Turno 2)')
+{
+  const g = await device('stop-rules', { user: 'Op' })
+  g.use((m) => {
+    const st = () => m.store.get(), kit = () => st().lines.find((l) => l.dept === 'Kitchen')
+    const turno = (h) => { clock = new Date(DAY + 'T' + h + ':00').getTime() }
+    m.addLine('Kitchen', 'Braiser 1')
+    localStorage.setItem('act_role', 'op')
+    turno('09:00')
+    eq('apagadas hasta que un manager las prenda: Break y Otra siguen', [m.stopChoices(st(), 'Kitchen').rules, m.stopChoices(st(), 'Kitchen').free, m.stopChoices(st(), 'Kitchen').reasons.includes('Break')], [false, true, true])
+    m.setStopRules(2, true)
+    eq('suben como ajuste por turno (opt:stoprules:2)', m.outbox.items().find((i) => i.key === 'opt:stoprules:2').row.per_hour, 1)
+    eq('prendidas solo en Turno 2: en Turno 1 todo como siempre', [m.stopRulesAt(st(), 'Kitchen'), m.startStop('Kitchen', kit().id, 'Comprar piezas', '')], [false, true])
+    m.endStop(st().stops[st().stops.length - 1].id)
+    turno('17:00')
+    const c = m.stopChoices(st(), 'Kitchen')
+    eq('en Turno 2: la lista entera, sin Break ni Set up, con Lunch y sin Otra', [c.rules, c.free, c.reasons.includes('Break'), c.reasons.includes('Set up'), c.reasons.includes('Lunch'), c.reasons.includes('Limpieza')], [true, false, false, false, true, true])
+    eq('un operador no puede guardar otra razón ni Break', [m.startStop('Kitchen', kit().id, 'Comprar piezas', ''), m.startStop('Kitchen', kit().id, 'break', '')], [false, false])
+    eq('el paro mecánico pide el nombre', [m.startStop('Kitchen', kit().id, 'Problema mecánico', ''), m.startStop('Kitchen', kit().id, 'Problema mecánico', m.mechNote('Luis', 'la banda'))], [false, true])
+    const mec = st().stops[st().stops.length - 1]
+    eq('el mecánico queda en el paro y se lee aparte del detalle', [mec.note, m.mechanicOf(mec.note)], ['Mecánico: Luis · la banda', 'Luis'])
+    m.endStop(mec.id)
+    eq('Avisar al manager: el paro cuenta sin razón y le queda al manager', [m.startStop('Kitchen', kit().id, m.ASK_MANAGER, ''), m.stopsWaiting(st(), 'Kitchen').length], [true, 1])
+    const esp = m.stopsWaiting(st(), 'Kitchen')[0]
+    clock += 10 * M; m.endStop(esp.id)
+    localStorage.setItem('act_role', 'mgr')
+    eq('el manager sí tiene Otra y escribe la razón; deja de esperar y el tiempo no cambia', [m.stopChoices(st(), 'Kitchen').free, m.updateStop(esp.id, { reason: 'Se fue la luz' }), m.stopsWaiting(st(), 'Kitchen').length, m.stopTime(st(), st().stops.find((x) => x.id === esp.id), clock)], [true, true, 0, 10 * M])
+    localStorage.setItem('act_role', 'op')
+    m.startStop('Kitchen', kit().id, 'Lunch', '')
+    const lun = st().stops[st().stops.length - 1], t0 = clock
+    eq('el Lunch pasa de 30 min: se avisa y no se termina solo', [m.lunchOver(st(), lun, t0 + 30 * M), m.lunchOver(st(), lun, t0 + 31 * M), lun.endedAt], [false, true, null])
+    m.endStop(lun.id)
+    m.setReasonCodes(true)
+    eq('con los códigos de paro encendidos estas reglas no aplican', m.stopRulesAt(st()  , 'Kitchen'), false)
+    m.setReasonCodes(false)
+  })
+  const back = await device('stop-rules-again', { seed: JSON.parse(disks.get('stop-rules').get('act_v1')), user: 'Op' })
+  eq('al volver a abrir el aparato siguen: Turno 1 apagado, Turno 2 prendido', back.use((m) => m.store.get().stopRules.map((x) => x.on)), [false, true])
+}
 section('Asistencia obligatoria para empezar (Jose, 2026-10-27: los supervisores anotan la asistencia del turno antes de empezar un código o un Set up; no los managers, la oficina ni Solo ver)')
 {
   const g = await device('att-gate', { user: 'Sup' })

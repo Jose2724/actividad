@@ -24,11 +24,11 @@ export const DEPTS: Dept[] = ['Kitchen', 'RTE', 'Spiral', 'MFO', 'Packing']
  */
 export type DeptCfg = { lineWord: string; unit: string; plural: string; done: string; saved: string; qty: 'none' | 'ask' | 'auto'; qtyQ: string; qtyUnit: string; perUnitLabel: string; refLabel: string; refWord?: string; quick: string[]; reasons: string[]; waste?: boolean; lots?: boolean; orders?: boolean }
 export const CFG: Record<Dept, DeptCfg> = {
-  Kitchen: { lineWord: tr('Braiser'), unit: tr('Mezcla'), plural: tr('Mezclas'), done: tr('Mezcla lista'), saved: tr('guardada'), waste: true, qty: 'none', qtyQ: '', qtyUnit: '', perUnitLabel: '', refLabel: '', quick: ['Problema mecánico', 'Esperando ingredientes', 'Break'], reasons: ['Problema mecánico', 'Esperando ingredientes', 'Break', 'Braiser apagado', 'Esperando que recojan producto', 'Limpieza', 'Falta de personal', 'Calidad', 'Set up'] },
-  Spiral: { lineWord: tr('Línea'), unit: tr('Mezcla'), plural: tr('Mezclas'), done: tr('Mezcla lista'), saved: tr('guardada'), waste: true, qty: 'none', qtyQ: '', qtyUnit: '', perUnitLabel: '', refLabel: '', quick: ['Problema mecánico', 'Falta de producto de Kitchen', 'Break'], reasons: ['Problema mecánico', 'Falta de producto de Kitchen', 'Break', 'Horno (temperatura)', 'Temperatura interna baja', 'Esperando carros / RTE', 'Limpieza', 'Falta de personal', 'Calidad', 'Set up'] },
-  RTE: { lineWord: tr('Línea'), unit: tr('Carro'), plural: tr('Carros'), done: tr('Carro listo'), saved: tr('guardado'), qty: 'ask', qtyQ: tr('¿Cuántos pouches lleva este carro?'), qtyUnit: tr('pouches'), perUnitLabel: tr('Pouches por carro'), refLabel: '', waste: true, quick: ['Problema mecánico', 'Sin plástico', 'Break'], reasons: ['Problema mecánico', 'Sin plástico', 'Break', 'Falta de salsa (Kitchen)', 'Falta de arroz / arroz muy frío', 'Falta de carrito vacío', 'Cambio de rollo de plástico', 'Plástico atascado / no corta', 'Máquina corta o rompe paquetes (mecánico)', 'Impresora de sello no imprime', 'Peso fuera de rango (reempaque)', 'Aire en el paquete', 'Conteo / pesado de meatballs', 'Limpieza', 'Falta de personal', 'Set up'] },
-  MFO: { lineWord: tr('Línea'), unit: tr('Bin'), plural: tr('Bins'), done: tr('Bin listo'), saved: tr('guardado'), waste: true, qty: 'ask', qtyQ: tr('¿Cuántos platos lleva este bin?'), qtyUnit: tr('platos'), perUnitLabel: '', refLabel: tr('N° de bin'), refWord: 'bin', quick: ['Problema mecánico', 'Falta de producto del freezer', 'Break'], reasons: ['Problema mecánico', 'Falta de producto del freezer', 'Break', 'Armado de máquina', 'Pegado de labels / stickers', 'Esperando gas', 'Preparación (picar pollo…)', 'Falta de material', 'Limpieza', 'Falta de personal', 'Set up'] },
-  Packing: { lineWord: tr('Línea'), unit: tr('Pallet'), plural: tr('Pallets'), done: tr('Pallet listo'), saved: tr('guardado'), waste: true, lots: true, orders: true, qty: 'ask', qtyQ: tr('¿Cuántas cajas lleva este pallet?'), qtyUnit: tr('cajas'), perUnitLabel: tr('Cajas por pallet'), refLabel: tr('N° de tag'), refWord: 'tag', quick: ['Problema mecánico', 'Falta de producto que empacar', 'Break'], reasons: ['Problema mecánico', 'Falta de producto que empacar', 'Break', 'Esperando autorización de QC', 'Label equivocado (despegar labels)', 'Plástico / film', 'Falta de cajas / material de empaque', 'Personal pasó a otra línea', 'Etiquetadora / impresora', 'Montacargas / espacio', 'Limpieza', 'Falta de personal', 'Set up'] },
+  Kitchen: { lineWord: tr('Braiser'), unit: tr('Mezcla'), plural: tr('Mezclas'), done: tr('Mezcla lista'), saved: tr('guardada'), waste: true, qty: 'none', qtyQ: '', qtyUnit: '', perUnitLabel: '', refLabel: '', quick: ['Problema mecánico', 'Esperando ingredientes', 'Break'], reasons: ['Problema mecánico', 'Esperando ingredientes', 'Break', 'Lunch', 'Braiser apagado', 'Esperando que recojan producto', 'Limpieza', 'Falta de personal', 'Calidad', 'Set up'] },
+  Spiral: { lineWord: tr('Línea'), unit: tr('Mezcla'), plural: tr('Mezclas'), done: tr('Mezcla lista'), saved: tr('guardada'), waste: true, qty: 'none', qtyQ: '', qtyUnit: '', perUnitLabel: '', refLabel: '', quick: ['Problema mecánico', 'Falta de producto de Kitchen', 'Break'], reasons: ['Problema mecánico', 'Falta de producto de Kitchen', 'Break', 'Lunch', 'Horno (temperatura)', 'Temperatura interna baja', 'Esperando carros / RTE', 'Limpieza', 'Falta de personal', 'Calidad', 'Set up'] },
+  RTE: { lineWord: tr('Línea'), unit: tr('Carro'), plural: tr('Carros'), done: tr('Carro listo'), saved: tr('guardado'), qty: 'ask', qtyQ: tr('¿Cuántos pouches lleva este carro?'), qtyUnit: tr('pouches'), perUnitLabel: tr('Pouches por carro'), refLabel: '', waste: true, quick: ['Problema mecánico', 'Sin plástico', 'Break'], reasons: ['Problema mecánico', 'Sin plástico', 'Break', 'Lunch', 'Falta de salsa (Kitchen)', 'Falta de arroz / arroz muy frío', 'Falta de carrito vacío', 'Cambio de rollo de plástico', 'Plástico atascado / no corta', 'Máquina corta o rompe paquetes (mecánico)', 'Impresora de sello no imprime', 'Peso fuera de rango (reempaque)', 'Aire en el paquete', 'Conteo / pesado de meatballs', 'Limpieza', 'Falta de personal', 'Set up'] },
+  MFO: { lineWord: tr('Línea'), unit: tr('Bin'), plural: tr('Bins'), done: tr('Bin listo'), saved: tr('guardado'), waste: true, qty: 'ask', qtyQ: tr('¿Cuántos platos lleva este bin?'), qtyUnit: tr('platos'), perUnitLabel: '', refLabel: tr('N° de bin'), refWord: 'bin', quick: ['Problema mecánico', 'Falta de producto del freezer', 'Break'], reasons: ['Problema mecánico', 'Falta de producto del freezer', 'Break', 'Lunch', 'Armado de máquina', 'Pegado de labels / stickers', 'Esperando gas', 'Preparación (picar pollo…)', 'Falta de material', 'Limpieza', 'Falta de personal', 'Set up'] },
+  Packing: { lineWord: tr('Línea'), unit: tr('Pallet'), plural: tr('Pallets'), done: tr('Pallet listo'), saved: tr('guardado'), waste: true, lots: true, orders: true, qty: 'ask', qtyQ: tr('¿Cuántas cajas lleva este pallet?'), qtyUnit: tr('cajas'), perUnitLabel: tr('Cajas por pallet'), refLabel: tr('N° de tag'), refWord: 'tag', quick: ['Problema mecánico', 'Falta de producto que empacar', 'Break'], reasons: ['Problema mecánico', 'Falta de producto que empacar', 'Break', 'Lunch', 'Esperando autorización de QC', 'Label equivocado (despegar labels)', 'Plástico / film', 'Falta de cajas / material de empaque', 'Personal pasó a otra línea', 'Etiquetadora / impresora', 'Montacargas / espacio', 'Limpieza', 'Falta de personal', 'Set up'] },
 }
 /** the words of a run: its room's, or those of a bin when a Packing line fills bins */
 export function cfgOf(r: Pick<Run, 'dept' | 'extra'>): DeptCfg {
@@ -392,7 +392,7 @@ function sealFrom(x: unknown): OrderSeal | null {
   // (a day by day an account may still carry is not read: see OrderSeal)
   return { id: e.id, sig: e.sig, upto: String(e.upto ?? ''), made, finishAt: numIn(e.finishAt), finishDay: String(e.finishDay ?? ''), completed, lots: Array.isArray(e.lots) ? e.lots.map(String).slice(0, 30) : [], updatedAt: numIn(e.updatedAt) }
 }
-export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Product[]; schedule: Schedule; changes: Change[]; targets: Target[]; shifts: ShiftPlan[]; shiftWeeks: ShiftWeek[]; dayShifts: DayShifts[]; lineRules: LineRules; reasonCodes: ReasonCodesOpt; programView: ReasonCodesOpt; attView: ReasonCodesOpt; attGate: ReasonCodesOpt; cartCrates: { n: number; updatedAt: number }; lunch: Lunch; attWrite: ReasonCodesOpt; lbCase: ReasonCodesOpt; viewOpts: Record<ViewOpt, ReasonCodesOpt>; lineTargets: LineTarget[]; orders: Order[]; turnGoals: TurnGoal[]; plans: Plan[]
+export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Product[]; schedule: Schedule; changes: Change[]; targets: Target[]; shifts: ShiftPlan[]; shiftWeeks: ShiftWeek[]; dayShifts: DayShifts[]; lineRules: LineRules; reasonCodes: ReasonCodesOpt; programView: ReasonCodesOpt; attView: ReasonCodesOpt; attGate: ReasonCodesOpt; stopRules: [ReasonCodesOpt, ReasonCodesOpt]; cartCrates: { n: number; updatedAt: number }; lunch: Lunch; attWrite: ReasonCodesOpt; lbCase: ReasonCodesOpt; viewOpts: Record<ViewOpt, ReasonCodesOpt>; lineTargets: LineTarget[]; orders: Order[]; turnGoals: TurnGoal[]; plans: Plan[]
   /**
    * runs the device no longer keeps (older than its days) that hold pallets given to an order still open: an order's
    * "Hechas" counts every pallet it ever got, not only the days this device holds. They come from the server (see
@@ -555,10 +555,10 @@ function tidySchedule(sch: Schedule): Schedule {
 function isDay(text: string) { return /^\d{4}-\d{2}-\d{2}$/.test(text) }
 /** with a server the lines (and products) are shared and come from it; without one, each device starts with a line per room */
 const SERVER = !!import.meta.env.VITE_SUPABASE_URL
-function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, reasonCodes: { on: false, updatedAt: 0 }, programView: { on: false, updatedAt: 0 }, attView: { on: false, updatedAt: 0 }, attGate: { on: false, updatedAt: 0 }, cartCrates: { n: 0, updatedAt: 0 }, lunch: { min: 0, after: 0, updatedAt: 0 }, attWrite: { on: false, updatedAt: 0 }, lbCase: { on: false, updatedAt: 0 }, viewOpts: { lotes: { on: false, updatedAt: 0 }, flujo: { on: false, updatedAt: 0 } }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [], attendance: [], attExpected: [], shiftMarks: [], kpi: [], weights: [], orderNotes: [], roomMsgs: [], chat: [], chatSeen: [], weightRules: [], slowRules: [], slowLines: [], meats: [], holds: [], consumes: [], consumeOpts: [] } }
+function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, reasonCodes: { on: false, updatedAt: 0 }, programView: { on: false, updatedAt: 0 }, attView: { on: false, updatedAt: 0 }, stopRules: [{ on: false, updatedAt: 0 }, { on: false, updatedAt: 0 }], attGate: { on: false, updatedAt: 0 }, cartCrates: { n: 0, updatedAt: 0 }, lunch: { min: 0, after: 0, updatedAt: 0 }, attWrite: { on: false, updatedAt: 0 }, lbCase: { on: false, updatedAt: 0 }, viewOpts: { lotes: { on: false, updatedAt: 0 }, flujo: { on: false, updatedAt: 0 } }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [], attendance: [], attExpected: [], shiftMarks: [], kpi: [], weights: [], orderNotes: [], roomMsgs: [], chat: [], chatSeen: [], weightRules: [], slowRules: [], slowLines: [], meats: [], holds: [], consumes: [], consumeOpts: [] } }
 function load(): State {
   try {
-    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; reasonCodes?: Partial<ReasonCodesOpt>; programView?: Partial<ReasonCodesOpt>; attView?: Partial<ReasonCodesOpt>; attGate?: Partial<ReasonCodesOpt>; cartCrates?: { n?: number; updatedAt?: number }; lunch?: Partial<Lunch>; attWrite?: Partial<ReasonCodesOpt>; lbCase?: Partial<ReasonCodesOpt>; viewOpts?: Partial<Record<ViewOpt, Partial<ReasonCodesOpt>>>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[]; attendance?: Partial<AttEntry>[]; attExpected?: Partial<AttExpected>[]; shiftMarks?: Partial<ShiftMark>[]; kpi?: Partial<KpiRec>[]; weights?: Partial<WeightTest>[]; orderNotes?: Partial<OrderNote>[]; roomMsgs?: Partial<RoomMsg>[]; chat?: Partial<ChatMsg>[]; chatSeen?: Partial<ChatSeen>[]; weightRules?: Partial<WeightRule>[]; slowRules?: Partial<SlowRule>[]; slowLines?: Partial<SlowLine>[]; meats?: Partial<MeatEntry>[]; holds?: Partial<HoldRec>[]; consumes?: Partial<ConsumeEntry>[]; consumeOpts?: Partial<ConsumeOpt>[] }
+    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; reasonCodes?: Partial<ReasonCodesOpt>; programView?: Partial<ReasonCodesOpt>; attView?: Partial<ReasonCodesOpt>; attGate?: Partial<ReasonCodesOpt>; stopRules?: Partial<ReasonCodesOpt>[]; cartCrates?: { n?: number; updatedAt?: number }; lunch?: Partial<Lunch>; attWrite?: Partial<ReasonCodesOpt>; lbCase?: Partial<ReasonCodesOpt>; viewOpts?: Partial<Record<ViewOpt, Partial<ReasonCodesOpt>>>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[]; attendance?: Partial<AttEntry>[]; attExpected?: Partial<AttExpected>[]; shiftMarks?: Partial<ShiftMark>[]; kpi?: Partial<KpiRec>[]; weights?: Partial<WeightTest>[]; orderNotes?: Partial<OrderNote>[]; roomMsgs?: Partial<RoomMsg>[]; chat?: Partial<ChatMsg>[]; chatSeen?: Partial<ChatSeen>[]; weightRules?: Partial<WeightRule>[]; slowRules?: Partial<SlowRule>[]; slowLines?: Partial<SlowLine>[]; meats?: Partial<MeatEntry>[]; holds?: Partial<HoldRec>[]; consumes?: Partial<ConsumeEntry>[]; consumeOpts?: Partial<ConsumeOpt>[] }
     const s = JSON.parse(localStorage.getItem(KEY) || 'null') as Raw | null
     // rows saved by earlier versions: carts as plain timestamps, units without a tag or a name, products with one
     // pouches-per-cart number, nothing with an update time
@@ -592,6 +592,7 @@ function load(): State {
         reasonCodes: { on: s.reasonCodes?.on === true, updatedAt: Number(s.reasonCodes?.updatedAt) || 0 },
         programView: { on: s.programView?.on === true, updatedAt: Number(s.programView?.updatedAt) || 0 },
         attView: { on: s.attView?.on === true, updatedAt: Number(s.attView?.updatedAt) || 0 },
+        stopRules: [0, 1].map((k) => ({ on: s.stopRules?.[k]?.on === true, updatedAt: Number(s.stopRules?.[k]?.updatedAt) || 0 })) as State['stopRules'],
         attGate: { on: s.attGate?.on === true, updatedAt: Number(s.attGate?.updatedAt) || 0 },
         cartCrates: { n: Number(s.cartCrates?.n) || 0, updatedAt: Number(s.cartCrates?.updatedAt) || 0 },
         lunch: { min: Math.max(0, Number(s.lunch?.min) || 0), after: Math.max(0, Number(s.lunch?.after) || 0), updatedAt: Number(s.lunch?.updatedAt) || 0 },
@@ -1975,6 +1976,48 @@ export function setLbCaseOn(on: boolean) {
   push('act_targets', OPT_LB, { dept: OPT_LB, per_hour: on ? 1 : 0, per_shift: null, updated_at: iso(next.updatedAt), updated_by: user.get() })
   logChange(null, 'Libras por caja en el KPI', was.on ? 'prendido' : 'apagado', on ? 'prendido' : 'apagado', 'act_targets', OPT_LB)
 }
+/**
+ * The rules of a shift's stops (Santiago through Jose, 2026-10-31: "no break, solo lunch, que son 30 min"; the "Otra"
+ * blocked, whoever has another reason goes and tells him; a mechanical stop with the mechanic's name; "por ahora solo
+ * turno dos", the first shift's manager may want it too). One switch per shift, off until a manager turns it on, under
+ * 'opt:stoprules:1' and ':2' in act_targets. With them on, whoever stops a line chooses from the room's whole list,
+ * without Break and with Lunch, and a reason outside it is left to the manager: the stop starts without one so its
+ * time is not lost, and the manager writes it. The Reason Codes, when on, have their own list and these do not apply
+ */
+const OPT_STOPRULES = 'opt:stoprules:'
+export const LUNCH = 'Lunch', LUNCH_MIN = 30, ASK_MANAGER = 'Falta la razón del manager'
+const MECH_TAG = 'Mecánico: '
+/** do the rules hold at that moment in that room? (each room has its own hand-over, see shiftsOf) */
+export const stopRulesAt = (s: State, dept: Dept, at = clockNow()) => !s.reasonCodes.on && s.stopRules[shiftAt(shiftsOf(s, plainDay(s, at), dept), at) - 1].on
+/** the causes offered under the rules: the room's list without Break, and without the Set up, which has its own button */
+export const stopRulesList = (dept: Dept) => CFG[dept].reasons.filter((r) => r !== 'Break' && r !== SETUP)
+/** what the box to stop offers now: `free` = "Otra" is there (a manager's, and everybody's with the rules off) */
+export const stopChoices = (s: State, dept: Dept) => { const rules = stopRulesAt(s, dept); return { rules, free: !rules || role.get() !== 'op', reasons: rules ? stopRulesList(dept) : CFG[dept].quick } }
+/** a mechanical stop, as the room's own list words it ("Problema mecánico", "Máquina corta o rompe paquetes (mecánico)") */
+export const isMechanical = (reason: string) => /mec[aá]nico/i.test(reason)
+/** the mechanic goes first in the stop's note, so the report can read it and the detail stays: "Mecánico: Luis · la banda" */
+export const mechNote = (name: string, detail = '') => MECH_TAG + name.trim() + (detail.trim() ? ' · ' + detail.trim() : '')
+export const mechanicOf = (note: string) => (note.startsWith(MECH_TAG) ? note.slice(MECH_TAG.length).split(' · ')[0].trim() : '')
+/** what the rules say against a stop being started ('' = nothing) */
+export function stopRuleProblem(s: State, dept: Dept, reason: string, note: string): string {
+  if (!stopRulesAt(s, dept)) return ''
+  const r = tidyReason(dept, reason)
+  if (r === SETUP || r === ASK_MANAGER) return ''
+  if (isMechanical(r) && !mechanicOf(note)) return tr('Falta el nombre del mecánico.')
+  return role.get() === 'op' && !stopRulesList(dept).includes(r) ? tr('Esa razón no está en la lista: dísela a tu manager.') : ''
+}
+/** a Lunch past its time: said on the line; it never ends by itself (nothing stops by the clock) */
+export const lunchOver = (s: State, x: Stop, now: number) => x.reason === LUNCH && stopTime(s, x, now) > LUNCH_MIN * 60_000
+/** the stops of a room still waiting for the manager's reason, oldest first */
+export const stopsWaiting = (s: State, dept: Dept) => s.stops.filter((x) => !x.deleted && x.dept === dept && x.reason === ASK_MANAGER).sort((a, b) => a.startedAt - b.startedAt)
+export function setStopRules(shift: 1 | 2, on: boolean) {
+  const was = state.stopRules[shift - 1]
+  if (was.on === on) return
+  const next: ReasonCodesOpt = { on, updatedAt: stamp(was) }, key = OPT_STOPRULES + shift
+  set({ ...state, stopRules: (shift === 1 ? [next, state.stopRules[1]] : [state.stopRules[0], next]) })
+  push('act_targets', key, { dept: key, per_hour: on ? 1 : 0, per_shift: null, updated_at: iso(next.updatedAt), updated_by: user.get() })
+  logChange(null, 'Reglas de paros · Turno ' + shift, was.on ? 'prendidas' : 'apagadas', on ? 'prendidas' : 'apagadas', 'act_targets', key)
+}
 const OPT_ATTGATE = 'opt:attgate'
 const gateText = (on: boolean) => (on ? 'obligatoria para empezar' : 'no obligatoria')
 export function setAttGate(on: boolean) {
@@ -2665,7 +2708,7 @@ export function reasonProblem(s: State, dept: Dept, reason: string, note: string
 export const reasonText = (s: State, reason: string) => { const c = reasonCodeOf(reason); return c && reason === codeReason(c) && (c.code !== SETUP_CODE || s.reasonCodes.on) ? codeText(c) : tr(reason) }
 /** starts a stop; false = its cause is not one that may be given (see reasonProblem) */
 export function startStop(dept: Dept, lineId: string | null, reason: string, note: string): boolean {
-  if (reasonProblem(state, dept, reason, note)) return false
+  if (reasonProblem(state, dept, reason, note) || stopRuleProblem(state, dept, reason, note)) return false
   putStop({ id: uid(), dept, lineId, reason: tidyReason(dept, reason), note: note.trim(), startedAt: clockNow(), endedAt: null, by: user.get(), updatedAt: 0 })
   return true
 }
@@ -5215,6 +5258,12 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
     // the crates of an RTE cart, plant-wide (2026-10-28)
     if (!newer(state.cartCrates)) return
     set({ ...state, cartCrates: { n: Math.max(0, Math.round(Number(row.per_hour) || 0)), updatedAt: at } })
+  } else if (table === 'act_targets' && String(row.dept ?? '').startsWith(OPT_STOPRULES)) {
+    // the rules of a shift's stops (2026-10-31)
+    const k = String(row.dept) === OPT_STOPRULES + '1' ? 0 : 1
+    if ((k === 1 && String(row.dept) !== OPT_STOPRULES + '2') || !newer(state.stopRules[k])) return
+    const next = { on: Number(row.per_hour) === 1, updatedAt: at }
+    set({ ...state, stopRules: (k === 0 ? [next, state.stopRules[1]] : [state.stopRules[0], next]) })
   } else if (table === 'act_targets' && String(row.dept ?? '') === OPT_ATTGATE) {
     // attendance before starting (2026-10-27)
     if (!newer(state.attGate)) return
