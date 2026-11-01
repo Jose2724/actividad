@@ -6046,6 +6046,10 @@ section('Mini KPI con la semana real de Jose (2026-11-01): el domingo de la mañ
     eq('con Lunch y Break prendido en Ajustes sí cuenta', row('Paros: %')[1].t, Math.round((40 / 113) * 1000) / 10 + '% · 40:00')
     eq('lo que nadie pesó no dice 0 lb', row('Consumo')[1].t, 'Sin pesar → 0 mezclas')
     eq('las horas del domingo: 1 h 13 trabajada, 10 minutos parada; el Break no entra en ninguna', row('Horas')[1].t, '1.22 h · 0.17 h parado')
+    // this KPI is one shift's (Jose, 2026-11-01): a day of one shift does not show under the other
+    const uno = m.miniTables(m.miniWeek(st(), SUN, 1, clock)), celda = (tit) => uno.find((x) => x.title.startsWith(tit)).rows[0][1].t
+    eq('el domingo de solo Turno 2 no sale en el Turno 1: ni arranque, ni producción, ni horas, ni paros', [celda('Arranque'), celda('Producción'), celda('Horas'), celda('Paros: %'), uno.find((x) => x.title.startsWith('Paros mecánicos')).rows.length], ['—', '—', '—', '—', 0])
+    eq('y sí sale en el Turno 2, el suyo', row('Horas')[1].t === '—', false)
   })
 }
 section('Reglas de paros por turno (Santiago por Jose, 2026-10-31: no Break, solo Lunch de 30 min; Otra bloqueada; nombre del mecánico; por ahora Turno 2)')

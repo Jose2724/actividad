@@ -88,8 +88,10 @@ function roomDay(s: State, date: string, dept: Dept, k: 1 | 2, o: MiniOpts, now:
   return { start, real, target, apart, time, down, mech: ms.mech, people: ms.people, clean: ms.clean, other: ms.other, lunch: ms.lunch, worked: rows.reduce((t, x) => t + x.st.working, 0), setup, in: consumed, out: rows.length ? out : null, waste: rows.reduce((t, x) => t + (x.waste ?? 0), 0) }
 }
 export function miniWeek(s: State, date: string, k: 1 | 2, now: number) {
-  const o = miniOpts(s), days = miniDays(date), today = plainDay(s, now), shown = days.filter((d) => d <= today)
-  const rooms = DEPTS.map((dept) => ({ dept, days: days.map((d) => (d <= today ? roomDay(s, d, dept, k, o, now) : null)) }))
+  // (this KPI is one shift's and nothing of the other may mix in, Jose 2026-11-01: a day of one shift is that shift's alone; asked for the other, the report would give the whole day)
+  const counts = (d: string) => { const only = shiftsOf(s, d).only; return d <= plainDay(s, now) && (!only || only === k) }
+  const o = miniOpts(s), days = miniDays(date), shown = days.filter(counts), today = plainDay(s, now)
+  const rooms = DEPTS.map((dept) => ({ dept, days: days.map((d) => (counts(d) ? roomDay(s, d, dept, k, o, now) : null)) }))
   // the stops the mechanics came to, one by one, with who came (asked on the floor under the shift's rules)
   const mechanics = shown.flatMap((d) => reportOf(s, d, now, { shift: k }).stops.filter((x) => downKind(x.reason) === 'mech' && x.reason !== ASK_MANAGER).map((x) => ({ date: d, dept: x.dept, line: x.lineId ? lineNameOf(s, x.lineId) : tr('Todo {0}', x.dept), at: x.startedAt, ms: x.ms, reason: x.reason, who: mechanicOf(x.note) })))
   const weighed = days.map((d) => (d <= today ? wtRowsOfShift(s, weightsOf(s, d, now), k) : []))
