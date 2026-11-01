@@ -12,7 +12,7 @@ import { miniOpts, setMiniOpts, type MiniOpts } from './miniKpi'
 import { attWriteOn, kpiPut, LUNCH_MIN, lunchOf, setAttWriteOn, setLunch, setStopRules } from './store'
 import { laborAccess, seesLabor } from './kpi'
 import { lbCaseOn, loadQaLbPerCase, QA_LB_PER_CASE, setLbCaseOn, normCode } from './store'
-import { ATT_DEFAULT, attExpectedOf, attShifts, clearShiftMark, plantCut, roomMark, setAttExpected, setAttGate, setAttView, setShiftMark, setWeightRule, weightRuleOf, setWeighedCodes, setWeightRoomKinds, weighedRules, weightRoomKinds, wtKindsOf, weightTargetsList, setWeightTarget, clearWeightTarget, stepKey, stepText, wtRange, wtRangeText, type WtCodeRule, type WtKind, type WtStep, type WtTargetRow, setSlowRule, slowRuleOf, setSlowLineOn, slowLineOn, slowUnitOf } from './store'
+import { setWtMustOpt, wtMustOpt, ATT_DEFAULT, attExpectedOf, attShifts, clearShiftMark, plantCut, roomMark, setAttExpected, setAttGate, setAttView, setShiftMark, setWeightRule, weightRuleOf, setWeighedCodes, setWeightRoomKinds, weighedRules, weightRoomKinds, wtKindsOf, weightTargetsList, setWeightTarget, clearWeightTarget, stepKey, stepText, wtRange, wtRangeText, type WtCodeRule, type WtKind, type WtStep, type WtTargetRow, setSlowRule, slowRuleOf, setSlowLineOn, slowLineOn, slowUnitOf } from './store'
 import { BUILD } from './update'
 import { clockOffText, clockState } from './clock'
 import { fmtTime } from './clock-fmt'
@@ -683,8 +683,40 @@ function KpiSettings({ s, viewOnly }: { s: State; viewOnly: boolean }) {
         <p className="hint">{tr('Por cuarto: los códigos que se pesan, si se pesa crudo o cocinado, cada cuántos minutos sale el aviso y cuántos se pesan cada vez. Lo que corre con otro código no pide pesar (el botón ⚖ Peso sigue ahí). Con 0 minutos no sale aviso. El KPI cuenta las pruebas que tocaban con esto.')}</p>
         {rooms.map((r) => <WeighPlan key={r.dept} s={s} dept={r.dept} what={r.what} ro={viewOnly} />)}
       </div>
+      <div className="setcard wide">
+        <div className="sethead"><h3>{tr('Peso obligatorio')}</h3></div>
+        <p className="hint">{tr('Prendido en un cuarto: cuando su código lleva corriendo el tiempo de arriba, sale una ventana en el medio de la tablet y no deja hacer otra cosa hasta terminar los pesos. Solo a los operadores. Con la línea parada o en Set up no pide nada, y la ventana deja parar la línea. Si a un cuarto se le complica, se apaga aquí y se quita al momento.')}</p>
+        {rooms.map((r) => <WeighMust key={r.dept} s={s} dept={r.dept} ro={viewOnly} />)}
+      </div>
       <TargetsCard s={s} ro={viewOnly} />
     </>
+  )
+}
+function WeighMust({ s, dept, ro }: { s: State; dept: Dept; ro: boolean }) {
+  const o = wtMustOpt(s, dept), [codes, setCodes] = useState(o.codes.join(', '))
+  // (what another computer saves comes in)
+  const said = o.codes.join(', '), [seen, setSeen] = useState(said)
+  if (seen !== said) { setSeen(said); setCodes(said) }
+  const list = codes.split(/[\s,]+/).filter(Boolean), kitchen = dept === 'Kitchen'
+  return (
+    <div className="kpi-plan" style={deptVars(dept)}>
+      <label className="switch"><span>{DEPT_LOOK[dept].emoji} {dept}</span><input type="checkbox" role="switch" checked={o.on} disabled={ro} onChange={(e) => setWtMustOpt(dept, { on: e.target.checked })} /></label>
+      {(kitchen || dept === 'Spiral') && (
+        <label className="wt-mustrow">{tr('Lo cocinado se pide')}{' '}
+          <select value={o.cooked} disabled={ro} onChange={(e) => setWtMustOpt(dept, { cooked: e.target.value === 'unit' ? 'unit' : 'hour' })}>
+            <option value="unit">{kitchen ? tr('Al tocar Mezcla lista, si ya pasó la hora') : tr('Al terminar una unidad, si ya pasó la hora')}</option>
+            <option value="hour">{tr('Cada hora')}</option>
+          </select>
+        </label>
+      )}
+      {kitchen && (
+        <div className="wt-mustrow">
+          <label>{tr('Códigos de mezcla que piden peso')}{' '}<input value={codes} disabled={ro} placeholder="2286" onChange={(e) => setCodes(e.target.value.replace(/[^\w\s,-]/g, ''))} /></label>
+          {!ro && codes !== said && <button type="button" className="btn sm primary" onClick={() => setWtMustOpt(dept, { codes: list })}>{tr('Guardar')}</button>}
+          <small className="muted">{tr('Además del 0889 y el 2234. Otra mezcla no pide nada.')}</small>
+        </div>
+      )}
+    </div>
   )
 }
 type PlanRow = { code: string; every: string; count: string; kinds: WtKind[] }

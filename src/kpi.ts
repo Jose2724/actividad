@@ -1,4 +1,4 @@
-import { wallAt, WT_ASKED_CODES, wtOfficial, wtPicksCode, wtRange, attExpectedOf, attOf, attSentAt, attShifts, attWriteOn, CFG, cookText, dayBefore, DEPTS, deptToday, entryClass, fmtTime, kpiGet, lbCaseOn, lbPerCaseOf, lunchOf, normCode, sameStep, shiftAt, shiftsOf, stepKey, stepText, weighedCodes, weighsCode, weightAllStepsOf, weightRuleFor, weightStepsFor, weightTarget, wtRangeText, type Cook, type WeightTest, type WtStep, type AttEntry, type Dept, type State } from './store'
+import { wallAt, WT_ASKED_CODES, wtOfficial, wtStretchesOf, wtWorked, wtPicksCode, wtRange, attExpectedOf, attOf, attSentAt, attShifts, attWriteOn, CFG, cookText, dayBefore, DEPTS, deptToday, entryClass, fmtTime, kpiGet, lbCaseOn, lbPerCaseOf, lunchOf, normCode, sameStep, shiftAt, shiftsOf, stepKey, stepText, weighedCodes, weighsCode, weightAllStepsOf, weightRuleFor, weightStepsFor, weightTarget, wtRangeText, type Cook, type WeightTest, type WtStep, type AttEntry, type Dept, type State } from './store'
 import { reportOf } from './report'
 import { colName, X, xDay, xN, xT, type Cell, type Sheet } from './xlsx'
 import { locale, tr } from './i18n'
@@ -189,14 +189,15 @@ export function wtSum(entries: WeightTest['entries'], target: ReturnType<typeof 
 }
 /**
  * the tests a step of a code was due that day (2026-10-29: "every hour ... siempre y cuando se está haciendo este código"):
- * one for each whole stretch of the room's time the code ran, run by run (a code of 2 h 40 min: 2); null = nothing due
- * (no rule, or a code the room does not weigh every hour)
+ * one for each whole stretch of the room's time the product ran on a line, without its stops and across its changes of
+ * lot (a code of 2 h 40 min: 2); on one cooker's step, only its line's; null = nothing due (no rule, or a code the room
+ * does not weigh every hour)
  */
-export function weightsDue(s: State, date: string, dept: Dept, code: string, now: number): number | null {
+export function weightsDue(s: State, date: string, dept: Dept, code: string, now: number, cook?: Cook): number | null {
   const rule = weightRuleFor(s, dept, code)
   if (date < wtCountedFrom(s) || !rule.every || !weighsCode(s, dept, code)) return null
   const span = rule.every * 60_000
-  return s.runs.filter((r) => !r.deleted && r.date === date && r.dept === dept && normCode(r.code) === normCode(code)).reduce((t, r) => t + Math.floor(Math.max(0, Math.min(r.endedAt ?? now, now) - r.startedAt) / span), 0)
+  return wtStretchesOf(s, date, dept, code, cook).reduce((t, l) => t + Math.floor(wtWorked(s, l, now) / span), 0)
 }
 /** complete = as many weights as the room's count (or more); short = a test left with fewer */
 /**
@@ -229,7 +230,7 @@ export function weightsOf(s: State, date: string, now = Date.now()): WtRow[] {
     const complete = tests.filter((t) => t.entries.length >= (t.need ?? (t.date < wtCountedFrom(s) ? 1 : count))).length
     // (what was weighed although Ajustes no longer asks for it stays in the report, with nothing due)
     const asked = weightStepsFor(s, g.dept, g.code).some((x) => sameStep(x, g.step))
-    return { ...wtSum(tests.flatMap((t) => t.entries), target), dept: g.dept, code: g.code, kind: g.step.kind, ...(g.step.cook ? { cook: g.step.cook } : {}), label: stepText(g.step), tests, skipped: mine.filter((t) => t.skip), complete, short: tests.length - complete, due: asked ? weightsDue(s, date, g.dept, g.code, now) : null, target }
+    return { ...wtSum(tests.flatMap((t) => t.entries), target), dept: g.dept, code: g.code, kind: g.step.kind, ...(g.step.cook ? { cook: g.step.cook } : {}), label: stepText(g.step), tests, skipped: mine.filter((t) => t.skip), complete, short: tests.length - complete, due: asked ? weightsDue(s, date, g.dept, g.code, now, g.step.cook) : null, target }
   })
 }
 /** Spiral's cook yield by cooker (2026-10-29): the cooked balls' average over the raw ones' (cooked ÷ raw), and what was lost */

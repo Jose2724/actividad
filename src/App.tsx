@@ -25,7 +25,7 @@ import { Report, reportOpenAt, type ReportAt } from './ReportView'
 import { ProgramToday, programRooms } from './ProgramToday'
 import { LotesView } from './LotesView'
 import { KpiView } from './KpiView'
-import { WeightButton, WeightReminder, weighsBalls } from './Weights'
+import { WeightButton, WeightGate, WeightReminder, weighsBalls } from './Weights'
 import { WhatIs } from './Numbers'
 import { MeatButton } from './Meat'
 import { ConsumeButton, ConsumeEndDialog, ConsumeStartDialog } from './Consume'
@@ -573,6 +573,8 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
       {unsent && <div className="stalebar top unsent"><span>{trx('⚠ {0} sin subir desde hace {1}: {2}. Se guardan en este aparato y suben en cuanto se pueda.', mine === 1 ? tr('1 registro') : tr('{0} registros', mine), agoText(Math.max(60_000, stuckMs)), unsentWhy)}{mustSignIn && ' ' + tr('Sal y entra de nuevo con tu usuario; si sigue, avisa al manager.')}</span>{mustSignIn ? <button type="button" className="btn sm" onClick={() => (sync.pending > 0 ? setLeaving(true) : onLogout())}>{tr('Entrar de nuevo')}</button> : <button type="button" className="btn sm" onClick={() => window.dispatchEvent(new Event('act-resync'))}>{tr('Reintentar')}</button>}</div>}
       {others && <div className="stalebar top"><span>{othersText}</span></div>}
       {full && <div className="fullbar">{trx('⚠ La memoria de este aparato está llena y lo nuevo no se está guardando aquí. {0}', supabase ? tr('Lo que ya subió al servidor está a salvo. Avisa al manager y no cierres la app hasta que diga "Sincronizado".') : tr('Manda el reporte del día y avisa al manager antes de cerrar la app: hay que hacer espacio con "Reiniciar registros".'))}</div>}
+      {/* an operator's tablet with a picture of the plant it can trust; a manager, the office and whoever only looks are never held */}
+      {who.role === 'op' && !viewOnly && !stale && <WeightGate s={s} dept={home} now={now} />}
       {stale && (sync.pulling
         ? <div className="stalebar top calm"><span>{tr('⏳ Trayendo lo último del servidor…')}</span></div>
         : <div className="stalebar top"><span>{sync.fresh ? trx('⚠ Este aparato muestra lo de las {0}: lleva {1} sin bajar del servidor ({2}). Si en otra tablet cambió algo, aquí todavía no se ve.', fmtTime(sync.fresh), agoText(staleMs), why) : trx('⚠ Este aparato no ha bajado nada del servidor todavía ({0}).', why)}</span><button type="button" className="btn sm" onClick={() => window.dispatchEvent(new Event('act-resync'))}>{tr('Reintentar')}</button></div>)}

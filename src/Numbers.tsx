@@ -129,7 +129,7 @@ const items = (): Item[] => [
     math: tr('Veces revisado = cuántas horas se pesó el código, contando lo que más veces se pesó. Cada promedio junta todos los pesos del día de crudo, de cocinado o de pouch (la bolsa terminada) de ese departamento, con sus cocinadores. Pide acción correctiva si un promedio queda fuera del rango de QA, o si un pouch quedó bajo su mínimo. Un peso suelto de bola fuera de rango no cambia el resultado: eso se ve en el Excel completo.') },
   { id: 'peso-pruebas', group: 'pesos', title: tr('Pruebas: "3 de 4"'),
     means: tr('Cuántas pruebas de peso se hicieron de las que tocaban.'),
-    math: tr('Las que tocaban = el tiempo que corrió el código ÷ cada cuánto se pesa, sin decimales, corrida por corrida. Una prueba cuenta cuando tiene todos los pesos que se pidieron. "Incompletas" = empezadas con menos pesos. Decir que un cocinador no se usó esa hora cuenta como hecha. Se cuenta desde el 30 de octubre de 2026.'),
+    math: tr('Las que tocaban = el tiempo que el producto corrió en cada línea, sin sus paros y aunque cambie de lote ÷ cada cuánto se pesa, sin decimales. Una prueba cuenta cuando tiene todos los pesos que se pidieron. "Incompletas" = empezadas con menos pesos. Decir que un cocinador no se usó esa hora cuenta como hecha. Se cuenta desde el 30 de octubre de 2026.'),
     eg: tr('Un código de 2 h 40 min pesado cada 60 min = 2 pruebas.') },
   { id: 'peso-bien', group: 'pesos', title: tr('Bien, bajos, sobre y % en peso'),
     means: tr('Cuántos pesos cayeron dentro del rango de QA.'),

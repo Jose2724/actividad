@@ -1710,6 +1710,15 @@ export const weightStepsOf = (dept: Dept): WtStep[] => stepsOfKinds(dept, WT_KIN
 export const weightAllStepsOf = (dept: Dept) => stepsOfKinds(dept, wtKindsOf(dept))
 /** the steps of a code in a room: what Ajustes says of it, or of the room */
 export const weightStepsFor = (s: State, dept: Dept, code: string) => { const n = normCode(ruleCode(dept, code)); return stepsOfKinds(dept, weighedRules(s, dept)?.find((x) => normCode(x.code) === n)?.kinds ?? weightRoomKinds(s, dept)) }
+/**
+ * The cooker a Spiral line is, by its name (the lines are "Spiral" and "Rack's", Jose's screenshot of 2026-10-31); null
+ * = a line that may send to either. Each cooker's tests are its own line's: the two lines running 0889 are not asked
+ * for four tests each
+ */
+export const lineCook = (name: string): Cook | null => (/rack/i.test(name) ? 'racks' : /spiral/i.test(name) ? 'spiral' : null)
+const cookOfRun = (s: State, r: Pick<Run, 'dept' | 'lineId' | 'line'>) => (r.dept === 'Spiral' ? lineCook(lineNameOf(s, r.lineId, r.line)) : null)
+/** the steps a run weighs: its code's, and on a line that is one cooker, that cooker's */
+export const weightStepsOfRun = (s: State, r: Run) => { const c = cookOfRun(s, r), l = weightStepsFor(s, r.dept, r.code); return c ? l.filter((x) => !x.cook || x.cook === c) : l }
 export const stepKey = (x: WtStep) => x.kind + (x.cook ? ':' + x.cook : '')
 export const sameStep = (x: WtStep, y: WtStep) => x.kind === y.kind && (x.cook ?? '') === (y.cook ?? '')
 /** a cooker's name as the floor says it */
@@ -1795,11 +1804,11 @@ export function stepDueAt(s: State, r: Run, step: WtStep): number | null {
 }
 /** when a line's next weight test is due (the first of its steps); null = no reminder */
 export function weightDueAt(s: State, r: Run): number | null {
-  const all = weightStepsFor(s, r.dept, r.code).map((x) => stepDueAt(s, r, x)).filter((x): x is number => x != null)
+  const all = weightStepsOfRun(s, r).map((x) => stepDueAt(s, r, x)).filter((x): x is number => x != null)
   return all.length ? Math.min(...all) : null
 }
 /** the steps of a line's weighing that are due now */
-export const weightDueSteps = (s: State, r: Run, now: number) => weightStepsFor(s, r.dept, r.code).filter((x) => { const d = stepDueAt(s, r, x); return d != null && now >= d })
+export const weightDueSteps = (s: State, r: Run, now: number) => weightStepsOfRun(s, r).filter((x) => { const d = stepDueAt(s, r, x); return d != null && now >= d })
 /** the test of a step done within the room's time on this line (complete, half-way, or a cooker not used); null = none yet */
 export function weightThisHour(s: State, r: Run, step: WtStep, now: number): WeightTest | null {
   const rule = weightRuleFor(s, r.dept, r.code), span = (rule.every || 60) * 60_000
@@ -1812,6 +1821,89 @@ export function weightThisHour(s: State, r: Run, step: WtStep, now: number): Wei
 export function weightOpen(s: State, r: Run, step: WtStep, now: number): WeightTest | null {
   const x = weightThisHour(s, r, step, now), count = weightRuleFor(s, r.dept, r.code).count
   return x && !x.skip && x.runId === r.id && count > 0 && x.entries.length < count ? x : null
+}
+// ---- the mandatory weighing (Jose, 2026-10-31: "obligado es que no puedan hacer otra cosa hasta que pesen") ----
+/** a change of lot leaves the product on the line: two runs of one code this close are one stretch, and its hour goes on */
+const WT_GAP_MS = 30 * 60_000
+/** a test up to this long before the hour counts for it: nobody weighs at 2:55 and again at 3:00 */
+const WT_EARLY_MS = 10 * 60_000
+/** a line with nothing recorded for this long was left open: it asks nobody on the floor to weigh (see RTE, the Saturday of 2026-10-31) */
+const WT_MUST_IDLE_MS = 2 * 3_600_000
+/** the time these runs of a line worked up to a moment: what the line's stops and the room's took is not the product running */
+export function wtWorked(s: State, runs: Run[], until: number): number {
+  return runs.reduce((t, r) => {
+    const to = Math.min(r.endedAt ?? until, until)
+    if (to <= r.startedAt) return t
+    const cuts = s.stops.filter((x) => !x.deleted && x.dept === r.dept && (x.lineId === r.lineId || x.lineId === null) && x.startedAt < to && (x.endedAt ?? until) > r.startedAt).map((x) => [Math.max(r.startedAt, x.startedAt), Math.min(to, x.endedAt ?? until)] as const).sort((a, b) => a[0] - b[0])
+    let down = 0, reached = r.startedAt
+    for (const [a, b] of cuts) { if (b > reached) { down += b - Math.max(a, reached); reached = b } }
+    return t + to - r.startedAt - down
+  }, 0)
+}
+/** a line's runs of a day, in stretches of one product (see WT_GAP_MS), each with its runs in order */
+function stretchesOf(s: State, date: string, lineId: string): Run[][] {
+  const out: Run[][] = []
+  for (const r of s.runs.filter((x) => !x.deleted && x.date === date && x.lineId === lineId).sort((a, b) => a.startedAt - b.startedAt)) {
+    const l = out[out.length - 1], last = l?.[l.length - 1]
+    if (last && normCode(last.code) === normCode(r.code) && r.startedAt - (last.endedAt ?? r.startedAt) <= WT_GAP_MS) l.push(r); else out.push([r])
+  }
+  return out
+}
+/** a room's stretches of a code on a day, line by line; on a step of one cooker, only the lines that can be that cooker */
+export const wtStretchesOf = (s: State, date: string, dept: Dept, code: string, cook?: Cook): Run[][] => [...new Set(s.runs.filter((r) => !r.deleted && r.date === date && r.dept === dept).map((r) => r.lineId))]
+  .flatMap((id) => stretchesOf(s, date, id)).filter((l) => normCode(l[0].code) === normCode(code) && (!cook || !cookOfRun(s, l[0]) || cookOfRun(s, l[0]) === cook))
+const stretchOfRun = (s: State, r: Run) => stretchesOf(s, r.date, r.lineId).find((l) => l.some((x) => x.id === r.id)) ?? [r]
+export type WtMustOpt = { on: boolean; cooked: 'hour' | 'unit'; codes: string[] }
+/**
+ * A room's switch, in Ajustes › KPI, off until a manager turns it on (key 'wt-must:<room>' of the report's records,
+ * which every tablet reads). cooked = when what comes cooked is asked for: 'hour' as the rest, 'unit' when a unit
+ * finishes, because nobody knows the hour a batch comes out (Kitchen, by default). codes = Kitchen's mix codes that ask:
+ * it runs those, not the products, and any other mix it makes has nothing to do with these weights
+ */
+export function wtMustOpt(s: State, dept: Dept): WtMustOpt {
+  const d = kpiGet(s, 'wt-must:' + dept)?.data, k = dept === 'Kitchen'
+  return { on: d?.on === true, cooked: d?.cooked === 'hour' || d?.cooked === 'unit' ? d.cooked : k ? 'unit' : 'hour', codes: Array.isArray(d?.codes) ? d.codes.map(String).filter(Boolean) : k ? ['2286'] : [] }
+}
+export function setWtMustOpt(dept: Dept, patch: Partial<WtMustOpt>) {
+  const was = wtMustOpt(state, dept), x = { ...was, ...patch, ...(patch.codes ? { codes: [...new Set(patch.codes.map((c) => c.trim().toUpperCase()).filter(Boolean))] } : {}) }
+  if (JSON.stringify(x) === JSON.stringify(was)) return
+  const say = (o: WtMustOpt) => (o.on ? 'prendido' : 'apagado') + (dept === 'Kitchen' || dept === 'Spiral' ? ' · cocinado: ' + (o.cooked === 'unit' ? 'al terminar' : 'cada hora') : '') + (o.codes.length ? ' · ' + o.codes.join(', ') : '')
+  kpiPut('wt-must:' + dept, x)
+  logChange(dept, 'Peso obligatorio · ' + dept, say(was), say(x), KPI_REF, 'wt-must:' + dept)
+}
+/**
+ * Is this step of a line's weighing owed now? By the hour of work: the product's stretch, from when it started, without
+ * its stops, in whole stretches of the room's time, so 5 hours are 5 tests whatever minute each one was weighed; an hour
+ * missed is not owed on top of the next one. Cooked, where the room says so: when a unit finishes and the time has gone
+ * by since the last test, the first of the code at its first unit. Only a complete test (or a cooker said not used) settles it
+ */
+function mustStepDue(s: State, r: Run, st: WtStep, o: WtMustOpt, now: number): boolean {
+  const rule = weightRuleFor(s, r.dept, r.code)
+  if (!rule.every) return false
+  const span = rule.every * 60_000, runs = stretchOfRun(s, r), from = runs[0].startedAt, count = rule.count || 10
+  const tests = (s.weights ?? []).filter((x) => !x.deleted && x.lineId === r.lineId && x.at >= from && sameStep(x, st) && (x.skip || x.entries.length >= count))
+  if (st.kind === 'ball' && o.cooked === 'unit') {
+    const last = Math.max(0, ...runs.flatMap((x) => x.units.map((u) => u.at)))
+    return last > 0 && (!tests.length || last >= Math.max(...tests.map((x) => x.at)) + span - WT_EARLY_MS)
+  }
+  const hour = Math.floor(wtWorked(s, runs, now) / span)
+  return hour >= 1 && !tests.some((x) => Math.floor((wtWorked(s, runs, x.at) + WT_EARLY_MS) / span) >= hour)
+}
+/**
+ * What a room owes the scale right now, line by line: nothing with its switch off, nothing on a line stopped or in a
+ * set up (there is no product to weigh, and "Parar" must always be possible), nothing on a code it does not weigh, and
+ * nothing on a run left open with no record for two hours
+ */
+export function weightMustOf(s: State, dept: Dept, now: number): { run: Run; steps: WtStep[] }[] {
+  const o = wtMustOpt(s, dept)
+  if (!o.on) return []
+  return s.lines.filter((l) => l.dept === dept).sort(byLineName).flatMap((l) => {
+    const r = openRun(s, l.id)
+    if (!r || openStop(s, dept, l.id) || now - lastRecord(s, r) > WT_MUST_IDLE_MS) return []
+    if (dept === 'Kitchen' ? !wtAsked(r.code) && !o.codes.some((c) => normCode(c) === normCode(r.code)) : !weighsCode(s, dept, r.code)) return []
+    const steps = weightStepsOfRun(s, r).filter((x) => mustStepDue(s, r, x, o, now))
+    return steps.length ? [{ run: r, steps }] : []
+  })
 }
 /** a target as QA says it, its lightest and heaviest (2026-10-29: "48 oz y máximo 52 oz"): "48–52" */
 export const wtRange = (t: WeightTarget) => ({ min: Math.round((t.pouch - t.tol) * 1000) / 1000, max: Math.round((t.pouch + t.tol) * 1000) / 1000 })

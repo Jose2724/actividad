@@ -2029,6 +2029,10 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 
 /* weight tests on RTE (2026-10-22) */
 .wt-dlg{max-width:560px}
+.veil.wt-mustveil{z-index:70;align-items:center;background:rgba(0,0,0,.7)}
+.wt-musthead{margin:0 0 10px;padding:10px 14px;border-radius:12px;background:#fff7e6;color:#7a4700;border:1.5px solid #f2c97a;font-size:22px;font-weight:800}
+.wt-musthead small{display:block;font-size:14px;font-weight:600}
+.wt-mustrow{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin-top:6px}
 .wt-add{display:flex;gap:8px}.wt-add input{flex:1;min-height:52px;font-size:24px;font-variant-numeric:tabular-nums}
 .wt-list{margin:0;padding-left:28px;display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:4px 12px;font-size:18px;font-variant-numeric:tabular-nums}
 .wt-list li.bajo{color:#b91c1c;font-weight:700}.wt-list li.sobre{color:#b45309;font-weight:700}.wt-list li.ok small{color:#166534}

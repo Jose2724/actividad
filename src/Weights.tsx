@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
-import { WT_ASKED_CODES, wtAsked, wtPicksCode, cookText, entryClass, fmtTime, lineLabel, sameStep, setWeightTarget, stepKey, stepText, weightDueSteps, weightNew, weightOpen, weightRuleFor, weightSave, weightSkip, weightStepsFor, weightStepsOf, weightTarget, weightThisHour, wtOdd, wtRange, wtRangeText, wtWeights, type Cook, type Run, type State, type WeightTest, type WtEntry, type WtStep } from './store'
-import { useWho } from './App'
+import { WT_ASKED_CODES, wtAsked, wtPicksCode, cookText, entryClass, fmtTime, lineLabel, sameStep, setWeightTarget, startStop, stepKey, stepText, stopChoices, weightDueSteps, weightMustOf, weightNew, weightOpen, weightRuleFor, weightSave, weightSkip, weightStepsOf, weightStepsOfRun, weightTarget, weightThisHour, wtOdd, wtRange, wtRangeText, wtWeights, type Cook, type Dept, type Run, type State, type WeightTest, type WtEntry, type WtStep } from './store'
+import { StopDialog, useWho } from './App'
 import { tr } from './i18n'
 
 /**
@@ -19,7 +19,7 @@ const countText = (kind: WeightTest['kind'], n: number) => (kind !== 'pouch' ? (
 /** which rooms weigh meatballs rather than pouches (Spiral raw and cooked, Kitchen raw since 2026-10-28) */
 export const weighsBalls = (dept: Run['dept']) => dept === 'Spiral' || dept === 'Kitchen'
 /** whether what is weighed has to be said: more than one thing, or not what the room usually weighs (Ajustes › KPI, 2026-10-30) */
-const namesSteps = (s: State, run: Run) => { const l = weightStepsFor(s, run.dept, run.code), usual = weightStepsOf(run.dept)[0]; return l.length > 1 || !usual || !sameStep(l[0], usual) }
+const namesSteps = (s: State, run: Run) => { const l = weightStepsOfRun(s, run), usual = weightStepsOf(run.dept)[0]; return l.length > 1 || !usual || !sameStep(l[0], usual) }
 const avgOf = (ws: number[]) => (ws.length ? ws.reduce((a, b) => a + b, 0) / ws.length : null)
 
 export function WeightButton({ s, run, now }: { s: State; run: Run; now: number }) {
@@ -53,6 +53,17 @@ export function WeightReminder({ s, run, now }: { s: State; run: Run; now: numbe
   )
 }
 
+/**
+ * The hour's weighing when it is mandatory (Jose, 2026-10-31: "no puedan hacer otra cosa hasta que pesen ... en el medio
+ * como un pop up ... con simpleza comenzar a poner el peso"): over everything on an operator's tablet, the box ready to
+ * type in, and gone by itself with the last weight. What a tablet owes is worked out from what is recorded, so a reload
+ * brings it back half-way, and another tablet of the room weighing it clears it here too. See weightMustOf
+ */
+export function WeightGate({ s, dept, now }: { s: State; dept: Dept; now: number }) {
+  const first = weightMustOf(s, dept, now)[0]
+  return first ? <WeightDialog key={first.run.id} s={s} run={first.run} now={now} must={first.steps} onClose={() => {}} /> : null
+}
+
 /** what a test says in one line: what was weighed, how many, under and over, and the average of the weights typed */
 function testText(x: WeightTest, t: ReturnType<typeof weightTarget>, many: boolean) {
   if (x.skip) return stepText(x) + ' · ' + tr('no se usó esa hora')
@@ -61,10 +72,10 @@ function testText(x: WeightTest, t: ReturnType<typeof weightTarget>, many: boole
   return [...(many ? [stepText(x)] : []), countText(x.kind, x.entries.length), tr('▼ {0} · ▲ {1}', under, over), ...(avg != null ? [tr('promedio {0} oz', oz(avg))] : [])].join(' · ')
 }
 
-function WeightDialog({ s, run, now, onClose }: { s: State; run: Run; now: number; onClose: () => void }) {
+function WeightDialog({ s, run, now, must, onClose }: { s: State; run: Run; now: number; must?: WtStep[]; onClose: () => void }) {
   const who = useWho()
   const boss = !!who.admin || who.role === 'mgr' || who.role === 'office'
-  const steps = weightStepsFor(s, run.dept, run.code), many = steps.length > 1, rule = weightRuleFor(s, run.dept, run.code)
+  const steps = weightStepsOfRun(s, run), many = steps.length > 1, rule = weightRuleFor(s, run.dept, run.code)
   const due = weightDueSteps(s, run, now)
   // the tests begun in this window (by step), and the steps asked to be weighed again although done this hour
   const fresh = useRef<Record<string, WeightTest>>({})
@@ -81,10 +92,13 @@ function WeightDialog({ s, run, now, onClose }: { s: State; run: Run; now: numbe
   /** a step's state this hour: its test in the works, or done (complete or not used), or nothing yet */
   const stateOf = (st: WtStep) => {
     const t = testOf(st), done = weightThisHour(s, run, st, now)
-    return { t, done: !t && !again[stepKey(st)] && done && (done.skip || done.entries.length >= rule.count) ? done : null }
+    // (what is owed now is never "already weighed": the test of 57 minutes ago belongs to the hour before)
+    return { t, done: !t && !again[stepKey(st)] && done && (done.skip || done.entries.length >= rule.count) && !must?.some((x) => sameStep(x, st)) ? done : null }
   }
   const firstToDo = (but?: WtStep) => steps.find((x) => !(but && sameStep(x, but)) && !stateOf(x).done && !(testOf(x) && rule.count && (testOf(x)?.entries.length ?? 0) >= rule.count))
-  const [pick, setPick] = useState<WtStep>(() => due[0] ?? firstToDo() ?? steps[0] ?? { kind: 'pouch' })
+  const [pick, setPick] = useState<WtStep>(() => must?.[0] ?? due[0] ?? firstToDo() ?? steps[0] ?? { kind: 'pouch' })
+  const [stopping, setStopping] = useState(false)
+  if (must?.length && !must.some((x) => sameStep(x, pick))) setPick(must[0])
   const { t: test, done } = stateOf(pick)
   const entries = test?.entries ?? []
   const [text, setText] = useState('')
@@ -127,8 +141,9 @@ function WeightDialog({ s, run, now, onClose }: { s: State; run: Run; now: numbe
   const count = (k: 'bajo' | 'sobre') => entries.filter((e) => entryClass(e, t) === k).length
   const cookFree = (c: Cook) => steps.filter((x) => x.cook === c).every((x) => { const z = stateOf(x); return !z.done && !z.t?.entries.length })
   return (
-    <div className="veil rc-veil" onClick={onClose}>
+    <div className={'veil ' + (must ? 'wt-mustveil' : 'rc-veil')} onClick={must ? undefined : onClose}>
       <div className="dlg wt-dlg" onClick={(e) => e.stopPropagation()}>
+        {must && <p className="wt-musthead">{tr('⚖ Hora de pesar')}<small>{tr('Termina de pesar para seguir usando la app.')}</small></p>}
         <h3>{tr('⚖ Peso · {0} · {1}', lineLabel(run.line), run.code)}{run.lot ? ' · ' + tr('lote {0}', test?.lot || run.lot) : ''}</h3>
         {asks && (
           <div className="wt-code">
@@ -172,7 +187,7 @@ function WeightDialog({ s, run, now, onClose }: { s: State; run: Run; now: numbe
               </div>
             </div>
           )}
-          {many && pick.cook && cookFree(pick.cook) && <p className="hint"><button type="button" className="lnk sm" onClick={() => skipCook(pick.cook as Cook)}>{tr('{0} no cocinó esta hora', cookText(pick.cook))}</button></p>}
+          {many && pick.cook && cookFree(pick.cook) && (!must || steps.some((x) => x.cook !== pick.cook)) && <p className="hint"><button type="button" className="lnk sm" onClick={() => skipCook(pick.cook as Cook)}>{tr('{0} no cocinó esta hora', cookText(pick.cook))}</button></p>}
         </>}
         <p className="hint">{asks && !wCode ? tr('Escoge primero el código.') : t ? (pick.kind === 'raw' ? tr('Objetivo: entre {0} y {1} oz por bola cruda.', oz(wtRange(t).min), oz(wtRange(t).max)) : pick.kind === 'pouched' ? tr('Objetivo: entre {0} y {1} oz por bola sacada del pouch.', oz(wtRange(t).min), oz(wtRange(t).max)) : ball ? tr('Objetivo: entre {0} y {1} oz por bola cocinada.', oz(wtRange(t).min), oz(wtRange(t).max)) : tr('Objetivo: entre {0} y {1} oz por pouch, con el plástico.', oz(wtRange(t).min), oz(wtRange(t).max))) : tr('Este código todavía no tiene peso objetivo: un peso escrito con "+ Agregar" se guarda sin decir bajo o sobre.')}
           {boss && <> <button type="button" className="lnk sm" onClick={() => setTargeting(true)}>{tr('✎ Objetivo')}</button></>}</p>
@@ -189,13 +204,16 @@ function WeightDialog({ s, run, now, onClose }: { s: State; run: Run; now: numbe
             <p className="hint ok">{tr('Cada uno ya quedó guardado.')}</p>
           </>
         )}
-        {earlier.length > 0 && (
+        {!must && earlier.length > 0 && (
           <>
             <h4>{tr('Antes en este código')}</h4>
             <ul className="wt-earlier">{earlier.slice(0, 8).map((x) => <li key={x.id}>{fmtTime(x.at)} · {testText(x, weightTarget(s, x.code, x.kind, x.cook), namesSteps(s, run))} <small>· {x.by}</small></li>)}</ul>
           </>
         )}
-        <div className="dbtns"><button type="button" className="btn primary" onClick={onClose}>{tr('Listo')}</button></div>
+        <div className="dbtns">
+          {must ? <button type="button" className="btn stopbtn" onClick={() => setStopping(true)}>{tr('⏸ La línea se paró')}</button> : <button type="button" className="btn primary" onClick={onClose}>{tr('Listo')}</button>}
+        </div>
+        {stopping && <StopDialog title={tr('Parar {0} · {1}', lineLabel(run.line), run.code)} {...stopChoices(s, run.dept)} setup codes={s.reasonCodes.on} onClose={() => setStopping(false)} onPick={(reason, note) => { if (startStop(run.dept, run.lineId, reason, note)) setStopping(false) }} />}
         {targeting && <TargetDialog code={wCode || run.code} step={pick} now={t} onClose={() => setTargeting(false)} />}
       </div>
     </div>

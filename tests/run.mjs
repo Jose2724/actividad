@@ -6321,6 +6321,94 @@ section('Programa del día: la pestaña del admin, prendida para todos desde Aju
   eq('y Lotes y Flujo siguen como quedaron', back.use((m) => [m.store.get().viewOpts.lotes.on, m.store.get().viewOpts.flujo.on]), [true, true])
 }
 
+section('Peso obligatorio: el producto corriendo pide sus pesos cada hora y la tablet espera (Jose, 2026-10-31)')
+{
+  const d = await device('wt-must', { user: 'Jose' })
+  const T = oct(10, 5, 0)
+  d.use((m) => {
+    const st = () => m.store.get()
+    const must = (dept, at) => m.weightMustOf(st(), dept, at).map((x) => x.run.code + ' ' + x.steps.map(m.stepText).join('+'))
+    const full = (r, step, n = 10) => { const x = m.weightNew(r, step); m.weightSave(x, Array.from({ length: n }, () => ({ w: 50 }))); return x }
+    clock = T
+    m.kpiPut('wt-from', { date: DAY })
+    for (const [dept, name] of [['RTE', 'L1'], ['Kitchen', 'B1'], ['Spiral', 'Spiral'], ['Spiral', "Rack's"]]) m.addLine(dept, name)
+    const line = (name) => st().lines.find((l) => l.name === name), rte = line('L1')
+    const open = (name) => st().runs.find((r) => r.lineId === line(name).id && !r.endedAt && !r.deleted)
+    m.startRun(rte, '889', '6300', DAY, 260)
+    eq('apagado en Ajustes no pide nada aunque pase la hora', [m.wtMustOpt(st(), 'RTE').on, must('RTE', T + 61 * M)], [false, []])
+    m.setWtMustOpt('RTE', { on: true })
+    eq('prendido: antes de la hora nada, a la hora el pouch del código que corre (889 es el 0889)', [must('RTE', T + 59 * M), must('RTE', T + 60 * M)], [[], ['889 Pouch']])
+    clock = T + 62 * M
+    const half = full(open('L1'), { kind: 'pouch' }, 9)
+    eq('con 9 de 10 sigue pidiendo, y sigue con la misma prueba', [must('RTE', clock), m.weightOpen(st(), open('L1'), { kind: 'pouch' }, clock)?.id], [['889 Pouch'], half.id])
+    m.weightSave(half, Array.from({ length: 10 }, () => ({ w: 50 })))
+    eq('con los 10 la tablet queda libre', must('RTE', clock), [])
+    eq('la siguiente toca a la hora justa, no una hora después de pesar', [must('RTE', T + 119 * M), must('RTE', T + 120 * M)], [[], ['889 Pouch']])
+    // the hours are the product's: 5 hours are 5 tests, whatever minute each one was weighed
+    let tests = 1
+    for (const h of [2, 3, 4, 5]) { clock = T + (h * 60 - 20) * M; m.unitDone(open('L1').id, 260, ''); clock = T + (h * 60 + 7) * M; if (must('RTE', clock).length) { full(open('L1'), { kind: 'pouch' }); tests++ } }
+    eq('5 horas corriendo: 5 pruebas, y el KPI dice las mismas 5', [tests, m.weightsDue(st(), DAY, 'RTE', '889', T + 307 * M)], [5, 5])
+    clock = T + 330 * M
+    m.unitDone(open('L1').id, 260, '')
+    m.startStop('RTE', rte.id, 'Mecánico', '')
+    eq('parada no pide: no hay producto, y debe poder parar', must('RTE', T + 355 * M), [])
+    clock = T + 360 * M
+    m.endStop(st().stops.find((x) => !x.endedAt).id)
+    eq('lo parado no cuenta: la hora 6 llega 30 min después', [must('RTE', T + 389 * M + 30 * 1000), must('RTE', T + 390 * M)], [[], ['889 Pouch']])
+    eq('el KPI tampoco cuenta lo parado', m.weightsDue(st(), DAY, 'RTE', '889', T + 390 * M), 6)
+    clock = T + 390 * M
+    full(open('L1'), { kind: 'pouch' })
+    m.endRun(open('L1').id, false)
+    clock = T + 395 * M
+    m.startRun(rte, '0889', '6301', DAY, 260)
+    eq('cambiar de lote no reinicia la hora: es el mismo producto', [must('RTE', T + 454 * M), must('RTE', T + 455 * M)], [[], ['0889 Pouch']])
+    m.endRun(open('L1').id, false)
+    clock = T + 400 * M
+    m.startRun(rte, '7777', '6302', DAY, 260)
+    eq('otro código no pide nada', must('RTE', T + 470 * M), [])
+    m.endRun(open('L1').id, false)
+    m.startRun(rte, '2234', '6303', DAY, 260)
+    eq('el 2234 pide igual desde su propia hora', [must('RTE', T + 459 * M), must('RTE', T + 460 * M)], [[], ['2234 Pouch']])
+    eq('una línea olvidada abierta, sin nada registrado en 2 horas, no traba a nadie', [must('RTE', T + 519 * M), must('RTE', T + 521 * M)], [['2234 Pouch'], []])
+
+    // Kitchen: cooked is asked when a mezcla finishes
+    const b1 = line('B1')
+    clock = T
+    m.startRun(b1, '2286', '6304', DAY, null)
+    m.setWtMustOpt('Kitchen', { on: true })
+    eq('Kitchen pesa cocinado y por defecto al tocar Mezcla lista, con su 2286', [m.wtMustOpt(st(), 'Kitchen').cooked, m.wtMustOpt(st(), 'Kitchen').codes, m.weightStepsFor(st(), 'Kitchen', '2286').map(m.stepText)], ['unit', ['2286'], ['Cocinado']])
+    eq('sin mezcla terminada no pide, aunque pase la hora', must('Kitchen', T + 90 * M), [])
+    clock = T + 12 * M
+    m.unitDone(open('B1').id, null, '')
+    eq('la primera Mezcla lista del código pide', must('Kitchen', clock), ['2286 Cocinado'])
+    clock = T + 14 * M
+    full(open('B1'), { kind: 'ball' }, m.weightRuleFor(st(), 'Kitchen', '2286').count)
+    eq('pesada, queda libre', must('Kitchen', clock), [])
+    clock = T + 40 * M
+    m.unitDone(open('B1').id, null, '')
+    eq('otra mezcla antes de la hora no pide', must('Kitchen', clock), [])
+    clock = T + 66 * M
+    m.unitDone(open('B1').id, null, '')
+    eq('la primera mezcla después de la hora pide', must('Kitchen', clock), ['2286 Cocinado'])
+    m.setWtMustOpt('Kitchen', { codes: [' 3000 ', '3000'] })
+    eq('otra mezcla (la lista cambió) no pide', [m.wtMustOpt(st(), 'Kitchen').codes, must('Kitchen', clock)], [['3000'], []])
+    m.setWtMustOpt('Kitchen', { codes: ['2286'], cooked: 'hour' })
+    eq('Kitchen también puede pedir cada hora, por el reloj del producto', must('Kitchen', T + 70 * M).length, 1)
+
+    // Spiral: each cooker's tests are its own line's
+    clock = T
+    m.startRun(line('Spiral'), '0889', '6305', DAY, null)
+    m.startRun(line("Rack's"), '0889', '6305', DAY, null)
+    m.setWtMustOpt('Spiral', { on: true })
+    eq('cada línea de Spiral pide lo de su cocinador, no lo de los dos', must('Spiral', T + 60 * M), ['0889 Crudo · Racks+Cocinado · Racks', '0889 Crudo · Spiral+Cocinado · Spiral'])
+    eq('el KPI cuenta cada cocinador con su línea', [m.weightsDue(st(), DAY, 'Spiral', '0889', T + 125 * M, 'spiral'), m.weightsDue(st(), DAY, 'Spiral', '0889', T + 125 * M, 'racks')], [2, 2])
+    m.setWtMustOpt('Spiral', { on: false })
+    eq('al apagar se quita al momento', must('Spiral', T + 60 * M), [])
+  })
+  const back = await device('wt-must-again', { seed: JSON.parse(disks.get('wt-must').get('act_v1')), user: 'Jose' })
+  eq('al volver a abrir sigue como quedó', back.use((m) => [m.wtMustOpt(m.store.get(), 'RTE').on, m.wtMustOpt(m.store.get(), 'Spiral').on, m.wtMustOpt(m.store.get(), 'Kitchen').cooked]), [true, false, 'hour'])
+}
+
 section('Borrar una corrida con producción pide escribir cuántas unidades tiene (Jose, 2026-10-31)')
 {
   const d = await device('drop-guard', { user: 'Jose' })
