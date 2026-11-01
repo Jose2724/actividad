@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { WT_ASKED_CODES, wtAsked, wtPicksCode, cookText, entryClass, fmtTime, lineLabel, sameStep, setWeightTarget, startStop, stepKey, stepText, stopChoices, weightDueSteps, weightMustOf, weightNew, weightOpen, weightRuleFor, weightSave, weightSkip, weightStepsOf, weightStepsOfRun, weightTarget, weightThisHour, wtOdd, wtRange, wtRangeText, wtWeights, type Cook, type Dept, type Run, type State, type WeightTest, type WtEntry, type WtStep } from './store'
+import { WT_ASKED_CODES, wtAsked, wtPaperAt, wtPicksCode, cookText, entryClass, fmtTime, lineLabel, sameStep, setWeightTarget, startStop, stepKey, stepText, stopChoices, weightDueSteps, weightMustOf, weightNew, weightOpen, weightPaperAdd, weightRuleFor, weightSave, weightSkip, weightStepsFor, weightStepsOf, weightStepsOfRun, weightTarget, weightThisHour, wtOdd, wtRange, wtRangeText, wtWeights, type Cook, type Dept, type Run, type State, type WeightTest, type WtEntry, type WtStep } from './store'
 import { StopDialog, useWho } from './App'
 import { tr } from './i18n'
 
@@ -25,7 +25,7 @@ const avgOf = (ws: number[]) => (ws.length ? ws.reduce((a, b) => a + b, 0) / ws.
 export function WeightButton({ s, run, now }: { s: State; run: Run; now: number }) {
   const [open, setOpen] = useState(false)
   const tests = (s.weights ?? []).filter((x) => !x.deleted && x.runId === run.id && x.entries.length > 0)
-  const late = weightDueSteps(s, run, now).length > 0
+  const late = run.dept !== 'Kitchen' && weightDueSteps(s, run, now).length > 0
   return (
     <>
       <button type="button" className={'btn' + (late ? ' wt-due' : '')} onClick={() => setOpen(true)}>{tr('⚖ Peso')}{tests.length > 0 && <small> · {tests.length}</small>}</button>
@@ -40,7 +40,8 @@ export function WeightButton({ s, run, now }: { s: State; run: Run; now: number 
  */
 export function WeightReminder({ s, run, now }: { s: State; run: Run; now: number }) {
   const [open, setOpen] = useState(false)
-  const due = weightDueSteps(s, run, now), rule = weightRuleFor(s, run.dept, run.code), named = namesSteps(s, run)
+  // (Kitchen weighs when it knows the product is ready, Jose 2026-11-01: no reminder by the clock until the ovens are lines)
+  const due = run.dept === 'Kitchen' ? [] : weightDueSteps(s, run, now), rule = weightRuleFor(s, run.dept, run.code), named = namesSteps(s, run)
   // (the window stays open, the same test, once the first weight puts the reminder away: it closes with Listo)
   if (!due.length && !open) return null
   const n = (due.length ? due.every((x) => x.kind !== 'pouch') : weighsBalls(run.dept)) ? (rule.count === 1 ? tr('1 bola') : tr('{0} bolas', rule.count)) : rule.count ? tr('{0} pouches', rule.count) : tr('los pouches')
@@ -62,6 +63,105 @@ export function WeightReminder({ s, run, now }: { s: State; run: Run; now: numbe
 export function WeightGate({ s, dept, now }: { s: State; dept: Dept; now: number }) {
   const first = weightMustOf(s, dept, now)[0]
   return first ? <WeightDialog key={first.run.id} s={s} run={first.run} now={now} must={first.steps} onClose={() => {}} /> : null
+}
+
+/**
+ * Kitchen cooks 0889 and 2234 without running them: it never types those codes, so no line knows they are in the oven.
+ * Until the ovens are lines, the room writes down what it weighed when it knows it is ready, with the hour it weighed
+ * (Jose, 2026-11-01: "un botón en kitchen para que ellos anoten el peso y pongan la hora", "cuando ya ellos sepan que está
+ * listo"). It asks for nothing by the clock, and the hour is typed, never assumed. Nothing is saved until Guardar
+ */
+export function WeightNoteButton({ s, date, now }: { s: State; date: string; now: number }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <button type="button" className="btn soft" onClick={() => setOpen(true)}>{tr('⚖ Anotar peso')}</button>
+      {open && <WeightNoteDialog s={s} date={date} now={now} onClose={() => setOpen(false)} />}
+    </>
+  )
+}
+function WeightNoteDialog({ s, date, now, onClose }: { s: State; date: string; now: number; onClose: () => void }) {
+  // (0889 chosen from the start, Jose 2026-11-01: most of what Kitchen weighs)
+  const [code, setCode] = useState(WT_ASKED_CODES[0])
+  const [kind, setKind] = useState<WtStep['kind'] | ''>('')
+  const [hm, setHm] = useState('')
+  const [text, setText] = useState('')
+  const [weights, setWeights] = useState<number[]>([])
+  const [bad, setBad] = useState(false)
+  const [odd, setOdd] = useState<number | null>(null)
+  const box = useRef<HTMLInputElement>(null)
+  const steps = code ? weightStepsFor(s, 'Kitchen', code) : [], step = steps.length === 1 ? steps[0] : steps.find((x) => x.kind === kind)
+  const count = code ? weightRuleFor(s, 'Kitchen', code).count : 0, t = step ? weightTarget(s, code, step.kind) : null
+  // (a minute of grace: the tablet's clock and the person's watch)
+  const late = !!hm && wtPaperAt(s, date, hm) > now + 60_000
+  const add = (sure = false) => {
+    const w = Number(text.trim().replace(',', '.'))
+    if (!(w > 0 && w < 2000)) { setBad(true); return }
+    if (!sure && wtOdd(w, t)) { setOdd(w); return }
+    setOdd(null); setBad(false); setText(''); setWeights([...weights, w])
+    box.current?.focus()
+  }
+  const save = () => {
+    if (!step || !hm || late || !weights.length) return
+    weightPaperAdd({ date, dept: 'Kitchen', lineId: '', line: '', code, kind: step.kind, noted: true }, [{ hm, weights }])
+    setWeights([]); setHm(''); setText(''); setBad(false); setOdd(null)
+  }
+  const today = (s.weights ?? []).filter((x) => !x.deleted && x.dept === 'Kitchen' && x.date === date && x.entries.length > 0).sort((a, b) => b.at - a.at)
+  const entries = weights.map((w) => ({ w })), avg = avgOf(weights), ball = step?.kind !== 'pouch'
+  return (
+    <div className="veil rc-veil">
+      <div className="dlg wt-dlg">
+        <h3>{tr('⚖ Anotar peso · Kitchen')}</h3>
+        <div className="wt-code">
+          <b>{tr('¿De qué código son estas bolas?')}</b>
+          <div className="chips">{WT_ASKED_CODES.map((c) => <button key={c} type="button" className={'chip' + (code === c ? ' on' : '')} disabled={weights.length > 0} onClick={() => { setCode(c); setKind('') }}>{c}</button>)}</div>
+        </div>
+        {steps.length > 1 && <div className="chips">{steps.map((x) => <button key={stepKey(x)} type="button" className={'chip' + (kind === x.kind ? ' on' : '')} disabled={weights.length > 0} onClick={() => setKind(x.kind)}>{stepText(x)}</button>)}</div>}
+        <label className="wt-notehour">{tr('Hora en que se pesó')}{' '}<input type="time" value={hm} onChange={(e) => setHm(e.target.value)} /></label>
+        {late && <p className="hint red">{tr('Esa hora todavía no ha pasado.')}</p>}
+        {step && (
+          <>
+            <p className="hint">{ball ? (step.kind === 'raw' ? tr('Pesa las bolas crudas, una por una, y escribe el peso de cada una en onzas (oz).') : tr('Pesa las bolas cocinadas, una por una, y escribe el peso de cada una en onzas (oz).')) : tr('Pesa {0} pouches, uno por uno, y escribe el peso de cada uno en onzas (oz). La app dice si está bajo o sobre.', count || 10)}</p>
+            {count > 0 && <div className="wt-count"><b>{tr('{0} de {1}', Math.min(weights.length, count), count)}</b>{weights.length >= count ? <span className="ok">{tr('✓ Prueba completa')}</span> : <span>{tr('faltan {0}', count - weights.length)}</span>}</div>}
+            <form className="wt-add" onSubmit={(e) => { e.preventDefault(); add() }}>
+              <input ref={box} inputMode="decimal" value={text} placeholder={tr('Peso de la bola (oz)')} aria-label={tr('Peso de la bola (oz)')} onChange={(e) => { setText(e.target.value.replace(/[^\d.,]/g, '')); setBad(false); setOdd(null) }} />
+              <button type="submit" className="btn primary" disabled={!text}>{tr('+ Agregar')}</button>
+            </form>
+            {odd != null && t && (
+              <div className="wt-odd">
+                <b>{tr('¿Seguro? {0} oz está muy lejos del rango {1}.', odd, wtRangeText(t))}</b>
+                <div className="btns">
+                  <button type="button" className="btn primary" onClick={() => { setOdd(null); box.current?.focus() }}>{tr('Lo corrijo')}</button>
+                  <button type="button" className="btn" onClick={() => add(true)}>{tr('Sí, guardar {0}', odd)}</button>
+                </div>
+              </div>
+            )}
+            {bad && <p className="hint red">{tr('Escribe el peso en onzas, por ejemplo 48.5')}</p>}
+            {t && <p className="hint">{tr('Objetivo: entre {0} y {1} oz por bola cocinada.', oz(wtRange(t).min), oz(wtRange(t).max))}</p>}
+            {weights.length > 0 && (
+              <>
+                <ol className="wt-list">{entries.map((e, i) => { const k = entryClass(e, t); return <li key={i} className={k}>{oz(e.w)} <small>{MARK[k]} {k === 'bajo' ? tr('bajo') : k === 'sobre' ? tr('sobre') : ''}</small></li> })}</ol>
+                <div className="wt-sum">
+                  <span>{countText(step.kind, weights.length)}{avg != null ? ' · ' + tr('promedio {0} oz', oz(avg)) : ''}</span>
+                  <button type="button" className="lnk sm" onClick={() => setWeights(weights.slice(0, -1))}>{tr('Quitar el último')}</button>
+                </div>
+              </>
+            )}
+          </>
+        )}
+        {today.length > 0 && (
+          <>
+            <h4>{tr('Hoy en Kitchen')}</h4>
+            <ul className="wt-earlier">{today.slice(0, 8).map((x) => <li key={x.id}>{fmtTime(x.at)} · {x.code} · {testText(x, weightTarget(s, x.code, x.kind, x.cook), true)} <small>· {x.by}</small></li>)}</ul>
+          </>
+        )}
+        <div className="dbtns">
+          <button type="button" className="btn" onClick={onClose}>{tr('Cerrar')}</button>
+          <button type="button" className="btn primary" disabled={!step || !hm || late || !weights.length} onClick={save}>{count > 0 && weights.length > 0 && weights.length < count ? tr('Guardar {0} de {1}', weights.length, count) : tr('Guardar')}</button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 /** what a test says in one line: what was weighed, how many, under and over, and the average of the weights typed */

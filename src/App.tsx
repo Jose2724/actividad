@@ -25,7 +25,7 @@ import { Report, reportOpenAt, type ReportAt } from './ReportView'
 import { ProgramToday, programRooms } from './ProgramToday'
 import { LotesView } from './LotesView'
 import { KpiView } from './KpiView'
-import { WeightButton, WeightGate, WeightReminder, weighsBalls } from './Weights'
+import { WeightButton, WeightGate, WeightNoteButton, WeightReminder, weighsBalls } from './Weights'
 import { WhatIs } from './Numbers'
 import { MeatButton } from './Meat'
 import { ConsumeButton, ConsumeEndDialog, ConsumeStartDialog } from './Consume'
@@ -2195,6 +2195,7 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
           <button type="button" className="btn" disabled={!left.runs.length && !left.setups.length && !left.stops.length} onClick={openLeaving}>{tr('🏁 Terminar turno')}</button>
           {(can('fix') || s.lineRules.add) && <button type="button" className="btn soft" onClick={() => setAdding(true)}>{trx('+ Agregar {0}', CFG[dept].lineWord.toLowerCase())}</button>}
           {/* what the freezer has ready for this room, and asking for it (Jose, 2026-10-27): Freezer RTE's own screen for the room's people */}
+          {dept === 'Kitchen' && <WeightNoteButton s={s} date={day.date} now={now} />}
           {(dept === 'Packing' || dept === 'MFO') && <a className="btn soft" href={FREEZER_URL + '#listo'}>{tr('🧊 Listo para {0}', dept)}</a>}
         </div>}
       </div>

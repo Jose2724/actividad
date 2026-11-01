@@ -1317,18 +1317,19 @@ export function wtPaperLines(text: string): WtPaperLine[] {
 export const wtPaperAt = (s: State, date: string, hm: string) => nearDay(wallAt(date, nightMs(s, date) / 60_000 + 720), hm)
 /**
  * A paper sheet's lines saved as tests of that day, each with its own hour and no run (none is needed to read them):
- * by who typed them, said as "(papel)", and in the history. The same test twice is saved once
+ * by who typed them, said as "(papel)", and in the history. The same test twice is saved once. noted = a test the room
+ * wrote itself with the hour it weighed (Kitchen's button, see WeightNoteButton): it carries no "(papel)"
  */
-export function weightPaperAdd(o: { date: string; dept: Dept; lineId: string; line: string; code: string; kind: WeightTest['kind']; cook?: Cook }, lines: { hm: string; weights: number[] }[]): number {
+export function weightPaperAdd(o: { date: string; dept: Dept; lineId: string; line: string; code: string; kind: WeightTest['kind']; cook?: Cook; noted?: boolean }, lines: { hm: string; weights: number[] }[]): number {
   const code = o.code.trim().toUpperCase(), count = weightRuleFor(state, o.dept, code).count, had = state.weights ?? []
-  const made = lines.map((l): WeightTest => ({ id: uid(), date: o.date, dept: o.dept, lineId: o.lineId, line: o.line, code, lot: '', runId: '', kind: o.kind, ...(o.cook ? { cook: o.cook } : {}), unit: 'oz', ...(count > 0 ? { need: count } : {}), entries: wtEntries({ entries: l.weights.map((w) => ({ w })), unit: 'oz' }), at: wtPaperAt(state, o.date, l.hm), by: user.get() + ' (papel)', updatedAt: stamp(undefined) }))
+  const made = lines.map((l): WeightTest => ({ id: uid(), date: o.date, dept: o.dept, lineId: o.lineId, line: o.line, code, lot: '', runId: '', kind: o.kind, ...(o.cook ? { cook: o.cook } : {}), unit: 'oz', ...(count > 0 ? { need: count } : {}), entries: wtEntries({ entries: l.weights.map((w) => ({ w })), unit: 'oz' }), at: wtPaperAt(state, o.date, l.hm), by: user.get() + (o.noted ? '' : ' (papel)'), updatedAt: stamp(undefined) }))
   const fresh = made.filter((x) => x.entries.length && !had.some((y) => !y.deleted && y.date === x.date && y.dept === x.dept && y.at === x.at && y.kind === x.kind && y.cook === x.cook && normCode(y.code) === normCode(code) && wtWeights(y).join() === wtWeights(x).join()))
   if (!fresh.length) return 0
   batch(() => {
     set({ ...state, weights: [...had, ...fresh] })
     for (const x of fresh) push('act_changes', WT_ID + x.id, rowOfWt(x))
   })
-  logChange(o.dept, 'Pesos de papel del ' + o.date, '', fresh.length + (fresh.length === 1 ? ' prueba · ' : ' pruebas · ') + code + ' · ' + stepText({ kind: o.kind, ...(o.cook ? { cook: o.cook } : {}) }), WT_REF, fresh[0].id)
+  logChange(o.dept, (o.noted ? 'Peso anotado del ' : 'Pesos de papel del ') + o.date, '', fresh.length + (fresh.length === 1 ? ' prueba · ' : ' pruebas · ') + code + ' · ' + stepText({ kind: o.kind, ...(o.cook ? { cook: o.cook } : {}) }), WT_REF, fresh[0].id)
   return fresh.length
 }
 /** a weight too far from its target to be taken at its word (half the minimum, or half as much again as the maximum): 242 for 2.42 */
