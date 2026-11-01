@@ -5,7 +5,7 @@ import { unitStartLot } from './report'
 import { ConfirmDialog, LotsDialog, NoticeDialog, useCan, useSure, useWho, type SureBox } from './App'
 import { writesIn } from './powers'
 import { HoldButton } from './Holds'
-import { ASK_MANAGER, closeAtLastRecord, holdOf, lastRecordOf, isMechanical, mechanicOf, mechNote, SETUP, stopRulesAt, stopRulesList } from './store'
+import { ASK_MANAGER, closeAtLastRecord, dropOk, holdOf, lastRecordOf, isMechanical, mechanicOf, mechNote, SETUP, stopRulesAt, stopRulesList } from './store'
 import { CodePicker, codeReady, DetailNeeded, detailHint } from './CodePicker'
 import { reasonCodeOf } from './reasons'
 import { tr } from './i18n'
@@ -134,7 +134,7 @@ export function RunEditor({ s, run, mgr, focusAt, onClose }: { s: State; run: Ru
             with its line in the history (Jose, 2026-10-18) */}
         <NoteBox value={note} onChange={setNote} />
         <p className="hint">{tr('Quita con ✕ una unidad tocada de más. Los cambios quedan al tocar Guardar.')}{later > 0 && ' ' + tr('Mientras corregías se {0}', (later === 1 ? tr('registró 1 {0} más: se conserva.', cfg.unit.toLowerCase()) : tr('registraron {0} {1} más: se conservan.', later, cfg.plural.toLowerCase())))}</p>
-        {can('del') && <p className="hint">{tr('Si la línea no estaba trabajando y se tocó por error, "Borrar corrida" la saca del reporte. Todo cambio queda en el historial con tu nombre.')}</p>}
+        {can('del') && <p className="hint">{run.units.length ? tr('Esta corrida ya tiene producción: "Borrar corrida" la saca toda del reporte. Si la línea sí trabajó, no la borres.') : tr('Si la línea no estaba trabajando y se tocó por error, "Borrar corrida" la saca del reporte.')} {tr('Todo cambio queda en el historial con tu nombre.')}</p>}
         {problem && <span className="err">{problem}</span>}
         {fullWhy && <NoticeDialog title={tr('Ese PO no lleva más pallets')} text={fullWhy} onClose={() => setFullWhy('')} />}
         <div className="dbtns spread">
@@ -159,7 +159,43 @@ export function RunEditor({ s, run, mgr, focusAt, onClose }: { s: State; run: Ru
           const u = store.get().runs.find((r) => r.id === run.id)?.units.find((x) => x.at === at)
           if (u) setUnits((list) => [...list, draftUnitOf(u)].sort((a, b) => a.at - b.at))
         }} />}
-        {dropping && <ConfirmDialog title={tr('¿Borrar la corrida de {0}', run.code) + '?'} text={tr('Se borran sus unidades y su waste. No se puede deshacer.')} yes={tr('Borrar')} danger onYes={() => { deleteRun(run.id); onClose() }} onNo={() => setDropping(false)} />}
+        {dropping && <DropRunDialog s={s} run={run} onYes={() => { deleteRun(run.id); onClose() }} onNo={() => setDropping(false)} />}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Deleting a run. One with nothing made is a plain confirmation; one with production says what would leave the report
+ * and is deleted only after typing how many units it has (Jose, 2026-10-31: "esto lo pueden ellos hacer mal"). Cancelar
+ * is the button that takes the focus
+ */
+function DropRunDialog({ s, run, onYes, onNo }: { s: State; run: Run; onYes: () => void; onNo: () => void }) {
+  const [typed, setTyped] = useState('')
+  const title = tr('¿Borrar la corrida de {0}', run.code) + '?', gone = tr('Se borran sus unidades y su waste. No se puede deshacer.')
+  const n = run.units.length
+  if (!n) return <ConfirmDialog title={title} text={gone} yes={tr('Borrar')} danger onYes={onYes} onNo={onNo} />
+  const cfg = cfgOf(run), word = (n === 1 ? cfg.unit : cfg.plural).toLowerCase()
+  const qty = cfg.qty === 'none' ? 0 : run.units.reduce((a, u) => a + unitQty(s, run, u), 0)
+  const hours = run.units.map((u) => u.at), who = [...new Set(run.units.map((u) => u.by).filter(Boolean))].join(', ')
+  const ok = dropOk(run, typed)
+  return (
+    <div className="veil" onClick={onNo}>
+      <div className="dlg" onClick={(e) => e.stopPropagation()}>
+        <h3>{title}</h3>
+        <div className="dropwarn">
+          <b>{tr('Esta corrida tiene producción')}</b>
+          <big>{n + ' ' + word}{qty > 0 && ' · ' + fmtN(qty) + ' ' + cfg.qtyUnit.toLowerCase()}</big>
+          <span>{run.date + ' · ' + fmtTime(Math.min(...hours)) + ' – ' + fmtTime(Math.max(...hours))}{who && ' · ' + who}</span>
+        </div>
+        <p><b>{tr('Si la línea sí trabajó, no la borres: toca Cancelar.')}</b> {gone}</p>
+        <form className="qform" onSubmit={(e) => { e.preventDefault(); if (ok) onYes() }}>
+          <label>{tr('Para borrarla, escribe {0}', n)} <input className="num" inputMode="numeric" autoComplete="off" value={typed} onChange={(e) => setTyped(e.target.value.replace(/\D/g, ''))} /></label>
+          <div className="dbtns">
+            <button type="button" className="btn" autoFocus onClick={onNo}>{tr('Cancelar')}</button>
+            <button type="submit" className="btn danger" disabled={!ok}>{tr('Borrar')}</button>
+          </div>
+        </form>
       </div>
     </div>
   )

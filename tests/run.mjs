@@ -6321,6 +6321,18 @@ section('Programa del día: la pestaña del admin, prendida para todos desde Aju
   eq('y Lotes y Flujo siguen como quedaron', back.use((m) => [m.store.get().viewOpts.lotes.on, m.store.get().viewOpts.flujo.on]), [true, true])
 }
 
+section('Borrar una corrida con producción pide escribir cuántas unidades tiene (Jose, 2026-10-31)')
+{
+  const d = await device('drop-guard', { user: 'Jose' })
+  d.use((m) => {
+    const made = { units: [{ at: 1 }, { at: 2 }, { at: 3 }] }
+    eq('una corrida sin nada se borra con solo confirmar', m.dropOk({ units: [] }, ''), true)
+    eq('con producción, sin escribir nada no se borra', m.dropOk(made, ''), false)
+    eq('con otro número tampoco', m.dropOk(made, '2'), false)
+    eq('con el número exacto, sí', m.dropOk(made, ' 3 '), true)
+  })
+}
+
 // =====================================================================================================================
 console.log('')
 if (failed.length) { console.log(failed.length + ' FALLARON de ' + (passed + failed.length) + ':\n'); for (const f of failed) console.log('  ✗ ' + f + '\n'); process.exit(1) }

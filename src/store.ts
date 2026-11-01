@@ -2678,6 +2678,12 @@ export function updateRun(id: string, patch: Partial<Pick<Run, 'code' | 'lot' | 
   })
 }
 export function deleteRun(id: string) { const r = run(id); if (r) { putRun({ ...r, deleted: true }); logChange(r.dept, 'Se borró la corrida ' + r.code + ' del ' + r.date + ' (' + r.dept + ', ' + lineNameOf(state, r.lineId, r.line) + ')', r.units.length + ' ' + cfgOf(r).plural.toLowerCase() + (r.waste ? ' · waste ' + r.waste + ' lb' : ''), '', 'act_runs', r.id) } }
+/**
+ * May this run be deleted with what was typed? One with nothing made, yes. One with production only when the number of
+ * its units is typed (Jose, 2026-10-31: a Friday's whole line of carts was one tap and one confirmation from leaving the
+ * report, on the same screen as the button that only closes it)
+ */
+export const dropOk = (r: Pick<Run, 'units'>, typed: string) => !r.units.length || Number(typed.trim()) === r.units.length
 /** letters and digits only, without accents or capitals: "Set-up", "setup" and "SET UP" are one cause */
 const plain = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '')
 /**
