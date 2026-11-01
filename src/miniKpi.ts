@@ -1,8 +1,8 @@
 import { ASK_MANAGER, CFG, DEPTS, LUNCH, SETUP, awayDay, consumesOf, dayOf, fmtDur, fmtTime, isMechanical, kpiGet, kpiPut, lineGoalKey, lineNameOf, lineShiftGoalOf, mechanicOf, measureOf, plainDay, shiftAt, shiftGoalOf, shiftsOf, slowCounts, slowUnitOf, wallOfDay, type Dept, type State } from './store'
 import { reasonCodeOf } from './reasons'
 import { reportOf } from './report'
-import { weightsOf, wtBoard, wtRangeLong, wtRowsOfShift, type WtAvg } from './kpi'
-import { X, xN, xT, type Cell, type Chart, type Sheet } from './xlsx'
+import { weightsOf, wtBoard, wtRangeLong, wtRowsOfShift, type WtAvg, type WtRow } from './kpi'
+import { X, colName, xN, xT, type Cell, type Chart, type Sheet } from './xlsx'
 import { locale, tr } from './i18n'
 import type { NumberId } from './Numbers'
 
@@ -49,7 +49,7 @@ type RoomDay = {
   /** when it started (the average of its lines, or the room's first), how far from the shift's start, in minutes */
   start: { at: number; off: number; late: boolean; lines: number; lateLines: number } | null
   real: number; target: number | null; apart: string[]
-  time: number; down: number; mech: number; people: number; clean: number; other: number
+  time: number; down: number; mech: number; people: number; clean: number; other: number; lunch: number
   in: number; out: number | null; waste: number
 }
 function roomDay(s: State, date: string, dept: Dept, k: 1 | 2, o: MiniOpts, now: number): RoomDay {
@@ -85,16 +85,17 @@ function roomDay(s: State, date: string, dept: Dept, k: 1 | 2, o: MiniOpts, now:
   // ---- what goes in and comes out, and what was thrown away ----
   const consumed = consumesOf(s, date, dept).filter((x) => shiftAt(plan, x.at) === k).reduce((t, x) => t + Math.max(0, x.lb - (x.left ?? 0)), 0)
   const out = o.outUnit === 'mezclas' ? rows.filter((x) => !measureOf(x.r)).reduce((t, x) => t + x.units, 0) : rows.filter((x) => measureOf(x.r) === o.outUnit).reduce((t, x) => t + x.qty, 0)
-  return { start, real, target, apart, time, down, mech: ms.mech, people: ms.people, clean: ms.clean, other: ms.other, in: consumed, out: rows.length ? out : null, waste: rows.reduce((t, x) => t + (x.waste ?? 0), 0) }
+  return { start, real, target, apart, time, down, mech: ms.mech, people: ms.people, clean: ms.clean, other: ms.other, lunch: ms.lunch, in: consumed, out: rows.length ? out : null, waste: rows.reduce((t, x) => t + (x.waste ?? 0), 0) }
 }
 export function miniWeek(s: State, date: string, k: 1 | 2, now: number) {
   const o = miniOpts(s), days = miniDays(date), today = plainDay(s, now), shown = days.filter((d) => d <= today)
   const rooms = DEPTS.map((dept) => ({ dept, days: days.map((d) => (d <= today ? roomDay(s, d, dept, k, o, now) : null)) }))
   // the stops the mechanics came to, one by one, with who came (asked on the floor under the shift's rules)
   const mechanics = shown.flatMap((d) => reportOf(s, d, now, { shift: k }).stops.filter((x) => downKind(x.reason) === 'mech' && x.reason !== ASK_MANAGER).map((x) => ({ date: d, dept: x.dept, line: x.lineId ? lineNameOf(s, x.lineId) : tr('Todo {0}', x.dept), at: x.startedAt, ms: x.ms, reason: x.reason, who: mechanicOf(x.note) })))
-  const boards = days.map((d) => (d <= today ? wtBoard(s, wtRowsOfShift(s, weightsOf(s, d, now), k)) : []))
-  const weights = (boards.find((b) => b.length) ?? []).flatMap((b, i) => (['raw', 'cooked', 'pouch'] as const).map((part) => ({ code: b.code, part, days: boards.map((x) => x[i]?.[part] ?? null) })))
-  return { o, days, rooms, mechanics, weights, shift: k }
+  const weighed = days.map((d) => (d <= today ? wtRowsOfShift(s, weightsOf(s, d, now), k) : []))
+  const table = (list: WtRow[][]) => { const boards = list.map((r, i) => (days[i] <= today ? wtBoard(s, r) : [])); return (boards.find((b) => b.length) ?? []).flatMap((b, i) => (['raw', 'cooked', 'pouch'] as const).map((part) => ({ code: b.code, part, days: boards.map((x) => x[i]?.[part] ?? null) }))) }
+  const roomWeights = new Map(DEPTS.map((dept) => [dept, table(weighed.map((r) => r.filter((x) => x.dept === dept)))]))
+  return { o, days, rooms, mechanics, weights: table(weighed), roomWeights, shift: k }
 }
 export type MiniWeek = ReturnType<typeof miniWeek>
 export type MiniCell = { t: string; c?: 'ok' | 'bad' | 'warn' }
@@ -104,6 +105,9 @@ const n2 = (x: number) => String(Math.round(x * 100) / 100)
 const pctOf = (x: number) => Math.round(x * 1000) / 10 + '%'
 const IN_UNIT = { lb: 1, kg: 0.45359237, oz: 16 } as const
 const dayLabel = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString(locale, { weekday: 'short', day: 'numeric' })
+const inTextOf = (o: MiniOpts, lb: number) => (lb ? n2(lb * IN_UNIT[o.inUnit]) + ' ' + tr(o.inUnit) : tr('Sin pesar'))
+const outTextOf = (o: MiniOpts, n: number | null) => (n == null ? '—' : o.outUnit === 'mezclas' ? n0(n) + ' ' + tr('mezclas') : n2(n) + ' ' + (o.outUnit === 'lb' ? tr('lb') : tr('cajas')))
+const partNames = () => ({ raw: tr('Crudo'), cooked: tr('Cocinado'), pouch: tr('Pouch') })
 const avgOf = (list: WtAvg[]) => { const has = list.filter((x) => x.avg != null); const n = has.reduce((t, x) => t + (x.n || 1), 0); return n ? has.reduce((t, x) => t + (x.avg as number) * (x.n || 1), 0) / n : null }
 /** the week as tables, the same for the screen and the Excel */
 export function miniTables(w: MiniWeek): MiniTable[] {
@@ -115,36 +119,25 @@ export function miniTables(w: MiniWeek): MiniTable[] {
   // (the week in minutes: an hour of the day cannot average a Sunday morning with the afternoons)
   const startAll = (list: RoomDay[]): MiniCell => { const has = list.filter((x) => x.start); if (!has.length) return none; const off = has.reduce((t, x) => t + Math.max(0, x.start?.off ?? 0), 0) / has.length; return { t: tr('{0} min tarde', Math.round(off)), c: off > o.grace ? 'bad' : 'ok' } }
   const made = (real: number, target: number | null, apart: string[]): MiniCell => { const more = apart.length ? ' + ' + apart.join(', ') : ''; if (!real && !target && !apart.length) return none; if (!target) return { t: n0(real) + more }; const p = real / target; return { t: n0(real) + ' / ' + n0(target) + ' · ' + pctOf(p) + more, c: p >= 1 ? 'ok' : p >= 0.9 ? 'warn' : 'bad' } }
+  const lunchCell = (lunch: number, time: number): MiniCell => (time ? { t: pctOf(lunch / time) + ' · ' + fmtDur(lunch) } : none)
   const downCell = (down: number, time: number): MiniCell => (time ? { t: pctOf(down / time) + ' · ' + fmtDur(down), c: (down / time) * 100 > o.limit ? 'bad' : 'ok' } : none)
-  const inText = (lb: number) => (lb ? n2(lb * IN_UNIT[o.inUnit]) + ' ' + tr(o.inUnit) : tr('Sin pesar'))
-  const outOf = (n: number | null) => (n == null ? '—' : o.outUnit === 'mezclas' ? n0(n) + ' ' + tr('mezclas') : n2(n) + ' ' + (o.outUnit === 'lb' ? tr('lb') : tr('cajas')))
+  const inText = (lb: number) => inTextOf(o, lb), outOf = (n: number | null) => outTextOf(o, n)
   const sum = (list: RoomDay[], f: (x: RoomDay) => number) => list.reduce((t, x) => t + f(x), 0)
   const cooks = w.rooms.filter((r) => r.dept === 'Kitchen' || r.dept === 'Spiral')
-  const partName = { raw: tr('Crudo'), cooked: tr('Cocinado'), pouch: tr('Pouch') }
+  const partName = partNames()
   const wtCell = (x: WtAvg | null): MiniCell => (x?.avg == null ? none : { t: x.avg.toFixed(2), c: x.ok === 'ok' ? 'ok' : x.ok === 'under' ? 'bad' : x.ok === 'over' ? 'warn' : undefined })
   return [
     { id: 'mini-arranque', title: tr('Arranque'), head: head(tr('Departamento')), rows: roomRows(w.rooms, dept, startCell, startAll), note: tr('{0}, {1}. En rojo {2} minutos después de la hora de arranque. La semana dice cuántos minutos tarde en promedio, contando a tiempo como 0.', o.from === 'setup' ? tr('Desde el Set up') : tr('Desde que empieza el código'), o.by === 'room' ? tr('la primera línea del cuarto') : tr('promedio de sus líneas'), o.grace) },
     { id: 'mini-prod', title: tr('Producción: real, meta y % de éxito'), head: head(tr('Departamento')), rows: roomRows(w.rooms, (d) => d + ' (' + slowUnitOf(d) + ')', (x) => made(x.real, x.target, x.apart), (list) => { const goal = list.filter((x) => x.target); return goal.length ? made(sum(goal, (x) => x.real), sum(goal, (x) => x.target ?? 0), []) : made(sum(list, (x) => x.real), null, []) }), note: tr('Hecho / meta · % de éxito. La meta de cada día × sus horas: las que trabajó la línea, o con meta del cuarto, de su primer código al último. Lo contado en otra medida o sin meta va aparte y no entra en el %. La semana solo suma los días con meta.') },
     { id: 'mini-paros', title: tr('Paros: % del tiempo trabajado'), head: head(tr('Departamento')), rows: roomRows(w.rooms, dept, (x) => downCell(x.down, x.time), (list) => downCell(sum(list, (x) => x.down), sum(list, (x) => x.time))), note: tr('En rojo sobre {0}%. Cuentan: mecánico, personal y otros{1}{2}{3}.', o.limit, o.clean ? ', ' + tr('limpieza') : '', o.lunch ? ', ' + tr('lunch') : '', o.setup ? ', ' + tr('Set up') : '') },
-    { id: 'mini-causas', title: tr('Por qué se paró en la semana'), head: [tr('Departamento'), tr('Mecánico'), tr('No personal'), tr('Limpieza'), tr('Otros')], rows: w.rooms.map((r) => { const l = r.days.filter((x): x is RoomDay => !!x), t = (f: (x: RoomDay) => number) => ({ t: sum(l, f) ? fmtDur(sum(l, f)) : '—' }); return [{ t: r.dept }, t((x) => x.mech), t((x) => x.people), t((x) => x.clean), t((x) => x.other)] }) },
+    { id: 'mini-lunch', title: tr('Lunch y Break: % del tiempo trabajado'), head: head(tr('Departamento')), rows: roomRows(w.rooms, dept, (x) => lunchCell(x.lunch, x.time), (list) => lunchCell(sum(list, (x) => x.lunch), sum(list, (x) => x.time))), note: tr('Van aparte de los paros: no suben el % de arriba, salvo que Ajustes diga que cuentan.') },
+    { id: 'mini-causas', title: tr('Por qué se paró en la semana'), head: [tr('Departamento'), tr('Mecánico'), tr('No personal'), tr('Limpieza'), tr('Otros'), tr('Lunch y Break')], rows: w.rooms.map((r) => { const l = r.days.filter((x): x is RoomDay => !!x), all = sum(l, (x) => x.time), t = (f: (x: RoomDay) => number) => ({ t: sum(l, f) ? fmtDur(sum(l, f)) + ' · ' + pctOf(sum(l, f) / all) : '—' }); return [{ t: r.dept }, t((x) => x.mech), t((x) => x.people), t((x) => x.clean), t((x) => x.other), t((x) => x.lunch)] }), note: tr('Tiempo de la semana y su % del tiempo trabajado.') },
     { id: 'mini-mec', title: tr('Paros mecánicos'), head: [tr('Día'), tr('Departamento'), tr('Línea'), tr('Hora'), tr('Tiempo'), tr('Mecánico'), tr('Razón')], rows: w.mechanics.map((m) => [{ t: dayLabel(m.date) }, { t: m.dept }, { t: m.line }, { t: fmtTime(m.at) }, { t: fmtDur(m.ms) }, m.who ? { t: m.who } : { t: tr('Sin nombre'), c: 'warn' }, { t: tr(m.reason) }]) },
     { id: 'mini-consumo', title: tr('Consumo: lo que entra y lo que sale'), head: head(tr('Departamento')), rows: roomRows(cooks, dept, (x) => (x.in || x.out != null ? { t: inText(x.in) + ' → ' + outOf(x.out) } : none), (list) => ({ t: inText(sum(list, (x) => x.in)) + ' → ' + outOf(list.some((x) => x.out != null) ? sum(list, (x) => x.out ?? 0) : null) })), note: tr('Sin pesar quiere decir que nadie pesó lo que entró: Consumo está apagado en ese cuarto.') },
     { id: 'mini-waste', title: tr('Waste (lb)'), head: head(tr('Departamento')), rows: roomRows(w.rooms, dept, (x) => ({ t: x.waste ? n2(x.waste) : '—' }), (list) => ({ t: sum(list, (x) => x.waste) ? n2(sum(list, (x) => x.waste)) : '—' })) },
     { id: 'mini-pesos', title: tr('Pesos: promedio por día (oz)'), head: head(tr('Código')), rows: w.weights.map((x) => { const r = x.days.find((d) => d?.range)?.range; const all = x.days.filter((d): d is WtAvg => !!d), a = avgOf(all); return [{ t: x.code + ' · ' + partName[x.part] + (r ? ' (' + wtRangeLong(r) + ')' : '') }, ...x.days.map(wtCell), a == null ? none : { t: a.toFixed(2) }] }) },
   ]
 }
-/** the same tables, one under the other, on one sheet */
-export function miniSheet(w: MiniWeek): Sheet {
-  const style = (c: MiniCell): Cell => xT(c.t, c.c === 'ok' ? X.good : c.c === 'bad' ? X.bad : c.c === 'warn' ? X.warn : X.label)
-  const rows: Cell[][] = [[xT(tr('Mini KPI · Turno {0} · {1} a {2}', w.shift, w.days[0], w.days[5]), X.title)], []]
-  for (const t of miniTables(w)) {
-    rows.push([xT(t.title, X.title)], t.head.map((h) => xT(h, X.head)), ...(t.rows.length ? t.rows.map((r) => r.map(style)) : [[xT(tr('Nada esta semana'), X.label)]]))
-    if (t.note) rows.push([xT(t.note, X.note)])
-    rows.push([])
-  }
-  return { name: tr('Mini KPI'), rows }
-}
-
 /** how many weeks the summary compares, the report's week being the last */
 export const MINI_WEEKS = 4
 /** the Sundays of those weeks, the oldest first */
@@ -157,7 +150,7 @@ function numsOf(list: (RoomDay | null)[]) {
   const days = list.filter((x): x is RoomDay => !!x && x.time > 0), sum = (l: RoomDay[], f: (x: RoomDay) => number) => l.reduce((t, x) => t + f(x), 0)
   const goal = days.filter((x) => x.target), target = sum(goal, (x) => x.target ?? 0), time = sum(days, (x) => x.time), starts = days.filter((x) => x.start)
   return {
-    days: days.length, real: sum(days, (x) => x.real),
+    days: days.length, real: sum(days, (x) => x.real), lunch: time ? sum(days, (x) => x.lunch) / time : null,
     pct: target ? sum(goal, (x) => x.real) / target : null,
     down: time ? sum(days, (x) => x.down) / time : null,
     late: starts.length ? sum(starts, (x) => Math.max(0, x.start?.off ?? 0)) / starts.length : null,
@@ -169,6 +162,14 @@ const ROOM_COLORS = ['2A78D6', 'EB6834', '1BAF7A', 'EDA100', 'E87BA4'], REF_COLO
 /** the weeks, the oldest lightest and the week of the report the darkest */
 const WEEK_COLORS = ['C79FBB', 'A8789A', '804070', '581447']
 const shortDay = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString(locale, { day: 'numeric', month: 'short' })
+const wholeWeek = (x: MiniWeek) => !x.days.some(awayDay)
+/** the numbers of the sheets, as cells that say good or bad; what is not known is empty for a chart, a dash to read */
+const cellsOf = (o: MiniOpts) => ({
+  none: xT('—', X.wCell), empty: xT('', X.wCell),
+  pct: (x: number) => xN(x, x >= 1 ? X.wPg : x >= 0.9 ? X.wPa : X.wPr),
+  down: (x: number) => xN(x, x * 100 > o.limit ? X.wPr : X.wPg),
+  late: (x: number) => xN(Math.round(x), x > o.grace ? X.wNr : X.wNg),
+})
 
 /**
  * The one sheet to read (Santiago through Jose, 2026-11-01: "summary sheet ... con gráfica que comparan días o semanas"):
@@ -177,22 +178,19 @@ const shortDay = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString(loc
  * A week that could not be brought whole from the server is left out rather than compared by halves
  */
 export function miniSummary(weeks: MiniWeek[]): Sheet {
-  const w = weeks[weeks.length - 1], before = weeks[weeks.length - 2], { o } = w, COLS = 10
+  const w = weeks[weeks.length - 1], before = weeks[weeks.length - 2], { o } = w, COLS = 11
   const out: Cell[][] = [], heights: Record<number, number> = {}, merges: string[] = [], charts: Chart[] = []
   const row = (cells: Cell[], ht?: number) => { if (ht) heights[out.length] = ht; out.push(cells); return out.length }
-  const across = (text: string, style: number, ht: number) => { const r = row([xT(text, style), ...Array.from({ length: COLS - 1 }, () => xT('', style))], ht); merges.push('A' + r + ':J' + r) }
+  const across = (text: string, style: number, ht: number) => { const r = row([xT(text, style), ...Array.from({ length: COLS - 1 }, () => xT('', style))], ht); merges.push('A' + r + ':K' + r) }
   const gap = (n = 1) => { const at = out.length + 1; for (let i = 0; i < n; i++) row([]); return at }
-  const empty = xT('', X.wCell), none = xT('—', X.wCell)
-  const whole = (x: MiniWeek) => !x.days.some(awayDay)
+  const cells = cellsOf(o), { empty, none } = cells, whole = wholeWeek
   const numsAt = (x: MiniWeek, i: number) => (whole(x) ? numsOf(x.rooms[i].days) : null)
   const delta = (now: number | null | undefined, then: number | null | undefined, up: boolean, unit: string, scale = 1): Cell => {
     if (now == null || then == null) return none
     const d = Math.round((now - then) * scale * 10) / 10
     return !d ? xT(tr('Igual'), X.wCell) : xT((d > 0 ? '▲ +' : '▼ −') + Math.abs(d) + ' ' + unit, d > 0 === up ? X.wPg : X.wPr)
   }
-  const pctCell = (x: number | null) => (x == null ? none : xN(x, x >= 1 ? X.wPg : x >= 0.9 ? X.wPa : X.wPr))
-  const downCell = (x: number | null) => (x == null ? none : xN(x, x * 100 > o.limit ? X.wPr : X.wPg))
-  const lateCell = (x: number | null) => (x == null ? none : xN(Math.round(x), x > o.grace ? X.wNr : X.wNg))
+  const pctCell = (x: number | null) => (x == null ? none : cells.pct(x)), downCell = (x: number | null) => (x == null ? none : cells.down(x)), lateCell = (x: number | null) => (x == null ? none : cells.late(x))
   const round1 = (x: number) => Math.round(x * 10) / 10
 
   across(tr('Mini KPI · Resumen · Turno {0}', w.shift), X.wBand, 34)
@@ -206,16 +204,16 @@ export function miniSummary(weeks: MiniWeek[]): Sheet {
 
   // ---- the week, room by room ----
   across(tr('La semana, cuarto por cuarto'), X.wSec, 24)
-  row([tr('Departamento'), tr('Hecho'), tr('% de la meta'), tr('Contra la pasada'), tr('Paros'), tr('Contra la pasada'), tr('Arranque (minutos tarde)'), tr('Contra la pasada'), tr('Waste por día (lb)'), tr('Contra la pasada')].map((t) => xT(t, X.wHead)), 46)
+  row([tr('Departamento'), tr('Hecho'), tr('% de la meta'), tr('Contra la pasada'), tr('Paros'), tr('Contra la pasada'), tr('Lunch y Break'), tr('Arranque (minutos tarde)'), tr('Contra la pasada'), tr('Waste por día (lb)'), tr('Contra la pasada')].map((t) => xT(t, X.wHead)), 46)
   w.rooms.forEach((r, i) => {
     const a = now[i], b = then[i]
-    row([xT(r.dept, X.wLeft), a?.real ? xT(Math.round(a.real).toLocaleString('en-US') + ' ' + slowUnitOf(r.dept), X.wCell) : none, pctCell(a?.pct ?? null), delta(a?.pct, b?.pct, true, tr('pts'), 100), downCell(a?.down ?? null), delta(a?.down, b?.down, false, tr('pts'), 100), lateCell(a?.late ?? null), delta(a?.late, b?.late, false, tr('min')), a?.waste == null ? none : xN(round1(a.waste), X.wD), delta(a?.waste, b?.waste, false, tr('lb'))], 22)
+    row([xT(r.dept, X.wLeft), a?.real ? xT(Math.round(a.real).toLocaleString('en-US') + ' ' + slowUnitOf(r.dept), X.wCell) : none, pctCell(a?.pct ?? null), delta(a?.pct, b?.pct, true, tr('pts'), 100), downCell(a?.down ?? null), delta(a?.down, b?.down, false, tr('pts'), 100), a?.lunch == null ? none : xN(a.lunch, X.wP), lateCell(a?.late ?? null), delta(a?.late, b?.late, false, tr('min')), a?.waste == null ? none : xN(round1(a.waste), X.wD), delta(a?.waste, b?.waste, false, tr('lb'))], 22)
   })
   across(tr('▲ subió y ▼ bajó contra la semana pasada; el color dice si eso es bueno (verde) o malo (rojo). En Paros, Arranque y Waste, bajar es lo bueno.'), X.note, 32)
   gap()
 
   // ---- the charts: a place for them now, their numbers at the foot of the sheet ----
-  const TALL = 16, left = { left: 0, cols: 5, height: TALL }, right = { left: 5, cols: 10, height: TALL }
+  const TALL = 16, left = { left: 0, cols: 5, height: TALL }, right = { left: 5, cols: 11, height: TALL }
   across(tr('Día por día'), X.wSec, 24)
   const dayAt = gap(TALL)
   gap()
@@ -228,7 +226,7 @@ export function miniSummary(weeks: MiniWeek[]): Sheet {
   // ---- the weights ----
   across(tr('Pesos: promedio de la semana (oz)'), X.wSec, 24)
   row([tr('Código'), tr('Rango de QA'), tr('Esta semana'), tr('La pasada'), tr('Diferencia')].map((t) => xT(t, X.wHead)), 30)
-  const partName = { raw: tr('Crudo'), cooked: tr('Cocinado'), pouch: tr('Pouch') }
+  const partName = partNames()
   const avgs = (x: MiniWeek | undefined, code: string, part: string) => { const l = x?.weights.find((y) => y.code === code && y.part === part)?.days.filter((d): d is WtAvg => !!d); return l ? avgOf(l) : null }
   const shown = (whole(w) ? w.weights : []).filter((x) => avgs(w, x.code, x.part) != null || avgs(before, x.code, x.part) != null)
   for (const x of shown) {
@@ -266,7 +264,103 @@ export function miniSummary(weeks: MiniWeek[]): Sheet {
   charts.push({ ...weekTable(tr('Arranque: minutos tarde por semana'), (x) => (x.late == null ? null : Math.round(x.late)), X.wN, '0'), at: weekAt2, ...left })
   charts.push({ ...weekTable(tr('Waste por día (lb) por semana'), (x) => (x.waste == null ? null : round1(x.waste)), X.wD, '0.0'), at: weekAt2, ...right })
   if (!weeks.every(whole)) across(tr('Las semanas que no se pudieron traer completas del servidor salen vacías.'), X.note, 22)
-  return { name: tr('Resumen'), rows: out, charts, freeze: 0, page: { widths: [17, 14, 12, 13, 12, 13, 13, 13, 13, 13], heights, merges } }
+  return { name: tr('Resumen'), rows: out, charts, freeze: 0, page: { widths: [17, 14, 12, 13, 12, 13, 11, 13, 13, 13, 13], heights, merges } }
+}
+
+/** the sheets in the order the product goes through the plant, the order Santiago says them */
+const MINI_ROOMS: Dept[] = ['Kitchen', 'Spiral', 'RTE', 'MFO', 'Packing']
+/**
+ * One room's week on its own sheet (Santiago through Jose, 2026-11-01: "un sheet en excel aparte de cada quien"): its
+ * days as rows so each number can be sorted and charted, why it stopped, its last weeks, its charts, its mechanics and
+ * what it weighed. Lunch and Break have their own columns (Santiago: "los porcientos de los lunch también"): they stay
+ * apart from the stops, whose 15% is judged without them unless Ajustes says otherwise
+ */
+export function miniRoomSheet(weeks: MiniWeek[], dept: Dept): Sheet {
+  const w = weeks[weeks.length - 1], { o } = w, at = w.rooms.findIndex((r) => r.dept === dept), days = w.rooms[at].days
+  const cooks = dept === 'Kitchen' || dept === 'Spiral', COLS = cooks ? 13 : 12, HIDE_GOAL = 14, HIDE_LIMIT = 15, end = colName(COLS - 1), color = ROOM_COLORS[at]
+  const out: Cell[][] = [], heights: Record<number, number> = {}, merges: string[] = [], charts: Chart[] = []
+  const row = (cells: Cell[], ht?: number) => { if (ht) heights[out.length] = ht; out.push(cells); return out.length }
+  const across = (text: string, style: number, ht: number) => { const r = row([xT(text, style), ...Array.from({ length: COLS - 1 }, () => xT('', style))], ht); merges.push('A' + r + ':' + end + r) }
+  const gap = (n = 1) => { const first = out.length + 1; for (let i = 0; i < n; i++) row([]); return first }
+  const { none, empty, pct, down, late } = cellsOf(o), sumOf = (l: RoomDay[], f: (x: RoomDay) => number) => l.reduce((t, x) => t + f(x), 0)
+  const round1 = (x: number) => Math.round(x * 10) / 10
+  const startOf = (x: RoomDay | null): Cell => (x?.start ? xT(fmtTime(x.start.at) + (x.start.lateLines && o.by === 'line' ? ' · ' + x.start.lateLines + '/' + x.start.lines : ''), x.start.late ? X.wPr : X.wPg) : none)
+  const line = (label: string, list: (RoomDay | null)[], start: Cell, apart: Cell): Cell[] => {
+    const n = numsOf(list), has = list.filter((x): x is RoomDay => !!x && x.time > 0), goal = sumOf(has, (x) => x.target ?? 0), waste = sumOf(has, (x) => x.waste)
+    return [xT(label, X.wLeft), start, n.late == null ? none : late(n.late), n.days ? xN(Math.round(n.real), X.wN) : none, goal ? xN(Math.round(goal), X.wN) : none,
+      n.pct == null ? empty : pct(n.pct), n.down == null ? empty : down(n.down), n.days ? xT(fmtDur(sumOf(has, (x) => x.down)), X.wCell) : none,
+      n.lunch == null ? empty : xN(n.lunch, X.wP), n.days ? xT(fmtDur(sumOf(has, (x) => x.lunch)), X.wCell) : none, waste ? xN(round1(waste), X.wD) : none, apart,
+      ...(cooks ? [n.days ? xT(inTextOf(o, sumOf(has, (x) => x.in)) + ' → ' + outTextOf(o, sumOf(has, (x) => x.out ?? 0)), X.wCell) : none] : [])]
+  }
+  across(tr('{0} · Turno {1}', dept, w.shift), X.wBand, 34)
+  across(tr('Semana del {0} al {1}', w.days[0], w.days[5]), X.wSub, 22)
+  gap()
+
+  // ---- each day, and the week ----
+  across(tr('Día por día'), X.wSec, 24)
+  row([tr('Día'), tr('Arranque'), tr('Minutos tarde'), tr('Hecho') + ' (' + slowUnitOf(dept) + ')', tr('Meta'), tr('% de la meta'), tr('Paros'), tr('Tiempo parado'), tr('Lunch y Break'), tr('Tiempo de Lunch y Break'), tr('Waste (lb)'), tr('Aparte'), ...(cooks ? [tr('Consumo')] : [])].map((t) => xT(t, X.wHead)), 46)
+  const from = out.length + 1
+  w.days.forEach((d, i) => {
+    const cells = line(dayLabel(d), [days[i]], awayDay(d) ? none : startOf(days[i]), days[i]?.apart.length ? xT(days[i]?.apart.join(', ') ?? '', X.wCell) : none)
+    while (cells.length < HIDE_GOAL) cells.push(null)
+    row([...cells, xN(1, X.wHide), xN(o.limit / 100, X.wHide)], 20)
+  })
+  const to = out.length, nums = numsOf(days)
+  row(line(tr('Semana'), days, nums.late == null ? none : xT(tr('{0} min tarde', Math.round(nums.late)), nums.late > o.grace ? X.wPr : X.wPg), none), 22)
+  gap()
+
+  // ---- why it stopped ----
+  across(tr('Por qué se paró: tiempo y % del tiempo trabajado'), X.wSec, 24)
+  row([tr('Día'), tr('Mecánico'), tr('No personal'), tr('Limpieza'), tr('Otros'), tr('Lunch y Break')].map((t) => xT(t, X.wHead)), 30)
+  const causes = (label: string, list: (RoomDay | null)[]) => {
+    const has = list.filter((x): x is RoomDay => !!x && x.time > 0), time = sumOf(has, (x) => x.time)
+    const cell = (f: (x: RoomDay) => number) => { const ms = sumOf(has, f); return ms ? xT(fmtDur(ms) + ' · ' + pctOf(ms / time), X.wCell) : none }
+    row([xT(label, X.wLeft), cell((x) => x.mech), cell((x) => x.people), cell((x) => x.clean), cell((x) => x.other), cell((x) => x.lunch)], 20)
+  }
+  w.days.forEach((d, i) => causes(dayLabel(d), [days[i]]))
+  causes(tr('Semana'), days)
+  gap()
+
+  // ---- its last weeks ----
+  across(tr('Semana contra semana'), X.wSec, 24)
+  row([tr('Semana'), tr('% de la meta'), tr('Paros'), tr('Lunch y Break'), tr('Minutos tarde'), tr('Waste por día (lb)')].map((t) => xT(t, X.wHead)), 30)
+  const weekFrom = out.length + 1
+  for (const x of weeks) {
+    const n = wholeWeek(x) ? numsOf(x.rooms[at].days) : null
+    row([xT(tr('Sem. {0}', shortDay(x.days[0])), X.wLeft), n?.pct == null ? empty : pct(n.pct), n?.down == null ? empty : down(n.down), n?.lunch == null ? empty : xN(n.lunch, X.wP), n?.late == null ? empty : late(n.late), n?.waste == null ? empty : xN(round1(n.waste), X.wD)], 20)
+  }
+  const weekTo = out.length
+  gap()
+
+  // ---- the charts ----
+  const TALL = 15, left = { left: 0, cols: 6, height: TALL }, right = { left: 6, cols: COLS, height: TALL }, stops = [tr('Paros'), tr('Lunch y Break')]
+  const dayAt = gap(TALL)
+  gap()
+  const weekAt = gap(TALL)
+  gap()
+  charts.push({ title: tr('% de la meta por día'), series: [tr('Meta (100%)'), tr('% de la meta')], cat: 0, val: [HIDE_GOAL, 5], from, to, at: dayAt, kind: 'line', fmt: '0%', colors: [REF_COLOR, color], labels: 'last', refs: [0], ...left })
+  charts.push({ title: tr('Paros y Lunch por día'), series: [tr('Límite ({0}%)', o.limit), ...stops], cat: 0, val: [HIDE_LIMIT, 6, 8], from, to, at: dayAt, kind: 'line', fmt: '0%', colors: [REF_COLOR, color, WEEK_COLORS[3]], labels: 'none', refs: [0], ...right })
+  charts.push({ title: tr('% de la meta por semana'), series: [tr('% de la meta')], cat: 0, val: [1], from: weekFrom, to: weekTo, at: weekAt, kind: 'col', fmt: '0%', colors: [color], ...left })
+  charts.push({ title: tr('Paros y Lunch por semana'), series: stops, cat: 0, val: [2, 3], from: weekFrom, to: weekTo, at: weekAt, kind: 'col', fmt: '0%', colors: [color, WEEK_COLORS[3]], ...right })
+
+  // ---- who came to its mechanical stops ----
+  across(tr('Paros mecánicos'), X.wSec, 24)
+  const mech = w.mechanics.filter((m) => m.dept === dept)
+  row([tr('Día'), tr('Línea'), tr('Hora'), tr('Tiempo'), tr('Mecánico'), tr('Razón')].map((t) => xT(t, X.wHead)), 30)
+  for (const m of mech) row([xT(dayLabel(m.date), X.wLeft), xT(m.line, X.wCell), xT(fmtTime(m.at), X.wCell), xT(fmtDur(m.ms), X.wCell), m.who ? xT(m.who, X.wCell) : xT(tr('Sin nombre'), X.wPa), xT(tr(m.reason), X.wCell)], 20)
+  if (!mech.length) row([xT(tr('Nada esta semana'), X.wLeft)], 20)
+  gap()
+
+  // ---- what it weighed ----
+  const weighed = (w.roomWeights.get(dept) ?? []).filter((x) => x.days.some((d) => d?.avg != null))
+  across(tr('Pesos: promedio por día (oz)'), X.wSec, 24)
+  row([tr('Código'), tr('Rango de QA'), ...w.days.map(dayLabel), tr('Semana')].map((t) => xT(t, X.wHead)), 30)
+  for (const x of weighed) {
+    const range = x.days.find((d) => d?.range)?.range ?? '', a = avgOf(x.days.filter((d): d is WtAvg => !!d))
+    row([xT(x.code + ' · ' + partNames()[x.part], X.wLeft), range ? xT(wtRangeLong(range), X.wCell) : none, ...x.days.map((d) => (d?.avg == null ? none : xN(Math.round(d.avg * 100) / 100, d.ok === 'ok' ? X.wDg : d.ok === 'under' ? X.wDr : d.ok === 'over' ? X.wDa : X.wD))), a == null ? none : xN(Math.round(a * 100) / 100, X.wD)], 20)
+  }
+  if (!weighed.length) row([xT(tr('Nada esta semana'), X.wLeft)], 20)
+  return { name: dept, rows: out, charts, freeze: 0, page: { widths: [14, 17, 9, 11, 10, 10, 9, 11, 10, 11, 9, 18, 26, 2, 2, 2], heights, merges } }
 }
 /** what each table says, for the Excel and for the window of what each number means */
 export const miniGuide = (): { id: NumberId; title: string; means: string; math: string; eg: string }[] => [
@@ -282,9 +376,13 @@ export const miniGuide = (): { id: NumberId; title: string; means: string; math:
     means: tr('Qué parte del tiempo las líneas estuvieron paradas.'),
     math: tr('El tiempo parado que cuenta ÷ todo el tiempo que las líneas tuvieron un código, sumando las líneas. Siempre cuentan Mecánico, No personal y las demás razones; Limpieza, Set up y Lunch (o Break) solo si Ajustes lo dice. Sale en rojo sobre el límite de Ajustes.'),
     eg: tr('2 líneas de 8 horas son 16 horas. Con 2 horas de paros dice 12.5% · 2 h.') },
+  { id: 'mini-lunch', title: tr('Lunch y Break: % del tiempo trabajado'),
+    means: tr('Qué parte del tiempo se fue en Lunch y Break.'),
+    math: tr('El tiempo en Lunch o Break (como se haya escrito: lunch, break, comida, almuerzo, descanso) ÷ todo el tiempo que las líneas tuvieron un código, sumando las líneas. Va aparte de los paros: no suben su % ni su rojo, salvo que Ajustes diga que cuentan.'),
+    eg: tr('3 líneas de 8 horas son 24 horas. Con 30 minutos cada una son 1 h 30 min: 6.3%.') },
   { id: 'mini-causas', title: tr('Por qué se paró en la semana'),
     means: tr('El tiempo parado de toda la semana, separado por la causa.'),
-    math: tr('La suma de los paros de cada cuarto en Mecánico, No personal, Limpieza y Otros. Lunch, Break y Set up no salen aquí.'),
+    math: tr('La suma de los paros de cada cuarto en Mecánico, No personal, Limpieza, Otros y Lunch y Break, con su % del tiempo trabajado. Set up no sale aquí.'),
     eg: tr('Mecánico 3 h 20 min en RTE: entre todas sus líneas estuvieron 3 h 20 min paradas por mecánico.') },
   { id: 'mini-mec', title: tr('Paros mecánicos'),
     means: tr('Cada paro mecánico, uno por uno, con quién lo atendió.'),
@@ -314,8 +412,8 @@ export function miniGuideSheet(): Sheet {
   }
   return { name: tr('Qué significa'), rows, freeze: 3, page: { widths, heights, merges: [] } }
 }
-/** the workbook: first the page to read, then the week's tables and what each one means */
+/** the workbook: first the page to read, then each room on its own sheet and what each number means */
 export function miniBook(s: State, date: string, k: 1 | 2, now: number): Sheet[] {
   const weeks = miniSundays(date).map((d) => miniWeek(s, d, k, now))
-  return [miniSummary(weeks), miniSheet(weeks[weeks.length - 1]), miniGuideSheet()]
+  return [miniSummary(weeks), ...MINI_ROOMS.map((d) => miniRoomSheet(weeks, d)), miniGuideSheet()]
 }

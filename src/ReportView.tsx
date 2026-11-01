@@ -1772,7 +1772,7 @@ function MiniKpiView({ k }: { k: Kit }) {
         <button type="button" className="btn soft" disabled={addDays(week.days[0], 7) > today} onClick={() => pickDate(addDays(week.days[0], 7))}>{tr('Semana siguiente ›')}</button>
         <button type="button" className="btn primary" disabled={bringing} onClick={() => void excel()}>{bringing ? tr('Trayendo las semanas…') : tr('⬇ Excel del Mini KPI')}</button> <WhatIs id="mini" />
       </div>
-      <p className="hint">{tr('Semana del {0} al {1}. El Excel trae un Resumen con gráficas que compara los días y las últimas {2} semanas.', week.days[0], week.days[5], MINI_WEEKS)}</p>
+      <p className="hint">{tr('Semana del {0} al {1}. El Excel trae un Resumen con gráficas de los días y las últimas {2} semanas, y una hoja aparte por departamento.', week.days[0], week.days[5], MINI_WEEKS)}</p>
       {failed > 0 && <p className="hint red">{tr('No se pudieron traer {0} días del servidor: esas semanas salen vacías en el Excel. Vuelve a abrir esta pestaña cuando haya señal.', failed)}</p>}
       {miniTables(week).map((t) => (
         <article key={t.title} className="wt-rp">
