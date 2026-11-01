@@ -536,7 +536,7 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
   // a device that has not brought the server's rows for a while shows an old picture of the day (what Jose saw on an
   // RTE tablet on 2026-10-15: the code before, and the pouches of hours earlier): said loud, and each line asks before recording
   const sync = useSyncExternalStore(syncStore.subscribe, syncStore.get)
-  const staleMs = supabase ? now - sync.lastSync : 0
+  const staleMs = supabase ? now - sync.fresh : 0
   const stale = !!supabase && staleMs > STALE_MS
   const why = sync.state === 'signedOut' ? tr('sin sesión') : sync.state === 'offline' ? tr('sin señal') : tr('sin alcanzar el servidor')
   const [leaving, setLeaving] = useState(false)
@@ -573,7 +573,9 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
       {unsent && <div className="stalebar top unsent"><span>{trx('⚠ {0} sin subir desde hace {1}: {2}. Se guardan en este aparato y suben en cuanto se pueda.', mine === 1 ? tr('1 registro') : tr('{0} registros', mine), agoText(Math.max(60_000, stuckMs)), unsentWhy)}{mustSignIn && ' ' + tr('Sal y entra de nuevo con tu usuario; si sigue, avisa al manager.')}</span>{mustSignIn ? <button type="button" className="btn sm" onClick={() => (sync.pending > 0 ? setLeaving(true) : onLogout())}>{tr('Entrar de nuevo')}</button> : <button type="button" className="btn sm" onClick={() => window.dispatchEvent(new Event('act-resync'))}>{tr('Reintentar')}</button>}</div>}
       {others && <div className="stalebar top"><span>{othersText}</span></div>}
       {full && <div className="fullbar">{trx('⚠ La memoria de este aparato está llena y lo nuevo no se está guardando aquí. {0}', supabase ? tr('Lo que ya subió al servidor está a salvo. Avisa al manager y no cierres la app hasta que diga "Sincronizado".') : tr('Manda el reporte del día y avisa al manager antes de cerrar la app: hay que hacer espacio con "Reiniciar registros".'))}</div>}
-      {stale && <div className="stalebar top"><span>{sync.lastSync ? trx('⚠ Este aparato muestra lo de las {0}: lleva {1} sin bajar del servidor ({2}). Si en otra tablet cambió algo, aquí todavía no se ve.', fmtTime(sync.lastSync), agoText(staleMs), why) : trx('⚠ Este aparato no ha bajado nada del servidor todavía ({0}).', why)}</span><button type="button" className="btn sm" onClick={() => window.dispatchEvent(new Event('act-resync'))}>{tr('Reintentar')}</button></div>}
+      {stale && (sync.pulling
+        ? <div className="stalebar top calm"><span>{tr('⏳ Trayendo lo último del servidor…')}</span></div>
+        : <div className="stalebar top"><span>{sync.fresh ? trx('⚠ Este aparato muestra lo de las {0}: lleva {1} sin bajar del servidor ({2}). Si en otra tablet cambió algo, aquí todavía no se ve.', fmtTime(sync.fresh), agoText(staleMs), why) : trx('⚠ Este aparato no ha bajado nada del servidor todavía ({0}).', why)}</span><button type="button" className="btn sm" onClick={() => window.dispatchEvent(new Event('act-resync'))}>{tr('Reintentar')}</button></div>)}
       <header className="top">
         <div className="brand"><img className="logo" src={import.meta.env.BASE_URL + 'mamas-logo.png'} alt="Mama's Creations" /><div><h1>{APP}{!supabase && <span className="demotag">DEMO</span>}</h1><small>{new Date(now).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })} · <b className="livetime" title={supabase ? tr('La hora de la app: la del servidor, la misma en todos los aparatos') : ''}>{new Date(now).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' })}</b>{BUILD && BUILD !== 'dev' && <span className="buildtag" title={tr('La versión de la app en este aparato')}>v {BUILD.slice(0, 6)}</span>}</small></div></div>
         <nav className={'tabs' + (can('products') || viewOnly ? ' five' : '')}>
@@ -2707,11 +2709,11 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   // tablet changed it): the card says so and asks once before anything is recorded on it
   const sync = useSyncExternalStore(syncStore.subscribe, syncStore.get)
   const [unlockedUntil, setUnlockedUntil] = useState(0)
-  const locked = !!supabase && !viewOnly && now - sync.lastSync > STALE_MS && now > unlockedUntil
+  const locked = !!supabase && !viewOnly && now - sync.fresh > STALE_MS && now > unlockedUntil
   const quiet = viewOnly || locked
   const staleBar = locked && (
-    <div className="stalebar">
-      <span>{sync.lastSync ? trx('⚠ Sin servidor desde las {0}. Si en otra tablet ya cambió el código o el lote de esta línea, aquí se vería lo viejo.', fmtTime(sync.lastSync)) : tr('⚠ Este aparato no ha bajado nada del servidor todavía.')}</span>
+    <div className={'stalebar' + (sync.pulling ? ' calm' : '')}>
+      <span>{sync.pulling ? tr('⏳ Trayendo lo último del servidor…') : sync.fresh ? trx('⚠ Sin servidor desde las {0}. Si en otra tablet ya cambió el código o el lote de esta línea, aquí se vería lo viejo.', fmtTime(sync.fresh)) : tr('⚠ Este aparato no ha bajado nada del servidor todavía.')}</span>
       <button type="button" className="btn sm" onClick={() => setUnlockedUntil(now + 10 * 60_000)}>{tr('Entiendo, registrar igual')}</button>
     </div>
   )

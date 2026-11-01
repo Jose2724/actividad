@@ -1055,6 +1055,7 @@ table.fl-pallets th small{display:block;font-size:10px;font-weight:600;text-tran
 /* a device showing an old picture of the day (no server for a while): the bar on top, and the one on each line that asks before recording */
 .stalebar{background:#fff7e6;color:var(--amber);border:1.5px solid #f2c97a;border-radius:12px;padding:8px 12px;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;font-weight:600;font-size:14px;line-height:1.35}
 .stalebar.top{border-radius:0;border-width:0 0 1.5px;padding:8px 16px}
+.stalebar.calm{background:#eef2f7;color:#334155;border-color:#cbd5e1}
 .stalebar .btn.sm{flex:none;background:#fff;border-color:#dcae58;color:#7a4700;box-shadow:0 2px 0 #f0d7a4}
 /* the four buttons under a line and the names of its tiles never spill out of their boxes (seen on Kitchen's cards
    on 2026-10-16: "Terminar" and "Reanudar" cut, "ESTA MEZC..."): the type follows the width of the card */

@@ -10,7 +10,7 @@ import { BUILD } from './update'
  * Keeps this device and the server in step: what is queued goes up (outbox), what other tablets and the office
  * changed comes down (a pull of everything newer than the last one, plus live updates while the screen is open).
  */
-export type SyncStatus = { state: 'local' | 'signedOut' | 'connecting' | 'online' | 'offline'; pending: number; lastSync: number; lastError: string; since: number; refused: number; other: number; otherRooms: string[]; pulled: boolean }
+export type SyncStatus = { state: 'local' | 'signedOut' | 'connecting' | 'online' | 'offline'; pending: number; lastSync: number; lastError: string; since: number; refused: number; other: number; otherRooms: string[]; pulled: boolean; fresh: number; pulling: boolean }
 // pending = every row still waiting; since = when the oldest of them that this person may send was queued; refused =
 // rows of this device's own the server refuses; other / otherRooms = rows waiting for someone else to sign in here
 // (another room's, see outbox.ts) and their rooms; pulled = this device has brought the server's rows since the app
@@ -20,7 +20,7 @@ export const STALE_MS = 10 * 60_000
 // the hour of the last pull is kept on the device: when the app opens again it knows how old its copy is
 const LAST_PULL = 'act_last_pull'
 const lastPull = () => { try { return Number(localStorage.getItem(LAST_PULL)) || 0 } catch { return 0 } }
-let status: SyncStatus = { state: supabase ? 'connecting' : 'local', pending: outbox.size(), lastSync: supabase ? lastPull() : 0, lastError: '', since: outbox.oldest(true), refused: 0, other: 0, otherRooms: [], pulled: !supabase }
+let status: SyncStatus = { state: supabase ? 'connecting' : 'local', pending: outbox.size(), lastSync: supabase ? lastPull() : 0, lastError: '', since: outbox.oldest(true), refused: 0, other: 0, otherRooms: [], pulled: !supabase, fresh: supabase ? lastPull() : 0, pulling: !!supabase }
 const subs = new Set<() => void>()
 const setStatus = (patch: Partial<SyncStatus>) => { status = { ...status, ...patch }; subs.forEach((f) => f()) }
 export const syncStore = { get: () => status, subscribe: (f: () => void) => { subs.add(f); return () => { subs.delete(f) } } }
@@ -318,11 +318,12 @@ let pull: Promise<boolean> | null = null
 /** everything changed on the server since the last pull; one pull at a time, whoever asks meanwhile waits for it */
 export function pullAll(): Promise<boolean> {
   if (!supabase) return Promise.resolve(false)
-  pull ??= pullNow().finally(() => { pull = null })
+  pull ??= pullNow().finally(() => { pull = null; setStatus({ pulling: false }) })
   return pull
 }
 async function pullNow(): Promise<boolean> {
   if (!supabase) return false
+  setStatus({ pulling: true })
   try {
     const { data: { session }, error: authError } = await supabase.auth.getSession()
     if (!session) { setStatus({ state: noSignal(authError) ? 'offline' : 'signedOut' }); return false }
@@ -349,6 +350,11 @@ async function pullNow(): Promise<boolean> {
       }))
       if (error && missing(error.code)) continue
       if (error) { setStatus(failed(error.message)); return false }
+      // What the floor sees is here now: the lines, the codes and the stops are read first. The warning that this device
+      // shows an old picture goes from this moment, not when the whole history has come too (Jose, 2026-10-31: with very
+      // good internet the bar stayed longer the longer the app had been closed, and it said the server could not be
+      // reached). Until now `pulling` keeps it calm: only a server that does not answer gets the warning
+      if (t === 'act_stops') setStatus({ state: 'online', fresh: Date.now(), pulling: false })
       // (only when whose rows were asked for did not change while they came: a sign-in in the middle could have narrowed
       // or widened the rooms, and a room not asked for must not lose its programs)
       if (plansSeen && t === 'act_plan' && pulledFor() === scope) keepServerPlans(plansSeen, plansFrom, role.get() === 'op' && myDept.get() ? [myDept.get() as Dept] : null, plansWaiting, plansSince, plansHeard)
@@ -365,7 +371,7 @@ async function pullNow(): Promise<boolean> {
     prune() // the days this device no longer keeps (also when the date changes while the app stays open)
     const at = Date.now()
     try { localStorage.setItem(LAST_PULL, String(at)) } catch { /* the full-storage bar says it */ }
-    setStatus({ state: 'online', lastSync: at, lastError: '', pulled: true })
+    setStatus({ state: 'online', lastSync: at, fresh: at, lastError: '', pulled: true })
     return true
   } catch (e) {
     setStatus(failed(String(e)))

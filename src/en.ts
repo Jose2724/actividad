@@ -525,6 +525,7 @@ export const EN: Record<string, string> = {
   'Esta corrida ya tiene producción: "Borrar corrida" la saca toda del reporte. Si la línea sí trabajó, no la borres.': 'This run already has production: "Delete run" takes all of it out of the report. If the line did work, do not delete it.',
   'Esta corrida tiene producción': 'This run has production',
   'Si la línea sí trabajó, no la borres: toca Cancelar.': 'If the line did work, do not delete it: tap Cancel.',
+  '⏳ Trayendo lo último del servidor…': '⏳ Bringing the latest from the server…',
   'Para borrarla, escribe {0}': 'To delete it, type {0}',
   'La línea ya corre otro código': 'The line is already running another code',
   'Reabrir código': 'Reopen code',

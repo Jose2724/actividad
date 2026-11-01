@@ -24,7 +24,7 @@ const test = (row, col, op, value) => {
 // The stand-in tells the time like the real one: in every answer, to the second. `ahead` is how far its clock runs
 // from this machine's (as if the tablet's clock were wrong); `mode` breaks it on purpose
 const clockServer = { ahead: 0, mode: 'ok', asked: [] }
-const net = { down: false } // true = no request gets an answer at all, as on a WiFi without internet
+const net = { down: false, stuck: '' } // down = no request gets an answer at all, as on a WiFi without internet; stuck = this table does not answer
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 let busy = 0 // requests the stand-in is answering right now
 globalThis.fetch = async (input, init) => { busy++; try { return await answer(input, init) } finally { busy-- } }
@@ -40,6 +40,7 @@ async function answer(input, init) {
     return new Response(null, { status: 200, headers: clockServer.mode === 'mute' ? {} : { Date: new Date(Math.floor(stamp / 1000) * 1000).toUTCString() } })
   }
   const table = url.pathname.split('/').pop()
+  if (table === net.stuck) throw new TypeError('fetch failed')
   if (!url.pathname.includes('/rest/v1/') || !db[table]) return new Response('{}', { status: 404 })
   if (init?.method === 'POST' || init?.method === 'PATCH') {
     if (db.refuse === table) return new Response(JSON.stringify({ code: '42501', message: 'new row violates row-level security policy for table "' + table + '"', details: null, hint: null }), { status: 403, headers: { 'Content-Type': 'application/json' } }) // the person signed in may not write this room
@@ -243,6 +244,37 @@ console.log('· El punto de arriba no dice "Sincronizado" si no se llega al serv
 
 console.log('')
 if (failed.length) { console.log(failed.length + ' FALLARON de ' + (passed + failed.length) + ':\n'); for (const f of failed) console.log('  ✗ ' + f + '\n'); process.exit(1) }
+
+console.log('· El aviso de copia vieja se va cuando llegan las líneas, los códigos y los paros, sin esperar el historial (Jose, 2026-10-31)')
+{
+  const st = () => m.syncStore.get()
+  net.down = false
+  await m.pullAll()
+  eq('una bajada completa deja la pantalla al día y nada bajando', [st().fresh === st().lastSync, st().pulling], [true, false])
+  await sleep(5)
+  const going = m.pullAll()
+  eq('mientras baja lo dice, y el aviso de sin servidor espera', st().pulling, true)
+  await going
+  eq('al terminar ya no', st().pulling, false)
+  await sleep(5)
+  const fresh0 = st().fresh, last0 = st().lastSync
+  net.stuck = 'act_changes'
+  const stuck = await m.pullAll()
+  net.stuck = ''
+  eq('el historial no contesta: lo del piso sí llegó, y la bajada queda sin terminar', [stuck, st().fresh > fresh0, st().lastSync, st().pulling], [false, true, last0, false])
+  await sleep(5)
+  net.stuck = 'act_runs'
+  const fresh1 = st().fresh
+  await m.pullAll()
+  net.stuck = ''
+  eq('sin los códigos o los paros la pantalla sigue vieja, y el aviso vuelve a salir', [st().fresh, st().pulling], [fresh1, false])
+  net.down = true
+  await m.pullAll()
+  net.down = false
+  eq('sin servidor tampoco se mueve', [st().fresh, st().pulling], [fresh1, false])
+  await m.pullAll()
+  eq('al volver el servidor queda al día', st().fresh > fresh1, true)
+}
 
 console.log('· Lo que otra tablet agregó a una corrida no se pierde cuando esta manda la suya')
 {
