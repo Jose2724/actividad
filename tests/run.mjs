@@ -6321,6 +6321,24 @@ section('Programa del día: la pestaña del admin, prendida para todos desde Aju
   eq('y Lotes y Flujo siguen como quedaron', back.use((m) => [m.store.get().viewOpts.lotes.on, m.store.get().viewOpts.flujo.on]), [true, true])
 }
 
+section('Kitchen anota sus pesos cuando sabe que está listo, con la hora en que pesó (Jose, 2026-11-01)')
+{
+  const d = await device('kitchen-note', { user: 'Luis' })
+  d.use((m) => {
+    const st = () => m.store.get(), at = oct(10, 15, 40)
+    clock = at + 20 * M
+    eq('la hora escrita cae en ese día de trabajo', m.wtPaperAt(st(), DAY, '15:40'), at)
+    eq('guarda una prueba', m.weightPaperAdd({ date: DAY, dept: 'Kitchen', lineId: '', line: '', code: '0889', kind: 'ball', noted: true }, [{ hm: '15:40', weights: [2.35, 2.3, 2.4] }]), 1)
+    const x = st().weights.find((y) => y.dept === 'Kitchen')
+    eq('con quien la anotó, sin la palabra papel, a la hora escrita, y sin línea ni corrida', [x.by, x.at, x.line, x.runId, x.code, x.kind], ['Luis', at, '', '', '0889', 'ball'])
+    eq('sale en el reporte de pesos del día, sin deber nada', m.weightsOf(st(), DAY, clock).filter((r) => r.dept === 'Kitchen').map((r) => [r.code, r.kind, r.n, r.due]), [['0889', 'ball', 3, null]])
+    eq('dos toques de Guardar no la repiten', m.weightPaperAdd({ date: DAY, dept: 'Kitchen', lineId: '', line: '', code: '0889', kind: 'ball', noted: true }, [{ hm: '15:40', weights: [2.35, 2.3, 2.4] }]), 0)
+    eq('en los Cambios dice que se anotó', st().changes.some((c) => c.what === 'Peso anotado del ' + DAY), true)
+    m.weightPaperAdd({ date: DAY, dept: 'Spiral', lineId: '', line: '', code: '0889', kind: 'ball' }, [{ hm: '15:41', weights: [2.3] }])
+    eq('los pesos de papel siguen diciendo papel', st().weights.find((y) => y.dept === 'Spiral').by, 'Luis (papel)')
+  })
+}
+
 section('Borrar una corrida con producción pide escribir cuántas unidades tiene (Jose, 2026-10-31)')
 {
   const d = await device('drop-guard', { user: 'Jose' })
