@@ -12,8 +12,8 @@ import type { NumberId } from './Numbers'
  * elegir la que necesitamos luego y así evitar programarlo de nuevo"), kept under 'mini:opts' with the KPI's records.
  * It adds nothing to what the floor records: it reads the report's own day, one day at a time
  */
-export type MiniOpts = { from: 'code' | 'setup'; by: 'line' | 'room'; grace: number; limit: number; setup: boolean; clean: boolean; lunch: boolean; inUnit: 'lb' | 'kg' | 'oz'; outUnit: 'mezclas' | 'lb' | 'cajas' }
-export const MINI_DEFAULT: MiniOpts = { from: 'code', by: 'line', grace: 10, limit: 15, setup: false, clean: true, lunch: false, inUnit: 'lb', outUnit: 'mezclas' }
+export type MiniOpts = { start2: string; startOne: string; from: 'code' | 'setup'; by: 'line' | 'room'; grace: number; limit: number; setup: boolean; clean: boolean; lunch: boolean; inUnit: 'lb' | 'kg' | 'oz'; outUnit: 'mezclas' | 'lb' | 'cajas' }
+export const MINI_DEFAULT: MiniOpts = { start2: '15:30', startOne: '06:00', from: 'code', by: 'line', grace: 10, limit: 15, setup: false, clean: true, lunch: false, inUnit: 'lb', outUnit: 'mezclas' }
 export const miniOpts = (s: State): MiniOpts => ({ ...MINI_DEFAULT, ...(kpiGet(s, 'mini:opts')?.data as Partial<MiniOpts> | undefined) })
 export const setMiniOpts = (o: MiniOpts) => kpiPut('mini:opts', o)
 
@@ -35,10 +35,12 @@ function goalOn(s: State, key: string, date: string, now: number | null) {
   return last ? said(last.after) : list.length ? said(list[0].before) : now
 }
 const CLEAN = 'Limpieza', PEOPLE = 'Falta de personal'
+/** a pause the plant plans, however it was written; "Break" is the list's own word when the shift's stop rules are off */
+const PAUSE = /\b(lunch|break|comida|almuerzo|descanso)\b/i
 /** the four the report tells apart; also with the Reason Codes on, by their category */
 function downKind(reason: string): 'mech' | 'people' | 'clean' | 'lunch' | 'other' {
   const c = reasonCodeOf(reason)
-  if (reason === LUNCH || c?.code === 'PLN-01') return 'lunch'
+  if (reason === LUNCH || c?.code === 'PLN-01' || PAUSE.test(reason)) return 'lunch'
   if (reason === CLEAN || c?.code === 'PLN-04') return 'clean'
   if (reason === PEOPLE || c?.cat === 'lab') return 'people'
   return isMechanical(reason) || c?.cat === 'eqp' ? 'mech' : 'other'
@@ -52,7 +54,8 @@ type RoomDay = {
 }
 function roomDay(s: State, date: string, dept: Dept, k: 1 | 2, o: MiniOpts, now: number): RoomDay {
   const rep = reportOf(s, date, now, { only: dept, shift: k }), plan = shiftsOf(s, date, dept), rows = rep.rows
-  const begin = wallOfDay(s, date, k === 1 ? plan.first : plan.second)
+  // (the hour the floor is expected, Santiago's 3:30 and not the hand-over the app counts by; a day of one shift starts in the morning: 2026-11-01, a Sunday at 6:07 AM read as 9 hours early)
+  const begin = wallOfDay(s, date, k === 1 ? plan.first : plan.only ? o.startOne : o.start2)
   // ---- the start: each line's first code of the shift, or its first Set up; one already running came on time ----
   const firsts = new Map<string, number>()
   const seen = (line: string, at: number) => firsts.set(line, Math.min(firsts.get(line) ?? Infinity, at))
@@ -109,22 +112,23 @@ export function miniTables(w: MiniWeek): MiniTable[] {
   const roomRows = (rooms: typeof w.rooms, name: (d: Dept) => string, cell: (x: RoomDay) => MiniCell, all: (list: RoomDay[]) => MiniCell) => rooms.map((r) => { const had = r.days.filter((x): x is RoomDay => !!x); return [{ t: name(r.dept) }, ...r.days.map((x) => (x ? cell(x) : none)), had.length ? all(had) : none] })
   const dept = (d: Dept) => d
   const startCell = (x: RoomDay): MiniCell => (x.start ? { t: fmtTime(x.start.at) + (x.start.lateLines && o.by === 'line' ? ' · ' + x.start.lateLines + '/' + x.start.lines : ''), c: x.start.late ? 'bad' : 'ok' } : none)
-  const startAll = (list: RoomDay[]): MiniCell => { const has = list.filter((x) => x.start); if (!has.length) return none; const off = has.reduce((t, x) => t + (x.start?.off ?? 0), 0) / has.length, last = has[has.length - 1].start; return { t: fmtTime((last?.at ?? 0) - (last?.off ?? 0) * 60_000 + off * 60_000), c: off > o.grace ? 'bad' : 'ok' } }
+  // (the week in minutes: an hour of the day cannot average a Sunday morning with the afternoons)
+  const startAll = (list: RoomDay[]): MiniCell => { const has = list.filter((x) => x.start); if (!has.length) return none; const off = has.reduce((t, x) => t + Math.max(0, x.start?.off ?? 0), 0) / has.length; return { t: tr('{0} min tarde', Math.round(off)), c: off > o.grace ? 'bad' : 'ok' } }
   const made = (real: number, target: number | null, apart: string[]): MiniCell => { const more = apart.length ? ' + ' + apart.join(', ') : ''; if (!real && !target && !apart.length) return none; if (!target) return { t: n0(real) + more }; const p = real / target; return { t: n0(real) + ' / ' + n0(target) + ' · ' + pctOf(p) + more, c: p >= 1 ? 'ok' : p >= 0.9 ? 'warn' : 'bad' } }
   const downCell = (down: number, time: number): MiniCell => (time ? { t: pctOf(down / time) + ' · ' + fmtDur(down), c: (down / time) * 100 > o.limit ? 'bad' : 'ok' } : none)
-  const inOf = (lb: number) => n2(lb * IN_UNIT[o.inUnit]) + ' ' + tr(o.inUnit)
+  const inText = (lb: number) => (lb ? n2(lb * IN_UNIT[o.inUnit]) + ' ' + tr(o.inUnit) : tr('Sin pesar'))
   const outOf = (n: number | null) => (n == null ? '—' : o.outUnit === 'mezclas' ? n0(n) + ' ' + tr('mezclas') : n2(n) + ' ' + (o.outUnit === 'lb' ? tr('lb') : tr('cajas')))
   const sum = (list: RoomDay[], f: (x: RoomDay) => number) => list.reduce((t, x) => t + f(x), 0)
   const cooks = w.rooms.filter((r) => r.dept === 'Kitchen' || r.dept === 'Spiral')
   const partName = { raw: tr('Crudo'), cooked: tr('Cocinado'), pouch: tr('Pouch') }
   const wtCell = (x: WtAvg | null): MiniCell => (x?.avg == null ? none : { t: x.avg.toFixed(2), c: x.ok === 'ok' ? 'ok' : x.ok === 'under' ? 'bad' : x.ok === 'over' ? 'warn' : undefined })
   return [
-    { id: 'mini-arranque', title: tr('Arranque'), head: head(tr('Departamento')), rows: roomRows(w.rooms, dept, startCell, startAll), note: tr('{0}, {1}. En rojo después de {2} minutos.', o.from === 'setup' ? tr('Desde el Set up') : tr('Desde que empieza el código'), o.by === 'room' ? tr('la primera línea del cuarto') : tr('promedio de sus líneas'), o.grace) },
+    { id: 'mini-arranque', title: tr('Arranque'), head: head(tr('Departamento')), rows: roomRows(w.rooms, dept, startCell, startAll), note: tr('{0}, {1}. En rojo {2} minutos después de la hora de arranque. La semana dice cuántos minutos tarde en promedio, contando a tiempo como 0.', o.from === 'setup' ? tr('Desde el Set up') : tr('Desde que empieza el código'), o.by === 'room' ? tr('la primera línea del cuarto') : tr('promedio de sus líneas'), o.grace) },
     { id: 'mini-prod', title: tr('Producción: real, meta y % de éxito'), head: head(tr('Departamento')), rows: roomRows(w.rooms, (d) => d + ' (' + slowUnitOf(d) + ')', (x) => made(x.real, x.target, x.apart), (list) => { const goal = list.filter((x) => x.target); return goal.length ? made(sum(goal, (x) => x.real), sum(goal, (x) => x.target ?? 0), []) : made(sum(list, (x) => x.real), null, []) }), note: tr('Hecho / meta · % de éxito. La meta de cada día × sus horas: las que trabajó la línea, o con meta del cuarto, de su primer código al último. Lo contado en otra medida o sin meta va aparte y no entra en el %. La semana solo suma los días con meta.') },
     { id: 'mini-paros', title: tr('Paros: % del tiempo trabajado'), head: head(tr('Departamento')), rows: roomRows(w.rooms, dept, (x) => downCell(x.down, x.time), (list) => downCell(sum(list, (x) => x.down), sum(list, (x) => x.time))), note: tr('En rojo sobre {0}%. Cuentan: mecánico, personal y otros{1}{2}{3}.', o.limit, o.clean ? ', ' + tr('limpieza') : '', o.lunch ? ', ' + tr('lunch') : '', o.setup ? ', ' + tr('Set up') : '') },
     { id: 'mini-causas', title: tr('Por qué se paró en la semana'), head: [tr('Departamento'), tr('Mecánico'), tr('No personal'), tr('Limpieza'), tr('Otros')], rows: w.rooms.map((r) => { const l = r.days.filter((x): x is RoomDay => !!x), t = (f: (x: RoomDay) => number) => ({ t: sum(l, f) ? fmtDur(sum(l, f)) : '—' }); return [{ t: r.dept }, t((x) => x.mech), t((x) => x.people), t((x) => x.clean), t((x) => x.other)] }) },
     { id: 'mini-mec', title: tr('Paros mecánicos'), head: [tr('Día'), tr('Departamento'), tr('Línea'), tr('Hora'), tr('Tiempo'), tr('Mecánico'), tr('Razón')], rows: w.mechanics.map((m) => [{ t: dayLabel(m.date) }, { t: m.dept }, { t: m.line }, { t: fmtTime(m.at) }, { t: fmtDur(m.ms) }, m.who ? { t: m.who } : { t: tr('Sin nombre'), c: 'warn' }, { t: tr(m.reason) }]) },
-    { id: 'mini-consumo', title: tr('Consumo: lo que entra y lo que sale'), head: head(tr('Departamento')), rows: roomRows(cooks, dept, (x) => (x.in || x.out != null ? { t: inOf(x.in) + ' → ' + outOf(x.out) } : none), (list) => ({ t: inOf(sum(list, (x) => x.in)) + ' → ' + outOf(list.some((x) => x.out != null) ? sum(list, (x) => x.out ?? 0) : null) })) },
+    { id: 'mini-consumo', title: tr('Consumo: lo que entra y lo que sale'), head: head(tr('Departamento')), rows: roomRows(cooks, dept, (x) => (x.in || x.out != null ? { t: inText(x.in) + ' → ' + outOf(x.out) } : none), (list) => ({ t: inText(sum(list, (x) => x.in)) + ' → ' + outOf(list.some((x) => x.out != null) ? sum(list, (x) => x.out ?? 0) : null) })), note: tr('Sin pesar quiere decir que nadie pesó lo que entró: Consumo está apagado en ese cuarto.') },
     { id: 'mini-waste', title: tr('Waste (lb)'), head: head(tr('Departamento')), rows: roomRows(w.rooms, dept, (x) => ({ t: x.waste ? n2(x.waste) : '—' }), (list) => ({ t: sum(list, (x) => x.waste) ? n2(sum(list, (x) => x.waste)) : '—' })) },
     { id: 'mini-pesos', title: tr('Pesos: promedio por día (oz)'), head: head(tr('Código')), rows: w.weights.map((x) => { const r = x.days.find((d) => d?.range)?.range; const all = x.days.filter((d): d is WtAvg => !!d), a = avgOf(all); return [{ t: x.code + ' · ' + partName[x.part] + (r ? ' (' + wtRangeLong(r) + ')' : '') }, ...x.days.map(wtCell), a == null ? none : { t: a.toFixed(2) }] }) },
   ]
@@ -268,7 +272,7 @@ export function miniSummary(weeks: MiniWeek[]): Sheet {
 export const miniGuide = (): { id: NumberId; title: string; means: string; math: string; eg: string }[] => [
   { id: 'mini-arranque', title: tr('Arranque'),
     means: tr('A qué hora empezó a trabajar cada cuarto en ese turno.'),
-    math: tr('La hora en que cada línea empezó su primer código del turno (o su Set up, si Ajustes lo dice), y el promedio de las líneas (o solo la primera). Una línea que ya venía corriendo cuenta a tiempo. Sale en rojo pasados los minutos de gracia de Ajustes. Si dice 1/3, 1 de sus 3 líneas llegó tarde.'),
+    math: tr('La hora en que cada línea empezó su primer código del turno (o su Set up, si Ajustes lo dice), y el promedio de las líneas (o solo la primera). Una línea que ya venía corriendo cuenta a tiempo. Sale en rojo pasados los minutos de gracia después de la hora de arranque de Ajustes. Si dice 1/3, 1 de sus 3 líneas llegó tarde. La semana dice los minutos tarde en promedio.'),
     eg: tr('Turno a las 3:30 y 10 minutos de gracia: 3:38 PM va en verde; 3:52 PM · 2/3 va en rojo, y 2 de 3 líneas llegaron tarde.') },
   { id: 'mini-prod', title: tr('Producción: real, meta y % de éxito'),
     means: tr('Lo que se hizo contra lo que se debió hacer con la meta de ese día.'),
@@ -276,11 +280,11 @@ export const miniGuide = (): { id: NumberId; title: string; means: string; math:
     eg: tr('Meta 12 por hora y 1 hora trabajando: se esperan 12. Con 6 hechas dice 6 / 12 · 50%.') },
   { id: 'mini-paros', title: tr('Paros: % del tiempo trabajado'),
     means: tr('Qué parte del tiempo las líneas estuvieron paradas.'),
-    math: tr('El tiempo parado que cuenta ÷ todo el tiempo que las líneas tuvieron un código, sumando las líneas. Siempre cuentan Mecánico, No personal y las demás razones; Limpieza, Set up y Lunch solo si Ajustes lo dice. Sale en rojo sobre el límite de Ajustes.'),
+    math: tr('El tiempo parado que cuenta ÷ todo el tiempo que las líneas tuvieron un código, sumando las líneas. Siempre cuentan Mecánico, No personal y las demás razones; Limpieza, Set up y Lunch (o Break) solo si Ajustes lo dice. Sale en rojo sobre el límite de Ajustes.'),
     eg: tr('2 líneas de 8 horas son 16 horas. Con 2 horas de paros dice 12.5% · 2 h.') },
   { id: 'mini-causas', title: tr('Por qué se paró en la semana'),
     means: tr('El tiempo parado de toda la semana, separado por la causa.'),
-    math: tr('La suma de los paros de cada cuarto en Mecánico, No personal, Limpieza y Otros. Lunch y Set up no salen aquí.'),
+    math: tr('La suma de los paros de cada cuarto en Mecánico, No personal, Limpieza y Otros. Lunch, Break y Set up no salen aquí.'),
     eg: tr('Mecánico 3 h 20 min en RTE: entre todas sus líneas estuvieron 3 h 20 min paradas por mecánico.') },
   { id: 'mini-mec', title: tr('Paros mecánicos'),
     means: tr('Cada paro mecánico, uno por uno, con quién lo atendió.'),

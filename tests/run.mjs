@@ -6001,6 +6001,40 @@ section('Mini KPI: el Resumen del Excel compara los días y las últimas semanas
     eq('la explicación: las 8 tablas, en el Excel y en la ventana', [m.miniGuide().length, m.miniTables(w2).every((t) => m.miniGuide().some((g) => g.id === t.id)), book[2].rows.length], [8, true, 11])
   })
 }
+section('Mini KPI con la semana real de Jose (2026-11-01): el domingo de la mañana, el Break, el arranque de Santiago, lo que no se pesó')
+{
+  const g = await device('mini-real', { user: 'Jose' })
+  g.use((m) => {
+    const st = () => m.store.get()
+    const at = (d, h) => { clock = new Date(d + 'T' + h + ':00').getTime() }
+    localStorage.setItem('act_role', 'mgr')
+    m.addLine('Kitchen', 'Braiser 1')
+    const b = st().lines[0], SUN = '2026-10-18', MON = '2026-10-19'
+    const open = () => st().runs.find((r) => r.lineId === b.id && !r.endedAt)
+    at(SUN, '05:00'); m.setDayShifts(SUN, 2)
+    at(SUN, '06:07'); m.startRun(b, 'A1', '6200', SUN, null)
+    at(SUN, '07:00'); m.startStop('Kitchen', b.id, 'Break', '')
+    at(SUN, '07:30'); m.endStop(st().stops.find((x) => !x.endedAt).id)
+    at(SUN, '07:40'); m.startStop('Kitchen', b.id, 'Problema mecánico', '')
+    at(SUN, '07:50'); m.endStop(st().stops.find((x) => !x.endedAt).id)
+    at(SUN, '08:00'); m.endRun(open().id, false)
+    at(MON, '15:36'); m.startRun(b, 'A1', '6200', MON, null)
+    at(MON, '16:00'); m.endRun(open().id, false)
+    at('2026-10-20', '20:00')
+    const week = () => m.miniTables(m.miniWeek(st(), SUN, 2, clock)), row = (tit) => week().find((x) => x.title.startsWith(tit)).rows[0]
+    const start = row('Arranque')
+    eq('el domingo de un solo turno se mide desde la mañana: 6:07 a tiempo, no 9 horas antes', [start[1].t.startsWith('6:07'), start[1].c], [true, 'ok'])
+    eq('lunes 3:36 PM: la regla de Santiago, 3:30 y rojo pasadas las 3:40, va a tiempo', [start[2].t.startsWith('3:36'), start[2].c], [true, 'ok'])
+    eq('la semana dice minutos tarde, no una hora que no pasó (7 y 6)', start[7].t, '7 min tarde')
+    m.setMiniOpts({ ...m.miniOpts(st()), startOne: '05:30', start2: '15:15' })
+    eq('las dos horas se cambian en Ajustes', [row('Arranque')[1].c, row('Arranque')[2].c], ['bad', 'bad'])
+    const why = row('Por qué'), down = row('Paros: %')
+    eq('el Break no es un paro: solo los 10 minutos mecánicos', [why[1].t, why[4].t, down[1].t], ['10:00', '—', Math.round((10 / 113) * 1000) / 10 + '% · 10:00'])
+    m.setMiniOpts({ ...m.miniOpts(st()), lunch: true })
+    eq('con Lunch y Break prendido en Ajustes sí cuenta', row('Paros: %')[1].t, Math.round((40 / 113) * 1000) / 10 + '% · 40:00')
+    eq('lo que nadie pesó no dice 0 lb', row('Consumo')[1].t, 'Sin pesar → 0 mezclas')
+  })
+}
 section('Reglas de paros por turno (Santiago por Jose, 2026-10-31: no Break, solo Lunch de 30 min; Otra bloqueada; nombre del mecánico; por ahora Turno 2)')
 {
   const g = await device('stop-rules', { user: 'Op' })

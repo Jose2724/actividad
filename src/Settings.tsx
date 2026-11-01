@@ -458,6 +458,8 @@ function MiniSettings({ s, viewOnly }: { s: State; viewOnly: boolean }) {
     <>
       <div className="setcard">
         <div className="sethead"><h3>{tr('Arranque')}</h3></div>
+        <label className="minirow"><span>{tr('Turno 2 debe arrancar a las')}</span><input type="time" value={o.start2} disabled={viewOnly} onChange={(e) => { if (e.target.value) put({ start2: e.target.value }) }} /></label>
+        <label className="minirow"><span>{tr('Un día de un solo turno, a las')}</span><input type="time" value={o.startOne} disabled={viewOnly} onChange={(e) => { if (e.target.value) put({ startOne: e.target.value }) }} /></label>
         {choice('from', tr('Se cuenta desde'), [['code', tr('Que empieza el código')], ['setup', tr('Que empieza el Set up')]])}
         {choice('by', tr('En cada cuarto'), [['line', tr('Promedio de sus líneas')], ['room', tr('Solo la primera línea')]])}
         {num('grace', tr('Minutos antes de salir en rojo'))}
@@ -467,7 +469,7 @@ function MiniSettings({ s, viewOnly }: { s: State; viewOnly: boolean }) {
         {num('limit', tr('Rojo cuando pase de este %'))}
         {check('clean', tr('Limpieza cuenta como paro'))}
         {check('setup', tr('Set up cuenta como paro'))}
-        {check('lunch', tr('Lunch cuenta como paro'))}
+        {check('lunch', tr('Lunch y Break cuentan como paro'))}
         <p className="hint">{tr('Mecánico, No personal y las demás razones siempre cuentan.')}</p>
       </div>
       <div className="setcard">
