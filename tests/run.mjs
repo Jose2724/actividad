@@ -6059,6 +6059,68 @@ section('La lista de empleados: la asistencia se toca, no se escribe (Santiago p
   const back = await device('roster-again', { seed: JSON.parse(disks.get('roster').get('act_v1')), user: 'Op' })
   eq('al volver a abrir sigue la lista', back.use((m) => m.rosterOf(m.store.get(), 2).people.length), 4)
 }
+section('KPI diario de Mike: libras de NetSuite ÷ horas, y el downtime por cuarto (2026-11-02)')
+{
+  const g = await device('pplh', { user: 'Jose' })
+  await g.use(async (m) => {
+    const st = () => m.store.get()
+    localStorage.setItem('act_role', 'mgr')
+    // the shape of Melissa's export (made-up items and pounds): other sites, the Total line, an item's subtotal with no date
+    const head = ['Subsidiary', 'Full item Name', 'Date - Year', 'Date - Month', 'Date - Day', 'Lbs Used', 'Total Cost', 'Transaction Date']
+    const serial = (d) => Date.UTC(...d.split('-').map((x, i) => Number(x) - (i === 1 ? 1 : 0))) / 86_400_000 + 25569
+    const rows = [['Some title'], head,
+      ['East Rutherford', 'M1001 - BEEF', 2026, 'October', 22, 1000, 5, serial('2026-10-22')],
+      ['East Rutherford', 'R-0019 - TOMATOES', 2026, 'October', 22, 500.5, 2, serial('2026-10-22')],
+      ['East Rutherford', 'M1001 - BEEF', 2026, 'October', 23, 800, 4, '10/23/2026'],
+      ['East Rutherford', 'R1058 - CRUMB', 2026, 'October', 24, 100, 1, null],
+      ['East Rutherford', 'M1001 - BEEF', null, null, null, 2300, 9, null],
+      ['East Rutherford', 'Total', null, null, null, 99999, 1, null],
+      ['Farmingdale', 'X', 2026, 'October', 22, 7777, 1, serial('2026-10-22')],
+      ['Total', null, null, null, null, 123456, null, null]]
+    const r = m.readNetsuite(rows)
+    eq('solo East Rutherford, por día: sin otras plantas, sin la línea Total, sin el subtotal sin fecha; la fecha de Excel, escrita o por año/mes/día', [r.days, r.other, r.totals, r.undated, r.bad], [[{ date: '2026-10-22', lbs: 1500.5, rows: 2 }, { date: '2026-10-23', lbs: 800, rows: 1 }, { date: '2026-10-24', lbs: 100, rows: 1 }], 2, 1, 1, 0])
+    eq('un CSV se lee igual, con comas entre comillas', m.readNetsuite(m.readCsv('Subsidiary,Full item Name,Lbs Used,Transaction Date\r\nEast Rutherford,"BEEF, FRESH","1,200.5",10/22/2026\r\nEast Rutherford,Total,9,\r\n')).days, [{ date: '2026-10-22', lbs: 1200.5, rows: 1 }])
+    eq('un archivo sin esas columnas no se toma', m.readNetsuite([['Name', 'Pounds'], ['a', 1]]).found, false)
+    // an xlsx as Excel writes it: shared texts, a number, a date as a serial
+    const z = await m.loadZip()
+    const enc = (s) => z.strToU8(s)
+    const xlsx = z.zipSync({
+      'xl/workbook.xml': enc('<workbook xmlns:r="r"><sheets><sheet name="MELISSA DATA" sheetId="1" r:id="rId1"/></sheets></workbook>'),
+      'xl/_rels/workbook.xml.rels': enc('<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>'),
+      'xl/sharedStrings.xml': enc('<sst><si><t>Subsidiary</t></si><si><t>Lbs Used</t></si><si><t>Transaction Date</t></si><si><t>East Rutherford</t></si><si><r><t>Full item </t></r><r><t>Name</t></r></si><si><t xml:space="preserve">BEEF &amp; PORK</t></si></sst>'),
+      'xl/worksheets/sheet1.xml': enc('<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>4</v></c><c r="C1" t="s"><v>1</v></c><c r="D1" t="s"><v>2</v></c></row><row r="2"><c r="A2" t="s"><v>3</v></c><c r="B2" t="s"><v>5</v></c><c r="C2"><v>250.25</v></c><c r="D2" s="3"><v>' + serial('2026-10-22') + '</v></c></row></sheetData></worksheet>'),
+    })
+    const read = m.netsuiteSheet(m.readXlsx(xlsx, z))
+    eq('un .xlsx de Excel se lee: textos compartidos, número y fecha', [read?.name, read?.read.days], ['MELISSA DATA', [{ date: '2026-10-22', lbs: 250.25, rows: 1 }]])
+    // kept by month; a new file replaces only its days
+    m.savePplhLbs(st(), r.days, 'a.xlsx')
+    m.savePplhLbs(st(), [{ date: '2026-10-23', lbs: 900, rows: 3 }], 'b.xlsx')
+    eq('cada archivo reemplaza solo sus días; los demás del mes se quedan', [m.pplhLbs(st(), '2026-10-22')?.lbs, m.pplhLbs(st(), '2026-10-23')?.lbs, m.pplhLbs(st(), '2026-10-24')?.lbs], [1500.5, 900, 100])
+    m.setPplhHours('2026-10-22', 30); m.setPplhHours('2026-10-23', 10)
+    eq('PPLH = libras ÷ horas del mismo día; sin horas queda vacío', [m.pplhRow(st(), '2026-10-22').pplh, m.pplhRow(st(), '2026-10-24').pplh], [1500.5 / 30, null])
+    const range = m.pplhOfRange(['2026-10-22', '2026-10-23', '2026-10-24'].map((d) => m.pplhRow(st(), d)))
+    eq('el rango suma libras y horas de los días con las dos y divide (no promedia los PPLH)', [range.lbs, range.hours, range.days, range.pplh], [2400.5, 40, 2, 2400.5 / 40])
+    m.setPplhHours('2026-10-23', null)
+    eq('borrar las horas de un día lo deja vacío', m.pplhRow(st(), '2026-10-23').hours, null)
+    // downtime by room, both shifts, split as the Mini KPI splits it
+    m.addLine('RTE', 'Línea 1')
+    const l1 = st().lines.find((l) => l.name === 'Línea 1'), D = '2026-10-22'
+    clock = new Date(D + 'T07:00:00').getTime(); m.startRun(l1, '0889', '6300', D, 260)
+    clock = new Date(D + 'T08:00:00').getTime(); m.startStop('RTE', l1.id, 'Problema mecánico', '')
+    clock = new Date(D + 'T08:30:00').getTime(); m.endStop(st().stops.find((x) => !x.endedAt).id)
+    clock = new Date(D + 'T10:00:00').getTime(); m.startStop('RTE', l1.id, 'Break', '')
+    clock = new Date(D + 'T10:15:00').getTime(); m.endStop(st().stops.find((x) => !x.endedAt).id)
+    clock = new Date(D + 'T11:00:00').getTime(); m.endRun(st().runs.find((x) => !x.endedAt).id, false)
+    const rte = m.downtimeOf(st(), [D], clock).find((x) => x.dept === 'RTE')
+    eq('el downtime de RTE: 3 h 15 trabajando, 30 min parado, el Break aparte, y su causa', [rte.worked / 60000, rte.stopped / 60000, rte.lunch / 60000, rte.mech / 60000, [...rte.causes.keys()]], [195, 30, 15, 30, ['Problema mecánico']])
+    const book = m.pplhBook(st(), '2026-10-22', '2026-10-24', '2026-10-23', clock)
+    eq('el Excel de Mike: resumen, downtime, yield y cómo se calcula', book.map((x) => x.name), ['SUMMARY', 'DOWNTIME', 'YIELD', 'HOW IT IS CALCULATED'])
+    const files = z.unzipSync(await m.xlsxBytes(book)), chart = z.strFromU8(files['xl/charts/chart1.xml'])
+    eq('su gráfica de PPLH y horas tiene dos ejes, azul y gris como la de Mike', [(chart.match(/<c:lineChart>/g) ?? []).length, (chart.match(/<c:valAx>/g) ?? []).length, chart.includes('<c:crosses val="max"/>'), chart.includes('1F4E78') && chart.includes('A5A5A5')], [2, 2, true, true])
+    const day = book[0].rows[4]
+    eq('el día del reporte sin horas lo dice, no inventa', [day[1].v, m.cellText(day[2]), m.cellText(day[3])], [900, 'No HR hours', '—'])
+  })
+}
 section('Mini KPI con la semana real de Jose (2026-11-01): el domingo de la mañana, el Break, el arranque de Santiago, lo que no se pesó')
 {
   const g = await device('mini-real', { user: 'Jose' })

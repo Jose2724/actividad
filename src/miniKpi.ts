@@ -38,7 +38,7 @@ const CLEAN = 'Limpieza', PEOPLE = 'Falta de personal'
 /** a pause the plant plans, however it was written; "Break" is the list's own word when the shift's stop rules are off */
 const PAUSE = /\b(lunch|break|comida|almuerzo|descanso)\b/i
 /** the four the report tells apart; also with the Reason Codes on, by their category */
-function downKind(reason: string): 'mech' | 'people' | 'clean' | 'lunch' | 'other' {
+export function downKind(reason: string): 'mech' | 'people' | 'clean' | 'lunch' | 'other' {
   const c = reasonCodeOf(reason)
   if (reason === LUNCH || c?.code === 'PLN-01' || PAUSE.test(reason)) return 'lunch'
   if (reason === CLEAN || c?.code === 'PLN-04') return 'clean'
