@@ -6116,7 +6116,7 @@ section('KPI diario de Mike: libras de NetSuite ÷ horas, y el downtime por cuar
     const book = m.pplhBook(st(), '2026-10-22', '2026-10-24', '2026-10-23', clock)
     eq('el Excel de Mike: resumen, downtime, yield y cómo se calcula', book.map((x) => x.name), ['SUMMARY', 'DOWNTIME', 'YIELD', 'HOW IT IS CALCULATED'])
     const files = z.unzipSync(await m.xlsxBytes(book)), chart = z.strFromU8(files['xl/charts/chart1.xml'])
-    eq('su gráfica de PPLH y horas tiene dos ejes, azul y gris como la de Mike', [(chart.match(/<c:lineChart>/g) ?? []).length, (chart.match(/<c:valAx>/g) ?? []).length, chart.includes('<c:crosses val="max"/>'), chart.includes('1F4E78') && chart.includes('A5A5A5')], [2, 2, true, true])
+    eq('su gráfica de PPLH y horas tiene dos ejes, azul y gris como la de Mike', [(chart.match(/<c:lineChart>/g) ?? []).length, (chart.match(/<c:valAx>/g) ?? []).length, chart.includes('<c:crosses val="max"/>'), chart.includes('1F4E78') && chart.includes('A5A5A5'), chart.includes('Lbs per Labor Hour') && chart.includes('Total Labor Hours'), chart.includes('<c:numCache><c:formatCode>m/d/yy</c:formatCode>'), chart.includes('rot="-2700000"')], [2, 2, true, true, true, true, true])
     const day = book[0].rows[4]
     eq('el día del reporte sin horas lo dice, no inventa', [day[1].v, m.cellText(day[2]), m.cellText(day[3])], [900, 'No HR hours', '—'])
     eq('solo el admin la ve, hasta que él da permiso a un nombre (Jose, 2026-11-02)', [m.seesPplh(st(), true, 'Jose'), m.seesPplh(st(), false, 'Edgar Carhuapoma')], [true, false])

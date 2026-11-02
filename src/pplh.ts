@@ -118,6 +118,8 @@ export function downtimeOf(s: State, dates: string[], now: number): RoomDown[] {
 
 // ---- the workbook, in English and in the look of Mike's (his navy, orange, grey and gold) ----
 const NAVY = '1F4E78', ORANGE = 'ED7D31', GREY = 'A5A5A5', GOLD = 'FFC000'
+/** his charts' title (dark grey, bold) and dates on the bottom axis as m/d/yy, tilted */
+const MIKE_LOOK = { titleColor: '404040', dates: 'm/d/yy' } as const
 const hrs = (ms: number) => Math.round(ms / 36_000) / 100
 const day = (d: string) => new Date(d + 'T12:00:00')
 const longDay = (d: string) => day(d).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
@@ -158,8 +160,8 @@ export function pplhBook(s: State, from: string, to: string, date: string, now: 
   a.gap()
   const TALL = 17, at1 = a.gap(TALL), at2 = (a.gap(), a.gap(TALL))
   const summary = a.done('SUMMARY', [
-    { title: 'East Rutherford — Productivity and Total Hours', series: ['East Rutherford Lbs/Labor Hr', 'Total Hours'], cat: 0, val: [3, 2], from: from1, to: to1, at: at1, kind: 'line', fmt: '0.0', fmt2: '#,##0', axis2: [1], colors: [NAVY, GREY], labels: 'none', left: 0, cols: 6, height: TALL },
-    { title: 'Daily Pounds Used — East Rutherford', series: ['East Rutherford'], cat: 0, val: [1], from: from1, to: to1, at: at2, kind: 'line', fmt: '#,##0', colors: [ORANGE], labels: 'none', left: 0, cols: 6, height: TALL },
+    { title: 'East Rutherford — Productivity and Total Hours', series: ['East Rutherford Lbs/Labor Hr', 'East Rutherford Total Hours'], cat: 0, val: [3, 2], from: from1, to: to1, at: at1, kind: 'line', fmt: '0.0', fmt2: '#,##0', axis2: [1], colors: [NAVY, GREY], labels: 'none', left: 0, cols: 6, height: TALL, ...MIKE_LOOK, axisTitle: 'Lbs per Labor Hour', axis2Title: 'Total Labor Hours' },
+    { title: 'Daily Pounds Used — East Rutherford', series: ['East Rutherford'], cat: 0, val: [1], from: from1, to: to1, at: at2, kind: 'line', fmt: '#,##0', colors: [ORANGE], labels: 'none', left: 0, cols: 6, height: TALL, ...MIKE_LOOK, axisTitle: 'Pounds' },
   ])
 
   // ---- DOWNTIME ----
