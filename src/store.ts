@@ -1194,7 +1194,9 @@ export function kpiPut(key: string, data: Record<string, unknown>, deleted = fal
  * and loaded in Ajustes by pasting the plant's Employee List. code = the list's area ("RTE2-ER"), whose number says the
  * shift; rooms = the room of each area, chosen in Ajustes because the list's words are not always the app's
  */
-export type RosterPerson = { name: string; code: string; lead?: boolean }
+export type RosterPerson = { name: string; code: string; lead?: boolean
+  /** a person whose room is not the area's (Jose, 2026-11-02: Kitchen's people are part of Prod2-ER): set in Ajustes */
+  room?: Dept }
 export type Roster = { people: RosterPerson[]; rooms: Record<string, Dept | ''> }
 const ROSTER_KEY = 'roster:'
 const rosterGuess = (code: string): Dept | '' => { const c = code.toLowerCase(); return c.startsWith('mfo') ? 'MFO' : c.startsWith('rte') ? 'RTE' : c.startsWith('pack') ? 'Packing' : c.startsWith('raw') ? 'Kitchen' : c.startsWith('prod') ? 'Spiral' : '' }
@@ -1207,6 +1209,8 @@ export const setRoster = (shift: 1 | 2, r: Roster) => kpiPut(ROSTER_KEY + shift,
 export const rosterOn = (s: State) => !!kpiGet(s, 'roster-on')?.data.on
 export const setRosterOn = (on: boolean) => kpiPut('roster-on', { on })
 export const rosterRoom = (r: Roster, code: string): Dept | '' => r.rooms[code] ?? rosterGuess(code)
+/** a person's room: their own when Ajustes gives them one, else their area's */
+export const rosterRoomOf = (r: Roster, p: RosterPerson): Dept | '' => (p.room && DEPTS.includes(p.room) ? p.room : rosterRoom(r, p.code))
 const ROSTER_CODE = /^[a-z]+\s*([12])\s*-\s*[a-z]+$/i
 /** the plant's list as pasted from Excel: a line per person, the columns by tabs; a line with no area of a shift is told back, not guessed */
 export function rosterParse(text: string) {
@@ -1232,7 +1236,7 @@ export function attPeople(s: State, date: string, dept: Dept, shift: 1 | 2, type
   const want = plain(typed.trim())
   const left = r.people.filter((p) => !here.has(attKey(p.name)) && (!want || plain(p.name).includes(want))).sort((a, b) => a.name.localeCompare(b.name))
   const tag = (p: RosterPerson) => ({ ...p, in: where.get(attKey(p.name)) ?? ('' as Dept | '') })
-  return { mine: left.filter((p) => rosterRoom(r, p.code) === dept).map(tag), others: want ? left.filter((p) => rosterRoom(r, p.code) !== dept).map(tag) : [], loaded: rosterOn(s) && r.people.length > 0 }
+  return { mine: left.filter((p) => rosterRoomOf(r, p) === dept).map(tag), others: want ? left.filter((p) => rosterRoomOf(r, p) !== dept).map(tag) : [], loaded: rosterOn(s) && r.people.length > 0 }
 }
 // ---- weight tests (2026-10-22: "botones en RTE para que los operadores registren la que está baja y subida de weight") ----
 /**

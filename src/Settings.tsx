@@ -6,7 +6,7 @@ import { DEPT_LOOK, deptVars } from './look'
 import { Devices } from './DevicesView'
 import { supabase } from './supabase'
 import { syncStore } from './sync'
-import { consumeOn, rosterOf, rosterOn, rosterParse, rosterRoom, setConsumeOn, setRoster, setRosterOn } from './store'
+import { consumeOn, rosterOf, rosterOn, rosterParse, rosterRoom, setConsumeOn, setRoster, setRosterOn, type RosterPerson } from './store'
 import { cartCratesOf, setAllCartCrates, setCartCrates, orderCodesList, setOrderCodes, type OrderCode } from './store'
 import { miniOpts, setMiniOpts, type MiniOpts } from './miniKpi'
 import { attWriteOn, kpiPut, LUNCH_MIN, lunchOf, setAttWriteOn, setLunch, setStopRules } from './store'
@@ -313,7 +313,7 @@ function RosterCard({ s, viewOnly }: { s: State; viewOnly: boolean }) {
           <details key={c} className="roster-area">
             <summary><b>{c}</b> · {howMany(mine.length)}</summary>
             <label className="minirow"><span>{tr('Es el cuarto')}</span><select value={rosterRoom(r, c)} disabled={viewOnly} onChange={(e) => setRoster(shift, { ...r, rooms: { ...r.rooms, [c]: e.target.value as Dept | '' } })}><option value="">{tr('Ninguno')}</option>{DEPTS.map((d) => <option key={d} value={d}>{d}</option>)}</select></label>
-            <ul className="roster-list">{mine.map((p) => <li key={p.name}><span>{p.name}{p.lead && <small> · {tr('supervisor o líder')}</small>}</span>{!viewOnly && <button type="button" className="lnk sm" aria-label={tr('Quitar a {0}', p.name)} onClick={() => setRoster(shift, { ...r, people: r.people.filter((x) => x.name !== p.name) })}>{tr('Quitar')}</button>}</li>)}</ul>
+            <ul className="roster-list">{mine.map((p) => <li key={p.name}><span>{p.name}{p.lead && <small> · {tr('supervisor o líder')}</small>}</span><select className="roster-room" value={p.room ?? ''} disabled={viewOnly} aria-label={tr('Cuarto de {0}', p.name)} onChange={(e) => setRoster(shift, { ...r, people: r.people.map((x): RosterPerson => (x.name !== p.name ? x : e.target.value ? { ...x, room: e.target.value as Dept } : { name: x.name, code: x.code, ...(x.lead ? { lead: true } : {}) })) })}><option value="">{tr('Como su área ({0})', rosterRoom(r, c) || tr('ninguno'))}</option>{DEPTS.map((d) => <option key={d} value={d}>{d}</option>)}</select>{!viewOnly && <button type="button" className="lnk sm" aria-label={tr('Quitar a {0}', p.name)} onClick={() => setRoster(shift, { ...r, people: r.people.filter((x) => x.name !== p.name) })}>{tr('Quitar')}</button>}</li>)}</ul>
           </details>
         )
       })}

@@ -3378,4 +3378,7 @@ export const EN: Record<string, string> = {
   "Sin área, no se guardan: {0}": "No area, not saved: {0}",
   "Tocar los nombres en la asistencia": "Tap the names in the attendance",
   "Prendido: los supervisores tocan el nombre en la asistencia en vez de escribirlo, y a quien no esté lo pueden seguir escribiendo. Apagado: la asistencia sigue como siempre y la lista se queda guardada.": "On: supervisors tap the name in the attendance instead of typing it, and someone who is not there can still be typed. Off: the attendance stays as always and the list stays kept.",
+  "Cuarto de {0}": "Room of {0}",
+  "Como su área ({0})": "As their area ({0})",
+  "ninguno": "none",
 }

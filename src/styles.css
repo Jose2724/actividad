@@ -2252,3 +2252,4 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 .att-pick{margin:8px 0;padding:8px;border:1px solid var(--line);border-radius:12px}.att-pick .att-lab{margin:0 0 6px}.att-names{display:flex;flex-wrap:wrap;gap:6px;max-height:240px;overflow-y:auto}.att-names .btn{min-height:40px}
 .roster-area{border-top:1px solid var(--line);padding:8px 0}.roster-area summary{cursor:pointer;min-height:32px}.roster-list{list-style:none;margin:6px 0 0;padding:0}.roster-list li{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:3px 0}
 .roster-add{display:flex;flex-wrap:wrap;gap:6px;padding:8px 0}.roster-add input{flex:1;min-width:160px}.roster-paste textarea{width:100%;box-sizing:border-box;font-size:14px}
+.roster-list li .roster-room{margin-left:auto;font-size:13px;padding:2px 4px;max-width:150px}
