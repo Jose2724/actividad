@@ -9,6 +9,7 @@ import { attendanceOf, attLineText, attMovesText, attOf, attShifts, attStateText
 import { awayDay, byLineName, COOKS, consumesOf, inventoryOf, stepText, weightEdit, weightPaperAdd, weightsFix, weightTarget, wtKindsOf, wtOdd, wtPaperAt, wtPaperLines, wtPicksCode, type Cook, type Dept as RoomDept, type WeightTest, type WtEntry } from './store'
 import { MINI_WEEKS, miniBook, miniSpan, miniTables, miniWeek } from './miniKpi'
 import { PplhView } from './PplhView'
+import { seesPplh } from './pplh'
 import { loadDay } from './sync'
 import { pctText } from './Attendance'
 import { buildPdf, loadPdf, type Part } from './pdf'
@@ -445,7 +446,7 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
   // a room's column in the lists only when more than one room is in view
   const manyRooms = !dept
   // ---- the parts: which ones this person has, and how many things each holds (or how many the search found in it) ----
-  const views: View[] = ['gen', 'code', 'shift', ...(!only || only === 'Packing' ? ['pal' as const] : []), ...(wt.rows.length ? ['wt' as const] : []), ...(mgr ? ['mini' as const, 'pplh' as const] : []), 'rec', ...(mgr ? ['chg' as const] : [])]
+  const views: View[] = ['gen', 'code', 'shift', ...(!only || only === 'Packing' ? ['pal' as const] : []), ...(wt.rows.length ? ['wt' as const] : []), ...(mgr ? ['mini' as const] : []), ...(seesPplh(s, admin, user.get()) ? ['pplh' as const] : []), 'rec', ...(mgr ? ['chg' as const] : [])]
   const v: View = views.includes(view) ? view : 'gen'
   const hitCount = (x: View) => (x === 'code' ? hitsOf('code').length : x === 'pal' ? hitsOf('pallet', 'bin').length : x === 'rec' ? hitsOf('unit', 'run', 'stop').length : x === 'chg' ? hitsOf('change').length : null)
   const tabs = views.map((x) => {
@@ -615,7 +616,7 @@ export function Report(props: ReportProps) {
       <div className="rp-sub"><span>{viewSub(v)}</span><button type="button" className="btn sm" onClick={() => setHelp(true)}>ⓘ {tr('Cómo leer este reporte')}</button></div>
       <div id="rp-panel" role="tabpanel" aria-labelledby={'rp-tab-' + v} className="rp-panel">
         {/* (a day, or a filter, with no code but with stops: every part says so and Registros opens on them) */}
-        {v === 'chg' ? <ChangesView k={k} /> : v === 'wt' ? <WeightsView k={k} /> : v === 'mini' ? <MiniKpiView k={k} /> : v === 'pplh' ? <PplhView s={k.s} date={k.date} now={k.now} edit={k.mgr && !k.viewOnly} /> : k.searching && (v === 'gen' || v === 'shift') ? <SearchResults k={k} />
+        {v === 'chg' ? <ChangesView k={k} /> : v === 'wt' ? <WeightsView k={k} /> : v === 'mini' ? <MiniKpiView k={k} /> : v === 'pplh' ? <PplhView s={k.s} date={k.date} now={k.now} edit={!k.viewOnly} admin={k.admin} /> : k.searching && (v === 'gen' || v === 'shift') ? <SearchResults k={k} />
           : rows.length === 0 ? (v === 'rec' && k.stops.length > 0 ? <RecordsView k={k} /> : <EmptyDay k={k} />)
             : v === 'gen' ? <GeneralView k={k} /> : v === 'code' ? <CodesView k={k} /> : v === 'shift' ? <ShiftsView k={k} /> : v === 'pal' ? <PalletsView k={k} /> : <RecordsView k={k} />}
       </div>

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { awayDay, type State } from './store'
 import { loadDay } from './sync'
-import { datesFrom, downtimeOf, netsuiteSheet, pplhBook, pplhOfRange, pplhRow, readNetsuite, savePplhLbs, setPplhHours, PPLH_SITE, type NetsuiteRead } from './pplh'
+import { datesFrom, downtimeOf, netsuiteSheet, pplhBook, pplhNames, pplhOfRange, pplhRow, readNetsuite, savePplhLbs, setPplhHours, setPplhNames, PPLH_SITE, type NetsuiteRead } from './pplh'
 import { loadZip, readCsv, readXlsx, xlsxNow, XLSX_TYPE } from './xlsx'
 import { addDays, download } from './App'
 import { tr } from './i18n'
@@ -15,7 +15,7 @@ const h = (ms: number) => (Math.round(ms / 36_000) / 100).toFixed(1)
  * day's hours from HR are typed, and the pounds per labor hour of each day and of the range come out, with each room's
  * downtime of the report's day. The Excel, in English and in his look, is what goes to him by 11:30 AM
  */
-export function PplhView({ s, date, now, edit }: { s: State; date: string; now: number; edit: boolean }) {
+export function PplhView({ s, date, now, edit, admin }: { s: State; date: string; now: number; edit: boolean; admin: boolean }) {
   const [from, setFrom] = useState(() => addDays(date, -6))
   const [to, setTo] = useState(date)
   useEffect(() => { setFrom(addDays(date, -6)); setTo(date) }, [date])
@@ -116,6 +116,24 @@ export function PplhView({ s, date, now, edit }: { s: State; date: string; now: 
         <h3>{tr('Yield de 0889 y 2234')}</h3>
         <p className="hint amber">{tr('Falta la fuente de las libras de cada producto: el archivo de NetSuite trae ingredientes, no dice a qué producto fueron. Sale vacío en el Excel hasta que se defina.')}</p>
       </article>
+      {admin && <PplhAccess s={s} />}
     </>
+  )
+}
+
+/** who besides the admin sees this tab: the name exactly as their account shows it */
+function PplhAccess({ s }: { s: State }) {
+  const names = pplhNames(s)
+  const [name, setName] = useState('')
+  return (
+    <article className="wt-rp kpi-access">
+      <h3>{tr('🔒 Quién ve esta pestaña')}</h3>
+      <p className="hint">{tr('Tú siempre. Además, los nombres de esta lista, escritos como sale su nombre en su cuenta (Ajustes › Empleados). Nadie más la ve.')}</p>
+      <ul>{names.map((n) => <li key={n}>{n} <button type="button" className="lnk sm" onClick={() => setPplhNames(names.filter((x) => x !== n))}>{tr('Quitar')}</button></li>)}</ul>
+      <form className="btns" onSubmit={(e) => { e.preventDefault(); const t = name.trim(); if (t && !names.includes(t)) setPplhNames([...names, t]); setName('') }}>
+        <input value={name} maxLength={60} placeholder={tr('Nombre, por ejemplo Edgar Carhuapoma')} onChange={(e) => setName(e.target.value)} aria-label={tr('Nombre')} />
+        <button type="submit" className="btn sm primary" disabled={!name.trim()}>{tr('Agregar')}</button>
+      </form>
+    </article>
   )
 }

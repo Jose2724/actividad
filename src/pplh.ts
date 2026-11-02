@@ -12,6 +12,11 @@ import { X, colName, xN, xT, type Cell, type Chart, type ReadCell, type Sheet } 
  * app's own, counted as the Mini KPI counts it. Nothing is guessed: a day with no pounds or no hours stays empty.
  */
 export const PPLH_SITE = 'East Rutherford'
+/** who sees it (Jose, 2026-11-02: "solo para mí y luego yo le doy permisos a otras personas"): the admin, and the names he writes as their accounts show them */
+const plainName = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim()
+export const pplhNames = (s: State): string[] => { const v = kpiGet(s, 'pplh-access')?.data.names; return Array.isArray(v) ? v.map(String).filter(Boolean) : [] }
+export const setPplhNames = (names: string[]) => kpiPut('pplh-access', { names })
+export const seesPplh = (s: State, admin: boolean, name: string) => admin || pplhNames(s).some((n) => plainName(n) === plainName(name))
 const LBS = 'pplh-lbs:', HRS = 'pplh-hrs:'
 export type PplhLbs = { lbs: number; rows: number }
 type LbsMonth = { days: Record<string, PplhLbs>; file?: string }

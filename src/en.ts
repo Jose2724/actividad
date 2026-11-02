@@ -3412,4 +3412,6 @@ export const EN: Record<string, string> = {
   "Yield de 0889 y 2234": "Yield of 0889 and 2234",
   "Falta la fuente de las libras de cada producto: el archivo de NetSuite trae ingredientes, no dice a qué producto fueron. Sale vacío en el Excel hasta que se defina.": "The source of each product's pounds is missing: the NetSuite file lists ingredients, not the product they went into. It is empty in the Excel until it is defined.",
   "El KPI diario de Mike: libras por hora de trabajo y el downtime de cada cuarto, con su Excel.": "Mike's daily KPI: pounds per labor hour and each room's downtime, with its Excel.",
+  "🔒 Quién ve esta pestaña": "🔒 Who sees this tab",
+  "Tú siempre. Además, los nombres de esta lista, escritos como sale su nombre en su cuenta (Ajustes › Empleados). Nadie más la ve.": "You always. Besides, the names of this list, written as their name shows on their account (Settings › Employees). Nobody else sees it.",
 }

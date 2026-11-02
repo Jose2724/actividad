@@ -6119,6 +6119,9 @@ section('KPI diario de Mike: libras de NetSuite ÷ horas, y el downtime por cuar
     eq('su gráfica de PPLH y horas tiene dos ejes, azul y gris como la de Mike', [(chart.match(/<c:lineChart>/g) ?? []).length, (chart.match(/<c:valAx>/g) ?? []).length, chart.includes('<c:crosses val="max"/>'), chart.includes('1F4E78') && chart.includes('A5A5A5')], [2, 2, true, true])
     const day = book[0].rows[4]
     eq('el día del reporte sin horas lo dice, no inventa', [day[1].v, m.cellText(day[2]), m.cellText(day[3])], [900, 'No HR hours', '—'])
+    eq('solo el admin la ve, hasta que él da permiso a un nombre (Jose, 2026-11-02)', [m.seesPplh(st(), true, 'Jose'), m.seesPplh(st(), false, 'Edgar Carhuapoma')], [true, false])
+    m.setPplhNames(['Edgar Carhuapoma'])
+    eq('con su nombre en la lista la ve, sin importar mayúsculas ni acentos', [m.seesPplh(st(), false, 'edgar carhuapoma'), m.seesPplh(st(), false, 'Otra Persona')], [true, false])
   })
 }
 section('Mini KPI con la semana real de Jose (2026-11-01): el domingo de la mañana, el Break, el arranque de Santiago, lo que no se pesó')
