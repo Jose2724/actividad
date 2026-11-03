@@ -54,7 +54,7 @@ const target = (r: string) => (r ? wtRangeLong(r) + ' oz' : '—')
  */
 export function dashBook(s: State, from: string, to: string, dates: string[], now: number) {
   const data = dashOf(s, dates, now), pplh = dashPplh(s, dates)
-  const n = dates.length, manyWeeks = data[0].weeks.length > 1, widths = [11, 9, 13, ...dates.map(() => 20), ...data[0].weeks.map(() => 20), ...(manyWeeks ? [9] : [])]
+  const n = dates.length, manyWeeks = data[0].weeks.length > 1, widths = [20, 9, 13, ...dates.map(() => 20), ...data[0].weeks.map(() => 20), ...(manyWeeks ? [9] : [])]
   const a = mikePage(widths), charts: Chart[] = []
   a.across('E.R. - Ops Summary · Yield + Weight Summary', X.wBand, 34)
   a.across(from === to ? shortDay(from) : `${shortDay(from)} to ${shortDay(to)} · ${n} days`, X.wSub, 22)
