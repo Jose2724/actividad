@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { awayDay, type State } from './store'
 import { loadDay } from './sync'
-import { wtCountText, wtRangeLong, type WtAvg } from './kpi'
-import { DASH_COLORS, DASH_KINDS, dashBook, dashOf, dashPplh, type DashCode, type DashKind } from './dash'
+import { wtRangeLong, type WtAvg } from './kpi'
+import { DASH_COLORS, DASH_KINDS, dashBook, dashCount, dashOf, dashPplh, type DashCode, type DashKind } from './dash'
 import { datesFrom, rangeShortcuts } from './pplh'
 import { RangePick } from './PplhView'
 import { loadZip, xlsxNow, XLSX_TYPE } from './xlsx'
@@ -33,7 +33,7 @@ export function DashView({ s, date, now, pplh }: { s: State; date: string; now: 
   const weighed = data.some((c) => c.days.some((d) => d.times > 0))
   // the week's average beside the days (Mike, 2026-11-03), one per week the range touches; the range's own only when it spans more than a week
   const weeks = data[0]?.weeks ?? [], manyWeeks = weeks.length > 1, showWeeks = dates.length > 1
-  const cell = (x: WtAvg, key: string) => <td key={key} className={'n' + okClass(x)}>{x.avg == null ? <span className="muted">—</span> : <><b>{x.avg.toFixed(2)}</b><small>{wtCountText(x)}</small></>}</td>
+  const cell = (x: WtAvg, key: string) => <td key={key} className={'n' + okClass(x)}>{x.avg == null ? <span className="muted">—</span> : <><b>{x.avg.toFixed(2)}</b><small>{dashCount(x)}</small></>}</td>
   const excel = async () => {
     const make = () => xlsxNow(dashBook(s, dates[0], dates[dates.length - 1], dates, now))
     const bytes = make() ?? (await loadZip(), make())
@@ -53,7 +53,7 @@ export function DashView({ s, date, now, pplh }: { s: State; date: string; now: 
         <h3>{tr('Resumen de yield y pesos')} <WhatIs id="dash" /></h3>
         <div className="btns"><button type="button" className="btn primary" onClick={() => void excel()}>{tr('⬇ Excel del Dashboard')}</button></div>
         <div className="scroll"><table className="wt-rp-tbl dash-tbl">
-          <thead><tr><th>{tr('Producto')}</th><th></th><th>Target</th>{dates.map((d) => <th key={d} className="n"><span>{md(d)}</span><small>{wd(d)}</small></th>)}{showWeeks && weeks.map((w) => <th key={w.monday} className="n dash-week"><span>{manyWeeks || w.days < 7 ? tr('Semana del {0}', md(w.monday)) : tr('Semana')}</span><small>{w.days === 7 ? tr('promedio') : tr('{0} de 7 días', w.days)}</small></th>)}{manyWeeks && <th className="n"><span>{tr('Rango')}</span><small>{tr('{0} días', dates.length)}</small></th>}</tr></thead>
+          <thead><tr><th>{tr('Producto')}</th><th></th><th><span>Target</span><small>{tr('pruebas · pesos')}</small></th>{dates.map((d) => <th key={d} className="n"><span>{md(d)}</span><small>{wd(d)}</small></th>)}{showWeeks && weeks.map((w) => <th key={w.monday} className="n dash-week"><span>{manyWeeks || w.days < 7 ? tr('Semana del {0}', md(w.monday)) : tr('Semana')}</span><small>{w.days === 7 ? tr('promedio') : tr('{0} de 7 días', w.days)}</small></th>)}{manyWeeks && <th className="n"><span>{tr('Rango')}</span><small>{tr('{0} días', dates.length)}</small></th>}</tr></thead>
           <tbody>{data.map((c) => DASH_KINDS.map((k, i) => (
             <tr key={c.code + k}>
               {i === 0 && <td rowSpan={3} className="dash-code"><b>{c.code}</b></td>}
@@ -66,7 +66,7 @@ export function DashView({ s, date, now, pplh }: { s: State; date: string; now: 
           )))}</tbody>
         </table></div>
         <div className="wt-legend"><span className="ok">{tr('✓ Dentro del objetivo')}</span><span className="bad">{tr('✗ Bajo el objetivo')}</span><span className="warn">{tr('✗ Sobre el objetivo')}</span></div>
-        <p className="hint">{tr('Cada número es el promedio de todos los pesos de ese día en toda la planta, en onzas, contra el rango de QA; debajo, de cuántas pruebas y pesos sale. Vacío = no se pesó. Semana = todos los pesos de esa semana juntos (lunes a domingo, los días del rango); Rango = todos los días juntos.')}</p>
+        <p className="hint">{tr('Cada número es el promedio de todos los pesos de ese día en toda la planta, en onzas, contra el rango de QA; debajo, de cuántas pruebas sale y cuántos pesos tienen (pruebas · pesos). Vacío = no se pesó. Semana = todos los pesos de esa semana juntos (lunes a domingo, los días del rango); Rango = todos los días juntos.')}</p>
         {!weighed && <p className="hint amber">{tr('No hay pesos en estos días.')}</p>}
       </article>
       {data.map((c) => (
