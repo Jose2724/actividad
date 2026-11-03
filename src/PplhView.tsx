@@ -27,6 +27,9 @@ export function PplhView({ s, date, now, edit, admin }: { s: State; date: string
   const rows = range.map((d) => pplhRow(s, d)), all = pplhOfRange(rows), today = pplhRow(s, date)
   // (by week or by month, as Mike looks at it: one row per week, Monday to Sunday, or per month)
   const [by, setBy] = useState<PplhBy>('day')
+  // the table opens locked, with its numbers; Editar shows the boxes (Jose, 2026-11-03: a button to edit and to lock, so nothing changes by a stray tap)
+  const [unlocked, setUnlocked] = useState(false)
+  const open = edit && unlocked
   const groups = useMemo(() => (by === 'day' || !range.length ? [] : pplhGroups(s, from, to, by)), [s, from, to, by, range.length]), allG = pplhOfGroups(groups)
   const down = useMemo(() => downtimeOf(s, [date], now), [s, date, now])
   const [read, setRead] = useState<{ file: string; r: NetsuiteRead } | null>(null)
@@ -139,7 +142,7 @@ export function PplhView({ s, date, now, edit, admin }: { s: State; date: string
         </article>
       )}
       <article className="wt-rp">
-        <h3>{by === 'week' ? tr('Semana por semana') : by === 'month' ? tr('Mes por mes') : tr('Día por día')}</h3>
+        <h3>{by === 'week' ? tr('Semana por semana') : by === 'month' ? tr('Mes por mes') : tr('Día por día')}{edit && <button type="button" className={'btn sm ' + (unlocked ? 'primary' : 'soft')} onClick={() => setUnlocked((x) => !x)}>{unlocked ? tr('🔒 Bloquear') : tr('✏️ Editar')}</button>}</h3>
         <RangePick from={from} to={to} today={date} onChange={(a, b) => { setFrom(a); setTo(b) }} />
         <div className="btns pplh-by">{(['day', 'week', 'month'] as PplhBy[]).map((b) => <button key={b} type="button" className={'btn sm ' + (by === b ? 'primary' : 'soft')} onClick={() => setBy(b)}>{b === 'day' ? tr('Por día') : b === 'week' ? tr('Por semana') : tr('Por mes')}</button>)}</div>
         <div className="scroll"><table className="wt-rp-tbl mini">
@@ -148,15 +151,15 @@ export function PplhView({ s, date, now, edit, admin }: { s: State; date: string
             {by === 'day' ? rows.map((r) => (
               <tr key={r.date} className={r.date === date ? 'on' : ''}>
                 <td><b>{r.date}</b></td>
-                <td>{edit ? <><input key={r.date + ':' + (r.lbs ?? '')} className="pplh-h lbs" inputMode="decimal" defaultValue={r.lbs ?? ''} placeholder={tr('a mano')} aria-label={tr('Libras del {0}', r.date)} onBlur={(e) => saveLbs(r.date, e.target.value)} />{r.lbs != null && <small> {pplhLbsByHand(s, r.date) ? tr('a mano') : tr('archivo')}</small>}</> : r.lbs == null ? '—' : <>{lb(r.lbs)}{pplhLbsByHand(s, r.date) && <small> {tr('a mano')}</small>}</>}</td>
-                <td>{edit ? <input key={r.date + ':' + (r.hours ?? '')} className="pplh-h" inputMode="decimal" defaultValue={r.hours ?? ''} aria-label={tr('Horas del {0}', r.date)} onBlur={(e) => saveHours(r.date, e.target.value)} /> : r.hours == null ? '—' : one(r.hours)}</td>
+                <td>{open ? <><input key={r.date + ':' + (r.lbs ?? '')} className="pplh-h lbs" inputMode="decimal" defaultValue={r.lbs ?? ''} placeholder={tr('a mano')} aria-label={tr('Libras del {0}', r.date)} onBlur={(e) => saveLbs(r.date, e.target.value)} />{r.lbs != null && <small> {pplhLbsByHand(s, r.date) ? tr('a mano') : tr('archivo')}</small>}</> : r.lbs == null ? '—' : <>{lb(r.lbs)}{pplhLbsByHand(s, r.date) && <small> {tr('a mano')}</small>}</>}</td>
+                <td>{open ? <input key={r.date + ':' + (r.hours ?? '')} className="pplh-h" inputMode="decimal" defaultValue={r.hours ?? ''} aria-label={tr('Horas del {0}', r.date)} onBlur={(e) => saveHours(r.date, e.target.value)} /> : r.hours == null ? '—' : one(r.hours)}</td>
                 <td>{r.pplh == null ? '—' : one(r.pplh)}</td>
               </tr>
             )) : groups.map((g) => (
               <tr key={g.key} className={g.from <= date && date <= g.to ? 'on' : ''}>
                 <td><b>{by === 'week' ? tr('Semana del {0}', g.from) : monthLabel(g.key)}</b>{!g.whole && <small> · {tr('cortada por el rango')}</small>}</td>
                 <td>{g.lbs == null ? '—' : lb(g.lbs)}</td>
-                <td>{edit && by === 'week' && g.whole && !g.hoursDays ? <input key={g.key + ':' + (g.hours ?? '')} className="pplh-h" inputMode="decimal" defaultValue={g.hours ?? ''} placeholder={tr('semana')} aria-label={tr('Horas de la semana del {0}', g.from)} onBlur={(e) => saveWeekHours(g.key, e.target.value)} /> : g.hours == null ? '—' : <>{one(g.hours)}{g.weekly ? <small> {tr('por semana')}</small> : g.hoursDays < g.days ? <small> {tr('{0} de {1} días', g.hoursDays, g.days)}</small> : null}</>}</td>
+                <td>{open && by === 'week' && g.whole && !g.hoursDays ? <input key={g.key + ':' + (g.hours ?? '')} className="pplh-h" inputMode="decimal" defaultValue={g.hours ?? ''} placeholder={tr('semana')} aria-label={tr('Horas de la semana del {0}', g.from)} onBlur={(e) => saveWeekHours(g.key, e.target.value)} /> : g.hours == null ? '—' : <>{one(g.hours)}{g.weekly ? <small> {tr('por semana')}</small> : g.hoursDays < g.days ? <small> {tr('{0} de {1} días', g.hoursDays, g.days)}</small> : null}</>}</td>
                 <td>{g.pplh == null ? '—' : one(g.pplh)}</td>
                 <td>{g.lbsDays} / {g.days}</td>
               </tr>
@@ -165,7 +168,7 @@ export function PplhView({ s, date, now, edit, admin }: { s: State; date: string
               : <tr><td><b>{tr('Rango')}</b></td><td>{lb(allG.lbs)}</td><td>{one(allG.hours)}</td><td>{allG.pplh == null ? '—' : one(allG.pplh)}</td><td>{groups.reduce((t, g) => t + g.lbsDays, 0)} / {range.length}</td></tr>}
           </tbody>
         </table></div>
-        <p className="hint">{tr('El rango suma las libras y las horas de los días que tienen las dos, y luego divide: no es un promedio de los días. Un día sin archivo o sin horas queda vacío, nunca estimado.')}{edit && ' ' + tr('Si Mike dicta las libras de un día, escríbelas en su casilla; el archivo de NetSuite, cuando llegue, las reemplaza.')}{by !== 'day' && ' ' + tr('Las semanas van de lunes a domingo, como el SUMMARY de Mike. Si Recursos Humanos da las horas por semana y no por día, se escriben en la fila de la semana completa (Por semana) y toman todas las libras de esa semana.')}</p>
+        <p className="hint">{tr('El rango suma las libras y las horas de los días que tienen las dos, y luego divide: no es un promedio de los días. Un día sin archivo o sin horas queda vacío, nunca estimado.')}{edit && ' ' + tr('Toca Editar para escribir libras u horas; cada casilla se guarda al salir de ella, y Bloquear vuelve a dejar los números fijos. Si Mike dicta las libras de un día, escríbelas en su casilla; el archivo de NetSuite, cuando llegue, las reemplaza.')}{by !== 'day' && ' ' + tr('Las semanas van de lunes a domingo, como el SUMMARY de Mike. Si Recursos Humanos da las horas por semana y no por día, se escriben en la fila de la semana completa (Por semana) y toman todas las libras de esa semana.')}</p>
       </article>
       <article className="wt-rp">
         <h3>{tr('Downtime por cuarto · día del reporte')}</h3>

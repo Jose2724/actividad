@@ -3480,4 +3480,7 @@ export const EN: Record<string, string> = {
   "Libras del {0}": "Pounds of {0}",
   "Si Mike dicta las libras de un día, escríbelas en su casilla; el archivo de NetSuite, cuando llegue, las reemplaza.": "If Mike dictates a day's pounds, type them in its box; the NetSuite file, when it comes, replaces them.",
   "archivo": "file",
+  "🔒 Bloquear": "🔒 Lock",
+  "✏️ Editar": "✏️ Edit",
+  "Toca Editar para escribir libras u horas; cada casilla se guarda al salir de ella, y Bloquear vuelve a dejar los números fijos. Si Mike dicta las libras de un día, escríbelas en su casilla; el archivo de NetSuite, cuando llegue, las reemplaza.": "Tap Edit to type pounds or hours; each box saves when you leave it, and Lock makes the numbers fixed again. If Mike dictates a day's pounds, type them in its box; the NetSuite file, when it comes, replaces them.",
 }
