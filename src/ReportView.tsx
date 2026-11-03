@@ -1213,7 +1213,7 @@ function RoomCard({ k, d }: { k: Kit; d: ReportData['byDept'][number] }) {
   const kindLabel = (word: string) => (d.dept === 'Packing' ? tr('en bins') : apartLabel(d.dept, word))
   // (MFO's bags of pounds are said as bags: 2026-10-22)
   const bagsN = (n: number) => (n === 1 ? tr('1 bag') : tr('{0} bags', n))
-  const kindCount = (n: number, bags = 0) => (d.dept === 'Spiral' ? unitsText(d.dept, n) : bags >= n ? bagsN(n) : bags > 0 ? binsN(n - bags) + ' · ' + bagsN(bags) : binsN(n))
+  const kindCount = (n: number, bags = 0) => (d.dept === 'Kitchen' ? '' : d.dept === 'Spiral' ? unitsText(d.dept, n) : bags >= n ? bagsN(n) : bags > 0 ? binsN(n - bags) + ' · ' + bagsN(bags) : binsN(n))
   const toUnits = () => go('rec', { rec: 'units', dept: d.dept })
   const toRuns = () => go('rec', { rec: 'runs', dept: d.dept })
   const toKind = () => (d.dept === 'Packing' ? go('pal', { pal: 'bins', dept: 'Packing' }) : toUnits())
@@ -1232,7 +1232,7 @@ function RoomCard({ k, d }: { k: Kit; d: ReportData['byDept'][number] }) {
           {first ? <>{fmtN(first.qty)} <span className={'k ' + kc(first.word)}>{apartWord(d.dept, first.word)}</span></> : <>{fmtN(q ? d.qty : d.units)} <span>{q ? cfg.qtyUnit : (d.units === 1 ? cfg.unit : cfg.plural).toLowerCase()}</span></>}
         </button>
         <div className="rp-links">
-          {first && <span>{kindLabel(first.word)} · {kindCount(first.units, first.bags)}</span>}
+          {first && <span>{[kindLabel(first.word), kindCount(first.units, first.bags)].filter(Boolean).join(' · ')}</span>}
           {q && !first && <button type="button" className="drill" onClick={toUnits}>{unitsText(d.dept, d.units)}</button>}
           {q && !first && rep.code && cfg.qtyUnit === 'pouches' && casesText(inCases(s, rep.code, d.qty)) && <span>{casesText(inCases(s, rep.code, d.qty))}</span>}
           {d.waste > 0 && <button type="button" className="drill red" onClick={() => go('rec', { rec: 'runs', dept: d.dept, runChip: 'waste' })}>{'waste ' + d.waste + ' lb'}</button>}
@@ -1405,7 +1405,7 @@ function ShiftsView({ k }: { k: Kit }) {
                   <tbody>
                     {q && <tr className="q"><td>{cap(cfg.qtyUnit)}</td>{cols.map((x) => cell(x, fmtN(x.qty)))}</tr>}
                     <tr className={q ? '' : 'q'}><td>{cfg.plural}</td>{cols.map((x) => cell(x, fmtN(x.units)))}</tr>
-                    {[...new Set(cols.flatMap((x) => x.bins.map((y) => y.word)))].map((w) => <tr key={'bin:' + w}><td>{d.dept === 'Spiral' || w === 'lb' ? tr('En {0}', measureName(w)) : tr('Bins de {0}', binWord(w))}</td>{cols.map((x) => { const y = x.bins.find((z) => z.word === w); return cell(x, y ? (d.dept === 'Spiral' ? fmtN(y.qty) + ' ' + measureUnit(w) + ' · ' + unitsText(d.dept, y.units) : tr('{0} con {1}', binsN(y.units), fmtN(y.qty) + (w === 'lb' ? ' lb' : ''))) : '—') })}</tr>)}
+                    {[...new Set(cols.flatMap((x) => x.bins.map((y) => y.word)))].map((w) => <tr key={'bin:' + w}><td>{d.dept === 'Kitchen' ? tr('Carros del horno') : d.dept === 'Spiral' || w === 'lb' ? tr('En {0}', measureName(w)) : tr('Bins de {0}', binWord(w))}</td>{cols.map((x) => { const y = x.bins.find((z) => z.word === w); return cell(x, y ? (d.dept === 'Kitchen' ? fmtN(y.units) : d.dept === 'Spiral' ? fmtN(y.qty) + ' ' + measureUnit(w) + ' · ' + unitsText(d.dept, y.units) : tr('{0} con {1}', binsN(y.units), fmtN(y.qty) + (w === 'lb' ? ' lb' : ''))) : '—') })}</tr>)}
                     {cols.some((x) => x.waste > 0) && <tr><td>Waste</td>{cols.map((x) => cell(x, x.waste ? x.waste + ' lb' : '—', x.waste > 0))}</tr>}
                     <tr><td>{tr('Códigos')}</td>{cols.map((x) => cell(x, x.distinct))}</tr>
                     <tr><td>{tr('Corridas')}</td>{cols.map((x) => cell(x, x.codes))}</tr>

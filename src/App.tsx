@@ -1756,7 +1756,7 @@ function TodayCard({ s, dept, now, mgr, date }: { s: State; dept: Dept; now: num
           <label>{tr('Hecho en el turno')}</label>
           <b>{fmtN(t.shiftQty)} <span>{label(t.shiftQty)}</span></b>
           <small>{cfg.qty !== 'none' ? t.shiftUnits + ' ' + unitWord(t.shiftUnits) : t.shiftCodes.length === 1 ? tr('1 código') : t.shiftCodes.length ? tr('{0} códigos', t.shiftCodes.length) : '\u00a0'}</small>
-          {t.shiftBins.length > 0 && <small className="tc-bins">{dept === 'Spiral' ? tr('Además: {0}', t.shiftBins.map((b) => unitsText(dept, b.units, b.qty, cfgFor(dept, b.word))).join(' · ')) : tr('Además: {0}', t.shiftBins.map((b) => { const bags = b.bags ?? 0, bins = b.units - bags, cnt = [...(bins > 0 ? [bins === 1 ? tr('1 bin') : tr('{0} bins', bins)] : []), ...(bags > 0 ? [bags === 1 ? tr('1 bag') : tr('{0} bags', bags)] : [])].join(' + '); return tr('{0} con {1} {2}', cnt, fmtN(b.qty), binWord(b.word)) }).join(' · '))}</small>}
+          {t.shiftBins.length > 0 && <small className="tc-bins">{dept === 'Spiral' || dept === 'Kitchen' ? tr('Además: {0}', t.shiftBins.map((b) => unitsText(dept, b.units, b.qty, cfgFor(dept, b.word))).join(' · ')) : tr('Además: {0}', t.shiftBins.map((b) => { const bags = b.bags ?? 0, bins = b.units - bags, cnt = [...(bins > 0 ? [bins === 1 ? tr('1 bin') : tr('{0} bins', bins)] : []), ...(bags > 0 ? [bags === 1 ? tr('1 bag') : tr('{0} bags', bags)] : [])].join(' + '); return tr('{0} con {1} {2}', cnt, fmtN(b.qty), binWord(b.word)) }).join(' · '))}</small>}
         </div>
         <div className={'tct goal' + (goal.total ? (pct >= 100 ? ' ok' : '') : ' none')}>
           <label>{tr('Meta del turno')}</label>

@@ -30,8 +30,16 @@ export const CFG: Record<Dept, DeptCfg> = {
   MFO: { lineWord: tr('Línea'), unit: tr('Bin'), plural: tr('Bins'), done: tr('Bin listo'), saved: tr('guardado'), waste: true, qty: 'ask', qtyQ: tr('¿Cuántos platos lleva este bin?'), qtyUnit: tr('platos'), perUnitLabel: '', refLabel: tr('N° de bin'), refWord: 'bin', quick: ['Problema mecánico', 'Falta de producto del freezer', 'Break', 'Lunch'], reasons: ['Problema mecánico', 'Falta de producto del freezer', 'Break', 'Lunch', 'Armado de máquina', 'Pegado de labels / stickers', 'Esperando gas', 'Preparación (picar pollo…)', 'Falta de material', 'Limpieza', 'Falta de personal', 'Set up'] },
   Packing: { lineWord: tr('Línea'), unit: tr('Pallet'), plural: tr('Pallets'), done: tr('Pallet listo'), saved: tr('guardado'), waste: true, lots: true, orders: true, qty: 'ask', qtyQ: tr('¿Cuántas cajas lleva este pallet?'), qtyUnit: tr('cajas'), perUnitLabel: tr('Cajas por pallet'), refLabel: tr('N° de tag'), refWord: 'tag', quick: ['Problema mecánico', 'Falta de producto que empacar', 'Break', 'Lunch'], reasons: ['Problema mecánico', 'Falta de producto que empacar', 'Break', 'Lunch', 'Esperando autorización de QC', 'Label equivocado (despegar labels)', 'Plástico / film', 'Falta de cajas / material de empaque', 'Personal pasó a otra línea', 'Etiquetadora / impresora', 'Montacargas / espacio', 'Limpieza', 'Falta de personal', 'Set up'] },
 }
+/**
+ * Kitchen's oven (Jose, 2026-11-03: "horno cuenta carros, porque ahí ponen los racks"): a Kitchen line whose name says
+ * Horno or Oven counts carts that go into it, one by one, apart from the mezclas of the braisers. Told by the name the
+ * run was started on, so nothing new travels to the server and a build of before keeps it as it is
+ */
+export function isOven(name: string) { return /\b(horno|oven)\b/i.test(name) }
+export function ovenRun(r: { dept: Dept; line?: string }) { return r.dept === 'Kitchen' && !!r.line && isOven(r.line) }
 /** the words of a run: its room's, or those of a bin when a Packing line fills bins */
-export function cfgOf(r: Pick<Run, 'dept' | 'extra'>): DeptCfg {
+export function cfgOf(r: Pick<Run, 'dept' | 'extra'> & { line?: string }): DeptCfg {
+  if (ovenRun(r)) return { ...CFG.Kitchen, lineWord: tr('Horno'), unit: tr('Carro'), plural: tr('Carros'), done: tr('Carro listo'), saved: tr('guardado') }
   const m = measureOf(r)
   // (the button in the run's own word: Jose, 2026-10-31, a line of cases said "Mezcla lista")
   if (m) return { ...CFG.Spiral, qty: 'ask', done: m === 'lb' ? tr('Libras listas') : tr('Caja lista'), qtyQ: m === 'lb' ? tr('¿Cuántas libras hicieron?') : tr('¿Cuántas cajas hicieron?'), qtyUnit: measureUnit(m), perUnitLabel: '' }
@@ -180,15 +188,15 @@ export const measureOf = (r: Pick<Run, 'dept' | 'extra'>): Measure | '' => (r.de
  * Spiral line's mezclas, or what an MFO line's bins hold when it is not platos (copas, pounds, or the cases of a run
  * of before 2026-10-17). '' = counted as the room counts: pallets of cases, mezclas one by one, bins of platos
  */
-export const apartOf = (r: Pick<Run, 'dept' | 'extra'>) => (r.dept === 'Packing' ? r.extra?.bin || '' : r.dept === 'MFO' ? ((w) => (w === 'platos' ? '' : w))(r.extra?.bin || 'cajas') : measureOf(r))
+export const apartOf = (r: Pick<Run, 'dept' | 'extra'> & { line?: string }) => (ovenRun(r) ? 'carros' : r.dept === 'Packing' ? r.extra?.bin || '' : r.dept === 'MFO' ? ((w) => (w === 'platos' ? '' : w))(r.extra?.bin || 'cajas') : measureOf(r))
 /** the word a run is counted under when it is not simply its room's: apart or not (MFO's platos are the room's, but they are said) */
-export const kindOf = (r: Pick<Run, 'dept' | 'extra'>) => apartOf(r) || binOf(r)
+export const kindOf = (r: Pick<Run, 'dept' | 'extra'> & { line?: string }) => apartOf(r) || binOf(r)
 /** a measure as a quantity's word ("lb", "cajas") and as a name ("libras", "cajas", "mezclas") */
 export const measureUnit = (m: string) => (m === 'lb' ? tr('lb') : m === 'cajas' ? tr('cajas') : tr('mezclas'))
 export const measureName = (m: string) => (m === 'lb' ? tr('libras') : m === 'cajas' ? tr('cajas') : tr('mezclas'))
 /** what is apart, as the screen says it: "platos" / "lb" beside a number, and "en bins de platos" / "en libras" as a label */
 export const apartWord = (dept: Dept, word: string) => (dept === 'Spiral' || word === 'lb' ? measureUnit(word) : binWord(word))
-export const apartLabel = (dept: Dept, word: string) => (dept === 'Spiral' || word === 'lb' ? tr('en {0}', measureName(word)) : tr('en bins de {0}', binWord(word)))
+export const apartLabel = (dept: Dept, word: string) => (dept === 'Kitchen' && word === 'carros' ? tr('en carros del horno') : dept === 'Spiral' || word === 'lb' ? tr('en {0}', measureName(word)) : tr('en bins de {0}', binWord(word)))
 /**
  * the colour each way of counting wears on the screen, as a class on the button that chooses it (and on a card's
  * mode): the room's usual (pallets, mezclas) in green, bins of platos in indigo, copas in rose, pounds in amber,
@@ -197,9 +205,9 @@ export const apartLabel = (dept: Dept, word: string) => (dept === 'Spiral' || wo
  */
 export const kindClass = (dept: Dept, word: string) => (!word || word === 'mezclas' ? 'c-green' : word === 'lb' ? 'c-amber' : word === 'copas' ? 'c-rose' : dept === 'Spiral' && word === 'cajas' ? 'c-blue' : 'c-indigo')
 /** the words of a room's runs counted apart under a word ('' = the room's own) */
-export const cfgFor = (dept: Dept, word: string): DeptCfg => (word ? cfgOf({ dept, extra: dept === 'Spiral' ? { measure: word as Measure } : { bin: word } }) : CFG[dept])
+export const cfgFor = (dept: Dept, word: string): DeptCfg => (word ? cfgOf({ dept, ...(dept === 'Kitchen' && word === 'carros' ? { line: 'Horno' } : {}), extra: dept === 'Spiral' ? { measure: word as Measure } : { bin: word } }) : CFG[dept])
 /** a bin's word as the screen says it: the offered ones in the screen's language, a typed one as typed */
-const BIN_SHOWN: Record<string, () => string> = { platos: () => tr('platos'), copas: () => tr('copas'), pouches: () => tr('pouches'), lb: () => tr('libras'), cajas: () => tr('cajas') }
+const BIN_SHOWN: Record<string, () => string> = { platos: () => tr('platos'), copas: () => tr('copas'), pouches: () => tr('pouches'), lb: () => tr('libras'), cajas: () => tr('cajas'), carros: () => tr('carros') }
 // (only its own words: a word typed as "constructor" or "__proto__" found Object's and blanked the screen, audit 2026-10-17 H2)
 export const binWord = (word: string) => (Object.prototype.hasOwnProperty.call(BIN_SHOWN, word) ? BIN_SHOWN[word]() : word)
 /** a stop with its reason; lineId null = the whole department */
@@ -913,8 +921,11 @@ export function addLine(dept: Dept, name?: string): boolean {
   putLine(l); logChange(dept, 'Línea agregada en ' + dept, '', l.name, 'act_lines', l.id)
   return true
 }
-/** the finished records of a line take its name too (the one running takes it by itself the next time it is touched) */
-const renameRecords = (lineId: string, name: string) => { for (const r of state.runs.filter((x) => x.lineId === lineId && x.endedAt && x.line !== name)) putRun({ ...r, line: name }) }
+/**
+ * the finished records of a line take its name too (the one running takes it by itself the next time it is touched);
+ * not a Kitchen record that would turn from mezclas into the oven's carts or back: what it counted stays as it was
+ */
+const renameRecords = (lineId: string, name: string) => { for (const r of state.runs.filter((x) => x.lineId === lineId && x.endedAt && x.line !== name && ovenRun(x) === ovenRun({ dept: x.dept, line: name }))) putRun({ ...r, line: name }) }
 /** gives a line another name. false = blank, or another line of the room has it (see swapLineNames) */
 export function renameLine(id: string, name: string): boolean {
   const l = state.lines.find((x) => x.id === id), final = tidyLineName(name)
@@ -1792,7 +1803,7 @@ export const SLOW_DEFAULT: Partial<Record<Dept, number>> = { RTE: 1000 }
 /** the word a room's minimum is counted in: what the room counts (mezclas, pouches, platos, cajas) */
 export const slowUnitOf = (dept: Dept) => (CFG[dept].qty === 'none' ? CFG[dept].plural.toLowerCase() : CFG[dept].qtyUnit)
 /** whether a code is counted in its room's own word (a Spiral mix in pounds, an MFO bin of copas or lb, a Packing bin are not: the room's number says nothing about them) */
-export const slowCounts = (r: Pick<Run, 'dept' | 'extra'>) => { const c = cfgOf(r); return c.qty === CFG[r.dept].qty && c.qtyUnit === CFG[r.dept].qtyUnit }
+export const slowCounts = (r: Pick<Run, 'dept' | 'extra'> & { line?: string }) => { const c = cfgOf(r); return c.qty === CFG[r.dept].qty && c.qtyUnit === CFG[r.dept].qtyUnit && c.unit === CFG[r.dept].unit }
 /** the room's minimum per hour, 0 when the signal is off there */
 export const slowRuleOf = (s: State, dept: Dept) => { const r = (s.slowRules ?? []).find((x) => x.dept === dept); return r ? r.perHour : SLOW_DEFAULT[dept] ?? 0 }
 export function setSlowRule(dept: Dept, perHour: number) {
@@ -4773,6 +4784,7 @@ export function setLineShiftGoal(line: Line, shift: 1 | 2, perHour: number | nul
  */
 export function unitQty(s: State, r: Run, u: Unit): number {
   if (u.qty != null) return u.qty
+  if (ovenRun(r)) return 1
   if (CFG[r.dept].qty === 'none') return 0
   if (r.perUnit != null) return r.perUnit
   const p = productOf(s, r.code)

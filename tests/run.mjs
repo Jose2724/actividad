@@ -1742,6 +1742,32 @@ section('Los días del cambio de hora: los turnos se cortan a su hora de reloj, 
   if (zone === undefined) delete process.env.TZ; else process.env.TZ = zone
 }
 
+section('El horno de Kitchen cuenta carros, aparte de las mezclas')
+{
+  // Jose, 2026-11-03: "horno cuenta carros, porque ahí ponen los racks"
+  const ov = await device('oven', { user: 'Jose', usual: true })
+  ov.use((m) => {
+    const st = () => m.store.get(), DAY = '2026-10-20'
+    clock = oct(20, 6, 0)
+    m.addLine('Kitchen', 'Braiser 1'); m.addLine('Kitchen', 'Horno')
+    const br = st().lines.find((x) => x.dept === 'Kitchen' && x.name === 'Braiser 1'), hz = st().lines.find((x) => x.name === 'Horno')
+    m.startRun(br, '2286', '6300', DAY, null); m.startRun(hz, '0889', '6300', DAY, null)
+    const rb = st().runs.find((r) => r.lineId === br.id), rh = st().runs.find((r) => r.lineId === hz.id)
+    clock = oct(20, 7, 0); m.unitDone(rb.id, null); m.unitDone(rh.id, null)
+    clock = oct(20, 8, 0); m.unitDone(rb.id, null); m.unitDone(rh.id, null)
+    clock = oct(20, 9, 0); m.unitDone(rh.id, null)
+    const run = st().runs.find((r) => r.id === rh.id), c = m.cfgOf(run), d = m.deptToday(st(), 'Kitchen', DAY, clock)
+    eq('el horno dice carros, no mezclas', [c.unit, c.plural, c.done, m.isOven('Horno 2'), m.isOven('Oven'), m.isOven('Braiser 1')], ['Carro', 'Carros', 'Carro listo', true, true, false])
+    eq('las mezclas de Kitchen son solo las de los braisers, y los carros van aparte', [d.units, d.bins?.map((b) => [b.word, b.units, b.qty])], [2, [['carros', 3, 3]]])
+    eq('el horno no se mide con el ritmo mínimo de mezclas', m.slowCounts(run), false)
+    eq('ni descuenta un programa de mezclas', m.programCap(st(), run), null)
+    eq('en el reporte salen aparte', ((r) => [r.units, r.bins.map((b) => [b.word, b.units])])(m.reportOf(st(), DAY, clock).byDept.find((x) => x.dept === 'Kitchen')), [2, [['carros', 3]]])
+    clock = oct(20, 10, 0); m.endRun(rb.id, false)
+    m.renameLine(br.id, 'Horno 2')
+    eq('un braiser que pasa a llamarse Horno no vuelve carros las mezclas que ya hizo', [st().runs.find((r) => r.id === rb.id).line, m.deptToday(st(), 'Kitchen', DAY, clock).units], ['Braiser 1', 2])
+  })
+}
+
 section('Un día de un solo turno que trabaja desde la mañana: todo es de ese turno, y el tiempo no se corta a las 3')
 {
   // Jose, 2026-10-17: on Sunday the second shift works from 6 AM to 6 PM or more, and all of it is the second shift's,

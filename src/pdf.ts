@@ -27,7 +27,7 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
   const unitsOf = (dept: keyof typeof CFG, n: number, c: DeptCfg = CFG[dept]) => n + ' ' + (n === 1 ? c.unit : c.plural).toLowerCase()
   const qtyOf = (dept: keyof typeof CFG, q: number, c: DeptCfg = CFG[dept]) => (c.qty !== 'none' ? num(q) + ' ' + c.qtyUnit : '—')
   // what is counted apart is said in its own words: "2 bins con 98 platos", "3 mezclas · 3,000 lb"
-  const binsOf = (dept: keyof typeof CFG, bins: { word: string; units: number; qty: number }[]) => bins.map((b) => (dept === 'Spiral' ? unitsOf(dept, b.units, cfgFor(dept, b.word)) + ' · ' + num(b.qty) + ' ' + apartWord(dept, b.word) : tr('{0} con {1} {2}', b.units === 1 ? tr('1 bin') : tr('{0} bins', b.units), num(b.qty), apartWord(dept, b.word)))).join(', ')
+  const binsOf = (dept: keyof typeof CFG, bins: { word: string; units: number; qty: number }[]) => bins.map((b) => (dept === 'Kitchen' ? unitsOf(dept, b.units, cfgFor(dept, b.word)) : dept === 'Spiral' ? unitsOf(dept, b.units, cfgFor(dept, b.word)) + ' · ' + num(b.qty) + ' ' + apartWord(dept, b.word) : tr('{0} con {1} {2}', b.units === 1 ? tr('1 bin') : tr('{0} bins', b.units), num(b.qty), apartWord(dept, b.word)))).join(', ')
   const binCfg = (dept: keyof typeof CFG, bin: string) => cfgFor(dept, bin)
   const lineName = (x: { lineId: string | null; dept: string }) => (x.lineId === null ? tr('Todo {0}', x.dept) : lineLabel(s.lines.find((l) => l.id === x.lineId)?.name ?? s.runs.find((r) => r.lineId === x.lineId)?.line ?? tr('línea')))
 
@@ -45,7 +45,7 @@ export function buildPdf(s: State, date: string, now: number, by: string, f: Rep
   // what was made, room by room, said first and in bold: it is what the report is read for
   if (rep.byDept.length && has('resumen')) {
     doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(88, 20, 71)
-    const made = rep.byDept.map((d) => d.dept + ': ' + (CFG[d.dept].qty !== 'none' ? qtyOf(d.dept, d.qty) + ' (' + unitsOf(d.dept, d.units) + ')' : unitsOf(d.dept, d.units)) + (d.bins.length ? ' + ' + (d.dept === 'Spiral' ? tr('aparte: {0}', binsOf(d.dept, d.bins)) : tr('en bins: {0}', binsOf(d.dept, d.bins))) : ''))
+    const made = rep.byDept.map((d) => d.dept + ': ' + (CFG[d.dept].qty !== 'none' ? qtyOf(d.dept, d.qty) + ' (' + unitsOf(d.dept, d.units) + ')' : unitsOf(d.dept, d.units)) + (d.bins.length ? ' + ' + (d.dept === 'Spiral' || d.dept === 'Kitchen' ? tr('aparte: {0}', binsOf(d.dept, d.bins)) : tr('en bins: {0}', binsOf(d.dept, d.bins))) : ''))
     const lines = doc.splitTextToSize(tr('Hecho   {0}', made.join('   ·   ')), doc.internal.pageSize.getWidth() - 80) as string[]
     doc.text(lines, 40, top + 4)
     top += 4 + lines.length * 15 + 6
