@@ -106,10 +106,10 @@ export const plusDays = (date: string, n: number) => { const d = day(date); d.se
 export const mondayOf = (date: string) => plusDays(date, -((day(date).getDay() + 6) % 7))
 const monthEnd = (ym: string) => { const [y, m] = ym.split('-').map(Number); return iso(new Date(y, m, 0, 12)) }
 export const monthName = (ym: string) => day(ym + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-/** the ranges one taps instead of typing: this week (Monday to Sunday), last week, this month, last month */
-export function rangeShortcuts(today: string): { id: 'week' | 'lastWeek' | 'month' | 'lastMonth'; from: string; to: string }[] {
+/** the ranges one taps instead of typing: the day itself (chosen by default, Jose 2026-11-03), this week (Monday to Sunday), last week, this month, last month */
+export function rangeShortcuts(today: string): { id: 'day' | 'week' | 'lastWeek' | 'month' | 'lastMonth'; from: string; to: string }[] {
   const mon = mondayOf(today), ym = today.slice(0, 7), [y, m] = ym.split('-').map(Number), prev = `${m === 1 ? y - 1 : y}-${String(m === 1 ? 12 : m - 1).padStart(2, '0')}`
-  return [{ id: 'week', from: mon, to: plusDays(mon, 6) }, { id: 'lastWeek', from: plusDays(mon, -7), to: plusDays(mon, -1) }, { id: 'month', from: ym + '-01', to: monthEnd(ym) }, { id: 'lastMonth', from: prev + '-01', to: monthEnd(prev) }]
+  return [{ id: 'day', from: today, to: today }, { id: 'week', from: mon, to: plusDays(mon, 6) }, { id: 'lastWeek', from: plusDays(mon, -7), to: plusDays(mon, -1) }, { id: 'month', from: ym + '-01', to: monthEnd(ym) }, { id: 'lastMonth', from: prev + '-01', to: monthEnd(prev) }]
 }
 /** a week's labor hours when HR gives them by the week and not by the day (Mike's workbook has them so), kept by its Monday */
 export const pplhWeekHours = (s: State, monday: string): number | null => { const h = kpiGet(s, WHRS + monday)?.data.hours; return typeof h === 'number' && h > 0 ? h : null }

@@ -3,7 +3,7 @@ import { awayDay, type State } from './store'
 import { loadDay } from './sync'
 import { datesFrom, downtimeOf, netsuiteSheet, pplhBook, pplhGroups, pplhNames, pplhOfGroups, pplhOfRange, pplhRow, pplhWeekHours, rangeShortcuts, readNetsuite, savePplhLbs, setPplhHours, setPplhNames, setPplhWeekHours, PPLH_SITE, type NetsuiteRead, type PplhBy } from './pplh'
 import { loadZip, readCsv, readXlsx, xlsxNow, XLSX_TYPE } from './xlsx'
-import { addDays, download } from './App'
+import { download } from './App'
 import { locale, tr } from './i18n'
 
 const lb = (x: number) => Math.round(x).toLocaleString('en-US')
@@ -17,9 +17,10 @@ const monthLabel = (ym: string) => new Date(ym + '-01T12:00:00').toLocaleDateStr
  * downtime of the report's day. The Excel, in English and in his look, is what goes to him by 11:30 AM
  */
 export function PplhView({ s, date, now, edit, admin }: { s: State; date: string; now: number; edit: boolean; admin: boolean }) {
-  const [from, setFrom] = useState(() => addDays(date, -6))
+  // (the report's day alone until a range is tapped, Jose 2026-11-03)
+  const [from, setFrom] = useState(date)
   const [to, setTo] = useState(date)
-  useEffect(() => { setFrom(addDays(date, -6)); setTo(date) }, [date])
+  useEffect(() => { setFrom(date); setTo(date) }, [date])
   const range = useMemo(() => (from && to && from <= to ? datesFrom(from, to) : []), [from, to])
   // (days older than the device keeps are brought, for their downtime)
   useEffect(() => { for (const d of new Set([date, ...range])) if (awayDay(d)) void loadDay(d) }, [date, from, to]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -143,7 +144,7 @@ export function PplhView({ s, date, now, edit, admin }: { s: State; date: string
 
 /** From / To, and the ranges one taps instead of typing: this week (Monday to Sunday), last week, this month, last month */
 export function RangePick({ from, to, today, onChange }: { from: string; to: string; today: string; onChange: (from: string, to: string) => void }) {
-  const label = { week: tr('Esta semana'), lastWeek: tr('Semana pasada'), month: tr('Este mes'), lastMonth: tr('Mes pasado') }
+  const label = { day: tr('Hoy'), week: tr('Esta semana'), lastWeek: tr('Semana pasada'), month: tr('Este mes'), lastMonth: tr('Mes pasado') }
   return (
     <div className="btns pplh-range">
       <label>{tr('Desde')} <input type="date" value={from} onChange={(e) => onChange(e.target.value, to)} /></label>

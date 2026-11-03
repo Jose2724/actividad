@@ -6122,8 +6122,8 @@ section('KPI diario de Mike: libras de NetSuite ÷ horas, y el downtime por cuar
     const day = book[0].rows[4]
     eq('el día del reporte sin horas lo dice, no inventa', [day[1].v, m.cellText(day[2]), m.cellText(day[3])], [900, 'No HR hours', '—'])
     // by week and by month (Mike, 2026-11-02: "weekly, monthly"): Monday to Sunday as his SUMMARY, the ranges one taps
-    eq('los atajos: esta semana de lunes a domingo, la pasada, este mes, el pasado (hoy martes 2026-11-03)', m.rangeShortcuts('2026-11-03').map((q) => q.from + '..' + q.to), ['2026-11-02..2026-11-08', '2026-10-26..2026-11-01', '2026-11-01..2026-11-30', '2026-10-01..2026-10-31'])
-    eq('el lunes de un domingo es el de seis días antes; enero mira a diciembre', [m.mondayOf('2026-11-01'), m.rangeShortcuts('2026-01-05')[3].from], ['2026-10-26', '2025-12-01'])
+    eq('los atajos: hoy, esta semana de lunes a domingo, la pasada, este mes, el pasado (hoy martes 2026-11-03)', m.rangeShortcuts('2026-11-03').map((q) => q.from + '..' + q.to), ['2026-11-03..2026-11-03', '2026-11-02..2026-11-08', '2026-10-26..2026-11-01', '2026-11-01..2026-11-30', '2026-10-01..2026-10-31'])
+    eq('el lunes de un domingo es el de seis días antes; enero mira a diciembre', [m.mondayOf('2026-11-01'), m.rangeShortcuts('2026-01-05')[4].from], ['2026-10-26', '2025-12-01'])
     const wk = () => m.pplhGroups(st(), '2026-10-19', '2026-10-25', 'week')[0]
     eq('una semana entera: sus libras sumadas, con horas de día solo cuentan los días con las dos', [wk().whole, wk().lbs, wk().lbsDays, wk().hours, wk().hoursDays, wk().weekly, wk().pplh], [true, 2500.5, 3, 30, 1, false, 1500.5 / 30])
     m.setPplhWeekHours('2026-10-19', 200)
