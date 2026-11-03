@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { awayDay, type State } from './store'
 import { loadDay } from './sync'
-import { datesFrom, downtimeOf, netsuiteSheet, pplhBook, pplhGroups, pplhNames, pplhOfGroups, pplhOfRange, pplhRow, pplhWeekHours, rangeShortcuts, readNetsuite, savePplhLbs, setPplhHours, setPplhNames, setPplhWeekHours, PPLH_SITE, type NetsuiteRead, type PplhBy } from './pplh'
+import { datesFrom, downtimeOf, netsuiteSheet, pplhBook, readHours, type HoursRead, pplhGroups, pplhNames, pplhOfGroups, pplhOfRange, pplhRow, pplhWeekHours, rangeShortcuts, readNetsuite, savePplhLbs, setPplhHours, setPplhNames, setPplhWeekHours, PPLH_SITE, type NetsuiteRead, type PplhBy } from './pplh'
 import { loadZip, readCsv, readXlsx, xlsxNow, XLSX_TYPE } from './xlsx'
 import { download } from './App'
 import { locale, tr } from './i18n'
@@ -43,6 +43,25 @@ export function PplhView({ s, date, now, edit, admin }: { s: State; date: string
     } catch { setErr(tr('No se pudo leer el archivo. Si es de Excel, guárdalo como .xlsx y vuelve a subirlo.')) }
   }
   const replaced = read ? read.r.days.filter((d) => pplhRow(s, d.date).lbs != null).length : 0
+  // Will's hours file (2026-11-03): each day's total typed by the app instead of by hand; nothing of the people is kept
+  const [hrs, setHrs] = useState<{ file: string; r: HoursRead } | null>(null)
+  const [hErr, setHErr] = useState('')
+  const [hSaid, setHSaid] = useState('')
+  const pickHours = async (f: File) => {
+    setHErr(''); setHrs(null); setHSaid('')
+    try {
+      const r = readHours(readXlsx(new Uint8Array(await f.arrayBuffer()), await loadZip()))
+      if (!r.found) return setHErr(tr('Este archivo no trae las columnas del reporte de horas (Employee, Date y Total).'))
+      if (!r.days.length) return setHErr(tr('El archivo no trae horas de ningún día.'))
+      setHrs({ file: f.name, r })
+    } catch { setHErr(tr('No se pudo leer el archivo. Si es de Excel, guárdalo como .xlsx y vuelve a subirlo.')) }
+  }
+  const hReplaced = hrs ? hrs.r.days.filter((d) => pplhRow(s, d.date).hours != null).length : 0
+  const saveHrs = () => {
+    if (!hrs) return
+    for (const d of hrs.r.days) setPplhHours(d.date, d.hours)
+    setHSaid(tr('Guardadas las horas de {0} días.', hrs.r.days.length)); setHrs(null)
+  }
   const save = () => {
     if (!read) return
     savePplhLbs(s, read.r.days, read.file)
@@ -91,6 +110,23 @@ export function PplhView({ s, date, now, edit, admin }: { s: State; date: string
               <p className="hint">{tr('No se cuentan: {0} filas de otras plantas, {1} líneas de total y {2} subtotales sin fecha.', read.r.other, read.r.totals, read.r.undated)}{read.r.bad ? ' ' + tr('{0} filas sin libras.', read.r.bad) : ''}</p>
               {replaced > 0 && <p className="hint amber">{tr('Reemplaza las libras de {0} días que ya estaban.', replaced)}</p>}
               <div className="btns"><button type="button" className="btn" onClick={() => setRead(null)}>{tr('Cancelar')}</button><button type="button" className="btn primary" onClick={save}>{tr('✓ Guardar las libras')}</button></div>
+            </div>
+          )}
+        </article>
+      )}
+      {edit && (
+        <article className="wt-rp">
+          <h3>{tr('Subir el archivo de horas de Will')}</h3>
+          <p className="hint">{tr('El reporte diario de horas de Recursos Humanos (Timesheet Entries): la app suma las horas de cada día de toda la planta y las escribe en la tabla. No guarda nombres.')}</p>
+          <label className="btn soft pplh-file">{tr('📄 Elegir el archivo de horas (.xlsx)')}<input type="file" accept=".xlsx" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void pickHours(f) }} /></label>
+          {hErr && <p className="hint red">{hErr}</p>}
+          {hSaid && <p className="hint ok">{hSaid}</p>}
+          {hrs && (
+            <div className="pplh-read">
+              {hrs.r.days.map((d) => <p key={d.date}>{tr('{0}: {1} horas, {2} personas, {3} entradas de reloj.', d.date, one(d.hours), d.people, d.entries)}{d.blank ? ' ' + tr('{0} entradas sin horas ("--").', d.blank) : ''}</p>)}
+              {hrs.r.divisions.length > 0 && <p className="hint">{tr('Divisiones: {0}.', hrs.r.divisions.join(', '))}</p>}
+              {hReplaced > 0 && <p className="hint amber">{tr('Reemplaza las horas de {0} días que ya estaban.', hReplaced)}</p>}
+              <div className="btns"><button type="button" className="btn" onClick={() => setHrs(null)}>{tr('Cancelar')}</button><button type="button" className="btn primary" onClick={saveHrs}>{tr('✓ Guardar las horas')}</button></div>
             </div>
           )}
         </article>

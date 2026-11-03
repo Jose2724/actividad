@@ -80,6 +80,37 @@ export function readNetsuite(rows: ReadCell[][]): NetsuiteRead {
   out.days = [...byDay].map(([date, e]) => ({ date, lbs: Math.round(e.lbs * 100) / 100, rows: e.rows })).sort((a, b) => a.date.localeCompare(b.date))
   return out
 }
+/** Will's hours file read: each day's hours over the whole plant, how many people and clock entries, and the entries with no hours ("--") */
+export type HoursRead = { days: { date: string; hours: number; people: number; entries: number; blank: number }[]; divisions: string[]; found: boolean }
+/**
+ * HR's daily hours report (Will's file, 2026-11-02: sheet "Timesheet Entries": Employee Number, Employee Name, Date,
+ * Clock In, Clock Out, Total (Hours)…; a line per clock-in, a subtotal line per person with no date, a grand total at
+ * the end; "Applied_Filters" lists the divisions). Only the lines with a date count, added up by day: the subtotals
+ * and the grand total would double them. Nothing of the people is kept, only each day's total
+ */
+export function readHours(sheets: { name: string; rows: ReadCell[][] }[]): HoursRead {
+  const out: HoursRead = { days: [], divisions: [], found: false }
+  for (const sh of sheets) {
+    const rows = sh.rows, h = rows.slice(0, 12).findIndex((r) => r.some((c) => norm(c) === 'date') && r.some((c) => norm(c).startsWith('total')) && r.some((c) => norm(c).startsWith('employee')))
+    if (h < 0) continue
+    out.found = true
+    const head = rows[h].map(norm), date = head.indexOf('date'), total = head.findIndex((c) => c.startsWith('total')), who = head.findIndex((c) => c.startsWith('employee'))
+    const byDay = new Map<string, { hours: number; people: Set<string>; entries: number; blank: number }>()
+    for (const r of rows.slice(h + 1)) {
+      const d = dateText(r[date])
+      if (!d) continue
+      const e = byDay.get(d) ?? { hours: 0, people: new Set<string>(), entries: 0, blank: 0 }
+      const n = typeof r[total] === 'number' ? r[total] : Number(String(r[total] ?? '').replace(/,/g, ''))
+      if (Number.isFinite(n)) e.hours += n; else e.blank++
+      e.entries++; e.people.add(String(r[who] ?? ''))
+      byDay.set(d, e)
+    }
+    out.days = [...byDay].map(([date, e]) => ({ date, hours: Math.round(e.hours * 100) / 100, people: e.people.size, entries: e.entries, blank: e.blank })).sort((a, b) => a.date.localeCompare(b.date))
+  }
+  const filters = sheets.find((x) => norm(x.name).includes('filter'))
+  if (filters) { const col = filters.rows[0]?.findIndex((c) => norm(c) === 'division') ?? -1; if (col >= 0) out.divisions = filters.rows.slice(1).map((r) => String(r[col] ?? '').trim()).filter(Boolean) }
+  return out
+}
 /** of a workbook's sheets, the one that is NetSuite's */
 export const netsuiteSheet = (sheets: { name: string; rows: ReadCell[][] }[]) => sheets.map((x) => ({ ...x, read: readNetsuite(x.rows) })).find((x) => x.read.found) ?? null
 
