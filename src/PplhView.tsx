@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { awayDay, type State } from './store'
+import { awayDay, dayBefore, type State } from './store'
 import { loadDay } from './sync'
 import { datesFrom, downtimeOf, netsuiteSheet, pplhBook, pplhLbsByHand, readHours, setPplhLbsHand, type HoursRead, pplhGroups, pplhNames, pplhOfGroups, pplhOfRange, pplhRow, pplhWeekHours, rangeShortcuts, readNetsuite, savePplhLbs, setPplhHours, setPplhNames, setPplhWeekHours, PPLH_SITE, type NetsuiteRead, type PplhBy } from './pplh'
 import { loadZip, readCsv, readXlsx, xlsxNow, XLSX_TYPE } from './xlsx'
@@ -16,22 +16,24 @@ const monthLabel = (ym: string) => new Date(ym + '-01T12:00:00').toLocaleDateStr
  * day's hours from HR are typed, and the pounds per labor hour of each day and of the range come out, with each room's
  * downtime of the report's day. The Excel, in English and in his look, is what goes to him by 11:30 AM
  */
-export function PplhView({ s, date, now, edit, admin }: { s: State; date: string; now: number; edit: boolean; admin: boolean }) {
+export function PplhView({ s, date, today, now, edit, admin }: { s: State; date: string; today: string; now: number; edit: boolean; admin: boolean }) {
+  // the report is of the day before (Jose, 2026-11-03: it runs once the day is over): yesterday while the date above is today's; another date above is taken as it is
+  const day0 = date === today ? dayBefore(date) : date
   // (the report's day alone until a range is tapped, Jose 2026-11-03)
-  const [from, setFrom] = useState(date)
-  const [to, setTo] = useState(date)
-  useEffect(() => { setFrom(date); setTo(date) }, [date])
+  const [from, setFrom] = useState(day0)
+  const [to, setTo] = useState(day0)
+  useEffect(() => { setFrom(day0); setTo(day0) }, [day0])
   const range = useMemo(() => (from && to && from <= to ? datesFrom(from, to) : []), [from, to])
   // (days older than the device keeps are brought, for their downtime)
-  useEffect(() => { for (const d of new Set([date, ...range])) if (awayDay(d)) void loadDay(d) }, [date, from, to]) // eslint-disable-line react-hooks/exhaustive-deps
-  const rows = range.map((d) => pplhRow(s, d)), all = pplhOfRange(rows), today = pplhRow(s, date)
+  useEffect(() => { for (const d of new Set([day0, ...range])) if (awayDay(d)) void loadDay(d) }, [day0, from, to]) // eslint-disable-line react-hooks/exhaustive-deps
+  const rows = range.map((d) => pplhRow(s, d)), all = pplhOfRange(rows), rep = pplhRow(s, day0)
   // (by week or by month, as Mike looks at it: one row per week, Monday to Sunday, or per month)
   const [by, setBy] = useState<PplhBy>('day')
   // the table opens locked, with its numbers; Editar shows the boxes (Jose, 2026-11-03: a button to edit and to lock, so nothing changes by a stray tap)
   const [unlocked, setUnlocked] = useState(false)
   const open = edit && unlocked
   const groups = useMemo(() => (by === 'day' || !range.length ? [] : pplhGroups(s, from, to, by)), [s, from, to, by, range.length]), allG = pplhOfGroups(groups)
-  const down = useMemo(() => downtimeOf(s, [date], now), [s, date, now])
+  const down = useMemo(() => downtimeOf(s, [day0], now), [s, day0, now])
   const [read, setRead] = useState<{ file: string; r: NetsuiteRead } | null>(null)
   const [err, setErr] = useState('')
   const [said, setSaid] = useState('')
@@ -71,9 +73,9 @@ export function PplhView({ s, date, now, edit, admin }: { s: State; date: string
     setSaid(tr('Guardadas las libras de {0} días.', read.r.days.length)); setRead(null)
   }
   const excel = async () => {
-    const make = () => xlsxNow(pplhBook(s, from, to, date, now, by))
+    const make = () => xlsxNow(pplhBook(s, from, to, day0, now, by))
     const bytes = make() ?? (await loadZip(), make())
-    if (bytes) download(new File([bytes], 'PPLH-East-Rutherford-' + date + '.xlsx', { type: XLSX_TYPE }))
+    if (bytes) download(new File([bytes], 'PPLH-East-Rutherford-' + day0 + '.xlsx', { type: XLSX_TYPE }))
   }
   const saveHours = (d: string, text: string) => {
     const n = Number(text.replace(/,/g, ''))
@@ -97,16 +99,16 @@ export function PplhView({ s, date, now, edit, admin }: { s: State; date: string
   // (trimmed to a readable width as the dashboard, Jose 2026-11-03: "darle algo de diseño y trim it")
   return (
     <div className="pplh">
-      <p className="hint">{tr('Libras por hora de trabajo de {0}: las libras de NetSuite (el archivo de Melissa) ÷ las horas de Recursos Humanos. El día del reporte es la fecha de arriba: para el reporte de las 11:30, elige ayer.', PPLH_SITE)}</p>
+      <p className="hint">{tr('Libras por hora de trabajo de {0}: las libras de NetSuite (el archivo de Melissa) ÷ las horas de Recursos Humanos. El día del reporte es ayer; si cambias la fecha de arriba, es esa.', PPLH_SITE)}</p>
       <article className="wt-rp">
-        <h3>{tr('Día del reporte')}</h3>
+        <h3>{tr('Día del reporte')} · {day0}</h3>
         <div className="pplh-tiles">
-          <div><small>{tr('Libras')}</small><b>{today.lbs == null ? '—' : lb(today.lbs)}</b></div>
-          <div><small>{tr('Horas')}</small><b>{today.hours == null ? '—' : one(today.hours)}</b></div>
-          <div><small>PPLH</small><b>{today.pplh == null ? '—' : one(today.pplh)}</b></div>
+          <div><small>{tr('Libras')}</small><b>{rep.lbs == null ? '—' : lb(rep.lbs)}</b></div>
+          <div><small>{tr('Horas')}</small><b>{rep.hours == null ? '—' : one(rep.hours)}</b></div>
+          <div><small>PPLH</small><b>{rep.pplh == null ? '—' : one(rep.pplh)}</b></div>
         </div>
-        {today.lbs == null && <p className="hint amber">{tr('Falta el archivo de NetSuite de este día.')}</p>}
-        {today.hours == null && <p className="hint amber">{tr('Faltan las horas de Recursos Humanos de este día.')}</p>}
+        {rep.lbs == null && <p className="hint amber">{tr('Falta el archivo de NetSuite de este día.')}</p>}
+        {rep.hours == null && <p className="hint amber">{tr('Faltan las horas de Recursos Humanos de este día.')}</p>}
         <div className="btns"><button type="button" className="btn primary" onClick={() => void excel()}>{tr('⬇ Excel para Mike')}</button></div>
       </article>
       {edit && (
@@ -144,7 +146,7 @@ export function PplhView({ s, date, now, edit, admin }: { s: State; date: string
       )}
       <article className="wt-rp">
         <h3>{by === 'week' ? tr('Semana por semana') : by === 'month' ? tr('Mes por mes') : tr('Día por día')}{edit && <button type="button" className={'btn sm ' + (unlocked ? 'primary' : 'soft')} onClick={() => setUnlocked((x) => !x)}>{unlocked ? tr('🔒 Bloquear') : tr('✏️ Editar')}</button>}</h3>
-        <RangePick from={from} to={to} today={date} onChange={(a, b) => { setFrom(a); setTo(b) }} />
+        <RangePick from={from} to={to} today={day0} dayLabel={day0 !== date ? tr('Ayer') : undefined} onChange={(a, b) => { setFrom(a); setTo(b) }} />
         <div className="btns pplh-by">{(['day', 'week', 'month'] as PplhBy[]).map((b) => <button key={b} type="button" className={'btn sm ' + (by === b ? 'primary' : 'soft')} onClick={() => setBy(b)}>{b === 'day' ? tr('Por día') : b === 'week' ? tr('Por semana') : tr('Por mes')}</button>)}</div>
         <div className="scroll"><table className="wt-rp-tbl mini">
           <thead><tr><th>{by === 'week' ? tr('Semana') : by === 'month' ? tr('Mes') : tr('Fecha')}</th><th>{tr('Libras (NetSuite)')}</th><th>{tr('Horas (RR. HH.)')}</th><th>PPLH</th>{by !== 'day' && <th>{tr('Días con libras')}</th>}</tr></thead>
@@ -190,8 +192,8 @@ export function PplhView({ s, date, now, edit, admin }: { s: State; date: string
 }
 
 /** From / To, and the ranges one taps instead of typing: this week (Monday to Sunday), last week, this month, last month */
-export function RangePick({ from, to, today, onChange }: { from: string; to: string; today: string; onChange: (from: string, to: string) => void }) {
-  const label = { day: tr('Hoy'), week: tr('Esta semana'), lastWeek: tr('Semana pasada'), month: tr('Este mes'), lastMonth: tr('Mes pasado') }
+export function RangePick({ from, to, today, dayLabel, onChange }: { from: string; to: string; today: string; dayLabel?: string; onChange: (from: string, to: string) => void }) {
+  const label = { day: dayLabel ?? tr('Hoy'), week: tr('Esta semana'), lastWeek: tr('Semana pasada'), month: tr('Este mes'), lastMonth: tr('Mes pasado') }
   return (
     <div className="btns pplh-range">
       <label>{tr('Desde')} <input type="date" value={from} onChange={(e) => onChange(e.target.value, to)} /></label>

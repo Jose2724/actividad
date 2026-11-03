@@ -3383,7 +3383,6 @@ export const EN: Record<string, string> = {
   "El archivo no trae libras de {0}.": "The file has no pounds for {0}.",
   "No se pudo leer el archivo. Si es de Excel, guárdalo como .xlsx y vuelve a subirlo.": "The file could not be read. If it is from Excel, save it as .xlsx and upload it again.",
   "Guardadas las libras de {0} días.": "Pounds of {0} days saved.",
-  "Libras por hora de trabajo de {0}: las libras de NetSuite (el archivo de Melissa) ÷ las horas de Recursos Humanos. El día del reporte es la fecha de arriba: para el reporte de las 11:30, elige ayer.": "Pounds per labor hour of {0}: NetSuite's pounds (Melissa's file) ÷ the hours from HR. The report's day is the date above: for the 11:30 report, choose yesterday.",
   "Día del reporte": "Report day",
   "Horas": "Hours",
   "Falta el archivo de NetSuite de este día.": "This day's NetSuite file is missing.",
@@ -3483,4 +3482,5 @@ export const EN: Record<string, string> = {
   "🔒 Bloquear": "🔒 Lock",
   "✏️ Editar": "✏️ Edit",
   "Toca Editar para escribir libras u horas; cada casilla se guarda al salir de ella, y Bloquear vuelve a dejar los números fijos. Si Mike dicta las libras de un día, escríbelas en su casilla; el archivo de NetSuite, cuando llegue, las reemplaza.": "Tap Edit to type pounds or hours; each box saves when you leave it, and Lock makes the numbers fixed again. If Mike dictates a day's pounds, type them in its box; the NetSuite file, when it comes, replaces them.",
+  "Libras por hora de trabajo de {0}: las libras de NetSuite (el archivo de Melissa) ÷ las horas de Recursos Humanos. El día del reporte es ayer; si cambias la fecha de arriba, es esa.": "Pounds per labor hour of {0}: NetSuite's pounds (Melissa's file) ÷ the hours from HR. The report's day is yesterday; if you change the date above, it is that one.",
 }
