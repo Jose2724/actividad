@@ -3479,4 +3479,5 @@ export const EN: Record<string, string> = {
   "a mano": "by hand",
   "Libras del {0}": "Pounds of {0}",
   "Si Mike dicta las libras de un día, escríbelas en su casilla; el archivo de NetSuite, cuando llegue, las reemplaza.": "If Mike dictates a day's pounds, type them in its box; the NetSuite file, when it comes, replaces them.",
+  "archivo": "file",
 }

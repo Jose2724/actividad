@@ -78,7 +78,7 @@ export function PplhView({ s, date, now, edit, admin }: { s: State; date: string
     if (!text.trim()) { if (was != null) setPplhHours(d, null); return }
     if (Number.isFinite(n) && n > 0 && n !== was) setPplhHours(d, n)
   }
-  // a day's pounds typed by hand when Melissa's file does not come (Mike dictates them, 2026-11-03); a file's day is not touched here
+  // a day's pounds typed by hand when Melissa's file does not come (Mike dictates them, 2026-11-03); a file's day can be written over too (10/27 came in the file half done)
   const saveLbs = (d: string, text: string) => {
     const n = Number(text.replace(/,/g, ''))
     const was = pplhRow(s, d).lbs
@@ -148,7 +148,7 @@ export function PplhView({ s, date, now, edit, admin }: { s: State; date: string
             {by === 'day' ? rows.map((r) => (
               <tr key={r.date} className={r.date === date ? 'on' : ''}>
                 <td><b>{r.date}</b></td>
-                <td>{edit && (r.lbs == null || pplhLbsByHand(s, r.date)) ? <><input key={r.date + ':' + (r.lbs ?? '')} className="pplh-h lbs" inputMode="decimal" defaultValue={r.lbs ?? ''} placeholder={tr('a mano')} aria-label={tr('Libras del {0}', r.date)} onBlur={(e) => saveLbs(r.date, e.target.value)} />{r.lbs != null && <small> {tr('a mano')}</small>}</> : r.lbs == null ? '—' : <>{lb(r.lbs)}{pplhLbsByHand(s, r.date) && <small> {tr('a mano')}</small>}</>}</td>
+                <td>{edit ? <><input key={r.date + ':' + (r.lbs ?? '')} className="pplh-h lbs" inputMode="decimal" defaultValue={r.lbs ?? ''} placeholder={tr('a mano')} aria-label={tr('Libras del {0}', r.date)} onBlur={(e) => saveLbs(r.date, e.target.value)} />{r.lbs != null && <small> {pplhLbsByHand(s, r.date) ? tr('a mano') : tr('archivo')}</small>}</> : r.lbs == null ? '—' : <>{lb(r.lbs)}{pplhLbsByHand(s, r.date) && <small> {tr('a mano')}</small>}</>}</td>
                 <td>{edit ? <input key={r.date + ':' + (r.hours ?? '')} className="pplh-h" inputMode="decimal" defaultValue={r.hours ?? ''} aria-label={tr('Horas del {0}', r.date)} onBlur={(e) => saveHours(r.date, e.target.value)} /> : r.hours == null ? '—' : one(r.hours)}</td>
                 <td>{r.pplh == null ? '—' : one(r.pplh)}</td>
               </tr>
