@@ -341,7 +341,9 @@ const wtLegendRows = (): Cell[][] => [
   ['#1, #2…', tr('Cada peso en onzas, en el orden en que se tomó. Rojo = bajo, ámbar = sobre.')],
 ].map((r) => (r.length === 2 && typeof r[1] === 'string' ? [r[0], xT(r[1], X.note)] : r))
 /** an average of one thing of a code against QA's range; ok null = nothing weighed, or no range to judge it by */
-export type WtAvg = { avg: number | null; n: number; range: string; ok: 'ok' | 'under' | 'over' | null }
+export type WtAvg = { avg: number | null; n: number; range: string; ok: 'ok' | 'under' | 'over' | null
+  /** the tests this average comes from (the heads, 2026-11-03: "la cantidad de pruebas que se hizo con los crudos, cocinado y los pouches"); n is the weights */
+  tests?: number }
 export type WtSummaryRow = { code: string; dept: Dept | ''; where: string; times: number; okPct: number | null; raw: WtAvg; cooked: WtAvg; pouch: WtAvg; result: string; action: boolean; pending: boolean }
 // (only WT_ASKED_CODES, Jose, 2026-10-30: "que solo sea de los códigos 0889 y 2234, nada más"; both always, weighed or not)
 /**
@@ -358,8 +360,11 @@ const wtPart = (s: State, of: WtRow[], code: string, kind: WeightTest['kind']): 
   // (a target nobody gave is not shown to the heads as QA's)
   const t = wtOfficial(s, code, kind) ? weightTarget(s, code, kind) : null, avg = ws.length ? Math.round((ws.reduce((a, b) => a + b, 0) / ws.length) * 100) / 100 : null
   const r = t ? wtRange(t) : null
-  return { avg, n: ws.length, range: t ? wtRangeText(t) : '', ok: avg == null || !r ? null : avg < r.min ? 'under' : avg > r.max ? 'over' : 'ok' }
+  const tests = of.filter((w) => w.kind === kind).reduce((n, w) => n + w.tests.filter((x) => x.entries.some((e) => e.w != null)).length, 0)
+  return { avg, n: ws.length, range: t ? wtRangeText(t) : '', ok: avg == null || !r ? null : avg < r.min ? 'under' : avg > r.max ? 'over' : 'ok', tests }
 }
+/** "3 pruebas · 30 pesos" under an average: how many tests it comes from, and how many weights */
+export const wtCountText = (x: WtAvg) => (!x.tests ? '' : (x.tests === 1 ? tr('1 prueba') : tr('{0} pruebas', x.tests)) + ' · ' + (x.n === 1 ? tr('1 peso') : tr('{0} pesos', x.n)))
 const wtSay = (name: string, x: WtAvg) => (x.ok === 'under' ? [tr('{0} bajo el rango de QA', name)] : x.ok === 'over' ? [tr('{0} sobre el rango de QA', name)] : [])
 /** a range as QA writes it: 2.60–2.80 (a bag's stays 48–52) */
 export const wtRangeLong = (r: string) => r.split('–').map((n) => (Number(n) < 10 ? Number(n).toFixed(2) : n)).join('–')
@@ -394,7 +399,8 @@ export function wtBoardSheet(s: State, rows: WtRow[], date: string): Sheet {
   for (const x of wtBoard(s, rows)) {
     const r = row([xT(x.code, X.wBigN), xT(x.weighed ? String(x.times) : '0', X.wBigN), big(x.raw), big(x.cooked), big(x.pouch)], 48)
     row([xT('', X.wcText), xT(tr('veces'), X.wTarget), qa(x.raw), qa(x.cooked), qa(x.pouch)], 30)
-    merges.push('A' + r + ':A' + (r + 1))
+    row([xT('', X.wcText), xT('', X.wcText), ...[x.raw, x.cooked, x.pouch].map((p) => xT(wtCountText(p) || '—', X.wTarget))], 24)
+    merges.push('A' + r + ':A' + (r + 2))
     across(x.result, x.action ? X.wBadW : x.weighed ? X.wGoodW : X.wLeft, 26)
     row([], 10)
   }
@@ -456,7 +462,7 @@ export function wtSummarySheet(s: State, rows: WtRow[], date: string): Sheet {
       row([])
       chart = { title: tr('% de pesos dentro del rango de QA, por departamento'), series: tr('% en peso'), cat: 12, val: 13, from, to, at, pct: true, cols: 11, height: tall }
     }
-    across(tr('Cómo leerlo: "Veces revisado" = cuántas horas se pesó ese código. "Prom." = el promedio de todos los pesos del día, en onzas. "% en peso" = de todos los pesos, cuántos cayeron dentro del rango. Pouch = la bolsa terminada. Rango QA = el mínimo y el máximo permitido.'), X.note, 34)
+    across(tr('Cómo leerlo: "Veces revisado" = cuántas horas se pesó ese código. Bajo cada promedio: de cuántas pruebas y pesos sale. "Prom." = el promedio de todos los pesos del día, en onzas. "% en peso" = de todos los pesos, cuántos cayeron dentro del rango. Pouch = la bolsa terminada. Rango QA = el mínimo y el máximo permitido.'), X.note, 34)
     across(tr('Verde = el promedio está dentro del rango. Rojo = bajo el rango. Ámbar = sobre el rango. Si está rojo o ámbar se necesita una acción correctiva: anótala en "Acción tomada".'), X.note, 34)
     const note = kpiNote(s, date, 'weights')
     if (note) { row([]); across(tr('Notas: {0}', note), X.note, 48) }
