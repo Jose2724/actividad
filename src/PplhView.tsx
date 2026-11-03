@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { awayDay, dayBefore, type State } from './store'
 import { loadDay } from './sync'
-import { datesFrom, downtimeOf, netsuiteSheet, pplhBook, pplhLbsByHand, readHours, setPplhLbsHand, type HoursRead, pplhGroups, pplhNames, pplhOfGroups, pplhOfRange, pplhRow, pplhWeekHours, rangeShortcuts, readNetsuite, savePplhLbs, setPplhHours, setPplhNames, setPplhWeekHours, PPLH_SITE, type NetsuiteRead, type PplhBy } from './pplh'
+import { datesFrom, downtimeOf, plusDays, netsuiteSheet, pplhBook, pplhLbsByHand, readHours, setPplhLbsHand, type HoursRead, pplhGroups, pplhNames, pplhOfGroups, pplhOfRange, pplhRow, pplhWeekHours, rangeShortcuts, readNetsuite, savePplhLbs, setPplhHours, setPplhNames, setPplhWeekHours, PPLH_SITE, type NetsuiteRead, type PplhBy } from './pplh'
 import { loadZip, readCsv, readXlsx, xlsxNow, XLSX_TYPE } from './xlsx'
 import { download } from './App'
 import { locale, tr } from './i18n'
@@ -194,8 +194,12 @@ export function RangePick({ from, to, today, dayLabel, onChange }: { from: strin
   const label = { day: dayLabel ?? tr('Hoy'), week: tr('Esta semana'), lastWeek: tr('Semana pasada'), month: tr('Este mes'), lastMonth: tr('Mes pasado') }
   return (
     <div className="btns pplh-range">
-      <label>{tr('Desde')} <input type="date" value={from} onChange={(e) => onChange(e.target.value, to)} /></label>
-      <label>{tr('Hasta')} <input type="date" value={to} onChange={(e) => onChange(from, e.target.value)} /></label>
+      <div className="pplh-dates">
+        <button type="button" className="btn sm soft nav" aria-label={tr('Un día atrás')} title={tr('Un día atrás')} onClick={() => from && to && onChange(plusDays(from, -1), plusDays(to, -1))}>‹</button>
+        <label>{tr('Desde')} <input type="date" value={from} onChange={(e) => onChange(e.target.value, to)} /></label>
+        <label>{tr('Hasta')} <input type="date" value={to} onChange={(e) => onChange(from, e.target.value)} /></label>
+        <button type="button" className="btn sm soft nav" aria-label={tr('Un día adelante')} title={tr('Un día adelante')} onClick={() => from && to && onChange(plusDays(from, 1), plusDays(to, 1))}>›</button>
+      </div>
       {rangeShortcuts(today).map((q) => <button key={q.id} type="button" className={'btn sm ' + (from === q.from && to === q.to ? 'primary' : 'soft')} onClick={() => onChange(q.from, q.to)}>{label[q.id]}</button>)}
     </div>
   )
