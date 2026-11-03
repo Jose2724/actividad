@@ -111,7 +111,7 @@ export function PplhView({ s, date, today, now, edit, admin }: { s: State; date:
         {rep.hours == null && <p className="hint amber">{tr('Faltan las horas de Recursos Humanos de este día.')}</p>}
         <div className="btns"><button type="button" className="btn primary" onClick={() => void excel()}>{tr('⬇ Excel para Mike')}</button></div>
       </article>
-      {edit && (
+      {edit && <div className="pplh-uploads">
         <article className="wt-rp">
           <h3>{tr('Subir el archivo de NetSuite')}</h3>
           <label className="btn soft pplh-file">{tr('📄 Elegir el archivo (.xlsx o .csv)')}<input type="file" accept=".xlsx,.csv,.txt" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void pick(f) }} /></label>
@@ -126,8 +126,6 @@ export function PplhView({ s, date, today, now, edit, admin }: { s: State; date:
             </div>
           )}
         </article>
-      )}
-      {edit && (
         <article className="wt-rp">
           <h3>{tr('Subir el archivo de horas de Will')}</h3>
           <p className="hint">{tr('El reporte diario de horas de Recursos Humanos (Timesheet Entries): la app suma las horas de cada día de toda la planta y las escribe en la tabla. No guarda nombres.')}</p>
@@ -143,7 +141,7 @@ export function PplhView({ s, date, today, now, edit, admin }: { s: State; date:
             </div>
           )}
         </article>
-      )}
+      </div>}
       <article className="wt-rp">
         <h3>{by === 'week' ? tr('Semana por semana') : by === 'month' ? tr('Mes por mes') : tr('Día por día')}{edit && <button type="button" className={'btn sm ' + (unlocked ? 'primary' : 'soft')} onClick={() => setUnlocked((x) => !x)}>{unlocked ? tr('🔒 Bloquear') : tr('✏️ Editar')}</button>}</h3>
         <RangePick from={from} to={to} today={day0} dayLabel={day0 !== date ? tr('Ayer') : undefined} onChange={(a, b) => { setFrom(a); setTo(b) }} />
