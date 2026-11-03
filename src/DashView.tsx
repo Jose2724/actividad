@@ -39,8 +39,9 @@ export function DashView({ s, date, now, pplh }: { s: State; date: string; now: 
     const bytes = make() ?? (await loadZip(), make())
     if (bytes) download(new File([bytes], 'Dashboard-' + dates[0] + (dates.length > 1 ? '_' + dates[dates.length - 1] : '') + '.xlsx', { type: XLSX_TYPE }))
   }
+  // (trimmed to a readable width, Mike 2026-11-03: "too big, too many spaces, trim it": nothing stretches over a wide screen)
   return (
-    <>
+    <div className="dash">
       <RangePick from={from} to={to} today={date} onChange={(a, b) => { setFrom(a); setTo(b) }} />
       <div className="pplh-tiles dash-tiles">
         <div className="pend"><small>Yield</small><b>—</b><em>{tr('Pendiente: falta la fuente de las libras por producto')}</em></div>
@@ -74,7 +75,7 @@ export function DashView({ s, date, now, pplh }: { s: State; date: string; now: 
           <DashChart c={c} />
         </article>
       ))}
-    </>
+    </div>
   )
 }
 
