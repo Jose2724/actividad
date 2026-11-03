@@ -15,7 +15,7 @@ export type NumberId = 'duracion' | 'trabajando' | 'parado' | 'setup' | 'causas'
   | 'hecho' | 'corrida' | 'waste' | 'turnos' | 'meta' | 'lenta' | 'carne' | 'consumo'
   | 'avance' | 'avance-estado' | 'lote-esperado' | 'lote-perdida' | 'lote-colores' | 'orden'
   | 'po-pallets' | 'po-completo' | 'vence' | 'pallet-unido' | 'hold'
-  | 'peso-resumen' | 'peso-pruebas' | 'peso-bien' | 'peso-rinde' | 'peso-color' | 'asistencia'
+  | 'peso-resumen' | 'peso-pruebas' | 'peso-bien' | 'peso-rinde' | 'peso-color' | 'dash' | 'asistencia'
   | 'kpi-horas' | 'kpi-prod' | 'kpi-costco' | 'kpi-mes' | 'mini'
   | 'mini-arranque' | 'mini-prod' | 'mini-paros' | 'mini-horas' | 'mini-lunch' | 'mini-causas' | 'mini-mec' | 'mini-consumo' | 'mini-waste' | 'mini-pesos'
 type Group = 'tiempo' | 'prod' | 'avance' | 'lotes' | 'pedidos' | 'pesos' | 'gente' | 'kpi'
@@ -144,6 +144,10 @@ const items = (): Item[] => [
   { id: 'peso-color', group: 'pesos', title: tr('Color de la tarjeta de Pesos en el KPI'),
     means: tr('Cómo va el día en pesos.'),
     math: tr('Rojo = más de 10% de los pesos fuera de rango, o menos de 90% de las pruebas hechas. Amarillo = algún peso fuera, o faltó alguna prueba. Verde = todo bien. Gris = no tocaba ninguna prueba.') },
+  { id: 'dash', group: 'pesos', title: tr('Dashboard: crudo, cocinado y pouch por día'),
+    means: tr('Lo que Mike pidió ver: el peso promedio de cada día de 0889 y 2234, contra el rango de QA, y su gráfica.'),
+    math: tr('Cada celda es el promedio de todos los pesos de ese tipo tomados ese día en toda la planta (los crudos de Kitchen, los crudos y cocinados de Spiral, los pouches de RTE), en onzas. Verde dentro del rango de QA, rojo bajo, ámbar sobre; vacío = no se pesó. Rango = todos los días juntos, no el promedio de los promedios. PPLH = el del rango, como en la pestaña PPLH. Yield y shorts salen cuando Mike diga de dónde vienen.'),
+    eg: tr('Lunes 10 pouches de 50 y 10 de 48 = 49.00, dentro de 48–52. El martes sin pruebas queda vacío, no en cero.') },
 
   { id: 'asistencia', group: 'gente', title: tr('Asistencia'),
     means: tr('Cuánta gente vino contra la que se esperaba.'),

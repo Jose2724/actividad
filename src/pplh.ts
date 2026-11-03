@@ -181,14 +181,15 @@ export function downtimeOf(s: State, dates: string[], now: number): RoomDown[] {
 // ---- the workbook, in English and in the look of Mike's (his navy, orange, grey and gold) ----
 const NAVY = '1F4E78', ORANGE = 'ED7D31', GREY = 'A5A5A5', GOLD = 'FFC000'
 /** his charts' title (dark grey, bold) and dates on the bottom axis as m/d/yy, tilted */
-const MIKE_LOOK = { titleColor: '404040', dates: 'm/d/yy' } as const
+export const MIKE_LOOK = { titleColor: '404040', dates: 'm/d/yy' } as const
 const hrs = (ms: number) => Math.round(ms / 36_000) / 100
 const day = (d: string) => new Date(d + 'T12:00:00')
-const longDay = (d: string) => day(d).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
-const shortDay = (d: string) => day(d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
-const dateCell = (d: string): Cell => { const [y, m, dd] = d.split('-').map(Number); return { v: Date.UTC(y, m - 1, dd) / 86_400_000 + 25569, s: X.mDate, t: shortDay(d) } }
+export const longDay = (d: string) => day(d).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+export const shortDay = (d: string) => day(d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+export const dateCell = (d: string): Cell => { const [y, m, dd] = d.split('-').map(Number); return { v: Date.UTC(y, m - 1, dd) / 86_400_000 + 25569, s: X.mDate, t: shortDay(d) } }
 const empty = xT('', X.wCell), none = xT('—', X.wCell)
-function page(widths: number[]) {
+/** a report page in Mike's look: rows, merged bands, gaps, and the sheet at the end */
+export function mikePage(widths: number[]) {
   const rows: Cell[][] = [], heights: Record<number, number> = {}, merges: string[] = [], last = colName(widths.length - 1)
   const row = (cells: Cell[], ht?: number) => { if (ht) heights[rows.length] = ht; rows.push(cells); return rows.length }
   const across = (text: string, style: number, ht: number) => { const r = row([xT(text, style), ...Array.from({ length: widths.length - 1 }, () => xT('', style))], ht); merges.push('A' + r + ':' + last + r) }
@@ -204,7 +205,7 @@ export function pplhBook(s: State, from: string, to: string, date: string, now: 
   const all = pplhOfRange(list)
 
   // ---- SUMMARY ----
-  const a = page([24, 18, 18, 20, 18, 18])
+  const a = mikePage([24, 18, 18, 20, 18, 18])
   a.across('East Rutherford — Daily Pounds per Labor Hour', X.mBand, 32)
   a.across(`Report for ${longDay(date)}. Pounds: NetSuite ingredients used (Lbs Used). Hours: labor hours from HR. Lbs/Labor Hr = pounds ÷ hours.`, X.mSub, 34)
   a.gap()
@@ -230,7 +231,7 @@ export function pplhBook(s: State, from: string, to: string, date: string, now: 
   ])
 
   // ---- DOWNTIME ----
-  const b = page([16, 12, 12, 14, 11, 12, 13, 13, 12, 11, 40])
+  const b = mikePage([16, 12, 12, 14, 11, 12, 13, 13, 12, 11, 40])
   b.across('East Rutherford — Downtime by Room', X.mBand, 32)
   b.across(`${longDay(date)}, both shifts. Time with a code running on each line, lines added up. Stopped = mechanical, personnel, cleaning and other; Lunch & Break and Set up are apart.`, X.mSub, 34)
   b.gap()
@@ -260,7 +261,7 @@ export function pplhBook(s: State, from: string, to: string, date: string, now: 
   ])
 
   // ---- YIELD ----
-  const c = page([14, 16, 16, 12, 12, 60])
+  const c = mikePage([14, 16, 16, 12, 12, 60])
   c.across('East Rutherford — Yield by Product', X.mBand, 32)
   c.across('Yield = pounds out ÷ pounds in, by product. The NetSuite file lists ingredients by item, not by product, so the pounds of each product need their own source.', X.mSub, 34)
   c.gap()
@@ -269,7 +270,7 @@ export function pplhBook(s: State, from: string, to: string, date: string, now: 
   const yieldSheet = c.done('YIELD')
 
   // ---- HOW IT IS CALCULATED ----
-  const d = page([30, 90])
+  const d = mikePage([30, 90])
   d.across('How each number is worked out', X.mBand, 32)
   d.gap()
   for (const [k, v] of [

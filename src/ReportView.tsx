@@ -9,6 +9,7 @@ import { attendanceOf, attLineText, attMovesText, attOf, attShifts, attStateText
 import { awayDay, byLineName, COOKS, consumesOf, inventoryOf, stepText, weightEdit, weightPaperAdd, weightsFix, weightTarget, wtKindsOf, wtOdd, wtPaperAt, wtPaperLines, wtPicksCode, type Cook, type Dept as RoomDept, type WeightTest, type WtEntry } from './store'
 import { MINI_WEEKS, miniBook, miniSpan, miniTables, miniWeek } from './miniKpi'
 import { PplhView, RangePick } from './PplhView'
+import { DashView } from './DashView'
 import { datesFrom, seesPplh } from './pplh'
 import { loadDay } from './sync'
 import { pctText } from './Attendance'
@@ -40,7 +41,7 @@ import { trx } from './trx'
  */
 
 /** the parts of the report, one tab each */
-type View = 'gen' | 'code' | 'shift' | 'pal' | 'wt' | 'mini' | 'pplh' | 'rec' | 'chg'
+type View = 'gen' | 'code' | 'shift' | 'pal' | 'wt' | 'dash' | 'mini' | 'pplh' | 'rec' | 'chg'
 /** the three lists of Registros, and the two of Pallets */
 type RecSub = 'runs' | 'units' | 'stops'
 type PalSub = 'pallets' | 'bins'
@@ -117,12 +118,13 @@ const onScreen = (hits: Hit[]) => hits.filter((h) => !(h.kind === 'unit' && h.de
 const none = (v: unknown) => (v === '—' ? 'c-none' : undefined)
 
 /** what each part of the report is called, and what it holds (said under the tabs and in the help) */
-const viewLabel = (v: View) => (v === 'gen' ? tr('General') : v === 'code' ? tr('Por código') : v === 'shift' ? tr('Por turno') : v === 'pal' ? '📦 ' + tr('Pallets') : v === 'wt' ? '⚖ ' + tr('Pesos') : v === 'mini' ? '📅 ' + tr('Mini KPI') : v === 'pplh' ? '📈 PPLH' : v === 'rec' ? tr('Registros') : tr('Cambios'))
+const viewLabel = (v: View) => (v === 'gen' ? tr('General') : v === 'code' ? tr('Por código') : v === 'shift' ? tr('Por turno') : v === 'pal' ? '📦 ' + tr('Pallets') : v === 'wt' ? '⚖ ' + tr('Pesos') : v === 'dash' ? '📊 Dashboard' : v === 'mini' ? '📅 ' + tr('Mini KPI') : v === 'pplh' ? '📈 PPLH' : v === 'rec' ? tr('Registros') : tr('Cambios'))
 const viewSub = (v: View) => (v === 'gen' ? tr('Lo hecho por cada departamento, cada turno y por qué se paró.')
   : v === 'code' ? tr('Cada código con sus lotes, como en el Excel. Toca un código o un lote para ver solo eso; toca lo hecho para ver cada unidad.')
     : v === 'shift' ? tr('Cada departamento con el día completo y cada turno: lo hecho, el reloj y la suma de sus líneas.')
       : v === 'pal' ? tr('Los pallets de Packing uno por uno, con sus lotes, tags y PO, y sus bins aparte.')
         : v === 'wt' ? tr('Lo que se pesó: cada código con sus pruebas hechas de las que tocaban, el promedio contra el objetivo, los bajos y sobre, y cada prueba con sus pesos.')
+        : v === 'dash' ? tr('Lo que Mike pidió ver: yield, shorts y PPLH, el resumen de pesos con una columna por día y su gráfica, con su Excel.')
         : v === 'mini' ? tr('La semana de un turno, de domingo a viernes: arranque, producción contra la meta, paros, consumo, waste y pesos.')
         : v === 'pplh' ? tr('El KPI diario de Mike: libras por hora de trabajo y el downtime de cada cuarto, con su Excel.')
         : v === 'rec' ? tr('Cada corrida, cada unidad y cada paro: para buscar, ver, corregir o agregar.')
@@ -446,7 +448,7 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
   // a room's column in the lists only when more than one room is in view
   const manyRooms = !dept
   // ---- the parts: which ones this person has, and how many things each holds (or how many the search found in it) ----
-  const views: View[] = ['gen', 'code', 'shift', ...(!only || only === 'Packing' ? ['pal' as const] : []), ...(wt.rows.length ? ['wt' as const] : []), ...(mgr ? ['mini' as const] : []), ...(seesPplh(s, admin, user.get()) ? ['pplh' as const] : []), 'rec', ...(mgr ? ['chg' as const] : [])]
+  const views: View[] = ['gen', 'code', 'shift', ...(!only || only === 'Packing' ? ['pal' as const] : []), ...(wt.rows.length ? ['wt' as const] : []), ...(mgr ? ['dash' as const, 'mini' as const] : []), ...(seesPplh(s, admin, user.get()) ? ['pplh' as const] : []), 'rec', ...(mgr ? ['chg' as const] : [])]
   const v: View = views.includes(view) ? view : 'gen'
   const hitCount = (x: View) => (x === 'code' ? hitsOf('code').length : x === 'pal' ? hitsOf('pallet', 'bin').length : x === 'rec' ? hitsOf('unit', 'run', 'stop').length : x === 'chg' ? hitsOf('change').length : null)
   const tabs = views.map((x) => {
@@ -616,7 +618,7 @@ export function Report(props: ReportProps) {
       <div className="rp-sub"><span>{viewSub(v)}</span><button type="button" className="btn sm" onClick={() => setHelp(true)}>ⓘ {tr('Cómo leer este reporte')}</button></div>
       <div id="rp-panel" role="tabpanel" aria-labelledby={'rp-tab-' + v} className="rp-panel">
         {/* (a day, or a filter, with no code but with stops: every part says so and Registros opens on them) */}
-        {v === 'chg' ? <ChangesView k={k} /> : v === 'wt' ? <WeightsView k={k} /> : v === 'mini' ? <MiniKpiView k={k} /> : v === 'pplh' ? <PplhView s={k.s} date={k.date} now={k.now} edit={!k.viewOnly} admin={k.admin} /> : k.searching && (v === 'gen' || v === 'shift') ? <SearchResults k={k} />
+        {v === 'chg' ? <ChangesView k={k} /> : v === 'wt' ? <WeightsView k={k} /> : v === 'dash' ? <DashView s={k.s} date={k.date} now={k.now} pplh={seesPplh(k.s, k.admin, user.get())} /> : v === 'mini' ? <MiniKpiView k={k} /> : v === 'pplh' ? <PplhView s={k.s} date={k.date} now={k.now} edit={!k.viewOnly} admin={k.admin} /> : k.searching && (v === 'gen' || v === 'shift') ? <SearchResults k={k} />
           : rows.length === 0 ? (v === 'rec' && k.stops.length > 0 ? <RecordsView k={k} /> : <EmptyDay k={k} />)
             : v === 'gen' ? <GeneralView k={k} /> : v === 'code' ? <CodesView k={k} /> : v === 'shift' ? <ShiftsView k={k} /> : v === 'pal' ? <PalletsView k={k} /> : <RecordsView k={k} />}
       </div>
