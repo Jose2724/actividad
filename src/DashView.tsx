@@ -57,7 +57,7 @@ export function DashView({ s, date, now, pplh }: { s: State; date: string; now: 
           <tbody>{data.map((c) => DASH_KINDS.map((k, i) => (
             <tr key={c.code + k}>
               {i === 0 && <td rowSpan={3} className="dash-code"><b>{c.code}</b></td>}
-              <td>{kindName(k)}</td>
+              <td className={'dash-k dash-k-' + k}>{kindName(k)}</td>
               <td className="dash-target">{c.target[k] ? wtRangeLong(c.target[k]) : '—'}</td>
               {c.days.map((d) => cell(d[k], d.date))}
               {showWeeks && c.weeks.map((w) => cell(w[k], 'w' + w.monday, ' dash-week'))}
