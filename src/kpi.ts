@@ -399,7 +399,7 @@ export function wtBoardSheet(s: State, rows: WtRow[], date: string): Sheet {
   for (const x of wtBoard(s, rows)) {
     const r = row([xT(x.code, X.wBigN), xT(x.weighed ? String(x.times) : '0', X.wBigN), big(x.raw), big(x.cooked), big(x.pouch)], 48)
     row([xT('', X.wcText), xT(tr('veces'), X.wTarget), qa(x.raw), qa(x.cooked), qa(x.pouch)], 30)
-    row([xT('', X.wcText), xT('', X.wcText), ...[x.raw, x.cooked, x.pouch].map((p) => xT(wtCountText(p) || '—', X.wTarget))], 24)
+    row([xT('', X.wcText), xT('', X.wcText), ...[x.raw, x.cooked, x.pouch].map((p) => xT(wtCountText(p) || '—', X.wcBold))], 24)
     merges.push('A' + r + ':A' + (r + 2))
     across(x.result, x.action ? X.wBadW : x.weighed ? X.wGoodW : X.wLeft, 26)
     row([], 10)
