@@ -258,12 +258,13 @@ export function pplhBook(s: State, from: string, to: string, date: string, now: 
   // (by week or by month when asked so: one row per week as his SUMMARY, or per month; the chart follows)
   const groups = by === 'day' ? null : pplhGroups(s, from, to, by), look = by === 'month' ? { titleColor: MIKE_LOOK.titleColor } : MIKE_LOOK
   a.across(`${by === 'week' ? 'Week by week (Monday to Sunday)' : by === 'month' ? 'Month by month' : 'Day by day'} · ${shortDay(from)} to ${shortDay(to)}`, X.wSec, 24)
-  a.row([by === 'week' ? 'Week of' : by === 'month' ? 'Month' : 'Date', 'East Rutherford Lbs', 'East Rutherford Hours', 'East Rutherford Lbs/Labor Hr', groups ? 'Days' : 'NetSuite rows'].map((t) => xT(t, X.mHead)), 34)
+  // (no NetSuite rows column by day, Jose 2026-11-03: "eliminar esta row por ahora")
+  a.row([by === 'week' ? 'Week of' : by === 'month' ? 'Month' : 'Date', 'East Rutherford Lbs', 'East Rutherford Hours', 'East Rutherford Lbs/Labor Hr', ...(groups ? ['Days'] : [])].map((t) => xT(t, X.mHead)), 34)
   const from1 = a.rows.length + 1
   if (groups) for (const g of groups) a.row([by === 'week' ? dateCell(g.from) : xT(monthName(g.key), X.wLeft), g.lbs == null ? empty : xN(Math.round(g.lbs), X.wN), g.hours == null ? empty : xN(g.hours, X.mN1), g.pplh == null ? empty : xN(g.pplh, X.mN1), xT(`${g.lbsDays} of ${g.days} with pounds${g.weekly ? ' · weekly hours' : ''}${g.whole ? '' : ' · cut by the range'}`, X.wCell)], 20)
-  else for (const r of list) a.row([dateCell(r.date), r.lbs == null ? empty : xN(Math.round(r.lbs), X.wN), r.hours == null ? empty : xN(r.hours, X.mN1), r.pplh == null ? empty : xN(r.pplh, X.mN1), r.rows ? xN(r.rows, X.wN) : r.lbs != null ? xT('typed', X.wCell) : empty], 20)
+  else for (const r of list) a.row([dateCell(r.date), r.lbs == null ? empty : xN(Math.round(r.lbs), X.wN), r.hours == null ? empty : xN(r.hours, X.mN1), r.pplh == null ? empty : xN(r.pplh, X.mN1)], 20)
   const to1 = a.rows.length
-  a.row([xT('Range', X.mHead), xN(Math.round(all.lbs), X.wN), xN(all.hours, X.mN1), all.pplh == null ? none : xN(all.pplh, X.mN1), xT(`${all.days} day(s) with both`, X.wCell)], 22)
+  a.row([xT('Range', X.mHead), xN(Math.round(all.lbs), X.wN), xN(all.hours, X.mN1), all.pplh == null ? none : xN(all.pplh, X.mN1), ...(groups ? [xT(`${all.days} day(s) with both`, X.wCell)] : [])], 22)
   a.across('The range adds the pounds and the hours of the days that have both, then divides: it is not an average of the daily numbers. A day with no NetSuite file or no HR hours is left blank, never estimated.', X.note, 34)
   a.gap()
   const TALL = 17, at1 = a.gap(TALL), at2 = (a.gap(), a.gap(TALL))
