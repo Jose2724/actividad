@@ -94,8 +94,9 @@ export function PplhView({ s, date, now, edit, admin }: { s: State; date: string
     if (!text.trim()) { if (was != null) setPplhWeekHours(monday, null); return }
     if (Number.isFinite(n) && n > 0 && n !== was) setPplhWeekHours(monday, n)
   }
+  // (trimmed to a readable width as the dashboard, Jose 2026-11-03: "darle algo de diseño y trim it")
   return (
-    <>
+    <div className="pplh">
       <p className="hint">{tr('Libras por hora de trabajo de {0}: las libras de NetSuite (el archivo de Melissa) ÷ las horas de Recursos Humanos. El día del reporte es la fecha de arriba: para el reporte de las 11:30, elige ayer.', PPLH_SITE)}</p>
       <article className="wt-rp">
         <h3>{tr('Día del reporte')}</h3>
@@ -184,7 +185,7 @@ export function PplhView({ s, date, now, edit, admin }: { s: State; date: string
         <p className="hint amber">{tr('Falta la fuente de las libras de cada producto: el archivo de NetSuite trae ingredientes, no dice a qué producto fueron. Sale vacío en el Excel hasta que se defina.')}</p>
       </article>
       {admin && <PplhAccess s={s} />}
-    </>
+    </div>
   )
 }
 
