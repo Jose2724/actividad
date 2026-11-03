@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { awayDay, type State } from './store'
 import { loadDay } from './sync'
-import { datesFrom, downtimeOf, netsuiteSheet, pplhBook, readHours, type HoursRead, pplhGroups, pplhNames, pplhOfGroups, pplhOfRange, pplhRow, pplhWeekHours, rangeShortcuts, readNetsuite, savePplhLbs, setPplhHours, setPplhNames, setPplhWeekHours, PPLH_SITE, type NetsuiteRead, type PplhBy } from './pplh'
+import { datesFrom, downtimeOf, netsuiteSheet, pplhBook, pplhLbsByHand, readHours, setPplhLbsHand, type HoursRead, pplhGroups, pplhNames, pplhOfGroups, pplhOfRange, pplhRow, pplhWeekHours, rangeShortcuts, readNetsuite, savePplhLbs, setPplhHours, setPplhNames, setPplhWeekHours, PPLH_SITE, type NetsuiteRead, type PplhBy } from './pplh'
 import { loadZip, readCsv, readXlsx, xlsxNow, XLSX_TYPE } from './xlsx'
 import { download } from './App'
 import { locale, tr } from './i18n'
@@ -78,6 +78,13 @@ export function PplhView({ s, date, now, edit, admin }: { s: State; date: string
     if (!text.trim()) { if (was != null) setPplhHours(d, null); return }
     if (Number.isFinite(n) && n > 0 && n !== was) setPplhHours(d, n)
   }
+  // a day's pounds typed by hand when Melissa's file does not come (Mike dictates them, 2026-11-03); a file's day is not touched here
+  const saveLbs = (d: string, text: string) => {
+    const n = Number(text.replace(/,/g, ''))
+    const was = pplhRow(s, d).lbs
+    if (!text.trim()) { if (was != null) setPplhLbsHand(s, d, null); return }
+    if (Number.isFinite(n) && n > 0 && n !== was) setPplhLbsHand(s, d, n)
+  }
   const saveWeekHours = (monday: string, text: string) => {
     const n = Number(text.replace(/,/g, ''))
     const was = pplhWeekHours(s, monday)
@@ -141,7 +148,7 @@ export function PplhView({ s, date, now, edit, admin }: { s: State; date: string
             {by === 'day' ? rows.map((r) => (
               <tr key={r.date} className={r.date === date ? 'on' : ''}>
                 <td><b>{r.date}</b></td>
-                <td>{r.lbs == null ? '—' : lb(r.lbs)}</td>
+                <td>{edit && (r.lbs == null || pplhLbsByHand(s, r.date)) ? <><input key={r.date + ':' + (r.lbs ?? '')} className="pplh-h lbs" inputMode="decimal" defaultValue={r.lbs ?? ''} placeholder={tr('a mano')} aria-label={tr('Libras del {0}', r.date)} onBlur={(e) => saveLbs(r.date, e.target.value)} />{r.lbs != null && <small> {tr('a mano')}</small>}</> : r.lbs == null ? '—' : <>{lb(r.lbs)}{pplhLbsByHand(s, r.date) && <small> {tr('a mano')}</small>}</>}</td>
                 <td>{edit ? <input key={r.date + ':' + (r.hours ?? '')} className="pplh-h" inputMode="decimal" defaultValue={r.hours ?? ''} aria-label={tr('Horas del {0}', r.date)} onBlur={(e) => saveHours(r.date, e.target.value)} /> : r.hours == null ? '—' : one(r.hours)}</td>
                 <td>{r.pplh == null ? '—' : one(r.pplh)}</td>
               </tr>
@@ -158,7 +165,7 @@ export function PplhView({ s, date, now, edit, admin }: { s: State; date: string
               : <tr><td><b>{tr('Rango')}</b></td><td>{lb(allG.lbs)}</td><td>{one(allG.hours)}</td><td>{allG.pplh == null ? '—' : one(allG.pplh)}</td><td>{groups.reduce((t, g) => t + g.lbsDays, 0)} / {range.length}</td></tr>}
           </tbody>
         </table></div>
-        <p className="hint">{tr('El rango suma las libras y las horas de los días que tienen las dos, y luego divide: no es un promedio de los días. Un día sin archivo o sin horas queda vacío, nunca estimado.')}{by !== 'day' && ' ' + tr('Las semanas van de lunes a domingo, como el SUMMARY de Mike. Si Recursos Humanos da las horas por semana y no por día, se escriben en la fila de la semana completa (Por semana) y toman todas las libras de esa semana.')}</p>
+        <p className="hint">{tr('El rango suma las libras y las horas de los días que tienen las dos, y luego divide: no es un promedio de los días. Un día sin archivo o sin horas queda vacío, nunca estimado.')}{edit && ' ' + tr('Si Mike dicta las libras de un día, escríbelas en su casilla; el archivo de NetSuite, cuando llegue, las reemplaza.')}{by !== 'day' && ' ' + tr('Las semanas van de lunes a domingo, como el SUMMARY de Mike. Si Recursos Humanos da las horas por semana y no por día, se escriben en la fila de la semana completa (Por semana) y toman todas las libras de esa semana.')}</p>
       </article>
       <article className="wt-rp">
         <h3>{tr('Downtime por cuarto · día del reporte')}</h3>

@@ -6128,6 +6128,14 @@ section('KPI diario de Mike: libras de NetSuite ÷ horas, y el downtime por cuar
     eq('el rango suma libras y horas de los días con las dos y divide (no promedia los PPLH)', [range.lbs, range.hours, range.days, range.pplh], [2400.5, 40, 2, 2400.5 / 40])
     m.setPplhHours('2026-10-23', null)
     eq('borrar las horas de un día lo deja vacío', m.pplhRow(st(), '2026-10-23').hours, null)
+    // pounds typed by hand when Melissa's file cannot come (Mike dictates them, 2026-11-03)
+    m.setPplhLbsHand(st(), '2026-10-25', 103797.7)
+    eq('las libras escritas a mano cuentan como las del archivo, sin filas de NetSuite, y lo dicen', [m.pplhRow(st(), '2026-10-25').lbs, m.pplhRow(st(), '2026-10-25').rows, m.pplhLbsByHand(st(), '2026-10-25'), m.pplhLbsByHand(st(), '2026-10-22'), m.pplhLbs(st(), '2026-10-22')?.lbs], [103797.7, 0, true, false, 1500.5])
+    m.savePplhLbs(st(), [{ date: '2026-10-25', lbs: 90000, rows: 20 }], 'nuevo.xlsx')
+    eq('el archivo que llega después reemplaza el día escrito a mano', [m.pplhRow(st(), '2026-10-25').lbs, m.pplhLbsByHand(st(), '2026-10-25')], [90000, false])
+    m.setPplhLbsHand(st(), '2026-10-26', 5), m.setPplhLbsHand(st(), '2026-10-26', null)
+    eq('borrar lo escrito a mano deja el día vacío y no toca los otros', [m.pplhRow(st(), '2026-10-26').lbs, m.pplhRow(st(), '2026-10-25').lbs], [null, 90000])
+    m.setPplhLbsHand(st(), '2026-10-25', null)
     // downtime by room, both shifts, split as the Mini KPI splits it
     m.addLine('RTE', 'Línea 1')
     const l1 = st().lines.find((l) => l.name === 'Línea 1'), D = '2026-10-22'

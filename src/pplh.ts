@@ -24,6 +24,17 @@ const monthOf = (s: State, ym: string) => (kpiGet(s, LBS + ym)?.data as LbsMonth
 export const pplhLbs = (s: State, date: string): PplhLbs | null => monthOf(s, date.slice(0, 7))[date] ?? null
 export const pplhHours = (s: State, date: string): number | null => { const h = kpiGet(s, HRS + date)?.data.hours; return typeof h === 'number' && h > 0 ? h : null }
 export const setPplhHours = (date: string, hours: number | null) => kpiPut(HRS + date, hours && hours > 0 ? { hours: Math.round(hours * 100) / 100 } : {}, !(hours && hours > 0))
+/**
+ * a day's pounds typed by hand (2026-11-03: Mike dictates them to Jose when Melissa's file cannot be sent): kept as
+ * that day with no NetSuite rows (rows 0 says so); a file uploaded later replaces it. Null takes the typed day away
+ */
+export function setPplhLbsHand(s: State, date: string, lbs: number | null) {
+  const ym = date.slice(0, 7), was = kpiGet(s, LBS + ym)?.data as LbsMonth | undefined, days = { ...(was?.days ?? {}) }
+  if (lbs && lbs > 0) days[date] = { lbs: Math.round(lbs * 100) / 100, rows: 0 }; else delete days[date]
+  kpiPut(LBS + ym, { days, ...(was?.file ? { file: was.file } : {}) }, !Object.keys(days).length)
+}
+/** true when a day's pounds were typed, not read from a file */
+export const pplhLbsByHand = (s: State, date: string) => { const l = pplhLbs(s, date); return !!l && l.rows === 0 }
 /** the pounds of a file, kept: each day it brings replaces that day, the others of the month stay */
 export function savePplhLbs(s: State, days: { date: string; lbs: number; rows: number }[], file: string) {
   const months = new Map<string, Record<string, PplhLbs>>()
@@ -250,7 +261,7 @@ export function pplhBook(s: State, from: string, to: string, date: string, now: 
   a.row([by === 'week' ? 'Week of' : by === 'month' ? 'Month' : 'Date', 'East Rutherford Lbs', 'East Rutherford Hours', 'East Rutherford Lbs/Labor Hr', groups ? 'Days' : 'NetSuite rows'].map((t) => xT(t, X.mHead)), 34)
   const from1 = a.rows.length + 1
   if (groups) for (const g of groups) a.row([by === 'week' ? dateCell(g.from) : xT(monthName(g.key), X.wLeft), g.lbs == null ? empty : xN(Math.round(g.lbs), X.wN), g.hours == null ? empty : xN(g.hours, X.mN1), g.pplh == null ? empty : xN(g.pplh, X.mN1), xT(`${g.lbsDays} of ${g.days} with pounds${g.weekly ? ' · weekly hours' : ''}${g.whole ? '' : ' · cut by the range'}`, X.wCell)], 20)
-  else for (const r of list) a.row([dateCell(r.date), r.lbs == null ? empty : xN(Math.round(r.lbs), X.wN), r.hours == null ? empty : xN(r.hours, X.mN1), r.pplh == null ? empty : xN(r.pplh, X.mN1), r.rows ? xN(r.rows, X.wN) : empty], 20)
+  else for (const r of list) a.row([dateCell(r.date), r.lbs == null ? empty : xN(Math.round(r.lbs), X.wN), r.hours == null ? empty : xN(r.hours, X.mN1), r.pplh == null ? empty : xN(r.pplh, X.mN1), r.rows ? xN(r.rows, X.wN) : r.lbs != null ? xT('typed', X.wCell) : empty], 20)
   const to1 = a.rows.length
   a.row([xT('Range', X.mHead), xN(Math.round(all.lbs), X.wN), xN(all.hours, X.mN1), all.pplh == null ? none : xN(all.pplh, X.mN1), xT(`${all.days} day(s) with both`, X.wCell)], 22)
   a.across('The range adds the pounds and the hours of the days that have both, then divides: it is not an average of the daily numbers. A day with no NetSuite file or no HR hours is left blank, never estimated.', X.note, 34)

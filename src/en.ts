@@ -3476,4 +3476,7 @@ export const EN: Record<string, string> = {
   "Divisiones: {0}.": "Divisions: {0}.",
   "Reemplaza las horas de {0} días que ya estaban.": "It replaces the hours of {0} days that were already there.",
   "✓ Guardar las horas": "✓ Save the hours",
+  "a mano": "by hand",
+  "Libras del {0}": "Pounds of {0}",
+  "Si Mike dicta las libras de un día, escríbelas en su casilla; el archivo de NetSuite, cuando llegue, las reemplaza.": "If Mike dictates a day's pounds, type them in its box; the NetSuite file, when it comes, replaces them.",
 }
