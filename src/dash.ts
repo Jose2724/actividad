@@ -1,6 +1,6 @@
 import { WT_ASKED_CODES, type State } from './store'
 import { weightsOf, wtBoard, wtRangeLong, type WtAvg, type WtBoardRow } from './kpi'
-import { dateCell, mikePage, MIKE_LOOK, pplhOfRange, pplhRow, shortDay } from './pplh'
+import { dateCell, mikePage, MIKE_LOOK, mondayOf, pplhOfRange, pplhRow, shortDay } from './pplh'
 import { colName, X, xN, xT, type Cell, type Chart } from './xlsx'
 
 /**
@@ -13,17 +13,27 @@ import { colName, X, xN, xT, type Cell, type Chart } from './xlsx'
 export type DashKind = 'raw' | 'cooked' | 'pouch'
 export const DASH_KINDS: DashKind[] = ['raw', 'cooked', 'pouch']
 export type DashDay = { date: string; times: number; raw: WtAvg; cooked: WtAvg; pouch: WtAvg }
-export type DashCode = { code: string; days: DashDay[]; all: WtBoardRow; target: Record<DashKind, string> }
-/** each asked code over the dates: the board of each day, the board of all of them together, and QA's ranges */
+/** a week's average (Mike, 2026-11-03: "un average de semana también"): its days inside the range, Monday to Sunday */
+export type DashWeek = DashDay & { monday: string; to: string; days: number }
+export type DashCode = { code: string; days: DashDay[]; weeks: DashWeek[]; all: WtBoardRow; target: Record<DashKind, string> }
+const pick = (board: WtBoardRow[], code: string) => board.find((y) => y.code === code) as WtBoardRow
+const dayOf = (x: WtBoardRow, date: string): DashDay => ({ date, times: x.weighed ? x.times : 0, raw: x.raw, cooked: x.cooked, pouch: x.pouch })
+/**
+ * each asked code over the dates: the board of each day, of each week the range touches (its days inside the range),
+ * of all of them together, and QA's ranges. A week's or the range's average is of all its weights, not of the daily averages
+ */
 export function dashOf(s: State, dates: string[], now = Date.now()): DashCode[] {
   const byDay = dates.map((date) => ({ date, rows: weightsOf(s, date, now) }))
   const boards = byDay.map((x) => ({ date: x.date, board: wtBoard(s, x.rows) }))
+  const weeks = [...new Set(dates.map(mondayOf))].map((monday) => { const mine = byDay.filter((x) => mondayOf(x.date) === monday); return { monday, from: mine[0].date, to: mine[mine.length - 1].date, days: mine.length, board: wtBoard(s, mine.flatMap((x) => x.rows)) } })
   const all = wtBoard(s, byDay.flatMap((x) => x.rows))
-  return WT_ASKED_CODES.map((code) => {
-    const a = all.find((b) => b.code === code) as WtBoardRow
-    const days = boards.map((b): DashDay => { const x = b.board.find((y) => y.code === code) as WtBoardRow; return { date: b.date, times: x.weighed ? x.times : 0, raw: x.raw, cooked: x.cooked, pouch: x.pouch } })
-    return { code, days, all: a, target: { raw: a.raw.range, cooked: a.cooked.range, pouch: a.pouch.range } }
-  })
+  return WT_ASKED_CODES.map((code) => ({
+    code,
+    days: boards.map((b) => dayOf(pick(b.board, code), b.date)),
+    weeks: weeks.map((w): DashWeek => ({ ...dayOf(pick(w.board, code), w.from), monday: w.monday, to: w.to, days: w.days })),
+    all: pick(all, code),
+    target: { raw: pick(all, code).raw.range, cooked: pick(all, code).cooked.range, pouch: pick(all, code).pouch.range },
+  }))
 }
 /** the range's PPLH for the tile on top (the days that have pounds and hours, added up) */
 export const dashPplh = (s: State, dates: string[]) => pplhOfRange(dates.map((d) => pplhRow(s, d)))
@@ -33,6 +43,9 @@ const KIND_NAME: Record<DashKind, string> = { raw: 'Raw', cooked: 'Cooked', pouc
 export const DASH_COLORS: Record<DashKind, string> = { raw: 'EB6834', cooked: '2A78D6', pouch: '1BAF7A' }
 const md = (d: string) => { const [, m, dd] = d.split('-').map(Number); return m + '/' + dd }
 const avgCell = (x: WtAvg): Cell => (x.avg == null ? xT('', X.wCell) : xN(x.avg, x.ok === 'ok' ? X.wDg : x.ok === 'under' ? X.wDr : x.ok === 'over' ? X.wDa : X.wD))
+/** under an average: from how many tests and weights it comes (Jose, 2026-11-03: "la cantidad: tests y los weights tomados") */
+export const dashCount = (x: WtAvg) => (!x.tests ? '' : `${x.tests} test${x.tests === 1 ? '' : 's'} · ${x.n} wt${x.n === 1 ? '' : 's'}`)
+const countCell = (x: WtAvg): Cell => xT(dashCount(x), X.note)
 const target = (r: string) => (r ? wtRangeLong(r) + ' oz' : '—')
 /**
  * the dashboard as a sheet, in English and in Mike's look: the three tiles, the summary with one column per day, and
@@ -41,7 +54,7 @@ const target = (r: string) => (r ? wtRangeLong(r) + ' oz' : '—')
  */
 export function dashBook(s: State, from: string, to: string, dates: string[], now: number) {
   const data = dashOf(s, dates, now), pplh = dashPplh(s, dates)
-  const n = dates.length, widths = [11, 9, 13, ...dates.map(() => 8), 9]
+  const n = dates.length, manyWeeks = data[0].weeks.length > 1, widths = [11, 9, 13, ...dates.map(() => 9), ...data[0].weeks.map(() => 11), ...(manyWeeks ? [9] : [])]
   const a = mikePage(widths), charts: Chart[] = []
   a.across('E.R. - Ops Summary · Yield + Weight Summary', X.wBand, 34)
   a.across(from === to ? shortDay(from) : `${shortDay(from)} to ${shortDay(to)} · ${n} days`, X.wSub, 22)
@@ -53,13 +66,16 @@ export function dashBook(s: State, from: string, to: string, dates: string[], no
   for (const r of [tileRow - 1, tileRow, tileRow + 1]) a.merges.push(`A${r}:B${r}`, `C${r}:D${r}`, `E${r}:F${r}`)
   a.gap()
   a.across('Yield + Weight Summary', X.wSec, 24)
-  a.row(['Product', '', 'Target', ...dates.map(md), 'Range'].map((t) => xT(t, X.mHead)), 30)
+  a.row(['Product', '', 'Target', ...dates.map(md), ...data[0].weeks.map((w) => (manyWeeks || w.days < 7 ? `Week of ${md(w.monday)}` : 'Week avg')), ...(manyWeeks ? ['Range'] : [])].map((t) => xT(t, X.mHead)), 30)
   for (const c of data) {
     const first = a.rows.length + 1
-    for (const k of DASH_KINDS) a.row([xT(k === 'raw' ? c.code : '', X.wBigN), xT(KIND_NAME[k], X.wLeft), xT(target(c.target[k]), X.wTarget), ...c.days.map((d) => avgCell(d[k])), avgCell(c.all[k])], 24)
-    a.merges.push(`A${first}:A${first + 2}`)
+    for (const k of DASH_KINDS) {
+      a.row([xT(k === 'raw' ? c.code : '', X.wBigN), xT(KIND_NAME[k], X.wLeft), xT(target(c.target[k]), X.wTarget), ...c.days.map((d) => avgCell(d[k])), ...c.weeks.map((w) => avgCell(w[k])), ...(manyWeeks ? [avgCell(c.all[k])] : [])], 22)
+      a.row([xT('', X.wCell), xT('', X.wCell), xT('', X.wCell), ...c.days.map((d) => countCell(d[k])), ...c.weeks.map((w) => countCell(w[k])), ...(manyWeeks ? [countCell(c.all[k])] : [])], 16)
+    }
+    a.merges.push(`A${first}:A${first + 5}`)
   }
-  a.across('Each number is the average of every weight taken that day over the whole plant, in ounces, against QA\'s range: green inside, red under, amber over. Blank = nothing weighed. Range = all the days together.', X.note, 34)
+  a.across('Each number is the average of every weight taken that day over the whole plant, in ounces, against QA\'s range: green inside, red under, amber over; under it, how many tests and weights it comes from. Blank = nothing weighed. Week = all that week\'s weights together (Monday to Sunday, the days inside the range); Range = all the days together.', X.note, 34)
   a.gap()
   // each product's days down, and its charts beside
   for (const c of data) {
@@ -78,7 +94,7 @@ export function dashBook(s: State, from: string, to: string, dates: string[], no
   for (const [k, v] of [
     ['Raw / Cooked / Pouch', 'The average of all the weights of that kind taken that day, every room together (Kitchen\'s raw balls, Spiral\'s raw and cooked balls, RTE\'s pouches), in ounces.'],
     ['Target', 'QA\'s range for the code (or the one set in the app\'s Settings › KPI). A day\'s colour says where its average fell.'],
-    ['Range', 'The same average over every day of the range together, not an average of the daily averages.'],
+    ['Week / Range', 'The same average over every weight of the week (Monday to Sunday) or of the whole range together, not an average of the daily averages. Under each average: how many tests it comes from and how many weights they hold.'],
     ['PPLH', 'Pounds per labor hour over the range: the pounds (NetSuite) and the hours (HR) of the days that have both, added up, then divided.'],
     ['Yield / Shorts', 'Pending: the pounds per product and what counts as a short are being defined with Mike.'],
   ]) { const r = a.row([xT(k, X.wcBold), xT(v, X.note)], 30); a.merges.push(`B${r}:${colName(widths.length - 1)}${r}`) }

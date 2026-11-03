@@ -1585,7 +1585,7 @@ function WeightsView({ k }: { k: Kit }) {
       {wLabel && <p className="hint">{tr('El resumen y Por departamento son del {0} al {1} ({2} días); las pruebas de abajo, del día del reporte.', wDays[0], wDays[wDays.length - 1], wDays.length)}</p>}
       <div className="wt-board">{boardRows.map((x) => (
         <article key={x.code} className="wt-boardrow">
-          <div className="wt-boardhead"><b>{x.code}</b><span>{tr('{0} veces', x.times)}</span></div>
+          <div className="wt-boardhead"><b>{x.code}</b><span>{tr('{0} horas', x.times)}</span></div>
           <div className="wt-bigs">{bigCell(tr('Crudo prom.'), x.raw)}{bigCell(tr('Cocinado prom.'), x.cooked)}{bigCell(tr('Pouch prom.'), x.pouch)}</div>
           <p className={x.action ? 'red' : x.weighed ? 'ok' : 'muted'}>{x.result}</p>
         </article>
@@ -1595,7 +1595,7 @@ function WeightsView({ k }: { k: Kit }) {
       <article className="wt-rp">
         <h3>{tr('Por departamento')} <WhatIs id="peso-resumen" /></h3>
         <div className="scroll"><table className="wt-rp-tbl">
-          <thead><tr><th>{tr('Código')}</th><th>{tr('Departamento')}</th><th className="n">{tr('Veces revisado')}</th><th className="n">{tr('% en peso')}</th><th className="n">{tr('Crudo prom. (oz)')}</th><th className="n">{tr('Cocinado prom. (oz)')}</th><th className="n">{tr('Pouch prom. (oz)')}</th><th>{tr('Resultado')}</th></tr></thead>
+          <thead><tr><th>{tr('Código')}</th><th>{tr('Departamento')}</th><th className="n">{tr('Horas revisadas')}</th><th className="n">{tr('% en peso')}</th><th className="n">{tr('Crudo prom. (oz)')}</th><th className="n">{tr('Cocinado prom. (oz)')}</th><th className="n">{tr('Pouch prom. (oz)')}</th><th>{tr('Resultado')}</th></tr></thead>
           <tbody>{summaryRows.map((x) => (
             <tr key={x.code + x.where}>
               <td><b>{x.code}</b></td><td>{x.where || '—'}</td><td className="n">{x.times}</td>

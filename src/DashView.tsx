@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { awayDay, type State } from './store'
 import { loadDay } from './sync'
-import { wtRangeLong, type WtAvg } from './kpi'
+import { wtCountText, wtRangeLong, type WtAvg } from './kpi'
 import { DASH_COLORS, DASH_KINDS, dashBook, dashOf, dashPplh, type DashCode, type DashKind } from './dash'
 import { datesFrom, rangeShortcuts } from './pplh'
 import { RangePick } from './PplhView'
@@ -31,6 +31,9 @@ export function DashView({ s, date, now, pplh }: { s: State; date: string; now: 
   const data = useMemo(() => dashOf(s, dates, now), [s, dates]) // eslint-disable-line react-hooks/exhaustive-deps
   const p = useMemo(() => dashPplh(s, dates), [s, dates])
   const weighed = data.some((c) => c.days.some((d) => d.times > 0))
+  // the week's average beside the days (Mike, 2026-11-03), one per week the range touches; the range's own only when it spans more than a week
+  const weeks = data[0]?.weeks ?? [], manyWeeks = weeks.length > 1, showWeeks = dates.length > 1
+  const cell = (x: WtAvg, key: string) => <td key={key} className={'n' + okClass(x)}>{x.avg == null ? <span className="muted">—</span> : <><b>{x.avg.toFixed(2)}</b><small>{wtCountText(x)}</small></>}</td>
   const excel = async () => {
     const make = () => xlsxNow(dashBook(s, dates[0], dates[dates.length - 1], dates, now))
     const bytes = make() ?? (await loadZip(), make())
@@ -49,19 +52,20 @@ export function DashView({ s, date, now, pplh }: { s: State; date: string; now: 
         <h3>{tr('Resumen de yield y pesos')} <WhatIs id="dash" /></h3>
         <div className="btns"><button type="button" className="btn primary" onClick={() => void excel()}>{tr('⬇ Excel del Dashboard')}</button></div>
         <div className="scroll"><table className="wt-rp-tbl dash-tbl">
-          <thead><tr><th>{tr('Producto')}</th><th></th><th>Target</th>{dates.map((d) => <th key={d} className="n"><span>{md(d)}</span><small>{wd(d)}</small></th>)}<th className="n">{tr('Rango')}</th></tr></thead>
+          <thead><tr><th>{tr('Producto')}</th><th></th><th>Target</th>{dates.map((d) => <th key={d} className="n"><span>{md(d)}</span><small>{wd(d)}</small></th>)}{showWeeks && weeks.map((w) => <th key={w.monday} className="n dash-week"><span>{manyWeeks || w.days < 7 ? tr('Semana del {0}', md(w.monday)) : tr('Semana')}</span><small>{w.days === 7 ? tr('promedio') : tr('{0} de 7 días', w.days)}</small></th>)}{manyWeeks && <th className="n"><span>{tr('Rango')}</span><small>{tr('{0} días', dates.length)}</small></th>}</tr></thead>
           <tbody>{data.map((c) => DASH_KINDS.map((k, i) => (
             <tr key={c.code + k}>
               {i === 0 && <td rowSpan={3} className="dash-code"><b>{c.code}</b></td>}
               <td>{kindName(k)}</td>
               <td className="dash-target">{c.target[k] ? wtRangeLong(c.target[k]) : '—'}</td>
-              {c.days.map((d) => <td key={d.date} className={'n' + okClass(d[k])}>{d[k].avg == null ? <span className="muted">—</span> : <b>{d[k].avg.toFixed(2)}</b>}</td>)}
-              <td className={'n' + okClass(c.all[k])}>{c.all[k].avg == null ? <span className="muted">—</span> : <b>{c.all[k].avg.toFixed(2)}</b>}</td>
+              {c.days.map((d) => cell(d[k], d.date))}
+              {showWeeks && c.weeks.map((w) => cell(w[k], 'w' + w.monday))}
+              {manyWeeks && cell(c.all[k], 'all')}
             </tr>
           )))}</tbody>
         </table></div>
         <div className="wt-legend"><span className="ok">{tr('✓ Dentro del objetivo')}</span><span className="bad">{tr('✗ Bajo el objetivo')}</span><span className="warn">{tr('✗ Sobre el objetivo')}</span></div>
-        <p className="hint">{tr('Cada número es el promedio de todos los pesos de ese día en toda la planta, en onzas, contra el rango de QA. Vacío = no se pesó. Rango = todos los días juntos.')}</p>
+        <p className="hint">{tr('Cada número es el promedio de todos los pesos de ese día en toda la planta, en onzas, contra el rango de QA; debajo, de cuántas pruebas y pesos sale. Vacío = no se pesó. Semana = todos los pesos de esa semana juntos (lunes a domingo, los días del rango); Rango = todos los días juntos.')}</p>
         {!weighed && <p className="hint amber">{tr('No hay pesos en estos días.')}</p>}
       </article>
       {data.map((c) => (
@@ -142,12 +146,12 @@ function DashChart({ c }: { c: DashCode }) {
         {on != null && <line x1={x(on)} x2={x(on)} y1={T} y2={H - XL} className="dash-cross" />}
         {c.days.map((d, i) => { const w = n === 1 ? width - L - R : (width - L - R) / (n - 1); return <rect key={d.date} x={x(i) - w / 2} width={w} y={0} height={H} fill="transparent" onMouseEnter={() => setOn(i)} onClick={() => setOn(on === i ? null : i)} /> })}
         {on != null && (() => {
-          const d = c.days[on], left = x(on) > width / 2, bx = left ? x(on) - 10 - 150 : x(on) + 10
+          const d = c.days[on], left = x(on) > width / 2, bx = left ? x(on) - 10 - 190 : x(on) + 10
           return (
             <g className="dash-tip" transform={`translate(${bx} ${T + 18})`}>
-              <rect width={150} height={78} rx={8} />
-              <text x={10} y={18} className="dash-tipdate">{md(d.date)} {wd(d.date)}{d.times ? ' · ' + tr('{0} veces', d.times) : ''}</text>
-              {DASH_KINDS.map((k, j) => <text key={k} x={10} y={38 + j * 17}><tspan fill={hex(k)}>●</tspan> {kindName(k)}: {d[k].avg == null ? '—' : d[k].avg.toFixed(2)}</text>)}
+              <rect width={190} height={78} rx={8} />
+              <text x={10} y={18} className="dash-tipdate">{md(d.date)} {wd(d.date)}{d.times ? ' · ' + tr('{0} horas', d.times) : ''}</text>
+              {DASH_KINDS.map((k, j) => <text key={k} x={10} y={38 + j * 17}><tspan fill={hex(k)}>●</tspan> {kindName(k)}: {d[k].avg == null ? '—' : d[k].avg.toFixed(2)}{d[k].tests ? <tspan className="dash-tipn"> · {d[k].tests}/{d[k].n}</tspan> : null}</text>)}
             </g>
           )
         })()}
