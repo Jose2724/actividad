@@ -10,7 +10,7 @@ import { awayDay, byLineName, COOKS, consumesOf, inventoryOf, stepText, weightEd
 import { MINI_WEEKS, miniBook, miniSpan, miniTables, miniWeek } from './miniKpi'
 import { PplhView, RangePick } from './PplhView'
 import { DashView } from './DashView'
-import { datesFrom, seesPplh } from './pplh'
+import { datesFrom, keepRange, rangeKept, seesPplh } from './pplh'
 import { loadDay } from './sync'
 import { pctText } from './Attendance'
 import { buildPdf, loadPdf, type Part } from './pdf'
@@ -56,7 +56,17 @@ let shiftChosen: 0 | 1 | 2 | null = null
 /** the room a manager chose to look at in the report, kept the same way ('' = all of them) */
 let deptChosen: Dept | '' = ''
 /** the part of the report, the list of Registros and of Pallets, and the search: kept the same way, so going to the floor and back finds them as they were */
-let viewChosen: View = 'gen', recChosen: RecSub = 'runs', palChosen: PalSub = 'pallets', searchKept = ''
+/**
+ * the part of the report and its day, kept in this browser tab so a reload (F5) comes back to them (Jose, 2026-11-03:
+ * "me saca para afuera"); a day kept more than 8 hours ago is let go, so a tab left open does not wake up on an old day
+ */
+const REP_KEY = 'act_report'
+function repKept(): { view?: string; date?: string } {
+  try { const x = JSON.parse(sessionStorage.getItem(REP_KEY) || '{}') as { view?: string; date?: string; at?: number }; return { view: x.view, date: x.at && Date.now() - x.at < 8 * 3_600_000 && /^\d{4}-\d{2}-\d{2}$/.test(x.date ?? '') ? x.date : undefined } } catch { return {} }
+}
+const keepRep = (view: View, date: string) => { try { sessionStorage.setItem(REP_KEY, JSON.stringify({ view, date, at: Date.now() })) } catch { /* private window */ } }
+const VIEWS: View[] = ['gen', 'code', 'shift', 'pal', 'wt', 'dash', 'mini', 'pplh', 'rec', 'chg']
+let viewChosen: View = (VIEWS as string[]).includes(repKept().view ?? '') ? (repKept().view as View) : 'gen', recChosen: RecSub = 'runs', palChosen: PalSub = 'pallets', searchKept = ''
 /**
  * Where another tab sends the report (the Programa del día, the floor's numbers: Jose, 2026-10-20 "que tengan link
  * todo"): the day, room, shift, line, code, lot, part and list to open on. Read once when the report opens.
@@ -158,7 +168,7 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
   const can = useCan(), who = useWho(), viewOnly = who.role === 'viewer'
   // (what another tab asked for, taken once: see reportOpenAt)
   const [at] = useState(() => { const x = openAt; openAt = null; return x })
-  const [date, setDate] = useState(() => at?.date ?? workDay(s).date)
+  const [date, setDate] = useState(() => at?.date ?? repKept().date ?? workDay(s).date)
   const [wiping, setWiping] = useState(false)
   // a run opened to correct it, at the unit the person came from (a pallet, a cart); and a stop
   const [editRun, setEditRun] = useState<{ id: string; at?: number } | null>(null)
@@ -202,6 +212,7 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
   // the part of the report in view, the list of Registros and of Pallets, and the search (kept like the shift and the room)
   const [view, setViewPick] = useState<View>(viewChosen)
   const setView = (v: View) => { viewChosen = v; setViewPick(v) }
+  useEffect(() => { keepRep(view, date) }, [view, date])
   const [recSub, setRecPick] = useState<RecSub>(recChosen)
   const setRecSub = (x: RecSub) => { recChosen = x; setRecPick(x) }
   const [palSub, setPalPick] = useState<PalSub>(palChosen)
@@ -1545,8 +1556,10 @@ function WeightsView({ k }: { k: Kit }) {
   const [paper, setPaper] = useState(false)
   // the summary on the screen, to see it and decide without opening a file (Jose, 2026-10-30); over a range of days when
   // asked (Mike, 2026-11-02: weekly, monthly): the board and By department follow the range, the tests below stay the day's
-  const [wFrom, setWFrom] = useState(date), [wTo, setWTo] = useState(date)
-  useEffect(() => { setWFrom(date); setWTo(date) }, [date])
+  const [wFrom, setWFrom] = useState(() => rangeKept('wt')?.from ?? date), [wTo, setWTo] = useState(() => rangeKept('wt')?.to ?? date)
+  const wDateWas = useRef(date)
+  useEffect(() => { if (wDateWas.current !== date) { wDateWas.current = date; setWFrom(date); setWTo(date) } }, [date])
+  useEffect(() => { keepRange('wt', wFrom, wTo) }, [wFrom, wTo])
   const wDays = useMemo(() => (wFrom && wTo && wFrom <= wTo ? datesFrom(wFrom, wTo) : [date]), [wFrom, wTo, date])
   useEffect(() => { for (const d of wDays) void miniBring(d) }, [wDays])
   const wRows = useMemo(() => wDays.flatMap((d) => weightsOf(s, d, now)), [s, wDays]) // eslint-disable-line react-hooks/exhaustive-deps

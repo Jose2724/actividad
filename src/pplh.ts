@@ -125,6 +125,17 @@ export function readHours(sheets: { name: string; rows: ReadCell[][] }[]): Hours
 /** of a workbook's sheets, the one that is NetSuite's */
 export const netsuiteSheet = (sheets: { name: string; rows: ReadCell[][] }[]) => sheets.map((x) => ({ ...x, read: readNetsuite(x.rows) })).find((x) => x.read.found) ?? null
 
+/**
+ * where a part of the report was left, kept in this browser tab so a reload (F5) comes back to it (Jose, 2026-11-03:
+ * "me saca para afuera"): the range of PPLH, Pesos or the Dashboard, by a key of its own. Nothing without sessionStorage
+ */
+const RANGE_KEY = 'act_range'
+export function rangeKept(key: string): { from: string; to: string } | null {
+  try { const r = (JSON.parse(sessionStorage.getItem(RANGE_KEY) || '{}') as Record<string, { from?: string; to?: string }>)[key]; const ok = (d?: string) => !!d && /^\d{4}-\d{2}-\d{2}$/.test(d); return r && ok(r.from) && ok(r.to) && (r.from as string) <= (r.to as string) ? { from: r.from as string, to: r.to as string } : null } catch { return null }
+}
+export function keepRange(key: string, from: string, to: string) {
+  try { const m = JSON.parse(sessionStorage.getItem(RANGE_KEY) || '{}') as Record<string, unknown>; m[key] = { from, to }; sessionStorage.setItem(RANGE_KEY, JSON.stringify(m)) } catch { /* private window: it opens on its default */ }
+}
 /** the days from one date to another, both included */
 export function datesFrom(from: string, to: string) {
   const out: string[] = []

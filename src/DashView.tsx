@@ -3,7 +3,7 @@ import { awayDay, type State } from './store'
 import { loadDay } from './sync'
 import { wtRangeLong, type WtAvg } from './kpi'
 import { DASH_COLORS, DASH_KINDS, dashBook, dashOf, dashPplh, type DashCode, type DashKind } from './dash'
-import { datesFrom, rangeShortcuts } from './pplh'
+import { datesFrom, keepRange, rangeKept, rangeShortcuts } from './pplh'
 import { RangePick } from './PplhView'
 import { loadZip, xlsxNow, XLSX_TYPE } from './xlsx'
 import { download } from './App'
@@ -22,9 +22,12 @@ const okClass = (x: WtAvg) => (x.ok === 'ok' ? ' ok' : x.ok === 'under' ? ' red'
  */
 export function DashView({ s, date, now, pplh }: { s: State; date: string; now: number; pplh: boolean }) {
   const week = rangeShortcuts(date).find((q) => q.id === 'week') ?? { from: date, to: date }
-  const [from, setFrom] = useState(week.from)
-  const [to, setTo] = useState(week.to)
-  useEffect(() => { const w = rangeShortcuts(date).find((q) => q.id === 'week'); if (w) { setFrom(w.from); setTo(w.to) } }, [date])
+  // (the range comes back after a reload; the report's day changing resets it)
+  const [from, setFrom] = useState(() => rangeKept('dash')?.from ?? week.from)
+  const [to, setTo] = useState(() => rangeKept('dash')?.to ?? week.to)
+  const dateWas = useRef(date)
+  useEffect(() => { if (dateWas.current === date) return; dateWas.current = date; const w = rangeShortcuts(date).find((q) => q.id === 'week'); if (w) { setFrom(w.from); setTo(w.to) } }, [date])
+  useEffect(() => { keepRange('dash', from, to) }, [from, to])
   const dates = useMemo(() => (from && to && from <= to ? datesFrom(from, to) : [date]), [from, to, date])
   // (days older than the device keeps are brought from the server)
   useEffect(() => { for (const d of dates) if (awayDay(d)) void loadDay(d) }, [dates])

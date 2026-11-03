@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { awayDay, dayBefore, type State } from './store'
 import { loadDay } from './sync'
-import { datesFrom, downtimeOf, plusDays, netsuiteSheet, pplhBook, pplhLbsByHand, readHours, setPplhLbsHand, type HoursRead, pplhGroups, pplhNames, pplhOfGroups, pplhOfRange, pplhRow, pplhWeekHours, rangeShortcuts, readNetsuite, savePplhLbs, setPplhHours, setPplhNames, setPplhWeekHours, PPLH_SITE, type NetsuiteRead, type PplhBy } from './pplh'
+import { datesFrom, downtimeOf, keepRange, plusDays, rangeKept, netsuiteSheet, pplhBook, pplhLbsByHand, readHours, setPplhLbsHand, type HoursRead, pplhGroups, pplhNames, pplhOfGroups, pplhOfRange, pplhRow, pplhWeekHours, rangeShortcuts, readNetsuite, savePplhLbs, setPplhHours, setPplhNames, setPplhWeekHours, PPLH_SITE, type NetsuiteRead, type PplhBy } from './pplh'
 import { loadZip, readCsv, readXlsx, xlsxNow, XLSX_TYPE } from './xlsx'
 import { download } from './App'
 import { locale, tr } from './i18n'
@@ -20,9 +20,12 @@ export function PplhView({ s, date, today, now, edit, admin }: { s: State; date:
   // the report is of the day before (Jose, 2026-11-03: it runs once the day is over): yesterday while the date above is today's; another date above is taken as it is
   const day0 = date === today ? dayBefore(date) : date
   // (the report's day alone until a range is tapped, Jose 2026-11-03)
-  const [from, setFrom] = useState(day0)
-  const [to, setTo] = useState(day0)
-  useEffect(() => { setFrom(day0); setTo(day0) }, [day0])
+  // (the range comes back after a reload; the report's day changing resets it)
+  const [from, setFrom] = useState(() => rangeKept('pplh')?.from ?? day0)
+  const [to, setTo] = useState(() => rangeKept('pplh')?.to ?? day0)
+  const day0Was = useRef(day0)
+  useEffect(() => { if (day0Was.current !== day0) { day0Was.current = day0; setFrom(day0); setTo(day0) } }, [day0])
+  useEffect(() => { keepRange('pplh', from, to) }, [from, to])
   const range = useMemo(() => (from && to && from <= to ? datesFrom(from, to) : []), [from, to])
   // (days older than the device keeps are brought, for their downtime)
   useEffect(() => { for (const d of new Set([day0, ...range])) if (awayDay(d)) void loadDay(d) }, [day0, from, to]) // eslint-disable-line react-hooks/exhaustive-deps
