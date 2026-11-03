@@ -77,19 +77,25 @@ export function dashBook(s: State, from: string, to: string, dates: string[], no
   }
   a.across('Each number is the average of every weight taken that day over the whole plant, in ounces, against QA\'s range: green inside, red under, amber over; under it, how many tests it comes from and how many weights they hold. Blank = nothing weighed. Week = all that week\'s weights together (Monday to Sunday, the days inside the range); Range = all the days together.', X.note, 34)
   a.gap()
-  // each product's days down, and its charts beside
-  for (const c of data) {
-    a.across(`${c.code} by day`, X.wSec, 24)
-    a.row(['Date', 'Raw', 'Cooked', 'Pouch'].map((t) => xT(t, X.mHead)), 30)
-    const from1 = a.rows.length + 1
-    for (const d of c.days) a.row([dateCell(d.date), avgCell(d.raw), avgCell(d.cooked), avgCell(d.pouch)], 20)
-    const to1 = a.rows.length
-    a.gap()
-    const TALL = 15, at1 = a.gap(TALL), at2 = (a.gap(), a.gap(TALL))
-    charts.push({ title: `${c.code} — Raw and Cooked (oz)`, series: ['Raw', 'Cooked'], cat: 0, val: [1, 2], from: from1, to: to1, at: at1, kind: 'line', fmt: '0.00', colors: [DASH_COLORS.raw, DASH_COLORS.cooked], labels: 'none', left: 0, cols: 7, height: TALL, ...MIKE_LOOK, axisTitle: 'Ounces' })
-    charts.push({ title: `${c.code} — Pouch (oz)`, series: ['Pouch'], cat: 0, val: [3], from: from1, to: to1, at: at2, kind: 'line', fmt: '0.00', colors: [DASH_COLORS.pouch], labels: 'none', left: 0, cols: 7, height: TALL, ...MIKE_LOOK, axisTitle: 'Ounces' })
-    a.gap()
-  }
+  // each product on its own sheet (Jose, 2026-11-03): its days down, the counts beside, and its two charts under
+  const sheets = data.map((c) => {
+    const b = mikePage([20, 12, 12, 12, 24, 24, 24]), bc: Chart[] = []
+    b.across(`${c.code} · by day`, X.wBand, 34)
+    b.across(from === to ? shortDay(from) : `${shortDay(from)} to ${shortDay(to)} · ${n} days`, X.wSub, 22)
+    b.gap()
+    b.row(['Date', 'Raw', 'Cooked', 'Pouch', 'Raw tests · weights', 'Cooked tests · weights', 'Pouch tests · weights'].map((t) => xT(t, X.mHead)), 30)
+    const from1 = b.rows.length + 1
+    for (const d of c.days) b.row([dateCell(d.date), avgCell(d.raw), avgCell(d.cooked), avgCell(d.pouch), countCell(d.raw), countCell(d.cooked), countCell(d.pouch)], 20)
+    const to1 = b.rows.length
+    b.row([xT('Week' + (c.weeks.length > 1 ? 's' : ''), X.mHead), ...(['raw', 'cooked', 'pouch'] as DashKind[]).map((k) => avgCell(c.all[k])), ...(['raw', 'cooked', 'pouch'] as DashKind[]).map((k) => countCell(c.all[k]))], 22)
+    b.across(`Target: raw ${target(c.target.raw)} · cooked ${target(c.target.cooked)} · pouch ${target(c.target.pouch)}. Green inside QA's range, red under, amber over; blank = nothing weighed.`, X.note, 22)
+    b.gap()
+    const TALL = 15, at1 = b.gap(TALL), at2 = (b.gap(), b.gap(TALL))
+    bc.push({ title: `${c.code} — Raw and Cooked (oz)`, series: ['Raw', 'Cooked'], cat: 0, val: [1, 2], from: from1, to: to1, at: at1, kind: 'line', fmt: '0.00', colors: [DASH_COLORS.raw, DASH_COLORS.cooked], labels: 'none', left: 0, cols: 7, height: TALL, ...MIKE_LOOK, axisTitle: 'Ounces' })
+    bc.push({ title: `${c.code} — Pouch (oz)`, series: ['Pouch'], cat: 0, val: [3], from: from1, to: to1, at: at2, kind: 'line', fmt: '0.00', colors: [DASH_COLORS.pouch], labels: 'none', left: 0, cols: 7, height: TALL, ...MIKE_LOOK, axisTitle: 'Ounces' })
+    b.gap()
+    return b.done(c.code, bc)
+  })
   a.across('HOW IT IS CALCULATED', X.wSec, 24)
   for (const [k, v] of [
     ['Raw / Cooked / Pouch', 'The average of all the weights of that kind taken that day, every room together (Kitchen\'s raw balls, Spiral\'s raw and cooked balls, RTE\'s pouches), in ounces.'],
@@ -98,5 +104,5 @@ export function dashBook(s: State, from: string, to: string, dates: string[], no
     ['PPLH', 'Pounds per labor hour over the range: the pounds (NetSuite) and the hours (HR) of the days that have both, added up, then divided.'],
     ['Yield / Shorts', 'Pending: the pounds per product and what counts as a short are being defined with Mike.'],
   ]) { const r = a.row([xT(k, X.wcBold), xT(v, X.note)], 30); a.merges.push(`B${r}:${colName(widths.length - 1)}${r}`) }
-  return [a.done('Dashboard', charts)]
+  return [a.done('Dashboard', charts), ...sheets]
 }
