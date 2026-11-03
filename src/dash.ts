@@ -44,7 +44,7 @@ export const DASH_COLORS: Record<DashKind, string> = { raw: 'EB6834', cooked: '2
 const md = (d: string) => { const [, m, dd] = d.split('-').map(Number); return m + '/' + dd }
 const avgCell = (x: WtAvg): Cell => (x.avg == null ? xT('', X.wCell) : xN(x.avg, x.ok === 'ok' ? X.wDg : x.ok === 'under' ? X.wDr : x.ok === 'over' ? X.wDa : X.wD))
 /** under an average: from how many tests and weights it comes (Jose, 2026-11-03: "la cantidad: tests y los weights tomados") */
-export const dashCount = (x: WtAvg) => (!x.tests ? '' : `${x.tests} · ${x.n}`)
+export const dashCount = (x: WtAvg) => (!x.tests ? '' : `${x.tests} test${x.tests === 1 ? '' : 's'} · ${x.n} weight${x.n === 1 ? '' : 's'}`)
 const countCell = (x: WtAvg): Cell => xT(dashCount(x), X.note)
 const target = (r: string) => (r ? wtRangeLong(r) + ' oz' : '—')
 /**
@@ -54,7 +54,7 @@ const target = (r: string) => (r ? wtRangeLong(r) + ' oz' : '—')
  */
 export function dashBook(s: State, from: string, to: string, dates: string[], now: number) {
   const data = dashOf(s, dates, now), pplh = dashPplh(s, dates)
-  const n = dates.length, manyWeeks = data[0].weeks.length > 1, widths = [11, 9, 20, ...dates.map(() => 9), ...data[0].weeks.map(() => 11), ...(manyWeeks ? [9] : [])]
+  const n = dates.length, manyWeeks = data[0].weeks.length > 1, widths = [11, 9, 13, ...dates.map(() => 20), ...data[0].weeks.map(() => 20), ...(manyWeeks ? [9] : [])]
   const a = mikePage(widths), charts: Chart[] = []
   a.across('E.R. - Ops Summary · Yield + Weight Summary', X.wBand, 34)
   a.across(from === to ? shortDay(from) : `${shortDay(from)} to ${shortDay(to)} · ${n} days`, X.wSub, 22)
@@ -66,7 +66,7 @@ export function dashBook(s: State, from: string, to: string, dates: string[], no
   for (const r of [tileRow - 1, tileRow, tileRow + 1]) a.merges.push(`A${r}:B${r}`, `C${r}:D${r}`, `E${r}:F${r}`)
   a.gap()
   a.across('Yield + Weight Summary', X.wSec, 24)
-  a.row(['Product', '', 'Target  (tests · weights)', ...dates.map(md), ...data[0].weeks.map((w) => (manyWeeks || w.days < 7 ? `Week of ${md(w.monday)}` : 'Week avg')), ...(manyWeeks ? ['Range'] : [])].map((t) => xT(t, X.mHead)), 30)
+  a.row(['Product', '', 'Target', ...dates.map(md), ...data[0].weeks.map((w) => (manyWeeks || w.days < 7 ? `Week of ${md(w.monday)}` : 'Week avg')), ...(manyWeeks ? ['Range'] : [])].map((t) => xT(t, X.mHead)), 30)
   for (const c of data) {
     const first = a.rows.length + 1
     for (const k of DASH_KINDS) {
@@ -75,7 +75,7 @@ export function dashBook(s: State, from: string, to: string, dates: string[], no
     }
     a.merges.push(`A${first}:A${first + 5}`)
   }
-  a.across('Each number is the average of every weight taken that day over the whole plant, in ounces, against QA\'s range: green inside, red under, amber over; under it, how many tests it comes from and how many weights they hold (tests · weights). Blank = nothing weighed. Week = all that week\'s weights together (Monday to Sunday, the days inside the range); Range = all the days together.', X.note, 34)
+  a.across('Each number is the average of every weight taken that day over the whole plant, in ounces, against QA\'s range: green inside, red under, amber over; under it, how many tests it comes from and how many weights they hold. Blank = nothing weighed. Week = all that week\'s weights together (Monday to Sunday, the days inside the range); Range = all the days together.', X.note, 34)
   a.gap()
   // each product's days down, and its charts beside
   for (const c of data) {
