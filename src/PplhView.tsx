@@ -195,10 +195,14 @@ export function RangePick({ from, to, today, dayLabel, onChange }: { from: strin
   return (
     <div className="btns pplh-range">
       <div className="pplh-dates">
-        <button type="button" className="btn sm soft nav" aria-label={tr('Un día atrás')} title={tr('Un día atrás')} onClick={() => from && to && onChange(plusDays(from, -1), plusDays(to, -1))}>‹</button>
+        <button type="button" className="btn sm soft nav" aria-label={tr('Desde: un día atrás')} title={tr('Un día atrás')} onClick={() => from && onChange(plusDays(from, -1), to)}>‹</button>
         <label>{tr('Desde')} <input type="date" value={from} onChange={(e) => onChange(e.target.value, to)} /></label>
+        <button type="button" className="btn sm soft nav" aria-label={tr('Desde: un día adelante')} title={tr('Un día adelante')} onClick={() => from && onChange(plusDays(from, 1), to)}>›</button>
+      </div>
+      <div className="pplh-dates">
+        <button type="button" className="btn sm soft nav" aria-label={tr('Hasta: un día atrás')} title={tr('Un día atrás')} onClick={() => to && onChange(from, plusDays(to, -1))}>‹</button>
         <label>{tr('Hasta')} <input type="date" value={to} onChange={(e) => onChange(from, e.target.value)} /></label>
-        <button type="button" className="btn sm soft nav" aria-label={tr('Un día adelante')} title={tr('Un día adelante')} onClick={() => from && to && onChange(plusDays(from, 1), plusDays(to, 1))}>›</button>
+        <button type="button" className="btn sm soft nav" aria-label={tr('Hasta: un día adelante')} title={tr('Un día adelante')} onClick={() => to && onChange(from, plusDays(to, 1))}>›</button>
       </div>
       {rangeShortcuts(today).map((q) => <button key={q.id} type="button" className={'btn sm ' + (from === q.from && to === q.to ? 'primary' : 'soft')} onClick={() => onChange(q.from, q.to)}>{label[q.id]}</button>)}
     </div>

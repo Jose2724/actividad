@@ -3486,4 +3486,8 @@ export const EN: Record<string, string> = {
   "Cada número es el promedio de todos los pesos de ese día en toda la planta, en onzas, contra el rango de QA; debajo, de cuántas pruebas sale y cuántos pesos tienen. Vacío = no se pesó. Semana = todos los pesos de esa semana juntos (lunes a domingo, los días del rango); Rango = todos los días juntos.": "Each number is the average of every weight taken that day over the whole plant, in ounces, against QA's range; under it, how many tests it comes from and how many weights they hold. Blank = nothing weighed. Week = all that week's weights together (Monday to Sunday, the days inside the range); Range = all the days together.",
   "Un día atrás": "One day back",
   "Un día adelante": "One day forward",
+  "Desde: un día atrás": "From: one day back",
+  "Desde: un día adelante": "From: one day forward",
+  "Hasta: un día atrás": "To: one day back",
+  "Hasta: un día adelante": "To: one day forward",
 }
