@@ -8,8 +8,8 @@ import { cookYields, hoursOf, seesLabor, weightsOf, wtCompliance, wtCountText, w
 import { attendanceOf, attLineText, attMovesText, attOf, attShifts, attStateText } from './store'
 import { awayDay, byLineName, COOKS, consumesOf, inventoryOf, stepText, weightEdit, weightPaperAdd, weightsFix, weightTarget, wtKindsOf, wtOdd, wtPaperAt, wtPaperLines, wtPicksCode, type Cook, type Dept as RoomDept, type WeightTest, type WtEntry } from './store'
 import { MINI_WEEKS, miniBook, miniSpan, miniTables, miniWeek } from './miniKpi'
-import { PplhView } from './PplhView'
-import { seesPplh } from './pplh'
+import { PplhView, RangePick } from './PplhView'
+import { datesFrom, seesPplh } from './pplh'
 import { loadDay } from './sync'
 import { pctText } from './Attendance'
 import { buildPdf, loadPdf, type Part } from './pdf'
@@ -1541,9 +1541,16 @@ function WeightsView({ k }: { k: Kit }) {
   const [fixing, setFixing] = useState<WtRow | null>(null)
   const [editing, setEditing] = useState<{ t: WeightTest; w: WtRow } | null>(null)
   const [paper, setPaper] = useState(false)
-  // the summary on the screen, to see it and decide without opening a file (Jose, 2026-10-30)
-  const summaryRows = useMemo(() => wtSummary(s, weightsOf(s, date, now)), [s, date])
-  const boardRows = useMemo(() => wtBoard(s, weightsOf(s, date, now)), [s, date])
+  // the summary on the screen, to see it and decide without opening a file (Jose, 2026-10-30); over a range of days when
+  // asked (Mike, 2026-11-02: weekly, monthly): the board and By department follow the range, the tests below stay the day's
+  const [wFrom, setWFrom] = useState(date), [wTo, setWTo] = useState(date)
+  useEffect(() => { setWFrom(date); setWTo(date) }, [date])
+  const wDays = useMemo(() => (wFrom && wTo && wFrom <= wTo ? datesFrom(wFrom, wTo) : [date]), [wFrom, wTo, date])
+  useEffect(() => { for (const d of wDays) void miniBring(d) }, [wDays])
+  const wRows = useMemo(() => wDays.flatMap((d) => weightsOf(s, d, now)), [s, wDays]) // eslint-disable-line react-hooks/exhaustive-deps
+  const wLabel = wDays.length > 1 ? tr('Del {0} al {1}', wDays[0], wDays[wDays.length - 1]) : undefined
+  const summaryRows = useMemo(() => wtSummary(s, wRows), [s, wRows])
+  const boardRows = useMemo(() => wtBoard(s, wRows), [s, wRows])
   // the weights too far from their range, in purple, to find them at once (Jose, 2026-10-30); not in the file for the heads
   const oddN = wt.tests.reduce((n, { w, t }) => n + t.entries.filter((e) => e.w != null && wtOdd(e.w, w.target)).length, 0)
   const bigCell = (label: string, x: WtAvg) => <div className={'wt-big ' + (x.ok === 'ok' ? 'ok' : x.ok === 'under' ? 'bad' : x.ok === 'over' ? 'warn' : '')}><small>{label}</small><b>{x.avg == null ? '—' : x.avg.toFixed(2) + (x.ok === 'ok' ? ' ✓' : x.ok ? ' ✗' : '')}</b><strong>{x.range ? tr('Objetivo {0} oz', wtRangeLong(x.range)) : tr('Falta el target de QA')}</strong><em>{wtCountText(x) || tr('Sin pruebas')}</em></div>
@@ -1553,9 +1560,9 @@ function WeightsView({ k }: { k: Kit }) {
   // the three sheets, as the room and code chosen; made from what is on screen when tapped
   // the one page for the plant's heads: every room's weights of the day, whatever the filters show
   const summary = async () => {
-    const page = () => xlsxNow(wtSummaryBook(s, weightsOf(s, date, now), date))
+    const page = () => xlsxNow(wtSummaryBook(s, wRows, date, wLabel))
     const bytes = page() ?? (await loadZip(), page())
-    if (bytes) download(new File([bytes], tr('Resumen-de-pesos') + '-' + date + '.xlsx', { type: XLSX_TYPE }))
+    if (bytes) download(new File([bytes], tr('Resumen-de-pesos') + '-' + (wLabel ? wDays[0] + '_' + wDays[wDays.length - 1] : date) + '.xlsx', { type: XLSX_TYPE }))
   }
   const sheets = async () => {
     const bytes = xlsxNow(wtSheets(s, wt.rows, date)) ?? (await loadZip(), xlsxNow(wtSheets(s, wt.rows, date)))
@@ -1572,6 +1579,8 @@ function WeightsView({ k }: { k: Kit }) {
       {paper && <WeightPaperDialog s={s} date={date} onClose={() => setPaper(false)} />}
       {fixing && <WeightsFixDialog s={s} row={fixing} onClose={() => setFixing(null)} />}
       {editing && <WeightTestDialog s={s} test={editing.t} row={editing.w} onClose={() => setEditing(null)} />}
+      <RangePick from={wFrom} to={wTo} today={date} onChange={(a, b) => { setWFrom(a); setWTo(b) }} />
+      {wLabel && <p className="hint">{tr('El resumen y Por departamento son del {0} al {1} ({2} días); las pruebas de abajo, del día del reporte.', wDays[0], wDays[wDays.length - 1], wDays.length)}</p>}
       <div className="wt-board">{boardRows.map((x) => (
         <article key={x.code} className="wt-boardrow">
           <div className="wt-boardhead"><b>{x.code}</b><span>{tr('{0} veces', x.times)}</span></div>

@@ -97,6 +97,68 @@ export function pplhOfRange(list: PplhRow[]) {
   return { lbs, hours, days: both.length, pplh: hours ? lbs / hours : null }
 }
 
+// ---- by week and by month (Mike, 2026-11-02: "weekly, monthly"; his SUMMARY is one row per week, Monday to Sunday) ----
+export type PplhBy = 'day' | 'week' | 'month'
+const WHRS = 'pplh-whrs:'
+const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+export const plusDays = (date: string, n: number) => { const d = day(date); d.setDate(d.getDate() + n); return iso(d) }
+/** the Monday of a date's week */
+export const mondayOf = (date: string) => plusDays(date, -((day(date).getDay() + 6) % 7))
+const monthEnd = (ym: string) => { const [y, m] = ym.split('-').map(Number); return iso(new Date(y, m, 0, 12)) }
+export const monthName = (ym: string) => day(ym + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+/** the ranges one taps instead of typing: this week (Monday to Sunday), last week, this month, last month */
+export function rangeShortcuts(today: string): { id: 'week' | 'lastWeek' | 'month' | 'lastMonth'; from: string; to: string }[] {
+  const mon = mondayOf(today), ym = today.slice(0, 7), [y, m] = ym.split('-').map(Number), prev = `${m === 1 ? y - 1 : y}-${String(m === 1 ? 12 : m - 1).padStart(2, '0')}`
+  return [{ id: 'week', from: mon, to: plusDays(mon, 6) }, { id: 'lastWeek', from: plusDays(mon, -7), to: plusDays(mon, -1) }, { id: 'month', from: ym + '-01', to: monthEnd(ym) }, { id: 'lastMonth', from: prev + '-01', to: monthEnd(prev) }]
+}
+/** a week's labor hours when HR gives them by the week and not by the day (Mike's workbook has them so), kept by its Monday */
+export const pplhWeekHours = (s: State, monday: string): number | null => { const h = kpiGet(s, WHRS + monday)?.data.hours; return typeof h === 'number' && h > 0 ? h : null }
+export const setPplhWeekHours = (monday: string, hours: number | null) => kpiPut(WHRS + monday, hours && hours > 0 ? { hours: Math.round(hours * 100) / 100 } : {}, !(hours && hours > 0))
+export type PplhGroup = { key: string; by: PplhBy; from: string; to: string; days: number; lbsDays: number; hoursDays: number; lbs: number | null; rows: number; hours: number | null; weekly: boolean; whole: boolean; pplh: number | null; inLbs: number; inHours: number }
+/**
+ * one week of a group (its days inside the range): with hours typed for any of its days, the days that have both pounds
+ * and hours count, as the range does; with none, a whole week's hours typed for the week take all its pounds
+ */
+function weekPart(s: State, days: string[]) {
+  const rows = days.map((d) => pplhRow(s, d))
+  if (rows.some((r) => r.hours != null)) { const b = pplhOfRange(rows); return { lbs: b.lbs, hours: b.hours, weekly: false } }
+  const wh = days.length === 7 ? pplhWeekHours(s, days[0]) : null
+  return wh == null || !rows.some((r) => r.lbs != null) ? null : { lbs: rows.reduce((t, r) => t + (r.lbs ?? 0), 0), hours: wh, weekly: true }
+}
+/**
+ * the range by day, by week (Monday to Sunday, as Mike's SUMMARY) or by month: each group's pounds are its days' added
+ * up, its hours its days' (or its weeks', when HR gave them by the week), and its PPLH the pounds over the hours of
+ * what has both. A group the range cuts says so (whole = false): a week's hours are only typed for a whole week
+ */
+export function pplhGroups(s: State, from: string, to: string, by: PplhBy): PplhGroup[] {
+  const keyOf = (d: string) => (by === 'day' ? d : by === 'week' ? mondayOf(d) : d.slice(0, 7))
+  const out: PplhGroup[] = []
+  for (const d of datesFrom(from, to)) {
+    const key = keyOf(d), r = pplhRow(s, d)
+    let g = out[out.length - 1]
+    if (!g || g.key !== key) { g = { key, by, from: d, to: d, days: 0, lbsDays: 0, hoursDays: 0, lbs: null, rows: 0, hours: null, weekly: false, whole: false, pplh: null, inLbs: 0, inHours: 0 }; out.push(g) }
+    g.to = d; g.days++
+    if (r.lbs != null) { g.lbs = (g.lbs ?? 0) + r.lbs; g.lbsDays++; g.rows += r.rows }
+    if (r.hours != null) { g.hours = (g.hours ?? 0) + r.hours; g.hoursDays++ }
+  }
+  for (const g of out) {
+    g.whole = by === 'day' || (g.from === (by === 'week' ? g.key : g.key + '-01') && g.to === (by === 'week' ? plusDays(g.key, 6) : monthEnd(g.key)))
+    const weeks = new Map<string, string[]>()
+    for (const d of datesFrom(g.from, g.to)) { const w = mondayOf(d); weeks.set(w, [...(weeks.get(w) ?? []), d]) }
+    const parts = [...weeks.values()].map((days) => weekPart(s, days)).filter((x): x is NonNullable<typeof x> => x != null)
+    const lbs = parts.reduce((t, x) => t + x.lbs, 0), hours = parts.reduce((t, x) => t + x.hours, 0)
+    g.weekly = parts.some((x) => x.weekly)
+    if (g.weekly) g.hours = (g.hours ?? 0) + parts.filter((x) => x.weekly).reduce((t, x) => t + x.hours, 0)
+    g.inLbs = lbs; g.inHours = hours; g.pplh = hours > 0 ? lbs / hours : null
+  }
+  return out
+}
+/** a list of groups as one: the pounds and the hours that went into each PPLH, added up, then divided */
+export function pplhOfGroups(list: PplhGroup[]) {
+  const lbs = list.reduce((t, g) => t + (g.lbs ?? 0), 0), hours = list.reduce((t, g) => t + (g.hours ?? 0), 0), inL = list.reduce((t, g) => t + g.inLbs, 0), inH = list.reduce((t, g) => t + g.inHours, 0)
+  return { lbs, hours, pplh: inH > 0 ? inL / inH : null }
+}
+
 export type RoomDown = { dept: Dept; worked: number; stopped: number; lunch: number; setup: number; mech: number; people: number; clean: number; other: number; time: number; causes: Map<string, number> }
 /** each room's time on some days, both shifts, as the Mini KPI splits it: worked, stopped (mechanical, personnel, cleaning, other), Lunch and Break, Set up */
 export function downtimeOf(s: State, dates: string[], now: number): RoomDown[] {
@@ -136,7 +198,7 @@ function page(widths: number[]) {
 const signed = (x: number, digits = 1) => (x > 0 ? '+' : x < 0 ? '−' : '') + Math.abs(x).toFixed(digits)
 
 /** the workbook for Mike: the day before (date) on top, the days of the range, the downtime by room, the yield, and how each number is worked out */
-export function pplhBook(s: State, from: string, to: string, date: string, now: number): Sheet[] {
+export function pplhBook(s: State, from: string, to: string, date: string, now: number, by: PplhBy = 'day'): Sheet[] {
   const range = datesFrom(from, to), list = range.map((d) => pplhRow(s, d)), today = pplhRow(s, date)
   const prev = (() => { for (let i = 1; i <= 14; i++) { const d = new Date(date + 'T12:00:00'); d.setDate(d.getDate() - i); const r = pplhRow(s, d.toISOString().slice(0, 10)); if (r.pplh != null) return r } return null })()
   const all = pplhOfRange(list)
@@ -150,18 +212,21 @@ export function pplhBook(s: State, from: string, to: string, date: string, now: 
   const vs = (x: number | null) => (today.pplh == null || x == null ? none : xT(signed(today.pplh - x), today.pplh >= x ? X.wPg : X.wPr))
   a.row([dateCell(date), today.lbs == null ? xT('No NetSuite file', X.wPa) : xN(Math.round(today.lbs), X.wN), today.hours == null ? xT('No HR hours', X.wPa) : xN(today.hours, X.mN1), today.pplh == null ? none : xN(today.pplh, X.mN1), vs(prev?.pplh ?? null), vs(all.pplh)], 24)
   a.gap()
-  a.across(`Day by day · ${shortDay(from)} to ${shortDay(to)}`, X.wSec, 24)
-  a.row(['Date', 'East Rutherford Lbs', 'East Rutherford Hours', 'East Rutherford Lbs/Labor Hr', 'NetSuite rows'].map((t) => xT(t, X.mHead)), 34)
+  // (by week or by month when asked so: one row per week as his SUMMARY, or per month; the chart follows)
+  const groups = by === 'day' ? null : pplhGroups(s, from, to, by), look = by === 'month' ? { titleColor: MIKE_LOOK.titleColor } : MIKE_LOOK
+  a.across(`${by === 'week' ? 'Week by week (Monday to Sunday)' : by === 'month' ? 'Month by month' : 'Day by day'} · ${shortDay(from)} to ${shortDay(to)}`, X.wSec, 24)
+  a.row([by === 'week' ? 'Week of' : by === 'month' ? 'Month' : 'Date', 'East Rutherford Lbs', 'East Rutherford Hours', 'East Rutherford Lbs/Labor Hr', groups ? 'Days' : 'NetSuite rows'].map((t) => xT(t, X.mHead)), 34)
   const from1 = a.rows.length + 1
-  for (const r of list) a.row([dateCell(r.date), r.lbs == null ? empty : xN(Math.round(r.lbs), X.wN), r.hours == null ? empty : xN(r.hours, X.mN1), r.pplh == null ? empty : xN(r.pplh, X.mN1), r.rows ? xN(r.rows, X.wN) : empty], 20)
+  if (groups) for (const g of groups) a.row([by === 'week' ? dateCell(g.from) : xT(monthName(g.key), X.wLeft), g.lbs == null ? empty : xN(Math.round(g.lbs), X.wN), g.hours == null ? empty : xN(g.hours, X.mN1), g.pplh == null ? empty : xN(g.pplh, X.mN1), xT(`${g.lbsDays} of ${g.days} with pounds${g.weekly ? ' · weekly hours' : ''}${g.whole ? '' : ' · cut by the range'}`, X.wCell)], 20)
+  else for (const r of list) a.row([dateCell(r.date), r.lbs == null ? empty : xN(Math.round(r.lbs), X.wN), r.hours == null ? empty : xN(r.hours, X.mN1), r.pplh == null ? empty : xN(r.pplh, X.mN1), r.rows ? xN(r.rows, X.wN) : empty], 20)
   const to1 = a.rows.length
   a.row([xT('Range', X.mHead), xN(Math.round(all.lbs), X.wN), xN(all.hours, X.mN1), all.pplh == null ? none : xN(all.pplh, X.mN1), xT(`${all.days} day(s) with both`, X.wCell)], 22)
   a.across('The range adds the pounds and the hours of the days that have both, then divides: it is not an average of the daily numbers. A day with no NetSuite file or no HR hours is left blank, never estimated.', X.note, 34)
   a.gap()
   const TALL = 17, at1 = a.gap(TALL), at2 = (a.gap(), a.gap(TALL))
   const summary = a.done('SUMMARY', [
-    { title: 'East Rutherford — Productivity and Total Hours', series: ['East Rutherford Lbs/Labor Hr', 'East Rutherford Total Hours'], cat: 0, val: [3, 2], from: from1, to: to1, at: at1, kind: 'line', fmt: '0.0', fmt2: '#,##0', axis2: [1], colors: [NAVY, GREY], labels: 'none', left: 0, cols: 6, height: TALL, ...MIKE_LOOK, axisTitle: 'Lbs per Labor Hour', axis2Title: 'Total Labor Hours' },
-    { title: 'Daily Pounds Used — East Rutherford', series: ['East Rutherford'], cat: 0, val: [1], from: from1, to: to1, at: at2, kind: 'line', fmt: '#,##0', colors: [ORANGE], labels: 'none', left: 0, cols: 6, height: TALL, ...MIKE_LOOK, axisTitle: 'Pounds' },
+    { title: 'East Rutherford — Productivity and Total Hours', series: ['East Rutherford Lbs/Labor Hr', 'East Rutherford Total Hours'], cat: 0, val: [3, 2], from: from1, to: to1, at: at1, kind: 'line', fmt: '0.0', fmt2: '#,##0', axis2: [1], colors: [NAVY, GREY], labels: 'none', left: 0, cols: 6, height: TALL, ...look, axisTitle: 'Lbs per Labor Hour', axis2Title: 'Total Labor Hours' },
+    { title: 'Daily Pounds Used — East Rutherford', series: ['East Rutherford'], cat: 0, val: [1], from: from1, to: to1, at: at2, kind: 'line', fmt: '#,##0', colors: [ORANGE], labels: 'none', left: 0, cols: 6, height: TALL, ...look, axisTitle: 'Pounds' },
   ])
 
   // ---- DOWNTIME ----
@@ -212,6 +277,7 @@ export function pplhBook(s: State, from: string, to: string, date: string, now: 
     ['East Rutherford Hours', 'The labor hours of that date, from HR.'],
     ['Lbs/Labor Hr', 'Pounds ÷ hours of the same date.'],
     ['Range', 'The pounds and the hours of the days that have both, added up, then divided. Not an average of the daily numbers.'],
+    ['Week / Month', 'The same, week by week (Monday to Sunday) or month by month. When HR gives the hours by the week, a whole week\'s hours take all the pounds of that week.'],
     ['vs Prior Day', 'Today\'s Lbs/Labor Hr minus the last earlier day that had one (green = higher).'],
     ['Worked / Stopped (h)', 'From the plant\'s app: the time each line had a code running, both shifts, lines added up.'],
     ['% Stopped', 'Stopped hours ÷ all the hours with a code (worked + stopped + Lunch & Break + Set up). Red above 15%.'],

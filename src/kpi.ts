@@ -385,12 +385,12 @@ export function wtBoard(s: State, rows: WtRow[]): WtBoardRow[] {
   })
 }
 /** the first thing they read: the whiteboard's line per code, in big numbers, and nothing else */
-export function wtBoardSheet(s: State, rows: WtRow[], date: string): Sheet {
+export function wtBoardSheet(s: State, rows: WtRow[], date: string, label?: string): Sheet {
   const out: Cell[][] = [], heights: Record<number, number> = {}, merges: string[] = []
   const row = (cells: Cell[], ht?: number) => { if (ht) heights[out.length] = ht; out.push(cells); return out.length }
   const across = (text: string, style: number, ht: number) => { const r = row([xT(text, style), ...Array.from({ length: 4 }, () => xT('', style))], ht); merges.push('A' + r + ':E' + r) }
   across(tr('Resumen de pesos'), X.wBand, 34)
-  across(niceDay(date), X.wSub, 22)
+  across(label ?? niceDay(date), X.wSub, 22)
   row([])
   row([tr('Código'), tr('Veces revisado'), tr('Crudo prom.'), tr('Cocinado prom.'), tr('Pouch prom.')].map((x) => xT(x, X.wHead)), 30)
   const big = (x: WtAvg): Cell => (x.avg == null ? xT('—', X.wBigN) : xT(x.avg.toFixed(2) + (x.ok === 'ok' ? ' ✓' : x.ok ? ' ✗' : ''), x.ok === 'ok' ? X.wBigG : x.ok === 'under' ? X.wBigR : x.ok === 'over' ? X.wBigA : X.wBigN))
@@ -407,7 +407,7 @@ export function wtBoardSheet(s: State, rows: WtRow[], date: string): Sheet {
   // what the colours say, in the colours themselves (Jose, 2026-10-30: "que los colores digan qué significa")
   { const r = row([xT(tr('Colores'), X.wcBold), xT('', X.wcBold), xT(tr('✓ Dentro del objetivo'), X.wGoodW), xT(tr('✗ Bajo el objetivo'), X.wBadW), xT(tr('✗ Sobre el objetivo'), X.wWarnW)], 28); merges.push('A' + r + ':B' + r) }
   row([], 8)
-  across(tr('Cada número es el promedio de todos los pesos del día, en onzas.'), X.note, 22)
+  across(label ? tr('Cada número es el promedio de todos los pesos de esas fechas, en onzas.') : tr('Cada número es el promedio de todos los pesos del día, en onzas.'), X.note, 22)
   const note = kpiNote(s, date, 'weights')
   if (note) { row([], 8); across(tr('Notas: {0}', note), X.note, 48) }
   return { name: tr('Resumen'), rows: out, freeze: 0, page: { widths: [16, 16, 27, 27, 27], heights, merges } }
@@ -477,7 +477,7 @@ export function wtSummarySheet(s: State, rows: WtRow[], date: string): Sheet {
  * closing the table. Beside each AVG the target, the difference (how far the average is outside QA's range, 0 inside
  * it) and room for comments and corrective actions. Green, red and amber are the result, the average stays in yellow; everything else is purple
  */
-export function wtControlSheet(s: State, rows: WtRow[], code: string, date: string): Sheet {
+export function wtControlSheet(s: State, rows: WtRow[], code: string, date: string, label?: string): Sheet {
   const of = rows.filter((w) => normCode(w.code) === normCode(code) && w.tests.length)
   // as many weights as Ajustes › KPI asks of each side (Jose, 2026-10-30: 5, 8 or 10, "no sabemos quién está correcto"), or
   // more if some test has them
@@ -535,7 +535,7 @@ export function wtControlSheet(s: State, rows: WtRow[], code: string, date: stri
   const order = (w: WtRow) => (w.kind === 'ball' ? 0 : 2) + (w.cook === 'racks' ? 1 : 0)
   const balls = of.filter((w) => w.kind !== 'pouch').sort((a, b) => order(a) - order(b)), bags = of.filter((w) => w.kind === 'pouch')
   // each with its title (Jose, 2026-10-30: Kitchen, RTE, "Spiral: Spiral" and "Spiral: Racks", the two inside the room of Spiral)
-  const title = (name: string) => name + ' · ' + tr('CONTROL DE PESO · {0}', code) + ' · ' + niceDay(date)
+  const title = (name: string) => name + ' · ' + tr('CONTROL DE PESO · {0}', code) + ' · ' + (label ?? niceDay(date))
   const sections: { name: string; list: WtRow[] }[] = [
     { name: 'Kitchen', list: balls.filter((w) => w.dept === 'Kitchen') },
     { name: 'Spiral: Spiral', list: balls.filter((w) => w.dept === 'Spiral' && w.cook === 'spiral') },
@@ -561,7 +561,7 @@ export function wtControlSheet(s: State, rows: WtRow[], code: string, date: stri
  * the file of the one-page button: the summary, then each code as the plant's own sheet. The By department sheet
  * (wtSummarySheet) stays out of it for now (Jose, 2026-10-31: "si un día lo necesito te lo pido"): it goes back in here
  */
-export const wtSummaryBook = (s: State, rows: WtRow[], date: string): Sheet[] => [wtBoardSheet(s, rows, date), ...WT_ASKED_CODES.map((c) => wtControlSheet(s, rows, c, date))]
+export const wtSummaryBook = (s: State, rows: WtRow[], date: string, label?: string): Sheet[] => [wtBoardSheet(s, rows, date, label), ...WT_ASKED_CODES.map((c) => wtControlSheet(s, rows, c, date, label))]
 const WT_LAST = 'P' // the band reaches the last column of the tables
 const WT_WIDTHS = [11, 9, 19, 11, 11, 9, 10, 9, 9, 11, 8, 8, 8, 13, 12, 18]
 const wtRoom = (d: Dept) => (d === 'Kitchen' ? X.wKitchen : d === 'RTE' ? X.wRTE : d === 'Spiral' ? X.wSpiral : X.wCell)

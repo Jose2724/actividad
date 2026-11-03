@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { awayDay, type State } from './store'
 import { loadDay } from './sync'
-import { datesFrom, downtimeOf, netsuiteSheet, pplhBook, pplhNames, pplhOfRange, pplhRow, readNetsuite, savePplhLbs, setPplhHours, setPplhNames, PPLH_SITE, type NetsuiteRead } from './pplh'
+import { datesFrom, downtimeOf, netsuiteSheet, pplhBook, pplhGroups, pplhNames, pplhOfGroups, pplhOfRange, pplhRow, pplhWeekHours, rangeShortcuts, readNetsuite, savePplhLbs, setPplhHours, setPplhNames, setPplhWeekHours, PPLH_SITE, type NetsuiteRead, type PplhBy } from './pplh'
 import { loadZip, readCsv, readXlsx, xlsxNow, XLSX_TYPE } from './xlsx'
 import { addDays, download } from './App'
-import { tr } from './i18n'
+import { locale, tr } from './i18n'
 
 const lb = (x: number) => Math.round(x).toLocaleString('en-US')
 const one = (x: number) => x.toFixed(1)
 const h = (ms: number) => (Math.round(ms / 36_000) / 100).toFixed(1)
+const monthLabel = (ym: string) => new Date(ym + '-01T12:00:00').toLocaleDateString(locale, { month: 'long', year: 'numeric' })
 
 /**
  * Mike's daily KPI in the report (2026-11-02): the NetSuite file Melissa sends is read here and its pounds kept, the
@@ -23,6 +24,9 @@ export function PplhView({ s, date, now, edit, admin }: { s: State; date: string
   // (days older than the device keeps are brought, for their downtime)
   useEffect(() => { for (const d of new Set([date, ...range])) if (awayDay(d)) void loadDay(d) }, [date, from, to]) // eslint-disable-line react-hooks/exhaustive-deps
   const rows = range.map((d) => pplhRow(s, d)), all = pplhOfRange(rows), today = pplhRow(s, date)
+  // (by week or by month, as Mike looks at it: one row per week, Monday to Sunday, or per month)
+  const [by, setBy] = useState<PplhBy>('day')
+  const groups = useMemo(() => (by === 'day' || !range.length ? [] : pplhGroups(s, from, to, by)), [s, from, to, by, range.length]), allG = pplhOfGroups(groups)
   const down = useMemo(() => downtimeOf(s, [date], now), [s, date, now])
   const [read, setRead] = useState<{ file: string; r: NetsuiteRead } | null>(null)
   const [err, setErr] = useState('')
@@ -44,7 +48,7 @@ export function PplhView({ s, date, now, edit, admin }: { s: State; date: string
     setSaid(tr('Guardadas las libras de {0} días.', read.r.days.length)); setRead(null)
   }
   const excel = async () => {
-    const make = () => xlsxNow(pplhBook(s, from, to, date, now))
+    const make = () => xlsxNow(pplhBook(s, from, to, date, now, by))
     const bytes = make() ?? (await loadZip(), make())
     if (bytes) download(new File([bytes], 'PPLH-East-Rutherford-' + date + '.xlsx', { type: XLSX_TYPE }))
   }
@@ -53,6 +57,12 @@ export function PplhView({ s, date, now, edit, admin }: { s: State; date: string
     const was = pplhRow(s, d).hours
     if (!text.trim()) { if (was != null) setPplhHours(d, null); return }
     if (Number.isFinite(n) && n > 0 && n !== was) setPplhHours(d, n)
+  }
+  const saveWeekHours = (monday: string, text: string) => {
+    const n = Number(text.replace(/,/g, ''))
+    const was = pplhWeekHours(s, monday)
+    if (!text.trim()) { if (was != null) setPplhWeekHours(monday, null); return }
+    if (Number.isFinite(n) && n > 0 && n !== was) setPplhWeekHours(monday, n)
   }
   return (
     <>
@@ -85,23 +95,33 @@ export function PplhView({ s, date, now, edit, admin }: { s: State; date: string
         </article>
       )}
       <article className="wt-rp">
-        <h3>{tr('Día por día')}</h3>
-        <div className="btns pplh-range"><label>{tr('Desde')} <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label><label>{tr('Hasta')} <input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label></div>
+        <h3>{by === 'week' ? tr('Semana por semana') : by === 'month' ? tr('Mes por mes') : tr('Día por día')}</h3>
+        <RangePick from={from} to={to} today={date} onChange={(a, b) => { setFrom(a); setTo(b) }} />
+        <div className="btns pplh-by">{(['day', 'week', 'month'] as PplhBy[]).map((b) => <button key={b} type="button" className={'btn sm ' + (by === b ? 'primary' : 'soft')} onClick={() => setBy(b)}>{b === 'day' ? tr('Por día') : b === 'week' ? tr('Por semana') : tr('Por mes')}</button>)}</div>
         <div className="scroll"><table className="wt-rp-tbl mini">
-          <thead><tr><th>{tr('Fecha')}</th><th>{tr('Libras (NetSuite)')}</th><th>{tr('Horas (RR. HH.)')}</th><th>PPLH</th></tr></thead>
+          <thead><tr><th>{by === 'week' ? tr('Semana') : by === 'month' ? tr('Mes') : tr('Fecha')}</th><th>{tr('Libras (NetSuite)')}</th><th>{tr('Horas (RR. HH.)')}</th><th>PPLH</th>{by !== 'day' && <th>{tr('Días con libras')}</th>}</tr></thead>
           <tbody>
-            {rows.map((r) => (
+            {by === 'day' ? rows.map((r) => (
               <tr key={r.date} className={r.date === date ? 'on' : ''}>
                 <td><b>{r.date}</b></td>
                 <td>{r.lbs == null ? '—' : lb(r.lbs)}</td>
                 <td>{edit ? <input key={r.date + ':' + (r.hours ?? '')} className="pplh-h" inputMode="decimal" defaultValue={r.hours ?? ''} aria-label={tr('Horas del {0}', r.date)} onBlur={(e) => saveHours(r.date, e.target.value)} /> : r.hours == null ? '—' : one(r.hours)}</td>
                 <td>{r.pplh == null ? '—' : one(r.pplh)}</td>
               </tr>
+            )) : groups.map((g) => (
+              <tr key={g.key} className={g.from <= date && date <= g.to ? 'on' : ''}>
+                <td><b>{by === 'week' ? tr('Semana del {0}', g.from) : monthLabel(g.key)}</b>{!g.whole && <small> · {tr('cortada por el rango')}</small>}</td>
+                <td>{g.lbs == null ? '—' : lb(g.lbs)}</td>
+                <td>{edit && by === 'week' && g.whole && !g.hoursDays ? <input key={g.key + ':' + (g.hours ?? '')} className="pplh-h" inputMode="decimal" defaultValue={g.hours ?? ''} placeholder={tr('semana')} aria-label={tr('Horas de la semana del {0}', g.from)} onBlur={(e) => saveWeekHours(g.key, e.target.value)} /> : g.hours == null ? '—' : <>{one(g.hours)}{g.weekly ? <small> {tr('por semana')}</small> : g.hoursDays < g.days ? <small> {tr('{0} de {1} días', g.hoursDays, g.days)}</small> : null}</>}</td>
+                <td>{g.pplh == null ? '—' : one(g.pplh)}</td>
+                <td>{g.lbsDays} / {g.days}</td>
+              </tr>
             ))}
-            <tr><td><b>{tr('Rango')}</b></td><td>{lb(all.lbs)}</td><td>{one(all.hours)}</td><td>{all.pplh == null ? '—' : one(all.pplh)}</td></tr>
+            {by === 'day' ? <tr><td><b>{tr('Rango')}</b></td><td>{lb(all.lbs)}</td><td>{one(all.hours)}</td><td>{all.pplh == null ? '—' : one(all.pplh)}</td></tr>
+              : <tr><td><b>{tr('Rango')}</b></td><td>{lb(allG.lbs)}</td><td>{one(allG.hours)}</td><td>{allG.pplh == null ? '—' : one(allG.pplh)}</td><td>{groups.reduce((t, g) => t + g.lbsDays, 0)} / {range.length}</td></tr>}
           </tbody>
         </table></div>
-        <p className="hint">{tr('El rango suma las libras y las horas de los días que tienen las dos, y luego divide: no es un promedio de los días. Un día sin archivo o sin horas queda vacío, nunca estimado.')}</p>
+        <p className="hint">{tr('El rango suma las libras y las horas de los días que tienen las dos, y luego divide: no es un promedio de los días. Un día sin archivo o sin horas queda vacío, nunca estimado.')}{by !== 'day' && ' ' + tr('Las semanas van de lunes a domingo, como el SUMMARY de Mike. Si Recursos Humanos da las horas por semana y no por día, se escriben en la fila de la semana completa (Por semana) y toman todas las libras de esa semana.')}</p>
       </article>
       <article className="wt-rp">
         <h3>{tr('Downtime por cuarto · día del reporte')}</h3>
@@ -118,6 +138,18 @@ export function PplhView({ s, date, now, edit, admin }: { s: State; date: string
       </article>
       {admin && <PplhAccess s={s} />}
     </>
+  )
+}
+
+/** From / To, and the ranges one taps instead of typing: this week (Monday to Sunday), last week, this month, last month */
+export function RangePick({ from, to, today, onChange }: { from: string; to: string; today: string; onChange: (from: string, to: string) => void }) {
+  const label = { week: tr('Esta semana'), lastWeek: tr('Semana pasada'), month: tr('Este mes'), lastMonth: tr('Mes pasado') }
+  return (
+    <div className="btns pplh-range">
+      <label>{tr('Desde')} <input type="date" value={from} onChange={(e) => onChange(e.target.value, to)} /></label>
+      <label>{tr('Hasta')} <input type="date" value={to} onChange={(e) => onChange(from, e.target.value)} /></label>
+      {rangeShortcuts(today).map((q) => <button key={q.id} type="button" className={'btn sm ' + (from === q.from && to === q.to ? 'primary' : 'soft')} onClick={() => onChange(q.from, q.to)}>{label[q.id]}</button>)}
+    </div>
   )
 }
 
