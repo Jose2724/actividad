@@ -110,7 +110,9 @@ function DashChart({ c }: { c: DashCode }) {
   const [on, setOn] = useState<number | null>(null)
   const n = c.days.length, L = 46, R = 16, T = 30, PH = 150, GAP = 34, XL = 26
   const H = T + PH + GAP + PH + XL
-  const x = (i: number) => (n === 1 ? L + (width - L - R) / 2 : L + ((width - L - R) * i) / (n - 1))
+  // (the first and last days sit a little in from the edges, so a dot on the first day is not lost on the axis: Jose, 2026-11-04)
+  const IN = 18
+  const x = (i: number) => (n === 1 ? L + (width - L - R) / 2 : L + IN + ((width - L - R - 2 * IN) * i) / (n - 1))
   const panels: { kinds: DashKind[]; top: number; title: string }[] = [{ kinds: ['raw', 'cooked'], top: T, title: tr('Crudo y cocinado (oz)') }, { kinds: ['pouch'], top: T + PH + GAP, title: tr('Pouch (oz)') }]
   const every = Math.max(1, Math.ceil(n / Math.max(1, Math.floor((width - L - R) / 48))))
   const hex = (k: DashKind) => '#' + DASH_COLORS[k]
