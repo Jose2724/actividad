@@ -1799,9 +1799,10 @@ function MiniKpiView({ k }: { k: Kit }) {
         <div className="seg" role="group" aria-label={tr('Turno')}>{([1, 2] as const).map((n) => <button key={n} type="button" className={shift === n ? 'on' : ''} aria-pressed={shift === n} onClick={() => setShift(n)}>{tr('Turno {0}', n)}</button>)}</div>
         <button type="button" className="btn soft" onClick={() => pickDate(addDays(week.days[0], -7))}>{tr('‹ Semana anterior')}</button>
         <button type="button" className="btn soft" disabled={addDays(week.days[0], 7) > today} onClick={() => pickDate(addDays(week.days[0], 7))}>{tr('Semana siguiente ›')}</button>
-        <button type="button" className="btn primary" disabled={bringing} onClick={() => void excel()}>{bringing ? tr('Trayendo las semanas…') : tr('⬇ Excel del Mini KPI')}</button> <WhatIs id="mini" />
+        <button type="button" className="btn primary" onClick={() => void excel()}>{tr('⬇ Excel del Mini KPI')}</button> <WhatIs id="mini" />
       </div>
       <p className="hint">{tr('Semana del {0} al {1}. El Excel trae un Resumen con gráficas de los días y las últimas {2} semanas, y una hoja aparte por departamento.', week.days[0], week.days[5], MINI_WEEKS)}</p>
+      {bringing && <p className="hint">{tr('Se están trayendo las semanas anteriores del servidor. El Excel sale al instante con la semana de arriba; las semanas anteriores entran al Resumen cuando ya estén.')}</p>}
       {failed > 0 && <p className="hint red">{tr('No se pudieron traer {0} días del servidor: esas semanas salen vacías en el Excel. Vuelve a abrir esta pestaña cuando haya señal.', failed)}</p>}
       <div className="btns"><div className="seg" role="group" aria-label={tr('Vista')}><button type="button" className={!full ? 'on' : ''} aria-pressed={!full} onClick={() => setFull(false)}>{tr('Lo importante')}</button><button type="button" className={full ? 'on' : ''} aria-pressed={full} onClick={() => setFull(true)}>{tr('Todo')}</button></div></div>
       {!full && miniSimple(week).map((b) => (

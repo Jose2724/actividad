@@ -3510,4 +3510,5 @@ export const EN: Record<string, string> = {
   "Vista": "View",
   "Lo importante": "What matters",
   "Asistencia = personas anotadas contra las esperadas. Arranque = el primer código de las líneas; fin = el último registro. Por persona = lo hecho ÷ las personas anotadas. Peso = el promedio del día de lo que pesa el cuarto. Downtime = los paros que cuentan en Ajustes › Mini KPI. \"Todo\" muestra las tablas completas.": "Attendance = people written against those expected. Start = the lines' first code; end = the last record. Per person = what was made ÷ the people written. Weight = the day's average of what the room weighs. Downtime = the stops that count in Settings › Mini KPI. \"Everything\" shows the full tables.",
+  "Se están trayendo las semanas anteriores del servidor. El Excel sale al instante con la semana de arriba; las semanas anteriores entran al Resumen cuando ya estén.": "The earlier weeks are being brought from the server. The Excel comes at once with the week above; the earlier weeks join the Summary once they are here.",
 }

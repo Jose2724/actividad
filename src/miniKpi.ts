@@ -514,6 +514,7 @@ export function miniGuideSheet(): Sheet {
 }
 /** the workbook: first the page to read, then each room on its own sheet and what each number means */
 export function miniBook(s: State, date: string, k: 1 | 2, now: number): Sheet[] {
-  const weeks = miniSundays(date).map((d) => miniWeek(s, d, k, now))
+  // (the weeks still on their way from the server are left out, so the file is had at once: Jose, 2026-11-04; the report's week always goes)
+  const weeks = miniSundays(date).filter((d, i, all) => i === all.length - 1 || !miniDays(d).some((x) => awayDay(x))).map((d) => miniWeek(s, d, k, now))
   return [miniSimpleSheet(weeks[weeks.length - 1]), miniSummary(weeks), ...MINI_ROOMS.map((d) => miniRoomSheet(weeks, d)), miniGuideSheet()]
 }
