@@ -2575,6 +2575,16 @@ function healSetup(lineId: string) {
 /** pounds thrown away, added to what the run already has */
 export function addWaste(runId: string, lb: number) { const r = run(runId); if (r) putRun({ ...r, waste: Math.round((r.waste + lb) * 100) / 100 }) }
 /**
+ * The room's one Waste button (Jose, 2026-11-04: "un solo botón por departamento, no en las tarjetas de las líneas"):
+ * the codes its pounds can go to, those running first and then those of the day, newest first. The pounds are still a
+ * code's (run.waste), so the report, Avance and the Mini KPI keep counting them by code
+ */
+export function wasteRuns(s: State, dept: Dept, date: string): Run[] {
+  return s.runs.filter((r) => !r.deleted && r.dept === dept && (!r.endedAt || r.date === date)).sort((a, b) => Number(!!a.endedAt) - Number(!!b.endedAt) || b.startedAt - a.startedAt)
+}
+/** the room's waste of the day, in pounds, over its codes */
+export const roomWaste = (s: State, dept: Dept, date: string) => Math.round(s.runs.filter((r) => !r.deleted && r.dept === dept && r.date === date).reduce((t, r) => t + (r.waste || 0), 0) * 100) / 100
+/**
  * More product went on a unit that had been closed short: its quantity is raised (with its lots, where a unit carries
  * them), instead of counting another unit. It is a correction like any other: who and when go to the history.
  */

@@ -3513,4 +3513,9 @@ export const EN: Record<string, string> = {
   "Se están trayendo las semanas anteriores del servidor. El Excel sale al instante con la semana de arriba; las semanas anteriores entran al Resumen cuando ya estén.": "The earlier weeks are being brought from the server. The Excel comes at once with the week above; the earlier weeks join the Summary once they are here.",
   "⚠ Personas con {0} horas o más en un día: confirmar con Josh y Santiago y corregir en Bamboo si no es real.": "⚠ People with {0} hours or more in one day: confirm with Josh and Santiago and correct it in Bamboo if it is not real.",
   "Horas de más que no son reales suben el total de la planta y bajan el PPLH. Esta lista solo se ve aquí y ahora: la app no guarda nombres.": "Hours that are not real raise the plant's total and lower the PPLH. This list is seen only here and now: the app keeps no names.",
+  "🗑 Waste (lb)": "🗑 Waste (lb)",
+  "No hay ningún código hoy en {0}: el waste va con el código que lo dio.": "No code today in {0}: the waste goes with the code that gave it.",
+  "¿De qué código?": "Which code?",
+  "ya lleva {0} lb": "already has {0} lb",
+  "Se suma al waste de {0}: {1} lb en total.": "Added to {0}'s waste: {1} lb in all.",
 }

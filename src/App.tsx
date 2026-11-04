@@ -1,6 +1,6 @@
 import { Component, createContext, Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
-import { isOven, PLAN_NOTE_MAX, PLAN_SPAN_MAX, attGated, attOf, lineSlow, addLine, plantCut, roomMark, CUT_WINDOW, startSecondShift, addWaste, awayDay, batch, byPlanLot, planLot, cameFrom, carriedOver, dayAfter, dayBefore, orderUnitDefault, programOrderChoices, ordersOf, orderStatus, orderUnitWord, prevPending, workOrderOf, type WorkOrder, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, MFO_CHOICES, mfoChoiceOf, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, cartCratesOf, cartPouchesOf, cartSpecOf, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, noteOf, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderAddRuns, orderOfId, poMates, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, PLAN_LOT_MAX, productOf, productsCsv, purgeDay, reasonText, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay, orderFull, orderFullText, orderNoteOf, setOrderNote, setOrderUrgent, programCap, programCapOf, holdsOpen } from './store'
+import { roomWaste, wasteRuns, isOven, PLAN_NOTE_MAX, PLAN_SPAN_MAX, attGated, attOf, lineSlow, addLine, plantCut, roomMark, CUT_WINDOW, startSecondShift, addWaste, awayDay, batch, byPlanLot, planLot, cameFrom, carriedOver, dayAfter, dayBefore, orderUnitDefault, programOrderChoices, ordersOf, orderStatus, orderUnitWord, prevPending, workOrderOf, type WorkOrder, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, MFO_CHOICES, mfoChoiceOf, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, cartCratesOf, cartPouchesOf, cartSpecOf, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, noteOf, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderAddRuns, orderOfId, poMates, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, PLAN_LOT_MAX, productOf, productsCsv, purgeDay, reasonText, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay, orderFull, orderFullText, orderNoteOf, setOrderNote, setOrderUrgent, programCap, programCapOf, holdsOpen } from './store'
 import { avanceLots, avanceRange, avanceRows, datesBetween, lotAcrossDays, lotRows, lotsKnown, mfoList, mfoText, mfoWord, n1, pending, type AvancePart, type AvanceRow, type MfoMade } from './avance'
 import { loadZip, type Cell } from './xlsx'
 
@@ -2198,6 +2198,7 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
           {(can('fix') || s.lineRules.add) && <button type="button" className="btn soft" onClick={() => setAdding(true)}>{trx('+ Agregar {0}', CFG[dept].lineWord.toLowerCase())}</button>}
           {/* what the freezer has ready for this room, and asking for it (Jose, 2026-10-27): Freezer RTE's own screen for the room's people */}
           {dept === 'Kitchen' && <WeightNoteButton s={s} date={day.date} now={now} />}
+          {CFG[dept].waste && <RoomWasteButton s={s} dept={dept} date={day.date} />}
           {(dept === 'Packing' || dept === 'MFO') && <a className="btn soft" href={FREEZER_URL + '#listo'}>{tr('🧊 Listo para {0}', dept)}</a>}
         </div>}
       </div>
@@ -2770,7 +2771,6 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   useEffect(() => { if (run && sure.open) sure.cancel() }, [run?.id, sure.open])
   const nameIt = !quiet && <button type="button" className="lnk pen" title={tr('Cambiar el nombre')} aria-label={tr('Cambiar el nombre de {0}', lineLabel(line.name))} onClick={() => setRenaming(true)}>✎</button>
   const naming = renaming && <LineNameDialog s={s} dept={line.dept} line={line} onClose={() => setRenaming(false)} />
-  const [wasting, setWasting] = useState(false)
   // (the program cap's question, 2026-10-23: kept with the other hooks, above the line's early return)
   const [capAsk, setCapAsk] = useState(false)
   // what the line is going to consume, weighed before the code starts (2026-10-27): the start waits in here
@@ -3182,7 +3182,6 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         {line.dept === 'Spiral' && <MeatButton s={s} run={run} />}
         {/* what the code consumes, where the room weighs it (2026-10-27) */}
         {consumeOn(s, line.dept) && <ConsumeButton s={s} run={run} />}
-        {cfg.waste && <button type="button" className="btn" onClick={() => setWasting(true)}>Waste{run.waste ? <b className="red"> {run.waste} lb</b> : ' (lb)'}</button>}
         <button type="button" className="btn" disabled={!!stop && !inSetup} onClick={() => setEnding(true)}>{tr('■ Terminar')}<span className="opt"> {' '}{tr('código')}</span></button>
       </div>
       )}
@@ -3204,7 +3203,6 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       {packing === 'binlot' && <LotNowDialog run={run} onClose={() => setPacking(null)} />}
       {tagUnit && <LotsDialog key={'tag:' + tagUnit.at} title={tr('Tags del pallet {0}', (tagging ?? 0) + 1)} unit={rc.qtyUnit} refLabel={rc.refLabel} lot={run.lot} qty={tagUnit.qty} usual={usualOf(s, run)} per={runWord} start={tagUnit.lots ?? [{ lot: run.lot, qty: tagUnit.qty ?? 0 }]} startRef={tagUnit.ref} startNote={tagUnit.note} onClose={() => setTagging(null)} onPick={(total, ref, lots, _po, note) => { fillUnit(run.id, tagUnit.at, total, lots, ref, note); setTagging(null) }} />}
       {typeof packing === 'number' && run.extra?.open?.parts[packing] && <PartDialog run={run} index={packing} onClose={() => setPacking(null)} />}
-      {wasting && <QtyDialog title={tr('Waste de {0} · ¿cuántas libras?', run.code)} unit="lb" refLabel="" initial={null} decimal onClose={() => setWasting(false)} onPick={(lb) => { if (lb > 0) addWaste(run.id, lb); setWasting(false) }} />}
     </div>
   )
 }
@@ -3494,6 +3492,50 @@ function CartDoneDialog({ code, crates, ppc, onClose, onPick }: { code: string; 
           </form>
         )}
         {mode === 'full' && <div className="dbtns"><button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button></div>}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * One Waste button for the room (Jose, 2026-11-04), beside its other buttons and not on each line: the pounds and the
+ * code they belong to (the one running when there is one; a chip per code when there are several)
+ */
+function RoomWasteButton({ s, dept, date }: { s: State; dept: Dept; date: string }) {
+  const [open, setOpen] = useState(false)
+  const total = roomWaste(s, dept, date)
+  return (
+    <>
+      <button type="button" className="btn soft" onClick={() => setOpen(true)}>{tr('🗑 Waste (lb)')}{total ? <b className="red"> {total} lb</b> : null}</button>
+      {open && <RoomWasteDialog s={s} dept={dept} date={date} onClose={() => setOpen(false)} />}
+    </>
+  )
+}
+function RoomWasteDialog({ s, dept, date, onClose }: { s: State; dept: Dept; date: string; onClose: () => void }) {
+  const runs = wasteRuns(s, dept, date)
+  // (the code running is chosen by itself when it is the only one; with several, they tap the one)
+  const running = runs.filter((r) => !r.endedAt)
+  const [pick, setPick] = useState(runs.length === 1 ? runs[0].id : running.length === 1 ? running[0].id : '')
+  const [v, setV] = useState('')
+  const n = Number(v.replace(',', '.')), ok = !!pick && v.trim() !== '' && Number.isFinite(n) && n > 0
+  const chosen = runs.find((r) => r.id === pick)
+  return (
+    <div className="veil" onClick={onClose}>
+      <div className="dlg" onClick={(e) => e.stopPropagation()}>
+        <h3>{tr('Waste de {0} · ¿cuántas libras?', dept)}</h3>
+        {!runs.length ? <p className="hint">{tr('No hay ningún código hoy en {0}: el waste va con el código que lo dio.', dept)}</p> : (
+          <form className="qform" onSubmit={(e) => { e.preventDefault(); if (ok) { addWaste(pick, Math.round(n * 100) / 100); onClose() } }}>
+            {runs.length > 1 && <div className="qpick"><span className="lab">{tr('¿De qué código?')}</span><div className="chips">{runs.map((r) => <button key={r.id} type="button" className={'chip' + (pick === r.id ? ' on' : '')} aria-pressed={pick === r.id} onClick={() => setPick(r.id)}><b>{r.code}</b> · {lineLabel(lineNameOf(s, r.lineId, r.line))}{!r.endedAt && <small> · {tr('corriendo')}</small>}{r.waste ? <small className="red"> · {r.waste} lb</small> : null}</button>)}</div></div>}
+            {runs.length === 1 && <p><b>{runs[0].code}</b> · {lineLabel(lineNameOf(s, runs[0].lineId, runs[0].line))}{runs[0].waste ? <span className="red"> · {tr('ya lleva {0} lb', runs[0].waste)}</span> : null}</p>}
+            <label>lb <input autoFocus inputMode="decimal" placeholder="lb" value={v} onChange={(e) => setV(e.target.value.replace(/[^\d.,]/g, '').replace(/([.,].*)[.,]/, '$1'))} /></label>
+            {chosen && ok && <p className="hint">{tr('Se suma al waste de {0}: {1} lb en total.', chosen.code, Math.round(((chosen.waste || 0) + n) * 100) / 100)}</p>}
+            <div className="dbtns">
+              <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
+              <button type="submit" className="btn primary" disabled={!ok}>{tr('✓ Guardar')}</button>
+            </div>
+          </form>
+        )}
+        {!runs.length && <div className="dbtns"><button type="button" className="btn" onClick={onClose}>{tr('Cerrar')}</button></div>}
       </div>
     </div>
   )

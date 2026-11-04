@@ -400,6 +400,8 @@ section('Tablet sin señal: sigue marcando mientras el manager corrige la misma 
   send(mgr, [mgr])
   clock = base + 50 * M; tab.use((m) => m.unitDone(id, 240))
   clock = base + 60 * M; tab.use((m) => { m.unitDone(id, 240); m.addWaste(id, 1.25) })
+  // one Waste button for the room (Jose, 2026-11-04): the codes it can go to and the room's day total
+  tab.use((m) => eq('el waste del cuarto: los códigos del día, el que corre primero, y el total del día', [m.wasteRuns(m.store.get(), m.store.get().runs.find((r) => r.id === id).dept, m.store.get().runs.find((r) => r.id === id).date)[0].id === id, m.roomWaste(m.store.get(), m.store.get().runs.find((r) => r.id === id).dept, m.store.get().runs.find((r) => r.id === id).date) >= 1.25], [true, true]))
   clock = base + 65 * M
   comeBack(tab)
   agreed('el carro que el manager quitó sigue quitado, el código corregido queda, y están los carros nuevos y el waste', id, { units: cartsAt(base, [20, 30, 40, 50, 60]), waste: 1.25, code: 'A101', ended: false })
