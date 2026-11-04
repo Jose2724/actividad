@@ -3988,7 +3988,9 @@ function lotShares(s: State, r: Run, u: Unit, byCount: boolean): { lot: string; 
  * it (in done; today = the day's own, which byShift splits). A program of several days is counted on every one of its
  * days against the same total (2026-10-28)
  */
-export type PlanRow = { code: string; name: string; planned: number; done: number; byShift: [number, number]; left: number; running: boolean; lines: string[]; unit: string; kind: string; other: { word: string; n: number }[]; lot: string; orderId: string; also: { lot: string; n: number }[]; from: string; to: string; before: number; today: number; note: string }
+export type PlanRow = { code: string; name: string; planned: number; done: number; byShift: [number, number]; left: number; running: boolean; lines: string[]; unit: string; kind: string; other: { word: string; n: number }[]; lot: string; orderId: string; also: { lot: string; n: number }[]; from: string; to: string; before: number; today: number; note: string
+  /** what the row made today, lot by lot (Jose, 2026-11-04: they count the code whatever the lot, and the lot made stays known) */
+  byLot: { lot: string; n: number }[] }
 /**
  * The rows of a room's program for a day, each against what was made OF ITS LOT (the office, 2026-10-20: 889 of lot
  * 6292 programmed 15,688 showed "hecho 25,244 · ✓ completo (+9,556)": the 9,556 of lot 6290 were added in). Each unit
@@ -4018,7 +4020,7 @@ export function planRows(s: State, date: string, dept: Dept): PlanRow[] {
     // A code off the program has one row, and every unit of it is its
     const loose = sets.findIndex((p) => !planLot(p.lot))
     const rowOf = (lot: string) => { if (!sets.length) return 0; const i = lot ? sets.findIndex((p) => planLot(p.lot) === lot) : -1; return i >= 0 ? i : loose }
-    const made = (sets.length ? sets : [null]).map(() => [0, 0, 0])
+    const made = (sets.length ? sets : [null]).map(() => [0, 0, 0]), lotsOf = made.map(() => new Map<string, number>())
     const also = new Map<string, number>()
     for (const r of mine) for (const u of r.units) {
       const k = shiftAt(hours, u.at)
@@ -4026,6 +4028,7 @@ export function planRows(s: State, date: string, dept: Dept): PlanRow[] {
         const i = rowOf(x.lot)
         if (i < 0) { also.set(x.lot, (also.get(x.lot) ?? 0) + x.n); continue }
         made[i][0] += x.n; made[i][k] += x.n
+        lotsOf[i].set(x.lot, (lotsOf[i].get(x.lot) ?? 0) + x.n)
       }
     }
     // the lines running the code now, each on the row of the lot it is on now
@@ -4038,7 +4041,7 @@ export function planRows(s: State, date: string, dept: Dept): PlanRow[] {
       // units of lots no row of the code running that day names)
       const before = p && p.endDate && p.date < date ? planDays(p).filter((d) => d < date).reduce((t, d) => t + madeForRow(s, dept, key, planLot(p.lot), d, measure), 0) : 0
       const done = Math.round((before + today) * 100) / 100
-      out.push({ code, name: product?.name ?? '', planned, done, byShift: [one, two], left: planned ? Math.round((planned - done) * 100) / 100 : 0, running: lines.length > 0, unit, kind: measure, other: i ? [] : other, lines, lot: p ? planLot(p.lot) : '', orderId: p?.orderId ?? '', also: i ? [] : alsoList, from: p?.date ?? date, to: p ? planEnd(p) : date, before: Math.round(before * 100) / 100, today: Math.round(today * 100) / 100, note: p?.note ?? '' })
+      out.push({ code, name: product?.name ?? '', planned, done, byShift: [one, two], left: planned ? Math.round((planned - done) * 100) / 100 : 0, running: lines.length > 0, unit, kind: measure, other: i ? [] : other, lines, lot: p ? planLot(p.lot) : '', orderId: p?.orderId ?? '', also: i ? [] : alsoList, byLot: [...lotsOf[i]].filter(([, n]) => n > 0).map(([lot, n]) => ({ lot, n: Math.round(n * 100) / 100 })).sort(byPlanLot), from: p?.date ?? date, to: p ? planEnd(p) : date, before: Math.round(before * 100) / 100, today: Math.round(today * 100) / 100, note: p?.note ?? '' })
     })
   }
   return out.sort((a, b) => Number(b.planned > 0) - Number(a.planned > 0) || a.code.localeCompare(b.code, undefined, { numeric: true }) || byPlanLot(a, b))

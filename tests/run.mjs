@@ -2185,6 +2185,8 @@ section('El programa por lote: el 889 de RTE con dos lotes el mismo día, como l
     // a row without a lot counts what no row of a lot of its code claims
     clock = oct(19, 20, 30); m.setPlan(D, 'RTE', '889', 1000, '')
     eq('un renglón sin lote cuenta solo lo que ningún renglón de lote del código reclama (el 6293), por turno; ya no queda nada aparte', [rows('RTE').filter((r) => r[0] === '889'), m.planRows(st(), D, 'RTE').filter((r) => r.code === '889').map((r) => r.also)], [[['889', '6290', 2482, 2482, [0, 2482], 0], ['889', '6292', 15688, 15204, [14204, 1000], 484], ['889', '', 1000, 960, [0, 960], 40]], [[], [], []]])
+    // what each row made, lot by lot (Jose, 2026-11-04: they count the code whatever the lot, and the lot made stays known)
+    eq('cada renglón dice lo que hizo de cada lote: el de lote, solo el suyo; el sin lote, el 6293 que tomó', m.planRows(st(), D, 'RTE').filter((r) => r.code === '889' || r.code === '0889').map((r) => [r.lot, r.byLot.map((x) => x.lot)]), m.planRows(st(), D, 'RTE').filter((r) => r.code === '889' || r.code === '0889').map((r) => [r.lot, r.lot ? [r.lot] : ['6293']]))
     eq('los chips de una línea libre y del registro de después leen los mismos renglones (uno por código y lote)', m.planRows(st(), D, 'RTE').filter((r) => r.planned > 0 && r.left > 0).map((r) => [r.code, r.lot, r.left]), [['889', '6292', 484], ['889', '', 40], ['2010', '6292', 3360]])
     eq('Flujo suma el programa de cada lote: el 6292 tiene 15,688 de 889 y el 6290 tiene 2,482', [m.flujoProgram(st(), '6292').get('889').prog, m.flujoProgram(st(), '6290').get('889').prog, m.flujoProgram(st(), '6293').get('889')], [[{ dept: 'RTE', qty: 15688 }], [{ dept: 'RTE', qty: 2482 }], undefined])
 

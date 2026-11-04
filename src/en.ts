@@ -3522,4 +3522,6 @@ export const EN: Record<string, string> = {
   "🗒 Comentario de {0} · {1}": "🗒 Comment from {0} · {1}",
   "Por qué no se hizo, qué pasó, o lo que haya que saber de este programa. Lo ven la oficina y los managers.": "Why it was not done, what happened, or anything to know about this program. The office and the managers see it.",
   "ej. Faltó carne de Kitchen; se paró 2 horas por la máquina": "e.g. Kitchen's meat was missing; stopped 2 hours for the machine",
+  "Descripción": "Description",
+  "Total en {0}": "Total in {0}",
 }

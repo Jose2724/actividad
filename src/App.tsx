@@ -1886,6 +1886,12 @@ function PlanCard({ s, dept, date, mgr }: { s: State; dept: Dept; date: string; 
   if (!planned.length && !prev.length && !mgr) return null
   const cfg = CFG[dept], byCode = dept === 'Spiral' || dept === 'MFO', unit = byCode ? tr('la unidad de cada código') : cfg.qty === 'none' ? cfg.plural.toLowerCase() : cfg.qtyUnit
   const yesterday = dayBefore(date)
+  // the lot column only when the day's program names a lot (2026-11-04: "los lotes no hacen falta")
+  const showLot = planned.some((r) => !!r.lot)
+  // what a row made, lot by lot, when it is not just the lot it names: "6310: 20 · 6311: 15" (2026-11-04)
+  const lotsMade = (r: (typeof rows)[number]) => (r.byLot.length && !(r.byLot.length === 1 && r.byLot[0].lot === r.lot) ? r.byLot.map((x) => (x.lot ? tr('lote {0}', x.lot) : tr('sin lote')) + ': ' + woN(x.n)).join(' · ') : '')
+  // the day's totals, by shift and both together, per unit (platos apart from copas)
+  const totals = [...planned.reduce((m, r) => { const k = byCode ? r.unit : '', e = m.get(k) ?? { unit: k, planned: 0, one: 0, two: 0, today: 0, left: 0 }; e.planned += r.planned; e.one += r.byShift[0]; e.two += r.byShift[1]; e.today += r.today; e.left += Math.max(0, r.left); return m.set(k, e) }, new Map<string, { unit: string; planned: number; one: number; two: number; today: number; left: number }>()).values()].map((x) => ({ ...x, planned: Math.round(x.planned * 100) / 100, one: Math.round(x.one * 100) / 100, two: Math.round(x.two * 100) / 100, today: Math.round(x.today * 100) / 100, left: Math.round(x.left * 100) / 100 }))
   // (a code with rows of a lot that day besides this one without a lot: see the lot cell)
   const siblingLots = (r: (typeof rows)[number]) => !r.lot && planned.some((x) => x !== r && x.lot && normCode(x.code) === normCode(r.code))
   // what was made of a code in a lot no row names: "9,556 del lote 6290" (in the code's word where each code has its own)
@@ -1922,7 +1928,9 @@ function PlanCard({ s, dept, date, mgr }: { s: State; dept: Dept; date: string; 
       {planned.length ? (
         <div className="twrap rp-cardlist wo-cards">
           <table className="pctable">
-            <thead><tr><th>{tr('Código')}</th><th>{tr('Lote')}</th><th className="pc-note">{tr('Comentario')}</th><th className="pc-order">{tr('Pedido de producción')}</th><th>{tr('Desde')}</th><th className="num">{tr('Programado')}</th><th className="num pc-turn">{tr('Turno 1')}</th><th className="num pc-turn">{tr('Turno 2')}</th><th className="num">{tr('Hecho hoy')}</th><th className="num">{tr('Pendiente')}</th><th className="num">{tr('Disponible del pedido')}</th></tr></thead>
+            {/* (Jose and the floor, 2026-11-04: the office's comment is a description; the comment of reference, the room's, the supervisor's,
+                the manager's or the office's, at the far right; the lot only when the day's program names one) */}
+            <thead><tr><th>{tr('Código')}</th>{showLot && <th>{tr('Lote')}</th>}<th className="pc-note">{tr('Descripción')}</th><th className="pc-order">{tr('Pedido de producción')}</th><th>{tr('Desde')}</th><th className="num">{tr('Programado')}</th><th className="num pc-turn">{tr('Turno 1')}</th><th className="num pc-turn">{tr('Turno 2')}</th><th className="num">{tr('Hecho hoy')}</th><th className="num">{tr('Pendiente')}</th><th className="num">{tr('Disponible del pedido')}</th><th className="pc-rnote">{tr('Comentario')}</th></tr></thead>
             <tbody>{planned.map((r) => {
               const pct = Math.max(0, Math.min(100, Math.floor((r.done / r.planned) * 100)))
               const o = r.orderId ? workOrderOf(s, r.orderId) : undefined, st = o && !o.deleted ? orderStatus(s, o, date) : null
@@ -1934,15 +1942,9 @@ function PlanCard({ s, dept, date, mgr }: { s: State; dept: Dept; date: string; 
                   {/* the lot the program names (2026-10-19), blank when the office left it out (a phone's card leaves it out).
                       When the code also has rows of a lot that day, its row without a lot says "sin lote", on a phone
                       too: three cards of 889, one saying nothing, was not readable (review of 2026-10-20) */}
-                  <td className={'pc-lot' + (r.lot || siblingLots(r) ? '' : ' c-none')} data-label={tr('Lote')}>{r.lot || (siblingLots(r) ? tr('sin lote') : '—')}</td>
-                  {/* the office's comment (2026-10-28) */}
-                  {/* and the room's own (2026-11-04): why it was not done, what happened; a tap writes or changes it */}
-                  {(() => { const rn = planRoomNoteOf(s, date, dept, r.code, r.lot); return (
-                    <td className={'pc-note' + (r.note || rn || writesNote ? '' : ' c-none')} data-label={tr('Comentario')}>
-                      {r.note && <span className="pc-notetext">💬 {r.note}</span>}
-                      {rn ? <button type="button" className="pc-roomnote" disabled={!writesNote} title={tr('{0} · {1}', rn.by, fmtTime(rn.at))} onClick={() => setNoting({ code: r.code, lot: r.lot })}>🗒 {rn.text}<small> · {rn.by}</small></button>
-                        : writesNote ? <button type="button" className="lnk sm" onClick={() => setNoting({ code: r.code, lot: r.lot })}>{tr('+ Comentario del cuarto')}</button> : !r.note && '—'}
-                    </td>) })()}
+                  {showLot && <td className={'pc-lot' + (r.lot || siblingLots(r) ? '' : ' c-none')} data-label={tr('Lote')}>{r.lot || (siblingLots(r) ? tr('sin lote') : '—')}</td>}
+                  {/* the office's text on the row (2026-10-28), read as its description (2026-11-04) */}
+                  <td className={'pc-note' + (r.note ? '' : ' c-none')} data-label={tr('Descripción')}>{r.note ? <span className="pc-notetext">{r.note}</span> : '—'}</td>
                   {/* the production order this program is a part of: a tap opens it (its window has the whole sum) */}
                   {/* "de producción" said in full: in Packing a "pedido" is also the customer's PO (its Pedidos tab, the live card's "Pedido de C300"); review of 2026-10-20 */}
                   <td className="pc-order" data-label={tr('Pedido de producción')}>
@@ -1958,7 +1960,7 @@ function PlanCard({ s, dept, date, mgr }: { s: State; dept: Dept; date: string; 
                   {/* each shift's part: for wider screens (a phone keeps the code, what was set, what is made and what is left, as before the orders) */}
                   <td className="num pc-turn" data-label={tr('Turno 1')}>{woN(r.byShift[0])}</td>
                   <td className="num pc-turn" data-label={tr('Turno 2')}>{woN(r.byShift[1])}</td>
-                  <td className="num" data-label={tr('Hecho hoy')}><b>{woN(r.today)}</b>{r.before > 0 && <small className="pc-span">{tr('antes: {0}', woN(r.before))}</small>}</td>
+                  <td className="num" data-label={tr('Hecho hoy')}><b>{woN(r.today)}</b>{r.before > 0 && <small className="pc-span">{tr('antes: {0}', woN(r.before))}</small>}{lotsMade(r) && <small className="pc-lots">{lotsMade(r)}</small>}</td>
                   <td className={'num pc-left ' + (r.left <= 0 ? 'ok' : 'left')} data-label={tr('Pendiente')}>
                     <span>{r.left > 0 ? woN(r.left) : tr('✓ completo') + (r.left < 0 ? ' (+' + woN(-r.left) + ')' : '')}</span>
                     <div className="pc-bar"><div className="bar"><i className={pct >= 100 ? 'ok' : 'pend'} style={{ width: pct + '%' }} /></div><small>{pct}%</small></div>
@@ -1967,9 +1969,27 @@ function PlanCard({ s, dept, date, mgr }: { s: State; dept: Dept; date: string; 
                     {!o || !st ? '—' : st.state === 'completado' || st.disponible <= 0 ? <span className="ok">{st.over > 0 ? tr('✓ completo (+{0})', woN(st.over)) : tr('✓ completo')}</span> : <><b>{woN(st.disponible)}</b><small className="wo-sub">{tr('de {0}', woN(o.qty))}</small></>}
                     {st && shortOf(st) && <small className="wo-short" title={tr('Faltan días viejos de este pedido en este aparato: los números pueden cambiar cuando lleguen del servidor.')}> …</small>}
                   </td>
+                  {/* the comment of reference (2026-11-04): why it was not done, what happened; the room's people, the supervisor, a manager or the office */}
+                  {(() => { const rn = planRoomNoteOf(s, date, dept, r.code, r.lot); return (
+                    <td className={'pc-rnote' + (rn || writesNote ? '' : ' c-none')} data-label={tr('Comentario')}>
+                      {rn ? <button type="button" className="pc-roomnote" disabled={!writesNote} title={tr('{0} · {1}', rn.by, fmtTime(rn.at))} onClick={() => setNoting({ code: r.code, lot: r.lot })}>{rn.text}<small> · {rn.by}</small></button>
+                        : writesNote ? <button type="button" className="lnk sm" onClick={() => setNoting({ code: r.code, lot: r.lot })}>{tr('+ Comentario')}</button> : '—'}
+                    </td>) })()}
                 </tr>
               )
             })}</tbody>
+            {/* the totals of the day, by shift and both together (2026-11-04), one line per unit when the codes count in different ones */}
+            <tfoot>{totals.map((x) => (
+              <tr key={x.unit} className="pc-total">
+                <td colSpan={showLot ? 5 : 4} className="c-head"><b>{totals.length > 1 ? tr('Total en {0}', x.unit) : tr('Total')}</b></td>
+                <td className="num" data-label={tr('Programado')}>{woN(x.planned)}</td>
+                <td className="num" data-label={tr('Turno 1')}><b>{woN(x.one)}</b></td>
+                <td className="num" data-label={tr('Turno 2')}><b>{woN(x.two)}</b></td>
+                <td className="num" data-label={tr('Los dos turnos')}><b>{woN(x.today)}</b></td>
+                <td className="num" data-label={tr('Pendiente')}>{x.left > 0 ? woN(x.left) : tr('✓ completo')}</td>
+                <td className="c-none" /><td className="c-none" />
+              </tr>
+            ))}</tfoot>
           </table>
         </div>
       ) : <p className="hint">{mgr ? trx('{0} no tiene programa para hoy. Pon aquí los códigos que le tocan y cuánto de cada uno: lo que registren se descuenta solo.', dept) : trx('{0} no tiene programa para hoy.', dept)}</p>}
