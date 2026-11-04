@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { awayDay, dayBefore, type State } from './store'
 import { loadDay } from './sync'
-import { datesFrom, downtimeOf, keepRange, plusDays, rangeKept, netsuiteSheet, pplhBook, pplhLbsByHand, readHours, setPplhLbsHand, type HoursRead, pplhGroups, pplhNames, pplhOfGroups, pplhOfRange, pplhRow, pplhWeekHours, rangeShortcuts, readNetsuite, savePplhLbs, setPplhHours, setPplhNames, setPplhWeekHours, PPLH_SITE, type NetsuiteRead, type PplhBy } from './pplh'
+import { datesFrom, downtimeOf, HOURS_FLAG, keepRange, plusDays, rangeKept, netsuiteSheet, pplhBook, pplhLbsByHand, readHours, setPplhLbsHand, type HoursRead, pplhGroups, pplhNames, pplhOfGroups, pplhOfRange, pplhRow, pplhWeekHours, rangeShortcuts, readNetsuite, savePplhLbs, setPplhHours, setPplhNames, setPplhWeekHours, PPLH_SITE, type NetsuiteRead, type PplhBy } from './pplh'
 import { loadZip, readCsv, readXlsx, xlsxNow, XLSX_TYPE } from './xlsx'
 import { download } from './App'
 import { locale, tr } from './i18n'
@@ -138,6 +138,13 @@ export function PplhView({ s, date, today, now, edit, admin }: { s: State; date:
           {hrs && (
             <div className="pplh-read">
               {hrs.r.days.map((d) => <p key={d.date}>{tr('{0}: {1} horas, {2} personas, {3} entradas de reloj.', d.date, one(d.hours), d.people, d.entries)}{d.blank ? ' ' + tr('{0} entradas sin horas ("--").', d.blank) : ''}</p>)}
+              {hrs.r.days.some((d) => d.over.length > 0) && (
+                <div className="pplh-over">
+                  <p className="red"><b>{tr('⚠ Personas con {0} horas o más en un día: confirmar con Josh y Santiago y corregir en Bamboo si no es real.', HOURS_FLAG)}</b></p>
+                  <ul>{hrs.r.days.flatMap((d) => d.over.map((x) => <li key={d.date + x.name}><b>{x.name}</b> · {d.date} · <b>{x.hours.toFixed(2)} h</b><small> {x.punches.join(' · ')}</small></li>))}</ul>
+                  <p className="hint">{tr('Horas de más que no son reales suben el total de la planta y bajan el PPLH. Esta lista solo se ve aquí y ahora: la app no guarda nombres.')}</p>
+                </div>
+              )}
               {hrs.r.divisions.length > 0 && <p className="hint">{tr('Divisiones: {0}.', hrs.r.divisions.join(', '))}</p>}
               {hReplaced > 0 && <p className="hint amber">{tr('Reemplaza las horas de {0} días que ya estaban.', hReplaced)}</p>}
               <div className="btns"><button type="button" className="btn" onClick={() => setHrs(null)}>{tr('Cancelar')}</button><button type="button" className="btn primary" onClick={saveHrs}>{tr('✓ Guardar las horas')}</button></div>

@@ -92,7 +92,11 @@ export function readNetsuite(rows: ReadCell[][]): NetsuiteRead {
   return out
 }
 /** Will's hours file read: each day's hours over the whole plant, how many people and clock entries, and the entries with no hours ("--") */
-export type HoursRead = { days: { date: string; hours: number; people: number; entries: number; blank: number }[]; divisions: string[]; found: boolean }
+/** a person with too many hours in one day, shown at upload time only (never kept): the name as the file writes it, the hours, each punch */
+export type HoursOver = { name: string; hours: number; punches: string[] }
+/** from how many hours in one day a person is flagged (Mike, 2026-11-04: "14 or 15"; Jose: 14): to confirm with Josh and Santiago and correct in Bamboo */
+export const HOURS_FLAG = 14
+export type HoursRead = { days: { date: string; hours: number; people: number; entries: number; blank: number; over: HoursOver[] }[]; divisions: string[]; found: boolean }
 /**
  * HR's daily hours report (Will's file, 2026-11-02: sheet "Timesheet Entries": Employee Number, Employee Name, Date,
  * Clock In, Clock Out, Total (Hours)…; a line per clock-in, a subtotal line per person with no date, a grand total at
@@ -106,17 +110,23 @@ export function readHours(sheets: { name: string; rows: ReadCell[][] }[]): Hours
     if (h < 0) continue
     out.found = true
     const head = rows[h].map(norm), date = head.indexOf('date'), total = head.findIndex((c) => c.startsWith('total')), who = head.findIndex((c) => c.startsWith('employee'))
-    const byDay = new Map<string, { hours: number; people: Set<string>; entries: number; blank: number }>()
+    const name = head.findIndex((c) => c.startsWith('employee') && c.includes('name')), cin = head.indexOf('clock in'), cout = head.indexOf('clock out')
+    const byDay = new Map<string, { hours: number; people: Set<string>; entries: number; blank: number; each: Map<string, { name: string; hours: number; punches: string[] }> }>()
     for (const r of rows.slice(h + 1)) {
       const d = dateText(r[date])
       if (!d) continue
-      const e = byDay.get(d) ?? { hours: 0, people: new Set<string>(), entries: 0, blank: 0 }
+      const e = byDay.get(d) ?? { hours: 0, people: new Set<string>(), entries: 0, blank: 0, each: new Map() }
       const n = typeof r[total] === 'number' ? r[total] : Number(String(r[total] ?? '').replace(/,/g, ''))
       if (Number.isFinite(n)) e.hours += n; else e.blank++
-      e.entries++; e.people.add(String(r[who] ?? ''))
+      const id = String(r[who] ?? '')
+      e.entries++; e.people.add(id)
+      // (each person's day, to flag too many hours: Mike, 2026-11-04. Shown once at upload and let go: nothing of it is kept)
+      const one = e.each.get(id) ?? { name: String((name >= 0 ? r[name] : r[who]) ?? '').trim(), hours: 0, punches: [] }
+      if (Number.isFinite(n)) { one.hours += n; one.punches.push(`${String(cin >= 0 ? r[cin] ?? '' : '')}–${String(cout >= 0 ? r[cout] ?? '' : '')} (${Math.round(n * 100) / 100} h)`) }
+      e.each.set(id, one)
       byDay.set(d, e)
     }
-    out.days = [...byDay].map(([date, e]) => ({ date, hours: Math.round(e.hours * 100) / 100, people: e.people.size, entries: e.entries, blank: e.blank })).sort((a, b) => a.date.localeCompare(b.date))
+    out.days = [...byDay].map(([date, e]) => ({ date, hours: Math.round(e.hours * 100) / 100, people: e.people.size, entries: e.entries, blank: e.blank, over: [...e.each.values()].filter((x) => x.hours >= HOURS_FLAG).map((x) => ({ ...x, hours: Math.round(x.hours * 100) / 100 })).sort((a, b) => b.hours - a.hours) })).sort((a, b) => a.date.localeCompare(b.date))
   }
   const filters = sheets.find((x) => norm(x.name).includes('filter'))
   if (filters) { const col = filters.rows[0]?.findIndex((c) => norm(c) === 'division') ?? -1; if (col >= 0) out.divisions = filters.rows.slice(1).map((r) => String(r[col] ?? '').trim()).filter(Boolean) }
