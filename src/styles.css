@@ -131,7 +131,7 @@ input[type=text],input:not([type]),input[type=date]{min-height:48px;padding:0 12
 .egrid label{display:grid;gap:4px;font-size:13px;font-weight:600;color:var(--muted)}
 .dlg .twrap{max-height:40vh;overflow:auto}
 .dlg input.num{min-height:38px;padding:0 8px;font-size:16px;width:96px}
-.qform{display:grid;gap:10px}.qpick{display:grid;gap:6px}.qpick .lab{font-size:13px;font-weight:600;color:var(--muted)}
+.qform{display:grid;gap:10px}.pc-roomnote{display:block;text-align:left;margin-top:4px;padding:4px 8px;border:1px solid #fcd34d;border-radius:8px;background:#fffbeb;color:#78350f;font:inherit;font-size:13px;cursor:pointer}.pc-roomnote:disabled{cursor:default}.pc-roomnote small{color:#92400e}.pt-tag.note.room{background:#fffbeb;border-color:#fcd34d;color:#78350f}.qpick{display:grid;gap:6px}.qpick .lab{font-size:13px;font-weight:600;color:var(--muted)}
 .qform label{display:grid;gap:4px;font-size:13px;font-weight:600;color:var(--muted)}
 .qform small{font-weight:400}
 

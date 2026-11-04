@@ -1,6 +1,6 @@
 import { Component, createContext, Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
-import { roomWaste, wasteRuns, isOven, PLAN_NOTE_MAX, PLAN_SPAN_MAX, attGated, attOf, lineSlow, addLine, plantCut, roomMark, CUT_WINDOW, startSecondShift, addWaste, awayDay, batch, byPlanLot, planLot, cameFrom, carriedOver, dayAfter, dayBefore, orderUnitDefault, programOrderChoices, ordersOf, orderStatus, orderUnitWord, prevPending, workOrderOf, type WorkOrder, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, MFO_CHOICES, mfoChoiceOf, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, cartCratesOf, cartPouchesOf, cartSpecOf, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, noteOf, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderAddRuns, orderOfId, poMates, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, PLAN_LOT_MAX, productOf, productsCsv, purgeDay, reasonText, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay, orderFull, orderFullText, orderNoteOf, setOrderNote, setOrderUrgent, programCap, programCapOf, holdsOpen } from './store'
+import { PLAN_ROOM_NOTE_MAX, planRoomNoteOf, setPlanRoomNote, roomWaste, wasteRuns, isOven, PLAN_NOTE_MAX, PLAN_SPAN_MAX, attGated, attOf, lineSlow, addLine, plantCut, roomMark, CUT_WINDOW, startSecondShift, addWaste, awayDay, batch, byPlanLot, planLot, cameFrom, carriedOver, dayAfter, dayBefore, orderUnitDefault, programOrderChoices, ordersOf, orderStatus, orderUnitWord, prevPending, workOrderOf, type WorkOrder, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, MFO_CHOICES, mfoChoiceOf, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, cartCratesOf, cartPouchesOf, cartSpecOf, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, noteOf, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderAddRuns, orderOfId, poMates, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, PLAN_LOT_MAX, productOf, productsCsv, purgeDay, reasonText, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay, orderFull, orderFullText, orderNoteOf, setOrderNote, setOrderUrgent, programCap, programCapOf, holdsOpen } from './store'
 import { avanceLots, avanceRange, avanceRows, datesBetween, lotAcrossDays, lotRows, lotsKnown, mfoList, mfoText, mfoWord, n1, pending, type AvancePart, type AvanceRow, type MfoMade } from './avance'
 import { loadZip, type Cell } from './xlsx'
 
@@ -1621,6 +1621,26 @@ function PackingNotice({ s, onOrders }: { s: State; onOrders: () => void }) {
   )
 }
 
+/** the room's comment on a row of its program (2026-11-04): why it was not done, what happened; cleared = taken away */
+function PlanRoomNoteDialog({ s, dept, date, code, lot, onClose }: { s: State; dept: Dept; date: string; code: string; lot: string; onClose: () => void }) {
+  const now = planRoomNoteOf(s, date, dept, code, lot)
+  const [text, setText] = useState(now?.text ?? '')
+  return (
+    <div className="veil" onClick={onClose}>
+      <form className="dlg" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); setPlanRoomNote(date, dept, code, lot, text); onClose() }}>
+        <h3>{tr('🗒 Comentario de {0} · {1}', dept, code + (lot ? ' · ' + tr('lote {0}', lot) : ''))}</h3>
+        <p className="hint">{tr('Por qué no se hizo, qué pasó, o lo que haya que saber de este programa. Lo ven la oficina y los managers.')}</p>
+        <textarea rows={4} maxLength={PLAN_ROOM_NOTE_MAX} autoFocus value={text} placeholder={tr('ej. Faltó carne de Kitchen; se paró 2 horas por la máquina')} onChange={(e) => setText(e.target.value)} />
+        {now && <small className="hint">{tr('Último: {0} · {1}', now.by, fmtTime(now.at))}</small>}
+        <div className="dbtns spread">
+          <div className="btns">{now && <button type="button" className="btn" onClick={() => { setPlanRoomNote(date, dept, code, lot, ''); onClose() }}>{tr('Quitar el comentario')}</button>}</div>
+          <div className="btns"><button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button><button type="submit" className="btn primary">{tr('✓ Guardar')}</button></div>
+        </div>
+      </form>
+    </div>
+  )
+}
+
 /** Packing's comment on an order (2026-10-22): why it cannot be done, or anything to say of it; cleared = taken away */
 function OrderNoteDialog({ s, order, onClose }: { s: State; order: Order; onClose: () => void }) {
   const now = orderNoteOf(s, order.id)
@@ -1852,6 +1872,9 @@ export function TargetDialog({ s, dept, unit, inCourse, onClose }: { s: State; d
  */
 function PlanCard({ s, dept, date, mgr }: { s: State; dept: Dept; date: string; mgr: boolean }) {
   const [editing, setEditing] = useState(false)
+  // the room's own comment on a row (Jose, 2026-11-04: why it was not done, what happened): anyone of the room but who only looks
+  const writesNote = !useViewOnly()
+  const [noting, setNoting] = useState<{ code: string; lot: string } | null>(null)
   const [detail, setDetail] = useState<string | null>(null)
   const closeDetail = useCallback(() => setDetail(null), [])
   const rows = planRows(s, date, dept)
@@ -1895,6 +1918,7 @@ function PlanCard({ s, dept, date, mgr }: { s: State; dept: Dept; date: string; 
           </p>
         )
       })}
+      {noting && <PlanRoomNoteDialog s={s} dept={dept} date={date} code={noting.code} lot={noting.lot} onClose={() => setNoting(null)} />}
       {planned.length ? (
         <div className="twrap rp-cardlist wo-cards">
           <table className="pctable">
@@ -1912,7 +1936,13 @@ function PlanCard({ s, dept, date, mgr }: { s: State; dept: Dept; date: string; 
                       too: three cards of 889, one saying nothing, was not readable (review of 2026-10-20) */}
                   <td className={'pc-lot' + (r.lot || siblingLots(r) ? '' : ' c-none')} data-label={tr('Lote')}>{r.lot || (siblingLots(r) ? tr('sin lote') : '—')}</td>
                   {/* the office's comment (2026-10-28) */}
-                  <td className={'pc-note' + (r.note ? '' : ' c-none')} data-label={tr('Comentario')}>{r.note ? <span className="pc-notetext">💬 {r.note}</span> : '—'}</td>
+                  {/* and the room's own (2026-11-04): why it was not done, what happened; a tap writes or changes it */}
+                  {(() => { const rn = planRoomNoteOf(s, date, dept, r.code, r.lot); return (
+                    <td className={'pc-note' + (r.note || rn || writesNote ? '' : ' c-none')} data-label={tr('Comentario')}>
+                      {r.note && <span className="pc-notetext">💬 {r.note}</span>}
+                      {rn ? <button type="button" className="pc-roomnote" disabled={!writesNote} title={tr('{0} · {1}', rn.by, fmtTime(rn.at))} onClick={() => setNoting({ code: r.code, lot: r.lot })}>🗒 {rn.text}<small> · {rn.by}</small></button>
+                        : writesNote ? <button type="button" className="lnk sm" onClick={() => setNoting({ code: r.code, lot: r.lot })}>{tr('+ Comentario del cuarto')}</button> : !r.note && '—'}
+                    </td>) })()}
                   {/* the production order this program is a part of: a tap opens it (its window has the whole sum) */}
                   {/* "de producción" said in full: in Packing a "pedido" is also the customer's PO (its Pedidos tab, the live card's "Pedido de C300"); review of 2026-10-20 */}
                   <td className="pc-order" data-label={tr('Pedido de producción')}>

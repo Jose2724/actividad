@@ -445,7 +445,7 @@ export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Produ
    */
   orderRuns: Run[]
   /** the production orders of every room (deleted ones kept with their flag), and the closed accounts of finished ones */
-  workOrders: WorkOrder[]; orderSeals: OrderSeal[]; attendance: AttEntry[]; attExpected: AttExpected[]; shiftMarks: ShiftMark[]; kpi: KpiRec[]; weights: WeightTest[]; orderNotes: OrderNote[]; roomMsgs: RoomMsg[]; chat: ChatMsg[]; chatSeen: ChatSeen[]; weightRules: WeightRule[]; slowRules: SlowRule[]; slowLines: SlowLine[]; meats: MeatEntry[]; holds: HoldRec[]; consumes: ConsumeEntry[]; consumeOpts: ConsumeOpt[] }
+  workOrders: WorkOrder[]; orderSeals: OrderSeal[]; attendance: AttEntry[]; attExpected: AttExpected[]; shiftMarks: ShiftMark[]; kpi: KpiRec[]; weights: WeightTest[]; orderNotes: OrderNote[]; planRoomNotes: PlanRoomNote[]; roomMsgs: RoomMsg[]; chat: ChatMsg[]; chatSeen: ChatSeen[]; weightRules: WeightRule[]; slowRules: SlowRule[]; slowLines: SlowLine[]; meats: MeatEntry[]; holds: HoldRec[]; consumes: ConsumeEntry[]; consumeOpts: ConsumeOpt[] }
 /**
  * An order to fill in Packing: so many cases of one product for a customer, to ship by a date. Most carry the
  * customer's purchase order number (PO); some never do and some get it later. See "the orders Packing fills".
@@ -598,10 +598,10 @@ function tidySchedule(sch: Schedule): Schedule {
 function isDay(text: string) { return /^\d{4}-\d{2}-\d{2}$/.test(text) }
 /** with a server the lines (and products) are shared and come from it; without one, each device starts with a line per room */
 const SERVER = !!import.meta.env.VITE_SUPABASE_URL
-function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, reasonCodes: { on: false, updatedAt: 0 }, programView: { on: false, updatedAt: 0 }, attView: { on: false, updatedAt: 0 }, stopRules: [{ on: false, updatedAt: 0 }, { on: false, updatedAt: 0 }], attGate: { on: false, updatedAt: 0 }, cartCrates: { n: 0, updatedAt: 0 }, lunch: { min: 0, after: 0, updatedAt: 0 }, attWrite: { on: false, updatedAt: 0 }, lbCase: { on: false, updatedAt: 0 }, viewOpts: { lotes: { on: false, updatedAt: 0 }, flujo: { on: false, updatedAt: 0 } }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [], attendance: [], attExpected: [], shiftMarks: [], kpi: [], weights: [], orderNotes: [], roomMsgs: [], chat: [], chatSeen: [], weightRules: [], slowRules: [], slowLines: [], meats: [], holds: [], consumes: [], consumeOpts: [] } }
+function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, reasonCodes: { on: false, updatedAt: 0 }, programView: { on: false, updatedAt: 0 }, attView: { on: false, updatedAt: 0 }, stopRules: [{ on: false, updatedAt: 0 }, { on: false, updatedAt: 0 }], attGate: { on: false, updatedAt: 0 }, cartCrates: { n: 0, updatedAt: 0 }, lunch: { min: 0, after: 0, updatedAt: 0 }, attWrite: { on: false, updatedAt: 0 }, lbCase: { on: false, updatedAt: 0 }, viewOpts: { lotes: { on: false, updatedAt: 0 }, flujo: { on: false, updatedAt: 0 } }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [], attendance: [], attExpected: [], shiftMarks: [], kpi: [], weights: [], orderNotes: [], planRoomNotes: [], roomMsgs: [], chat: [], chatSeen: [], weightRules: [], slowRules: [], slowLines: [], meats: [], holds: [], consumes: [], consumeOpts: [] } }
 function load(): State {
   try {
-    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; reasonCodes?: Partial<ReasonCodesOpt>; programView?: Partial<ReasonCodesOpt>; attView?: Partial<ReasonCodesOpt>; attGate?: Partial<ReasonCodesOpt>; stopRules?: Partial<ReasonCodesOpt>[]; cartCrates?: { n?: number; updatedAt?: number }; lunch?: Partial<Lunch>; attWrite?: Partial<ReasonCodesOpt>; lbCase?: Partial<ReasonCodesOpt>; viewOpts?: Partial<Record<ViewOpt, Partial<ReasonCodesOpt>>>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[]; attendance?: Partial<AttEntry>[]; attExpected?: Partial<AttExpected>[]; shiftMarks?: Partial<ShiftMark>[]; kpi?: Partial<KpiRec>[]; weights?: Partial<WeightTest>[]; orderNotes?: Partial<OrderNote>[]; roomMsgs?: Partial<RoomMsg>[]; chat?: Partial<ChatMsg>[]; chatSeen?: Partial<ChatSeen>[]; weightRules?: Partial<WeightRule>[]; slowRules?: Partial<SlowRule>[]; slowLines?: Partial<SlowLine>[]; meats?: Partial<MeatEntry>[]; holds?: Partial<HoldRec>[]; consumes?: Partial<ConsumeEntry>[]; consumeOpts?: Partial<ConsumeOpt>[] }
+    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; reasonCodes?: Partial<ReasonCodesOpt>; programView?: Partial<ReasonCodesOpt>; attView?: Partial<ReasonCodesOpt>; attGate?: Partial<ReasonCodesOpt>; stopRules?: Partial<ReasonCodesOpt>[]; cartCrates?: { n?: number; updatedAt?: number }; lunch?: Partial<Lunch>; attWrite?: Partial<ReasonCodesOpt>; lbCase?: Partial<ReasonCodesOpt>; viewOpts?: Partial<Record<ViewOpt, Partial<ReasonCodesOpt>>>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[]; attendance?: Partial<AttEntry>[]; attExpected?: Partial<AttExpected>[]; shiftMarks?: Partial<ShiftMark>[]; kpi?: Partial<KpiRec>[]; weights?: Partial<WeightTest>[]; orderNotes?: Partial<OrderNote>[]; planRoomNotes?: Partial<PlanRoomNote>[]; roomMsgs?: Partial<RoomMsg>[]; chat?: Partial<ChatMsg>[]; chatSeen?: Partial<ChatSeen>[]; weightRules?: Partial<WeightRule>[]; slowRules?: Partial<SlowRule>[]; slowLines?: Partial<SlowLine>[]; meats?: Partial<MeatEntry>[]; holds?: Partial<HoldRec>[]; consumes?: Partial<ConsumeEntry>[]; consumeOpts?: Partial<ConsumeOpt>[] }
     const s = JSON.parse(localStorage.getItem(KEY) || 'null') as Raw | null
     // rows saved by earlier versions: carts as plain timestamps, units without a tag or a name, products with one
     // pouches-per-cart number, nothing with an update time
@@ -658,6 +658,7 @@ function load(): State {
         kpi: (s.kpi ?? []).map(kpiFrom).filter((x): x is KpiRec => !!x),
         weights: (s.weights ?? []).map(wtFrom).filter((x): x is WeightTest => !!x),
         orderNotes: (s.orderNotes ?? []).map(orderNoteFrom).filter((x): x is OrderNote => !!x),
+        planRoomNotes: (s.planRoomNotes ?? []).map(planRoomNoteFrom).filter((x): x is PlanRoomNote => !!x),
         roomMsgs: (s.roomMsgs ?? []).map(roomMsgFrom).filter((x): x is RoomMsg => !!x),
         chat: (s.chat ?? []).map(chatFrom).filter((x): x is ChatMsg => !!x),
         chatSeen: (s.chatSeen ?? []).map(chatSeenFrom).filter((x): x is ChatSeen => !!x),
@@ -3122,6 +3123,31 @@ export function setOrderNote(orderId: string, text: string) {
   set({ ...state, orderNotes: [...(state.orderNotes ?? []).filter((y) => y.orderId !== orderId), x] })
   push('act_changes', ONOTE_ID + orderId, { id: ONOTE_ID + orderId, at: iso(x.at), by_name: x.by, dept: 'Packing', what: 'Comentario del pedido', before: '', after: JSON.stringify({ text: t }), ref_table: ONOTE_REF, ref_key: orderId, deleted: !t, updated_at: iso(x.updatedAt), updated_by: user.get() })
 }
+// ---- the room's comment on a row of its program (Jose, 2026-11-04: "que se pueda poner comentarios ... por qué no se hizo, qué pasó") ----
+/**
+ * One comment per row of a room's program and per day: written by the room's own people (an operator writes it; the
+ * program itself is the office's), beside the office's own comment on the row (Plan.note). Cleared = marked deleted.
+ * In act_changes with the room, apart from the history, as Packing's comment on an order: nothing new on the server
+ */
+export type PlanRoomNote = { key: string; date: string; dept: Dept; code: string; lot: string; text: string; by: string; at: number; deleted?: boolean; updatedAt: number; syncedAt?: number }
+const PNOTE_ID = 'pnote:'
+export const PNOTE_REF = 'act_plan_room_notes'
+export const PLAN_ROOM_NOTE_MAX = 300
+/** the row a comment belongs to: the day it is about, the room, the code and the lot of the row */
+export function planRoomKey(date: string, dept: string, code: string, lot: string) { return date + '|' + dept + '|' + normCode(code) + '|' + String(lot ?? '').trim() }
+// (a function declaration reading only what load() may read: it is used there, see the note at `let state = load()`)
+function planRoomNoteFrom(x: Partial<PlanRoomNote> | null | undefined): PlanRoomNote | null {
+  if (!x || typeof x !== 'object' || typeof x.key !== 'string' || !x.key || !(DEPTS as unknown[]).includes(x.dept)) return null
+  return { key: x.key, date: String(x.date ?? ''), dept: x.dept as Dept, code: String(x.code ?? ''), lot: String(x.lot ?? ''), text: String(x.text ?? '').trim().slice(0, 300), by: String(x.by ?? ''), at: Number(x.at) || 0, ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
+}
+export const planRoomNoteOf = (s: State, date: string, dept: Dept, code: string, lot: string) => { const k = planRoomKey(date, dept, code, lot); return (s.planRoomNotes ?? []).find((x) => x.key === k && !x.deleted && x.text) ?? null }
+export function setPlanRoomNote(date: string, dept: Dept, code: string, lot: string, text: string) {
+  const key = planRoomKey(date, dept, code, lot), was = (state.planRoomNotes ?? []).find((x) => x.key === key), t = text.replace(/\s+/g, ' ').trim().slice(0, PLAN_ROOM_NOTE_MAX)
+  if ((was && !was.deleted ? was.text : '') === t) return
+  const x: PlanRoomNote = { key, date, dept, code: normCode(code), lot: String(lot ?? '').trim(), text: t, by: user.get(), at: clockNow(), ...(t ? {} : { deleted: true }), updatedAt: stamp(was) }
+  set({ ...state, planRoomNotes: [...(state.planRoomNotes ?? []).filter((y) => y.key !== key), x] })
+  push('act_changes', PNOTE_ID + key, { id: PNOTE_ID + key, at: iso(x.at), by_name: x.by, dept, what: 'Comentario del programa', before: '', after: JSON.stringify({ text: t, date, code: x.code, lot: x.lot }), ref_table: PNOTE_REF, ref_key: key, deleted: !t, updated_at: iso(x.updatedAt), updated_by: user.get() })
+}
 // ---- the office's message to a room (2026-10-22: "añadir que le llegue mensaje, o cualquier parte de anuncio" to Packing) ----
 /**
  * One message per room, written by the office or a manager, shown on top of that room's tablets (in every tab, "En
@@ -5352,6 +5378,14 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
     try { x = JSON.parse(String(row.after ?? '')) as Partial<RoomMsg> } catch { /* not one */ }
     const e = roomMsgFrom({ ...x, dept, by: String(row.by_name ?? ''), at: fromIso(row.at) ?? 0, deleted: !!row.deleted, updatedAt: at, ...syncedOf(row) })
     if (e) set({ ...state, roomMsgs: [...(state.roomMsgs ?? []).filter((y) => y.dept !== dept), e] })
+  } else if (table === 'act_changes' && row.ref_table === PNOTE_REF && String(row.id ?? '').startsWith(PNOTE_ID)) {
+    // the room's comment on a row of its program (2026-11-04): kept apart from the history
+    const key = String(row.id).slice(PNOTE_ID.length), cur = (state.planRoomNotes ?? []).find((x) => x.key === key)
+    if (!newer(cur)) return
+    let x: Partial<PlanRoomNote> = {}
+    try { x = JSON.parse(String(row.after ?? '')) as Partial<PlanRoomNote> } catch { /* not one */ }
+    const e = planRoomNoteFrom({ ...x, key, dept: row.dept as Dept, by: String(row.by_name ?? ''), at: fromIso(row.at) ?? 0, deleted: !!row.deleted, updatedAt: at, ...syncedOf(row) })
+    if (e) set({ ...state, planRoomNotes: [...(state.planRoomNotes ?? []).filter((y) => y.key !== key), e] })
   } else if (table === 'act_changes' && row.ref_table === ONOTE_REF && String(row.id ?? '').startsWith(ONOTE_ID)) {
     // Packing's comment on an order (2026-10-22): kept apart from the history
     const orderId = String(row.id).slice(ONOTE_ID.length), cur = (state.orderNotes ?? []).find((x) => x.orderId === orderId)

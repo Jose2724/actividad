@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { CFG, dayAfter, dayBefore, DEPTS, fmtDur, lineNameOf, normCode, orderStatus, orderUnitWord, planRows, prevPending, reasonText, SETUP, shiftAt, shiftsOf, workOrderOf, type Dept, type PlanRow, type State } from './store'
+import { planRoomNoteOf, CFG, dayAfter, dayBefore, DEPTS, fmtDur, lineNameOf, normCode, orderStatus, orderUnitWord, planRows, prevPending, reasonText, SETUP, shiftAt, shiftsOf, workOrderOf, type Dept, type PlanRow, type State } from './store'
 import { shortDay } from './App'
 import { woName } from './WorkOrders'
 import { woN } from './woSum'
@@ -18,7 +18,7 @@ import { tr } from './i18n'
  * admin sees the tab (store.ts, setProgramView).
  */
 type Look = { kind: 'stop' | 'setup' | 'run' | 'done' | 'started' | 'wait'; text: string; at?: ReportAt }
-type Row = PlanRow & { look: Look; carry: number; order: string }
+type Row = PlanRow & { look: Look; carry: number; order: string; roomNote: { text: string; by: string } | null }
 
 export function ProgramToday({ s, date: today, now, rooms, onReport }: { s: State; date: string; now: number; rooms: Dept[]; onReport: (x: ReportAt) => void }) {
   // the day shown (2026-10-28, the office: "programar también para días más adelante"): today, or any other day
@@ -35,7 +35,7 @@ export function ProgramToday({ s, date: today, now, rooms, onReport }: { s: Stat
       const o = r.orderId ? workOrderOf(s, r.orderId) : undefined
       const st = o && !o.deleted ? orderStatus(s, o, date) : null
       const order = o && st ? tr('Pedido {0}: quedan {1} de {2} {3}', woName(o), woN(st.disponible), woN(o.qty), orderUnitWord(o)) : ''
-      return { ...r, look: lookOf(s, dept, date, r, now), carry, order }
+      return { ...r, look: lookOf(s, dept, date, r, now), carry, order, roomNote: planRoomNoteOf(s, date, dept, r.code, r.lot) }
     }).sort((a, b) => RANK[a.look.kind] - RANK[b.look.kind] || a.code.localeCompare(b.code, undefined, { numeric: true }))
     const share = planned.length ? planned.reduce((t, r) => t + Math.min(1, r.done / r.planned), 0) / planned.length : 0
     const complete = planned.filter((r) => r.done >= r.planned).length
@@ -128,9 +128,11 @@ function Card({ dept, list, also, share, complete, date, shiftNow, onReport }: {
               <button type="button" className={'pt-n ' + (left > 0 ? 'left' : 'ok')} onClick={() => go(r)}><label>{tr('Falta')}</label><b>{woN(left)}</b> <small>{left > 0 ? unitOf(r) : '✓'}</small></button>
             </div>
             <div className="pt-bar"><i className="t1" style={{ width: w(one) }} /><i className="t2" style={{ width: w(Math.min(two, Math.max(0, r.planned - one))) }} /></div>
-            {(r.carry > 0 || r.order || r.done > r.planned || r.also.length > 0 || r.to !== r.from || r.note) && (
+            {(r.carry > 0 || r.order || r.done > r.planned || r.also.length > 0 || r.to !== r.from || r.note || r.roomNote) && (
               <div className="pt-tags">
                 {r.note && <span className="pt-tag note">💬 {r.note}</span>}
+                {/* the room's own comment (2026-11-04): why it was not done, what happened */}
+                {r.roomNote && <span className="pt-tag note room" title={r.roomNote.by}>🗒 {r.roomNote.text} · {r.roomNote.by}</span>}
                 {r.to !== r.from && <span className="pt-tag span">📅 {tr('hasta el {0}', shortDay(r.to))}{r.before > 0 && ' · ' + tr('antes: {0}', woN(r.before))}</span>}
                 {r.carry > 0 && <span className="pt-tag carry">{tr('↩ ayer quedaron {0} {1}', woN(r.carry), unitOf(r))}</span>}
                 {r.order && <span className="pt-tag order">{r.order}</span>}

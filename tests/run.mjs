@@ -5350,6 +5350,19 @@ section('Pedidos: urgente para que Packing le dé prioridad, y el comentario de 
   })
   const back = await device('order-urgent-again', { seed: JSON.parse(disks.get('order-urgent').get('act_v1')), user: 'Oficina' })
   eq('al volver a abrir: el comentario sigue', back.use((m) => m.orderNoteOf(m.store.get(), m.store.get().orders.find((o) => o.po === '1001').id)?.text), 'Falta producto de RTE; sale mañana')
+  // the room's comment on a row of its program (Jose, 2026-11-04: "por qué no se hizo, qué pasó")
+  const pnd = await device('plan-room-note', { user: 'Ana' })
+  pnd.use((m) => {
+    m.setPlanRoomNote('2026-11-03', 'RTE', '889', '6300', '  Faltó carne   de Kitchen  ')
+    const up = m.outbox.items().find((i) => i.key === 'pnote:2026-11-03|RTE|889|6300')
+    eq('el comentario del cuarto se guarda con su cuarto (un operador lo puede escribir), aparte de la historia', [m.planRoomNoteOf(m.store.get(), '2026-11-03', 'RTE', '0889', '6300')?.text, up.row.dept, up.row.ref_table, m.planRoomNoteOf(m.store.get(), '2026-11-04', 'RTE', '0889', '6300')], ['Faltó carne de Kitchen', 'RTE', 'act_plan_room_notes', null])
+    m.applyRemote('act_changes', { id: 'pnote:2026-11-03|RTE|2234|', at: new Date(2026, 10, 3, 22).toISOString(), by_name: 'Luis', dept: 'RTE', what: 'Comentario del programa', before: '', after: JSON.stringify({ text: 'Máquina parada', date: '2026-11-03', code: '2234', lot: '' }), ref_table: 'act_plan_room_notes', ref_key: '2026-11-03|RTE|2234|', deleted: false, updated_at: new Date(2026, 10, 3, 22).toISOString() })
+    eq('el de otra tablet llega', [m.planRoomNoteOf(m.store.get(), '2026-11-03', 'RTE', '2234', '')?.text, m.planRoomNoteOf(m.store.get(), '2026-11-03', 'RTE', '2234', '')?.by], ['Máquina parada', 'Luis'])
+    m.setPlanRoomNote('2026-11-03', 'RTE', '2234', '', '')
+    eq('quitarlo lo deja borrado', [m.planRoomNoteOf(m.store.get(), '2026-11-03', 'RTE', '2234', ''), m.outbox.items().find((i) => i.key === 'pnote:2026-11-03|RTE|2234|')?.row.deleted], [null, true])
+  })
+  const pnd2 = await device('plan-room-note-again', { seed: JSON.parse(disks.get('plan-room-note').get('act_v1')), user: 'Ana' })
+  eq('al volver a abrir: el comentario del cuarto sigue', pnd2.use((m) => m.planRoomNoteOf(m.store.get(), '2026-11-03', 'RTE', '889', '6300')?.text), 'Faltó carne de Kitchen')
 }
 section('El carro de RTE se cuenta por guacales (Jose, 2026-10-28: dos columnas de 13; un carro corto se dice como se ve y la app suma)')
 {
