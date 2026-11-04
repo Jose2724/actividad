@@ -15,7 +15,7 @@ export type NumberId = 'duracion' | 'trabajando' | 'parado' | 'setup' | 'causas'
   | 'hecho' | 'corrida' | 'waste' | 'turnos' | 'meta' | 'lenta' | 'carne' | 'consumo'
   | 'avance' | 'avance-estado' | 'lote-esperado' | 'lote-perdida' | 'lote-colores' | 'orden'
   | 'po-pallets' | 'po-completo' | 'vence' | 'pallet-unido' | 'hold'
-  | 'peso-resumen' | 'peso-pruebas' | 'peso-bien' | 'peso-rinde' | 'peso-color' | 'asistencia'
+  | 'peso-resumen' | 'peso-pruebas' | 'peso-bien' | 'peso-rinde' | 'peso-color' | 'dash' | 'asistencia'
   | 'kpi-horas' | 'kpi-prod' | 'kpi-costco' | 'kpi-mes' | 'mini'
   | 'mini-arranque' | 'mini-prod' | 'mini-paros' | 'mini-horas' | 'mini-lunch' | 'mini-causas' | 'mini-mec' | 'mini-consumo' | 'mini-waste' | 'mini-pesos'
 type Group = 'tiempo' | 'prod' | 'avance' | 'lotes' | 'pedidos' | 'pesos' | 'gente' | 'kpi'
@@ -128,7 +128,7 @@ const items = (): Item[] => [
 
   { id: 'peso-resumen', group: 'pesos', title: tr('Resumen de pesos de una hoja'),
     means: tr('Una línea por código y departamento, para quien no necesita el detalle.'),
-    math: tr('Veces revisado = cuántas horas se pesó el código, contando lo que más veces se pesó. Bajo cada promedio: de cuántas pruebas y de cuántos pesos sale. Cada promedio junta todos los pesos del día de crudo, de cocinado o de pouch (la bolsa terminada) de ese departamento, con sus cocinadores. Pide acción correctiva si un promedio queda fuera del rango de QA, o si un pouch quedó bajo su mínimo. Un peso suelto de bola fuera de rango no cambia el resultado: eso se ve en el Excel completo.') },
+    math: tr('Horas revisadas = cuántas horas se pesó el código, contando lo que más veces se pesó. Bajo cada promedio: de cuántas pruebas y de cuántos pesos sale. Cada promedio junta todos los pesos del día de crudo, de cocinado o de pouch (la bolsa terminada) de ese departamento, con sus cocinadores. Pide acción correctiva si un promedio queda fuera del rango de QA, o si un pouch quedó bajo su mínimo. Un peso suelto de bola fuera de rango no cambia el resultado: eso se ve en el Excel completo.') },
   { id: 'peso-pruebas', group: 'pesos', title: tr('Pruebas: "3 de 4"'),
     means: tr('Cuántas pruebas de peso se hicieron de las que tocaban.'),
     math: tr('Las que tocaban = el tiempo que el producto corrió en cada línea, sin sus paros y aunque cambie de lote ÷ cada cuánto se pesa, sin decimales. Una prueba cuenta cuando tiene todos los pesos que se pidieron. "Incompletas" = empezadas con menos pesos. Decir que un cocinador no se usó esa hora cuenta como hecha. Se cuenta desde el 30 de octubre de 2026.'),
@@ -144,6 +144,10 @@ const items = (): Item[] => [
   { id: 'peso-color', group: 'pesos', title: tr('Color de la tarjeta de Pesos en el KPI'),
     means: tr('Cómo va el día en pesos.'),
     math: tr('Rojo = más de 10% de los pesos fuera de rango, o menos de 90% de las pruebas hechas. Amarillo = algún peso fuera, o faltó alguna prueba. Verde = todo bien. Gris = no tocaba ninguna prueba.') },
+  { id: 'dash', group: 'pesos', title: tr('Dashboard: crudo, cocinado y pouch por día'),
+    means: tr('Lo que Mike pidió ver: el peso promedio de cada día de 0889 y 2234, contra el rango de QA, y su gráfica.'),
+    math: tr('Cada celda es el promedio de todos los pesos de ese tipo tomados ese día en toda la planta (los crudos de Kitchen, los crudos y cocinados de Spiral, los pouches de RTE), en onzas. Verde dentro del rango de QA, rojo bajo, ámbar sobre; vacío = no se pesó. Rango = todos los días juntos, no el promedio de los promedios. PPLH = el del rango, como en la pestaña PPLH. Yield y shorts salen cuando Mike diga de dónde vienen.'),
+    eg: tr('Lunes 10 pouches de 50 y 10 de 48 = 49.00, dentro de 48–52. El martes sin pruebas queda vacío, no en cero.') },
 
   { id: 'asistencia', group: 'gente', title: tr('Asistencia'),
     means: tr('Cuánta gente vino contra la que se esperaba.'),

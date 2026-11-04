@@ -5845,6 +5845,30 @@ section('Pesos escritos con otro código o como crudo: se corrigen desde el Repo
     eq('el resumen del pizarrón: una línea por código, sumando cuartos, con veces y los tres promedios', tablero.map((x) => [x.code, x.weighed, x.cooked.ok != null, x.pouch.avg != null, typeof x.result]), [['0889', true, true, true, 'string'], ['2234', true, false, true, 'string']])
     eq('su hoja es corta: título, día, encabezado y nada de departamentos', ((h) => [h.name, h.rows.flat().map((c) => m.cellText(c)).includes('Kitchen'), h.rows.flat().map((c) => m.cellText(c)).includes('Objetivo 2.60–2.80 oz')])(m.wtBoardSheet(st(), sumRows(), DAY)), ['Resumen', false, true])
     eq('el resumen dice qué significa cada color', ['✓ Dentro del objetivo', '✗ Bajo el objetivo', '✗ Sobre el objetivo'].map((t) => m.wtBoardSheet(st(), sumRows(), DAY).rows.flat().map((c) => m.cellText(c)).includes(t)), [true, true, true])
+    // Mike's dashboard (his whiteboard, 2026-11-03): one column per day, each day's board, the range all together
+    const dias = ['2026-10-10', '2026-10-11', '2026-10-12']
+    m.weightPaperAdd({ date: '2026-10-11', dept: 'Kitchen', lineId: '', line: '', code: '0889', kind: 'ball', noted: true }, [{ hm: '10:00', weights: [2.3, 2.5] }])
+    const dash = m.dashOf(st(), dias, clock), d0 = dash[0]
+    eq('los dos códigos, con un día por columna y los rangos de QA', [dash.map((c) => c.code), d0.days.map((d) => d.date), d0.target.cooked, d0.target.pouch, dash[1].target.pouch], [['0889', '2234'], dias, '2.1–2.4', '48–52', '72–76'])
+    eq('cada día es el tablero de ese día; el segundo día 2.40 dentro del rango; el tercero vacío, no cero', [d0.days[0].cooked.avg, m.wtBoard(st(), sumRows())[0].cooked.avg, d0.days[1].cooked.avg, d0.days[1].cooked.ok, d0.days[1].times, d0.days[2].cooked.avg, d0.days[2].times], [tablero[0].cooked.avg, tablero[0].cooked.avg, 2.4, 'ok', 1, null, 0])
+    const juntos = m.wtBoard(st(), dias.flatMap((d) => m.weightsOf(st(), d, clock)))[0]
+    eq('el rango junta todos los pesos de los días, no promedia los promedios', [d0.all.cooked.avg, d0.all.cooked.avg === Math.round(((d0.days[0].cooked.avg + 2.4) / 2) * 100) / 100], [juntos.cooked.avg, false])
+    eq('el PPLH del rango queda vacío sin libras ni horas', m.dashPplh(st(), dias).pplh, null)
+    // Will's daily hours report (2026-11-03): a line per clock-in, a subtotal per person with no date, a grand total; "--" when no hours
+    const willRows = [['Employee Number', 'Employee Name', 'Date', 'Clock In', 'Clock Out', 'Total (Hours)', 'Project'], [1, 'A, A', '2026-11-02', '3:30 PM', '6:46 PM', 3.27, null], [1, 'A, A', '2026-11-02', '7:22 PM', '11:59 PM', 4.62, null], [1, 'A, A', null, null, null, 7.89, null], [2, 'B, B', '2026-11-02', '--', '--', '--', null], [3, 'C, C', '2026-11-03', '6:00 AM', '2:00 PM', 8, null], [3, 'C, C', null, null, null, 8, null], [null, null, null, null, null, 15.89, null]]
+    const will = m.readHours([{ name: 'Timesheet Entries', rows: willRows }, { name: 'Applied_Filters', rows: [['Dates', 'Division'], ['2026-11-02 - 2026-11-02', 'Pack1-ER'], [null, 'RTE1-ER']] }])
+    eq('solo las líneas con fecha suman, por día; los subtotales y el total no; "--" cuenta como entrada sin horas', [will.found, will.days, will.divisions], [true, [{ date: '2026-11-02', hours: 7.89, people: 2, entries: 3, blank: 1 }, { date: '2026-11-03', hours: 8, people: 1, entries: 1, blank: 0 }], ['Pack1-ER', 'RTE1-ER']])
+    eq('un archivo que no es el de horas lo dice', m.readHours([{ name: 'Hoja1', rows: [['Subsidiary', 'Lbs Used']] }]).found, false)
+    // the week's average beside the days, and under each average how many tests and weights (Mike and Jose, 2026-11-03)
+    eq('los tres días son de una semana (lunes 2026-10-05 … el sábado 10, el domingo 11 y el lunes 12 son dos semanas)', [d0.weeks.map((w) => [w.monday, w.date, w.to, w.days]), d0.weeks[0].cooked.avg, d0.weeks[1].cooked.avg], [[['2026-10-05', '2026-10-10', '2026-10-11', 2], ['2026-10-12', '2026-10-12', '2026-10-12', 1]], m.wtBoard(st(), ['2026-10-10', '2026-10-11'].flatMap((d) => m.weightsOf(st(), d, clock)))[0].cooked.avg, null])
+    eq('bajo cada promedio: de cuántas pruebas y pesos sale, en inglés para el Excel', [m.dashCount(d0.days[1].cooked), m.dashCount(d0.days[2].cooked), m.wtCountText(d0.days[1].cooked)], ['1 test · 2 weights', '', '1 prueba · 2 pesos'])
+    const tD2 = m.dashBook(st(), dias[0], dias[2], dias, clock).flatMap((sh) => sh.rows.flat().map((c) => m.cellText(c)))
+    eq('el Excel lleva una columna por semana y el rango cuando hay más de una, y la fila de pruebas y pesos', [tD2.includes('Week of 10/5'), tD2.includes('Week of 10/12'), tD2.includes('Range'), tD2.includes('1 test · 2 weights')], [true, true, true, true])
+    const tD3 = m.dashBook(st(), dias[0], dias[1], dias.slice(0, 2), clock)[0].rows.flat().map((c) => m.cellText(c))
+    eq('dentro de una sola semana cortada: Semana del lunes, sin columna de rango', [tD3.includes('Week of 10/5'), tD3.includes('Range')], [true, false])
+    const libroD = m.dashBook(st(), dias[0], dias[2], dias, clock), tD = libroD.flatMap((sh) => sh.rows.flat().map((c) => m.cellText(c)))
+    eq('el Excel del dashboard: una hoja en inglés con las tres tarjetas, el resumen con un día por columna y el bloque por producto', [libroD.map((x) => x.name), ['Yield', 'Shorts', 'PPLH', 'Yield + Weight Summary', 'Product', 'Target', '10/10', '10/12', 'Range', 'Raw', 'Cooked', 'Pouch', '0889 · by day', '2234 · by day', 'HOW IT IS CALCULATED'].every((x) => tD.includes(x))], [['Dashboard', '0889', '2234'], true])
+    eq('dos gráficas por producto, crudo y cocinado juntos y el pouch aparte, cada una con un solo eje y las fechas de Mike', [libroD.flatMap((sh) => sh.charts).length, libroD.flatMap((sh) => sh.charts).map((c) => c.title), libroD.flatMap((sh) => sh.charts).every((c) => !c.axis2 && c.dates === 'm/d/yy' && c.kind === 'line')], [4, ['0889 — Raw and Cooked (oz)', '0889 — Pouch (oz)', '2234 — Raw and Cooked (oz)', '2234 — Pouch (oz)'], true])
     eq('es una hoja y dice cómo leerla', [hoja.name, hoja.rows.flat().some((c) => m.cellText(c).startsWith('Cómo leerlo')), hoja.rows.flat().some((c) => m.cellText(c) === '1 de 2 códigos necesitan acción correctiva.')], ['Por departamento', true, true])
     const sent = JSON.parse(m.outbox.items().find((i) => i.key === 'wt:' + a.id)?.row.after ?? '{}')
     eq('la corrección sube al servidor', [sent.code, sent.kind, sent.entries.length], ['0889', 'ball', 4])
@@ -6130,6 +6154,14 @@ section('KPI diario de Mike: libras de NetSuite ÷ horas, y el downtime por cuar
     eq('el rango suma libras y horas de los días con las dos y divide (no promedia los PPLH)', [range.lbs, range.hours, range.days, range.pplh], [2400.5, 40, 2, 2400.5 / 40])
     m.setPplhHours('2026-10-23', null)
     eq('borrar las horas de un día lo deja vacío', m.pplhRow(st(), '2026-10-23').hours, null)
+    // pounds typed by hand when Melissa's file cannot come (Mike dictates them, 2026-11-03)
+    m.setPplhLbsHand(st(), '2026-10-25', 103797.7)
+    eq('las libras escritas a mano cuentan como las del archivo, sin filas de NetSuite, y lo dicen', [m.pplhRow(st(), '2026-10-25').lbs, m.pplhRow(st(), '2026-10-25').rows, m.pplhLbsByHand(st(), '2026-10-25'), m.pplhLbsByHand(st(), '2026-10-22'), m.pplhLbs(st(), '2026-10-22')?.lbs], [103797.7, 0, true, false, 1500.5])
+    m.savePplhLbs(st(), [{ date: '2026-10-25', lbs: 90000, rows: 20 }], 'nuevo.xlsx')
+    eq('el archivo que llega después reemplaza el día escrito a mano', [m.pplhRow(st(), '2026-10-25').lbs, m.pplhLbsByHand(st(), '2026-10-25')], [90000, false])
+    m.setPplhLbsHand(st(), '2026-10-26', 5), m.setPplhLbsHand(st(), '2026-10-26', null)
+    eq('borrar lo escrito a mano deja el día vacío y no toca los otros', [m.pplhRow(st(), '2026-10-26').lbs, m.pplhRow(st(), '2026-10-25').lbs], [null, 90000])
+    m.setPplhLbsHand(st(), '2026-10-25', null)
     // downtime by room, both shifts, split as the Mini KPI splits it
     m.addLine('RTE', 'Línea 1')
     const l1 = st().lines.find((l) => l.name === 'Línea 1'), D = '2026-10-22'

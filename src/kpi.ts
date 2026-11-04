@@ -392,13 +392,13 @@ export function wtBoardSheet(s: State, rows: WtRow[], date: string, label?: stri
   across(tr('Resumen de pesos'), X.wBand, 34)
   across(label ?? niceDay(date), X.wSub, 22)
   row([])
-  row([tr('Código'), tr('Veces revisado'), tr('Crudo prom.'), tr('Cocinado prom.'), tr('Pouch prom.')].map((x) => xT(x, X.wHead)), 30)
+  row([tr('Código'), tr('Horas revisadas'), tr('Crudo prom.'), tr('Cocinado prom.'), tr('Pouch prom.')].map((x) => xT(x, X.wHead)), 30)
   const big = (x: WtAvg): Cell => (x.avg == null ? xT('—', X.wBigN) : xT(x.avg.toFixed(2) + (x.ok === 'ok' ? ' ✓' : x.ok ? ' ✗' : ''), x.ok === 'ok' ? X.wBigG : x.ok === 'under' ? X.wBigR : x.ok === 'over' ? X.wBigA : X.wBigN))
   // (the target as big as can be read at a glance, Jose 2026-10-30, also when nothing was weighed)
   const qa = (x: WtAvg): Cell => xT(x.range ? tr('Objetivo {0} oz', wtRangeLong(x.range)) : tr('Falta el target de QA'), X.wTarget)
   for (const x of wtBoard(s, rows)) {
     const r = row([xT(x.code, X.wBigN), xT(x.weighed ? String(x.times) : '0', X.wBigN), big(x.raw), big(x.cooked), big(x.pouch)], 48)
-    row([xT('', X.wcText), xT(tr('veces'), X.wTarget), qa(x.raw), qa(x.cooked), qa(x.pouch)], 30)
+    row([xT('', X.wcText), xT(tr('horas'), X.wTarget), qa(x.raw), qa(x.cooked), qa(x.pouch)], 30)
     row([xT('', X.wcText), xT('', X.wcText), ...[x.raw, x.cooked, x.pouch].map((p) => xT(wtCountText(p) || '—', X.wcBold))], 24)
     merges.push('A' + r + ':A' + (r + 2))
     across(x.result, x.action ? X.wBadW : x.weighed ? X.wGoodW : X.wLeft, 26)
@@ -448,7 +448,7 @@ export function wtSummarySheet(s: State, rows: WtRow[], date: string): Sheet {
   {
     across(out_ ? tr('{0} de {1} códigos necesitan acción correctiva.', out_, codes) : list.some((x) => x.pending) ? tr('Ningún promedio está fuera del rango de QA, pero a algunos todavía les falta su target.') : list.some((x) => x.times) ? tr('Todos los promedios están dentro del rango de QA.') : tr('Este día no hay pesos de bolas.'), X.wSay, 26)
     row([])
-    row([tr('Código'), tr('Departamento'), tr('Veces revisado'), tr('% en peso'), tr('Crudo prom. (oz)'), tr('Rango QA'), tr('Cocinado prom. (oz)'), tr('Rango QA'), tr('Pouch prom. (oz)'), tr('Rango QA'), tr('Resultado'), tr('Acción tomada')].map((x) => xT(x, X.wHead)), 48)
+    row([tr('Código'), tr('Departamento'), tr('Horas revisadas'), tr('% en peso'), tr('Crudo prom. (oz)'), tr('Rango QA'), tr('Cocinado prom. (oz)'), tr('Rango QA'), tr('Pouch prom. (oz)'), tr('Rango QA'), tr('Resultado'), tr('Acción tomada')].map((x) => xT(x, X.wHead)), 48)
     const avg = (x: WtAvg): Cell => (x.avg == null ? xT('—', X.wCell) : xN(x.avg, x.ok == null ? X.wD : x.ok === 'ok' ? X.wDg : x.ok === 'under' ? X.wDr : X.wDa))
     const range = (x: WtAvg): Cell => xT(x.avg == null ? '—' : x.range || tr('Pendiente'), X.wCell)
     // the chart reads a block of its own, in white, with only what can be judged: a code not weighed is not a 0% (Jose, 2026-10-30)
@@ -462,7 +462,7 @@ export function wtSummarySheet(s: State, rows: WtRow[], date: string): Sheet {
       row([])
       chart = { title: tr('% de pesos dentro del rango de QA, por departamento'), series: tr('% en peso'), cat: 12, val: 13, from, to, at, pct: true, cols: 11, height: tall }
     }
-    across(tr('Cómo leerlo: "Veces revisado" = cuántas horas se pesó ese código. Bajo cada promedio: de cuántas pruebas y pesos sale. "Prom." = el promedio de todos los pesos del día, en onzas. "% en peso" = de todos los pesos, cuántos cayeron dentro del rango. Pouch = la bolsa terminada. Rango QA = el mínimo y el máximo permitido.'), X.note, 34)
+    across(tr('Cómo leerlo: "Horas revisadas" = cuántas horas se pesó ese código. Bajo cada promedio: de cuántas pruebas y pesos sale. "Prom." = el promedio de todos los pesos del día, en onzas. "% en peso" = de todos los pesos, cuántos cayeron dentro del rango. Pouch = la bolsa terminada. Rango QA = el mínimo y el máximo permitido.'), X.note, 34)
     across(tr('Verde = el promedio está dentro del rango. Rojo = bajo el rango. Ámbar = sobre el rango. Si está rojo o ámbar se necesita una acción correctiva: anótala en "Acción tomada".'), X.note, 34)
     const note = kpiNote(s, date, 'weights')
     if (note) { row([]); across(tr('Notas: {0}', note), X.note, 48) }

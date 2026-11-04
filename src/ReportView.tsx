@@ -9,7 +9,8 @@ import { attendanceOf, attLineText, attMovesText, attOf, attShifts, attStateText
 import { awayDay, byLineName, COOKS, consumesOf, inventoryOf, stepText, weightEdit, weightPaperAdd, weightsFix, weightTarget, wtKindsOf, wtOdd, wtPaperAt, wtPaperLines, wtPicksCode, type Cook, type Dept as RoomDept, type WeightTest, type WtEntry } from './store'
 import { MINI_WEEKS, miniBook, miniSpan, miniTables, miniWeek } from './miniKpi'
 import { PplhView, RangePick } from './PplhView'
-import { datesFrom, seesPplh } from './pplh'
+import { DashView } from './DashView'
+import { datesFrom, keepRange, rangeKept, seesPplh } from './pplh'
 import { loadDay } from './sync'
 import { pctText } from './Attendance'
 import { buildPdf, loadPdf, type Part } from './pdf'
@@ -40,7 +41,7 @@ import { trx } from './trx'
  */
 
 /** the parts of the report, one tab each */
-type View = 'gen' | 'code' | 'shift' | 'pal' | 'wt' | 'mini' | 'pplh' | 'rec' | 'chg'
+type View = 'gen' | 'code' | 'shift' | 'pal' | 'wt' | 'dash' | 'mini' | 'pplh' | 'rec' | 'chg'
 /** the three lists of Registros, and the two of Pallets */
 type RecSub = 'runs' | 'units' | 'stops'
 type PalSub = 'pallets' | 'bins'
@@ -55,7 +56,17 @@ let shiftChosen: 0 | 1 | 2 | null = null
 /** the room a manager chose to look at in the report, kept the same way ('' = all of them) */
 let deptChosen: Dept | '' = ''
 /** the part of the report, the list of Registros and of Pallets, and the search: kept the same way, so going to the floor and back finds them as they were */
-let viewChosen: View = 'gen', recChosen: RecSub = 'runs', palChosen: PalSub = 'pallets', searchKept = ''
+/**
+ * the part of the report and its day, kept in this browser tab so a reload (F5) comes back to them (Jose, 2026-11-03:
+ * "me saca para afuera"); a day kept more than 8 hours ago is let go, so a tab left open does not wake up on an old day
+ */
+const REP_KEY = 'act_report'
+function repKept(): { view?: string; date?: string } {
+  try { const x = JSON.parse(sessionStorage.getItem(REP_KEY) || '{}') as { view?: string; date?: string; at?: number }; return { view: x.view, date: x.at && Date.now() - x.at < 8 * 3_600_000 && /^\d{4}-\d{2}-\d{2}$/.test(x.date ?? '') ? x.date : undefined } } catch { return {} }
+}
+const keepRep = (view: View, date: string) => { try { sessionStorage.setItem(REP_KEY, JSON.stringify({ view, date, at: Date.now() })) } catch { /* private window */ } }
+const VIEWS: View[] = ['gen', 'code', 'shift', 'pal', 'wt', 'dash', 'mini', 'pplh', 'rec', 'chg']
+let viewChosen: View = (VIEWS as string[]).includes(repKept().view ?? '') ? (repKept().view as View) : 'gen', recChosen: RecSub = 'runs', palChosen: PalSub = 'pallets', searchKept = ''
 /**
  * Where another tab sends the report (the Programa del día, the floor's numbers: Jose, 2026-10-20 "que tengan link
  * todo"): the day, room, shift, line, code, lot, part and list to open on. Read once when the report opens.
@@ -117,12 +128,13 @@ const onScreen = (hits: Hit[]) => hits.filter((h) => !(h.kind === 'unit' && h.de
 const none = (v: unknown) => (v === '—' ? 'c-none' : undefined)
 
 /** what each part of the report is called, and what it holds (said under the tabs and in the help) */
-const viewLabel = (v: View) => (v === 'gen' ? tr('General') : v === 'code' ? tr('Por código') : v === 'shift' ? tr('Por turno') : v === 'pal' ? '📦 ' + tr('Pallets') : v === 'wt' ? '⚖ ' + tr('Pesos') : v === 'mini' ? '📅 ' + tr('Mini KPI') : v === 'pplh' ? '📈 PPLH' : v === 'rec' ? tr('Registros') : tr('Cambios'))
+const viewLabel = (v: View) => (v === 'gen' ? tr('General') : v === 'code' ? tr('Por código') : v === 'shift' ? tr('Por turno') : v === 'pal' ? '📦 ' + tr('Pallets') : v === 'wt' ? '⚖ ' + tr('Pesos') : v === 'dash' ? '📊 Dashboard' : v === 'mini' ? '📅 ' + tr('Mini KPI') : v === 'pplh' ? '📈 PPLH' : v === 'rec' ? tr('Registros') : tr('Cambios'))
 const viewSub = (v: View) => (v === 'gen' ? tr('Lo hecho por cada departamento, cada turno y por qué se paró.')
   : v === 'code' ? tr('Cada código con sus lotes, como en el Excel. Toca un código o un lote para ver solo eso; toca lo hecho para ver cada unidad.')
     : v === 'shift' ? tr('Cada departamento con el día completo y cada turno: lo hecho, el reloj y la suma de sus líneas.')
       : v === 'pal' ? tr('Los pallets de Packing uno por uno, con sus lotes, tags y PO, y sus bins aparte.')
         : v === 'wt' ? tr('Lo que se pesó: cada código con sus pruebas hechas de las que tocaban, el promedio contra el objetivo, los bajos y sobre, y cada prueba con sus pesos.')
+        : v === 'dash' ? tr('Lo que Mike pidió ver: yield, shorts y PPLH, el resumen de pesos con una columna por día y su gráfica, con su Excel.')
         : v === 'mini' ? tr('La semana de un turno, de domingo a viernes: arranque, producción contra la meta, paros, consumo, waste y pesos.')
         : v === 'pplh' ? tr('El KPI diario de Mike: libras por hora de trabajo y el downtime de cada cuarto, con su Excel.')
         : v === 'rec' ? tr('Cada corrida, cada unidad y cada paro: para buscar, ver, corregir o agregar.')
@@ -156,7 +168,7 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
   const can = useCan(), who = useWho(), viewOnly = who.role === 'viewer'
   // (what another tab asked for, taken once: see reportOpenAt)
   const [at] = useState(() => { const x = openAt; openAt = null; return x })
-  const [date, setDate] = useState(() => at?.date ?? workDay(s).date)
+  const [date, setDate] = useState(() => at?.date ?? repKept().date ?? workDay(s).date)
   const [wiping, setWiping] = useState(false)
   // a run opened to correct it, at the unit the person came from (a pallet, a cart); and a stop
   const [editRun, setEditRun] = useState<{ id: string; at?: number } | null>(null)
@@ -200,6 +212,7 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
   // the part of the report in view, the list of Registros and of Pallets, and the search (kept like the shift and the room)
   const [view, setViewPick] = useState<View>(viewChosen)
   const setView = (v: View) => { viewChosen = v; setViewPick(v) }
+  useEffect(() => { keepRep(view, date) }, [view, date])
   const [recSub, setRecPick] = useState<RecSub>(recChosen)
   const setRecSub = (x: RecSub) => { recChosen = x; setRecPick(x) }
   const [palSub, setPalPick] = useState<PalSub>(palChosen)
@@ -446,7 +459,7 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
   // a room's column in the lists only when more than one room is in view
   const manyRooms = !dept
   // ---- the parts: which ones this person has, and how many things each holds (or how many the search found in it) ----
-  const views: View[] = ['gen', 'code', 'shift', ...(!only || only === 'Packing' ? ['pal' as const] : []), ...(wt.rows.length ? ['wt' as const] : []), ...(mgr ? ['mini' as const] : []), ...(seesPplh(s, admin, user.get()) ? ['pplh' as const] : []), 'rec', ...(mgr ? ['chg' as const] : [])]
+  const views: View[] = ['gen', 'code', 'shift', ...(!only || only === 'Packing' ? ['pal' as const] : []), ...(wt.rows.length ? ['wt' as const] : []), ...(mgr ? ['dash' as const, 'mini' as const] : []), ...(seesPplh(s, admin, user.get()) ? ['pplh' as const] : []), 'rec', ...(mgr ? ['chg' as const] : [])]
   const v: View = views.includes(view) ? view : 'gen'
   const hitCount = (x: View) => (x === 'code' ? hitsOf('code').length : x === 'pal' ? hitsOf('pallet', 'bin').length : x === 'rec' ? hitsOf('unit', 'run', 'stop').length : x === 'chg' ? hitsOf('change').length : null)
   const tabs = views.map((x) => {
@@ -616,7 +629,7 @@ export function Report(props: ReportProps) {
       <div className="rp-sub"><span>{viewSub(v)}</span><button type="button" className="btn sm" onClick={() => setHelp(true)}>ⓘ {tr('Cómo leer este reporte')}</button></div>
       <div id="rp-panel" role="tabpanel" aria-labelledby={'rp-tab-' + v} className="rp-panel">
         {/* (a day, or a filter, with no code but with stops: every part says so and Registros opens on them) */}
-        {v === 'chg' ? <ChangesView k={k} /> : v === 'wt' ? <WeightsView k={k} /> : v === 'mini' ? <MiniKpiView k={k} /> : v === 'pplh' ? <PplhView s={k.s} date={k.date} now={k.now} edit={!k.viewOnly} admin={k.admin} /> : k.searching && (v === 'gen' || v === 'shift') ? <SearchResults k={k} />
+        {v === 'chg' ? <ChangesView k={k} /> : v === 'wt' ? <WeightsView k={k} /> : v === 'dash' ? <DashView s={k.s} date={k.date} now={k.now} pplh={seesPplh(k.s, k.admin, user.get())} /> : v === 'mini' ? <MiniKpiView k={k} /> : v === 'pplh' ? <PplhView s={k.s} date={k.date} today={k.today} now={k.now} edit={!k.viewOnly} admin={k.admin} /> : k.searching && (v === 'gen' || v === 'shift') ? <SearchResults k={k} />
           : rows.length === 0 ? (v === 'rec' && k.stops.length > 0 ? <RecordsView k={k} /> : <EmptyDay k={k} />)
             : v === 'gen' ? <GeneralView k={k} /> : v === 'code' ? <CodesView k={k} /> : v === 'shift' ? <ShiftsView k={k} /> : v === 'pal' ? <PalletsView k={k} /> : <RecordsView k={k} />}
       </div>
@@ -1543,8 +1556,10 @@ function WeightsView({ k }: { k: Kit }) {
   const [paper, setPaper] = useState(false)
   // the summary on the screen, to see it and decide without opening a file (Jose, 2026-10-30); over a range of days when
   // asked (Mike, 2026-11-02: weekly, monthly): the board and By department follow the range, the tests below stay the day's
-  const [wFrom, setWFrom] = useState(date), [wTo, setWTo] = useState(date)
-  useEffect(() => { setWFrom(date); setWTo(date) }, [date])
+  const [wFrom, setWFrom] = useState(() => rangeKept('wt')?.from ?? date), [wTo, setWTo] = useState(() => rangeKept('wt')?.to ?? date)
+  const wDateWas = useRef(date)
+  useEffect(() => { if (wDateWas.current !== date) { wDateWas.current = date; setWFrom(date); setWTo(date) } }, [date])
+  useEffect(() => { keepRange('wt', wFrom, wTo) }, [wFrom, wTo])
   const wDays = useMemo(() => (wFrom && wTo && wFrom <= wTo ? datesFrom(wFrom, wTo) : [date]), [wFrom, wTo, date])
   useEffect(() => { for (const d of wDays) void miniBring(d) }, [wDays])
   const wRows = useMemo(() => wDays.flatMap((d) => weightsOf(s, d, now)), [s, wDays]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -1583,7 +1598,7 @@ function WeightsView({ k }: { k: Kit }) {
       {wLabel && <p className="hint">{tr('El resumen y Por departamento son del {0} al {1} ({2} días); las pruebas de abajo, del día del reporte.', wDays[0], wDays[wDays.length - 1], wDays.length)}</p>}
       <div className="wt-board">{boardRows.map((x) => (
         <article key={x.code} className="wt-boardrow">
-          <div className="wt-boardhead"><b>{x.code}</b><span>{tr('{0} veces', x.times)}</span></div>
+          <div className="wt-boardhead"><b>{x.code}</b><span>{tr('{0} horas', x.times)}</span></div>
           <div className="wt-bigs">{bigCell(tr('Crudo prom.'), x.raw)}{bigCell(tr('Cocinado prom.'), x.cooked)}{bigCell(tr('Pouch prom.'), x.pouch)}</div>
           <p className={x.action ? 'red' : x.weighed ? 'ok' : 'muted'}>{x.result}</p>
         </article>
@@ -1593,7 +1608,7 @@ function WeightsView({ k }: { k: Kit }) {
       <article className="wt-rp">
         <h3>{tr('Por departamento')} <WhatIs id="peso-resumen" /></h3>
         <div className="scroll"><table className="wt-rp-tbl">
-          <thead><tr><th>{tr('Código')}</th><th>{tr('Departamento')}</th><th className="n">{tr('Veces revisado')}</th><th className="n">{tr('% en peso')}</th><th className="n">{tr('Crudo prom. (oz)')}</th><th className="n">{tr('Cocinado prom. (oz)')}</th><th className="n">{tr('Pouch prom. (oz)')}</th><th>{tr('Resultado')}</th></tr></thead>
+          <thead><tr><th>{tr('Código')}</th><th>{tr('Departamento')}</th><th className="n">{tr('Horas revisadas')}</th><th className="n">{tr('% en peso')}</th><th className="n">{tr('Crudo prom. (oz)')}</th><th className="n">{tr('Cocinado prom. (oz)')}</th><th className="n">{tr('Pouch prom. (oz)')}</th><th>{tr('Resultado')}</th></tr></thead>
           <tbody>{summaryRows.map((x) => (
             <tr key={x.code + x.where}>
               <td><b>{x.code}</b></td><td>{x.where || '—'}</td><td className="n">{x.times}</td>

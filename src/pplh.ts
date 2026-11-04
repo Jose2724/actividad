@@ -24,6 +24,17 @@ const monthOf = (s: State, ym: string) => (kpiGet(s, LBS + ym)?.data as LbsMonth
 export const pplhLbs = (s: State, date: string): PplhLbs | null => monthOf(s, date.slice(0, 7))[date] ?? null
 export const pplhHours = (s: State, date: string): number | null => { const h = kpiGet(s, HRS + date)?.data.hours; return typeof h === 'number' && h > 0 ? h : null }
 export const setPplhHours = (date: string, hours: number | null) => kpiPut(HRS + date, hours && hours > 0 ? { hours: Math.round(hours * 100) / 100 } : {}, !(hours && hours > 0))
+/**
+ * a day's pounds typed by hand (2026-11-03: Mike dictates them to Jose when Melissa's file cannot be sent): kept as
+ * that day with no NetSuite rows (rows 0 says so); a file uploaded later replaces it. Null takes the typed day away
+ */
+export function setPplhLbsHand(s: State, date: string, lbs: number | null) {
+  const ym = date.slice(0, 7), was = kpiGet(s, LBS + ym)?.data as LbsMonth | undefined, days = { ...(was?.days ?? {}) }
+  if (lbs && lbs > 0) days[date] = { lbs: Math.round(lbs * 100) / 100, rows: 0 }; else delete days[date]
+  kpiPut(LBS + ym, { days, ...(was?.file ? { file: was.file } : {}) }, !Object.keys(days).length)
+}
+/** true when a day's pounds were typed, not read from a file */
+export const pplhLbsByHand = (s: State, date: string) => { const l = pplhLbs(s, date); return !!l && l.rows === 0 }
 /** the pounds of a file, kept: each day it brings replaces that day, the others of the month stay */
 export function savePplhLbs(s: State, days: { date: string; lbs: number; rows: number }[], file: string) {
   const months = new Map<string, Record<string, PplhLbs>>()
@@ -80,9 +91,51 @@ export function readNetsuite(rows: ReadCell[][]): NetsuiteRead {
   out.days = [...byDay].map(([date, e]) => ({ date, lbs: Math.round(e.lbs * 100) / 100, rows: e.rows })).sort((a, b) => a.date.localeCompare(b.date))
   return out
 }
+/** Will's hours file read: each day's hours over the whole plant, how many people and clock entries, and the entries with no hours ("--") */
+export type HoursRead = { days: { date: string; hours: number; people: number; entries: number; blank: number }[]; divisions: string[]; found: boolean }
+/**
+ * HR's daily hours report (Will's file, 2026-11-02: sheet "Timesheet Entries": Employee Number, Employee Name, Date,
+ * Clock In, Clock Out, Total (Hours)…; a line per clock-in, a subtotal line per person with no date, a grand total at
+ * the end; "Applied_Filters" lists the divisions). Only the lines with a date count, added up by day: the subtotals
+ * and the grand total would double them. Nothing of the people is kept, only each day's total
+ */
+export function readHours(sheets: { name: string; rows: ReadCell[][] }[]): HoursRead {
+  const out: HoursRead = { days: [], divisions: [], found: false }
+  for (const sh of sheets) {
+    const rows = sh.rows, h = rows.slice(0, 12).findIndex((r) => r.some((c) => norm(c) === 'date') && r.some((c) => norm(c).startsWith('total')) && r.some((c) => norm(c).startsWith('employee')))
+    if (h < 0) continue
+    out.found = true
+    const head = rows[h].map(norm), date = head.indexOf('date'), total = head.findIndex((c) => c.startsWith('total')), who = head.findIndex((c) => c.startsWith('employee'))
+    const byDay = new Map<string, { hours: number; people: Set<string>; entries: number; blank: number }>()
+    for (const r of rows.slice(h + 1)) {
+      const d = dateText(r[date])
+      if (!d) continue
+      const e = byDay.get(d) ?? { hours: 0, people: new Set<string>(), entries: 0, blank: 0 }
+      const n = typeof r[total] === 'number' ? r[total] : Number(String(r[total] ?? '').replace(/,/g, ''))
+      if (Number.isFinite(n)) e.hours += n; else e.blank++
+      e.entries++; e.people.add(String(r[who] ?? ''))
+      byDay.set(d, e)
+    }
+    out.days = [...byDay].map(([date, e]) => ({ date, hours: Math.round(e.hours * 100) / 100, people: e.people.size, entries: e.entries, blank: e.blank })).sort((a, b) => a.date.localeCompare(b.date))
+  }
+  const filters = sheets.find((x) => norm(x.name).includes('filter'))
+  if (filters) { const col = filters.rows[0]?.findIndex((c) => norm(c) === 'division') ?? -1; if (col >= 0) out.divisions = filters.rows.slice(1).map((r) => String(r[col] ?? '').trim()).filter(Boolean) }
+  return out
+}
 /** of a workbook's sheets, the one that is NetSuite's */
 export const netsuiteSheet = (sheets: { name: string; rows: ReadCell[][] }[]) => sheets.map((x) => ({ ...x, read: readNetsuite(x.rows) })).find((x) => x.read.found) ?? null
 
+/**
+ * where a part of the report was left, kept in this browser tab so a reload (F5) comes back to it (Jose, 2026-11-03:
+ * "me saca para afuera"): the range of PPLH, Pesos or the Dashboard, by a key of its own. Nothing without sessionStorage
+ */
+const RANGE_KEY = 'act_range'
+export function rangeKept(key: string): { from: string; to: string } | null {
+  try { const r = (JSON.parse(sessionStorage.getItem(RANGE_KEY) || '{}') as Record<string, { from?: string; to?: string }>)[key]; const ok = (d?: string) => !!d && /^\d{4}-\d{2}-\d{2}$/.test(d); return r && ok(r.from) && ok(r.to) && (r.from as string) <= (r.to as string) ? { from: r.from as string, to: r.to as string } : null } catch { return null }
+}
+export function keepRange(key: string, from: string, to: string) {
+  try { const m = JSON.parse(sessionStorage.getItem(RANGE_KEY) || '{}') as Record<string, unknown>; m[key] = { from, to }; sessionStorage.setItem(RANGE_KEY, JSON.stringify(m)) } catch { /* private window: it opens on its default */ }
+}
 /** the days from one date to another, both included */
 export function datesFrom(from: string, to: string) {
   const out: string[] = []
@@ -181,14 +234,15 @@ export function downtimeOf(s: State, dates: string[], now: number): RoomDown[] {
 // ---- the workbook, in English and in the look of Mike's (his navy, orange, grey and gold) ----
 const NAVY = '1F4E78', ORANGE = 'ED7D31', GREY = 'A5A5A5', GOLD = 'FFC000'
 /** his charts' title (dark grey, bold) and dates on the bottom axis as m/d/yy, tilted */
-const MIKE_LOOK = { titleColor: '404040', dates: 'm/d/yy' } as const
+export const MIKE_LOOK = { titleColor: '404040', dates: 'm/d/yy' } as const
 const hrs = (ms: number) => Math.round(ms / 36_000) / 100
 const day = (d: string) => new Date(d + 'T12:00:00')
-const longDay = (d: string) => day(d).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
-const shortDay = (d: string) => day(d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
-const dateCell = (d: string): Cell => { const [y, m, dd] = d.split('-').map(Number); return { v: Date.UTC(y, m - 1, dd) / 86_400_000 + 25569, s: X.mDate, t: shortDay(d) } }
+export const longDay = (d: string) => day(d).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+export const shortDay = (d: string) => day(d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+export const dateCell = (d: string): Cell => { const [y, m, dd] = d.split('-').map(Number); return { v: Date.UTC(y, m - 1, dd) / 86_400_000 + 25569, s: X.mDate, t: shortDay(d) } }
 const empty = xT('', X.wCell), none = xT('—', X.wCell)
-function page(widths: number[]) {
+/** a report page in Mike's look: rows, merged bands, gaps, and the sheet at the end */
+export function mikePage(widths: number[]) {
   const rows: Cell[][] = [], heights: Record<number, number> = {}, merges: string[] = [], last = colName(widths.length - 1)
   const row = (cells: Cell[], ht?: number) => { if (ht) heights[rows.length] = ht; rows.push(cells); return rows.length }
   const across = (text: string, style: number, ht: number) => { const r = row([xT(text, style), ...Array.from({ length: widths.length - 1 }, () => xT('', style))], ht); merges.push('A' + r + ':' + last + r) }
@@ -204,7 +258,7 @@ export function pplhBook(s: State, from: string, to: string, date: string, now: 
   const all = pplhOfRange(list)
 
   // ---- SUMMARY ----
-  const a = page([24, 18, 18, 20, 18, 18])
+  const a = mikePage([24, 18, 18, 20, 18, 18])
   a.across('East Rutherford — Daily Pounds per Labor Hour', X.mBand, 32)
   a.across(`Report for ${longDay(date)}. Pounds: NetSuite ingredients used (Lbs Used). Hours: labor hours from HR. Lbs/Labor Hr = pounds ÷ hours.`, X.mSub, 34)
   a.gap()
@@ -215,12 +269,13 @@ export function pplhBook(s: State, from: string, to: string, date: string, now: 
   // (by week or by month when asked so: one row per week as his SUMMARY, or per month; the chart follows)
   const groups = by === 'day' ? null : pplhGroups(s, from, to, by), look = by === 'month' ? { titleColor: MIKE_LOOK.titleColor } : MIKE_LOOK
   a.across(`${by === 'week' ? 'Week by week (Monday to Sunday)' : by === 'month' ? 'Month by month' : 'Day by day'} · ${shortDay(from)} to ${shortDay(to)}`, X.wSec, 24)
-  a.row([by === 'week' ? 'Week of' : by === 'month' ? 'Month' : 'Date', 'East Rutherford Lbs', 'East Rutherford Hours', 'East Rutherford Lbs/Labor Hr', groups ? 'Days' : 'NetSuite rows'].map((t) => xT(t, X.mHead)), 34)
+  // (no NetSuite rows column by day, Jose 2026-11-03: "eliminar esta row por ahora")
+  a.row([by === 'week' ? 'Week of' : by === 'month' ? 'Month' : 'Date', 'East Rutherford Lbs', 'East Rutherford Hours', 'East Rutherford Lbs/Labor Hr', ...(groups ? ['Days'] : [])].map((t) => xT(t, X.mHead)), 34)
   const from1 = a.rows.length + 1
   if (groups) for (const g of groups) a.row([by === 'week' ? dateCell(g.from) : xT(monthName(g.key), X.wLeft), g.lbs == null ? empty : xN(Math.round(g.lbs), X.wN), g.hours == null ? empty : xN(g.hours, X.mN1), g.pplh == null ? empty : xN(g.pplh, X.mN1), xT(`${g.lbsDays} of ${g.days} with pounds${g.weekly ? ' · weekly hours' : ''}${g.whole ? '' : ' · cut by the range'}`, X.wCell)], 20)
-  else for (const r of list) a.row([dateCell(r.date), r.lbs == null ? empty : xN(Math.round(r.lbs), X.wN), r.hours == null ? empty : xN(r.hours, X.mN1), r.pplh == null ? empty : xN(r.pplh, X.mN1), r.rows ? xN(r.rows, X.wN) : empty], 20)
+  else for (const r of list) a.row([dateCell(r.date), r.lbs == null ? empty : xN(Math.round(r.lbs), X.wN), r.hours == null ? empty : xN(r.hours, X.mN1), r.pplh == null ? empty : xN(r.pplh, X.mN1)], 20)
   const to1 = a.rows.length
-  a.row([xT('Range', X.mHead), xN(Math.round(all.lbs), X.wN), xN(all.hours, X.mN1), all.pplh == null ? none : xN(all.pplh, X.mN1), xT(`${all.days} day(s) with both`, X.wCell)], 22)
+  a.row([xT('Range', X.mHead), xN(Math.round(all.lbs), X.wN), xN(all.hours, X.mN1), all.pplh == null ? none : xN(all.pplh, X.mN1), ...(groups ? [xT(`${all.days} day(s) with both`, X.wCell)] : [])], 22)
   a.across('The range adds the pounds and the hours of the days that have both, then divides: it is not an average of the daily numbers. A day with no NetSuite file or no HR hours is left blank, never estimated.', X.note, 34)
   a.gap()
   const TALL = 17, at1 = a.gap(TALL), at2 = (a.gap(), a.gap(TALL))
@@ -230,7 +285,7 @@ export function pplhBook(s: State, from: string, to: string, date: string, now: 
   ])
 
   // ---- DOWNTIME ----
-  const b = page([16, 12, 12, 14, 11, 12, 13, 13, 12, 11, 40])
+  const b = mikePage([16, 12, 12, 14, 11, 12, 13, 13, 12, 11, 40])
   b.across('East Rutherford — Downtime by Room', X.mBand, 32)
   b.across(`${longDay(date)}, both shifts. Time with a code running on each line, lines added up. Stopped = mechanical, personnel, cleaning and other; Lunch & Break and Set up are apart.`, X.mSub, 34)
   b.gap()
@@ -260,7 +315,7 @@ export function pplhBook(s: State, from: string, to: string, date: string, now: 
   ])
 
   // ---- YIELD ----
-  const c = page([14, 16, 16, 12, 12, 60])
+  const c = mikePage([14, 16, 16, 12, 12, 60])
   c.across('East Rutherford — Yield by Product', X.mBand, 32)
   c.across('Yield = pounds out ÷ pounds in, by product. The NetSuite file lists ingredients by item, not by product, so the pounds of each product need their own source.', X.mSub, 34)
   c.gap()
@@ -269,7 +324,7 @@ export function pplhBook(s: State, from: string, to: string, date: string, now: 
   const yieldSheet = c.done('YIELD')
 
   // ---- HOW IT IS CALCULATED ----
-  const d = page([30, 90])
+  const d = mikePage([30, 90])
   d.across('How each number is worked out', X.mBand, 32)
   d.gap()
   for (const [k, v] of [
