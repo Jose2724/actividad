@@ -728,6 +728,12 @@ table.pallets th.num,table.pallets td.num{text-align:right;font-variant-numeric:
 .line.mode-bin .tile.main{background:#eef2ff}
 .line.mode-bin .tile.main b{color:#3730a3}
 .line.mode-bin .btn.huge.primary{background:#4338ca;border-color:#4338ca;box-shadow:0 2px 0 #2b2585}
+/* Kitchen's oven: orange, to be told from the braisers from afar (Jose, 2026-11-04); its left edge still says running or stopped */
+.line.oven{background:#fff1e0;border-top:6px solid #f59e0b;border-right-color:#f59e0b;border-bottom-color:#f59e0b}
+.line.oven .lhead h3{color:#9a3412}
+.line.oven .tile.main{background:#ffe4c4}
+.line.oven .tile.main b{color:#9a3412}
+.line.oven .btn.huge.primary{background:#c2410c;border-color:#c2410c;box-shadow:0 2px 0 #7c2d12}
 .line.mode-bin .pill.run{background:#e0e7ff;color:#3730a3}
 /* four tiles in one row wherever the card has room; smaller figures, so the card is shorter */
 .tile b{font-size:20px}
