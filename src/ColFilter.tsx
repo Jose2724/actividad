@@ -55,18 +55,21 @@ export function ColMenu({ label, values, counts, chosen, single, show: shown, on
   const [q, setQ] = useState('')
   const btn = useRef<HTMLButtonElement>(null), box = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState<{ top: number; left: number; maxHeight: number }>({ top: 0, left: 0, maxHeight: 400 })
-  useLayoutEffect(() => {
-    if (!open || !btn.current) return
-    // under its ▾, or over it when there is little room below (a table at the bottom of the screen)
+  // under its ▾, or over it when there is little room below (a table at the bottom of the screen)
+  const place = () => {
+    if (!btn.current) return
     const r = btn.current.getBoundingClientRect(), w = Math.min(300, window.innerWidth - 16), below = window.innerHeight - r.bottom - 12, above = r.top - 12
     const up = below < 300 && above > below, maxHeight = Math.max(160, Math.min(440, up ? above : below))
     setPos({ top: up ? Math.max(8, r.top - 4 - maxHeight) : r.bottom + 4, left: Math.max(8, Math.min(r.left, window.innerWidth - w - 8)), maxHeight })
-  }, [open])
+  }
+  useLayoutEffect(() => { if (open) place() }, [open])
   useEffect(() => {
     if (!open) return
     const out = (e: MouseEvent | TouchEvent) => { if (!box.current?.contains(e.target as Node) && !btn.current?.contains(e.target as Node)) setOpen(false) }
     const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
-    const away = () => setOpen(false)
+    // the menu stays open while they tick and untick (Jose, 2026-11-04: "quizás quiera seguir seleccionando"): a scroll of
+    // the page (the table shrinking under a filter moves it) only moves the menu along; scrolling its own list is nothing
+    const away = (e: Event) => { if (box.current?.contains(e.target as Node)) return; place() }
     document.addEventListener('mousedown', out); document.addEventListener('touchstart', out); document.addEventListener('keydown', esc); window.addEventListener('scroll', away, true)
     return () => { document.removeEventListener('mousedown', out); document.removeEventListener('touchstart', out); document.removeEventListener('keydown', esc); window.removeEventListener('scroll', away, true) }
   }, [open])
