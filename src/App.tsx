@@ -2112,7 +2112,9 @@ function keepPlanPart(d: Dept, p: PlanPart) {
   try { const m = JSON.parse(sessionStorage.getItem(DEPT_TAB_KEY) || '{}') as Record<string, string>; m[d + '|plan'] = p; sessionStorage.setItem(DEPT_TAB_KEY, JSON.stringify(m)) } catch { /* private window: it opens on "Hoy" */ }
 }
 function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now: number; mgr: boolean; day: WorkDay; readsAll: boolean }) {
-  const lines = s.lines.filter((l) => l.dept === dept).sort(byLineName)
+  // Kitchen's oven has no card on the floor (Jose, 2026-11-04: "no necesitan ese horno card, sino solo que salga en la
+  // asistencia"): the line stays, so the attendance can put one or more people on it (Trasladar a línea › Horno)
+  const lines = s.lines.filter((l) => l.dept === dept && !(l.dept === 'Kitchen' && isOven(l.name))).sort(byLineName)
   const [part, setPart] = useState<DeptTab>(() => deptTabOf(dept))
   // the Programa tab in two parts (Jose and the office, 2026-10-19): "Hoy", the day's program and the room's open
   // production orders; and "Pedidos de producción", every order with its search (for whoever reads every room, all of
