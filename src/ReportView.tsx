@@ -1789,7 +1789,7 @@ function MiniKpiView({ k }: { k: Kit }) {
     return () => { current = false }
   }, [date])
   const excel = async () => {
-    const page = () => xlsxNow(miniBook(s, date, shift, now))
+    const page = () => xlsxNow(miniBook(s, date, shift, now, (d) => miniComing.has(d)))
     const bytes = page() ?? (await loadZip(), page())
     if (bytes) download(new File([bytes], tr('Mini-KPI') + '-' + week.days[0] + '.xlsx', { type: XLSX_TYPE }))
   }
