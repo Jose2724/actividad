@@ -652,6 +652,10 @@ function SearchBox({ k }: { k: Kit }) {
   // the search over several days (2026-11-04): off, the report's day as always; on, a range (the day at first) and the days it is found in
   const [many, setMany] = useState(false)
   const [rFrom, setRFrom] = useState(k.date), [rTo, setRTo] = useState(k.date)
+  // code, lot and PO in their own boxes, combined (Jose, 2026-11-04: "que se pueda combinar filtros"): they write the
+  // search above, where every word typed must be in the record, so a pallet of that code, that lot and that PO is found
+  const [part, setPart] = useState({ code: '', lot: '', po: '' })
+  const putPart = (x: Partial<typeof part>) => { const n = { ...part, ...x }; setPart(n); setQ([n.code, n.lot, n.po].map((v) => v.trim()).filter(Boolean).join(' ')) }
   return (
     <div className="rf rp-searchrow">
       <span className="lab rf-cap">{tr('Buscar en este día')} <button type="button" className={'btn xs ' + (many ? 'primary' : 'soft')} aria-pressed={many} onClick={() => { if (!many) { setRFrom(k.date); setRTo(k.date) } setMany(!many) }}>{tr('📅 Buscar en varios días')}</button></span>
@@ -667,6 +671,12 @@ function SearchBox({ k }: { k: Kit }) {
       {many && (
         <div className="rp-range">
           <RangePick from={rFrom} to={rTo} today={k.today} onChange={(a, b) => { setRFrom(a); setRTo(b) }} />
+          <div className="rp-rangefields">
+            <label>{tr('Código')} <input value={part.code} placeholder="0889" autoComplete="off" onChange={(e) => putPart({ code: e.target.value })} /></label>
+            <label>{tr('Lote')} <input value={part.lot} placeholder="6310" inputMode="numeric" autoComplete="off" onChange={(e) => putPart({ lot: e.target.value })} /></label>
+            <label>PO <input value={part.po} placeholder="002801102104" autoComplete="off" onChange={(e) => putPart({ po: e.target.value })} /></label>
+          </div>
+          <p className="hint">{tr('Se combinan: sale solo lo que tiene todo lo que escribiste. También se puede escribir arriba (un producto, una persona…).')}</p>
           {qs.trim() ? <RangeHits k={k} from={rFrom} to={rTo} /> : <p className="hint">{tr('Escribe arriba qué buscar (código, producto, lote, PO…): sale en qué días aparece y desde cuándo.')}</p>}
         </div>
       )}

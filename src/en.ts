@@ -3539,4 +3539,5 @@ export const EN: Record<string, string> = {
   "viendo este día": "viewing this day",
   "Ver este día ›": "See this day ›",
   "Se buscó en los primeros {0} días del rango.": "Searched the first {0} days of the range.",
+  "Se combinan: sale solo lo que tiene todo lo que escribiste. También se puede escribir arriba (un producto, una persona…).": "They combine: only what has everything you wrote shows. You can also type above (a product, a person…).",
 }

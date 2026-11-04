@@ -3520,6 +3520,7 @@ section('Un comentario en un registro agregado después: se guarda, se ve, se bu
     eq('borrado en Corregir: la corrida queda sin comentario (la marca vacía se guarda), y el historial lo dice', [runOf(ids.id).extra, m.noteOf(runOf(ids.id)), st().changes.filter((c) => c.refKey === ids.id && c.what.endsWith(' · Comentario')).map((c) => [c.before, c.after])], [{ note: '' }, '', [[said, 'Tags 7001 & 7002 <revisar>'], ['Tags 7001 & 7002 <revisar>', '']]])
     eq('y ya no se encuentra por él, ni sale en el Excel', [m.searchReport(st(), m.reportOf(st(), DAY, clock), 'revisar').hits.filter((h) => h.kind === 'run').length, m.runsSheet(st(), m.reportOf(st(), DAY, clock))[1].at(-1)], [0, ''])
     eq('buscar en varios días (2026-11-04): el código sale en su día y solo ahí, con su corrida', m.searchDays(st(), ['2026-10-09', DAY, '2026-10-11'], runOf(ids.id).code, clock).map((x) => [x.date, x.runs > 0]), [[DAY, true]])
+    eq('combinados: el código y el lote de sus pallets lo encuentran; el código y un lote que no tiene, no', [m.searchDays(st(), [DAY], 'A100 6283', clock).length, m.searchDays(st(), [DAY], 'A100 99991', clock).length], [1, 0])
   })
   // the app opened again (a reload, an update): every comment is read back, the cleared one as cleared
   const stored = nt.use(() => JSON.parse(localStorage.getItem('act_v1')))
