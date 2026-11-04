@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { attAccept, attAdd, attBack, attDelete, attPeople, attSetCame, attWriteOn, attendanceOf, attExpectedOf, attLineText, attMoveLine, attOf, attRemove, attSetSup, attSetTemp, attSupOf, user, byLineName, DEPTS, fmtTime, setAttExpected, type AttEntry, type Dept, type State } from './store'
+import { ATT_SPOTS, attSpotId, attAccept, attAdd, attBack, attDelete, attPeople, attSetCame, attWriteOn, attendanceOf, attExpectedOf, attLineText, attMoveLine, attOf, attRemove, attSetSup, attSetTemp, attSupOf, user, byLineName, DEPTS, fmtTime, setAttExpected, type AttEntry, type Dept, type State } from './store'
 import { useWho } from './App'
 import { DEPT_LOOK, deptVars } from './look'
 import { tr } from './i18n'
@@ -14,8 +14,8 @@ import { hourOnShift, seesLabor, workSpan } from './kpi'
  * change here (store.ts, ATT_DEFAULT and setAttExpected).
  */
 export const pctText = (x: number) => Math.round(x * 100) + '%'
-/** a room's lines, in order (the removed ones out) */
-export const roomLines = (s: State, dept: Dept) => s.lines.filter((l) => l.dept === dept && !l.deleted).sort(byLineName)
+/** a room's lines, in order (the removed ones out), and its places that are not a line (RTE's Runner, 2026-11-04) last */
+export const roomLines = (s: State, dept: Dept) => [...s.lines.filter((l) => l.dept === dept && !l.deleted).sort(byLineName), ...(ATT_SPOTS[dept] ?? []).map((name) => ({ id: attSpotId(dept, name), dept, name, updatedAt: 0 }))]
 
 export function AttendanceCard({ s, dept, date, shift, edit }: { s: State; dept: Dept; date: string; shift: 1 | 2; edit: boolean }) {
   const [open, setOpen] = useState(false)

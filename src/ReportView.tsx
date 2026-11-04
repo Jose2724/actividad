@@ -15,7 +15,7 @@ import { loadDay } from './sync'
 import { pctText } from './Attendance'
 import { buildPdf, loadPdf, type Part } from './pdf'
 import { homeScreenApple, type Kind } from './send'
-import { meatReport, CODE_HEADS, codeCells, hasCodedStops, paretoOf, filterFile, filterTitle, hitKey, palletsSheet, reportOf, runLots, runsSheet, searchReport, spanShifts, unitParts, unitsSheet, type Hit, type HitKind, type Report as ReportData, type ReportFilter, type Scope as SearchScope } from './report'
+import { searchDays, meatReport, CODE_HEADS, codeCells, hasCodedStops, paretoOf, filterFile, filterTitle, hitKey, palletsSheet, reportOf, runLots, runsSheet, searchReport, spanShifts, unitParts, unitsSheet, type Hit, type HitKind, type Report as ReportData, type ReportFilter, type Scope as SearchScope } from './report'
 import { canShift, writesIn } from './powers'
 import { AddRunDialog, AddUnitDialog, RunEditor, StopEditor } from './editors'
 import { supabase } from './supabase'
@@ -649,9 +649,12 @@ export function Report(props: ReportProps) {
 /** the search: one box for every room (with a room chosen, it is that room's search), first in the filter card */
 function SearchBox({ k }: { k: Kit }) {
   const { q, qs, setQ, shownN: n, scopes, applyScope, scopeText } = k
+  // the search over several days (2026-11-04): off, the report's day as always; on, a range (the day at first) and the days it is found in
+  const [many, setMany] = useState(false)
+  const [rFrom, setRFrom] = useState(k.date), [rTo, setRTo] = useState(k.date)
   return (
     <div className="rf rp-searchrow">
-      <span className="lab rf-cap">{tr('Buscar en este día')}</span>
+      <span className="lab rf-cap">{tr('Buscar en este día')} <button type="button" className={'btn xs ' + (many ? 'primary' : 'soft')} aria-pressed={many} onClick={() => { if (!many) { setRFrom(k.date); setRTo(k.date) } setMany(!many) }}>{tr('📅 Buscar en varios días')}</button></span>
       <div className="rp-search" role="search">
         <svg className="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" strokeWidth="2.2" /><path d="M15.5 15.5 21 21" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" /></svg>
         <input type="search" enterKeyHint="search" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
@@ -661,6 +664,40 @@ function SearchBox({ k }: { k: Kit }) {
       </div>
       {qs.trim() && <p className="rp-searchnote">{n === 1 ? tr('1 resultado') : tr('{0} resultados', n)} · {tr('La búsqueda no cambia los archivos: salen con los filtros.')}</p>}
       {scopes.length > 0 && <div className="rp-scopes">{scopes.map((x) => <button key={x.kind + x.value} type="button" className="btn sm soft" onClick={() => applyScope(x)}>{scopeText(x)}</button>)}</div>}
+      {many && (
+        <div className="rp-range">
+          <RangePick from={rFrom} to={rTo} today={k.today} onChange={(a, b) => { setRFrom(a); setRTo(b) }} />
+          {qs.trim() ? <RangeHits k={k} from={rFrom} to={rTo} /> : <p className="hint">{tr('Escribe arriba qué buscar (código, producto, lote, PO…): sale en qué días aparece y desde cuándo.')}</p>}
+        </div>
+      )}
+    </div>
+  )
+}
+/** the days of a range where the search finds something, oldest first: since when a product or a lot has been running, and a day opened with a tap */
+const RANGE_MAX = 92
+function RangeHits({ k, from, to }: { k: Kit; from: string; to: string }) {
+  const { s, now, only, mgr, qs, pickDate, date } = k
+  const days = useMemo(() => (from && to && from <= to ? datesFrom(from, to).slice(0, RANGE_MAX) : []), [from, to])
+  // (the days older than the device keeps are brought from the server, as the Mini KPI does)
+  useEffect(() => { for (const d of days) void miniBring(d) }, [days])
+  const rows = useMemo(() => searchDays(s, days, qs, now, { only, changes: mgr }), [s, days, qs, only, mgr]) // eslint-disable-line react-hooks/exhaustive-deps
+  const cut = from && to && datesFrom(from, to).length > RANGE_MAX
+  if (!days.length) return <p className="hint">{tr('Elige un rango: Desde antes que Hasta.')}</p>
+  return (
+    <div className="rp-rangehits">
+      {!rows.length ? <p className="hint">{tr('«{0}» no aparece del {1} al {2}.', qs.trim(), shortDay(days[0]), shortDay(days[days.length - 1]))}</p> : <>
+        <p><b>{rows.length === 1 ? tr('Aparece en 1 día') : tr('Aparece en {0} días', rows.length)}</b> · {rows.length === 1 ? shortDay(rows[0].date) : tr('desde el {0} hasta el {1}', shortDay(rows[0].date), shortDay(rows[rows.length - 1].date))}</p>
+        <div className="scroll"><table className="wt-rp-tbl mini">
+          <thead><tr><th>{tr('Día')}</th><th className="n">{tr('Códigos')}</th><th className="n">{tr('Corridas')}</th><th className="n">{tr('Unidades')}</th><th className="n">{tr('Paros')}</th><th></th></tr></thead>
+          <tbody>{rows.map((x) => (
+            <tr key={x.date} className={x.date === date ? 'on' : ''}>
+              <td><b>{shortDay(x.date)}</b></td><td className="n">{x.codes || '—'}</td><td className="n">{x.runs || '—'}</td><td className="n">{x.units || '—'}</td><td className="n">{x.stops || '—'}</td>
+              <td>{x.date === date ? <small className="muted">{tr('viendo este día')}</small> : <button type="button" className="btn sm soft" onClick={() => pickDate(x.date)}>{tr('Ver este día ›')}</button>}</td>
+            </tr>
+          ))}</tbody>
+        </table></div>
+      </>}
+      {cut && <p className="hint amber">{tr('Se buscó en los primeros {0} días del rango.', RANGE_MAX)}</p>}
     </div>
   )
 }

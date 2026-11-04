@@ -1204,7 +1204,14 @@ export function attDelete(id: string): boolean {
   return true
 }
 /** the line a person works on, as said ('' = none in particular) */
-export const attLineText = (s: State, line: string | undefined) => (line ? lineNameOf(s, line, '') : '')
+/**
+ * Places of a room's attendance that are not a line (Jose, 2026-11-04: RTE's "Runner", besides its Líneas 1, 2 and 3):
+ * offered with the lines when the people are written down or moved, with no card on the floor and nothing to run. A
+ * person's line is then 'pos:<room>:<name>', said by its name everywhere (the window, the report, the PDF and the Excel)
+ */
+export const ATT_SPOTS: Partial<Record<Dept, string[]>> = { RTE: ['Runner'] }
+export const attSpotId = (dept: Dept, name: string) => 'pos:' + dept + ':' + name
+export const attLineText = (s: State, line: string | undefined) => (!line ? '' : line.startsWith('pos:') ? line.split(':').slice(2).join(':') : lineNameOf(s, line, ''))
 /** each move of a person, as said: "Línea 1 → Línea 2 · 10:30", then the move to another room */
 export function attMovesText(s: State, x: AttEntry) {
   const name = (l: string) => attLineText(s, l) || tr('sin línea')

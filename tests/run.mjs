@@ -3519,6 +3519,7 @@ section('Un comentario en un registro agregado después: se guarda, se ve, se bu
     const o = m.draftOf(runOf(ids.id)); m.applyDraft(ids.id, o, { ...o, note: '' })
     eq('borrado en Corregir: la corrida queda sin comentario (la marca vacía se guarda), y el historial lo dice', [runOf(ids.id).extra, m.noteOf(runOf(ids.id)), st().changes.filter((c) => c.refKey === ids.id && c.what.endsWith(' · Comentario')).map((c) => [c.before, c.after])], [{ note: '' }, '', [[said, 'Tags 7001 & 7002 <revisar>'], ['Tags 7001 & 7002 <revisar>', '']]])
     eq('y ya no se encuentra por él, ni sale en el Excel', [m.searchReport(st(), m.reportOf(st(), DAY, clock), 'revisar').hits.filter((h) => h.kind === 'run').length, m.runsSheet(st(), m.reportOf(st(), DAY, clock))[1].at(-1)], [0, ''])
+    eq('buscar en varios días (2026-11-04): el código sale en su día y solo ahí, con su corrida', m.searchDays(st(), ['2026-10-09', DAY, '2026-10-11'], runOf(ids.id).code, clock).map((x) => [x.date, x.runs > 0]), [[DAY, true]])
   })
   // the app opened again (a reload, an update): every comment is read back, the cleared one as cleared
   const stored = nt.use(() => JSON.parse(localStorage.getItem('act_v1')))
@@ -6496,6 +6497,12 @@ section('Trasladar personal a otra línea o a otro cuarto, y los nombres en el E
     eq('una tablet vieja (sin línea) se lee igual: sin línea', m.attOf(st(), D, 'Kitchen', 1).length === 0 && (m.applyRemote('act_changes', { id: 'att:OLD', at: iso(T0), by_name: 'X', dept: 'Kitchen', what: 'Asistencia', before: '', after: JSON.stringify({ date: D, shift: 1, name: 'Vieja', gone: null, from: '' }), ref_table: 'act_attendance', ref_key: 'OLD', deleted: false, updated_at: iso(T0 + M), updated_by: 'X' }), m.attOf(st(), D, 'Kitchen', 1).map((x) => [x.name, x.line, x.moves])), [['Vieja', '', []]])
   })
   const back = await device('att-move-again', { seed: JSON.parse(disks.get('att-move').get('act_v1')), user: 'Supervisor RTE' })
+  // RTE's Runner (2026-11-04): a place of the attendance that is not a line, said by its name, counting in RTE
+  const rnr = await device('att-runner', { user: 'Sup' })
+  rnr.use((m) => {
+    const id = m.attAdd('2026-11-04', 'RTE', 1, 'Ciro', '', m.attSpotId('RTE', 'Runner'))
+    eq('anotado en Runner de RTE: se dice Runner y cuenta en RTE', [m.attLineText(m.store.get(), m.store.get().attendance.find((x) => x.id === id).line), m.attOf(m.store.get(), '2026-11-04', 'RTE', 1).length, m.ATT_SPOTS.RTE], ['Runner', 1, ['Runner']])
+  })
   eq('al volver a abrir: la línea y los traslados siguen', back.use((m) => { const st = m.store.get(), a = st.attendance.find((x) => x.name === 'Ana'); return [m.attLineText(st, a.line), a.moves.length, m.attOf(st, '2026-10-22', 'Packing', 1).map((x) => m.attLineText(st, x.line))] }), ['Línea 2', 1, ['Línea 1']])
 }
 section('Cada cuarto cambia de turno por su cuenta: RTE se queda hasta las 3:30, Packing empieza el Turno 2 a las 2:40 (Jose, 2026-10-21)')

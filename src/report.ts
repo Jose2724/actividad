@@ -303,6 +303,21 @@ const wordsOf = (t: string) => plainText(t).split(/[^a-z0-9]+/).filter(Boolean)
 const shiftWords = (shifts: string | number) => [...String(shifts).matchAll(/[12]/g)].map((m) => tr('Turno {0}', m[0]))
 
 /**
+ * The search over several days (Jose, 2026-11-04: "a veces quieren buscar ... desde cuándo está corriendo ese producto
+ * con ese lote"): each day of the range that has something answering the query, oldest first, with how many runs,
+ * units and stops it found. The report itself stays a day's; a day is opened from here. Changes only for whoever reads them
+ */
+export type DayHits = { date: string; codes: number; runs: number; units: number; stops: number; changes: number; all: number }
+export function searchDays(s: State, dates: string[], q: string, now: number = clockNow(), o: { only?: Dept; changes?: boolean } = {}): DayHits[] {
+  if (!q.trim()) return []
+  return dates.map((d) => {
+    const ch = o.changes ? s.changes.filter((c) => !c.deleted && plainDay(s, c.at) === d && (!o.only || c.dept === o.only)) : []
+    const hits = searchReport(s, reportOf(s, d, now, { only: o.only }), q, ch, now).hits
+    const n = (...kinds: HitKind[]) => hits.filter((h) => kinds.includes(h.kind)).length
+    return { date: d, codes: n('code'), runs: n('run'), units: n('unit', 'pallet', 'bin'), stops: n('stop'), changes: n('change'), all: hits.length }
+  }).filter((x) => x.all > 0)
+}
+/**
  * What the report in view holds that answers the query: every word typed must be in the record (in any field), so
  * "A100 6284" finds what carries both. A number of one or two digits is read as a whole word ("12" is pallet 12 or a
  * time at 12, never lot 6123), and a code typed with or without its zeros is the same code. Accents and capitals do
