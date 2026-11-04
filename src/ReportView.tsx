@@ -7,7 +7,7 @@ import { cellText, loadZip, X, xDur, xN, xPct, xTime, xlsxNow, XLSX_TYPE, type C
 import { cookYields, hoursOf, seesLabor, weightsOf, wtCompliance, wtCountText, wtDoneText, wtOfReport, wtSheetRows, wtSheets, wtShift, wtSum, wtBoard, wtRangeLong, wtSummary, wtSummaryBook, type WtAvg, type WtRow } from './kpi'
 import { attendanceOf, attLineText, attMovesText, attOf, attShifts, attStateText } from './store'
 import { awayDay, byLineName, COOKS, consumesOf, inventoryOf, stepText, weightEdit, weightPaperAdd, weightsFix, weightTarget, wtKindsOf, wtOdd, wtPaperAt, wtPaperLines, wtPicksCode, type Cook, type Dept as RoomDept, type WeightTest, type WtEntry } from './store'
-import { MINI_WEEKS, miniBook, miniSpan, miniTables, miniWeek } from './miniKpi'
+import { MINI_WEEKS, miniBook, miniSimple, miniSpan, miniTables, miniWeek } from './miniKpi'
 import { PplhView, RangePick } from './PplhView'
 import { DashView } from './DashView'
 import { datesFrom, keepRange, rangeKept, seesPplh } from './pplh'
@@ -25,7 +25,7 @@ import { WhatIs } from './Numbers'
 import { DEPT_LOOK, deptVars } from './look'
 import { HoldButton } from './Holds'
 import { ColMenu, useColFilters } from './ColFilter'
-import { tr } from './i18n'
+import { locale, tr } from './i18n'
 import { trx } from './trx'
 
 /*
@@ -1775,6 +1775,8 @@ const miniBring = (d: string) => { const asked = miniComing.get(d); if (asked ||
 function MiniKpiView({ k }: { k: Kit }) {
   const { s, date, now, today, pickDate } = k
   const [shift, setShift] = useState<1 | 2>(2)
+  // Santiago's own layout first (2026-11-04: "solo quieren ver lo importante"); the full tables behind a button
+  const [full, setFull] = useState(false)
   const week = useMemo(() => miniWeek(s, date, shift, now), [s, date, shift])
   const [bringing, setBringing] = useState(false)
   const [failed, setFailed] = useState(0)
@@ -1801,7 +1803,17 @@ function MiniKpiView({ k }: { k: Kit }) {
       </div>
       <p className="hint">{tr('Semana del {0} al {1}. El Excel trae un Resumen con gráficas de los días y las últimas {2} semanas, y una hoja aparte por departamento.', week.days[0], week.days[5], MINI_WEEKS)}</p>
       {failed > 0 && <p className="hint red">{tr('No se pudieron traer {0} días del servidor: esas semanas salen vacías en el Excel. Vuelve a abrir esta pestaña cuando haya señal.', failed)}</p>}
-      {miniTables(week).map((t) => (
+      <div className="btns"><div className="seg" role="group" aria-label={tr('Vista')}><button type="button" className={!full ? 'on' : ''} aria-pressed={!full} onClick={() => setFull(false)}>{tr('Lo importante')}</button><button type="button" className={full ? 'on' : ''} aria-pressed={full} onClick={() => setFull(true)}>{tr('Todo')}</button></div></div>
+      {!full && miniSimple(week).map((b) => (
+        <article key={b.dept} className="wt-rp" style={deptVars(b.dept)}>
+          <h3>{DEPT_LOOK[b.dept].emoji} {b.dept}</h3>
+          <div className="scroll"><table className="wt-rp-tbl mini simple">
+            <thead><tr><th></th><th>{tr('Target')}</th>{week.days.map((d) => <th key={d}>{new Date(d + 'T12:00:00').toLocaleDateString(locale, { weekday: 'short', day: 'numeric' })}</th>)}<th>{tr('Semana')}</th></tr></thead>
+            <tbody>{b.rows.map((r) => <tr key={r.id}><td><b>{r.label}</b></td><td className="muted">{r.target.t}</td>{r.days.map((c, j) => <td key={j} className={c.c === 'bad' ? 'red' : c.c === 'warn' ? 'amber' : c.c ?? ''}>{c.t}</td>)}<td className={r.week.c === 'bad' ? 'red' : r.week.c === 'warn' ? 'amber' : r.week.c ?? ''}><b>{r.week.t}</b></td></tr>)}</tbody>
+          </table></div>
+        </article>
+      ))}
+      {full && miniTables(week).map((t) => (
         <article key={t.title} className="wt-rp">
           <h3>{t.title} <WhatIs id={t.id} /></h3>
           {t.rows.length ? <div className="scroll"><table className="wt-rp-tbl mini">
@@ -1811,6 +1823,7 @@ function MiniKpiView({ k }: { k: Kit }) {
           {t.note && <p className="hint">{t.note}</p>}
         </article>
       ))}
+      {!full && <p className="hint">{tr('Asistencia = personas anotadas contra las esperadas. Arranque = el primer código de las líneas; fin = el último registro. Por persona = lo hecho ÷ las personas anotadas. Peso = el promedio del día de lo que pesa el cuarto. Downtime = los paros que cuentan en Ajustes › Mini KPI. "Todo" muestra las tablas completas.')}</p>}
     </>
   )
 }

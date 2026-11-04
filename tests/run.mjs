@@ -5986,6 +5986,11 @@ section('Mini KPI de Santiago (Jose, 2026-10-31): la semana de un turno, de domi
     at(D2, '20:00')
     const w = m.miniWeek(st(), D, 2, clock), t = m.miniTables(w), fila = (tit, dep) => t.find((x) => x.title.startsWith(tit)).rows.find((r) => r[0].t.startsWith(dep))
     const lun = 2 // Domingo, Lunes
+    // Santiago's own layout (his Excel, 2026-11-04): a block per room, a row per number, the target first and the week last
+    const simple = m.miniSimple(w), sRte = simple.find((b) => b.dept === 'RTE')
+    eq('un bloque por cuarto, con las filas de su hoja', [simple.map((b) => b.dept), sRte.rows.map((r) => r.id), sRte.rows.every((r) => r.days.length === 6)], [['Kitchen', 'RTE', 'Spiral', 'MFO', 'Packing'], ['att', 'start', 'end', 'made', 'pp', 'wt', 'hours', 'down', 'in', 'waste'], true])
+    eq('lo hecho y el arranque son los de las tablas completas', [sRte.rows.find((r) => r.id === 'made').days[lun - 1].t, fila('Producción', 'RTE')[lun].t.split(' ')[0], sRte.rows.find((r) => r.id === 'start').days[lun - 1].c, fila('Arranque', 'RTE')[lun].c], [fila('Producción', 'RTE')[lun].t.split(' ')[0], fila('Producción', 'RTE')[lun].t.split(' ')[0], fila('Arranque', 'RTE')[lun].c, fila('Arranque', 'RTE')[lun].c])
+    eq('el Excel abre con esa hoja', m.miniBook(st(), D, 2, clock)[0].name, 'Mini KPI')
     eq('arranque: el turno empieza 3:15: RTE a las 3:50 sale en rojo y Spiral a las 3:20 no', [fila('Arranque', 'RTE')[lun].c, fila('Arranque', 'Spiral')[lun].c], ['bad', 'ok'])
     eq('la meta de cada día se queda: el lunes juzga contra 12, aunque el martes la cambiaron a 20', fila('Producción', 'Spiral')[lun].t, '6 / 12 · 50%')
     eq('una meta de cuarto va contra las horas del cuarto', fila('Producción', 'RTE')[lun].t, '900 / 1,000 · 90%')
@@ -6037,8 +6042,8 @@ section('Mini KPI: el Resumen del Excel compara los días y las últimas semanas
     const w2 = m.miniWeek(st(), W2, 2, clock)
     eq('las semanas: de domingo, la del reporte al final', m.miniSundays(W2), ['2026-09-27', '2026-10-04', '2026-10-11', '2026-10-18'])
     eq('los días a traer son 4 semanas de 6 días', [m.miniSpan(W2).length, m.miniSpan(W2)[0], m.miniSpan(W2)[23]], [24, '2026-09-27', '2026-10-23'])
-    const book = m.miniBook(st(), W2, 2, clock), sum = book[0], text = sum.rows.flat().map((c) => m.cellText(c))
-    eq('el Resumen, una hoja por departamento y la explicación', book.map((x) => x.name), ['Resumen', 'Kitchen', 'Spiral', 'RTE', 'MFO', 'Packing', 'Qué significa'])
+    const book = m.miniBook(st(), W2, 2, clock), sum = book[1], text = sum.rows.flat().map((c) => m.cellText(c))
+    eq('la hoja de Santiago, el Resumen, una hoja por departamento y la explicación', book.map((x) => x.name), ['Mini KPI', 'Resumen', 'Kitchen', 'Spiral', 'RTE', 'MFO', 'Packing', 'Qué significa'])
     eq('diez gráficas: 2 de días (líneas) y las de semanas y cuartos (columnas)', sum.charts.map((c) => c.kind), ['line', 'line', 'col', 'col', 'col', 'col', 'col', 'col', 'col', 'col'])
     const rowOf = (first, n = 0) => sum.rows.filter((x) => m.cellText(x[0]) === first)[n]
     const room = rowOf('RTE')
@@ -6053,10 +6058,10 @@ section('Mini KPI: el Resumen del Excel compara los días y las últimas semanas
     eq('las semanas de % de la meta: RTE 80% y luego 110%; las de antes vacías', [m.cellText(rte[0]), rte.slice(1, 5).map((c) => (c.v == null ? null : Math.round(c.v * 100) / 100))], ['RTE', [null, null, 0.8, 1.1]])
     const z = await m.loadZip(), files = z.unzipSync(await m.xlsxBytes(book))
     const part = (f) => z.strFromU8(files[f] ?? new Uint8Array())
-    eq('el archivo lleva las 6 gráficas, cada una declarada y enlazada', [Object.keys(files).filter((f) => f.startsWith('xl/charts/')).length - 30, (part('[Content_Types].xml').match(/drawingml\.chart\+xml/g) ?? []).length - 30, (part('xl/drawings/_rels/drawing1.xml.rels').match(/<Relationship /g) ?? []).length, (part('xl/drawings/drawing1.xml').match(/<xdr:twoCellAnchor>/g) ?? []).length], [10, 10, 10, 10])
-    eq('la de líneas: con huecos, y la meta punteada sin puntos', [part('xl/charts/chart1.xml').includes('<c:lineChart>'), part('xl/charts/chart1.xml').includes('<c:dispBlanksAs val="gap"/>'), part('xl/charts/chart1.xml').includes('<a:prstDash val="dash"/>')], [true, true, true])
-    eq('la de semanas: solo la última semana lleva el número', (part('xl/charts/chart1_3.xml').match(/<c:dLbls>/g) ?? []).length, 1)
-    eq('la celda vacía de una tabla no lleva texto', part('xl/worksheets/sheet1.xml').includes('<is><t xml:space="preserve"></t></is>'), false)
+    eq('el archivo lleva las 6 gráficas, cada una declarada y enlazada', [Object.keys(files).filter((f) => f.startsWith('xl/charts/')).length - 30, (part('[Content_Types].xml').match(/drawingml\.chart\+xml/g) ?? []).length - 30, (part('xl/drawings/_rels/drawing2.xml.rels').match(/<Relationship /g) ?? []).length, (part('xl/drawings/drawing2.xml').match(/<xdr:twoCellAnchor>/g) ?? []).length], [10, 10, 10, 10])
+    eq('la de líneas: con huecos, y la meta punteada sin puntos', [part('xl/charts/chart2.xml').includes('<c:lineChart>'), part('xl/charts/chart2.xml').includes('<c:dispBlanksAs val="gap"/>'), part('xl/charts/chart2.xml').includes('<a:prstDash val="dash"/>')], [true, true, true])
+    eq('la de semanas: solo la última semana lleva el número', (part('xl/charts/chart2_3.xml').match(/<c:dLbls>/g) ?? []).length, 1)
+    eq('la celda vacía de una tabla no lleva texto', part('xl/worksheets/sheet2.xml').includes('<is><t xml:space="preserve"></t></is>'), false)
     eq('la explicación: las 9 tablas, en el Excel y en la ventana', [m.miniGuide().length, m.miniTables(w2).every((t) => m.miniGuide().some((g) => g.id === t.id)), book[book.length - 1].rows.length], [10, true, 13])
     // each room on its own sheet (Santiago, 2026-11-01)
     const hoja = book.find((x) => x.name === 'RTE'), dias = hoja.charts[0], lunes = hoja.rows[dias.from], semana = hoja.rows[dias.to]
@@ -6068,7 +6073,7 @@ section('Mini KPI: el Resumen del Excel compara los días y las últimas semanas
     eq('el lunes de RTE: 1 hora trabajada y media parada, en la hoja de RTE', [lunes[6].v, lunes[7].v, Math.round(lunes[10].v * 1000) / 1000], [1, 0.5, 0.333])
     const horas = sum.charts[8], rteHoras = sum.rows[horas.from - 1 + ['Kitchen', 'RTE'].indexOf('RTE')]
     eq('en el Resumen, cuarto contra cuarto: las partes dan el total, y los % dan 100', [m.cellText(rteHoras[0]), rteHoras[1].v, rteHoras[2].v, rteHoras[5].v, Math.round((rteHoras[6].v + rteHoras[7].v + rteHoras[8].v + rteHoras[9].v) * 1000) / 1000], ['RTE', 1, 0.5, 1.5, 1])
-    eq('las partes van una al lado de otra (Jose, 2026-11-01), cada una con su número, sin decir 0, y a todo lo ancho', [part('xl/charts/chart1_9.xml').includes('<c:grouping val="clustered"/>'), (part('xl/charts/chart1_9.xml').match(/<c:dLbls>/g) ?? []).length, part('xl/charts/chart1_9.xml').includes('formatCode="0.0;;"'), part('xl/charts/chart1_10.xml').includes('<c:max val="1"/>'), horas.cols], [true, 4, true, true, 11])
+    eq('las partes van una al lado de otra (Jose, 2026-11-01), cada una con su número, sin decir 0, y a todo lo ancho', [part('xl/charts/chart2_9.xml').includes('<c:grouping val="clustered"/>'), (part('xl/charts/chart2_9.xml').match(/<c:dLbls>/g) ?? []).length, part('xl/charts/chart2_9.xml').includes('formatCode="0.0;;"'), part('xl/charts/chart2_10.xml').includes('<c:max val="1"/>'), horas.cols], [true, 4, true, true, 11])
   })
 }
 section('La lista de empleados: la asistencia se toca, no se escribe (Santiago por Jose, 2026-11-01)')
