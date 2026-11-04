@@ -3524,4 +3524,9 @@ export const EN: Record<string, string> = {
   "ej. Faltó carne de Kitchen; se paró 2 horas por la máquina": "e.g. Kitchen's meat was missing; stopped 2 hours for the machine",
   "Descripción": "Description",
   "Total en {0}": "Total in {0}",
+  "{0} · ¿cuántas libras lleva?": "{0} · how many pounds does it have?",
+  "🔥 Marcar urgente": "🔥 Mark urgent",
+  "pesar cada mezcla al darle lista": "weigh each mezcla when it is done",
+  "Donde está prendido, al tocar Mezcla lista sale un cuadro para anotar cuántas libras lleva esa mezcla; al aceptar, se agrega la mezcla. Es para las mezclas que se cuentan una por una (Kitchen y Spiral). Sale en el Reporte, en el Excel y en el Mini KPI.": "Where it is on, tapping Mezcla lista opens a box to write how many pounds that mezcla has; on accepting, the mezcla is added. It is for the mezclas counted one by one (Kitchen and Spiral). It shows in the Report, the Excel and the Mini KPI.",
+  "se pesa cada mezcla": "each mezcla is weighed",
 }

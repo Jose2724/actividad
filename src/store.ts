@@ -445,7 +445,7 @@ export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Produ
    */
   orderRuns: Run[]
   /** the production orders of every room (deleted ones kept with their flag), and the closed accounts of finished ones */
-  workOrders: WorkOrder[]; orderSeals: OrderSeal[]; attendance: AttEntry[]; attExpected: AttExpected[]; shiftMarks: ShiftMark[]; kpi: KpiRec[]; weights: WeightTest[]; orderNotes: OrderNote[]; planRoomNotes: PlanRoomNote[]; roomMsgs: RoomMsg[]; chat: ChatMsg[]; chatSeen: ChatSeen[]; weightRules: WeightRule[]; slowRules: SlowRule[]; slowLines: SlowLine[]; meats: MeatEntry[]; holds: HoldRec[]; consumes: ConsumeEntry[]; consumeOpts: ConsumeOpt[] }
+  workOrders: WorkOrder[]; orderSeals: OrderSeal[]; attendance: AttEntry[]; attExpected: AttExpected[]; shiftMarks: ShiftMark[]; kpi: KpiRec[]; weights: WeightTest[]; orderNotes: OrderNote[]; planRoomNotes: PlanRoomNote[]; planUrgent: PlanUrgent[]; roomMsgs: RoomMsg[]; chat: ChatMsg[]; chatSeen: ChatSeen[]; weightRules: WeightRule[]; slowRules: SlowRule[]; slowLines: SlowLine[]; meats: MeatEntry[]; holds: HoldRec[]; consumes: ConsumeEntry[]; consumeOpts: ConsumeOpt[] }
 /**
  * An order to fill in Packing: so many cases of one product for a customer, to ship by a date. Most carry the
  * customer's purchase order number (PO); some never do and some get it later. See "the orders Packing fills".
@@ -598,10 +598,10 @@ function tidySchedule(sch: Schedule): Schedule {
 function isDay(text: string) { return /^\d{4}-\d{2}-\d{2}$/.test(text) }
 /** with a server the lines (and products) are shared and come from it; without one, each device starts with a line per room */
 const SERVER = !!import.meta.env.VITE_SUPABASE_URL
-function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, reasonCodes: { on: false, updatedAt: 0 }, programView: { on: false, updatedAt: 0 }, attView: { on: false, updatedAt: 0 }, stopRules: [{ on: false, updatedAt: 0 }, { on: false, updatedAt: 0 }], attGate: { on: false, updatedAt: 0 }, cartCrates: { n: 0, updatedAt: 0 }, lunch: { min: 0, after: 0, updatedAt: 0 }, attWrite: { on: false, updatedAt: 0 }, lbCase: { on: false, updatedAt: 0 }, viewOpts: { lotes: { on: false, updatedAt: 0 }, flujo: { on: false, updatedAt: 0 } }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [], attendance: [], attExpected: [], shiftMarks: [], kpi: [], weights: [], orderNotes: [], planRoomNotes: [], roomMsgs: [], chat: [], chatSeen: [], weightRules: [], slowRules: [], slowLines: [], meats: [], holds: [], consumes: [], consumeOpts: [] } }
+function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, reasonCodes: { on: false, updatedAt: 0 }, programView: { on: false, updatedAt: 0 }, attView: { on: false, updatedAt: 0 }, stopRules: [{ on: false, updatedAt: 0 }, { on: false, updatedAt: 0 }], attGate: { on: false, updatedAt: 0 }, cartCrates: { n: 0, updatedAt: 0 }, lunch: { min: 0, after: 0, updatedAt: 0 }, attWrite: { on: false, updatedAt: 0 }, lbCase: { on: false, updatedAt: 0 }, viewOpts: { lotes: { on: false, updatedAt: 0 }, flujo: { on: false, updatedAt: 0 } }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [], attendance: [], attExpected: [], shiftMarks: [], kpi: [], weights: [], orderNotes: [], planRoomNotes: [], planUrgent: [], roomMsgs: [], chat: [], chatSeen: [], weightRules: [], slowRules: [], slowLines: [], meats: [], holds: [], consumes: [], consumeOpts: [] } }
 function load(): State {
   try {
-    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; reasonCodes?: Partial<ReasonCodesOpt>; programView?: Partial<ReasonCodesOpt>; attView?: Partial<ReasonCodesOpt>; attGate?: Partial<ReasonCodesOpt>; stopRules?: Partial<ReasonCodesOpt>[]; cartCrates?: { n?: number; updatedAt?: number }; lunch?: Partial<Lunch>; attWrite?: Partial<ReasonCodesOpt>; lbCase?: Partial<ReasonCodesOpt>; viewOpts?: Partial<Record<ViewOpt, Partial<ReasonCodesOpt>>>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[]; attendance?: Partial<AttEntry>[]; attExpected?: Partial<AttExpected>[]; shiftMarks?: Partial<ShiftMark>[]; kpi?: Partial<KpiRec>[]; weights?: Partial<WeightTest>[]; orderNotes?: Partial<OrderNote>[]; planRoomNotes?: Partial<PlanRoomNote>[]; roomMsgs?: Partial<RoomMsg>[]; chat?: Partial<ChatMsg>[]; chatSeen?: Partial<ChatSeen>[]; weightRules?: Partial<WeightRule>[]; slowRules?: Partial<SlowRule>[]; slowLines?: Partial<SlowLine>[]; meats?: Partial<MeatEntry>[]; holds?: Partial<HoldRec>[]; consumes?: Partial<ConsumeEntry>[]; consumeOpts?: Partial<ConsumeOpt>[] }
+    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; reasonCodes?: Partial<ReasonCodesOpt>; programView?: Partial<ReasonCodesOpt>; attView?: Partial<ReasonCodesOpt>; attGate?: Partial<ReasonCodesOpt>; stopRules?: Partial<ReasonCodesOpt>[]; cartCrates?: { n?: number; updatedAt?: number }; lunch?: Partial<Lunch>; attWrite?: Partial<ReasonCodesOpt>; lbCase?: Partial<ReasonCodesOpt>; viewOpts?: Partial<Record<ViewOpt, Partial<ReasonCodesOpt>>>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[]; attendance?: Partial<AttEntry>[]; attExpected?: Partial<AttExpected>[]; shiftMarks?: Partial<ShiftMark>[]; kpi?: Partial<KpiRec>[]; weights?: Partial<WeightTest>[]; orderNotes?: Partial<OrderNote>[]; planRoomNotes?: Partial<PlanRoomNote>[]; planUrgent?: Partial<PlanUrgent>[]; roomMsgs?: Partial<RoomMsg>[]; chat?: Partial<ChatMsg>[]; chatSeen?: Partial<ChatSeen>[]; weightRules?: Partial<WeightRule>[]; slowRules?: Partial<SlowRule>[]; slowLines?: Partial<SlowLine>[]; meats?: Partial<MeatEntry>[]; holds?: Partial<HoldRec>[]; consumes?: Partial<ConsumeEntry>[]; consumeOpts?: Partial<ConsumeOpt>[] }
     const s = JSON.parse(localStorage.getItem(KEY) || 'null') as Raw | null
     // rows saved by earlier versions: carts as plain timestamps, units without a tag or a name, products with one
     // pouches-per-cart number, nothing with an update time
@@ -659,6 +659,7 @@ function load(): State {
         weights: (s.weights ?? []).map(wtFrom).filter((x): x is WeightTest => !!x),
         orderNotes: (s.orderNotes ?? []).map(orderNoteFrom).filter((x): x is OrderNote => !!x),
         planRoomNotes: (s.planRoomNotes ?? []).map(planRoomNoteFrom).filter((x): x is PlanRoomNote => !!x),
+        planUrgent: (s.planUrgent ?? []).map(planUrgentFrom).filter((x): x is PlanUrgent => !!x),
         roomMsgs: (s.roomMsgs ?? []).map(roomMsgFrom).filter((x): x is RoomMsg => !!x),
         chat: (s.chat ?? []).map(chatFrom).filter((x): x is ChatMsg => !!x),
         chatSeen: (s.chatSeen ?? []).map(chatSeenFrom).filter((x): x is ChatSeen => !!x),
@@ -1496,6 +1497,17 @@ export function consumeAdd(r: Run, product: string, prodLot: string, labelDate: 
   putConsume(x)
   logChange(r.dept, 'Consumo · ' + r.code, '', x.product + (x.prodLot ? ' · lote ' + x.prodLot : '') + ' · ' + x.lb + ' lb', CONS_REF, x.id)
   return x.id
+}
+/**
+ * The pounds of one mezcla, weighed when it is done (Jose, 2026-11-04: "el peso se debe poner cuando le dan Mezcla
+ * lista ... y luego que le dan aceptar se agrega su mezcla"): an entry of the code with all of it consumed (left 0),
+ * so the Reporte, the Excel and the Mini KPI count it as any consumption. '' when it makes no sense
+ */
+export function consumeMezcla(r: Run, lb: number): string {
+  const id = consumeAdd(r, productOf(state, r.code)?.name || r.code, lotNowOf(r), '', lb)
+  const x = id ? (state.consumes ?? []).find((y) => y.id === id) : undefined
+  if (x) putConsume({ ...x, left: 0, updatedAt: stamp(x) })
+  return id
 }
 /** what was left of an entry when its code ended (0 = all consumed); false when there is no such entry */
 export function consumeLeft(id: string, left: number): boolean {
@@ -3147,6 +3159,30 @@ export function setPlanRoomNote(date: string, dept: Dept, code: string, lot: str
   const x: PlanRoomNote = { key, date, dept, code: normCode(code), lot: String(lot ?? '').trim(), text: t, by: user.get(), at: clockNow(), ...(t ? {} : { deleted: true }), updatedAt: stamp(was) }
   set({ ...state, planRoomNotes: [...(state.planRoomNotes ?? []).filter((y) => y.key !== key), x] })
   push('act_changes', PNOTE_ID + key, { id: PNOTE_ID + key, at: iso(x.at), by_name: x.by, dept, what: 'Comentario del programa', before: '', after: JSON.stringify({ text: t, date, code: x.code, lot: x.lot }), ref_table: PNOTE_REF, ref_key: key, deleted: !t, updated_at: iso(x.updatedAt), updated_by: user.get() })
+}
+// ---- a row of the program marked urgent (Jose, 2026-11-04: Packing, "que se pueda agregar desde programa la opción urgente") ----
+/**
+ * The office or a manager marks a row of the program urgent, so the room makes it first: it shows first, in red, on
+ * the program and on the codes the line offers when it starts. Kept by the row's own first day (a program of several
+ * days stays urgent on all of them). In act_changes with the room, as the room's comments: nothing new on the server
+ */
+export type PlanUrgent = { key: string; dept: Dept; on: boolean; by: string; at: number; updatedAt: number; syncedAt?: number }
+const PURG_ID = 'purg:'
+export const PURG_REF = 'act_plan_urgent'
+// (a function declaration reading only what load() may read: it is used there, see the note at `let state = load()`)
+function planUrgentFrom(x: Partial<PlanUrgent> | null | undefined): PlanUrgent | null {
+  if (!x || typeof x !== 'object' || typeof x.key !== 'string' || !x.key || !(DEPTS as unknown[]).includes(x.dept)) return null
+  return { key: x.key, dept: x.dept as Dept, on: !!x.on, by: String(x.by ?? ''), at: Number(x.at) || 0, updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
+}
+/** whether a program row is urgent: its first day (from), the room, the code and its lot */
+export const planUrgentOf = (s: State, from: string, dept: Dept, code: string, lot: string) => { const k = planRoomKey(from, dept, code, lot); return !!(s.planUrgent ?? []).find((x) => x.key === k && x.on) }
+export function setPlanUrgent(from: string, dept: Dept, code: string, lot: string, on: boolean) {
+  const key = planRoomKey(from, dept, code, lot), was = (state.planUrgent ?? []).find((x) => x.key === key)
+  if (!!was?.on === on) return
+  const x: PlanUrgent = { key, dept, on, by: user.get(), at: clockNow(), updatedAt: stamp(was) }
+  set({ ...state, planUrgent: [...(state.planUrgent ?? []).filter((y) => y.key !== key), x] })
+  push('act_changes', PURG_ID + key, { id: PURG_ID + key, at: iso(x.at), by_name: x.by, dept, what: 'Programa urgente', before: '', after: JSON.stringify({ on }), ref_table: PURG_REF, ref_key: key, deleted: false, updated_at: iso(x.updatedAt), updated_by: user.get() })
+  logChange(dept, on ? 'Programa urgente' : 'Programa ya no urgente', '', normCode(code) + (lot ? ' · lote ' + lot : '') + ' · ' + from, PURG_REF + ':log', key + ':' + x.at)
 }
 // ---- the office's message to a room (2026-10-22: "añadir que le llegue mensaje, o cualquier parte de anuncio" to Packing) ----
 /**
@@ -5381,6 +5417,14 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
     try { x = JSON.parse(String(row.after ?? '')) as Partial<RoomMsg> } catch { /* not one */ }
     const e = roomMsgFrom({ ...x, dept, by: String(row.by_name ?? ''), at: fromIso(row.at) ?? 0, deleted: !!row.deleted, updatedAt: at, ...syncedOf(row) })
     if (e) set({ ...state, roomMsgs: [...(state.roomMsgs ?? []).filter((y) => y.dept !== dept), e] })
+  } else if (table === 'act_changes' && row.ref_table === PURG_REF && String(row.id ?? '').startsWith(PURG_ID)) {
+    // a program row marked urgent (2026-11-04): kept apart from the history
+    const key = String(row.id).slice(PURG_ID.length), cur = (state.planUrgent ?? []).find((x) => x.key === key)
+    if (!newer(cur)) return
+    let x: Partial<PlanUrgent> = {}
+    try { x = JSON.parse(String(row.after ?? '')) as Partial<PlanUrgent> } catch { /* not one */ }
+    const e = planUrgentFrom({ ...x, key, dept: row.dept as Dept, by: String(row.by_name ?? ''), at: fromIso(row.at) ?? 0, updatedAt: at, ...syncedOf(row) })
+    if (e) set({ ...state, planUrgent: [...(state.planUrgent ?? []).filter((y) => y.key !== key), e] })
   } else if (table === 'act_changes' && row.ref_table === PNOTE_REF && String(row.id ?? '').startsWith(PNOTE_ID)) {
     // the room's comment on a row of its program (2026-11-04): kept apart from the history
     const key = String(row.id).slice(PNOTE_ID.length), cur = (state.planRoomNotes ?? []).find((x) => x.key === key)

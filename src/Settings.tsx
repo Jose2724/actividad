@@ -40,7 +40,7 @@ export function settingsSections(can: (p: 'shifts' | 'day' | 'products' | 'goals
     ...(mgr ? [{ key: 'kpi' as const, title: tr('KPI'), sub: tr('pesos: qué códigos, cada cuánto, cuántos y el objetivo') }] : []),
     ...(mgr ? [{ key: 'mini' as const, title: tr('Mini KPI'), sub: tr('arranque, paros y medidas de la semana') }] : []),
     ...(mgr ? [{ key: 'weights' as const, title: tr('Ritmo mínimo'), sub: tr('cuándo una línea va lenta') }] : []),
-    ...(mgr ? [{ key: 'consumo' as const, title: tr('Consumo'), sub: tr('pesar lo que entra antes de empezar') }] : []),
+    ...(mgr ? [{ key: 'consumo' as const, title: tr('Consumo'), sub: tr('pesar cada mezcla al darle lista') }] : []),
     ...(mgr && (admin || attOn) ? [{ key: 'attendance' as const, title: tr('Asistencia'), sub: tr('personas esperadas por cuarto y turno') }] : []),
     ...(admin ? [{ key: 'program' as const, title: tr('Pestañas nuevas'), sub: tr('Programa, Lotes, Flujo: solo tú o todos') }] : []),
     ...(can('products') || viewOnly ? [{ key: 'products' as const, title: tr('Productos'), sub: tr('la tabla maestra') }] : []),
@@ -679,9 +679,9 @@ function ConsumeSettings({ s, viewOnly }: { s: State; viewOnly: boolean }) {
   return (
     <div className="setcard">
       <div className="sethead"><h3>{tr('Consumo')}</h3></div>
-      <p className="hint">{tr('Donde está prendido, la línea tiene que pesar y anotar lo que va a consumir (qué es, lote, fecha de la etiqueta, libras) antes de poder empezar un código; al terminarlo dice qué quedó, y eso queda en el inventario del cuarto. Sale en el Reporte y en el Excel.')}</p>
+      <p className="hint">{tr('Donde está prendido, al tocar Mezcla lista sale un cuadro para anotar cuántas libras lleva esa mezcla; al aceptar, se agrega la mezcla. Es para las mezclas que se cuentan una por una (Kitchen y Spiral). Sale en el Reporte, en el Excel y en el Mini KPI.')}</p>
       {DEPTS.map((d) => { const on = consumeOn(s, d); return (
-        <div key={d} className="wt-rule"><b>{d}</b><span className={on ? 'ok' : 'muted'}>{on ? tr('obligatorio al empezar') : tr('apagado')}</span>{!viewOnly && <button type="button" className={'btn sm' + (on ? '' : ' primary')} onClick={() => setConsumeOn(d, !on)}>{on ? tr('Apagar') : tr('Prender')}</button>}</div>
+        <div key={d} className="wt-rule"><b>{d}</b><span className={on ? 'ok' : 'muted'}>{on ? tr('se pesa cada mezcla') : tr('apagado')}</span>{!viewOnly && <button type="button" className={'btn sm' + (on ? '' : ' primary')} onClick={() => setConsumeOn(d, !on)}>{on ? tr('Apagar') : tr('Prender')}</button>}</div>
       ) })}
     </div>
   )

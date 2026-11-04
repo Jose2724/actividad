@@ -1,6 +1,6 @@
 import { Component, createContext, Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
-import { PLAN_ROOM_NOTE_MAX, planRoomNoteOf, setPlanRoomNote, roomWaste, wasteRuns, isOven, PLAN_NOTE_MAX, PLAN_SPAN_MAX, attGated, attOf, lineSlow, addLine, plantCut, roomMark, CUT_WINDOW, startSecondShift, addWaste, awayDay, batch, byPlanLot, planLot, cameFrom, carriedOver, dayAfter, dayBefore, orderUnitDefault, programOrderChoices, ordersOf, orderStatus, orderUnitWord, prevPending, workOrderOf, type WorkOrder, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, MFO_CHOICES, mfoChoiceOf, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, cartCratesOf, cartPouchesOf, cartSpecOf, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, noteOf, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderAddRuns, orderOfId, poMates, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, PLAN_LOT_MAX, productOf, productsCsv, purgeDay, reasonText, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay, orderFull, orderFullText, orderNoteOf, setOrderNote, setOrderUrgent, programCap, programCapOf, holdsOpen } from './store'
+import { planUrgentOf, setPlanUrgent, PLAN_ROOM_NOTE_MAX, planRoomNoteOf, setPlanRoomNote, roomWaste, wasteRuns, isOven, PLAN_NOTE_MAX, PLAN_SPAN_MAX, attGated, attOf, lineSlow, addLine, plantCut, roomMark, CUT_WINDOW, startSecondShift, addWaste, awayDay, batch, byPlanLot, planLot, cameFrom, carriedOver, dayAfter, dayBefore, orderUnitDefault, programOrderChoices, ordersOf, orderStatus, orderUnitWord, prevPending, workOrderOf, type WorkOrder, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, MFO_CHOICES, mfoChoiceOf, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, cartCratesOf, cartPouchesOf, cartSpecOf, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, noteOf, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderAddRuns, orderOfId, poMates, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, PLAN_LOT_MAX, productOf, productsCsv, purgeDay, reasonText, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay, orderFull, orderFullText, orderNoteOf, setOrderNote, setOrderUrgent, programCap, programCapOf, holdsOpen } from './store'
 import { avanceLots, avanceRange, avanceRows, datesBetween, lotAcrossDays, lotRows, lotsKnown, mfoList, mfoText, mfoWord, n1, pending, type AvancePart, type AvanceRow, type MfoMade } from './avance'
 import { loadZip, type Cell } from './xlsx'
 
@@ -29,7 +29,7 @@ import { WeightButton, WeightGate, WeightNoteButton, WeightReminder, weighsBalls
 import { WhatIs } from './Numbers'
 import { MeatButton } from './Meat'
 import { ConsumeButton, ConsumeEndDialog, ConsumeStartDialog } from './Consume'
-import { consumeAdd, consumeOn, consumesPending, openRun as openRunOn, store as theStore } from './store'
+import { consumeAdd, consumeMezcla, consumeOn, consumesPending, openRun as openRunOn, store as theStore } from './store'
 import { HoldButton, HoldList } from './Holds'
 import { seesKpi } from './kpi'
 import { AttendanceCard, AttendanceDialog } from './Attendance'
@@ -1886,6 +1886,9 @@ function PlanCard({ s, dept, date, mgr }: { s: State; dept: Dept; date: string; 
   if (!planned.length && !prev.length && !mgr) return null
   const cfg = CFG[dept], byCode = dept === 'Spiral' || dept === 'MFO', unit = byCode ? tr('la unidad de cada código') : cfg.qty === 'none' ? cfg.plural.toLowerCase() : cfg.qtyUnit
   const yesterday = dayBefore(date)
+  // a row marked urgent (Packing, 2026-11-04): first and in red; the office or a manager who writes the program marks it
+  const urgent = (r: (typeof rows)[number]) => planUrgentOf(s, r.from, dept, r.code, r.lot)
+  const canUrgent = mgr && dept === 'Packing'
   // the lot column only when the day's program names a lot (2026-11-04: "los lotes no hacen falta")
   const showLot = planned.some((r) => !!r.lot)
   // what a row made, lot by lot, when it is not just the lot it names: "6310: 20 · 6311: 15" (2026-11-04)
@@ -1931,14 +1934,14 @@ function PlanCard({ s, dept, date, mgr }: { s: State; dept: Dept; date: string; 
             {/* (Jose and the floor, 2026-11-04: the office's comment is a description; the comment of reference, the room's, the supervisor's,
                 the manager's or the office's, at the far right; the lot only when the day's program names one) */}
             <thead><tr><th>{tr('Código')}</th>{showLot && <th>{tr('Lote')}</th>}<th className="pc-note">{tr('Descripción')}</th><th className="pc-order">{tr('Pedido de producción')}</th><th>{tr('Desde')}</th><th className="num">{tr('Programado')}</th><th className="num pc-turn">{tr('Turno 1')}</th><th className="num pc-turn">{tr('Turno 2')}</th><th className="num">{tr('Hecho hoy')}</th><th className="num">{tr('Pendiente')}</th><th className="num">{tr('Disponible del pedido')}</th><th className="pc-rnote">{tr('Comentario')}</th></tr></thead>
-            <tbody>{planned.map((r) => {
+            <tbody>{[...planned].sort((a, b) => Number(urgent(b)) - Number(urgent(a))).map((r) => {
               const pct = Math.max(0, Math.min(100, Math.floor((r.done / r.planned) * 100)))
               const o = r.orderId ? workOrderOf(s, r.orderId) : undefined, st = o && !o.deleted ? orderStatus(s, o, date) : null
               const old = o && st && o.startDate < date ? daysBetween(o.startDate, date) : 0
               return (
-                <tr key={r.code + '|' + r.lot}>
+                <tr key={r.code + '|' + r.lot} className={urgent(r) ? 'pc-urgent' : undefined}>
                   {/* the code's lots nobody programmed, under its first row: said, never added in (2026-10-20) */}
-                  <td className="c-head"><b className="code">{r.code}</b>{r.name && <small className="pname">{r.name}</small>}{r.other.length > 0 && <small className="pname">{tr('también {0}', r.other.map((x) => fmtN(x.n) + ' ' + x.word).join(' · '))}</small>}{r.also.length > 0 && <small className="pname also">{tr('también: {0}', r.also.map((a) => alsoText(r, a)).join(' · '))}</small>}{r.running && <span className="pill run">● {r.lines.map(lineLabel).join(', ')}</span>}</td>
+                  <td className="c-head"><b className="code">{r.code}</b>{urgent(r) && <b className="o-urg">{tr('🔥 URGENTE')}</b>}{canUrgent && <button type="button" className={'lnk sm o-urgbtn' + (urgent(r) ? ' on' : '')} onClick={() => setPlanUrgent(r.from, dept, r.code, r.lot, !urgent(r))}>{urgent(r) ? tr('Quitar urgente') : tr('🔥 Marcar urgente')}</button>}{r.name && <small className="pname">{r.name}</small>}{r.other.length > 0 && <small className="pname">{tr('también {0}', r.other.map((x) => fmtN(x.n) + ' ' + x.word).join(' · '))}</small>}{r.also.length > 0 && <small className="pname also">{tr('también: {0}', r.also.map((a) => alsoText(r, a)).join(' · '))}</small>}{r.running && <span className="pill run">● {r.lines.map(lineLabel).join(', ')}</span>}</td>
                   {/* the lot the program names (2026-10-19), blank when the office left it out (a phone's card leaves it out).
                       When the code also has rows of a lot that day, its row without a lot says "sin lote", on a phone
                       too: three cards of 889, one saying nothing, was not readable (review of 2026-10-20) */}
@@ -2764,6 +2767,8 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   // a device that has not brought the server's rows for a while may show this line with an old code or lot (another
   // tablet changed it): the card says so and asks once before anything is recorded on it
   const sync = useSyncExternalStore(syncStore.subscribe, syncStore.get)
+  // the pounds of a mezcla, asked when it is done where the room weighs what it consumes (2026-11-04); declared up here, before the card returns early without a run
+  const [weighingMix, setWeighingMix] = useState(false)
   const [unlockedUntil, setUnlockedUntil] = useState(0)
   const locked = !!supabase && !viewOnly && now - sync.fresh > STALE_MS && now > unlockedUntil
   const quiet = viewOnly || locked
@@ -2950,7 +2955,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
     const showDate = editDate || dateText !== null
     // the rows of the room's program that are still pending: one tap writes the code, so nobody types it wrong; a row
     // of a lot (2026-10-20: one code may have a row per lot) writes its lot too, so what this line makes counts for it
-    const todo = planRows(s, day.date, line.dept).filter((r) => r.planned > 0 && r.left > 0)
+    const todo = planRows(s, day.date, line.dept).filter((r) => r.planned > 0 && r.left > 0).sort((a, b) => Number(planUrgentOf(s, b.from, line.dept, b.code, b.lot)) - Number(planUrgentOf(s, a.from, line.dept, a.code, a.lot)))
     // a lot that a chip of this code names (2026-10-20, a row per lot): the code's chip without a lot is the one lit only
     // when the lot in the field is none of those, as the card counts it
     const chipLot = (c: string, l: string) => !!l && todo.some((x) => x.lot === l && normCode(x.code) === normCode(c))
@@ -3012,7 +3017,8 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
               const open = await checkLineOpen(line.id)
               setCheckingOpen(false)
               if (open) { setOpenFound(open); return }
-              if (consumeOn(s, line.dept)) setConsumeAsk(() => go); else go()
+              // (what goes in is weighed at each mezcla now, not before the code: Jose, 2026-11-04)
+              go()
             })()
           })
         }}>
@@ -3055,7 +3061,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
               {/* a chip without a lot gives back the day's lot when the field holds the lot of another chip (one tapped
                   before: review of 2026-10-20, the line started with 6290 for a code programmed without a lot); a lot
                   typed by hand stays */}
-              {todo.map((r) => <button key={r.code + '|' + r.lot} type="button" className={'chip sm' + (normCode(code) === normCode(r.code) && (r.lot ? lot.trim() === r.lot : !chipLot(r.code, lot.trim())) ? ' on' : '')} onClick={() => { setCode(r.code); if (r.lot) setLotText(r.lot); else if (lot.trim() && todo.some((x) => x.lot === lot.trim())) setLotText(null) }}><b>{r.code}</b>{r.lot && <> · {tr('lote {0}', r.lot)}</>} {trx('faltan {0}', fmtN(r.left) + ' ' + r.unit)}</button>)}
+              {todo.map((r) => <button key={r.code + '|' + r.lot} type="button" className={'chip sm' + (normCode(code) === normCode(r.code) && (r.lot ? lot.trim() === r.lot : !chipLot(r.code, lot.trim())) ? ' on' : '')} onClick={() => { setCode(r.code); if (r.lot) setLotText(r.lot); else if (lot.trim() && todo.some((x) => x.lot === lot.trim())) setLotText(null) }}>{planUrgentOf(s, r.from, line.dept, r.code, r.lot) && '🔥 '}<b>{r.code}</b>{r.lot && <> · {tr('lote {0}', r.lot)}</>} {trx('faltan {0}', fmtN(r.left) + ' ' + r.unit)}</button>)}
             </div>
           )}
           <label>{tr('Código')}{' '}<input value={code} onChange={(e) => setCode(e.target.value)} placeholder={tr('ej. 0100')} autoComplete="off" /></label>
@@ -3114,11 +3120,14 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   // the program of the day caps the mezclas of a code (2026-10-23): once all are made, one more asks first
   const cap = programCap(s, run), capFull = !!cap && cap.done >= cap.planned - 1e-9
   // (no one on the floor goes past it, a manager neither: only the office authorizes more, raising the program. Jose, 2026-10-23)
+  // where the room weighs what it consumes, each mezcla counted one by one asks its pounds first (Jose, 2026-11-04)
+  const weighMix = consumeOn(s, line.dept) && rc.qty === 'none'
   const done = () => {
     if (just) return
     if (capFull) { setCapAsk(true); return }
     if (pallets) setPacking('done')
     else if (rc.qty === 'ask') setCounting(true)
+    else if (weighMix) setWeighingMix(true)
     else record(rc.qty === 'auto' ? run.perUnit : null)
   }
   // the pallets of this code already finished without the tag of some lot (the tag often comes later), the last two:
@@ -3231,7 +3240,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         {/* Spiral's meat, apart from the mezclas (2026-10-23) */}
         {line.dept === 'Spiral' && <MeatButton s={s} run={run} />}
         {/* what the code consumes, where the room weighs it (2026-10-27) */}
-        {consumeOn(s, line.dept) && <ConsumeButton s={s} run={run} />}
+        {consumeOn(s, line.dept) && !weighMix && <ConsumeButton s={s} run={run} />}
         <button type="button" className="btn" disabled={!!stop && !inSetup} onClick={() => setEnding(true)}>{tr('■ Terminar')}<span className="opt"> {' '}{tr('código')}</span></button>
       </div>
       )}
@@ -3253,6 +3262,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       {packing === 'binlot' && <LotNowDialog run={run} onClose={() => setPacking(null)} />}
       {tagUnit && <LotsDialog key={'tag:' + tagUnit.at} title={tr('Tags del pallet {0}', (tagging ?? 0) + 1)} unit={rc.qtyUnit} refLabel={rc.refLabel} lot={run.lot} qty={tagUnit.qty} usual={usualOf(s, run)} per={runWord} start={tagUnit.lots ?? [{ lot: run.lot, qty: tagUnit.qty ?? 0 }]} startRef={tagUnit.ref} startNote={tagUnit.note} onClose={() => setTagging(null)} onPick={(total, ref, lots, _po, note) => { fillUnit(run.id, tagUnit.at, total, lots, ref, note); setTagging(null) }} />}
       {typeof packing === 'number' && run.extra?.open?.parts[packing] && <PartDialog run={run} index={packing} onClose={() => setPacking(null)} />}
+      {weighingMix && <QtyDialog title={tr('{0} · ¿cuántas libras lleva?', rc.done)} unit="lb" refLabel="" initial={null} usual={null} decimal onClose={() => setWeighingMix(false)} onPick={(lb) => { if (lb > 0) { record(null); consumeMezcla(run, lb) } setWeighingMix(false) }} />}
     </div>
   )
 }

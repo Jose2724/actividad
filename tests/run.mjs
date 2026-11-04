@@ -5363,8 +5363,17 @@ section('Pedidos: urgente para que Packing le dé prioridad, y el comentario de 
     m.setPlanRoomNote('2026-11-03', 'RTE', '2234', '', '')
     eq('quitarlo lo deja borrado', [m.planRoomNoteOf(m.store.get(), '2026-11-03', 'RTE', '2234', ''), m.outbox.items().find((i) => i.key === 'pnote:2026-11-03|RTE|2234|')?.row.deleted], [null, true])
   })
+  // a program row marked urgent (Packing, 2026-11-04)
+  pnd.use((m) => {
+    m.setPlanUrgent('2026-11-03', 'Packing', '889', '', true)
+    const up = m.outbox.items().find((i) => i.key === 'purg:2026-11-03|Packing|889|')
+    eq('urgente: se guarda con el cuarto, aparte de la historia, y se lee', [m.planUrgentOf(m.store.get(), '2026-11-03', 'Packing', '0889', ''), up.row.dept, up.row.ref_table, m.planUrgentOf(m.store.get(), '2026-11-03', 'Packing', '2234', '')], [true, 'Packing', 'act_plan_urgent', false])
+    m.setPlanUrgent('2026-11-03', 'Packing', '2234', '', true); m.setPlanUrgent('2026-11-03', 'Packing', '2234', '', false)
+    eq('quitar urgente lo deja normal', m.planUrgentOf(m.store.get(), '2026-11-03', 'Packing', '2234', ''), false)
+  })
   const pnd2 = await device('plan-room-note-again', { seed: JSON.parse(disks.get('plan-room-note').get('act_v1')), user: 'Ana' })
   eq('al volver a abrir: el comentario del cuarto sigue', pnd2.use((m) => m.planRoomNoteOf(m.store.get(), '2026-11-03', 'RTE', '889', '6300')?.text), 'Faltó carne de Kitchen')
+  eq('al volver a abrir: el urgente sigue', pnd2.use((m) => m.planUrgentOf(m.store.get(), '2026-11-03', 'Packing', '889', '')), true)
 }
 section('El carro de RTE se cuenta por guacales (Jose, 2026-10-28: dos columnas de 13; un carro corto se dice como se ve y la app suma)')
 {
@@ -6367,6 +6376,10 @@ section('Consumo: lo que un cuarto pesa antes de empezar un código, lo que qued
     const line = st().lines.find((l) => l.dept === 'Kitchen')
     m.startRun(line, '2286', '6300', DAY, null)
     const run = () => st().runs.find((r) => r.lineId === line.id && !r.endedAt)
+    // each mezcla weighed when it is done (Jose, 2026-11-04): one entry of the code, all of it consumed
+    const mz = m.consumeMezcla(run(), 12.5)
+    eq('la mezcla pesada al darle lista: una entrada del código con sus libras, toda consumida', [m.consumesOfRun(st(), run().id).find((x) => x.id === mz)?.lb, m.consumesOfRun(st(), run().id).find((x) => x.id === mz)?.left, m.consumeMezcla(run(), 0)], [12.5, 0, ''])
+    m.consumeDelete(mz)
     const a = m.consumeAdd(run(), ' Carne 80/20 ', 'BF-1', '2026-10-20', 30)
     eq('lo pesado va con el código: qué es, lote, fecha de la etiqueta, 30 lb, sin decir aún qué quedó', m.consumesOfRun(st(), run().id).map((x) => [x.product, x.prodLot, x.labelDate, x.lb, x.left, x.code]), [['Carne 80/20', 'BF-1', '2026-10-20', 30, null, '2286']])
     eq('sube con el cuarto Kitchen, aparte del historial', [m.outbox.items().find((i) => i.key === 'consumo:' + a).row.dept, m.outbox.items().find((i) => i.key === 'consumo:' + a).row.ref_table], ['Kitchen', 'act_consumo'])
