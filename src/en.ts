@@ -3494,4 +3494,7 @@ export const EN: Record<string, string> = {
   "Desde: un día adelante": "From: one day forward",
   "Hasta: un día atrás": "To: one day back",
   "Hasta: un día adelante": "To: one day forward",
+  "Qué registra": "What it records",
+  "(si se eligió mal al empezar)": "(if the wrong one was chosen at the start)",
+  "Bins (libras)": "Bins (pounds)",
 }

@@ -124,12 +124,46 @@ export const SPIRAL_UNITS: SpiralUnit[] = ['mezclas', 'lb', 'cajas']
 export const spiralUnitOfText = (t: unknown): SpiralUnit | undefined => { const u = String(t ?? '').trim().toUpperCase(); return !u ? undefined : /^(LB|LBS|LIBRA|LIBRAS|POUND|POUNDS)$/.test(u) ? 'lb' : /^(CAJA|CAJAS|CS|CJ|CASE|CASES)$/.test(u) ? 'cajas' : /^(MEZCLA|MEZCLAS|BATCH|BATCHES|MIX|MIXES)$/.test(u) ? 'mezclas' : undefined }
 /** the words a bin can hold, offered as chips; any other can be typed (kept as typed, these in Spanish like all data) */
 export const BIN_WORDS = ['platos', 'copas', 'pouches']
-/** what MFO's bins hold: platos or copas, counted as typed, or pounds, each bin weighed; nothing is turned into cases */
-export const MFO_WORDS = ['platos', 'copas', 'lb']
+/** what MFO's bins hold: platos or copas, counted as typed, or pounds, each bin weighed; nothing is turned into cases. Pouches since 2026-11-04 (MFO helps RTE making pouches) */
+export const MFO_WORDS = ['platos', 'copas', 'lb', 'pouches']
 /** what an MFO line may fill, as chosen when a code starts: its bin words, and bags of pounds (2026-10-22) */
 export const MFO_CHOICES = [...MFO_WORDS, 'bags']
 /** the choice a run was started with */
 export const mfoChoiceOf = (r: Pick<Run, 'dept' | 'extra'>) => (r.dept === 'MFO' && r.extra?.pack === 'bag' ? 'bags' : binOf(r))
+/**
+ * What a run makes, as one choice a person can change in Corregir (Jose, 2026-11-04: "eligieron otra opción que no fue
+ * pouches ... que en Corregir se pueda elegir la correcta", for every room with more than one thing): Packing pallets
+ * ('') or bins of a word ('bin:platos'); MFO platos, copas, lb, pouches or bags; Spiral mezclas ('') or lb / cajas.
+ * Kitchen and RTE have one thing each (the oven is told by the line's name)
+ */
+export type RunChoice = { key: string; label: string; cls: string }
+export function runChoices(dept: Dept, extraWord = ''): RunChoice[] {
+  if (dept === 'Packing') { const words = [...BIN_WORDS, ...(extraWord && !BIN_WORDS.includes(extraWord) ? [extraWord] : [])]; return [{ key: '', label: tr('Pallets'), cls: 'c-green' }, ...words.map((w) => ({ key: 'bin:' + w, label: tr('Bins de {0}', binWord(w)), cls: kindClass('Packing', w) }))] }
+  if (dept === 'MFO') return MFO_CHOICES.map((w) => ({ key: w, label: w === 'bags' ? tr('Bags') : w === 'lb' ? tr('Bins (libras)') : tr('Bins de {0}', binWord(w)), cls: w === 'bags' ? 'c-blue' : kindClass('MFO', w) }))
+  if (dept === 'Spiral') return SPIRAL_UNITS.map((u) => ({ key: u === 'mezclas' ? '' : u, label: u === 'mezclas' ? tr('Mezclas') : u === 'lb' ? tr('Libras') : tr('Cajas'), cls: kindClass('Spiral', u === 'mezclas' ? '' : u) }))
+  return []
+}
+/** the choice a run carries, as runChoices keys it */
+export const runChoiceOf = (r: Pick<Run, 'dept' | 'extra'>) => (r.dept === 'Packing' ? (binOf(r) ? 'bin:' + binOf(r) : '') : r.dept === 'MFO' ? mfoChoiceOf(r) || 'cajas' : r.dept === 'Spiral' ? measureOf(r) : '')
+/** the run's extra as a choice says it (what is not the choice's stays) */
+export function extraOfChoice(dept: Dept, key: string, extra: RunExtra | undefined): RunExtra | undefined {
+  const rest: RunExtra = { ...(extra ?? {}) }
+  delete rest.bin; delete rest.measure; delete rest.pack
+  if (dept === 'Packing' && key.startsWith('bin:')) rest.bin = key.slice(4)
+  else if (dept === 'MFO') { if (key === 'bags') { rest.bin = 'lb'; rest.pack = 'bag' } else if (key && key !== 'cajas') rest.bin = key }
+  else if (dept === 'Spiral' && (key === 'lb' || key === 'cajas')) rest.measure = key
+  return Object.keys(rest).length ? rest : undefined
+}
+/** a run's choice changed in Corregir: its words change at once everywhere, its units keep their numbers; written to Cambios */
+export function setRunChoice(id: string, key: string): boolean {
+  const r = run(id)
+  if (!r || runChoiceOf(r) === key) return false
+  const name = (k: string) => runChoices(r.dept, binOf(r)).find((c) => c.key === k)?.label ?? k
+  const was = name(runChoiceOf(r))
+  putRun({ ...r, extra: extraOfChoice(r.dept, key, r.extra) })
+  logChange(r.dept, 'Corrida ' + r.code + ' del ' + r.date + ' (' + r.dept + ') · ' + tr('Qué registra'), was, name(key), 'act_runs', r.id)
+  return true
+}
 /** the question a bin asks when it is done, with the word of what it holds in its place */
 const binQ = (word: string) => (word === 'lb' ? tr('¿Cuántas libras lleva este bin?') : word === 'copas' ? tr('¿Cuántas copas lleva este bin?') : word === 'cajas' ? tr('¿Cuántas cajas lleva este bin?') : tr('¿Cuántos {0} lleva este bin?', binWord(word)))
 const cleanPart = (x: unknown): PalletPart | null => {
@@ -308,7 +342,7 @@ export const WO_MAX = 30
  * the units an order of each room is typed in: the room's own count (Kitchen and Spiral mezclas, RTE pouches, Packing
  * cases), and in Spiral and MFO also the words its codes are counted in (pounds or cases; copas or pounds)
  */
-export const WO_UNITS: Record<Dept, string[]> = { Kitchen: ['mezclas'], Spiral: ['mezclas', 'lb', 'cajas'], RTE: ['pouches'], MFO: ['platos', 'copas', 'lb'], Packing: ['cajas'] }
+export const WO_UNITS: Record<Dept, string[]> = { Kitchen: ['mezclas'], Spiral: ['mezclas', 'lb', 'cajas'], RTE: ['pouches'], MFO: ['platos', 'copas', 'lb', 'pouches'], Packing: ['cajas'] }
 /** the ref_table of an order's closed account in act_changes (see "the account of a finished order" below) */
 export const WO_DONE_REF = 'act_work_orders:done'
 /**

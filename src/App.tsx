@@ -2993,7 +2993,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
             <div className="makes">
               <span className="lab">{tr('¿En qué se llena y qué lleva?')}</span>
               <div className="seg" role="group" aria-label={tr('¿En qué se llena y qué lleva?')}>
-                {MFO_CHOICES.map((w) => <button key={w} type="button" className={(w === 'bags' ? 'c-blue' : kindClass('MFO', w)) + (mfoWord === w ? ' on' : '')} aria-pressed={mfoWord === w} onClick={() => setBinText(w)}>{w === 'bags' ? tr('Bags') : w === 'lb' ? tr('Libras') : w === 'copas' ? tr('Copas') : tr('Platos')}<small>{w === 'bags' ? tr('bags de libras (roaster)') : w === 'lb' ? tr('cada bin se pesa') : w === 'copas' ? tr('cada bin dice cuántas') : tr('cada bin dice cuántos')}</small></button>)}
+                {MFO_CHOICES.map((w) => <button key={w} type="button" className={(w === 'bags' ? 'c-blue' : kindClass('MFO', w)) + (mfoWord === w ? ' on' : '')} aria-pressed={mfoWord === w} onClick={() => setBinText(w)}>{w === 'bags' ? tr('Bags') : w === 'lb' ? tr('Libras') : w === 'copas' ? tr('Copas') : w === 'pouches' ? tr('Pouches') : tr('Platos')}<small>{w === 'bags' ? tr('bags de libras (roaster)') : w === 'lb' ? tr('cada bin se pesa') : w === 'copas' ? tr('cada bin dice cuántas') : tr('cada bin dice cuántos')}</small></button>)}
               </div>
             </div>
           )}

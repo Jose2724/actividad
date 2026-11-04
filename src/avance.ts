@@ -52,7 +52,7 @@ export type MfoMade = { word: string; qty: number }
 /** the word an MFO run counts in: what its bins hold; cajas for a run of before 2026-10-17, which counted cases */
 const mfoWordOf = (r: Pick<Run, 'dept' | 'extra'>) => binOf(r) || 'cajas'
 const MFO_WORDS_FROM = '2026-10-17'
-const MFO_ORDER = ['platos', 'copas', 'lb', 'cajas']
+const MFO_ORDER = ['platos', 'copas', 'pouches', 'lb', 'cajas']
 const rankOf = (w: string) => { const i = MFO_ORDER.indexOf(w); return i < 0 ? MFO_ORDER.length : i }
 /** MFO's quantities word by word, the usual first: platos, copas, pounds, then the cases of before */
 export const mfoList = (x: Record<string, number>): MfoMade[] => Object.entries(x).filter(([, q]) => q > 0).sort((a, b) => rankOf(a[0]) - rankOf(b[0]) || a[0].localeCompare(b[0])).map(([word, qty]) => ({ word, qty: Math.round(qty * 100) / 100 }))

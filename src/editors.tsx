@@ -1,5 +1,5 @@
-import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
-import { joinedInto, joinPallet, unjoinPallet, palletsToFinish, unitQty, orderFullWhy, addRunLater, dayBefore, lineTimes, runsOnLine, shiftAt, shiftsOf, turnOf, addUnit, applyDraft, draftChecks, draftUnitOf, NOTE_MAX, usualFor, usualOf, wasteProblem, BIN_WORDS, binOf, binWord, byLineName, cfgFor, checkLaterPallets, DEPTS, fmtN, kindClass, LATER_MAX, laterPalletUnits, laterPoFits, laterStart, laterToOrder, MFO_WORDS, tagTwice, unitStartPo, type LaterPalletRow, plainDay, planRows, SPIRAL_UNITS, type Dept, byShip, CFG, cfgOf, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, reasonText, setUnitOrder, splitStop, store, updateRun, updateStop, type Order, type Run, type State, type Stop, lineLabel, orderFull, orderFullText, orderOver } from './store'
+import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { extraOfChoice, runChoiceOf, runChoices, setRunChoice, joinedInto, joinPallet, unjoinPallet, palletsToFinish, unitQty, orderFullWhy, addRunLater, dayBefore, lineTimes, runsOnLine, shiftAt, shiftsOf, turnOf, addUnit, applyDraft, draftChecks, draftUnitOf, NOTE_MAX, usualFor, usualOf, wasteProblem, BIN_WORDS, binOf, binWord, byLineName, cfgFor, checkLaterPallets, DEPTS, fmtN, kindClass, LATER_MAX, laterPalletUnits, laterPoFits, laterStart, laterToOrder, MFO_WORDS, tagTwice, unitStartPo, type LaterPalletRow, plainDay, planRows, SPIRAL_UNITS, type Dept, byShip, CFG, cfgOf, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, reasonText, setUnitOrder, splitStop, store, updateRun, updateStop, type Order, type Run, type State, type Stop, lineLabel, orderFull, orderFullText, orderOver } from './store'
 import { clockNow } from './clock'
 import { unitStartLot } from './report'
 import { ConfirmDialog, LotsDialog, NoticeDialog, useCan, useSure, useWho, type SureBox } from './App'
@@ -25,12 +25,17 @@ export function RunEditor({ s, run, mgr, focusAt, onClose }: { s: State; run: Ru
   // opened from a unit of the report (a pallet, a cart): that unit is marked and brought into view inside the box
   const focusRow = useRef<HTMLTableRowElement>(null)
   useEffect(() => { focusRow.current?.scrollIntoView({ block: 'nearest' }) }, []) // (braces: in new browsers scrollIntoView returns a promise, which an effect must not return)
+  // what the run makes can be changed here (Jose, 2026-11-04: the wrong choice at the start, pouches instead of platos):
+  // the form speaks in the words of the choice shown, and saving writes it to the run
+  const choices = runChoices(run.dept, binOf(run))
+  const [choice, setChoice] = useState(runChoiceOf(run))
+  const runNow = useMemo(() => (choice === runChoiceOf(run) ? run : { ...run, extra: extraOfChoice(run.dept, choice, run.extra) }), [run, choice])
   // a Packing line that filled bins is corrected in a bin's words; a pallet carries a tag for each of its lots
-  const cfg = cfgOf(run), tagsInLots = !!cfg.lots
+  const cfg = cfgOf(runNow), tagsInLots = !!cfg.lots
   // MFO's bins carry their lots too, one or several, each with its platos or copas (Jose and the office, 2026-10-20:
   // "otro código en el mismo bin 6291" / "que se pueda poner también varios lotes a un bin"): the same lots window
   // as a pallet's, without tags (a bin keeps its number). Not for bins weighed in pounds: the window counts whole units
-  const lotEdit = tagsInLots || (run.dept === 'MFO' && cfg.qty !== 'none' && binOf(run) !== 'lb')
+  const lotEdit = tagsInLots || (run.dept === 'MFO' && cfg.qty !== 'none' && binOf(runNow) !== 'lb')
   // how the form opened: saving applies only what was changed since, on top of what the run is by then
   const [opened] = useState(() => draftOf(run))
   const [code, setCode] = useState(opened.code)
@@ -74,6 +79,7 @@ export function RunEditor({ s, run, mgr, focusAt, onClose }: { s: State; run: Ru
     if (bad) { setProblem(bad); return }
     sure.check(doubtful(), () => {
       if (lineId !== run.lineId && !moveRun(run.id, lineId)) { setProblem(tr('No se pudo pasar a esa línea: a esa hora tenía otro código, o ahora mismo está parada o en Set up.')); return }
+      if (choice !== runChoiceOf(run)) setRunChoice(run.id, choice)
       const why = applyDraft(run.id, opened, { code, lot, date, per, waste, units, note })
       if (why) { setProblem(why); return }
       onClose()
@@ -84,6 +90,14 @@ export function RunEditor({ s, run, mgr, focusAt, onClose }: { s: State; run: Ru
       <div className="dlg wide" onClick={(e) => e.stopPropagation()}>
         <h3>{trx('Corregir · {0} · {1}', run.code, lineNameOf(s, run.lineId, run.line))}</h3>
         {sure.ui}
+        {choices.length > 1 && (
+          <div className="makes">
+            <span className="lab">{tr('Qué registra')} <small>{tr('(si se eligió mal al empezar)')}</small></span>
+            <div className="seg" role="group" aria-label={tr('Qué registra')}>
+              {choices.map((c) => <button key={c.key} type="button" className={c.cls + (choice === c.key ? ' on' : '')} aria-pressed={choice === c.key} onClick={() => setChoice(c.key)}>{c.label}</button>)}
+            </div>
+          </div>
+        )}
         <div className="egrid">
           <label>{tr('Código')}{' '}<input value={code} onChange={(e) => setCode(e.target.value)} autoComplete="off" /></label>
           <label>{tr('Lote')}{' '}<input value={lot} onChange={(e) => setLot(e.target.value)} inputMode="numeric" autoComplete="off" /></label>
@@ -526,7 +540,7 @@ export function AddRunDialog({ s, date, dept: first, order, onClose, onAdded }: 
   const [kindPick, setKindPick] = useState<string | null>(start.kind)
   const [binText, setBinText] = useState('')
   const kinds: { word: string; label: string; hint: string }[] = dept === 'Packing' ? [{ word: '', label: tr('Pallets'), hint: tr('cajas con su tag') }, { word: 'bin', label: tr('Bins'), hint: tr('platos, copas, pouches…') }]
-    : dept === 'MFO' ? MFO_WORDS.map((w) => ({ word: w, label: w === 'lb' ? tr('Libras') : w === 'copas' ? tr('Copas') : tr('Platos'), hint: w === 'lb' ? tr('cada bin se pesa') : w === 'copas' ? tr('cada bin dice cuántas') : tr('cada bin dice cuántos') }))
+    : dept === 'MFO' ? MFO_WORDS.map((w) => ({ word: w, label: w === 'lb' ? tr('Libras') : w === 'copas' ? tr('Copas') : w === 'pouches' ? tr('Pouches') : tr('Platos'), hint: w === 'lb' ? tr('cada bin se pesa') : w === 'copas' ? tr('cada bin dice cuántas') : tr('cada bin dice cuántos') }))
     : dept === 'Spiral' ? SPIRAL_UNITS.map((u) => ({ word: u === 'mezclas' ? '' : u, label: u === 'mezclas' ? tr('Mezclas') : u === 'lb' ? tr('Libras') : tr('Cajas'), hint: u === 'mezclas' ? tr('una por una') : u === 'lb' ? tr('cada mezcla dice sus libras') : tr('cada mezcla dice sus cajas') }))
     : []
   const kind = kinds.some((k) => k.word === kindPick) ? (kindPick as string) : (kinds[0]?.word ?? '')
