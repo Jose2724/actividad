@@ -3551,4 +3551,7 @@ export const EN: Record<string, string> = {
   "¿Seguro? Toca otra vez para quitarlo": "Sure? Tap again to remove it",
   "Quitar este peso": "Remove this weight",
   "Total por código": "Total by code",
+  "Lote de carne": "Meat lot",
+  "1 anotación": "1 entry",
+  "{0} anotaciones": "{0} entries",
 }

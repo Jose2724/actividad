@@ -1184,7 +1184,23 @@ function MeatWhere({ k }: { k: Kit }) {
         {m.byCode.map((c) => <div key={c.code} className="meat-row"><b>{c.code}</b><span>{lb(c.lb)} lb</span><span>{c.mixes}</span><b>{c.perMix == null ? '—' : lb(c.perMix) + ' lb'}</b><span>{c.lots.join(', ') || '—'}</span></div>)}
       </div>
       <button type="button" className="lnk sm" onClick={() => setOpen(!open)}>{open ? tr('Ocultar cada anotación') : tr('Ver cada anotación ({0})', m.list.length)}</button>
-      {open && <ul className="meat-each">{m.list.map((x) => <li key={x.id}>{fmtTime(x.at)} · {lineNameOf(s, x.lineId, x.line)} · <b>{x.code}</b> {tr('lote {0}', x.lot)} · <b>{lb(x.lb)} lb</b>{x.meatLot ? ' · ' + tr('carne lote {0}', x.meatLot) : ''} <small>· {x.by}</small></li>)}</ul>}
+      {/* each entry as a table, code by code with its total (Jose, 2026-11-04: "esto se puede poner más lindo") */}
+      {open && (
+        <article className="wt-rp cons-rp" style={deptVars('Spiral')}>
+          <div className="scroll"><table className="wt-rp-tbl cons-tbl">
+            <thead><tr><th>{tr('Hora')}</th><th>{tr('Línea')}</th><th>{tr('Código')}</th><th className="n">{tr('Libras')}</th><th>{tr('Lote de carne')}</th><th>{tr('Anotó')}</th></tr></thead>
+            <tbody>{m.byCode.map((c) => { const mine = m.list.filter((x) => normCode(x.code) === normCode(c.code)); return [...mine.map((x) => (
+              <tr key={x.id}>
+                <td>{fmtTime(x.at)}</td><td>{lineNameOf(s, x.lineId, x.line)}</td><td><b>{x.code}</b>{x.lot && <small> · {tr('lote {0}', x.lot)}</small>}</td>
+                <td className="n"><b>{lb(x.lb)}</b></td><td>{x.meatLot || '—'}</td><td><small>{x.by}</small></td>
+              </tr>
+            )), <tr key={'t:' + c.code} className="cons-sum">
+              <td colSpan={3}>{tr('Total {0}', c.code)}</td><td className="n">{lb(mine.reduce((t, x) => t + x.lb, 0))}</td>
+              <td colSpan={2}><small>{mine.length === 1 ? tr('1 anotación') : tr('{0} anotaciones', mine.length)}</small></td>
+            </tr>] })}</tbody>
+          </table></div>
+        </article>
+      )}
       <p className="hint">{tr('Libras por mezcla = la carne anotada ÷ las mezclas de ese código en lo que estás viendo. En el Excel va la hoja "Carne".')}</p>
     </>
   )
