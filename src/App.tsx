@@ -1598,6 +1598,9 @@ function OrderAddChooser({ s, order, onPick, onNew, onClose }: { s: State; order
  * fixed message to Packing lived here until 2026-10-28: the chat, src/Chat.tsx, replaced it.)
  */
 function PackingNotice({ s, onOrders }: { s: State; onOrders: () => void }) {
+  // the whole list opens right here (the office, 2026-11-05: "quiero ver toda la lista de los 39 adicionales pero no me
+  // permite": the link sent to Pedidos, where they already were, so nothing seemed to happen)
+  const [all, setAll] = useState(false)
   const urgent = s.orders.filter((o) => o.urgent && !o.closed).map((o) => ({ o, left: o.cases != null ? o.cases - orderMade(s, o.id) : null })).filter((x) => x.left == null || x.left > 0).sort((a, b) => byShip(a.o, b.o))
   if (!urgent.length) return null
   return (
@@ -1605,7 +1608,8 @@ function PackingNotice({ s, onOrders }: { s: State; onOrders: () => void }) {
       {urgent.length > 0 && (
         <div className="pk-urg">
           <b className="pk-urgh">{urgent.length === 1 ? tr('🔥 1 pedido urgente') : tr('🔥 {0} pedidos urgentes', urgent.length)}</b>
-          {urgent.slice(0, 4).map(({ o, left }) => { const n = orderNoteOf(s, o.id); return (
+          <div className={'pk-urglist' + (all ? ' all' : '')}>
+          {(all ? urgent : urgent.slice(0, 4)).map(({ o, left }) => { const n = orderNoteOf(s, o.id); return (
             <button key={o.id} type="button" className="pk-urgrow" onClick={onOrders}>
               <span className="code">{o.code}</span>
               <span>{orderLabel(o)}{productOf(s, o.code)?.name ? ' · ' + productOf(s, o.code)?.name : ''}</span>
@@ -1614,7 +1618,8 @@ function PackingNotice({ s, onOrders }: { s: State; onOrders: () => void }) {
               {n && <small className="pk-unote">💬 {n.text}</small>}
             </button>
           ) })}
-          {urgent.length > 4 && <button type="button" className="lnk sm" onClick={onOrders}>{tr('y {0} más en Pedidos', urgent.length - 4)}</button>}
+          </div>
+          {urgent.length > 4 && <button type="button" className="lnk sm" onClick={() => setAll(!all)}>{all ? tr('Ver menos') : tr('Ver los {0} que faltan', urgent.length - 4)}</button>}
         </div>
       )}
     </div>

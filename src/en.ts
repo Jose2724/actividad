@@ -3582,4 +3582,6 @@ export const EN: Record<string, string> = {
   "La tablet del cuarto deja de pedir esas libras y sigue. Esas mezclas quedan sin peso en el Consumo; queda anotado en el historial que lo quitaste.": "The room's tablet stops asking for those pounds and goes on. Those mezclas stay without a weight in Consumption; the history records that you removed it.",
   "⚠ Es obligatorio: la línea no puede seguir hasta que anoten las libras. Si no se pueden pesar, avisa al supervisor o a la oficina.": "⚠ This is mandatory: the line can't go on until the pounds are written. If they can't be weighed, tell the supervisor or the office.",
   "Faltan por pesar": "Still to weigh",
+  "Ver menos": "Show less",
+  "Ver los {0} que faltan": "Show the other {0}",
 }
