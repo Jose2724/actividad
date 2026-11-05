@@ -3639,7 +3639,7 @@ export function download(f: File) {
 }
 
 /** a manager types the goal of one line for one shift: so much per hour and/or in the whole shift. It shows on that line's card */
-function LineTargetDialog({ s, line, unit, inCourse, onClose }: { s: State; line: Line; unit: string; inCourse: 1 | 2; onClose: () => void }) {
+export function LineTargetDialog({ s, line, unit, inCourse, onClose }: { s: State; line: Line; unit: string; inCourse: 1 | 2; onClose: () => void }) {
   const who = useWho()
   const [shift, setShift] = useState<1 | 2>(() => goalShift(who, inCourse))
   const goal = lineShiftGoalOf(s, line.id, shift)

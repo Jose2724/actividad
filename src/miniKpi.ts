@@ -77,6 +77,7 @@ function roomDay(s: State, date: string, dept: Dept, k: 1 | 2, o: MiniOpts, now:
     real -= noGoal
     target = lineGoals.reduce((t, g) => t + (g.goal as number) * hours(mine.filter((x) => x.r.lineId === g.id).reduce((a, x) => a + x.st.working, 0)), 0)
   } else if (roomGoal && counted.length) target = roomGoal * hours(Math.max(...counted.map((x) => x.to)) - Math.min(...counted.map((x) => x.from)))
+  else if (counted.length && shiftGoalOf(s, dept, k).total) target = shiftGoalOf(s, dept, k).total
   const apart = [...rows.filter((x) => !slowCounts(x.r)).reduce((m, x) => { const c = x.r.dept === 'Spiral' ? x.r.extra?.measure ?? '' : x.r.extra?.bin ?? ''; return m.set(c, (m.get(c) ?? 0) + x.qty) }, new Map<string, number>())].map(([w, n]) => Math.round(n * 100) / 100 + ' ' + (w === 'lb' ? tr('lb') : w))
   if (noGoal) apart.push(tr('{0} sin meta', Math.round(noGoal * 100) / 100))
   // ---- stops: over all the time the lines had a code; what counts as a stop is chosen in Ajustes ----
@@ -106,7 +107,9 @@ function roomDay(s: State, date: string, dept: Dept, k: 1 | 2, o: MiniOpts, now:
 }
 export function miniWeek(s: State, date: string, k: 1 | 2, now: number) {
   // (this KPI is one shift's and nothing of the other may mix in, Jose 2026-11-01: a day of one shift is that shift's alone; asked for the other, the report would give the whole day)
-  const counts = (d: string) => { const only = shiftsOf(s, d).only; return d <= plainDay(s, now) && (!only || only === k) }
+  // (today waits for the shift's own hour, Jose 2026-11-05: "sale un 0 en el jueves y el turno de Santiago aún no ha empezado")
+  const begun = (d: string) => { const p = shiftsOf(s, d); return d < plainDay(s, now) || now >= wallOfDay(s, d, k === 1 || p.only ? p.first : p.second) }
+  const counts = (d: string) => { const only = shiftsOf(s, d).only; return d <= plainDay(s, now) && (!only || only === k) && begun(d) }
   const o = miniOpts(s), days = miniDays(date), shown = days.filter(counts), today = plainDay(s, now)
   const weighed = days.map((d) => (d <= plainDay(s, now) ? wtRowsOfShift(s, weightsOf(s, d, now), k) : []))
   // the room's weight of the day (Santiago's "Weight" row): Kitchen's raw balls, Spiral's cooked balls, RTE's pouches, in ounces
@@ -116,9 +119,16 @@ export function miniWeek(s: State, date: string, k: 1 | 2, now: number) {
   const mechanics = shown.flatMap((d) => reportOf(s, d, now, { shift: k }).stops.filter((x) => downKind(x.reason) === 'mech' && x.reason !== ASK_MANAGER).map((x) => ({ date: d, dept: x.dept, line: x.lineId ? lineNameOf(s, x.lineId) : tr('Todo {0}', x.dept), at: x.startedAt, ms: x.ms, reason: x.reason, who: mechanicOf(x.note) })))
   const table = (list: WtRow[][]) => { const boards = list.map((r, i) => (days[i] <= today ? wtBoard(s, r) : [])); return (boards.find((b) => b.length) ?? []).flatMap((b, i) => (['raw', 'cooked', 'pouch'] as const).map((part) => ({ code: b.code, part, days: boards.map((x) => x[i]?.[part] ?? null) }))) }
   const roomWeights = new Map(DEPTS.map((dept) => [dept, table(weighed.map((r) => r.filter((x) => x.dept === dept)))]))
-  return { o, days, rooms, mechanics, weights: table(weighed), roomWeights, shift: k }
+  // the Target column (Jose, 2026-11-05: "¿de dónde salen los target?"): the goal as it is typed for this shift, the whole
+  // shift's when there is one, else the hour's (its lines' together when they have their own, as each day counts them)
+  const goals = Object.fromEntries(DEPTS.map((dept) => {
+    const g = shiftGoalOf(s, dept, k), lines = s.lines.filter((l) => !l.deleted && l.dept === dept).map((l) => lineShiftGoalOf(s, l.id, k).perHour ?? 0).filter((n) => n > 0)
+    return [dept, { total: g.total, perHour: lines.length ? lines.reduce((a, b) => a + b, 0) : g.perHour, lines: lines.length > 0 }]
+  })) as Record<Dept, MiniGoal>
+  return { o, days, rooms, mechanics, weights: table(weighed), roomWeights, shift: k, goals }
 }
 export type MiniWeek = ReturnType<typeof miniWeek>
+export type MiniGoal = { total: number | null; perHour: number | null; lines: boolean }
 export type MiniCell = { t: string; c?: 'ok' | 'bad' | 'warn' }
 export type MiniTable = { id: NumberId; title: string; head: string[]; rows: MiniCell[][]; note?: string }
 const n0 = (x: number) => Math.round(x).toLocaleString('en-US')
@@ -178,7 +188,8 @@ export function miniSimple(w: MiniWeek): SimpleBlock[] {
   const sum = (list: NonNullable<Day>[], f: (x: NonNullable<Day>) => number) => list.reduce((t, x) => t + f(x), 0)
   const n1 = (x: number) => String(Math.round(x * 10) / 10)
   return w.rooms.map((r) => {
-    const list = had(r), unit = slowUnitOf(r.dept), goal = list.find((x) => x.target)?.target ?? null, expected = Math.max(0, ...list.map((x) => x.att.expected))
+    const list = had(r), unit = slowUnitOf(r.dept), g = w.goals?.[r.dept], expected = Math.max(0, ...list.map((x) => x.att.expected))
+    const goalCell: MiniCell = g?.total ? { t: n0(g.total) } : g?.perHour ? { t: tr('{0}/h', n0(g.perHour)) } : none
     const perDay = (f: (x: NonNullable<Day>) => MiniCell) => r.days.map((x) => (x ? f(x) : none))
     const madeOf = (x: NonNullable<Day>): MiniCell => (!x.real && !x.target ? none : { t: n0(x.real), c: x.target ? (x.real / x.target >= 1 ? 'ok' : x.real / x.target >= 0.9 ? 'warn' : 'bad') : undefined })
     const perPerson = (real: number, people: number): MiniCell => (people && real ? { t: n1(real / people) } : none)
@@ -189,8 +200,8 @@ export function miniSimple(w: MiniWeek): SimpleBlock[] {
       { id: 'att', label: tr('Asistencia'), target: expected ? { t: n0(expected) } : none, days: perDay((x) => (x.att.expected || x.att.actual ? { t: left(x) ? n1(x.att.avg) + ' / ' + n0(x.att.actual) : n0(x.att.actual), c: heads(x) >= x.att.expected ? 'ok' : 'bad' } : none)), week: list.length && pplSum ? { t: n1(pplSum / list.filter((x) => heads(x)).length || 0) + ' ' + tr('prom.') } : none },
       { id: 'start', label: tr('Hora de arranque'), target: { t: w.shift === 1 ? '' : o.start2 }, days: perDay((x) => (x.start ? { t: fmtTime(x.start.at), c: x.start.late ? 'bad' : 'ok' } : none)), week: (() => { const has = list.filter((x) => x.start); return has.length ? { t: tr('{0} min tarde', Math.round(has.reduce((a, x) => a + Math.max(0, x.start?.off ?? 0), 0) / has.length)) } : none })() },
       { id: 'end', label: tr('Hora de fin'), target: none, days: perDay((x) => (x.end ? { t: fmtTime(x.end) } : none)), week: none },
-      { id: 'made', label: unit.charAt(0).toUpperCase() + unit.slice(1), target: goal ? { t: n0(goal) } : none, days: perDay(madeOf), week: madeSum ? { t: n0(madeSum), c: tgtDays.length ? (sum(tgtDays, (x) => x.real) / sum(tgtDays, (x) => x.target ?? 0) >= 1 ? 'ok' : 'bad') : undefined } : none },
-      { id: 'pp', label: tr('{0} por persona', unit.charAt(0).toUpperCase() + unit.slice(1)), target: goal && expected ? { t: n1(goal / expected) } : none, days: perDay((x) => perPerson(x.real, heads(x))), week: perPerson(madeSum, pplSum) },
+      { id: 'made', label: unit.charAt(0).toUpperCase() + unit.slice(1), target: goalCell, days: perDay(madeOf), week: madeSum ? { t: n0(madeSum), c: tgtDays.length ? (sum(tgtDays, (x) => x.real) / sum(tgtDays, (x) => x.target ?? 0) >= 1 ? 'ok' : 'bad') : undefined } : none },
+      { id: 'pp', label: tr('{0} por persona', unit.charAt(0).toUpperCase() + unit.slice(1)), target: g?.total && expected ? { t: n1(g.total / expected) } : g?.perHour && expected ? { t: tr('{0}/h', n1(g.perHour / expected)) } : none, days: perDay((x) => perPerson(x.real, heads(x))), week: perPerson(madeSum, pplSum) },
       { id: 'wt', label: tr('Peso (oz)'), target: none, days: perDay((x) => (x.wt == null ? none : { t: x.wt.toFixed(2) })), week: (() => { const has = list.filter((x) => x.wt != null); return has.length ? { t: (sum(has, (x) => x.wt as number) / has.length).toFixed(2) } : none })() },
       { id: 'hours', label: tr('Horas trabajadas'), target: none, days: perDay((x) => (x.time ? { t: n1(hoursOf(x.worked)) } : none)), week: list.some((x) => x.time) ? { t: n1(hoursOf(sum(list, (x) => x.worked))) } : none },
       { id: 'down', label: tr('Downtime'), target: { t: '≤ ' + o.limit + '%' }, days: perDay((x) => (x.time ? { t: fmtDur(x.down) + ' · ' + pctOf(x.down / x.time), c: (x.down / x.time) * 100 > o.limit ? 'bad' : 'ok' } : none)), week: list.some((x) => x.time) ? { t: fmtDur(sum(list, (x) => x.down)) + ' · ' + pctOf(sum(list, (x) => x.down) / sum(list, (x) => x.time)) } : none },

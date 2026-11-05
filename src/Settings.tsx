@@ -1,6 +1,6 @@
-import { useState, useSyncExternalStore } from 'react'
-import { type ViewOpt, wallAt, byLineName, CFG, dayShiftsText, DEPTS, lineLabel, lotFor, managerPin, nightText, openRun, removedLines, removeLine, reset, resetRecords, restoreLine, setDayShifts, setLineRules, setProgramView, setReasonCodes, shiftGoalOf, shiftHours, shiftSpan, shiftsOf, turnOf, uploadAll, weekOf, type Dept, type Line, type State, type WorkDay, setViewOpt } from './store'
-import { ConfirmDialog, LangSwitch, LineNameDialog, longDate, NoticeDialog, Products, QrLink, ShiftsDialog, StartDayDialog, StopDialog, TargetDialog, useCan, useWho } from './App'
+import { Fragment, useState, useSyncExternalStore } from 'react'
+import { type ViewOpt, wallAt, byLineName, lineShiftGoalOf, CFG, dayShiftsText, DEPTS, lineLabel, lotFor, managerPin, nightText, openRun, removedLines, removeLine, reset, resetRecords, restoreLine, setDayShifts, setLineRules, setProgramView, setReasonCodes, shiftGoalOf, shiftHours, shiftSpan, shiftsOf, turnOf, uploadAll, weekOf, type Dept, type Line, type State, type WorkDay, setViewOpt } from './store'
+import { ConfirmDialog, LangSwitch, LineNameDialog, LineTargetDialog, longDate, NoticeDialog, Products, QrLink, ShiftsDialog, StartDayDialog, StopDialog, TargetDialog, useCan, useWho } from './App'
 import { Employees } from './Employees'
 import { DEPT_LOOK, deptVars } from './look'
 import { Devices } from './DevicesView'
@@ -64,7 +64,7 @@ export function Settings({ s, now, day, name, home, mgr, admin, viewOnly, meId, 
         {sec === 'shifts' && <ShiftsSettings s={s} day={day} />}
         {sec === 'day' && <DaySettings s={s} now={now} day={day} />}
         {sec === 'lines' && <LinesSettings s={s} />}
-        {sec === 'mini' && <MiniSettings s={s} viewOnly={viewOnly} />}
+        {sec === 'mini' && <MiniSettings s={s} viewOnly={viewOnly} now={now} day={day} goals={can('goals') && !viewOnly} />}
         {sec === 'stops' && <StopRulesSettings s={s} viewOnly={viewOnly} />}
         {sec === 'stops' && <StopCodesSettings s={s} viewOnly={viewOnly} />}
         {sec === 'program' && <><ProgramViewSettings s={s} /><ViewOptSettings s={s} name="lotes" /><ViewOptSettings s={s} name="flujo" /></>}
@@ -504,7 +504,7 @@ function ProgramViewSettings({ s }: { s: State }) {
 }
 
 /** what the mini KPI counts, chosen here so no reading of it has to be programmed again (Jose, 2026-10-31) */
-function MiniSettings({ s, viewOnly }: { s: State; viewOnly: boolean }) {
+function MiniSettings({ s, viewOnly, now, day, goals }: { s: State; viewOnly: boolean; now: number; day: WorkDay; goals: boolean }) {
   const o = miniOpts(s), put = (p: Partial<MiniOpts>) => setMiniOpts({ ...o, ...p })
   const choice = <K extends keyof MiniOpts>(key: K, label: string, opts: [MiniOpts[K], string][]) => (
     <label className="minirow"><span>{label}</span><select value={String(o[key])} disabled={viewOnly} onChange={(e) => put({ [key]: e.target.value } as Partial<MiniOpts>)}>{opts.map(([v, t]) => <option key={String(v)} value={String(v)}>{t}</option>)}</select></label>
@@ -513,6 +513,7 @@ function MiniSettings({ s, viewOnly }: { s: State; viewOnly: boolean }) {
   const num = (key: 'grace' | 'limit', label: string) => <label className="minirow"><span>{label}</span><input inputMode="numeric" value={o[key]} disabled={viewOnly} onChange={(e) => put({ [key]: Number(e.target.value.replace(/\D/g, '')) || 0 })} /></label>
   return (
     <>
+      <MiniGoals s={s} now={now} day={day} edit={goals} />
       <div className="setcard">
         <div className="sethead"><h3>{tr('Arranque')}</h3></div>
         <label className="minirow"><span>{tr('Turno 2 debe arrancar a las')}</span><input type="time" value={o.start2} disabled={viewOnly} onChange={(e) => { if (e.target.value) put({ start2: e.target.value }) }} /></label>
@@ -586,6 +587,44 @@ function StopCodesSettings({ s, viewOnly }: { s: State; viewOnly: boolean }) {
   )
 }
 
+/** a room's unit for its goals */
+const goalUnitOf = (d: Dept) => (CFG[d].qty === 'none' ? CFG[d].plural.toLowerCase() : CFG[d].qtyUnit)
+const goalText = (g: { total: number | null; perHour: number | null }, u: string) => [g.total ? fmtN(g.total) + ' ' + u : '', g.perHour ? fmtN(g.perHour) + ' ' + u + '/h' : ''].filter(Boolean).join(' · ') || '—'
+/**
+ * The Mini KPI's targets, every room and its lines, changed from here (Jose, 2026-11-05: "¿no sería bueno cambiarlo
+ * desde el Mini KPI setting? ... lo de todos los departamentos también"): the same goals as Ajustes › Metas and each
+ * line's card, not a second set
+ */
+function MiniGoals({ s, now, day, edit }: { s: State; now: number; day: WorkDay; edit: boolean }) {
+  const [dept, setDept] = useState<Dept | null>(null), [line, setLine] = useState<Line | null>(null)
+  const inCourse = turnOf(s, day.date, now).shift
+  return (
+    <>
+      <div className="setcard wide">
+        <div className="sethead"><h3>{tr('Metas (Target)')}</h3></div>
+        <p className="hint">{tr('El Target del Mini KPI sale de aquí: la meta de todo el turno si está puesta; si no, la meta por hora. Cada día se compara con la meta por hora × las horas que trabajaron las líneas. Si una línea tiene su propia meta, cuenta la de la línea y no la del cuarto. Son las mismas metas de Ajustes › Metas y de la tarjeta de cada línea.')}</p>
+        <div className="twrap">
+          <table className="goals">
+            <thead><tr><th>{tr('Cuarto')}</th><th>{tr('Turno 1')}</th><th>{tr('Turno 2')}</th><th></th></tr></thead>
+            <tbody>{DEPTS.map((d) => {
+              const u = goalUnitOf(d), lines = s.lines.filter((l) => !l.deleted && l.dept === d).sort(byLineName)
+              return (
+                <Fragment key={d}>
+                  <tr><td><b>{d}</b></td><td>{goalText(shiftGoalOf(s, d, 1), u)}</td><td>{goalText(shiftGoalOf(s, d, 2), u)}</td><td>{edit && <button type="button" className="lnk" onClick={() => setDept(d)}>{tr('Cambiar')}</button>}</td></tr>
+                  {lines.map((l) => (
+                    <tr key={l.id} className="goal-line"><td>↳ {lineLabel(l.name)}</td><td>{goalText(lineShiftGoalOf(s, l.id, 1), u)}</td><td>{goalText(lineShiftGoalOf(s, l.id, 2), u)}</td><td>{edit && <button type="button" className="lnk" onClick={() => setLine(l)}>{tr('Cambiar')}</button>}</td></tr>
+                  ))}
+                </Fragment>
+              )
+            })}</tbody>
+          </table>
+        </div>
+      </div>
+      {dept && <TargetDialog s={s} dept={dept} unit={goalUnitOf(dept)} inCourse={inCourse} onClose={() => setDept(null)} />}
+      {line && <LineTargetDialog s={s} line={line} unit={goalUnitOf(line.dept)} inCourse={inCourse} onClose={() => setLine(null)} />}
+    </>
+  )
+}
 /** each room's goal for each shift */
 function GoalsSettings({ s, now, day }: { s: State; now: number; day: WorkDay }) {
   const [dept, setDept] = useState<Dept | null>(null)

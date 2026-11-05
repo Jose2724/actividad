@@ -6523,6 +6523,16 @@ section('Trasladar personal a otra línea o a otro cuarto, y los nombres en el E
     eq('la hoja de Santiago lo dice como "1.5 / 2"', row.days[1].t, '1.5 / 2')
     clock = t0 + 60 * M
     eq('con el turno corriendo, el promedio es de lo que va', m.miniWeek(m.store.get(), '2026-11-02', 2, clock).rooms.find((r) => r.dept === 'RTE').days[1].att.avg, 2)
+    // today waits for the shift's hour (Jose, 2026-11-05: a 0 on Thursday before shift 2 began)
+    const rteDay = (k, at) => m.miniWeek(m.store.get(), '2026-11-02', k, at).rooms.find((r) => r.dept === 'RTE').days[1]
+    eq('hoy, antes de la hora del turno 2, su día sale vacío; el del turno 1 ya está', [rteDay(2, new Date(2026, 10, 2, 10, 0).getTime()), !!rteDay(1, new Date(2026, 10, 2, 10, 0).getTime()), !!rteDay(2, t0 + M)], [null, true, true])
+    // the Target is the goal as typed (2026-11-05): the hour's when only that, the whole shift's when there is one
+    const tgt = () => m.miniSimple(m.miniWeek(m.store.get(), '2026-11-02', 2, clock)).find((b) => b.dept === 'RTE').rows.find((r) => r.id === 'made').target.t
+    m.setShiftGoal('RTE', 2, 500, null)
+    const perHour = tgt()
+    m.setShiftGoal('RTE', 2, 500, 600)
+    eq('el Target es la meta escrita: 500/h, y 600 cuando se pone la del turno entero', [perHour, tgt()], ['500/h', '600'])
+    m.setShiftGoal('RTE', 2, null, null)
   })
   eq('al volver a abrir: la línea y los traslados siguen', back.use((m) => { const st = m.store.get(), a = st.attendance.find((x) => x.name === 'Ana'); return [m.attLineText(st, a.line), a.moves.length, m.attOf(st, '2026-10-22', 'Packing', 1).map((x) => m.attLineText(st, x.line))] }), ['Línea 2', 1, ['Línea 1']])
 }
