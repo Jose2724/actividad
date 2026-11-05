@@ -3572,4 +3572,7 @@ export const EN: Record<string, string> = {
   "No cuenta en este cuarto hasta que lo aceptes.": "Does not count in this room until you accept them.",
   "No se pudo traer ese día del servidor (sin señal). Lo que sale es lo que tiene este aparato.": "That day could not be brought from the server (no signal). What shows is what this device has.",
   "Probar otra vez": "Try again",
+  "📅 Días anteriores": "📅 Previous days",
+  "historial del programa": "program history",
+  "{0} no tuvo programa el {1}.": "{0} had no program on {1}.",
 }

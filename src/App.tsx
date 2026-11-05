@@ -21,7 +21,7 @@ import { startHello } from './devices'
 import { keepAwake } from './awake'
 import { Settings, type SettingsKey } from './Settings'
 import { DEPT_LOOK, deptVars } from './look'
-import { Report, reportOpenAt, type ReportAt } from './ReportView'
+import { bringDay, Report, reportOpenAt, type ReportAt } from './ReportView'
 import { ProgramToday, programRooms } from './ProgramToday'
 import { LotesView } from './LotesView'
 import { KpiView } from './KpiView'
@@ -1870,7 +1870,7 @@ export function TargetDialog({ s, dept, unit, inCourse, onClose }: { s: State; d
  * was made of its own lot; what was made of a code in a lot nobody programmed is said under it ("también: 9,556 del
  * lote 6290") and in "Fuera del programa", never added into a row (store.ts, planRows)
  */
-function PlanCard({ s, dept, date, mgr }: { s: State; dept: Dept; date: string; mgr: boolean }) {
+function PlanCard({ s, dept, date, mgr, today }: { s: State; dept: Dept; date: string; mgr: boolean; today?: string }) {
   const [editing, setEditing] = useState(false)
   // the room's own comment on a row (Jose, 2026-11-04: why it was not done, what happened): anyone of the room but who only looks
   const writesNote = !useViewOnly()
@@ -1906,7 +1906,7 @@ function PlanCard({ s, dept, date, mgr }: { s: State; dept: Dept; date: string; 
     <>
     <div className="plan">
       <div className="tc-head">
-        <h3>{trx('Programa de {0}', dept)}<small> · {tr('hoy')} · {tr('en {0}', unit)}</small></h3>
+        <h3>{trx('Programa de {0}', dept)}<small> · {!today || date === today ? tr('hoy') : longDate(date)} · {tr('en {0}', unit)}</small></h3>
         {mgr && <button type="button" className="btn soft sm" onClick={() => setEditing(true)}>{planned.length ? tr('✎ Cambiar programa') : tr('+ Poner programa')}</button>}
       </div>
       {/* what the last day with a program left pending of each code: said, never filled in (Jose, 2026-10-19). With an
@@ -2157,9 +2157,39 @@ function keepDeptTab(d: Dept, t: DeptTab) {
  * the part of a room's Programa tab chosen last ("Hoy" or "Pedidos de producción"), kept the same way, under "<room>|plan"
  * (review of 2026-10-20: the office's view of every order was lost on every change of room or tab)
  */
-type PlanPart = 'hoy' | 'wo'
+type PlanPart = 'hoy' | 'wo' | 'dias'
 function planPartOf(d: Dept): PlanPart {
-  try { return (JSON.parse(sessionStorage.getItem(DEPT_TAB_KEY) || '{}') as Record<string, string>)[d + '|plan'] === 'wo' ? 'wo' : 'hoy' } catch { return 'hoy' }
+  try { const v = (JSON.parse(sessionStorage.getItem(DEPT_TAB_KEY) || '{}') as Record<string, string>)[d + '|plan']; return v === 'wo' || v === 'dias' ? v : 'hoy' } catch { return 'hoy' }
+}
+/**
+ * The room's program of the days before (Jose and the office, 2026-11-05: "la programación del día a día de cada cuarto
+ * no se guarda como historial ... que se pueda ver el historial de todos los departamentos"): the same table as Hoy, of
+ * the day chosen (yesterday at first), to read only; a day older than the device keeps is brought from the server, with
+ * the day before it (what it left pending), as the Reporte does
+ */
+function PlanDays({ s, dept, today }: { s: State; dept: Dept; today: string }) {
+  const [date, setDate] = useState(() => dayBefore(today))
+  const [coming, setComing] = useState<'' | 'wait' | 'fail'>(''), [tries, setTries] = useState(0)
+  useEffect(() => {
+    let current = true
+    const asked = [date, dayBefore(date)].map(bringDay).filter((p): p is Promise<boolean> => !!p)
+    setComing(asked.length ? 'wait' : '')
+    if (asked.length) void Promise.all(asked).then((ok) => { if (current) setComing(ok.every(Boolean) ? '' : 'fail') })
+    return () => { current = false }
+  }, [date, tries])
+  const has = planOf(s, date, dept).length > 0
+  return (
+    <>
+      <div className="pt-days plan-days">
+        <button type="button" className="btn sm" onClick={() => setDate(dayBefore(date))}>{tr('‹ Día anterior')}</button>
+        <input type="date" value={date} max={today} aria-label={tr('Día')} onChange={(e) => { const d = e.target.value; if (/^\d{4}-\d{2}-\d{2}$/.test(d)) setDate(d > today ? today : d) }} />
+        <button type="button" className="btn sm" disabled={date >= today} onClick={() => setDate(dayAfter(date))}>{tr('Día siguiente ›')}</button>
+      </div>
+      {coming === 'wait' && <p className="hint">{tr('Trayendo ese día del servidor…')}</p>}
+      {coming === 'fail' && <p className="hint amber">{tr('No se pudo traer ese día del servidor (sin señal). Lo que sale es lo que tiene este aparato.')} <button type="button" className="btn sm soft" onClick={() => setTries(tries + 1)}>{tr('Probar otra vez')}</button></p>}
+      {coming !== 'wait' && (has ? <PlanCard s={s} dept={dept} date={date} mgr={false} today={today} /> : <p className="hint">{tr('{0} no tuvo programa el {1}.', dept, longDate(date))}</p>)}
+    </>
+  )
 }
 function keepPlanPart(d: Dept, p: PlanPart) {
   try { const m = JSON.parse(sessionStorage.getItem(DEPT_TAB_KEY) || '{}') as Record<string, string>; m[d + '|plan'] = p; sessionStorage.setItem(DEPT_TAB_KEY, JSON.stringify(m)) } catch { /* private window: it opens on "Hoy" */ }
@@ -2343,13 +2373,14 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
           <div className="seg woseg" role="tablist" aria-label={tr('Partes del programa')} ref={segRef}>
             <button type="button" role="tab" aria-selected={planPart === 'hoy'} className={planPart === 'hoy' ? 'on' : ''} onClick={() => pickPlan('hoy')}>{tr('Hoy')}<small>{planned === 1 ? tr('1 código programado') : tr('{0} códigos programados', planned)}</small></button>
             <button type="button" role="tab" aria-selected={planPart === 'wo'} className={planPart === 'wo' ? 'on' : ''} onClick={() => pickPlan('wo')}>{tr('Pedidos de producción')}<small>{openWo === 1 ? tr('1 abierto') : tr('{0} abiertos', openWo)}</small></button>
+            <button type="button" role="tab" aria-selected={planPart === 'dias'} className={planPart === 'dias' ? 'on' : ''} onClick={() => pickPlan('dias')}>{tr('📅 Días anteriores')}<small>{tr('historial del programa')}</small></button>
           </div>
           {planPart === 'hoy' ? (
             <>
               <PlanCard s={s} dept={dept} date={day.date} mgr={can('products')} />
               <OpenOrders s={s} dept={dept} today={day.date} edit={can('products')} onAll={showOrders} />
             </>
-          ) : <OrderHistory s={s} dept={dept} today={day.date} edit={can('products')} readsAll={readsAll} />}
+          ) : planPart === 'dias' ? <PlanDays s={s} dept={dept} today={day.date} /> : <OrderHistory s={s} dept={dept} today={day.date} edit={can('products')} readsAll={readsAll} />}
         </>
       )}
       {/* the pallets nobody recorded are added from the orders too, for the same people as from Terminados (Jose,
