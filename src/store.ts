@@ -728,7 +728,7 @@ function pruned(s: State): State {
   const needed = (r: Run) => { const f = r.deleted ? undefined : needFrom.get(woQueue(r.dept, r.code, apartOf(r))); return f !== undefined && r.date >= f }
   const forWork = (p: Plan) => { const f = p.orderId ? liveFrom.get(p.orderId) : undefined; return f !== undefined && p.date >= f }
   // (a program row by its code and its lot, as it waits in the queue: see planKey)
-  const plans = s.plans.filter((p) => p.date >= from || (!!p.endDate && p.endDate >= from) || opened.has(p.date) || waiting.has('act_plan|' + planKey(p.date, p.dept, p.code, p.lot)) || forWork(p))
+  const plans = s.plans.filter((p) => p.date >= from || (!!p.endDate && p.endDate >= from) || opened.has(p.date) || (!!p.endDate && [...opened].some((d) => d >= p.date && d <= p.endDate!)) || waiting.has('act_plan|' + planKey(p.date, p.dept, p.code, p.lot)) || forWork(p))
   // (attendance goes with its day, as everything else: kept while it waits to go up)
   const attendance = (s.attendance ?? []).filter((x) => x.date >= from || opened.has(x.date) || waiting.has('act_changes|att:' + x.id))
   const shiftMarks = (s.shiftMarks ?? []).filter((x) => x.date >= from || opened.has(x.date) || waiting.has('act_changes|cut:' + x.date + ':' + x.dept))

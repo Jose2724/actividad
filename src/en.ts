@@ -3570,4 +3570,6 @@ export const EN: Record<string, string> = {
   "Pedir el peso cada": "Ask the weight every",
   "sin aceptar · no cuenta": "not accepted · does not count",
   "No cuenta en este cuarto hasta que lo aceptes.": "Does not count in this room until you accept them.",
+  "No se pudo traer ese día del servidor (sin señal). Lo que sale es lo que tiene este aparato.": "That day could not be brought from the server (no signal). What shows is what this device has.",
+  "Probar otra vez": "Try again",
 }

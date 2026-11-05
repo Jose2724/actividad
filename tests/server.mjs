@@ -149,6 +149,17 @@ await m.pullAll()
 eq('se queda mientras la app esté abierta, aunque se vuelva a bajar', [m.store.get().runs.filter((r) => r.date === longAgo).length > 0, m.awayDay(longAgo)], [true, false])
 eq('Avance de ese día sale de la tablet', m.avanceRows(m.store.get(), longAgo).map((r) => [r.code, r.scheduled, r.pouchesDone]), [['P0001', 10, db.act_runs.filter((r) => r.date === longAgo).length * 240]])
 
+console.log('· El Programa de un día viejo (la oficina, 2026-11-05: un historial de la programación)')
+{
+  const d40 = dayOf(now - 40 * DAYMS), d42 = dayOf(now - 42 * DAYMS), d38 = dayOf(now - 38 * DAYMS), stamp = iso(now - 42 * DAYMS)
+  db.act_plan.push({ date: d40, dept: 'Kitchen', code: '2286', qty: 80, lot: '', updated_at: stamp, updated_by: 'Oficina' }, { date: d42, end_date: d38, dept: 'RTE', code: '0889', qty: 5000, lot: '', updated_at: stamp, updated_by: 'Oficina' })
+  eq('ese día no está en la tablet', [m.awayDay(d40), m.planOf(m.store.get(), d40, 'Kitchen').length], [true, 0])
+  eq('se trae', await m.loadDay(d40), true)
+  eq('con su programa y el de varios días que lo toma', [m.planOf(m.store.get(), d40, 'Kitchen').map((p) => [p.code, p.qty]), m.planOf(m.store.get(), d40, 'RTE').map((p) => [p.code, p.qty, p.endDate])], [[['2286', 80]], [['889', 5000, d38]]])
+  await m.pullAll()
+  eq('y se quedan mientras la app esté abierta', [m.planOf(m.store.get(), d40, 'Kitchen').length, m.planOf(m.store.get(), d40, 'RTE').length], [1, 1])
+}
+
 console.log('· Sin señal')
 const before = m.store.get().runs.length
 const other = dayOf(now - 30 * DAYMS)

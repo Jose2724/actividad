@@ -196,6 +196,8 @@ export const dayPull = (date: string): [Table, (q: Q) => Q][] => [
   ['act_changes', (q) => q.gte('at', iso(midnight(date))).lt('at', iso(nextMidnight(date)))],
   ['act_schedule', (q) => q.eq('date', date)],
   ['act_plan', (q) => q.eq('date', date)],
+  // a program of several days that takes this day in (Programa del día opened on an old day, the office 2026-11-05: "un historial de la programación")
+  ['act_plan', (q) => q.lt('date', date).gte('end_date', date)],
 ]
 
 /**

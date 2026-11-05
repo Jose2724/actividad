@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { planRoomNoteOf, CFG, dayAfter, dayBefore, DEPTS, fmtDur, lineNameOf, normCode, orderStatus, orderUnitWord, planRows, prevPending, reasonText, SETUP, shiftAt, shiftsOf, workOrderOf, type Dept, type PlanRow, type State } from './store'
 import { shortDay } from './App'
 import { woName } from './WorkOrders'
 import { woN } from './woSum'
-import { DeptBadge, type ReportAt } from './ReportView'
+import { bringDay, DeptBadge, type ReportAt } from './ReportView'
 import { DEPT_LOOK, deptVars } from './look'
 import { tr } from './i18n'
 
@@ -24,6 +24,16 @@ export function ProgramToday({ s, date: today, now, rooms, onReport }: { s: Stat
   // the day shown (2026-10-28, the office: "programar también para días más adelante"): today, or any other day
   const [picked, setPicked] = useState('')
   const date = picked || today, isToday = date === today
+  // a day older than the device keeps is brought from the server, with the day before (what it left pending), as the
+  // Reporte does (the office, 2026-11-05: "la programación del día a día ... ¿se puede tener acceso a un historial?")
+  const [coming, setComing] = useState<'' | 'wait' | 'fail'>(''), [tries, setTries] = useState(0)
+  useEffect(() => {
+    let current = true
+    const asked = [date, dayBefore(date)].map(bringDay).filter((p): p is Promise<boolean> => !!p)
+    setComing(asked.length ? 'wait' : '')
+    if (asked.length) void Promise.all(asked).then((ok) => { if (current) setComing(ok.every(Boolean) ? '' : 'fail') })
+    return () => { current = false }
+  }, [date, tries])
   // the rows change with the store; what each line is doing now is looked at every second (its stop's minutes)
   const base = useMemo(() => rooms.map((d) => ({ dept: d, rows: planRows(s, date, d), carried: prevPending(s, d, date) })), [s, date, rooms.join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
   const shiftNow = isToday ? shiftAt(shiftsOf(s, date), now) : 0
@@ -57,7 +67,9 @@ export function ProgramToday({ s, date: today, now, rooms, onReport }: { s: Stat
           {!isToday && <button type="button" className="btn sm soft" onClick={() => setPicked('')}>{tr('Hoy')}</button>}
         </div>
       </div>
-      {!shown.length ? <p className="hint">{isToday ? tr('Todavía no hay programa para hoy.') : tr('No hay programa para el {0}. Se pone desde la tarjeta del cuarto, en "Cambiar programa", eligiendo ese día.', shortDay(date))}</p> : (
+      {coming === 'wait' && <p className="hint">{tr('Trayendo ese día del servidor…')}</p>}
+      {coming === 'fail' && <p className="hint amber">{tr('No se pudo traer ese día del servidor (sin señal). Lo que sale es lo que tiene este aparato.')} <button type="button" className="btn sm soft" onClick={() => setTries(tries + 1)}>{tr('Probar otra vez')}</button></p>}
+      {coming === 'wait' ? null : !shown.length ? <p className="hint">{isToday ? tr('Todavía no hay programa para hoy.') : tr('No hay programa para el {0}. Se pone desde la tarjeta del cuarto, en "Cambiar programa", eligiendo ese día.', shortDay(date))}</p> : (
         <>
           <div className="pt-strip">
             {shown.map((c) => (

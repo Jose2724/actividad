@@ -653,13 +653,14 @@ calc.use((m) => {
   eq('primera vez: historial y programa de esos días', [ask('act_changes', first.act_changes), ask('act_schedule', first.act_schedule)], ['?select=*&at=gte.' + day('2026-09-27', -1), '?select=*&date=gte.2026-09-27'])
   eq('primera vez: el programa de cada cuarto, de esos días', ask('act_plan', first.act_plan), '?select=*&date=gte.2026-09-27')
   eq('primera vez: líneas, productos y metas, completos', [first.act_lines, first.act_products, first.act_targets].map((f) => f === undefined), [true, true, true])
-  eq('un día viejo: sus corridas, los paros de alrededor, su historial y su programa', Object.fromEntries(m.dayPull('2026-09-01').map(([t, narrow]) => [t, ask(t, narrow)])), {
+  eq('un día viejo: sus corridas, los paros de alrededor, su historial y su programa', Object.fromEntries(m.dayPull('2026-09-01').slice(0, 5).map(([t, narrow]) => [t, ask(t, narrow)])), {
     act_runs: '?select=*&date=eq.2026-09-01',
     act_stops: '?select=*&started_at=gte.' + day('2026-09-01', -1) + '&started_at=lt.' + day('2026-09-01', 2),
     act_changes: '?select=*&at=gte.' + day('2026-09-01') + '&at=lt.' + day('2026-09-01', 1),
     act_schedule: '?select=*&date=eq.2026-09-01',
     act_plan: '?select=*&date=eq.2026-09-01',
   })
+  eq('un día viejo: también el programa de varios días que lo toma', ask('act_plan', m.dayPull('2026-09-01').filter(([t]) => t === 'act_plan')[1][1]), '?select=*&date=lt.2026-09-01&end_date=gte.2026-09-01')
 })
 
 // =====================================================================================================================

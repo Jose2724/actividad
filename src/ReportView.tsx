@@ -1901,6 +1901,8 @@ function WeightPaperDialog({ s, date, onClose }: { s: State; date: string; onClo
 /** the days on their way from the server: a date asked twice waits for the same answer (awayDay is false while it comes) */
 const miniComing = new Map<string, Promise<boolean>>()
 const miniBring = (d: string) => { const asked = miniComing.get(d); if (asked || !awayDay(d)) return asked; const p = loadDay(d).finally(() => miniComing.delete(d)); miniComing.set(d, p); return p }
+/** an older day brought from the server for another tab (the Programa del día, 2026-11-05); undefined = it is on the device */
+export const bringDay = miniBring
 
 /** Santiago's week: the tables of src/miniKpi.ts, of the week the report's date falls in; what they count is chosen in Ajustes › Mini KPI. The Excel adds a summary against the last weeks, which a device may not hold: they are brought when the tab opens */
 function MiniKpiView({ k }: { k: Kit }) {
