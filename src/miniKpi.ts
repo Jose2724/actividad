@@ -1,4 +1,4 @@
-import { ASK_MANAGER, CFG, DEPTS, LUNCH, SETUP, attendanceOf, attOf, awayDay, consumesOf, dayOf, fmtDur, fmtTime, isMechanical, kpiGet, kpiPut, lineGoalKey, lineNameOf, lineShiftGoalOf, mechanicOf, measureOf, plainDay, shiftAt, shiftGoalOf, shiftsOf, slowCounts, slowUnitOf, wallAt, wallOfDay, type Dept, type State } from './store'
+import { ASK_MANAGER, CFG, DEPTS, LUNCH, SETUP, attendanceOf, attOf, attCounts, awayDay, consumesOf, dayOf, fmtDur, fmtTime, isMechanical, kpiGet, kpiPut, lineGoalKey, lineNameOf, lineShiftGoalOf, mechanicOf, measureOf, plainDay, shiftAt, shiftGoalOf, shiftsOf, slowCounts, slowUnitOf, wallAt, wallOfDay, type Dept, type State } from './store'
 import { reasonCodeOf } from './reasons'
 import { reportOf } from './report'
 import { weightsOf, wtBoard, wtRangeLong, wtRowsOfShift, type WtAvg, type WtRow } from './kpi'
@@ -100,7 +100,7 @@ function roomDay(s: State, date: string, dept: Dept, k: 1 | 2, o: MiniOpts, now:
   const [h0, h1] = k === 1 ? [plan.first, plan.firstEnd] : [plan.second, plan.secondEnd]
   const sh0 = plan.only ? begin : shiftWall(h0), sh1 = Math.max(sh0, shiftWall(h1, true))
   const until = Math.min(now, sh1), span = until - sh0
-  const written = attOf(s, date, dept, k)
+  const written = attOf(s, date, dept, k).filter(attCounts) // (not the ones sent here and not accepted, Santiago 2026-11-05)
   const present = written.reduce((t, x) => { const a = Math.max(sh0, x.came ?? (x.from || x.via ? x.at : sh0)), b = Math.min(until, x.gone ? x.gone.at : until); return t + Math.max(0, b - a) }, 0)
   const avg = span > 0 ? Math.round((present / span) * 10) / 10 : written.length
   return { end: rows.length ? Math.max(...rows.map((x) => x.to)) : null, att: { expected: att?.expected ?? 0, actual: written.length, avg }, wt: null, start, real, target, apart, time, down, mech: ms.mech, people: ms.people, clean: ms.clean, other: ms.other, lunch: ms.lunch, worked: rows.reduce((t, x) => t + x.st.working, 0), setup, in: consumed, out: rows.length ? out : null, waste: rows.reduce((t, x) => t + (x.waste ?? 0), 0) }

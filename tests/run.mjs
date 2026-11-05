@@ -5067,7 +5067,7 @@ section('Asistencia: cada supervisor anota a su gente, saca a quien se va, y el 
     eq('y el % de asistencia es lo que vino sobre lo esperado (2 de 5 = 40%; sin esperados, 0)', [m.attendanceOf(st(), D, 1, ['Kitchen']).rows[0].att, m.attendanceOf(st(), D, 1, ['MFO']).rows[0].att], [0.4, 0])
     eq('los esperados no son la meta de nadie', [st().targets, st().turnGoals, st().lineTargets], [[], [], []])
     const tot = m.attendanceOf(st(), D, 1).total
-    eq('el total de la planta en el turno 1: lo de cada cuarto sumado (María cuenta en RTE)', [tot.expected, tot.actual, tot.gone], [5 + 18 + 11 + 10 + 21, 3, 1])
+    eq('el total de la planta en el turno 1: lo de cada cuarto sumado (María no cuenta en RTE mientras RTE no la acepte, Santiago 2026-11-05)', [tot.expected, tot.actual, tot.gone], [5 + 18 + 11 + 10 + 21, 2, 1])
     // what another tablet writes arrives; an older version does not change it
     m.applyRemote('act_changes', { id: 'att:R1', at: iso(T0 + 70 * M), by_name: 'Edgar', dept: 'Packing', what: 'Asistencia', before: '', after: JSON.stringify({ date: D, shift: 2, name: 'Luis', gone: null, from: '' }), ref_table: 'act_attendance', ref_key: 'R1', deleted: false, updated_at: iso(T0 + 70 * M), updated_by: 'Edgar' })
     m.applyRemote('act_targets', { dept: 'opt:att:Packing:2', per_hour: 19, per_shift: null, updated_at: iso(T0 + 70 * M), updated_by: 'Edgar' })
@@ -6512,11 +6512,12 @@ section('Trasladar personal a otra línea o a otro cuarto, y los nombres en el E
     clock = T0 + 60 * M
     m.attRemove(beto, 'otro', 'Packing', false, L('Packing', 'Línea 2'))
     const pk = m.attOf(st(), D, 'Packing', 1)
-    eq('Beto pasa a Packing Línea 2: sale de RTE y aparece solo en Packing, en esa línea, diciendo de dónde viene (nadie en Packing tuvo que anotarlo)', [m.attendanceOf(st(), D, 1, ['RTE']).rows[0].actual, pk.map((x) => [x.name, x.from, m.attLineText(st(), x.line), !!x.via]), m.attendanceOf(st(), D, 1, ['Packing']).rows[0].actual], [1, [['Beto', 'RTE', 'Línea 2', true]], 1])
+    eq('Beto pasa a Packing Línea 2: sale de RTE y aparece solo en Packing, en esa línea, diciendo de dónde viene (nadie en Packing tuvo que anotarlo); mientras Packing no lo acepte no cuenta allá (Santiago, 2026-11-05)', [m.attendanceOf(st(), D, 1, ['RTE']).rows[0].actual, pk.map((x) => [x.name, x.from, m.attLineText(st(), x.line), !!x.via]), m.attendanceOf(st(), D, 1, ['Packing']).rows[0].actual], [1, [['Beto', 'RTE', 'Línea 2', true]], 0])
+    eq('sin aceptar: el reporte lo dice y no tiene horas en Packing', [m.attStateText(st(), pk[0]), m.hoursOf(st(), pk[0], T0 + 120 * M), m.attendanceOf(st(), D, 1).total.actual], ['sin aceptar · no cuenta', 0, 1])
     eq('lo que aparece en Packing no se guarda dos veces: es el registro de RTE', st().attendance.filter((x) => x.name === 'Beto').length, 1)
     clock = T0 + 61 * M
     const viaId = pk.find((x) => x.name === 'Beto').id
-    eq('Packing lo acepta en su Línea 1 (2026-10-28): ya es registro de Packing, en esa línea, y sigue contando una vez', [m.attAccept(viaId, L('Packing', 'Línea 1')), m.attOf(st(), D, 'Packing', 1).map((x) => [x.name, m.attLineText(st(), x.line), !!x.via]), st().attendance.filter((x) => x.name === 'Beto').length, m.attendanceOf(st(), D, 1, ['Packing']).rows[0].actual], [true, [['Beto', 'Línea 1', false]], 2, 1])
+    eq('Packing lo acepta en su Línea 1 (2026-10-28): ya es registro de Packing, en esa línea, y ahora sí cuenta, una vez', [m.attAccept(viaId, L('Packing', 'Línea 1')), m.attOf(st(), D, 'Packing', 1).map((x) => [x.name, m.attLineText(st(), x.line), !!x.via]), st().attendance.filter((x) => x.name === 'Beto').length, m.attendanceOf(st(), D, 1, ['Packing']).rows[0].actual], [true, [['Beto', 'Línea 1', false]], 2, 1])
     eq('aceptarlo otra vez no hace nada raro', [m.attAccept(viaId, ''), m.attOf(st(), D, 'Packing', 1).length], [true, 1])
     eq('el total de la planta no cambia por trasladar', m.attendanceOf(st(), D, 1).total.actual, 2)
     // Packing's supervisor acts on him: he is written in Packing first (with the hour he came), then moved

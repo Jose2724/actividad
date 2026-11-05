@@ -151,7 +151,7 @@ const items = (): Item[] => [
 
   { id: 'asistencia', group: 'gente', title: tr('Asistencia'),
     means: tr('Cuánta gente vino contra la que se esperaba.'),
-    math: tr('Esperados = lo escrito en Ajustes › Asistencia, por turno. Vinieron = los anotados que siguen ahí (quien se fue no cuenta aquí). % Asistencia = vinieron ÷ esperados. Faltan = esperados − vinieron. % Falta = faltan ÷ esperados. La barra sale roja desde 25%.'),
+    math: tr('Esperados = lo escrito en Ajustes › Asistencia, por turno. Vinieron = los anotados que siguen ahí (quien se fue no cuenta aquí; quien mandaron de otro cuarto cuenta solo cuando el cuarto lo acepta). % Asistencia = vinieron ÷ esperados. Faltan = esperados − vinieron. % Falta = faltan ÷ esperados. La barra sale roja desde 25%.'),
     eg: tr('20 esperados y 16 vinieron: 80% de asistencia, faltan 4, 20% de falta.') },
 
   { id: 'kpi-horas', group: 'kpi', title: tr('Horas-persona'),

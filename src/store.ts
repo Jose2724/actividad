@@ -1083,6 +1083,13 @@ export function attOf(s: State, date: string, dept: Dept, shift: 1 | 2): AttEntr
     .map((x): AttEntry => ({ ...x, id: ATT_VIA + x.id, dept, line: x.gone?.line ?? '', moves: [], from: x.dept, by: x.gone?.by ?? x.by, at: x.gone?.at ?? x.at, gone: null, via: x.id }))
   return [...mine, ...came].sort((a, b) => a.at - b.at)
 }
+/**
+ * Does a person count in the room's attendance? Not while another room sent them and this room has not accepted them
+ * (Santiago, 2026-11-05: "si no se acepta que no salga en el conteo ... mandaron dos personas a la cocina y el supervisor
+ * nunca estuvo con esas dos personas y eso le afectó la producción"). They are shown, to be accepted, and count once
+ * accepted, from the hour they were sent. The room that sent them stops counting them at that hour all the same
+ */
+export const attCounts = (x: AttEntry) => !x.via
 /** a person shown here from another room's record is written here first (with the hour they came), to act on them */
 function attHere(id: string): AttEntry | null {
   if (!id.startsWith(ATT_VIA)) return (state.attendance ?? []).find((y) => y.id === id) ?? null
@@ -1176,8 +1183,8 @@ export function attMoveLine(id: string, line: string): boolean {
 }
 /**
  * A person who came from another room is taken in here (Jose, 2026-10-28: "a Packing le debe salir ese aceptar y lo
- * pone en una línea o sin línea"): written as this room's record, on the line chosen (none = ''). They already counted
- * here from the moment the other room sent them; accepting places them and takes the "llegó" notice away
+ * pone en una línea o sin línea"): written as this room's record, on the line chosen (none = ''). They count here only
+ * once accepted (Santiago, 2026-11-05; see attCounts), from the moment the other room sent them
  */
 export function attAccept(id: string, line = ''): boolean {
   let ok = false
@@ -1220,7 +1227,7 @@ export function attMovesText(s: State, x: AttEntry) {
   return out.join(' · ')
 }
 /** what a person is doing, as said in the report and its files */
-export const attStateText = (s: State, x: AttEntry) => (!x.gone ? tr('trabajando') : x.gone.why === 'casa' ? tr('se fue a su casa') : tr('pasó a {0}', (x.gone.to || tr('otro cuarto')) + (x.gone.line ? ' · ' + attLineText(s, x.gone.line) : '')))
+export const attStateText = (s: State, x: AttEntry) => (x.via && !x.gone ? tr('sin aceptar · no cuenta') : !x.gone ? tr('trabajando') : x.gone.why === 'casa' ? tr('se fue a su casa') : tr('pasó a {0}', (x.gone.to || tr('otro cuarto')) + (x.gone.line ? ' · ' + attLineText(s, x.gone.line) : '')))
 // ---- the Daily KPI Report (2026-10-22: the COO's "New Expectations - Daily KPI Reporting", for Jose and Edgar) ----
 /**
  * What the report keeps that is not production: who may see it (key 'access': names), the Costco MVM plan loaded from
@@ -2093,7 +2100,7 @@ export function attendanceOf(s: State, date: string, shift: 0 | 1 | 2, rooms: De
   const shifts = shift ? [shift] : attShifts(s, date)
   const rows = rooms.map((dept) => {
     let expected = 0, actual = 0, gone = 0
-    for (const k of shifts) { expected += attExpectedOf(s, dept, k); const l = attOf(s, date, dept, k); actual += l.filter((x) => !x.gone).length; gone += l.filter((x) => !!x.gone).length }
+    for (const k of shifts) { expected += attExpectedOf(s, dept, k); const l = attOf(s, date, dept, k).filter(attCounts); actual += l.filter((x) => !x.gone).length; gone += l.filter((x) => !!x.gone).length }
     const miss = Math.max(0, expected - actual)
     return { dept, expected, actual, miss, pct: expected ? miss / expected : 0, att: expected ? actual / expected : 0, over: Math.max(0, actual - expected), gone }
   })
@@ -2298,7 +2305,7 @@ export function attGated(s: State, dept: Dept, date: string, shift: 1 | 2): bool
   if (!s.attGate.on || !s.attView.on || role.get() !== 'op' || !!viewOnly.get()) return false
   // the supervisor written as such, and at least one worker (Jose, 2026-10-28: "el supervisor se tiene que apuntar
   // pero él no cuenta para empezar, aunque sí cuenta para el attendance"); how many are needed is never said
-  const here = attOf(s, date, dept, shift).filter((x) => !x.gone)
+  const here = attOf(s, date, dept, shift).filter((x) => !x.gone && attCounts(x))
   return !here.some((x) => x.sup) || !here.some((x) => !x.sup)
 }
 /** the reason of the stop the app writes by itself when a line finishes a code and another one is coming */

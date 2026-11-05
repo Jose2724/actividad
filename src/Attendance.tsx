@@ -155,7 +155,7 @@ export function AttendanceDialog({ s, dept, date, shift: inCourse, edit, note = 
         {/* people another room sent here, not yet taken in (2026-10-28): the room accepts them on a line or none */}
         {edit && here.filter((x) => !!x.via).map((x) => (
           <div key={x.id} className="att-out att-arrival">
-            <span>{tr('👋 Llegó de {0}: {1}', x.from, x.name)}{x.line ? ' · ' + tr('lo mandaron a {0}', attLineText(s, x.line)) : ''}</span>
+            <span>{tr('👋 Llegó de {0}: {1}', x.from, x.name)}{x.line ? ' · ' + tr('lo mandaron a {0}', attLineText(s, x.line)) : ''}<small className="att-pending"> · {tr('No cuenta en este cuarto hasta que lo aceptes.')}</small></span>
             <div className="att-row2">
               {lines.map((l) => <button key={l.id} type="button" className="btn sm soft" onClick={() => { attAccept(x.id, l.id); setSaid(tr('{0} aceptado en {1}.', x.name, attLineText(s, l.id))) }}>{tr('Aceptar en {0}', attLineText(s, l.id))}</button>)}
               <button type="button" className="btn sm soft" onClick={() => { attAccept(x.id, ''); setSaid(tr('{0} aceptado, sin línea.', x.name)) }}>{tr('Aceptar sin línea')}</button>
@@ -168,7 +168,7 @@ export function AttendanceDialog({ s, dept, date, shift: inCourse, edit, note = 
             <ol className="att-list">
               {g.people.map((x) => (
                 <li key={x.id}>
-                  <span className="att-name">{x.name}{x.sup && <small className="att-sup"> {tr('supervisor')}</small>}{x.temp && <small className="att-temp"> {tr('temporal')}</small>}{x.from && <small> · {tr('viene de {0}', x.from)}</small>}{x.moves.length > 0 && <small> · {tr('antes en {0}', attLineText(s, x.moves[x.moves.length - 1].from) || tr('sin línea'))}</small>}</span>
+                  <span className="att-name">{x.name}{x.sup && <small className="att-sup"> {tr('supervisor')}</small>}{x.temp && <small className="att-temp"> {tr('temporal')}</small>}{x.from && <small> · {tr('viene de {0}', x.from)}</small>}{x.via && <small className="att-pending"> · {tr('sin aceptar · no cuenta')}</small>}{x.moves.length > 0 && <small> · {tr('antes en {0}', attLineText(s, x.moves[x.moves.length - 1].from) || tr('sin línea'))}</small>}</span>
                   <small className="att-at">{fmtTime(x.at)}</small>
                   {labor && x.came && <small className="att-came">{tr('llegó {0}', fmtTime(x.came))}</small>}
                   {edit && out?.id !== x.id && <>

@@ -1,4 +1,4 @@
-import { wallAt, WT_ASKED_CODES, wtOfficial, wtStretchesOf, wtWorked, wtPicksCode, wtRange, attExpectedOf, attOf, attSentAt, attShifts, attWriteOn, CFG, cookText, dayBefore, DEPTS, deptToday, entryClass, fmtTime, kpiGet, lbCaseOn, lbPerCaseOf, lunchOf, normCode, sameStep, shiftAt, shiftsOf, stepKey, stepText, weighedCodes, weighsCode, weightAllStepsOf, weightRuleFor, weightStepsFor, weightTarget, wtRangeText, type Cook, type WeightTest, type WtStep, type AttEntry, type Dept, type State } from './store'
+import { wallAt, WT_ASKED_CODES, wtOfficial, wtStretchesOf, wtWorked, wtPicksCode, wtRange, attExpectedOf, attOf, attCounts, attSentAt, attShifts, attWriteOn, CFG, cookText, dayBefore, DEPTS, deptToday, entryClass, fmtTime, kpiGet, lbCaseOn, lbPerCaseOf, lunchOf, normCode, sameStep, shiftAt, shiftsOf, stepKey, stepText, weighedCodes, weighsCode, weightAllStepsOf, weightRuleFor, weightStepsFor, weightTarget, wtRangeText, type Cook, type WeightTest, type WtStep, type AttEntry, type Dept, type State } from './store'
 import { reportOf } from './report'
 import { colName, X, xDay, xN, xT, type Cell, type Sheet } from './xlsx'
 import { locale, tr } from './i18n'
@@ -133,6 +133,7 @@ export function workSpan(s: State, date: string, dept: Dept, k: 1 | 2) {
  * from whoever stayed long enough for it (Ajustes: lunchOf)
  */
 export function hoursOf(s: State, x: AttEntry, now: number) {
+  if (!attCounts(x)) return 0 // sent here and not accepted yet: no hours here (Santiago, 2026-11-05)
   const w = workSpan(s, x.date, x.dept, x.shift)
   // sent from another room: from then (written here by hand too); the hour they came, or when written when that switch is on
   const from = Math.max(w.from, x.via || x.from ? x.at : attSentAt(s, x), x.came ?? (attWriteOn(s) ? x.at : 0))
@@ -156,7 +157,7 @@ export function hourOnShift(s: State, x: AttEntry, hm: string): number | null {
 export function laborOf(s: State, date: string, now: number) {
   const rep = reportOf(s, date, now)
   const rows = DEPTS.map((dept: Dept) => {
-    const shifts = attShifts(s, date), people = shifts.flatMap((k) => attOf(s, date, dept, k))
+    const shifts = attShifts(s, date), people = shifts.flatMap((k) => attOf(s, date, dept, k)).filter(attCounts)
     const scheduled = shifts.reduce((t, k) => t + attExpectedOf(s, dept, k), 0)
     // who came: everyone written here, but one sent to another room counts there (their hours here still count here)
     const showed = people.filter((x) => x.gone?.why !== 'otro').length
