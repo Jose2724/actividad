@@ -6365,6 +6365,38 @@ section('Asistencia obligatoria para empezar (Jose, 2026-10-27: los supervisores
   const back = await device('att-gate-again', { seed: JSON.parse(disks.get('att-gate').get('act_v1')), user: 'Sup' })
   eq('al volver a abrir sigue prendida, y el supervisor sigue marcado', back.use((m) => [m.store.get().attGate.on, m.attSupOf(m.store.get(), DAY, 'Kitchen', 1)?.name]), [true, 'Sup'])
 }
+section('Consumo cada pocas mezclas (la oficina, 2026-11-05: "que el peso no sea por cada 2 bolas sino por 10 bolas")')
+{
+  const ce = await device('consumo-cada', { user: 'Oficina' })
+  ce.use((m) => {
+    const st = () => m.store.get()
+    clock = T0
+    m.setConsumeOn('Kitchen', true)
+    clock = T0 + M
+    m.setConsumeEvery('Kitchen', 5)
+    eq('cada 5 mezclas en Kitchen, y sube en el mismo ajuste del cuarto', [m.consumeEvery(st(), 'Kitchen'), m.consumeEvery(st(), 'Spiral'), m.outbox.items().find((i) => i.key === 'opt:consumo:Kitchen').row.per_shift], [5, 1, 5])
+    m.addLine('Kitchen', 'Línea 1')
+    const line = st().lines.find((l) => l.dept === 'Kitchen')
+    clock = T0 + 2 * M
+    m.startRun(line, '2286', '6300', DAY, null)
+    const run = () => st().runs.find((r) => r.lineId === line.id && !r.endedAt)
+    for (let i = 1; i <= 4; i++) { clock = T0 + (2 + i * 10) * M; m.unitDone(run().id, null) }
+    eq('4 mezclas sin pesar: la quinta pide las libras de las 5', m.mixUnweighed(st(), run()), 4)
+    clock = T0 + 60 * M; m.unitDone(run().id, null); clock += 1000; m.consumeMezcla(run(), 300)
+    eq('pesadas las 5 juntas, vuelve a cero', [m.mixUnweighed(st(), run()), m.consumesOfRun(st(), run().id).map((x) => x.lb)], [0, [300]])
+    for (let i = 1; i <= 2; i++) { clock = T0 + (60 + i * 10) * M; m.unitDone(run().id, null) }
+    const id = run().id
+    clock = T0 + 90 * M; m.endRun(id)
+    eq('el código terminó con 2 sin pesar: se piden antes de seguir', ((x) => x && [x.run.id, x.n])(m.mixOwed(st(), line.id, clock)), [id, 2])
+    m.consumeMezcla(st().runs.find((r) => r.id === id), 118)
+    eq('pesadas, ya no se piden', m.mixOwed(st(), line.id, clock), null)
+    m.setConsumeEvery('Kitchen', 1)
+    eq('cada mezcla otra vez: nada pendiente', [m.consumeEvery(st(), 'Kitchen'), m.mixOwed(st(), line.id, clock)], [1, null])
+    m.setConsumeEvery('Kitchen', 5)
+  })
+  const back = await device('consumo-cada-again', { seed: JSON.parse(disks.get('consumo-cada').get('act_v1')), user: 'Oficina' })
+  eq('al volver a abrir sigue cada 5 mezclas', back.use((m) => m.consumeEvery(m.store.get(), 'Kitchen')), 5)
+}
 section('Consumo: lo que un cuarto pesa antes de empezar un código, lo que quedó al terminarlo, y su inventario (la oficina, 2026-10-27)')
 {
   const cs = await device('consumo', { user: 'Oficina' })

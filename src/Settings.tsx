@@ -6,7 +6,7 @@ import { DEPT_LOOK, deptVars } from './look'
 import { Devices } from './DevicesView'
 import { supabase } from './supabase'
 import { syncStore } from './sync'
-import { consumeOn, rosterOf, rosterOn, rosterParse, rosterRoom, setConsumeOn, setRoster, setRosterOn, type RosterPerson } from './store'
+import { consumeEvery, consumeOn, setConsumeEvery, rosterOf, rosterOn, rosterParse, rosterRoom, setConsumeOn, setRoster, setRosterOn, type RosterPerson } from './store'
 import { cartCratesOf, setAllCartCrates, setCartCrates, orderCodesList, setOrderCodes, type OrderCode } from './store'
 import { miniOpts, setMiniOpts, type MiniOpts } from './miniKpi'
 import { attWriteOn, kpiPut, LUNCH_MIN, lunchOf, setAttWriteOn, setLunch, setStopRules } from './store'
@@ -718,10 +718,26 @@ function ConsumeSettings({ s, viewOnly }: { s: State; viewOnly: boolean }) {
   return (
     <div className="setcard">
       <div className="sethead"><h3>{tr('Consumo')}</h3></div>
-      <p className="hint">{tr('Donde está prendido, al tocar Mezcla lista sale un cuadro para anotar cuántas libras lleva esa mezcla; al aceptar, se agrega la mezcla. Es para las mezclas que se cuentan una por una (Kitchen y Spiral). Sale en el Reporte, en el Excel y en el Mini KPI.')}</p>
-      {DEPTS.map((d) => { const on = consumeOn(s, d); return (
-        <div key={d} className="wt-rule"><b>{d}</b><span className={on ? 'ok' : 'muted'}>{on ? tr('se pesa cada mezcla') : tr('apagado')}</span>{!viewOnly && <button type="button" className={'btn sm' + (on ? '' : ' primary')} onClick={() => setConsumeOn(d, !on)}>{on ? tr('Apagar') : tr('Prender')}</button>}</div>
-      ) })}
+      <p className="hint">{tr('Donde está prendido, al tocar Mezcla lista sale un cuadro para anotar cuántas libras lleva; al aceptar, se agrega la mezcla. Con "cada 5 mezclas", las primeras 4 se agregan sin preguntar y la quinta pide las libras de las 5 juntas (si cada mezcla lleva 2 bolas, son 10 bolas). Si el código termina antes, se piden las libras de las que quedaron sin pesar. Es para las mezclas que se cuentan una por una (Kitchen y Spiral). Sale en el Reporte, en el Excel y en el Mini KPI.')}</p>
+      {DEPTS.map((d) => <ConsumeRoom key={d} s={s} dept={d} viewOnly={viewOnly} />)}
+    </div>
+  )
+}
+function ConsumeRoom({ s, dept, viewOnly }: { s: State; dept: Dept; viewOnly: boolean }) {
+  const on = consumeOn(s, dept), every = consumeEvery(s, dept)
+  const [typed, setTyped] = useState(String(every))
+  const n = Math.min(50, Math.max(1, Number(typed) || 1))
+  return (
+    <div className="wt-rule cons-rule">
+      <b>{dept}</b>
+      <span className={on ? 'ok' : 'muted'}>{!on ? tr('apagado') : every > 1 ? tr('se pesa cada {0} mezclas', every) : tr('se pesa cada mezcla')}</span>
+      {!viewOnly && <button type="button" className={'btn sm' + (on ? '' : ' primary')} onClick={() => setConsumeOn(dept, !on)}>{on ? tr('Apagar') : tr('Prender')}</button>}
+      {on && (
+        <form className="cons-every" onSubmit={(e) => { e.preventDefault(); setConsumeEvery(dept, n); setTyped(String(n)) }}>
+          <label>{tr('Pedir el peso cada')} <input inputMode="numeric" value={typed} disabled={viewOnly} onChange={(e) => setTyped(e.target.value.replace(/\D/g, '').slice(0, 2))} /> {tr('mezclas')}</label>
+          {!viewOnly && <button type="submit" className="btn sm primary" disabled={n === every}>{tr('Guardar')}</button>}
+        </form>
+      )}
     </div>
   )
 }

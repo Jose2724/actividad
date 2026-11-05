@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { consumeAdd, consumeDelete, consumeLeft, consumesOfRun, fmtTime, inventoryOf, lineLabel, type ConsumeEntry, type Dept, type Run, type State } from './store'
+import { consumeAdd, consumeDelete, consumeLeft, consumeMezcla, consumesOfRun, fmtTime, inventoryOf, lineLabel, mixOwed, type ConsumeEntry, type Dept, type Run, type State } from './store'
 import { tr } from './i18n'
 
 /**
@@ -120,6 +120,28 @@ export function ConsumeEndDialog({ entries }: { entries: ConsumeEntry[] }) {
             {bad === x.id && <p className="hint red">{tr('Escribe las libras que quedaron, menos de {0}', lbText(x.lb))}</p>}
           </li>
         ))}</ul>
+      </div>
+    </div>
+  )
+}
+/**
+ * A code ended with mezclas not weighed yet (the room weighs every few, 2026-11-05): their pounds are asked before
+ * the line goes on, so every mezcla of the code is weighed
+ */
+export function MixOwedDialog({ s, lineId, now }: { s: State; lineId: string; now: number }) {
+  const owed = mixOwed(s, lineId, now)
+  const [lb, setLb] = useState('')
+  if (!owed) return null
+  const n = Number(lb.replace(',', '.'))
+  return (
+    <div className="veil rc-veil">
+      <div className="dlg cons-dlg">
+        <h3>{tr('⚖ Faltan por pesar')}</h3>
+        <p className="hint">{owed.n === 1 ? tr('El código {0} terminó con 1 mezcla sin pesar. ¿Cuántas libras llevó?', owed.run.code) : tr('El código {0} terminó con {1} mezclas sin pesar. ¿Cuántas libras llevaron entre todas?', owed.run.code, owed.n)}</p>
+        <form className="qform" onSubmit={(e) => { e.preventDefault(); if (n > 0 && n < 100000) { consumeMezcla(owed.run, Math.round(n * 100) / 100); setLb('') } }}>
+          <label>{tr('Libras')} <input autoFocus inputMode="decimal" value={lb} placeholder="lb" onChange={(e) => setLb(e.target.value.replace(/[^\d.,]/g, ''))} /></label>
+          <div className="dbtns"><button type="submit" className="btn primary" disabled={!(n > 0)}>{tr('✓ Guardar')}</button></div>
+        </form>
       </div>
     </div>
   )

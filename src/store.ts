@@ -667,7 +667,7 @@ function load(): State {
         meats: (s.meats ?? []).map(meatFrom).filter((x): x is MeatEntry => !!x),
         holds: (s.holds ?? []).map(holdFrom).filter((x): x is HoldRec => !!x),
         consumes: (s.consumes ?? []).map(consumeFrom).filter((x): x is ConsumeEntry => !!x),
-        consumeOpts: (s.consumeOpts ?? []).filter((x) => !!x && DEPTS.includes(x.dept as Dept)).map((x) => ({ dept: x.dept as Dept, on: x.on === true, updatedAt: Number(x.updatedAt) || 0 })),
+        consumeOpts: (s.consumeOpts ?? []).filter((x) => !!x && DEPTS.includes(x.dept as Dept)).map((x) => ({ dept: x.dept as Dept, on: x.on === true, every: Math.min(50, Math.max(1, Math.round(Number(x.every) || 1))), updatedAt: Number(x.updatedAt) || 0 })),
         weightRules: (s.weightRules ?? []).filter((x) => !!x && DEPTS.includes(x.dept as Dept) && Number(x.every) >= 0 && Number(x.count) >= 0).map((x) => ({ dept: x.dept as Dept, every: Math.round(Number(x.every)), count: Math.round(Number(x.count)), updatedAt: Number(x.updatedAt) || 0 })),
         // the slow-line signal (2026-10-28): the room's minimum per hour, and the lines it is turned off for
         slowRules: (s.slowRules ?? []).filter((x) => !!x && DEPTS.includes(x.dept as Dept) && Number(x.perHour) >= 0).map((x) => ({ dept: x.dept as Dept, perHour: Math.round(Number(x.perHour)), updatedAt: Number(x.updatedAt) || 0 })),
@@ -1482,7 +1482,8 @@ export function meatDelete(id: string) {
  * never erases.
  */
 export type ConsumeEntry = { id: string; date: string; dept: Dept; lineId: string; line: string; code: string; lot: string; runId: string; product: string; prodLot: string; labelDate: string; lb: number; left: number | null; fromId: string; at: number; by: string; deleted?: boolean; updatedAt: number; syncedAt?: number }
-export type ConsumeOpt = { dept: Dept; on: boolean; updatedAt: number }
+/** every: how many mezclas one weighing covers (the office, 2026-11-05: "que el peso no sea por cada 2 bolas sino por 10 bolas"); 1 = each mezcla */
+export type ConsumeOpt = { dept: Dept; on: boolean; every: number; updatedAt: number }
 const CONS_ID = 'consumo:'
 export const CONS_REF = 'act_consumo'
 const CONS_KEY = 'opt:consumo:'
@@ -1565,10 +1566,41 @@ export const consumeOn = (s: State, dept: Dept) => !!(s.consumeOpts ?? []).find(
 export function setConsumeOn(dept: Dept, on: boolean) {
   const was = (state.consumeOpts ?? []).find((x) => x.dept === dept)
   if (!!was?.on === on) return
-  const x: ConsumeOpt = { dept, on, updatedAt: stamp(was) }
-  set({ ...state, consumeOpts: [...(state.consumeOpts ?? []).filter((y) => y !== was), x] })
-  push('act_targets', CONS_KEY + dept, { dept: CONS_KEY + dept, per_hour: on ? 1 : 0, per_shift: null, updated_at: iso(x.updatedAt), updated_by: user.get() })
+  putConsumeOpt(was, { dept, on, every: was?.every ?? 1, updatedAt: stamp(was) })
   logChange(dept, 'Consumo · ' + dept, was?.on ? 'obligatorio' : 'apagado', on ? 'obligatorio' : 'apagado', 'act_targets', CONS_KEY + dept)
+}
+/** how many mezclas one weighing covers in a room (1 = each one) */
+export const consumeEvery = (s: State, dept: Dept) => (s.consumeOpts ?? []).find((x) => x.dept === dept)?.every ?? 1
+export function setConsumeEvery(dept: Dept, every: number) {
+  const n = Math.min(50, Math.max(1, Math.round(every) || 1))
+  const was = (state.consumeOpts ?? []).find((x) => x.dept === dept)
+  if ((was?.every ?? 1) === n) return
+  putConsumeOpt(was, { dept, on: !!was?.on, every: n, updatedAt: stamp(was) })
+  logChange(dept, 'Consumo · ' + dept, 'cada ' + (was?.every ?? 1) + ' mezclas', 'cada ' + n + ' mezclas', 'act_targets', CONS_KEY + dept + ':every')
+}
+function putConsumeOpt(was: ConsumeOpt | undefined, x: ConsumeOpt) {
+  set({ ...state, consumeOpts: [...(state.consumeOpts ?? []).filter((y) => y !== was), x] })
+  push('act_targets', CONS_KEY + x.dept, { dept: CONS_KEY + x.dept, per_hour: x.on ? 1 : 0, per_shift: x.every > 1 ? x.every : null, updated_at: iso(x.updatedAt), updated_by: user.get() })
+}
+/**
+ * The mezclas of a code not weighed yet (2026-11-05): those made after its last weighing, or after the room's rule
+ * last changed. A weighing covers them all
+ */
+export function mixUnweighed(s: State, r: Run): number {
+  const opt = (s.consumeOpts ?? []).find((x) => x.dept === r.dept)
+  if (!opt?.on) return 0
+  const since = Math.max(opt.updatedAt, ...consumesOfRun(s, r.id).map((x) => x.at))
+  return countedUnits(r.units).filter((u) => u.at > since).length
+}
+/**
+ * A code that ended with mezclas not weighed (the room weighs every few): the line's last ended code of the last 12
+ * hours, asked before going on. null when there is none
+ */
+export function mixOwed(s: State, lineId: string, now: number): { run: Run; n: number } | null {
+  const r = s.runs.filter((x) => !x.deleted && x.lineId === lineId && x.endedAt).sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0))[0]
+  if (!r || consumeEvery(s, r.dept) <= 1 || now - (r.endedAt ?? 0) > 12 * 3_600_000) return null
+  const n = mixUnweighed(s, r)
+  return n > 0 ? { run: r, n } : null
 }
 
 // ---- units on hold (2026-10-23: "que se pueda poner en hold registros y tener la opción de omitir el conteo") ----
@@ -5487,7 +5519,7 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
     if (!DEPTS.includes(dept)) return
     const cur = (state.consumeOpts ?? []).find((x) => x.dept === dept)
     if (!newer(cur)) return
-    set({ ...state, consumeOpts: [...(state.consumeOpts ?? []).filter((x) => x !== cur), { dept, on: Number(row.per_hour) === 1, updatedAt: at }] })
+    set({ ...state, consumeOpts: [...(state.consumeOpts ?? []).filter((x) => x !== cur), { dept, on: Number(row.per_hour) === 1, every: Math.min(50, Math.max(1, Math.round(Number(row.per_shift)) || 1)), updatedAt: at }] })
   } else if (table === 'act_changes' && row.ref_table === MEAT_REF && String(row.id ?? '').startsWith(MEAT_ID)) {
     // Spiral's meat (2026-10-23): kept apart from the history
     const id = String(row.id).slice(MEAT_ID.length), cur = (state.meats ?? []).find((x) => x.id === id)

@@ -28,8 +28,8 @@ import { KpiView } from './KpiView'
 import { WeightButton, WeightGate, WeightNoteButton, WeightReminder, weighsBalls } from './Weights'
 import { WhatIs } from './Numbers'
 import { MeatButton } from './Meat'
-import { ConsumeButton, ConsumeEndDialog, ConsumeStartDialog } from './Consume'
-import { consumeAdd, consumeMezcla, consumeOn, consumesPending, openRun as openRunOn, store as theStore } from './store'
+import { ConsumeButton, ConsumeEndDialog, ConsumeStartDialog, MixOwedDialog } from './Consume'
+import { consumeAdd, consumeEvery, consumeMezcla, consumeOn, consumesPending, mixUnweighed, openRun as openRunOn, store as theStore } from './store'
 import { HoldButton, HoldList } from './Holds'
 import { seesKpi } from './kpi'
 import { AttendanceCard, AttendanceDialog } from './Attendance'
@@ -3004,6 +3004,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         {attAsk && <AttendanceDialog s={s} dept={line.dept} date={day.date} shift={turn.shift} edit note={tr('Antes de empezar, el supervisor o líder se anota como supervisor y anota a la gente del Turno {0} de {1}; después vuelve a tocar Empezar.', turn.shift, line.dept)} onClose={() => setAttAsk(false)} />}
         {consumeAsk && <ConsumeStartDialog s={s} dept={line.dept} line={line.name} code={code.trim().toUpperCase()} onClose={() => setConsumeAsk(null)} onStart={(list) => { consumeAsk(); const r = openRunOn(theStore.get(), line.id); if (r) for (const e of list) consumeAdd(r, e.product, e.prodLot, e.labelDate, e.lb, e.fromId); setConsumeAsk(null) }} />}
         {(() => { const p = consumeOn(s, line.dept) ? consumesPending(s, line.id) : []; return p.length ? <ConsumeEndDialog entries={p} /> : null })()}
+        {consumeOn(s, line.dept) && <MixOwedDialog s={s} lineId={line.id} now={now} />}
         {!quiet && <form className="start" onSubmit={(e) => {
           e.preventDefault()
           if (!ok) return
@@ -3122,12 +3123,14 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   // (no one on the floor goes past it, a manager neither: only the office authorizes more, raising the program. Jose, 2026-10-23)
   // where the room weighs what it consumes, each mezcla counted one by one asks its pounds first (Jose, 2026-11-04)
   const weighMix = consumeOn(s, line.dept) && rc.qty === 'none'
+  // (a room may weigh every few mezclas, the office 2026-11-05: "por 10 bolas" = 5 mezclas: only the last of them asks, for all)
+  const mixN = weighMix ? mixUnweighed(s, run) + 1 : 0, mixAsk = weighMix && mixN >= consumeEvery(s, line.dept)
   const done = () => {
     if (just) return
     if (capFull) { setCapAsk(true); return }
     if (pallets) setPacking('done')
     else if (rc.qty === 'ask') setCounting(true)
-    else if (weighMix) setWeighingMix(true)
+    else if (mixAsk) setWeighingMix(true)
     else record(rc.qty === 'auto' ? run.perUnit : null)
   }
   // the pallets of this code already finished without the tag of some lot (the tag often comes later), the last two:
@@ -3262,7 +3265,8 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       {packing === 'binlot' && <LotNowDialog run={run} onClose={() => setPacking(null)} />}
       {tagUnit && <LotsDialog key={'tag:' + tagUnit.at} title={tr('Tags del pallet {0}', (tagging ?? 0) + 1)} unit={rc.qtyUnit} refLabel={rc.refLabel} lot={run.lot} qty={tagUnit.qty} usual={usualOf(s, run)} per={runWord} start={tagUnit.lots ?? [{ lot: run.lot, qty: tagUnit.qty ?? 0 }]} startRef={tagUnit.ref} startNote={tagUnit.note} onClose={() => setTagging(null)} onPick={(total, ref, lots, _po, note) => { fillUnit(run.id, tagUnit.at, total, lots, ref, note); setTagging(null) }} />}
       {typeof packing === 'number' && run.extra?.open?.parts[packing] && <PartDialog run={run} index={packing} onClose={() => setPacking(null)} />}
-      {weighingMix && <QtyDialog title={tr('{0} · ¿cuántas libras lleva?', rc.done)} unit="lb" refLabel="" initial={null} usual={null} decimal onClose={() => setWeighingMix(false)} onPick={(lb) => { if (lb > 0) { record(null); consumeMezcla(run, lb) } setWeighingMix(false) }} />}
+      {consumeOn(s, line.dept) && <MixOwedDialog s={s} lineId={line.id} now={now} />}
+      {weighingMix && <QtyDialog title={mixN > 1 ? tr('{0} · las últimas {1} mezclas · ¿cuántas libras llevan entre todas?', rc.done, mixN) : tr('{0} · ¿cuántas libras lleva?', rc.done)} unit="lb" refLabel="" initial={null} usual={null} decimal onClose={() => setWeighingMix(false)} onPick={(lb) => { if (lb > 0) { record(null); consumeMezcla(run, lb) } setWeighingMix(false) }} />}
     </div>
   )
 }

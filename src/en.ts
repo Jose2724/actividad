@@ -3561,4 +3561,11 @@ export const EN: Record<string, string> = {
   "{0}/h": "{0}/h",
   "Metas (Target)": "Goals (Target)",
   "El Target del Mini KPI sale de aquí: la meta de todo el turno si está puesta; si no, la meta por hora. Cada día se compara con la meta por hora × las horas que trabajaron las líneas. Si una línea tiene su propia meta, cuenta la de la línea y no la del cuarto. Son las mismas metas de Ajustes › Metas y de la tarjeta de cada línea.": "The Mini KPI's Target comes from here: the whole shift's goal when there is one; otherwise the goal per hour. Each day is compared with the goal per hour × the hours the lines worked. When a line has its own goal, the line's counts and not the room's. These are the same goals as Settings › Goals and each line's card.",
+  "⚖ Faltan por pesar": "⚖ Still to weigh",
+  "El código {0} terminó con 1 mezcla sin pesar. ¿Cuántas libras llevó?": "Code {0} ended with 1 mezcla not weighed. How many pounds did it take?",
+  "El código {0} terminó con {1} mezclas sin pesar. ¿Cuántas libras llevaron entre todas?": "Code {0} ended with {1} mezclas not weighed. How many pounds did they take together?",
+  "{0} · las últimas {1} mezclas · ¿cuántas libras llevan entre todas?": "{0} · the last {1} mezclas · how many pounds do they take together?",
+  "Donde está prendido, al tocar Mezcla lista sale un cuadro para anotar cuántas libras lleva; al aceptar, se agrega la mezcla. Con \"cada 5 mezclas\", las primeras 4 se agregan sin preguntar y la quinta pide las libras de las 5 juntas (si cada mezcla lleva 2 bolas, son 10 bolas). Si el código termina antes, se piden las libras de las que quedaron sin pesar. Es para las mezclas que se cuentan una por una (Kitchen y Spiral). Sale en el Reporte, en el Excel y en el Mini KPI.": "Where it is on, tapping Mezcla lista opens a box to write how many pounds it takes; on accepting, the mezcla is added. With \"every 5 mezclas\", the first 4 are added without asking and the fifth asks the pounds of the 5 together (if each mezcla takes 2 balls, that is 10 balls). If the code ends before, the pounds of those left unweighed are asked. It is for mezclas counted one by one (Kitchen and Spiral). It shows in the Report, the Excel and the Mini KPI.",
+  "se pesa cada {0} mezclas": "weighed every {0} mezclas",
+  "Pedir el peso cada": "Ask the weight every",
 }
