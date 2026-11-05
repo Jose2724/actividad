@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { consumeAdd, consumeDelete, consumeLeft, consumeMezcla, consumesOfRun, fmtTime, inventoryOf, lineLabel, mixOwed, type ConsumeEntry, type Dept, type Run, type State } from './store'
 import { tr } from './i18n'
+import { useWho } from './App'
 
 /**
  * What a room consumes (the office, 2026-10-27): before a code starts the line weighs what it is going to use (what it
@@ -131,6 +132,9 @@ export function ConsumeEndDialog({ entries }: { entries: ConsumeEntry[] }) {
 export function MixOwedDialog({ s, lineId, now }: { s: State; lineId: string; now: number }) {
   const owed = mixOwed(s, lineId, now)
   const [lb, setLb] = useState('')
+  // only the room's own tablet is held for it (Jose, 2026-11-05, a manager's screen held by Kitchen's ARROZ BLANCO:
+  // "¿por qué esto me salió a mí?"): the operators weighed it, a manager, the office and whoever only looks are never held
+  if (useWho().role !== 'op') return null
   if (!owed) return null
   const n = Number(lb.replace(',', '.'))
   return (
