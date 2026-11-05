@@ -6091,7 +6091,7 @@ section('Mini KPI: el Resumen del Excel compara los días y las últimas semanas
     eq('la de líneas: con huecos, y la meta punteada sin puntos', [part('xl/charts/chart2.xml').includes('<c:lineChart>'), part('xl/charts/chart2.xml').includes('<c:dispBlanksAs val="gap"/>'), part('xl/charts/chart2.xml').includes('<a:prstDash val="dash"/>')], [true, true, true])
     eq('la de semanas: solo la última semana lleva el número', (part('xl/charts/chart2_3.xml').match(/<c:dLbls>/g) ?? []).length, 1)
     eq('la celda vacía de una tabla no lleva texto', part('xl/worksheets/sheet2.xml').includes('<is><t xml:space="preserve"></t></is>'), false)
-    eq('la explicación: las 9 tablas, en el Excel y en la ventana', [m.miniGuide().length, m.miniTables(w2).every((t) => m.miniGuide().some((g) => g.id === t.id)), book[book.length - 1].rows.length], [10, true, 13])
+    eq('la explicación: las 9 tablas, en el Excel y en la ventana', [m.miniGuide().length, m.miniTables(w2).every((t) => m.miniGuide().some((g) => g.id === t.id)), book[book.length - 1].rows.length], [11, true, 14])
     // each room on its own sheet (Santiago, 2026-11-01)
     const hoja = book.find((x) => x.name === 'RTE'), dias = hoja.charts[0], lunes = hoja.rows[dias.from], semana = hoja.rows[dias.to]
     eq('cada hoja de cuarto lleva 4 gráficas, y la del día lee su propia tabla', [hoja.charts.map((c) => c.kind), m.cellText(hoja.rows[dias.from - 2][0]), dias.to - dias.from + 1, m.cellText(semana[0])], [['line', 'line', 'col', 'col', 'col', 'col'], 'Día', 6, 'Semana'])
@@ -6507,6 +6507,22 @@ section('Trasladar personal a otra línea o a otro cuarto, y los nombres en el E
   rnr.use((m) => {
     const id = m.attAdd('2026-11-04', 'RTE', 1, 'Ciro', '', m.attSpotId('RTE', 'Runner'))
     eq('anotado en Runner de RTE: se dice Runner y cuenta en RTE', [m.attLineText(m.store.get(), m.store.get().attendance.find((x) => x.id === id).line), m.attOf(m.store.get(), '2026-11-04', 'RTE', 1).length, m.ATT_SPOTS.RTE], ['Runner', 1, ['Runner']])
+  })
+  // the people on average over the shift (Santiago, 2026-11-05): one of two leaves for Packing at half the shift = 1.5
+  const avg = await device('att-average', { user: 'Sup' })
+  avg.use((m) => {
+    m.addLine('RTE', 'Línea 1')
+    const t0 = new Date(2026, 10, 2, 15, 15).getTime() // Monday 2 November, shift 2 of the usual hours 15:15 → 03:30 (12.25 h)
+    clock = t0
+    const ana = m.attAdd('2026-11-02', 'RTE', 2, 'Ana'); m.attAdd('2026-11-02', 'RTE', 2, 'Beto')
+    clock = t0 + 367.5 * M; m.attRemove(ana, 'otro', 'Packing')
+    clock = new Date(2026, 10, 3, 5, 0).getTime()
+    const day = m.miniWeek(m.store.get(), '2026-11-02', 2, clock).rooms.find((r) => r.dept === 'RTE').days[1]
+    eq('2 anotadas, una se fue a la mitad: 1.5 personas en promedio, 2 anotadas', [day.att.actual, day.att.avg], [2, 1.5])
+    const row = m.miniSimple(m.miniWeek(m.store.get(), '2026-11-02', 2, clock)).find((b) => b.dept === 'RTE').rows.find((r) => r.id === 'att')
+    eq('la hoja de Santiago lo dice como "1.5 / 2"', row.days[1].t, '1.5 / 2')
+    clock = t0 + 60 * M
+    eq('con el turno corriendo, el promedio es de lo que va', m.miniWeek(m.store.get(), '2026-11-02', 2, clock).rooms.find((r) => r.dept === 'RTE').days[1].att.avg, 2)
   })
   eq('al volver a abrir: la línea y los traslados siguen', back.use((m) => { const st = m.store.get(), a = st.attendance.find((x) => x.name === 'Ana'); return [m.attLineText(st, a.line), a.moves.length, m.attOf(st, '2026-10-22', 'Packing', 1).map((x) => m.attLineText(st, x.line))] }), ['Línea 2', 1, ['Línea 1']])
 }

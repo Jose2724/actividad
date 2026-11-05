@@ -17,7 +17,7 @@ export type NumberId = 'duracion' | 'trabajando' | 'parado' | 'setup' | 'causas'
   | 'po-pallets' | 'po-completo' | 'vence' | 'pallet-unido' | 'hold'
   | 'peso-resumen' | 'peso-pruebas' | 'peso-bien' | 'peso-rinde' | 'peso-color' | 'dash' | 'asistencia'
   | 'kpi-horas' | 'kpi-prod' | 'kpi-costco' | 'kpi-mes' | 'mini'
-  | 'mini-arranque' | 'mini-prod' | 'mini-paros' | 'mini-horas' | 'mini-lunch' | 'mini-causas' | 'mini-mec' | 'mini-consumo' | 'mini-waste' | 'mini-pesos'
+  | 'mini-asistencia' | 'mini-arranque' | 'mini-prod' | 'mini-paros' | 'mini-horas' | 'mini-lunch' | 'mini-causas' | 'mini-mec' | 'mini-consumo' | 'mini-waste' | 'mini-pesos'
 type Group = 'tiempo' | 'prod' | 'avance' | 'lotes' | 'pedidos' | 'pesos' | 'gente' | 'kpi'
 type Item = { id: NumberId; group: Group; title: string; means: string; math: string; eg?: string }
 

@@ -1,4 +1,4 @@
-import { ASK_MANAGER, CFG, DEPTS, LUNCH, SETUP, attendanceOf, awayDay, consumesOf, dayOf, fmtDur, fmtTime, isMechanical, kpiGet, kpiPut, lineGoalKey, lineNameOf, lineShiftGoalOf, mechanicOf, measureOf, plainDay, shiftAt, shiftGoalOf, shiftsOf, slowCounts, slowUnitOf, wallOfDay, type Dept, type State } from './store'
+import { ASK_MANAGER, CFG, DEPTS, LUNCH, SETUP, attendanceOf, attOf, awayDay, consumesOf, dayOf, fmtDur, fmtTime, isMechanical, kpiGet, kpiPut, lineGoalKey, lineNameOf, lineShiftGoalOf, mechanicOf, measureOf, plainDay, shiftAt, shiftGoalOf, shiftsOf, slowCounts, slowUnitOf, wallAt, wallOfDay, type Dept, type State } from './store'
 import { reasonCodeOf } from './reasons'
 import { reportOf } from './report'
 import { weightsOf, wtBoard, wtRangeLong, wtRowsOfShift, type WtAvg, type WtRow } from './kpi'
@@ -52,7 +52,7 @@ type RoomDay = {
   time: number; down: number; mech: number; people: number; clean: number; other: number; lunch: number; worked: number; setup: number
   in: number; out: number | null; waste: number
   /** when the shift's last record was made (Santiago's "End time"), and the people written in the attendance against those expected */
-  end: number | null; att: { expected: number; actual: number }; wt: number | null
+  end: number | null; att: { expected: number; actual: number; avg: number }; wt: number | null
 }
 function roomDay(s: State, date: string, dept: Dept, k: 1 | 2, o: MiniOpts, now: number): RoomDay {
   const rep = reportOf(s, date, now, { only: dept, shift: k }), plan = shiftsOf(s, date, dept), rows = rep.rows
@@ -88,7 +88,21 @@ function roomDay(s: State, date: string, dept: Dept, k: 1 | 2, o: MiniOpts, now:
   const consumed = consumesOf(s, date, dept).filter((x) => shiftAt(plan, x.at) === k).reduce((t, x) => t + Math.max(0, x.lb - (x.left ?? 0)), 0)
   const out = o.outUnit === 'mezclas' ? rows.filter((x) => !measureOf(x.r)).reduce((t, x) => t + x.units, 0) : rows.filter((x) => measureOf(x.r) === o.outUnit).reduce((t, x) => t + x.qty, 0)
   const att = attendanceOf(s, date, k, [dept]).rows[0]
-  return { end: rows.length ? Math.max(...rows.map((x) => x.to)) : null, att: { expected: att?.expected ?? 0, actual: att?.actual ?? 0 }, wt: null, start, real, target, apart, time, down, mech: ms.mech, people: ms.people, clean: ms.clean, other: ms.other, lunch: ms.lunch, worked: rows.reduce((t, x) => t + x.st.working, 0), setup, in: consumed, out: rows.length ? out : null, waste: rows.reduce((t, x) => t + (x.waste ?? 0), 0) }
+  // the people on average over the shift (Santiago, 2026-11-05: "cuando un trabajador se va para otro departamento, que
+  // se haga un promedio de cuántas personas trabajaron durante el día"): each person's time in the room over the shift's
+  // hours (so far, while it runs): from the shift's start (or the hour they came, or when they arrived from another
+  // room) until they left for home or another room, or the shift's end. 7 written and one gone at half the shift = 6.5
+  // (a shift's hour on the clock: the work day starts at the first shift's hour, so an hour before it, or that very hour
+  // as an end, falls on the next calendar day: the second shift's 03:30 end)
+  const mins = (hm: string) => { const [h, m] = hm.split(':').map(Number); return (h || 0) * 60 + (m || 0) }
+  const dayStart = mins(plan.first), shiftWall = (hm: string, end = false) => wallAt(date, mins(hm) + (mins(hm) < dayStart || (end && mins(hm) === dayStart) ? 1440 : 0))
+  const [h0, h1] = k === 1 ? [plan.first, plan.firstEnd] : [plan.second, plan.secondEnd]
+  const sh0 = plan.only ? begin : shiftWall(h0), sh1 = Math.max(sh0, shiftWall(h1, true))
+  const until = Math.min(now, sh1), span = until - sh0
+  const written = attOf(s, date, dept, k)
+  const present = written.reduce((t, x) => { const a = Math.max(sh0, x.came ?? (x.from || x.via ? x.at : sh0)), b = Math.min(until, x.gone ? x.gone.at : until); return t + Math.max(0, b - a) }, 0)
+  const avg = span > 0 ? Math.round((present / span) * 10) / 10 : written.length
+  return { end: rows.length ? Math.max(...rows.map((x) => x.to)) : null, att: { expected: att?.expected ?? 0, actual: written.length, avg }, wt: null, start, real, target, apart, time, down, mech: ms.mech, people: ms.people, clean: ms.clean, other: ms.other, lunch: ms.lunch, worked: rows.reduce((t, x) => t + x.st.working, 0), setup, in: consumed, out: rows.length ? out : null, waste: rows.reduce((t, x) => t + (x.waste ?? 0), 0) }
 }
 export function miniWeek(s: State, date: string, k: 1 | 2, now: number) {
   // (this KPI is one shift's and nothing of the other may mix in, Jose 2026-11-01: a day of one shift is that shift's alone; asked for the other, the report would give the whole day)
@@ -168,13 +182,15 @@ export function miniSimple(w: MiniWeek): SimpleBlock[] {
     const perDay = (f: (x: NonNullable<Day>) => MiniCell) => r.days.map((x) => (x ? f(x) : none))
     const madeOf = (x: NonNullable<Day>): MiniCell => (!x.real && !x.target ? none : { t: n0(x.real), c: x.target ? (x.real / x.target >= 1 ? 'ok' : x.real / x.target >= 0.9 ? 'warn' : 'bad') : undefined })
     const perPerson = (real: number, people: number): MiniCell => (people && real ? { t: n1(real / people) } : none)
-    const pplSum = sum(list, (x) => x.att.actual), madeSum = sum(list, (x) => x.real), tgtDays = list.filter((x) => x.target)
+    // the people of a day: the average over the shift when somebody left (Santiago, 2026-11-05), else those written
+    const heads = (x: NonNullable<Day>) => x.att.avg || x.att.actual, left = (x: NonNullable<Day>) => x.att.actual > 0 && Math.abs(x.att.avg - x.att.actual) >= 0.05
+    const pplSum = sum(list, heads), madeSum = sum(list, (x) => x.real), tgtDays = list.filter((x) => x.target)
     const rows: SimpleRow[] = [
-      { id: 'att', label: tr('Asistencia'), target: expected ? { t: n0(expected) } : none, days: perDay((x) => (x.att.expected || x.att.actual ? { t: n0(x.att.actual), c: x.att.actual >= x.att.expected ? 'ok' : 'bad' } : none)), week: list.length && pplSum ? { t: n1(pplSum / list.filter((x) => x.att.actual).length || 0) + ' ' + tr('prom.') } : none },
+      { id: 'att', label: tr('Asistencia'), target: expected ? { t: n0(expected) } : none, days: perDay((x) => (x.att.expected || x.att.actual ? { t: left(x) ? n1(x.att.avg) + ' / ' + n0(x.att.actual) : n0(x.att.actual), c: heads(x) >= x.att.expected ? 'ok' : 'bad' } : none)), week: list.length && pplSum ? { t: n1(pplSum / list.filter((x) => heads(x)).length || 0) + ' ' + tr('prom.') } : none },
       { id: 'start', label: tr('Hora de arranque'), target: { t: w.shift === 1 ? '' : o.start2 }, days: perDay((x) => (x.start ? { t: fmtTime(x.start.at), c: x.start.late ? 'bad' : 'ok' } : none)), week: (() => { const has = list.filter((x) => x.start); return has.length ? { t: tr('{0} min tarde', Math.round(has.reduce((a, x) => a + Math.max(0, x.start?.off ?? 0), 0) / has.length)) } : none })() },
       { id: 'end', label: tr('Hora de fin'), target: none, days: perDay((x) => (x.end ? { t: fmtTime(x.end) } : none)), week: none },
       { id: 'made', label: unit.charAt(0).toUpperCase() + unit.slice(1), target: goal ? { t: n0(goal) } : none, days: perDay(madeOf), week: madeSum ? { t: n0(madeSum), c: tgtDays.length ? (sum(tgtDays, (x) => x.real) / sum(tgtDays, (x) => x.target ?? 0) >= 1 ? 'ok' : 'bad') : undefined } : none },
-      { id: 'pp', label: tr('{0} por persona', unit.charAt(0).toUpperCase() + unit.slice(1)), target: goal && expected ? { t: n1(goal / expected) } : none, days: perDay((x) => perPerson(x.real, x.att.actual)), week: perPerson(madeSum, pplSum) },
+      { id: 'pp', label: tr('{0} por persona', unit.charAt(0).toUpperCase() + unit.slice(1)), target: goal && expected ? { t: n1(goal / expected) } : none, days: perDay((x) => perPerson(x.real, heads(x))), week: perPerson(madeSum, pplSum) },
       { id: 'wt', label: tr('Peso (oz)'), target: none, days: perDay((x) => (x.wt == null ? none : { t: x.wt.toFixed(2) })), week: (() => { const has = list.filter((x) => x.wt != null); return has.length ? { t: (sum(has, (x) => x.wt as number) / has.length).toFixed(2) } : none })() },
       { id: 'hours', label: tr('Horas trabajadas'), target: none, days: perDay((x) => (x.time ? { t: n1(hoursOf(x.worked)) } : none)), week: list.some((x) => x.time) ? { t: n1(hoursOf(sum(list, (x) => x.worked))) } : none },
       { id: 'down', label: tr('Downtime'), target: { t: '≤ ' + o.limit + '%' }, days: perDay((x) => (x.time ? { t: fmtDur(x.down) + ' · ' + pctOf(x.down / x.time), c: (x.down / x.time) * 100 > o.limit ? 'bad' : 'ok' } : none)), week: list.some((x) => x.time) ? { t: fmtDur(sum(list, (x) => x.down)) + ' · ' + pctOf(sum(list, (x) => x.down) / sum(list, (x) => x.time)) } : none },
@@ -199,7 +215,7 @@ export function miniSimpleSheet(w: MiniWeek): Sheet {
     for (const r of b.rows) row([xT(r.label, X.wLeft), colour(r.target), ...r.days.map(colour), colour(r.week)], 20)
     row([], 10)
   }
-  across(tr('Asistencia = personas anotadas en el turno contra las esperadas. Hora de arranque = el primer código de las líneas; de fin = el último registro. Por persona = lo hecho ÷ las personas anotadas. Peso = el promedio del día de lo que pesa el cuarto (crudo, cocinado, pouch). Downtime = los paros que cuentan en Ajustes › Mini KPI.'), X.note, 40)
+  across(tr('Asistencia = personas anotadas en el turno contra las esperadas; cuando alguien se fue a otro cuarto o a su casa, el promedio de personas en el turno (6.5 / 7). Hora de arranque = el primer código de las líneas; de fin = el último registro. Por persona = lo hecho ÷ las personas anotadas. Peso = el promedio del día de lo que pesa el cuarto (crudo, cocinado, pouch). Downtime = los paros que cuentan en Ajustes › Mini KPI.'), X.note, 40)
   return { name: tr('Mini KPI'), rows: out, freeze: 0, page: { widths: [22, 10, ...w.days.map(() => 14), 16], heights, merges } }
 }
 /** how many weeks the summary compares, the report's week being the last */
@@ -460,6 +476,10 @@ export function miniRoomSheet(weeks: MiniWeek[], dept: Dept): Sheet {
 }
 /** what each table says, for the Excel and for the window of what each number means */
 export const miniGuide = (): { id: NumberId; title: string; means: string; math: string; eg: string }[] => [
+  { id: 'mini-asistencia', title: tr('Asistencia y por persona'),
+    means: tr('Cuántas personas trabajaron en el cuarto en el turno, y cuánto hizo cada una.'),
+    math: tr('Las personas anotadas en la asistencia del turno. Si alguien se fue a otro cuarto o a su casa, se cuenta el tiempo que estuvo: el promedio es la suma de las horas de cada persona ÷ las horas del turno (Santiago, 2026-11-05). Por persona = lo hecho ÷ ese promedio.'),
+    eg: tr('7 anotadas y una se fue a Packing a la mitad del turno: 6.5 / 7. Con 650 pouches, 100 por persona.') },
   { id: 'mini-arranque', title: tr('Arranque'),
     means: tr('A qué hora empezó a trabajar cada cuarto en ese turno.'),
     math: tr('La hora en que cada línea empezó su primer código del turno (o su Set up, si Ajustes lo dice), y el promedio de las líneas (o solo la primera). Una línea que ya venía corriendo cuenta a tiempo. Sale en rojo pasados los minutos de gracia después de la hora de arranque de Ajustes. Si dice 1/3, 1 de sus 3 líneas llegó tarde. La semana dice los minutos tarde en promedio.'),

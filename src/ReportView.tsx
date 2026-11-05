@@ -1955,7 +1955,7 @@ function MiniKpiView({ k }: { k: Kit }) {
           {t.note && <p className="hint">{t.note}</p>}
         </article>
       ))}
-      {!full && <p className="hint">{tr('Asistencia = personas anotadas contra las esperadas. Arranque = el primer código de las líneas; fin = el último registro. Por persona = lo hecho ÷ las personas anotadas. Peso = el promedio del día de lo que pesa el cuarto. Downtime = los paros que cuentan en Ajustes › Mini KPI. "Todo" muestra las tablas completas.')}</p>}
+      {!full && <p className="hint">{tr('Asistencia = personas anotadas contra las esperadas; si alguien se fue a otro cuarto o a su casa, el promedio de personas en el turno (6.5 / 7). Arranque = el primer código de las líneas; fin = el último registro. Por persona = lo hecho ÷ las personas (el promedio, cuando alguien se fue). Peso = el promedio del día de lo que pesa el cuarto. Downtime = los paros que cuentan en Ajustes › Mini KPI. "Todo" muestra las tablas completas.')}</p>}
     </>
   )
 }
