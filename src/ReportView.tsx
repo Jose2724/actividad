@@ -372,6 +372,9 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
     const T = (ms: number) => xTime(ms, fmtTime(ms))
     const rows: Cell[][] = [[tr('Fecha'), tr('Hora'), tr('Cuarto'), tr('Línea'), tr('Código'), tr('Lote del producto'), tr('Qué entró'), tr('Lote'), tr('Fecha de la etiqueta'), tr('Libras'), tr('Quedaron (lb)'), tr('Anotó')],
       ...list.map((x): Cell[] => [x.date, T(x.at), x.dept, lineNameOf(s, x.lineId, x.line), x.code, x.lot, x.product, x.prodLot, x.labelDate, x.lb, x.left ?? '', x.by]), [],
+      // each code of each room added up (Jose, 2026-11-04: "que se sume si son del mismo código")
+      [tr('Total por código')], [tr('Cuarto'), tr('Código'), tr('Pesos'), tr('Libras'), tr('Promedio (lb)')],
+      ...[...list.reduce((m, x) => { const k = x.dept + '|' + x.code, e = m.get(k) ?? { dept: x.dept, code: x.code, n: 0, lb: 0 }; e.n++; e.lb += x.lb; return m.set(k, e) }, new Map<string, { dept: string; code: string; n: number; lb: number }>()).values()].map((c): Cell[] => [c.dept, c.code, c.n, Math.round(c.lb * 100) / 100, Math.round((c.lb / c.n) * 100) / 100]), [],
       [tr('Inventario ahora (lo que quedó y nadie ha usado)')], [tr('Cuarto'), tr('Qué es'), tr('Lote'), tr('Fecha de la etiqueta'), tr('Libras'), tr('Desde'), tr('Código donde quedó')],
       ...inv.map((x): Cell[] => [x.dept, x.product, x.prodLot, x.labelDate, x.left ?? 0, x.date, x.code])]
     return [{ name: tr('Consumo'), rows }]
@@ -1103,18 +1106,19 @@ function ConsumeWhere({ k }: { k: Kit }) {
       <h3>{tr('⚖ Consumo')} <WhatIs id="consumo" /></h3>
       {rooms.map((d) => {
         const mine = list.filter((x) => x.dept === d), total = mine.reduce((t, x) => t + x.lb, 0)
-        // each code and lot of the room: how many weights, the pounds and the pounds of each one on average
-        const codes = [...mine.reduce((m, x) => { const key = x.code + '|' + x.lot, e = m.get(key) ?? { code: x.code, lot: x.lot, n: 0, lb: 0 }; e.n++; e.lb += x.lb; return m.set(key, e) }, new Map<string, { code: string; lot: string; n: number; lb: number }>()).values()]
+        // each code of the room added up, whatever its lots and lines (Jose, 2026-11-04: "que se sume si son del mismo
+        // código"): its weights, its pounds and the pounds of each one on average, with the weights under it
+        const codes = [...mine.reduce((m, x) => { const e = m.get(x.code) ?? { code: x.code, lots: [] as string[], list: [] as ConsumeEntry[], lb: 0 }; if (x.lot && !e.lots.includes(x.lot)) e.lots.push(x.lot); e.list.push(x); e.lb += x.lb; return m.set(x.code, e) }, new Map<string, { code: string; lots: string[]; list: ConsumeEntry[]; lb: number }>()).values()]
         const left = mine.some((x) => x.left == null || x.left > 0)
         // (a mezcla weighed at Mezcla lista is its code and lot: what went in is said only when something else was weighed)
         const told = mine.some((x) => !(x.left === 0 && x.prodLot === x.lot && !x.labelDate))
         return (
           <article key={d} className="wt-rp cons-rp" style={deptVars(d)}>
             <h3>{DEPT_LOOK[d].emoji} {d} <span className="cons-total">{lb(total)} lb</span> <small>· {mine.length === 1 ? tr('1 peso') : tr('{0} pesos', mine.length)}</small></h3>
-            <div className="cons-codes">{codes.map((c) => <span key={c.code + c.lot} className="cons-code"><b>{c.code}</b>{c.lot && <> {tr('lote {0}', c.lot)}</>} · {c.n === 1 ? tr('1 peso') : tr('{0} pesos', c.n)} · <b>{lb(c.lb)} lb</b>{c.n > 1 && <small> · {tr('prom. {0} lb', lb(c.lb / c.n))}</small>}</span>)}</div>
+            <div className="cons-codes">{codes.map((c) => <span key={c.code} className="cons-code"><b>{c.code}</b> · {c.list.length === 1 ? tr('1 peso') : tr('{0} pesos', c.list.length)} · <b>{lb(c.lb)} lb</b>{c.list.length > 1 && <small> · {tr('prom. {0} lb', lb(c.lb / c.list.length))}</small>}</span>)}</div>
             <div className="scroll"><table className="wt-rp-tbl cons-tbl">
               <thead><tr><th>{tr('Hora')}</th><th>{tr('Línea')}</th><th>{tr('Código')}</th>{told && <th>{tr('Qué entró')}</th>}<th className="n">{tr('Libras')}</th>{left && <th className="n">{tr('Quedó')}</th>}<th>{tr('Anotó')}</th>{canFix && <th></th>}</tr></thead>
-              <tbody>{mine.map((x) => (
+              <tbody>{codes.map((c) => [...c.list.map((x) => (
                 <tr key={x.id}>
                   <td>{fmtTime(x.at)}</td><td>{lineNameOf(s, x.lineId, x.line)}</td><td><b>{x.code}</b>{x.lot && <small> · {tr('lote {0}', x.lot)}</small>}</td>
                   {told && <td>{what(x)}</td>}<td className="n"><b>{lb(x.lb)}</b></td>
@@ -1122,7 +1126,11 @@ function ConsumeWhere({ k }: { k: Kit }) {
                   <td><small>{x.by}</small></td>
                   {canFix && <td><button type="button" className="btn sm soft" onClick={() => setFixing(x)}>{tr('Corregir')}</button></td>}
                 </tr>
-              ))}</tbody>
+              )), <tr key={'t:' + c.code} className="cons-sum">
+                <td colSpan={3}>{tr('Total {0}', c.code)}{c.lots.length > 0 && <small> · {c.lots.length === 1 ? tr('lote {0}', c.lots[0]) : tr('lotes {0}', c.lots.join(', '))}</small>}</td>
+                {told && <td></td>}<td className="n">{lb(c.lb)}</td>{left && <td></td>}
+                <td colSpan={canFix ? 2 : 1}><small>{c.list.length === 1 ? tr('1 peso') : tr('{0} pesos', c.list.length)}{c.list.length > 1 ? ' · ' + tr('prom. {0} lb', lb(c.lb / c.list.length)) : ''}</small></td>
+              </tr>])}</tbody>
             </table></div>
           </article>
         )

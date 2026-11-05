@@ -3550,4 +3550,5 @@ export const EN: Record<string, string> = {
   "La hora, la línea y quien lo pesó no cambian. Lo que corrijas queda en Cambios con lo que decía antes.": "The hour, the line and who weighed it do not change. What you correct stays in Changes with what it said before.",
   "¿Seguro? Toca otra vez para quitarlo": "Sure? Tap again to remove it",
   "Quitar este peso": "Remove this weight",
+  "Total por código": "Total by code",
 }
