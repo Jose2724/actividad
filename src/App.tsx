@@ -496,6 +496,7 @@ export const useCan = () => { const w = useContext(WhoCtx); return (p: Power) =>
 function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: string; home: Dept; mgr: boolean; admin: boolean; wholeDay?: boolean; meId?: string; onLogout: () => void }) {
   const s = useSyncExternalStore(store.subscribe, store.get)
   const now = useNow()
+  const lineLock = useLineGuard(now) // the lines' buttons locked for managers and the office (2026-11-05)
   const can = useCan(), viewOnly = useViewOnly(), who = useWho()
   const day = workDay(s, now)
   // the room and the tab come back after the reload a new version brings (see update.ts)
@@ -630,7 +631,7 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
               <div className="dept soon" aria-disabled="true" title={tr('Próximamente')}>
                 <span className="dname"><span className="dtitle"><i className="demoji" aria-hidden="true">🔒</i>QC</span><small className="soonnote">{tr('Quality Control · próximamente')}</small></span>
               </div>
-              {free.length > 0 && <button type="button" className="btn sm setupbtn setupall" onClick={() => setSetupAll(true)}>{tr('⏱ Set up en todas las líneas')}<small>{free.length === 1 ? tr('1 línea libre') : tr('{0} líneas libres', free.length)}</small></button>}
+              {free.length > 0 && !lineLock.locked && <button type="button" className="btn sm setupbtn setupall" onClick={() => setSetupAll(true)}>{tr('⏱ Set up en todas las líneas')}<small>{free.length === 1 ? tr('1 línea libre') : tr('{0} líneas libres', free.length)}</small></button>}
               {setupAll && <ConfirmDialog title={tr('¿Poner en Set up todas las líneas libres?')} text={DEPTS.filter((d) => free.some((l) => l.dept === d)).map((d) => d + ': ' + free.filter((l) => l.dept === d).map((l) => lineLabel(l.name)).join(', ')).join(' · ') + '. ' + (now - setupFrom > 60_000 ? tr('El Set up cuenta desde las {0}, el inicio del turno.', fmtTime(setupFrom)) : tr('El Set up cuenta desde ahora.')) + ' ' + tr('Cuenta cuando empiece el código de cada línea; con nadie trabajando no cuenta. Las líneas que ya tienen código o Set up siguen como están.')} yes={tr('⏱ Empezar Set up')} onYes={() => { startSetupAll(); setSetupAll(false) }} onNo={() => setSetupAll(false)} />}
             </aside>
           )}
@@ -2199,7 +2200,34 @@ function PlanDays({ s, dept, today }: { s: State; dept: Dept; today: string }) {
 function keepPlanPart(d: Dept, p: PlanPart) {
   try { const m = JSON.parse(sessionStorage.getItem(DEPT_TAB_KEY) || '{}') as Record<string, string>; m[d + '|plan'] = p; sessionStorage.setItem(DEPT_TAB_KEY, JSON.stringify(m)) } catch { /* private window: it opens on "Hoy" */ }
 }
+/**
+ * The lines' buttons are locked for whoever is not an operator (Jose, 2026-11-05: "nosotros los de oficina siempre
+ * estamos mirando todo ... y podamos darle sin querer algún botón de esos ... que salga por defecto bloqueado ... los
+ * operadores que continúen normal"): a manager or the office sees each line as it is, and the buttons that record on
+ * it (Empezar, Mezcla lista, Parar, Terminar, Set up, Parar departamento, Terminar turno...) only after "Desbloquear",
+ * for 15 minutes, on every room of this screen. Corregir, the program and the rest stay as they are ("corregir y
+ * agregar programa que esté como está"). Nothing kept: a reload locks again
+ */
+const LINE_UNLOCK_MS = 15 * 60_000
+const lineGuard = (() => {
+  let until = 0
+  const subs = new Set<() => void>()
+  return { get: () => until, set: (n: number) => { until = n; subs.forEach((f) => f()) }, subscribe: (f: () => void) => { subs.add(f); return () => { subs.delete(f) } } }
+})()
+const useLineGuard = (now: number) => {
+  const who = useWho(), until = useSyncExternalStore(lineGuard.subscribe, lineGuard.get)
+  return { applies: who.role !== 'op' && who.role !== 'viewer', locked: who.role !== 'op' && who.role !== 'viewer' && now > until, until }
+}
+function LineGuardBar({ now }: { now: number }) {
+  const g = useLineGuard(now)
+  if (!g.applies) return null
+  return g.locked
+    ? <div className="guardbar"><span>{tr('🔒 Los botones de las líneas están bloqueados para que no se toquen sin querer. Corregir, el Programa y lo demás siguen abiertos.')}</span><button type="button" className="btn sm" onClick={() => lineGuard.set(Date.now() + LINE_UNLOCK_MS)}>{tr('🔓 Desbloquear 15 min')}</button></div>
+    : <div className="guardbar open"><span>{trx('🔓 Botones de las líneas desbloqueados hasta las {0}.', <b>{fmtTime(g.until)}</b>)}</span><button type="button" className="btn sm" onClick={() => lineGuard.set(0)}>{tr('🔒 Bloquear ya')}</button></div>
+}
+
 function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now: number; mgr: boolean; day: WorkDay; readsAll: boolean }) {
+  const guard = useLineGuard(now)
   // Kitchen's oven has no card on the floor (Jose, 2026-11-04: "no necesitan ese horno card, sino solo que salga en la
   // asistencia"): the line stays, so the attendance can put one or more people on it (Trasladar a línea › Horno)
   const lines = s.lines.filter((l) => l.dept === dept && !(l.dept === 'Kitchen' && isOven(l.name))).sort(byLineName)
@@ -2278,11 +2306,11 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
       <div className="phead">
         <h2 className="dhead"><i className="demoji" aria-hidden="true">{DEPT_LOOK[dept].emoji}</i>{dept}</h2>
         {!viewOnly && <div className="acts">
-          {ds
+          {guard.locked ? null : ds
             ? <button type="button" className="btn danger" onClick={() => endStop(ds.id)}>{trx('▶ Reanudar departamento · {0}', fmtDur(now - ds.startedAt))}</button>
             : <button type="button" className="btn stopbtn" disabled={!anyRunning} onClick={() => setStopAll(true)}>{tr('⏸ Parar departamento')}</button>}
-          {canStart2 && <button type="button" className="btn soft" onClick={() => setStarting2(true)}>{tr('▶ Empezar Turno 2')}</button>}
-          <button type="button" className="btn" disabled={!left.runs.length && !left.setups.length && !left.stops.length} onClick={openLeaving}>{tr('🏁 Terminar turno')}</button>
+          {canStart2 && !guard.locked && <button type="button" className="btn soft" onClick={() => setStarting2(true)}>{tr('▶ Empezar Turno 2')}</button>}
+          {!guard.locked && <button type="button" className="btn" disabled={!left.runs.length && !left.setups.length && !left.stops.length} onClick={openLeaving}>{tr('🏁 Terminar turno')}</button>}
           {(can('fix') || s.lineRules.add) && <button type="button" className="btn soft" onClick={() => setAdding(true)}>{trx('+ Agregar {0}', CFG[dept].lineWord.toLowerCase())}</button>}
           {/* what the freezer has ready for this room, and asking for it (Jose, 2026-10-27): Freezer RTE's own screen for the room's people */}
           {dept === 'Kitchen' && <WeightNoteButton s={s} date={day.date} now={now} />}
@@ -2290,6 +2318,7 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
           {(dept === 'Packing' || dept === 'MFO') && <a className="btn soft" href={FREEZER_URL + '#listo'}>{tr('🧊 Listo para {0}', dept)}</a>}
         </div>}
       </div>
+      <LineGuardBar now={now} />
       {dept === 'Packing' && <PackingNotice s={s} onOrders={() => pick('orders')} />}
       {leaving && (
         <div className="veil" onClick={() => setLeaving(false)}>
@@ -2807,7 +2836,10 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   const [weighingMix, setWeighingMix] = useState(false)
   const [unlockedUntil, setUnlockedUntil] = useState(0)
   const locked = !!supabase && !viewOnly && now - sync.fresh > STALE_MS && now > unlockedUntil
-  const quiet = viewOnly || locked
+  // hold = nothing may be pressed (only looks, or an old picture of the line); guarded = a manager or the office with the
+  // lines' buttons locked (2026-11-05): Corregir, the name and what only informs stay
+  const guard = useLineGuard(now), hold = viewOnly || locked, guarded = !hold && guard.locked
+  const quiet = hold || guarded
   const staleBar = locked && (
     <div className={'stalebar' + (sync.pulling ? ' calm' : '')}>
       <span>{sync.pulling ? tr('⏳ Trayendo lo último del servidor…') : sync.fresh ? trx('⚠ Sin servidor desde las {0}. Si en otra tablet ya cambió el código o el lote de esta línea, aquí se vería lo viejo.', fmtTime(sync.fresh)) : tr('⚠ Este aparato no ha bajado nada del servidor todavía.')}</span>
@@ -2860,7 +2892,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   // is free, its "Sí" would start the old code
   const sure = useSure()
   useEffect(() => { if (run && sure.open) sure.cancel() }, [run?.id, sure.open])
-  const nameIt = !quiet && <button type="button" className="lnk pen" title={tr('Cambiar el nombre')} aria-label={tr('Cambiar el nombre de {0}', lineLabel(line.name))} onClick={() => setRenaming(true)}>✎</button>
+  const nameIt = !hold && <button type="button" className="lnk pen" title={tr('Cambiar el nombre')} aria-label={tr('Cambiar el nombre de {0}', lineLabel(line.name))} onClick={() => setRenaming(true)}>✎</button>
   const naming = renaming && <LineNameDialog s={s} dept={line.dept} line={line} onClose={() => setRenaming(false)} />
   // (the program cap's question, 2026-10-23: kept with the other hooks, above the line's early return)
   const [capAsk, setCapAsk] = useState(false)
@@ -3009,11 +3041,11 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         {idle && (
           <div className="setupbar">
             <small>{trx('Esperando el código siguiente desde las {0}. Si no viene otro, no cuenta.', fmtTime(idle.startedAt))}</small>
-            {!quiet && <><span className="btns two">
+            {!quiet && <span className="btns two">
               <button type="button" className="btn sm" onClick={() => endStop(idle.id)}>{trx('■ Terminar {0}', tr(idle.reason))}</button>
               <button type="button" className="btn sm" onClick={() => dropSetup(idle.id)}>{tr('No viene otro código: quitarlo')}</button>
-            </span>
-            <button type="button" className="lnk sm" onClick={() => setFixingStop(true)}>{mgr ? tr('Corregir o dividir') : tr('Corregir')}</button></>}
+            </span>}
+            {!hold && <button type="button" className="lnk sm" onClick={() => setFixingStop(true)}>{mgr ? tr('Corregir o dividir') : tr('Corregir')}</button>}
           </div>
         )}
         {prev && (
@@ -3021,9 +3053,9 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
             <span>{(prev.endedAt ?? 0) > turn.since
               ? trx('Último: {0} · lote {1} · terminó {2} · {3}', <b className="code">{prev.code}</b>, prev.lot, fmtTime(prev.endedAt ?? 0), madeText(prev, runQty(s, prev)))
               : trx('Último, del turno anterior: {0} · lote {1} · terminó {2} · {3}', <b className="code">{prev.code}</b>, prev.lot, fmtTime(prev.endedAt ?? 0), madeText(prev, runQty(s, prev)))}</span>
-            {!quiet && <span className="btns">
-              <button type="button" className="lnk sm" onClick={() => setReopening(prev.id)}>{trx('↩ No había terminado: seguir con {0}', prev.code)}</button>
-              {fillLink}
+            {!hold && <span className="btns">
+              {!guarded && <button type="button" className="lnk sm" onClick={() => setReopening(prev.id)}>{trx('↩ No había terminado: seguir con {0}', prev.code)}</button>}
+              {!guarded && fillLink}
               <button type="button" className="lnk sm" onClick={() => setFixingId(prev.id)}>{tr('Corregir')}</button>
             </span>}
           </div>
@@ -3184,7 +3216,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   // a set up on this line while its code runs: amber like every set up, never the red of a stop
   const inSetup = !!stop && stop.lineId === line.id && stop.reason === SETUP
   // the slow-line signal (2026-10-28): under the room's minimum in its last hour, the card goes red and back
-  const slow = !stop && !quiet ? lineSlow(s, line, run, now) : null
+  const slow = !stop && !hold ? lineSlow(s, line, run, now) : null
   const oven = line.dept === 'Kitchen' && isOven(line.name)
   return (
     <div className={'line ' + (inSetup ? 'insetup' : stop ? 'stopped' : 'running') + (just ? ' justdone' : '') + (slow ? ' slow' : '') + (packBins ? ' mode-bin' : pallets ? ' mode-pal' : '') + (oven ? ' oven' : '')}>
@@ -3193,7 +3225,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       <div className="lhead">
         <h3><i className="lemoji" aria-hidden="true">{oven ? '🔥' : DEPT_LOOK[line.dept].emoji}</i>{lineLabel(line.name)} {nameIt}</h3>
         <span className={'pill ' + (inSetup ? 'setup' : stop ? 'stop' : 'run')}>{inSetup ? tr('⏱ Set up') : stop ? tr('⏸ Parado') : tr('● Corriendo')}</span>
-        <span className="lacts">{goalBtn}{!quiet && <button type="button" className="lnk sm" onClick={() => setFixing(true)}>{tr('Corregir')}</button>}</span>
+        <span className="lacts">{goalBtn}{!hold && <button type="button" className="lnk sm" onClick={() => setFixing(true)}>{tr('Corregir')}</button>}</span>
       </div>
       {/* what runs here, big: the code and the lot going on now; a Packing line says first whether it makes pallets or fills bins */}
       <div className={'hero' + (packBins ? ' bin' : pallets ? ' pal' : '')}>
@@ -3250,7 +3282,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         ? <PalletPanel s={s} run={run} readOnly={quiet} saved={just ? savedText(line.dept, just.n - brought, rc) : ''} onDone={done} onLot={() => setPacking('lot')} onLotNow={() => setPacking('binlot')} onPart={(i) => setPacking(i)} onOrder={() => setPacking('po')} onReopen={() => setPacking('reopen')} canReopen={run.units.length > brought && !run.extra?.open?.parts.length} />
         : !quiet && <button type="button" className={'btn primary huge' + (just ? ' saved' : '')} disabled={!!just} onClick={() => done()}>✓ {just ? savedText(line.dept, just.n - brought, rc) : rc.done}</button>}
       {!quiet && (line.dept === 'RTE' || weighsBalls(line.dept)) && <WeightReminder s={s} run={run} now={now} />}
-      {!quiet && capFull && cap && <div className="capdone">{tr('✓ Programa completo: {0} de {1} {2} del {3}{4}. Si hay que hacer más, habla con la oficina.', fmtN(cap.done), fmtN(cap.planned), cap.unit, cap.code, cap.lot ? ' · ' + tr('lote {0}', cap.lot) : '')}</div>}
+      {!hold && capFull && cap && <div className="capdone">{tr('✓ Programa completo: {0} de {1} {2} del {3}{4}. Si hay que hacer más, habla con la oficina.', fmtN(cap.done), fmtN(cap.planned), cap.unit, cap.code, cap.lot ? ' · ' + tr('lote {0}', cap.lot) : '')}</div>}
       {capAsk && cap && <div className="veil" onClick={() => setCapAsk(false)}><div className="dlg capdlg" onClick={(e) => e.stopPropagation()}>
         <h3>{tr('Ya se hicieron todas las {0} del programa', cap.unit)}</h3>
         <p>{tr('Del {0}{1} estaban programadas {2} {3} hoy, y ya van {4}.', cap.code, cap.lot ? ' ' + tr('lote {0}', cap.lot) : '', fmtN(cap.planned), cap.unit, fmtN(cap.done))}</p>

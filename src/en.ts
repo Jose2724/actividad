@@ -3584,4 +3584,8 @@ export const EN: Record<string, string> = {
   "Faltan por pesar": "Still to weigh",
   "Ver menos": "Show less",
   "Ver los {0} que faltan": "Show the other {0}",
+  "🔒 Los botones de las líneas están bloqueados para que no se toquen sin querer. Corregir, el Programa y lo demás siguen abiertos.": "🔒 The lines' buttons are locked so they aren't pressed by accident. Correct, the Program and the rest stay open.",
+  "🔓 Desbloquear 15 min": "🔓 Unlock 15 min",
+  "🔓 Botones de las líneas desbloqueados hasta las {0}.": "🔓 Lines' buttons unlocked until {0}.",
+  "🔒 Bloquear ya": "🔒 Lock now",
 }
