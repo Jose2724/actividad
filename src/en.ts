@@ -3575,4 +3575,11 @@ export const EN: Record<string, string> = {
   "📅 Días anteriores": "📅 Previous days",
   "historial del programa": "program history",
   "{0} no tuvo programa el {1}.": "{0} had no program on {1}.",
+  "{0} terminó con 1 mezcla sin pesar. La tablet del cuarto no sigue hasta que anoten las libras.": "{0} ended with 1 mezcla not weighed. The room's tablet won't go on until the pounds are written.",
+  "{0} terminó con {1} mezclas sin pesar. La tablet del cuarto no sigue hasta que anoten las libras.": "{0} ended with {1} mezclas not weighed. The room's tablet won't go on until the pounds are written.",
+  "Quitar el aviso": "Remove the notice",
+  "¿Quitar el aviso de {0}": "Remove the notice for {0}",
+  "La tablet del cuarto deja de pedir esas libras y sigue. Esas mezclas quedan sin peso en el Consumo; queda anotado en el historial que lo quitaste.": "The room's tablet stops asking for those pounds and goes on. Those mezclas stay without a weight in Consumption; the history records that you removed it.",
+  "⚠ Es obligatorio: la línea no puede seguir hasta que anoten las libras. Si no se pueden pesar, avisa al supervisor o a la oficina.": "⚠ This is mandatory: the line can't go on until the pounds are written. If they can't be weighed, tell the supervisor or the office.",
+  "Faltan por pesar": "Still to weigh",
 }

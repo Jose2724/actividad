@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { consumeAdd, consumeDelete, consumeLeft, consumeMezcla, consumesOfRun, fmtTime, inventoryOf, lineLabel, mixOwed, type ConsumeEntry, type Dept, type Run, type State } from './store'
+import { consumeAdd, consumeDelete, consumeLeft, consumeMezcla, consumeSkip, consumesOfRun, fmtTime, inventoryOf, lineLabel, mixOwed, type ConsumeEntry, type Dept, type Run, type State } from './store'
 import { tr } from './i18n'
-import { useWho } from './App'
+import { ConfirmDialog, useWho } from './App'
 
 /**
  * What a room consumes (the office, 2026-10-27): before a code starts the line weighs what it is going to use (what it
@@ -127,21 +127,35 @@ export function ConsumeEndDialog({ entries }: { entries: ConsumeEntry[] }) {
 }
 /**
  * A code ended with mezclas not weighed yet (the room weighs every few, 2026-11-05): their pounds are asked before
- * the line goes on, so every mezcla of the code is weighed
+ * the line goes on, so every mezcla of the code is weighed. Only the room's own tablet is held, in the middle of the
+ * screen and saying it is mandatory (Jose, 2026-11-05: "que le salga bien centrado al operador y que le deje saber que
+ * es mandatorio"); a manager and the office see a bar on the line instead, and may let them go from their own account
+ * when they cannot be weighed ("que el muchacho de la oficina o yo pueda hacer que se vaya"); whoever only looks, the bar
  */
 export function MixOwedDialog({ s, lineId, now }: { s: State; lineId: string; now: number }) {
   const owed = mixOwed(s, lineId, now)
-  const [lb, setLb] = useState('')
-  // only the room's own tablet is held for it (Jose, 2026-11-05, a manager's screen held by Kitchen's ARROZ BLANCO:
-  // "¿por qué esto me salió a mí?"): the operators weighed it, a manager, the office and whoever only looks are never held
-  if (useWho().role !== 'op') return null
+  const [lb, setLb] = useState(''), [sure, setSure] = useState(false)
+  const who = useWho()
   if (!owed) return null
   const n = Number(lb.replace(',', '.'))
+  if (who.role !== 'op') {
+    const may = who.role === 'mgr' || who.role === 'office'
+    return (
+      <>
+      <div className="mixowedbar" role="status">
+        <span>⚖ <b>{tr('Faltan por pesar')}</b> · {owed.n === 1 ? tr('{0} terminó con 1 mezcla sin pesar. La tablet del cuarto no sigue hasta que anoten las libras.', owed.run.code) : tr('{0} terminó con {1} mezclas sin pesar. La tablet del cuarto no sigue hasta que anoten las libras.', owed.run.code, owed.n)}</span>
+        {may && <button type="button" className="btn sm" onClick={() => setSure(true)}>{tr('Quitar el aviso')}</button>}
+      </div>
+      {sure && <ConfirmDialog title={tr('¿Quitar el aviso de {0}', owed.run.code) + '?'} text={tr('La tablet del cuarto deja de pedir esas libras y sigue. Esas mezclas quedan sin peso en el Consumo; queda anotado en el historial que lo quitaste.')} yes={tr('Quitar el aviso')} danger onYes={() => { consumeSkip(owed.run, owed.n); setSure(false) }} onNo={() => setSure(false)} />}
+      </>
+    )
+  }
   return (
-    <div className="veil rc-veil">
-      <div className="dlg cons-dlg">
+    <div className="veil mixowed-veil">
+      <div className="dlg cons-dlg mixowed-dlg">
         <h3>{tr('⚖ Faltan por pesar')}</h3>
         <p className="hint">{owed.n === 1 ? tr('El código {0} terminó con 1 mezcla sin pesar. ¿Cuántas libras llevó?', owed.run.code) : tr('El código {0} terminó con {1} mezclas sin pesar. ¿Cuántas libras llevaron entre todas?', owed.run.code, owed.n)}</p>
+        <p className="mixowed-must">{tr('⚠ Es obligatorio: la línea no puede seguir hasta que anoten las libras. Si no se pueden pesar, avisa al supervisor o a la oficina.')}</p>
         <form className="qform" onSubmit={(e) => { e.preventDefault(); if (n > 0 && n < 100000) { consumeMezcla(owed.run, Math.round(n * 100) / 100); setLb('') } }}>
           <label>{tr('Libras')} <input autoFocus inputMode="decimal" value={lb} placeholder="lb" onChange={(e) => setLb(e.target.value.replace(/[^\d.,]/g, ''))} /></label>
           <div className="dbtns"><button type="submit" className="btn primary" disabled={!(n > 0)}>{tr('✓ Guardar')}</button></div>

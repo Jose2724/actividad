@@ -6394,9 +6394,24 @@ section('Consumo cada pocas mezclas (la oficina, 2026-11-05: "que el peso no sea
     m.setConsumeEvery('Kitchen', 1)
     eq('cada mezcla otra vez: nada pendiente', [m.consumeEvery(st(), 'Kitchen'), m.mixOwed(st(), line.id, clock)], [1, null])
     m.setConsumeEvery('Kitchen', 5)
+    // the office lets go mezclas that cannot be weighed (Jose, 2026-11-05: "que el muchacho de la oficina o yo pueda hacer que se vaya")
+    clock = T0 + 100 * M
+    m.startRun(line, '2286', '6301', DAY, null)
+    clock = T0 + 110 * M; m.unitDone(run().id, null)
+    const id2 = run().id
+    clock = T0 + 120 * M; m.endRun(id2)
+    eq('otro código terminó con 1 sin pesar', ((x) => x && x.n)(m.mixOwed(st(), line.id, clock)), 1)
+    const before = m.consumesOf(st(), DAY, 'Kitchen').length
+    clock += 1000
+    eq('la oficina quita el aviso: ya no se pide', [m.consumeSkip(st().runs.find((r) => r.id === id2), 1), m.mixOwed(st(), line.id, clock)], [true, null])
+    eq('no suma libras, no sale en la lista ni en el inventario', [m.consumesOf(st(), DAY, 'Kitchen').length, m.consumesOfRun(st(), id2).length, m.inventoryOf(st(), 'Kitchen').length, m.consumesPending(st(), line.id).length], [before, 0, 0, 0])
+    eq('la historia dice que se quitó sin libras', st().changes.some((c) => c.what === 'Consumo · 2286' && c.before === '1 mezcla sin pesar' && c.after === 'quitado sin libras'), true)
+    const row = m.outbox.items().find((i) => String(i.key).startsWith('consumo:') && JSON.parse(i.row.after).skip)
+    eq('sube al servidor marcado, con 0 lb', !!row && JSON.parse(row.row.after).lb, 0)
   })
   const back = await device('consumo-cada-again', { seed: JSON.parse(disks.get('consumo-cada').get('act_v1')), user: 'Oficina' })
   eq('al volver a abrir sigue cada 5 mezclas', back.use((m) => m.consumeEvery(m.store.get(), 'Kitchen')), 5)
+  eq('al volver a abrir el aviso quitado sigue quitado', back.use((m) => { const l = m.store.get().lines.find((x) => x.dept === 'Kitchen'); return [m.mixOwed(m.store.get(), l.id, T0 + 121 * M), m.store.get().consumes.filter((x) => x.skip).length] }), [null, 1])
 }
 section('Consumo: lo que un cuarto pesa antes de empezar un código, lo que quedó al terminarlo, y su inventario (la oficina, 2026-10-27)')
 {

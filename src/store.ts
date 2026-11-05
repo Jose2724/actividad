@@ -1488,7 +1488,8 @@ export function meatDelete(id: string) {
  * inventory). Each entry is one record in act_changes with the run's room (act_consumo), like the meat; the server
  * never erases.
  */
-export type ConsumeEntry = { id: string; date: string; dept: Dept; lineId: string; line: string; code: string; lot: string; runId: string; product: string; prodLot: string; labelDate: string; lb: number; left: number | null; fromId: string; at: number; by: string; deleted?: boolean; updatedAt: number; syncedAt?: number }
+/** skip: mezclas a manager or the office let go without their pounds (Jose, 2026-11-05: "por cualquier razón se necesita que se quite"): 0 lb, never counted nor listed */
+export type ConsumeEntry = { id: string; date: string; dept: Dept; lineId: string; line: string; code: string; lot: string; runId: string; product: string; prodLot: string; labelDate: string; lb: number; left: number | null; fromId: string; at: number; by: string; skip?: boolean; deleted?: boolean; updatedAt: number; syncedAt?: number }
 /** every: how many mezclas one weighing covers (the office, 2026-11-05: "que el peso no sea por cada 2 bolas sino por 10 bolas"); 1 = each mezcla */
 export type ConsumeOpt = { dept: Dept; on: boolean; every: number; updatedAt: number }
 const CONS_ID = 'consumo:'
@@ -1496,14 +1497,14 @@ export const CONS_REF = 'act_consumo'
 const CONS_KEY = 'opt:consumo:'
 function consumeFrom(x: Partial<ConsumeEntry> | null | undefined): ConsumeEntry | null {
   if (!x || typeof x !== 'object' || typeof x.id !== 'string' || !x.id || !(DEPTS as unknown[]).includes(x.dept) || !isDay(String(x.date ?? '')) || !String(x.product ?? '').trim()) return null
-  const lb = Number(x.lb)
-  if (!(lb > 0 && lb < 100000)) return null
+  const lb = Number(x.lb), skip = !!x.skip && lb === 0
+  if (!(lb > 0 && lb < 100000) && !skip) return null
   const left = x.left == null || x.left === undefined ? null : Math.min(lb, Math.max(0, Math.round(Number(x.left) * 100) / 100))
-  return { id: x.id, date: String(x.date), dept: x.dept as Dept, lineId: String(x.lineId ?? ''), line: String(x.line ?? ''), code: String(x.code ?? '').trim().toUpperCase(), lot: String(x.lot ?? ''), runId: String(x.runId ?? ''), product: String(x.product).trim().slice(0, 60), prodLot: String(x.prodLot ?? '').trim().slice(0, 40), labelDate: String(x.labelDate ?? '').slice(0, 10), lb: Math.round(lb * 100) / 100, left: Number.isFinite(left as number) ? left : null, fromId: String(x.fromId ?? ''), at: Number(x.at) || 0, by: String(x.by ?? ''), ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
+  return { id: x.id, date: String(x.date), dept: x.dept as Dept, lineId: String(x.lineId ?? ''), line: String(x.line ?? ''), code: String(x.code ?? '').trim().toUpperCase(), lot: String(x.lot ?? ''), runId: String(x.runId ?? ''), product: String(x.product).trim().slice(0, 60), prodLot: String(x.prodLot ?? '').trim().slice(0, 40), labelDate: String(x.labelDate ?? '').slice(0, 10), lb: Math.round(lb * 100) / 100, left: Number.isFinite(left as number) ? left : null, fromId: String(x.fromId ?? ''), at: Number(x.at) || 0, by: String(x.by ?? ''), ...(skip ? { skip: true } : {}), ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
 }
 const putConsume = (x: ConsumeEntry) => {
   set({ ...state, consumes: [...(state.consumes ?? []).filter((y) => y.id !== x.id), x] })
-  push('act_changes', CONS_ID + x.id, { id: CONS_ID + x.id, at: iso(x.at), by_name: x.by, dept: x.dept, what: 'Consumo', before: '', after: JSON.stringify({ date: x.date, lineId: x.lineId, line: x.line, code: x.code, lot: x.lot, runId: x.runId, product: x.product, prodLot: x.prodLot, labelDate: x.labelDate, lb: x.lb, left: x.left, fromId: x.fromId }), ref_table: CONS_REF, ref_key: x.id, deleted: !!x.deleted, updated_at: iso(x.updatedAt), updated_by: user.get() })
+  push('act_changes', CONS_ID + x.id, { id: CONS_ID + x.id, at: iso(x.at), by_name: x.by, dept: x.dept, what: 'Consumo', before: '', after: JSON.stringify({ date: x.date, lineId: x.lineId, line: x.line, code: x.code, lot: x.lot, runId: x.runId, product: x.product, prodLot: x.prodLot, labelDate: x.labelDate, lb: x.lb, left: x.left, fromId: x.fromId, ...(x.skip ? { skip: true } : {}) }), ref_table: CONS_REF, ref_key: x.id, deleted: !!x.deleted, updated_at: iso(x.updatedAt), updated_by: user.get() })
 }
 /** something weighed into a code: what it is, its lot, its label's date, the pounds; fromId when it was what was left of an earlier entry. '' when it makes no sense */
 export function consumeAdd(r: Run, product: string, prodLot: string, labelDate: string, lb: number, fromId = ''): string {
@@ -1523,6 +1524,19 @@ export function consumeMezcla(r: Run, lb: number): string {
   const x = id ? (state.consumes ?? []).find((y) => y.id === id) : undefined
   if (x) putConsume({ ...x, left: 0, updatedAt: stamp(x) })
   return id
+}
+/**
+ * The mezclas of a code that ended without their pounds let go by a manager or the office (Jose, 2026-11-05: "por
+ * cualquier razón se necesita que se quite, que el muchacho de la oficina o yo pueda hacer que se vaya desde nuestra
+ * cuenta"): one entry of 0 lb marked skip, so the room's tablet is no longer held for them; it is in the history, and
+ * no total, list nor inventory takes it. false when there is nothing to let go
+ */
+export function consumeSkip(r: Run, n: number): boolean {
+  if (!(n > 0)) return false
+  const x: ConsumeEntry = { id: uid(), date: r.date, dept: r.dept, lineId: r.lineId, line: r.line, code: r.code, lot: lotNowOf(r), runId: r.id, product: productOf(state, r.code)?.name || r.code, prodLot: lotNowOf(r), labelDate: '', lb: 0, left: 0, fromId: '', at: clockNow(), by: user.get(), skip: true, updatedAt: stamp(undefined) }
+  putConsume(x)
+  logChange(r.dept, 'Consumo · ' + r.code, n === 1 ? '1 mezcla sin pesar' : n + ' mezclas sin pesar', 'quitado sin libras', CONS_REF, x.id)
+  return true
 }
 /** what was left of an entry when its code ended (0 = all consumed); false when there is no such entry */
 export function consumeLeft(id: string, left: number): boolean {
@@ -1558,16 +1572,16 @@ export function consumeEdit(id: string, lb: number, product: string, prodLot: st
   return true
 }
 /** what went in on a day (one room, or all), oldest first */
-export const consumesOf = (s: State, date: string, dept?: Dept) => (s.consumes ?? []).filter((x) => !x.deleted && x.date === date && (!dept || x.dept === dept)).sort((a, b) => a.at - b.at)
-export const consumesOfRun = (s: State, runId: string) => (s.consumes ?? []).filter((x) => !x.deleted && x.runId === runId).sort((a, b) => a.at - b.at)
+export const consumesOf = (s: State, date: string, dept?: Dept) => (s.consumes ?? []).filter((x) => !x.deleted && !x.skip && x.date === date && (!dept || x.dept === dept)).sort((a, b) => a.at - b.at)
+export const consumesOfRun = (s: State, runId: string) => (s.consumes ?? []).filter((x) => !x.deleted && !x.skip && x.runId === runId).sort((a, b) => a.at - b.at)
 /** the room's inventory now: what was left of entries nobody has taken since, oldest first */
 export function inventoryOf(s: State, dept?: Dept): ConsumeEntry[] {
-  const all = (s.consumes ?? []).filter((x) => !x.deleted)
+  const all = (s.consumes ?? []).filter((x) => !x.deleted && !x.skip)
   const taken = new Set(all.map((x) => x.fromId).filter(Boolean))
   return all.filter((x) => (x.left ?? 0) > 0 && !taken.has(x.id) && (!dept || x.dept === dept)).sort((a, b) => a.at - b.at)
 }
 /** entries of a line's ended codes whose leftover has not been said yet: the line answers before going on */
-export const consumesPending = (s: State, lineId: string) => (s.consumes ?? []).filter((x) => !x.deleted && x.lineId === lineId && x.left == null && (() => { const r = s.runs.find((y) => y.id === x.runId); return !!r && !r.deleted && !!r.endedAt })()).sort((a, b) => a.at - b.at)
+export const consumesPending = (s: State, lineId: string) => (s.consumes ?? []).filter((x) => !x.deleted && !x.skip && x.lineId === lineId && x.left == null && (() => { const r = s.runs.find((y) => y.id === x.runId); return !!r && !r.deleted && !!r.endedAt })()).sort((a, b) => a.at - b.at)
 /** whether a room must weigh what it consumes before a code starts (a manager's switch in Ajustes) */
 export const consumeOn = (s: State, dept: Dept) => !!(s.consumeOpts ?? []).find((x) => x.dept === dept)?.on
 export function setConsumeOn(dept: Dept, on: boolean) {
@@ -1596,7 +1610,8 @@ function putConsumeOpt(was: ConsumeOpt | undefined, x: ConsumeOpt) {
 export function mixUnweighed(s: State, r: Run): number {
   const opt = (s.consumeOpts ?? []).find((x) => x.dept === r.dept)
   if (!opt?.on) return 0
-  const since = Math.max(opt.updatedAt, ...consumesOfRun(s, r.id).map((x) => x.at))
+  // (a weighing, or mezclas let go by a manager or the office, covers all those before it)
+  const since = Math.max(opt.updatedAt, ...(s.consumes ?? []).filter((x) => !x.deleted && x.runId === r.id).map((x) => x.at))
   return countedUnits(r.units).filter((u) => u.at > since).length
 }
 /**

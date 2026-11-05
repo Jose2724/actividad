@@ -120,6 +120,11 @@ input[type=text],input:not([type]),input[type=date]{min-height:48px;padding:0 12
 /* the code picker's box stands at the top: centred, it grew when a code was chosen and moved up under the finger, and a
    second tap fell on another code (Jose, 2026-10-20) */
 .veil.rc-veil{align-items:flex-start}
+.veil.mixowed-veil{align-items:center;z-index:60;background:rgba(0,0,0,.6)}
+.mixowed-dlg{text-align:center;max-width:460px;width:100%}
+.mixowed-dlg .qform label{text-align:left}
+.mixowed-must{background:#fee2e2;color:#991b1b;border-radius:10px;padding:8px 12px;font-weight:700;margin:8px 0}
+.mixowedbar{background:#fff7e6;color:var(--amber);border-radius:10px;padding:8px 12px;font-weight:500;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin:6px 0}
 .dlg>h3{position:sticky;top:-18px;margin:-18px -18px 0;padding:18px 18px 8px;background:var(--surface);z-index:2}
 .dlg>.dbtns{position:sticky;bottom:-18px;margin:0 -18px -18px;padding:12px 18px 18px;background:var(--surface);border-top:1px solid var(--line);z-index:2}
 .dlg h3{font-size:20px}
