@@ -1531,6 +1531,23 @@ export function consumeDelete(id: string) {
   const x = (state.consumes ?? []).find((y) => y.id === id)
   if (!x || x.deleted) return
   putConsume({ ...x, deleted: true, updatedAt: stamp(x) })
+  logChange(x.dept, 'Consumo quitado · ' + x.code, consumeText(x), 'quitado', CONS_REF, x.id + ':q')
+}
+const consumeText = (x: Pick<ConsumeEntry, 'product' | 'prodLot' | 'lb'>) => x.product + (x.prodLot ? ' · lote ' + x.prodLot : '') + ' · ' + x.lb + ' lb'
+/**
+ * an entry corrected from the report (Jose, 2026-11-04: the weights of the mezclas, "si lo quieren editar tampoco lo
+ * deja"): its pounds, what it is and its lot. The hour, the line, the code and who weighed it stay; what was left is
+ * never more than what went in. false when it makes no sense
+ */
+export function consumeEdit(id: string, lb: number, product: string, prodLot: string): boolean {
+  const x = (state.consumes ?? []).find((y) => y.id === id)
+  if (!x || x.deleted || !product.trim() || !(lb > 0 && lb < 100000)) return false
+  const n = Math.round(lb * 100) / 100, p = product.trim().slice(0, 60), l = prodLot.trim().slice(0, 40)
+  if (n === x.lb && p === x.product && l === x.prodLot) return true
+  const next = { ...x, lb: n, product: p, prodLot: l, left: x.left == null ? null : Math.min(n, x.left), updatedAt: stamp(x) }
+  putConsume(next)
+  logChange(x.dept, 'Consumo corregido · ' + x.code, consumeText(x), consumeText(next), CONS_REF, x.id + ':e')
+  return true
 }
 /** what went in on a day (one room, or all), oldest first */
 export const consumesOf = (s: State, date: string, dept?: Dept) => (s.consumes ?? []).filter((x) => !x.deleted && x.date === date && (!dept || x.dept === dept)).sort((a, b) => a.at - b.at)

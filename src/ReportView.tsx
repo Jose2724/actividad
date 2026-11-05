@@ -6,7 +6,7 @@ import { codeLabel, FAMILY_SHOWN, reasonCodeOf } from './reasons'
 import { cellText, loadZip, X, xDur, xN, xPct, xTime, xlsxNow, XLSX_TYPE, type Cell, type Sheet } from './xlsx'
 import { cookYields, hoursOf, seesLabor, weightsOf, wtCompliance, wtCountText, wtDoneText, wtOfReport, wtSheetRows, wtSheets, wtShift, wtSum, wtBoard, wtRangeLong, wtSummary, wtSummaryBook, type WtAvg, type WtRow } from './kpi'
 import { attendanceOf, attLineText, attMovesText, attOf, attShifts, attStateText } from './store'
-import { awayDay, byLineName, COOKS, consumesOf, inventoryOf, stepText, weightEdit, weightPaperAdd, weightsFix, weightTarget, wtKindsOf, wtOdd, wtPaperAt, wtPaperLines, wtPicksCode, type Cook, type Dept as RoomDept, type WeightTest, type WtEntry } from './store'
+import { awayDay, byLineName, COOKS, consumeDelete, consumeEdit, consumesOf, inventoryOf, type ConsumeEntry, stepText, weightEdit, weightPaperAdd, weightsFix, weightTarget, wtKindsOf, wtOdd, wtPaperAt, wtPaperLines, wtPicksCode, type Cook, type Dept as RoomDept, type WeightTest, type WtEntry } from './store'
 import { MINI_WEEKS, miniBook, miniSimple, miniSpan, miniTables, miniWeek } from './miniKpi'
 import { PplhView, RangePick } from './PplhView'
 import { DashView } from './DashView'
@@ -1083,23 +1083,83 @@ function AttNames({ k, people }: { k: Kit; people: AttEntry[] }) {
 
 /** Spiral's meat in the report (2026-10-23): by code, its pounds, lots and pounds per mezcla; every entry a tap away */
 /** what the rooms weighed in that day, and the inventory that is left (2026-10-27) */
+/**
+ * What the rooms consumed that day, room by room as a table (Jose, 2026-11-04: the weights of Kitchen's and Spiral's
+ * mezclas, "que se vea bien visualmente"): each code's total first, then every weight with its hour, and Corregir for
+ * managers and the office; then the room's inventory
+ */
 function ConsumeWhere({ k }: { k: Kit }) {
-  const { s, date, dept, only } = k
+  const { s, date, dept, only, mgr } = k
+  const who = useWho(), canFix = mgr && who.role !== 'viewer'
+  const [fixing, setFixing] = useState<ConsumeEntry | null>(null)
   const room = (dept || only || '') as RoomDept | ''
   const list = consumesOf(s, date, room || undefined), inv = inventoryOf(s, room || undefined)
   if (!list.length && !inv.length) return null
   const lb = (n: number) => (Math.round(n * 100) / 100).toLocaleString('en-US')
   const what = (x: { product: string; prodLot: string; labelDate: string }) => x.product + (x.prodLot ? ' · ' + tr('lote {0}', x.prodLot) : '') + (x.labelDate ? ' · ' + x.labelDate : '')
+  const rooms = DEPTS.filter((d) => list.some((x) => x.dept === d))
   return (
     <>
       <h3>{tr('⚖ Consumo')} <WhatIs id="consumo" /></h3>
-      {list.length > 0 && <ul className="meat-each">{list.map((x) => <li key={x.id}>{fmtTime(x.at)} · {x.dept} · {lineNameOf(s, x.lineId, x.line)} · <b>{x.code}</b> {tr('lote {0}', x.lot)} · <b>{lb(x.lb)} lb</b> {what(x)}{x.left == null ? <span className="muted"> · {tr('sin decir qué quedó')}</span> : x.left > 0 ? <b className="amber"> · {tr('quedaron {0} lb', lb(x.left))}</b> : <span className="ok"> · {tr('se consumió todo')}</span>} <small>· {x.by}</small></li>)}</ul>}
+      {rooms.map((d) => {
+        const mine = list.filter((x) => x.dept === d), total = mine.reduce((t, x) => t + x.lb, 0)
+        // each code and lot of the room: how many weights, the pounds and the pounds of each one on average
+        const codes = [...mine.reduce((m, x) => { const key = x.code + '|' + x.lot, e = m.get(key) ?? { code: x.code, lot: x.lot, n: 0, lb: 0 }; e.n++; e.lb += x.lb; return m.set(key, e) }, new Map<string, { code: string; lot: string; n: number; lb: number }>()).values()]
+        const left = mine.some((x) => x.left == null || x.left > 0)
+        // (a mezcla weighed at Mezcla lista is its code and lot: what went in is said only when something else was weighed)
+        const told = mine.some((x) => !(x.left === 0 && x.prodLot === x.lot && !x.labelDate))
+        return (
+          <article key={d} className="wt-rp cons-rp" style={deptVars(d)}>
+            <h3>{DEPT_LOOK[d].emoji} {d} <span className="cons-total">{lb(total)} lb</span> <small>· {mine.length === 1 ? tr('1 peso') : tr('{0} pesos', mine.length)}</small></h3>
+            <div className="cons-codes">{codes.map((c) => <span key={c.code + c.lot} className="cons-code"><b>{c.code}</b>{c.lot && <> {tr('lote {0}', c.lot)}</>} · {c.n === 1 ? tr('1 peso') : tr('{0} pesos', c.n)} · <b>{lb(c.lb)} lb</b>{c.n > 1 && <small> · {tr('prom. {0} lb', lb(c.lb / c.n))}</small>}</span>)}</div>
+            <div className="scroll"><table className="wt-rp-tbl cons-tbl">
+              <thead><tr><th>{tr('Hora')}</th><th>{tr('Línea')}</th><th>{tr('Código')}</th>{told && <th>{tr('Qué entró')}</th>}<th className="n">{tr('Libras')}</th>{left && <th className="n">{tr('Quedó')}</th>}<th>{tr('Anotó')}</th>{canFix && <th></th>}</tr></thead>
+              <tbody>{mine.map((x) => (
+                <tr key={x.id}>
+                  <td>{fmtTime(x.at)}</td><td>{lineNameOf(s, x.lineId, x.line)}</td><td><b>{x.code}</b>{x.lot && <small> · {tr('lote {0}', x.lot)}</small>}</td>
+                  {told && <td>{what(x)}</td>}<td className="n"><b>{lb(x.lb)}</b></td>
+                  {left && <td className={'n ' + (x.left == null ? 'muted' : x.left > 0 ? 'amber' : 'ok')}>{x.left == null ? tr('sin decir') : x.left > 0 ? lb(x.left) + ' lb' : tr('todo')}</td>}
+                  <td><small>{x.by}</small></td>
+                  {canFix && <td><button type="button" className="btn sm soft" onClick={() => setFixing(x)}>{tr('Corregir')}</button></td>}
+                </tr>
+              ))}</tbody>
+            </table></div>
+          </article>
+        )
+      })}
       {inv.length > 0 && <>
         <h4>{tr('Inventario ahora')}</h4>
         <ul className="meat-each">{inv.map((x) => <li key={x.id}><b>{lb(x.left ?? 0)} lb</b> {what(x)} <small>· {x.dept} · {tr('quedó el {0} del código {1}', x.date, x.code)}</small></li>)}</ul>
       </>}
-      <p className="hint">{tr('Lo que cada línea pesó antes de empezar un código y lo que dijo que quedó al terminarlo. En el Excel va la hoja "Consumo".')}</p>
+      <p className="hint">{tr('Lo que cada línea pesó: en cada Mezcla lista, o antes de empezar un código y lo que quedó al terminarlo. En el Excel va la hoja "Consumo".')}</p>
+      {fixing && <ConsumeFixDialog x={fixing} onClose={() => setFixing(null)} />}
     </>
+  )
+}
+/** one weight corrected, or taken away: the hour, the line and who weighed it stay, and Cambios keeps what it said */
+function ConsumeFixDialog({ x, onClose }: { x: ConsumeEntry; onClose: () => void }) {
+  const [lbText, setLbText] = useState(String(x.lb))
+  const [product, setProduct] = useState(x.product)
+  const [prodLot, setProdLot] = useState(x.prodLot)
+  const [sure, setSure] = useState(false)
+  const n = Number(lbText.replace(',', '.')), ok = n > 0 && n < 100000 && !!product.trim()
+  return (
+    <div className="veil" onClick={onClose}>
+      <div className="dlg" onClick={(e) => e.stopPropagation()}>
+        <h3>{tr('Corregir peso · {0} · {1}', fmtTime(x.at), x.code)}</h3>
+        <p>{tr('La hora, la línea y quien lo pesó no cambian. Lo que corrijas queda en Cambios con lo que decía antes.')}</p>
+        <div className="wt-editbar">
+          <label>{tr('Libras')} <input inputMode="decimal" value={lbText} onChange={(e) => setLbText(e.target.value.replace(/[^\d.,]/g, ''))} /></label>
+          <label>{tr('Qué entró')} <input value={product} onChange={(e) => setProduct(e.target.value)} /></label>
+          <label>{tr('Lote')} <input value={prodLot} onChange={(e) => setProdLot(e.target.value)} /></label>
+        </div>
+        <div className="dbtns">
+          <button type="button" className="btn stopbtn" onClick={() => { if (!sure) { setSure(true); return } consumeDelete(x.id); onClose() }}>{sure ? tr('¿Seguro? Toca otra vez para quitarlo') : tr('Quitar este peso')}</button>
+          <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
+          <button type="button" className="btn primary" disabled={!ok} onClick={() => { if (consumeEdit(x.id, n, product, prodLot)) onClose() }}>{tr('Guardar')}</button>
+        </div>
+      </div>
+    </div>
   )
 }
 function MeatWhere({ k }: { k: Kit }) {

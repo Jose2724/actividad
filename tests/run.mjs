@@ -6381,6 +6381,10 @@ section('Consumo: lo que un cuarto pesa antes de empezar un código, lo que qued
     // each mezcla weighed when it is done (Jose, 2026-11-04): one entry of the code, all of it consumed
     const mz = m.consumeMezcla(run(), 12.5)
     eq('la mezcla pesada al darle lista: una entrada del código con sus libras, toda consumida', [m.consumesOfRun(st(), run().id).find((x) => x.id === mz)?.lb, m.consumesOfRun(st(), run().id).find((x) => x.id === mz)?.left, m.consumeMezcla(run(), 0)], [12.5, 0, ''])
+    eq('el peso de una mezcla se corrige desde el reporte y queda en Cambios', [m.consumeEdit(mz, 13.25, 'Carne 80/20', 'L77'), ((x) => [x.lb, x.product, x.prodLot, x.left])(m.consumesOfRun(st(), run().id).find((x) => x.id === mz)), st().changes.some((c) => c.what.startsWith('Consumo corregido') && c.before.endsWith('12.5 lb') && c.after.endsWith('13.25 lb'))], [true, [13.25, 'Carne 80/20', 'L77', 0], true])
+    eq('un peso sin libras no se guarda', m.consumeEdit(mz, 0, 'Carne', ''), false)
+    m.consumeDelete(mz)
+    eq('quitado: ya no cuenta, y queda en Cambios', [m.consumesOfRun(st(), run().id).some((x) => x.id === mz), st().changes.some((c) => c.what.startsWith('Consumo quitado'))], [false, true])
     m.consumeDelete(mz)
     const a = m.consumeAdd(run(), ' Carne 80/20 ', 'BF-1', '2026-10-20', 30)
     eq('lo pesado va con el código: qué es, lote, fecha de la etiqueta, 30 lb, sin decir aún qué quedó', m.consumesOfRun(st(), run().id).map((x) => [x.product, x.prodLot, x.labelDate, x.lb, x.left, x.code]), [['Carne 80/20', 'BF-1', '2026-10-20', 30, null, '2286']])

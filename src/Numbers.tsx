@@ -82,7 +82,7 @@ const items = (): Item[] => [
     eg: tr('1,000 lb ÷ 20 mezclas = 50 lb por mezcla.') },
   { id: 'consumo', group: 'prod', title: tr('Consumo e inventario del cuarto'),
     means: tr('Lo que entró a un código y lo que sobró.'),
-    math: tr('Son los pesos que la línea escribió antes de empezar y lo que dijo que quedó al terminar. Lo que quedó es el inventario del cuarto. La app no lo calcula: lo muestra como se escribió.') },
+    math: tr('Son los pesos que la línea escribió: en cada Mezcla lista, o antes de empezar y lo que dijo que quedó al terminar. Lo que quedó es el inventario del cuarto. La app no lo calcula: lo muestra como se escribió. Un manager o la oficina lo corrige en el Reporte con Corregir.') },
 
   { id: 'avance', group: 'avance', title: tr('Los números de Avance'),
     means: tr('Cada código con lo que debería salir de sus mezclas y lo que cada cuarto lleva.'),
