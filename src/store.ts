@@ -1079,7 +1079,10 @@ const ATT_VIA = 'via:'
 export function attOf(s: State, date: string, dept: Dept, shift: 1 | 2): AttEntry[] {
   const day = (s.attendance ?? []).filter((x) => !x.deleted && x.date === date && x.shift === shift)
   const mine = day.filter((x) => x.dept === dept), names = new Set(mine.map((x) => attKey(x.name)))
-  const came = day.filter((x) => x.dept !== dept && x.gone?.why === 'otro' && x.gone.to === dept && !names.has(attKey(x.name)))
+  // one this room turned down (attDecline): written here from that send and marked deleted; sent again later, they show
+  const no = (s.attendance ?? []).filter((x) => x.deleted && x.date === date && x.shift === shift && x.dept === dept && !!x.from)
+  const declined = (x: AttEntry) => no.some((y) => y.from === x.dept && attKey(y.name) === attKey(x.name) && y.at >= (x.gone?.at ?? 0))
+  const came = day.filter((x) => x.dept !== dept && x.gone?.why === 'otro' && x.gone.to === dept && !names.has(attKey(x.name)) && !declined(x))
     .map((x): AttEntry => ({ ...x, id: ATT_VIA + x.id, dept, line: x.gone?.line ?? '', moves: [], from: x.dept, by: x.gone?.by ?? x.by, at: x.gone?.at ?? x.at, gone: null, via: x.id }))
   return [...mine, ...came].sort((a, b) => a.at - b.at)
 }
@@ -1192,6 +1195,24 @@ export function attAccept(id: string, line = ''): boolean {
     const x = attHere(id)
     if (!x || x.deleted || x.gone) return
     if (x.line !== line) putAtt({ ...x, line, moves: [...x.moves, { from: x.line, to: line, at: clockNow(), by: user.get() }], updatedAt: stamp(x) })
+    ok = true
+  })
+  return ok
+}
+/**
+ * A person another room sent here that this room does not take in (Jose, 2026-11-05: the pop-up of who arrived, "si lo
+ * quiere aceptar o cancelar"): written here from the hour they were sent and marked deleted at once, as everything the
+ * server keeps, so they leave this room's list on every tablet and never count here. The room that sent them still has
+ * them as sent; sent again later, they show here again. Only a person shown from the other room's record (via:)
+ */
+export function attDecline(id: string): boolean {
+  let ok = false
+  batch(() => {
+    const src = id.startsWith(ATT_VIA) ? (state.attendance ?? []).find((y) => y.id === id.slice(ATT_VIA.length)) : undefined
+    if (!src?.gone?.to || !attOf(state, src.date, src.gone.to, src.shift).some((y) => y.id === id)) return
+    const x = attHere(id)
+    if (!x || x.deleted || x.gone || !x.from) return
+    putAtt({ ...x, deleted: true, updatedAt: stamp(x) })
     ok = true
   })
   return ok

@@ -6548,6 +6548,18 @@ section('Trasladar personal a otra línea o a otro cuarto, y los nombres en el E
     eq('se deshace en RTE: ya no aparece en MFO', m.attOf(st(), D, 'MFO', 1).length, 0)
     eq('de un traslado no se puede borrar "por error" en el cuarto que lo recibe', (() => { m.attRemove(cata, 'otro', 'MFO'); return m.attDelete(m.attOf(st(), D, 'MFO', 1)[0].id) })(), false)
     eq('se puede mandar a su casa desde el cuarto que lo recibió', [m.attRemove(m.attOf(st(), D, 'MFO', 1)[0].id, 'casa'), m.attOf(st(), D, 'MFO', 1).map((x) => [x.name, x.gone?.why, x.from])], [true, [['Cata', 'casa', 'RTE']]])
+    // turned down (2026-11-05, the pop-up's Cancelar): out of the room's list on every tablet, never counted there
+    clock = T0 + 100 * M
+    const dani = m.attAdd(D, 'RTE', 1, 'Dani', '', L('RTE', 'Línea 1'))
+    m.attRemove(dani, 'otro', 'Spiral')
+    const dv = m.attOf(st(), D, 'Spiral', 1).find((x) => x.name === 'Dani')
+    eq('Spiral no lo acepta: sale de su lista y no cuenta; en RTE sigue como enviado', [!!dv.via, m.attDecline(dv.id), m.attOf(st(), D, 'Spiral', 1).some((x) => x.name === 'Dani'), m.attendanceOf(st(), D, 1, ['Spiral']).rows[0].actual, m.attStateText(st(), st().attendance.find((x) => x.id === dani))], [true, true, false, 0, 'pasó a Spiral'])
+    eq('no aceptar dos veces, o a uno ya anotado aquí, no hace nada', [m.attDecline(dv.id), m.attDecline(m.attOf(st(), D, 'Packing', 1)[0].id)], [false, false])
+    const dRow = m.outbox.items().find((i) => i.row?.ref_table === 'act_attendance' && i.row.dept === 'Spiral' && JSON.parse(i.row.after).name === 'Dani')
+    eq('va al servidor como un registro de Spiral marcado borrado', [dRow.row.deleted, JSON.parse(dRow.row.after).from], [true, 'RTE'])
+    clock = T0 + 110 * M
+    m.attBack(dani); m.attRemove(dani, 'otro', 'Spiral')
+    eq('mandado otra vez más tarde: aparece de nuevo en Spiral, por aceptar', m.attOf(st(), D, 'Spiral', 1).filter((x) => x.name === 'Dani').map((x) => !!x.via), [true])
     eq('una tablet vieja (sin línea) se lee igual: sin línea', m.attOf(st(), D, 'Kitchen', 1).length === 0 && (m.applyRemote('act_changes', { id: 'att:OLD', at: iso(T0), by_name: 'X', dept: 'Kitchen', what: 'Asistencia', before: '', after: JSON.stringify({ date: D, shift: 1, name: 'Vieja', gone: null, from: '' }), ref_table: 'act_attendance', ref_key: 'OLD', deleted: false, updated_at: iso(T0 + M), updated_by: 'X' }), m.attOf(st(), D, 'Kitchen', 1).map((x) => [x.name, x.line, x.moves])), [['Vieja', '', []]])
   })
   const back = await device('att-move-again', { seed: JSON.parse(disks.get('att-move').get('act_v1')), user: 'Supervisor RTE' })

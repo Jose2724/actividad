@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { ATT_SPOTS, attSpotId, attAccept, attAdd, attBack, attDelete, attPeople, attSetCame, attWriteOn, attendanceOf, attExpectedOf, attLineText, attMoveLine, attOf, attRemove, attSetSup, attSetTemp, attSupOf, user, byLineName, DEPTS, fmtTime, setAttExpected, type AttEntry, type Dept, type State } from './store'
+import { ATT_SPOTS, attSpotId, attAccept, attAdd, attBack, attDecline, attDelete, attPeople, attSetCame, attWriteOn, attendanceOf, attExpectedOf, attLineText, attMoveLine, attOf, attRemove, attSetSup, attSetTemp, attSupOf, user, byLineName, DEPTS, fmtTime, setAttExpected, type AttEntry, type Dept, type State } from './store'
 import { useWho } from './App'
 import { DEPT_LOOK, deptVars } from './look'
 import { tr } from './i18n'
@@ -36,6 +36,67 @@ export function AttendanceCard({ s, dept, date, shift, edit }: { s: State; dept:
 }
 
 /** `note` = why it opened by itself (the start of a code or a Set up, with the attendance still to write: 2026-10-27) */
+/**
+ * Who another room sent here and nobody here took in yet (Jose, 2026-11-05: "hicieron un traslado pero ellos aún no lo
+ * han confirmado. No es porque no quieren, es que no se han enterado ... un pop up card diciendo el nombre de la persona,
+ * de dónde viene y que si lo quiere aceptar o cancelar y luego que le salga en qué línea ponerlo; esto último no es
+ * mandatorio"). A card over the room's tablet, one person at a time: Aceptar takes them in (attAccept, on the line the
+ * other room said, if any) and then offers the room's lines, which can be skipped; Cancelar asks once more and turns
+ * them down (attDecline). It goes as soon as nobody is waiting, also when another tablet of the room answered
+ */
+export function ArrivalsDialog({ s, dept, date, shift }: { s: State; dept: Dept; date: string; shift: 1 | 2 }) {
+  const [step, setStep] = useState<{ no: string } | { line: string } | null>(null)
+  const here = attOf(s, date, dept, shift), lines = roomLines(s, dept)
+  const pending = here.filter((x) => !!x.via && !x.gone)
+  // just accepted: on which line (not mandatory)
+  const placed = step && 'line' in step ? here.find((y) => !y.via && !y.gone && y.name === step.line) : undefined
+  if (placed) {
+    return (
+      <div className="veil" role="dialog" aria-modal="true" aria-labelledby="arr-title">
+        <div className="dlg attgate-dlg arr-dlg">
+          <div className="attgate-ico" aria-hidden="true">✅</div>
+          <h3 id="arr-title">{tr('{0} ya está en {1}', placed.name, dept)}</h3>
+          <p>{tr('¿En qué línea lo pones?')} <small className="hint">{tr('No es obligatorio.')}</small></p>
+          <div className="arr-lines">
+            {lines.map((l) => placed.line === l.id
+              ? <button key={l.id} type="button" className="btn primary" onClick={() => setStep(null)}>{'✓ ' + attLineText(s, l.id)}</button>
+              : <button key={l.id} type="button" className="btn soft" onClick={() => { attMoveLine(placed.id, l.id); setStep(null) }}>{attLineText(s, l.id)}</button>)}
+          </div>
+          <button type="button" className="btn arr-skip" onClick={() => setStep(null)}>{placed.line ? tr('Dejarlo en {0}', attLineText(s, placed.line)) : tr('Sin línea por ahora')}</button>
+        </div>
+      </div>
+    )
+  }
+  const asked = step && 'no' in step ? pending.find((x) => x.id === step.no) : undefined
+  const x = asked ?? pending[0]
+  if (!x) return null
+  const src = (s.attendance ?? []).find((y) => y.id === x.via)
+  const fromText = x.from + (src?.line ? ' · ' + attLineText(s, src.line) : '')
+  return (
+    <div className="veil" role="dialog" aria-modal="true" aria-labelledby="arr-title">
+      <div className="dlg attgate-dlg arr-dlg">
+        <div className="attgate-ico" aria-hidden="true">👋</div>
+        <h3 id="arr-title">{asked ? tr('¿No aceptar a {0}?', x.name) : tr('Te mandaron a una persona')}</h3>
+        {!asked && <div className="arr-name">{x.name}</div>}
+        <p>{tr('Viene de {0}', fromText)}{x.line ? ' · ' + tr('lo mandaron a {0}', attLineText(s, x.line)) : ''}</p>
+        <p className="arr-by">{tr('Lo mandó {0} a las {1}', x.by || '—', fmtTime(x.at))}</p>
+        {asked
+          ? <>
+            <p className="att-pending">{tr('No va a contar en {0} y sale de su lista. En {1} sigue diciendo que lo mandaron aquí.', dept, x.from)}</p>
+            <button type="button" className="btn stopbtn big" onClick={() => { attDecline(x.id); setStep(null) }}>{tr('✕ Sí, no aceptarlo')}</button>
+            <button type="button" className="btn arr-skip" onClick={() => setStep(null)}>{tr('← Volver')}</button>
+          </>
+          : <>
+            <p className="att-pending">{tr('No cuenta en este cuarto hasta que lo aceptes.')}</p>
+            <button type="button" className="btn primary big" autoFocus onClick={() => { attAccept(x.id, x.line); setStep(lines.length ? { line: x.name } : null) }}>{tr('✓ Aceptar')}</button>
+            <button type="button" className="btn arr-skip" onClick={() => setStep({ no: x.id })}>{tr('✕ Cancelar')}</button>
+          </>}
+        {pending.length > 1 && <small className="hint">{tr('{0} personas esperan que las acepten', pending.length)}</small>}
+      </div>
+    </div>
+  )
+}
+
 export function AttendanceDialog({ s, dept, date, shift: inCourse, edit, note = '', onClose }: { s: State; dept: Dept; date: string; shift: 1 | 2; edit: boolean; note?: string; onClose: () => void }) {
   const who = useWho()
   const boss = !!who.admin || who.role === 'mgr' || who.role === 'office'
@@ -159,6 +220,7 @@ export function AttendanceDialog({ s, dept, date, shift: inCourse, edit, note = 
             <div className="att-row2">
               {lines.map((l) => <button key={l.id} type="button" className="btn sm soft" onClick={() => { attAccept(x.id, l.id); setSaid(tr('{0} aceptado en {1}.', x.name, attLineText(s, l.id))) }}>{tr('Aceptar en {0}', attLineText(s, l.id))}</button>)}
               <button type="button" className="btn sm soft" onClick={() => { attAccept(x.id, ''); setSaid(tr('{0} aceptado, sin línea.', x.name)) }}>{tr('Aceptar sin línea')}</button>
+              <button type="button" className="btn sm" onClick={() => { attDecline(x.id); setSaid(tr('{0} no fue aceptado: no cuenta en {1}.', x.name, dept)) }}>{tr('✕ No aceptar')}</button>
             </div>
           </div>
         ))}

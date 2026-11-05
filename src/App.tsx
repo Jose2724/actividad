@@ -32,7 +32,7 @@ import { ConsumeButton, ConsumeEndDialog, ConsumeStartDialog, MixOwedDialog } fr
 import { consumeAdd, consumeEvery, consumeMezcla, consumeOn, consumesPending, mixUnweighed, openRun as openRunOn, store as theStore } from './store'
 import { HoldButton, HoldList } from './Holds'
 import { seesKpi } from './kpi'
-import { AttendanceCard, AttendanceDialog } from './Attendance'
+import { ArrivalsDialog, AttendanceCard, AttendanceDialog } from './Attendance'
 import { Chat } from './Chat'
 import { useColFilters } from './ColFilter'
 import { Flujo, flujoOpenAt } from './FlujoView'
@@ -2368,6 +2368,8 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
           </div>
         </div>
       )}
+      {/* who another room sent and nobody here accepted yet (Jose, 2026-11-05), on the room's own tablets */}
+      {shown === 'live' && !gatedRoom && !attWin && who.role === 'op' && (s.attView.on || !!who.admin) && <ArrivalsDialog s={s} dept={dept} date={day.date} shift={(turn.shift || 1) as 1 | 2} />}
       {attWin && <AttendanceDialog s={s} dept={dept} date={day.date} shift={turn.shift as 1 | 2} edit note={tr('El supervisor o líder se anota como supervisor y anota a la gente del Turno {0} de {1}.', turn.shift, dept)} onClose={() => setAttWin(false)} />}
       <div className="rp-tabs dp-tabs" role="tablist" aria-label={tr('Partes de {0}', dept)}>
         {parts.map((x) => (

@@ -2210,6 +2210,13 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 .dlg.attgate-dlg h3{position:static;margin:0;padding:0}
 .dlg.attgate-dlg p{font-size:16px;color:var(--ink)}
 .dlg.attgate-dlg .btn.big{width:100%;min-height:56px;font-size:18px;margin-top:4px}
+/* who another room sent, waiting to be accepted (2026-11-05): the gate's card, with the person's name big */
+.arr-dlg .arr-name{font-size:28px;font-weight:800;line-height:1.15;color:var(--ink)}
+.dlg.arr-dlg p.arr-by{font-size:14px;color:var(--muted)}
+.dlg.arr-dlg p.att-pending{font-size:14px;color:#b45309}
+.arr-dlg .btn.arr-skip{width:100%}
+.arr-lines{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;width:100%}
+.arr-lines .btn{flex:1 1 140px;min-height:52px;font-size:17px}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
 /* ⚖ Pesos in the report (2026-10-29): a card per room and code, the share in weight as a coloured pill, each weight a chip */
