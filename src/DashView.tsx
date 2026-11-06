@@ -58,9 +58,9 @@ export function DashView({ s, date, now, pplh }: { s: State; date: string; now: 
           </div>
         </div>
         <div className="rd-tiles rd-dashtiles">
-          {tile('🎯', 'Yield', '—', tr('Pendiente: falta la fuente de las libras por producto'), true)}
-          {tile('📉', 'Shorts', '—', tr('Pendiente: por definir con Mike'), true)}
-          {pplh ? tile('⚙️', 'PPLH', p.pplh == null ? '—' : p.pplh.toFixed(1), p.pplh == null ? tr('Faltan las libras (NetSuite) o las horas (RR. HH.) de estos días') : tr('lb por hora de trabajo'), p.pplh == null)
+          {tile('🎯', 'Yield', '—', tr('Pendiente'), true)}
+          {tile('📉', 'Shorts', '—', tr('Pendiente'), true)}
+          {pplh ? tile('⚙️', 'PPLH', p.pplh == null ? '—' : p.pplh.toFixed(1), p.pplh == null ? tr('Faltan archivos · ver PPLH') : tr('lb por hora de trabajo'), p.pplh == null)
             : tile('⚙️', 'PPLH', '—', tr('Solo lo ve quien tiene permiso en PPLH'), true)}
         </div>
         <div className="rd-dashcharts">

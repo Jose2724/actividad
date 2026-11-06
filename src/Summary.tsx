@@ -140,14 +140,13 @@ function SummaryNow({ s, now, date, onGo, has, picker }: { s: State; now: number
         <div className="rd-sumside">
           <article className="rd-card">
             <h3>📈 {tr('Producción vs meta · últimos 7 días')}</h3>
-            {anyGoal ? <Bars values={week} /> : <p className="rd-calm warn">{tr('Pon las metas de cada cuarto (Planeación › Metas) para ver aquí el % de cada día.')}</p>}
-            <small className="rd-sumnote">{tr('Lo hecho cada día contra la meta de sus turnos, promedio de los cuartos con meta.')}</small>
+            {anyGoal ? <Bars values={week} /> : <p className="rd-calm warn">🎯 {tr('Sin metas · Planeación › Metas')}</p>}
           </article>
           <article className="rd-card">
             <h3>🔔 {tr('Lo que necesita atención')}{attn.length > 0 && <span className="rd-pill stop">{attn.length}</span>}</h3>
             {attn.length ? attn.slice(0, 6).map((a) => (
               <button key={a.k} type="button" className={'rd-alert ' + a.lvl} disabled={!a.go || !has(a.go)} onClick={() => a.go && onGo(a.go)}><b>{a.text}</b>{a.sub && <span>{a.sub}</span>}</button>
-            )) : <p className="rd-calm">{tr('Todo en orden: ninguna línea parada, ningún paro sin razón.')}</p>}
+            )) : <p className="rd-calm">✓ {tr('Todo en orden')}</p>}
           </article>
         </div>
       </div>
@@ -241,8 +240,7 @@ function SummaryRange({ s, now, date, onGo, has, days, picker }: { s: State; now
         <div className="rd-sumside">
           <article className="rd-card">
             <h3>📈 {tr('Producción vs meta por día')}</h3>
-            {week.some((w) => w.pct != null) ? <Bars values={week} /> : <p className="rd-calm warn">{tr('Pon las metas de cada cuarto (Planeación › Metas) para ver aquí el % de cada día.')}</p>}
-            <small className="rd-sumnote">{tr('Lo hecho cada día contra la meta de sus turnos, promedio de los cuartos con meta.')}</small>
+            {week.some((w) => w.pct != null) ? <Bars values={week} /> : <p className="rd-calm warn">🎯 {tr('Sin metas · Planeación › Metas')}</p>}
           </article>
           <article className="rd-card">
             <h3>🔔 {tr('Lo que necesita atención')}{low.length > 0 && <span className="rd-pill stop">{low.length}</span>}</h3>

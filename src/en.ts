@@ -3643,6 +3643,9 @@ export const EN: Record<string, string> = {
   // the redesign (2026-11-05): sections, menu, search, Resumen, Toda la planta
   "Toda la planta": "Whole plant",
   "Más": "More",
+  "Sin metas · Planeación › Metas": "No goals · Planning › Goals",
+  "Todo en orden": "All in order",
+  "Faltan archivos · ver PPLH": "Files missing · see PPLH",
   "Falta el archivo": "File missing",
   "Subir libras": "Upload pounds",
   "Subir horas": "Upload hours",

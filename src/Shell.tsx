@@ -202,7 +202,7 @@ export function PlantOverview({ s, now, date, onRoom, freezer }: { s: State; now
         <h3>{tr('Atención ahora')}{alerts.length > 0 && <span className="rd-pill stop">{alerts.length}</span>}</h3>
         {alerts.length ? alerts.map((a) => (
           <button key={a.k} type="button" className={'rd-alert ' + a.level} onClick={() => onRoom(a.d)}><b>{a.title}</b><span>{a.sub}</span></button>
-        )) : <p className="rd-calm">{tr('Todo en orden: ninguna línea parada, ningún paro sin razón.')}</p>}
+        )) : <p className="rd-calm">✓ {tr('Todo en orden')}</p>}
       </aside>
     </div>
   )

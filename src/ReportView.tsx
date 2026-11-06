@@ -656,7 +656,7 @@ export function Report(props: ReportProps) {
           : rows.length === 0 ? (v === 'rec' && k.stops.length > 0 ? <RecordsView k={k} /> : <EmptyDay k={k} />)
             : v === 'gen' ? <GeneralView k={k} /> : v === 'code' ? <CodesView k={k} /> : v === 'shift' ? <ShiftsView k={k} /> : v === 'pal' ? <PalletsView k={k} /> : <RecordsView k={k} />}
       </div>
-      <p className="hint foot">{supabase ? tr('Todo se guarda en el servidor y se ve en vivo desde la oficina, el teléfono o la PC.') : tr('Demo guardado en este dispositivo. La versión completa manda todo en vivo al manager (oficina, teléfono o PC) y exporta a Excel, PDF y Google Sheets como la Hoja de Freezer RTE.')}</p>
+      {!RD && <p className="hint foot">{supabase ? tr('Todo se guarda en el servidor y se ve en vivo desde la oficina, el teléfono o la PC.') : tr('Demo guardado en este dispositivo. La versión completa manda todo en vivo al manager (oficina, teléfono o PC) y exporta a Excel, PDF y Google Sheets como la Hoja de Freezer RTE.')}</p>}
       {detail && <RunDetail s={s} runId={detail.runId} at={detail.at} now={now} mgr={mgr} fix={fix} fixable={fixable} onFix={(at) => setEditRun({ id: detail.runId, at })} onFixStop={setEditStop} onCode={(c) => { setFCode(c); setDetail(null) }} onLot={(l) => { setFLot(l); setDetail(null) }} onClose={() => setDetail(null)} />}
       {runToEdit && <RunEditor s={s} run={runToEdit} mgr={can('fix')} focusAt={editRun?.at} onClose={() => setEditRun(null)} />}
       {stopSheet && <StopSheet k={k} id={stopSheet} onClose={() => setStopSheet(null)} />}
@@ -1775,8 +1775,8 @@ function WeightsView({ k }: { k: Kit }) {
       {fixing && <WeightsFixDialog s={s} row={fixing} onClose={() => setFixing(null)} />}
       {editing && <WeightTestDialog s={s} test={editing.t} row={editing.w} onClose={() => setEditing(null)} />}
       {!RD && <RangePick from={wFrom} to={wTo} today={date} onChange={(a, b) => { setWFrom(a); setWTo(b) }} />}
-      {wLabel && <p className="hint">{tr('El resumen y Por departamento son del {0} al {1} ({2} días); las pruebas de abajo, del día del reporte.', wDays[0], wDays[wDays.length - 1], wDays.length)}</p>}
-      <div className="wt-board">{boardRows.map((x) => (
+      {!RD && wLabel && <p className="hint">{tr('El resumen y Por departamento son del {0} al {1} ({2} días); las pruebas de abajo, del día del reporte.', wDays[0], wDays[wDays.length - 1], wDays.length)}</p>}
+      <div className="wt-board">{boardRows.filter((x) => !RD || x.weighed).map((x) => (
         <article key={x.code} className="wt-boardrow">
           <div className="wt-boardhead"><b>{x.code}</b><span>{tr('{0} horas', x.times)}</span></div>
           <div className="wt-bigs">{bigCell(tr('Crudo prom.'), x.raw)}{bigCell(tr('Cocinado prom.'), x.cooked)}{bigCell(tr('Pouch prom.'), x.pouch)}</div>
@@ -1836,7 +1836,7 @@ function WeightsView({ k }: { k: Kit }) {
           </tr>
         ) })}</tbody>
       </table></div> : <p className="hint">{tr('Ninguna prueba con lo que estás viendo.')}</p>}
-      <p className="hint">{tr('Pruebas = las completas (o un cocinador que no se usó) de las que tocaban: una por cada hora que corrió el código. Rojo = bajo el objetivo, ámbar = sobre. En el Excel va la hoja "Pesos", con cada peso en su columna.')}</p>
+      {!RD && <p className="hint">{tr('Pruebas = las completas (o un cocinador que no se usó) de las que tocaban: una por cada hora que corrió el código. Rojo = bajo el objetivo, ámbar = sobre. En el Excel va la hoja "Pesos", con cada peso en su columna.')}</p>}
     </>
   )
 }

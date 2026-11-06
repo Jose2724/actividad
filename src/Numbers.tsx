@@ -222,7 +222,8 @@ export function WhatIs({ id, label }: { id?: NumberId; label?: string }) {
   if (who.role === 'op' && !who.admin) return null
   return (
     <>
-      <button type="button" className="lnk whatis" onClick={() => setOpen(true)}>{label ?? tr('¿Qué es esto?')}</button>
+      {RD && !label ? <button type="button" className="rd-why" aria-label={tr('¿Qué es esto?')} title={tr('¿Qué es esto?')} onClick={() => setOpen(true)}>ⓘ</button>
+        : <button type="button" className="lnk whatis" onClick={() => setOpen(true)}>{label ?? tr('¿Qué es esto?')}</button>}
       {/* (over the page, not inside the heading: it would take its capitals) */}
       {open && createPortal(<NumbersDialog start={id} onClose={() => setOpen(false)} />, document.body)}
     </>
