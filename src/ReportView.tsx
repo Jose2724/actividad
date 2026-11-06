@@ -2080,12 +2080,29 @@ const miniBring = (d: string) => { const asked = miniComing.get(d); if (asked ||
 export const bringDay = miniBring
 
 /** Santiago's week: the tables of src/miniKpi.ts, of the week the report's date falls in; what they count is chosen in Ajustes › Mini KPI. The Excel adds a summary against the last weeks, which a device may not hold: they are brought when the tab opens */
+/** a value that follows `v` at most once every `ms` (the first change at once): for a screen that redraws a lot from
+ * the whole state, so the floor's records, each a new state, do not keep the page busy (the Mini KPI, 2026-11-06) */
+function useSettled<T>(v: T, ms: number): T {
+  const [kept, setKept] = useState(v)
+  const last = useRef(0)
+  useEffect(() => {
+    if (Object.is(v, kept)) return
+    const t = setTimeout(() => { last.current = Date.now(); setKept(v) }, Math.max(0, last.current + ms - Date.now()))
+    return () => clearTimeout(t)
+  }, [v, kept, ms])
+  return kept
+}
+
 function MiniKpiView({ k }: { k: Kit }) {
   const { s, date, now, today, pickDate } = k
   const [shift, setShift] = useState<1 | 2>(2)
   // Santiago's own layout first (2026-11-04: "solo quieren ver lo importante"); the full tables behind a button
   const [full, setFull] = useState(false)
-  const week = useMemo(() => miniWeek(s, date, shift, now), [s, date, shift])
+  // the floor's records reach this week at most every 20 s: every record redrew the whole week and the chart waited
+  // on it (Jose, 2026-11-06: "cuando paso mi mouse por la gráfica noto delay"); the Excel still reads the state of now
+  const settled = useSettled(s, 20_000)
+  const week = useMemo(() => miniWeek(settled, date, shift, now), [settled, date, shift])
+  const simple = useMemo(() => miniSimple(week), [week])
   const [bringing, setBringing] = useState(false)
   const [failed, setFailed] = useState(0)
   useEffect(() => {
@@ -2107,6 +2124,8 @@ function MiniKpiView({ k }: { k: Kit }) {
     const icon: Record<string, string> = { att: '👥', start: '▶️', end: '🏁', wt: '⚖️', hours: '⏱️', down: '⏸️', in: '🥩', waste: '🗑️', prod: '🎯' }
     const dshort = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString(locale, { day: 'numeric', month: 'short' })
     const cls = (c?: string) => (c === 'bad' ? 'red' : c === 'warn' ? 'amber' : c ?? '')
+    // a cell breaks only at its " · " (the downtime's time · percent), and only when the room's card is too narrow
+    const wrapAt = (t: string) => t.split(' · ').map((x) => x.replace(/ /g, ' ')).join(' · ')
     return (
       <div className="rd-mini">
         <div className="rd-wtbar">
@@ -2126,12 +2145,12 @@ function MiniKpiView({ k }: { k: Kit }) {
         {bringing && <p className="hint">{tr('Se están trayendo las semanas anteriores del servidor. El Excel sale al instante con la semana de arriba; las semanas anteriores entran al Resumen cuando ya estén.')}</p>}
         {failed > 0 && <p className="hint red">{tr('No se pudieron traer {0} días del servidor: esas semanas salen vacías en el Excel. Vuelve a abrir esta pestaña cuando haya señal.', failed)}</p>}
         {!full && <MiniTrend week={week} />}
-        {!full && <div className="rd-minirooms">{miniSimple(week).map((b) => (
+        {!full && <div className="rd-minirooms">{simple.map((b) => (
           <article key={b.dept} className="rd-miniroom" style={deptVars(b.dept)}>
             <h3><i aria-hidden="true">{DEPT_LOOK[b.dept].emoji}</i>{b.dept}</h3>
             <div className="scroll"><table className="wt-rp-tbl mini simple rd-minitbl">
               <thead><tr><th></th><th>{tr('Target')}</th>{week.days.map((d) => <th key={d}>{new Date(d + 'T12:00:00').toLocaleDateString(locale, { weekday: 'short', day: 'numeric' })}</th>)}<th>{tr('Semana')}</th></tr></thead>
-              <tbody>{b.rows.map((r) => <tr key={r.id}><td><b>{(icon[r.id] ?? (/persona/i.test(r.label) ? '🧑‍🏭' : '🎯')) + ' '}{r.label}</b></td><td className="muted">{r.target.t}</td>{r.days.map((c, j) => <td key={j} className={cls(c.c)}>{c.t}</td>)}<td className={'rd-miniweek ' + cls(r.week.c)}><b>{r.week.t}</b></td></tr>)}</tbody>
+              <tbody>{b.rows.map((r) => <tr key={r.id}><td><b>{(icon[r.id] ?? (/persona/i.test(r.label) ? '🧑‍🏭' : '🎯')) + ' '}{r.label}</b></td><td className="muted">{r.target.t}</td>{r.days.map((c, j) => <td key={j} className={cls(c.c)}>{wrapAt(c.t)}</td>)}<td className={'rd-miniweek ' + cls(r.week.c)}><b>{wrapAt(r.week.t)}</b></td></tr>)}</tbody>
             </table></div>
           </article>
         ))}</div>}
@@ -2160,7 +2179,7 @@ function MiniKpiView({ k }: { k: Kit }) {
       {bringing && <p className="hint">{tr('Se están trayendo las semanas anteriores del servidor. El Excel sale al instante con la semana de arriba; las semanas anteriores entran al Resumen cuando ya estén.')}</p>}
       {failed > 0 && <p className="hint red">{tr('No se pudieron traer {0} días del servidor: esas semanas salen vacías en el Excel. Vuelve a abrir esta pestaña cuando haya señal.', failed)}</p>}
       <div className="btns"><div className="seg" role="group" aria-label={tr('Vista')}><button type="button" className={!full ? 'on' : ''} aria-pressed={!full} onClick={() => setFull(false)}>{tr('Lo importante')}</button><button type="button" className={full ? 'on' : ''} aria-pressed={full} onClick={() => setFull(true)}>{tr('Todo')}</button></div></div>
-      {!full && miniSimple(week).map((b) => (
+      {!full && simple.map((b) => (
         <article key={b.dept} className="wt-rp" style={deptVars(b.dept)}>
           <h3>{DEPT_LOOK[b.dept].emoji} {b.dept}</h3>
           <div className="scroll"><table className="wt-rp-tbl mini simple">

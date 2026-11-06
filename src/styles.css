@@ -3104,6 +3104,13 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 .rd-minirooms{grid-template-columns:repeat(auto-fit,minmax(680px,1fr))}
 @media (max-width:760px){.rd-minirooms{grid-template-columns:minmax(0,1fr)}}
 .rd-miniroom .rd-minitbl td:first-child{white-space:nowrap}
+/* a room's table never runs over the next room (Jose, 2026-11-06, a wide screen with three rooms a row): tighter cells,
+   and what still does not fit scrolls inside its own card */
+.rd-miniroom .scroll{overflow-x:auto;max-width:100%}
+.rd-miniroom .rd-minitbl{font-size:12.5px}
+.rd-miniroom .rd-minitbl td,.rd-miniroom .rd-minitbl th{padding:4px 5px}
+.rd-miniroom{padding:8px 10px}
+.rd-miniroom .rd-minitbl td{white-space:normal}
 .rd-sumdays{font-size:12.5px;color:var(--muted);font-weight:700}
 .rd-sumbar{align-items:center}
 /* ---- PPLH in the redesign (2026-11-06) ---- */

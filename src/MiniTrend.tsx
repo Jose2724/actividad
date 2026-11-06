@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type { Dept } from './store'
 import { slowUnitOf } from './store'
 import { DEPT_LOOK, deptVars } from './look'
@@ -44,7 +44,8 @@ function Mark({ shape, x, y, r = 4.5 }: { shape: (typeof SHAPES)[number]; x: num
   return <circle cx={x} cy={y} r={r} />
 }
 
-export function MiniTrend({ week }: { week: MiniWeek }) {
+// (memo: the app redraws every second for its clock; this chart only when its week changes)
+export const MiniTrend = memo(function MiniTrend({ week }: { week: MiniWeek }) {
   const [metric, setMetric] = useState<Metric>('goal')
   const [off, setOff] = useState<Dept[]>([])
   const [hot, setHot] = useState<Dept | null>(null)
@@ -70,7 +71,7 @@ export function MiniTrend({ week }: { week: MiniWeek }) {
   const step = top - bottom <= 50 ? 10 : top - bottom <= 120 ? 25 : 50
   const ticks = Array.from({ length: Math.floor((top - bottom) / step) + 1 }, (_, i) => bottom + i * step)
   const phone = w < 560
-  const H = phone ? 240 : 290, L = 44, R = phone ? 54 : 78, T = 14, B = 30
+  const H = phone ? 240 : 250, L = 44, R = phone ? 54 : 78, T = 14, B = 30
   const pw = w - L - R, ph = H - T - B
   const n = week.days.length
   const X = (i: number) => L + (n === 1 ? pw / 2 : (pw * i) / (n - 1))
@@ -109,7 +110,14 @@ export function MiniTrend({ week }: { week: MiniWeek }) {
           )
         })}
       </div>
-      <div className="rd-trend-plot" ref={box} onMouseLeave={() => setAt(null)}>
+      {/* the day under the pointer, the nearest one wherever it is on the chart (it answered only on crossing half the
+          way to the next day, which looked slow: Jose, 2026-11-06) */}
+      <div className="rd-trend-plot" ref={box} onMouseLeave={() => setAt(null)} onPointerMove={(e) => {
+        if (!any || e.pointerType !== 'mouse') return // (a finger taps a day instead)
+        const r = e.currentTarget.getBoundingClientRect()
+        const x = ((e.clientX - r.left) * w) / Math.max(1, r.width)
+        setAt(n === 1 ? 0 : Math.min(n - 1, Math.max(0, Math.round(((x - L) * (n - 1)) / pw))))
+      }}>
         {!any ? <p className="hint st">{tr('Nada que dibujar esta semana con esto todavía.')}</p> : (
           <svg width={w} height={H} viewBox={`0 0 ${w} ${H}`} role="img" aria-label={tr('Cómo va cada cuarto') + ' · ' + metrics.find((m) => m[0] === metric)?.[1]}>
             {/* above the plant's line is the good side */}
@@ -134,7 +142,7 @@ export function MiniTrend({ week }: { week: MiniWeek }) {
               )
             })}
             {ends.map((e) => <text key={e.dept} x={e.x + 10} y={e.y + 4} className={'rd-trend-end' + (hot && hot !== e.dept ? ' dim' : '')}>{DEPT_LOOK[e.dept].emoji} {pct(e.v)}</text>)}
-            {week.days.map((d, i) => <rect key={d} x={X(i) - pw / Math.max(1, n - 1) / 2} y={T} width={pw / Math.max(1, n - 1)} height={ph + B} className="rd-trend-hit" onMouseEnter={() => setAt(i)} onClick={() => setAt(at === i ? null : i)} />)}
+            {week.days.map((d, i) => <rect key={d} x={X(i) - pw / Math.max(1, n - 1) / 2} y={T} width={pw / Math.max(1, n - 1)} height={ph + B} className="rd-trend-hit" onClick={() => setAt(at === i ? null : i)} />)}
           </svg>
         )}
         {at != null && (
@@ -151,4 +159,4 @@ export function MiniTrend({ week }: { week: MiniWeek }) {
       </div>
     </article>
   )
-}
+})
