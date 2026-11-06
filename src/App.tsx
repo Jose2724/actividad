@@ -33,7 +33,12 @@ import { consumeAdd, consumeEvery, consumeMezcla, consumeOn, consumesPending, mi
 import { HoldButton, HoldList } from './Holds'
 import { seesKpi } from './kpi'
 import { ArrivalsDialog, AttendanceCard, AttendanceDialog } from './Attendance'
-import { Chat } from './Chat'
+import { Chat, ChatInbox } from './Chat'
+import { RD } from './rd'
+import { HoldsAll, PersonMenu, PlantOverview, RD_TABS, RdNav, RdTabs, secOf, StatusStrip, tabsOf, type RdSec, type RdTab } from './Shell'
+import { Summary } from './Summary'
+import { GlobalSearch, type SearchGo } from './Search'
+import { seesPplh } from './pplh'
 import { useColFilters } from './ColFilter'
 import { Flujo, flujoOpenAt } from './FlujoView'
 import { daysBetween, daysText, OpenOrders, OrderDetail, OrderHistory, revealAbove, shortOf, startText, WoNavCtx, woName, WorkOrderDialog, WoStateTag, type WoNav } from './WorkOrders'
@@ -429,15 +434,17 @@ function DemoApp() {
   const [dept, setDept] = useState(myDept.get())
   const [who, setWho] = useState(role.get())
   const mgr = who === 'mgr'
+  // the redesign's demo also opens as the bosses see it ("Solo ver": Resumen first, nothing to press)
+  const viewer = RD && who === 'viewer'
   const out = () => { user.set(''); myDept.set(''); role.set(''); setName(''); setDept(''); setWho('') }
-  if (!(mgr || isDept(dept)) || !name) {
-    return <Gate dept={isDept(dept) ? dept : null} mgr={mgr} onDept={(d) => { myDept.set(d); role.set('op'); setDept(d); setWho('op') }} onManager={() => { role.set('mgr'); myDept.set(''); setWho('mgr'); setDept('') }} onName={(n) => { user.set(n); setName(n) }} onBack={out} />
+  if (!(mgr || viewer || isDept(dept)) || !name) {
+    return <Gate dept={isDept(dept) ? dept : null} mgr={mgr || viewer} onViewer={() => { role.set('viewer'); myDept.set(''); setWho('viewer'); setDept('') }} onDept={(d) => { myDept.set(d); role.set('op'); setDept(d); setWho('op') }} onManager={() => { role.set('mgr'); myDept.set(''); setWho('mgr'); setDept('') }} onName={(n) => { user.set(n); setName(n) }} onBack={out} />
   }
-  return <WhoCtx.Provider value={{ role: mgr ? 'mgr' : 'op', admin: mgr, dept }}><Main name={name} home={isDept(dept) ? dept : DEPTS[0]} mgr={mgr} admin={mgr} onLogout={out} /></WhoCtx.Provider>
+  return <WhoCtx.Provider value={{ role: viewer ? 'viewer' : mgr ? 'mgr' : 'op', admin: mgr, dept }}><Main name={name} home={isDept(dept) ? dept : DEPTS[0]} mgr={mgr || viewer} admin={mgr} onLogout={out} /></WhoCtx.Provider>
 }
 
 /** entering: a supervisor or operator picks their department (and sees only that); the manager enters with a code and sees every room */
-function Gate({ dept, mgr, onDept, onManager, onName, onBack }: { dept: Dept | null; mgr: boolean; onDept: (d: Dept) => void; onManager: () => void; onName: (n: string) => void; onBack: () => void }) {
+function Gate({ dept, mgr, onDept, onManager, onName, onBack, onViewer }: { onViewer?: () => void; dept: Dept | null; mgr: boolean; onDept: (d: Dept) => void; onManager: () => void; onName: (n: string) => void; onBack: () => void }) {
   const [v, setV] = useState('')
   const [pin, setPin] = useState('')
   const [asking, setAsking] = useState(false)
@@ -456,6 +463,7 @@ function Gate({ dept, mgr, onDept, onManager, onName, onBack }: { dept: Dept | n
             <div className="dbtns"><button type="button" className="btn" onClick={() => { setAsking(false); setPin(''); setBad(false) }}>{tr('Cancelar')}</button><button type="submit" className="btn primary" disabled={!pin}>{tr('Entrar como manager')}</button></div>
           </form>
         ) : <button type="button" className="lnk" onClick={() => setAsking(true)}>{tr('Soy el manager / oficina (todos los departamentos)')}</button>}
+        {RD && onViewer && !asking && <button type="button" className="lnk" onClick={onViewer}>{tr('Soy jefe: solo ver (Resumen e indicadores)')}</button>}
         <small>{tr('Demo · los datos se guardan solo en este dispositivo')}</small>
       </div>
     )
@@ -503,10 +511,20 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
   const kept = viewKept<{ dept?: string; tab?: string; sec?: string }>()
   const [dept, setDept] = useState<Dept>(kept?.dept && isDept(kept.dept) ? kept.dept : home)
   // Empleados and Tablets live in Ajustes now: a view kept from before opens there, on its section
-  const [tab, setTab] = useState<'act' | 'pt' | 'av' | 'lt' | 'fl' | 'kpi' | 'rep' | 'set'>(kept?.tab === 'av' || kept?.tab === 'fl' || kept?.tab === 'rep' || kept?.tab === 'pt' || kept?.tab === 'lt' || kept?.tab === 'kpi' ? kept.tab : kept?.tab === 'set' || kept?.tab === 'emp' || kept?.tab === 'dev' ? 'set' : 'act')
+  // (the redesign has more tabs, each in its section: see Shell.tsx; a view kept from it comes back to it)
+  const [tab, setTab] = useState<RdTab>(RD && kept?.tab && (RD_TABS as string[]).includes(kept.tab) ? (kept.tab as RdTab) : RD && !kept?.tab && viewOnly ? 'home' : kept?.tab === 'av' || kept?.tab === 'fl' || kept?.tab === 'rep' || kept?.tab === 'pt' || kept?.tab === 'lt' || kept?.tab === 'kpi' ? kept.tab : kept?.tab === 'set' || kept?.tab === 'emp' || kept?.tab === 'dev' ? 'set' : 'act')
   // a lot tapped in Flujo de datos opens in Avance, over all its days (2026-10-18); the Avance tab itself opens plain.
   // (The callback is made once: Flujo is a memo, so the clock's tick every second does not draw it again)
   const [avLot, setAvLot] = useState('')
+  // the redesign's "Toda la planta": every room at a glance, where whoever reads every room starts
+  const [overview, setOverview] = useState(() => RD && !kept?.dept)
+  const lastOf = useRef<Partial<Record<RdSec, RdTab>>>({}) // the tab each section showed last
+  const [finding, setFinding] = useState(false)
+  useEffect(() => {
+    if (!RD) return
+    const k = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setFinding(true) } }
+    window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k)
+  }, [])
   // Programa del día (2026-10-20): the admin's alone until turned on for everybody in Ajustes; a number tapped in it
   // (or on the floor) opens the Reporte on its records
   const seesProgram = admin || s.programView.on
@@ -562,56 +580,35 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
     ? sync.other === 1 ? tr('⚠ 1 registro de {0} espera en este aparato a alguien que pueda subirlo: sube solo en cuanto entre aquí alguien de su cuarto o un manager. No se pierde.', rooms) : tr('⚠ {0} registros de {1} esperan en este aparato a alguien que pueda subirlos: suben solos en cuanto entre aquí alguien de su cuarto o un manager. No se pierden.', sync.other, rooms)
     : sync.other === 1 ? tr('⚠ 1 registro espera en este aparato a alguien que pueda subirlo: sube solo en cuanto entre aquí un manager. No se pierde.') : tr('⚠ {0} registros esperan en este aparato a alguien que pueda subirlos: suben solos en cuanto entre aquí un manager. No se pierden.', sync.other)
   const unsentWhy = sync.state === 'signedOut' ? tr('este aparato ya no tiene sesión en el servidor') : sync.refused > 0 ? tr('el servidor no acepta lo que registra esta sesión ({0})', name) : sync.lastError || (sync.state === 'offline' ? tr('sin señal') : tr('sin alcanzar el servidor'))
-  return (
-    <div className="app">
-      <Chat s={s} home={home} />
-      {away ? <div className="zonebar">{tr('⚠ Este aparato está puesto en otra zona horaria que la planta: las horas y la fecha saldrán corridas. En los ajustes del aparato, activa la zona horaria automática.')}</div>
-        : off && <div className="zonebar">{trx('⚠ El reloj de este aparato está {0}. La app usa la hora correcta, la del servidor. Para arreglarlo, activa la hora automática en los ajustes del aparato.', off)}</div>}
-      {clockUnset && clk && <div className="stalebar top"><span>{trx('⚠ Este aparato no ha podido ajustar su reloj con el del servidor ({0}). Si su hora está mal, los tiempos de las mezclas y del turno salen corridos aquí, y las horas que registre también. Compara la hora de arriba con un teléfono.', clk.savedAt ? tr('usa la medida de hace {0}', agoText(now - clk.savedAt)) : tr('usa su propio reloj'))}</span><button type="button" className="btn sm" onClick={() => void syncClock()}>{tr('Reintentar')}</button></div>}
-      {/* with the storage full the new version waits for room: a reload now would lose what is only in memory (update.ts) */}
-      {upd.ready && <div className="updatebar"><span>{updateText(full)}</span>{!full && <button type="button" className="btn sm" onClick={() => { reloadNow() }}>{tr('Actualizar')}</button>}</div>}
-      {/* "Entrar de nuevo" asks first, as "Salir" does, while something waits to go up (2026-10-17) */}
-      {unsent && <div className="stalebar top unsent"><span>{trx('⚠ {0} sin subir desde hace {1}: {2}. Se guardan en este aparato y suben en cuanto se pueda.', mine === 1 ? tr('1 registro') : tr('{0} registros', mine), agoText(Math.max(60_000, stuckMs)), unsentWhy)}{mustSignIn && ' ' + tr('Sal y entra de nuevo con tu usuario; si sigue, avisa al manager.')}</span>{mustSignIn ? <button type="button" className="btn sm" onClick={() => (sync.pending > 0 ? setLeaving(true) : onLogout())}>{tr('Entrar de nuevo')}</button> : <button type="button" className="btn sm" onClick={() => window.dispatchEvent(new Event('act-resync'))}>{tr('Reintentar')}</button>}</div>}
-      {others && <div className="stalebar top"><span>{othersText}</span></div>}
-      {full && <div className="fullbar">{trx('⚠ La memoria de este aparato está llena y lo nuevo no se está guardando aquí. {0}', supabase ? tr('Lo que ya subió al servidor está a salvo. Avisa al manager y no cierres la app hasta que diga "Sincronizado".') : tr('Manda el reporte del día y avisa al manager antes de cerrar la app: hay que hacer espacio con "Reiniciar registros".'))}</div>}
-      {/* an operator's tablet with a picture of the plant it can trust; a manager, the office and whoever only looks are never held */}
-      {who.role === 'op' && !viewOnly && !stale && <WeightGate s={s} dept={home} now={now} />}
-      {stale && (sync.pulling
+  // the warnings above the screens (each its own words and button); the redesign puts them in one strip, the worst first
+  const zoneBar = away ? <div className="zonebar">{tr('⚠ Este aparato está puesto en otra zona horaria que la planta: las horas y la fecha saldrán corridas. En los ajustes del aparato, activa la zona horaria automática.')}</div>
+        : off && <div className="zonebar">{trx('⚠ El reloj de este aparato está {0}. La app usa la hora correcta, la del servidor. Para arreglarlo, activa la hora automática en los ajustes del aparato.', off)}</div>
+  const clockBar = clockUnset && clk && <div className="stalebar top"><span>{trx('⚠ Este aparato no ha podido ajustar su reloj con el del servidor ({0}). Si su hora está mal, los tiempos de las mezclas y del turno salen corridos aquí, y las horas que registre también. Compara la hora de arriba con un teléfono.', clk.savedAt ? tr('usa la medida de hace {0}', agoText(now - clk.savedAt)) : tr('usa su propio reloj'))}</span><button type="button" className="btn sm" onClick={() => void syncClock()}>{tr('Reintentar')}</button></div>
+  const updBar = upd.ready && <div className="updatebar"><span>{updateText(full)}</span>{!full && <button type="button" className="btn sm" onClick={() => { reloadNow() }}>{tr('Actualizar')}</button>}</div>
+  const unsentBar = unsent && <div className="stalebar top unsent"><span>{trx('⚠ {0} sin subir desde hace {1}: {2}. Se guardan en este aparato y suben en cuanto se pueda.', mine === 1 ? tr('1 registro') : tr('{0} registros', mine), agoText(Math.max(60_000, stuckMs)), unsentWhy)}{mustSignIn && ' ' + tr('Sal y entra de nuevo con tu usuario; si sigue, avisa al manager.')}</span>{mustSignIn ? <button type="button" className="btn sm" onClick={() => (sync.pending > 0 ? setLeaving(true) : onLogout())}>{tr('Entrar de nuevo')}</button> : <button type="button" className="btn sm" onClick={() => window.dispatchEvent(new Event('act-resync'))}>{tr('Reintentar')}</button>}</div>
+  const othersBar = others && <div className="stalebar top"><span>{othersText}</span></div>
+  const fullBar = full && <div className="fullbar">{trx('⚠ La memoria de este aparato está llena y lo nuevo no se está guardando aquí. {0}', supabase ? tr('Lo que ya subió al servidor está a salvo. Avisa al manager y no cierres la app hasta que diga "Sincronizado".') : tr('Manda el reporte del día y avisa al manager antes de cerrar la app: hay que hacer espacio con "Reiniciar registros".'))}</div>
+  const gate = who.role === 'op' && !viewOnly && !stale && <WeightGate s={s} dept={home} now={now} />
+  const staleBar = stale && (sync.pulling
         ? <div className="stalebar top calm"><span>{tr('⏳ Trayendo lo último del servidor…')}</span></div>
-        : <div className="stalebar top"><span>{sync.fresh ? trx('⚠ Este aparato muestra lo de las {0}: lleva {1} sin bajar del servidor ({2}). Si en otra tablet cambió algo, aquí todavía no se ve.', fmtTime(sync.fresh), agoText(staleMs), why) : trx('⚠ Este aparato no ha bajado nada del servidor todavía ({0}).', why)}</span><button type="button" className="btn sm" onClick={() => window.dispatchEvent(new Event('act-resync'))}>{tr('Reintentar')}</button></div>)}
-      <header className="top">
-        <div className="brand"><img className="logo" src={import.meta.env.BASE_URL + 'mamas-logo.png'} alt="Mama's Creations" /><div><h1>{APP}{!supabase && <span className="demotag">DEMO</span>}</h1><small>{new Date(now).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })} · <b className="livetime" title={supabase ? tr('La hora de la app: la del servidor, la misma en todos los aparatos') : ''}>{new Date(now).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' })}</b>{BUILD && BUILD !== 'dev' && <span className="buildtag" title={tr('La versión de la app en este aparato')}>v {BUILD.slice(0, 6)}</span>}</small></div></div>
-        <nav className={'tabs' + (can('products') || viewOnly ? ' five' : '')}>
-          <button type="button" className={tab === 'act' ? 'on' : ''} onClick={() => setTab('act')}>{tr('Actividad')}</button>
-          {seesProgram && <button type="button" className={tab === 'pt' ? 'on' : ''} title={tr('Programa del día')} onClick={() => setTab('pt')}>{tr('Programa')}{!s.programView.on && <small className="pt-only"> 🔒</small>}</button>}
-          {(can('products') || viewOnly) && <button type="button" className={tab === 'av' ? 'on' : ''} onClick={() => { setAvLot(''); setTab('av') }}>{tr('Avance')}</button>}
-          {seesLotes && <button type="button" className={tab === 'lt' ? 'on' : ''} title={tr('Lotes: de las mezclas a Packing')} onClick={() => setTab('lt')}>{tr('Lotes')}{!s.viewOpts.lotes.on && <small className="pt-only"> 🔒</small>}</button>}
-          {seesKpiTab && <button type="button" className={tab === 'kpi' ? 'on' : ''} title={tr('Reporte KPI del día')} onClick={() => setTab('kpi')}>KPI<small className="pt-only"> 🔒</small></button>}
-          {seesFlujo && <button type="button" className={tab === 'fl' ? 'on' : ''} title={tr('Flujo de datos')} onClick={() => setTab('fl')}>{tr('Flujo')}{!s.viewOpts.flujo.on && <small className="pt-only"> 🔒</small>}</button>}
-          <button type="button" className={tab === 'rep' ? 'on' : ''} onClick={() => setTab('rep')}>{tr('Reporte')}</button>
-          <button type="button" className={'settab' + (tab === 'set' ? ' on' : '')} onClick={() => setTab('set')} aria-label={tr('Ajustes')}><span className="gear">⚙</span><span className="word">{tr('Ajustes')}</span></button>
-        </nav>
-        <div className="me"><SyncDot /> <span className="who">{name}</span><span className="where">{viewOnly ? tr('Solo ver') : mgr ? tr('Manager') : home}</span> {mgr && <QrLink label="QR" />}<WhatIs label={tr('ⓘ Qué significa')} /><LangSwitch /><button type="button" className="lnk" onClick={() => setLeaving(true)}>{supabase ? tr('Salir') : tr('Cambiar')}</button></div>
-      </header>
-      {leaving && <LeaveDialog onYes={() => { setLeaving(false); onLogout() }} onNo={() => setLeaving(false)} />}
-      {/* a view that fails to draw says so, and the rest of the app stays (see ViewGuard) */}
-      <WoNavCtx.Provider value={woNav}>
-      <ReportLinkCtx.Provider value={mgr ? toReport : null}>
-      <ViewGuard reset={tab + '|' + dept}>
-      {tab === 'act' ? (
+        : <div className="stalebar top"><span>{sync.fresh ? trx('⚠ Este aparato muestra lo de las {0}: lleva {1} sin bajar del servidor ({2}). Si en otra tablet cambió algo, aquí todavía no se ve.', fmtTime(sync.fresh), agoText(staleMs), why) : trx('⚠ Este aparato no ha bajado nada del servidor todavía ({0}).', why)}</span><button type="button" className="btn sm" onClick={() => window.dispatchEvent(new Event('act-resync'))}>{tr('Reintentar')}</button></div>)
+  // the floor: the rooms on the side and the room chosen (in the redesign, "Toda la planta" first: every room at a glance)
+  const showAll = RD && overview && can('depts')
+  const actView = (
         <>
         <DayBar s={s} now={now} day={day} mgr={can('day')} calendar={can('shifts')} />
         <div className="main">
           {/* the manager moves between rooms; a supervisor or operator only has their own */}
           {can('depts') && (
             <aside className="side">
+              {RD && <button type="button" className={'dept rd-all' + (showAll ? ' on' : '')} onClick={() => setOverview(true)}><span className="dname"><span className="dtitle"><i className="demoji" aria-hidden="true">🏭</i>{tr('Toda la planta')}</span></span></button>}
               {DEPTS.map((d) => {
                 const lines = s.lines.filter((l) => l.dept === d)
                 const running = lines.filter((l) => openRun(s, l.id) && !openStop(s, d, l.id)).length
                 const stopped = lines.filter((l) => openRun(s, l.id) && openStop(s, d, l.id)).length
                 const goal = shiftGoalOf(s, d, turnOf(s, day.date, now, d).shift).total, td = goal ? deptToday(s, d, day.date, now) : null
                 return (
-                  <button key={d} type="button" className={'dept' + (dept === d ? ' on' : '')} style={deptVars(d)} onClick={() => setDept(d)}>
+                  <button key={d} type="button" className={'dept' + (dept === d && !showAll ? ' on' : '')} style={deptVars(d)} onClick={() => { setDept(d); setOverview(false) }}>
                     <span className="dname"><span className="dtitle"><i className="demoji" aria-hidden="true">{DEPT_LOOK[d].emoji}</i>{d}</span>{td && goal && <small className="goalmini">{fmtN(td.shiftQty)} / {fmtN(goal)} {td.unitLabel}</small>}</span>
                     <span className="dots">{running > 0 && <i className="dot g">{running}</i>}{stopped > 0 && <i className="dot r">{stopped}</i>}</span>
                   </button>
@@ -637,12 +634,129 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
           )}
           {/* an operator who may look at every room writes only their own (the server refuses the rest): another room is
               shown as to somebody who only looks, with nothing to tap that would never reach the server (review of 2026-10-18) */}
+          {showAll ? <PlantOverview s={s} now={now} date={day.date} onRoom={(d) => { setDept(d); setOverview(false) }} freezer={who.role !== 'op' || who.freezer ? FREEZER_URL : undefined} /> : (
           <WhoCtx.Provider value={writesIn(who, can('depts') ? dept : home) ? who : { ...who, role: 'viewer' }}>
             <DeptPanel key={dept} s={s} dept={can('depts') ? dept : home} now={now} mgr={mgr} day={day} readsAll={who.role !== 'op'} />
-          </WhoCtx.Provider>
+          </WhoCtx.Provider>)}
         </div>
         </>
-      ) : tab === 'pt' && seesProgram ? <ProgramToday s={s} date={day.date} now={now} rooms={programRooms(can('depts'), home)} onReport={toReport} /> : tab === 'av' && (can('products') || viewOnly) ? <Avance s={s} startLot={avLot} /> : tab === 'lt' && seesLotes ? <LotesView s={s} today={day.date} onReport={toReport} /> : tab === 'kpi' && seesKpiTab ? <KpiView s={s} now={now} today={day.date} admin={admin} />: tab === 'fl' && seesFlujo ? <Flujo s={s} today={day.date} onLot={openLot} /> : tab === 'set' ? <Settings s={s} now={now} day={day} name={name} home={home} mgr={mgr} admin={admin} viewOnly={viewOnly} meId={meId ?? ''} section={sec} onSection={setSec} onLeave={() => setLeaving(true)} /> : <Report s={s} now={now} only={can('depts') ? undefined : home} mgr={can('depts')} admin={admin} wholeDay={!!wholeDay} />}
+  )
+  // ---- the redesign (rd.ts, Shell.tsx): the same screens, in sections, with one strip of warnings and a search ----
+  const isOp = who.role === 'op', readsAll = can('depts')
+  const sees = (t: RdTab): boolean => {
+    switch (t) {
+      case 'act': case 'rep': case 'set': return true
+      case 'pt': return seesProgram
+      case 'wo': return !isOp && (can('products') || viewOnly)
+      case 'po': return !isOp && readsAll
+      case 'prod': return !isOp && (can('products') || viewOnly)
+      case 'goals': return !isOp && can('goals')
+      case 'av': return can('products') || viewOnly
+      case 'lt': return seesLotes
+      case 'fl': return seesFlujo
+      case 'pal': return !isOp || home === 'Packing'
+      case 'hold': return !isOp
+      case 'home': return !isOp && (mgr || viewOnly || admin)
+      case 'kpi': return seesKpiTab
+      case 'wt': return !isOp
+      case 'dash': case 'mini': return !isOp && readsAll
+      case 'pplh': return seesPplh(s, admin, name)
+      case 'msg': return !isOp
+    }
+  }
+  const secOrder: RdSec[] = viewOnly ? ['ind', 'planta', 'tra', 'rep', 'plan', 'msg', 'set'] : ['planta', 'ind', 'plan', 'tra', 'rep', 'msg', 'set']
+  const secs = secOrder.filter((k) => tabsOf(k, sees).length > 0)
+  const shownTab: RdTab = sees(tab) ? tab : tabsOf(secs[0], sees)[0]
+  lastOf.current[secOf(shownTab)] = shownTab
+  const pickSec = (k: RdSec) => {
+    if (k === 'planta' && secOf(shownTab) === 'planta' && readsAll) { setOverview(true); return }
+    const t = lastOf.current[k]
+    setTab(t && sees(t) ? t : tabsOf(k, sees)[0])
+  }
+  const searchGo = (g: SearchGo) => {
+    if (g.report) reportOpenAt(g.report)
+    if (g.lot) setAvLot(g.lot)
+    if (g.dept) { setDept(g.dept); setOverview(false) }
+    setTab(g.tab)
+  }
+  const report = (part: 'rep' | 'ind' | 'tra', pin?: RdTab) => <Report s={s} now={now} only={can('depts') ? undefined : home} mgr={can('depts')} admin={admin} wholeDay={!!wholeDay} part={part} pin={pin} />
+  const settings = (only?: SettingsKey) => <Settings s={s} now={now} day={day} name={name} home={home} mgr={mgr} admin={admin} viewOnly={viewOnly} meId={meId ?? ''} section={only ?? sec} onSection={setSec} onLeave={() => setLeaving(true)} bare={!!only} />
+  const rdView = () => {
+    switch (shownTab) {
+      case 'act': return actView
+      case 'pt': return <ProgramToday s={s} date={day.date} now={now} rooms={programRooms(can('depts'), home)} onReport={toReport} />
+      case 'wo': return <OrderHistory s={s} dept={home} today={day.date} edit={can('products')} readsAll={readsAll} />
+      case 'po': return <OrdersCard s={s} mgr={can('orders')} />
+      case 'prod': return settings('products')
+      case 'goals': return settings('goals')
+      case 'av': return <Avance s={s} startLot={avLot} />
+      case 'lt': return <LotesView s={s} today={day.date} onReport={toReport} />
+      case 'fl': return <Flujo s={s} today={day.date} onLot={openLot} />
+      case 'pal': return report('tra', 'pal')
+      case 'hold': return <HoldsAll s={s} />
+      case 'home': return <Summary s={s} now={now} date={day.date} onGo={(t) => setTab(t)} has={sees} />
+      case 'kpi': return <KpiView s={s} now={now} today={day.date} admin={admin} />
+      case 'wt': case 'dash': case 'mini': case 'pplh': return report('ind', shownTab)
+      case 'rep': return report('rep')
+      case 'msg': return <ChatInbox s={s} />
+      case 'set': return settings()
+    }
+  }
+  if (RD) return (
+    <div className={'app rd' + (isOp ? ' rd-op' : '')}>
+      <Chat s={s} home={home} onInbox={isOp ? undefined : () => setTab('msg')} />
+      <header className="rd-top">
+        <div className="rd-brand"><img className="logo" src={import.meta.env.BASE_URL + 'mamas-logo.png'} alt="Mama's Creations" /><div><h1>{APP}{!supabase && <span className="demotag">DEMO</span>}</h1><small>{new Date(now).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })} · <b className="livetime">{new Date(now).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</b></small></div></div>
+        {isOp && <span className="rd-roomchip" style={deptVars(home)}><i aria-hidden="true">{DEPT_LOOK[home].emoji}</i>{home}</span>}
+        <button type="button" className="rd-find" onClick={() => setFinding(true)} aria-label={tr('Buscar')}><span aria-hidden="true">🔍</span><span className="rd-find-t">{tr('Buscar código, lote, PO, tag…')}</span><kbd>Ctrl K</kbd></button>
+        <SyncDot />
+        <PersonMenu name={name} role={viewOnly ? tr('Solo ver') : mgr ? tr('Manager') : home} mgr={mgr} onDevice={() => { setSec('device'); setTab('set') }} onLeave={() => setLeaving(true)} leaveWord={supabase ? tr('Salir') : tr('Cambiar')} />
+      </header>
+      <StatusStrip bars={[unsentBar, fullBar, staleBar, othersBar, clockBar, zoneBar, updBar]} />
+      {gate}
+      {leaving && <LeaveDialog onYes={() => { setLeaving(false); onLogout() }} onNo={() => setLeaving(false)} />}
+      {finding && <GlobalSearch s={s} sees={sees} people={!isOp && (can('people') || mgr)} only={readsAll ? undefined : home} onGo={searchGo} onClose={() => setFinding(false)} />}
+      <div className="rd-frame">
+        <RdNav secs={secs} on={secOf(shownTab)} op={isOp} badge={{ tra: holdsOpen(s).length }} onPick={pickSec} freezer={who.role !== 'op' || who.freezer ? FREEZER_URL : undefined} />
+        <main className="rd-main">
+          <RdTabs tabs={tabsOf(secOf(shownTab), sees)} on={shownTab} onPick={setTab} counts={{ hold: holdsOpen(s).length }} />
+          <WoNavCtx.Provider value={woNav}>
+          <ReportLinkCtx.Provider value={mgr ? toReport : null}>
+          <ViewGuard reset={shownTab + '|' + dept}>
+            {rdView()}
+          </ViewGuard>
+          </ReportLinkCtx.Provider>
+          </WoNavCtx.Provider>
+        </main>
+      </div>
+    </div>
+  )
+  return (
+    <div className="app">
+      <Chat s={s} home={home} />
+      {[zoneBar, clockBar, updBar, unsentBar, othersBar, fullBar].map((x, k) => <Fragment key={k}>{x}</Fragment>)}
+      {gate}
+      {staleBar}
+      <header className="top">
+        <div className="brand"><img className="logo" src={import.meta.env.BASE_URL + 'mamas-logo.png'} alt="Mama's Creations" /><div><h1>{APP}{!supabase && <span className="demotag">DEMO</span>}</h1><small>{new Date(now).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })} · <b className="livetime" title={supabase ? tr('La hora de la app: la del servidor, la misma en todos los aparatos') : ''}>{new Date(now).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' })}</b>{BUILD && BUILD !== 'dev' && <span className="buildtag" title={tr('La versión de la app en este aparato')}>v {BUILD.slice(0, 6)}</span>}</small></div></div>
+        <nav className={'tabs' + (can('products') || viewOnly ? ' five' : '')}>
+          <button type="button" className={tab === 'act' ? 'on' : ''} onClick={() => setTab('act')}>{tr('Actividad')}</button>
+          {seesProgram && <button type="button" className={tab === 'pt' ? 'on' : ''} title={tr('Programa del día')} onClick={() => setTab('pt')}>{tr('Programa')}{!s.programView.on && <small className="pt-only"> 🔒</small>}</button>}
+          {(can('products') || viewOnly) && <button type="button" className={tab === 'av' ? 'on' : ''} onClick={() => { setAvLot(''); setTab('av') }}>{tr('Avance')}</button>}
+          {seesLotes && <button type="button" className={tab === 'lt' ? 'on' : ''} title={tr('Lotes: de las mezclas a Packing')} onClick={() => setTab('lt')}>{tr('Lotes')}{!s.viewOpts.lotes.on && <small className="pt-only"> 🔒</small>}</button>}
+          {seesKpiTab && <button type="button" className={tab === 'kpi' ? 'on' : ''} title={tr('Reporte KPI del día')} onClick={() => setTab('kpi')}>KPI<small className="pt-only"> 🔒</small></button>}
+          {seesFlujo && <button type="button" className={tab === 'fl' ? 'on' : ''} title={tr('Flujo de datos')} onClick={() => setTab('fl')}>{tr('Flujo')}{!s.viewOpts.flujo.on && <small className="pt-only"> 🔒</small>}</button>}
+          <button type="button" className={tab === 'rep' ? 'on' : ''} onClick={() => setTab('rep')}>{tr('Reporte')}</button>
+          <button type="button" className={'settab' + (tab === 'set' ? ' on' : '')} onClick={() => setTab('set')} aria-label={tr('Ajustes')}><span className="gear">⚙</span><span className="word">{tr('Ajustes')}</span></button>
+        </nav>
+        <div className="me"><SyncDot /> <span className="who">{name}</span><span className="where">{viewOnly ? tr('Solo ver') : mgr ? tr('Manager') : home}</span> {mgr && <QrLink label="QR" />}<WhatIs label={tr('ⓘ Qué significa')} /><LangSwitch /><button type="button" className="lnk" onClick={() => setLeaving(true)}>{supabase ? tr('Salir') : tr('Cambiar')}</button></div>
+      </header>
+      {leaving && <LeaveDialog onYes={() => { setLeaving(false); onLogout() }} onNo={() => setLeaving(false)} />}
+      {/* a view that fails to draw says so, and the rest of the app stays (see ViewGuard) */}
+      <WoNavCtx.Provider value={woNav}>
+      <ReportLinkCtx.Provider value={mgr ? toReport : null}>
+      <ViewGuard reset={tab + '|' + dept}>
+      {tab === 'act' ? actView : tab === 'pt' && seesProgram ? <ProgramToday s={s} date={day.date} now={now} rooms={programRooms(can('depts'), home)} onReport={toReport} /> : tab === 'av' && (can('products') || viewOnly) ? <Avance s={s} startLot={avLot} /> : tab === 'lt' && seesLotes ? <LotesView s={s} today={day.date} onReport={toReport} /> : tab === 'kpi' && seesKpiTab ? <KpiView s={s} now={now} today={day.date} admin={admin} />: tab === 'fl' && seesFlujo ? <Flujo s={s} today={day.date} onLot={openLot} /> : tab === 'set' ? <Settings s={s} now={now} day={day} name={name} home={home} mgr={mgr} admin={admin} viewOnly={viewOnly} meId={meId ?? ''} section={sec} onSection={setSec} onLeave={() => setLeaving(true)} /> : <Report s={s} now={now} only={can('depts') ? undefined : home} mgr={can('depts')} admin={admin} wholeDay={!!wholeDay} />}
       </ViewGuard>
       </ReportLinkCtx.Provider>
       </WoNavCtx.Provider>
@@ -3282,7 +3396,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       </div>
       {pallets
         ? <PalletPanel s={s} run={run} readOnly={quiet} saved={just ? savedText(line.dept, just.n - brought, rc) : ''} onDone={done} onLot={() => setPacking('lot')} onLotNow={() => setPacking('binlot')} onPart={(i) => setPacking(i)} onOrder={() => setPacking('po')} onReopen={() => setPacking('reopen')} canReopen={run.units.length > brought && !run.extra?.open?.parts.length} />
-        : !quiet && <button type="button" className={'btn primary huge' + (just ? ' saved' : '')} disabled={!!just} onClick={() => done()}>✓ {just ? savedText(line.dept, just.n - brought, rc) : rc.done}</button>}
+        : !quiet && <button type="button" className={'btn ' + (RD ? 'go' : 'primary') + ' huge' + (just ? ' saved' : '')} disabled={!!just} onClick={() => done()}>✓ {just ? savedText(line.dept, just.n - brought, rc) : rc.done}</button>}
       {!quiet && (line.dept === 'RTE' || weighsBalls(line.dept)) && <WeightReminder s={s} run={run} now={now} />}
       {!hold && capFull && cap && <div className="capdone">{tr('✓ Programa completo: {0} de {1} {2} del {3}{4}. Si hay que hacer más, habla con la oficina.', fmtN(cap.done), fmtN(cap.planned), cap.unit, cap.code, cap.lot ? ' · ' + tr('lote {0}', cap.lot) : '')}</div>}
       {capAsk && cap && <div className="veil" onClick={() => setCapAsk(false)}><div className="dlg capdlg" onClick={(e) => e.stopPropagation()}>

@@ -20,6 +20,7 @@ import { locale, tr } from './i18n'
 import { CodeList } from './CodePicker'
 import { OTHER_CODE, REASON_CODES, SETUP_CODE } from './reasons'
 import { trx } from './trx'
+import { RD } from './rd'
 
 /**
  * Ajustes: everything the plant sets once and reads later, in one place, each thing in its own section (Jose,
@@ -30,6 +31,16 @@ import { trx } from './trx'
 export type SettingsKey = 'shifts' | 'day' | 'lines' | 'stops' | 'mini' | 'program' | 'attendance' | 'weights' | 'kpi' | 'consumo' | 'products' | 'goals' | 'people' | 'devices' | 'device'
 const fmtN = (x: number) => Math.round(x).toLocaleString('en-US')
 
+/** the redesign's groups of Ajustes, in their order: what is used every day first, the technical last */
+export const SETTINGS_GROUPS: { title: string; keys: SettingsKey[] }[] = [
+  { title: tr('Planta y turnos'), keys: ['shifts', 'day', 'lines'] },
+  { title: tr('Producción'), keys: ['stops', 'weights', 'consumo', 'products', 'goals'] },
+  { title: tr('Calidad'), keys: ['kpi'] },
+  { title: tr('Personas'), keys: ['people', 'attendance'] },
+  { title: tr('Indicadores'), keys: ['mini'] },
+  { title: tr('Funciones en prueba'), keys: ['program'] },
+  { title: tr('Aparatos'), keys: ['devices', 'device'] },
+]
 export function settingsSections(can: (p: 'shifts' | 'day' | 'products' | 'goals' | 'people') => boolean, mgr: boolean, viewOnly: boolean, admin = false, attOn = false): { key: SettingsKey; title: string; sub: string }[] {
   return [
     ...(can('shifts') ? [{ key: 'shifts' as const, title: tr('Turnos y calendario'), sub: tr('horas, semana, días aparte') }] : []),
@@ -51,15 +62,16 @@ export function settingsSections(can: (p: 'shifts' | 'day' | 'products' | 'goals
   ]
 }
 
-export function Settings({ s, now, day, name, home, mgr, admin, viewOnly, meId, section, onSection, onLeave }: { s: State; now: number; day: WorkDay; name: string; home: Dept; mgr: boolean; admin: boolean; viewOnly: boolean; meId: string; section: SettingsKey; onSection: (k: SettingsKey) => void; onLeave: () => void }) {
+export function Settings({ s, now, day, name, home, mgr, admin, viewOnly, meId, section, onSection, onLeave, bare }: { bare?: boolean; s: State; now: number; day: WorkDay; name: string; home: Dept; mgr: boolean; admin: boolean; viewOnly: boolean; meId: string; section: SettingsKey; onSection: (k: SettingsKey) => void; onLeave: () => void }) {
   const can = useCan()
   const items = settingsSections(can, mgr, viewOnly, admin, s.attView.on)
   const sec: SettingsKey = items.some((i) => i.key === section) ? section : items[0].key
   return (
-    <div className="settings">
+    <div className={'settings' + (bare ? ' bare' : '')}>
+      {bare ? null : RD ? <GroupedNav items={items} sec={sec} onSection={onSection} /> : (
       <nav className="setnav" aria-label={tr('Ajustes')}>
         {items.map((it) => <button key={it.key} type="button" className={'setitem' + (sec === it.key ? ' on' : '')} aria-pressed={sec === it.key} onClick={() => onSection(it.key)}><b>{it.title}</b><small>{it.sub}</small></button>)}
-      </nav>
+      </nav>)}
       <section className="setpane">
         {sec === 'shifts' && <ShiftsSettings s={s} day={day} />}
         {sec === 'day' && <DaySettings s={s} now={now} day={day} />}
@@ -1059,5 +1071,28 @@ function LbCaseSettings({ s, readOnly }: { s: State; readOnly: boolean }) {
       {!readOnly && <div className="btns"><button type="button" className="btn primary" disabled={!pending} onClick={() => { const n = loadQaLbPerCase(); setSaid(tr('✓ Libras de QA cargadas en {0} códigos.', n)) }}>{pending ? tr('Cargar las libras de QA en Productos ({0})', pending) : withLb ? tr('Las libras de QA ya están en Productos') : tr('Ningún código de Productos está en la hoja de QA')}</button></div>}
       {said && <p className="hint ok">{said}</p>}
     </div>
+  )
+}
+
+/**
+ * Ajustes in groups with a search (the redesign, 2026-11-05): the same sections as always, each under its theme, and a
+ * box that finds one by its name or what it holds ("ritmo", "pesos", "turno 2")
+ */
+function GroupedNav({ items, sec, onSection }: { items: { key: SettingsKey; title: string; sub: string }[]; sec: SettingsKey; onSection: (k: SettingsKey) => void }) {
+  const [q, setQ] = useState('')
+  const norm = (x: string) => x.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  const hit = (it: { title: string; sub: string }) => !q.trim() || norm(it.title + ' ' + it.sub).includes(norm(q.trim()))
+  const groups = SETTINGS_GROUPS.map((g) => ({ title: g.title, list: g.keys.map((k) => items.find((i) => i.key === k)).filter((i): i is (typeof items)[number] => !!i && hit(i)) })).filter((g) => g.list.length)
+  return (
+    <nav className="setnav rd-setnav" aria-label={tr('Ajustes')}>
+      <input className="rd-setfind" type="search" id="rd-setfind" value={q} onChange={(e) => setQ(e.target.value)} placeholder={tr('🔍 Buscar un ajuste…')} aria-label={tr('Buscar un ajuste')} />
+      {groups.map((g) => (
+        <div key={g.title} className="rd-setgrp">
+          <div className="rd-setgrp-t">{g.title}</div>
+          {g.list.map((it) => <button key={it.key} type="button" className={'setitem' + (sec === it.key ? ' on' : '')} aria-pressed={sec === it.key} onClick={() => onSection(it.key)}><b>{it.title}</b><small>{it.sub}</small></button>)}
+        </div>
+      ))}
+      {!groups.length && <p className="hint">{tr('Ningún ajuste se llama así.')}</p>}
+    </nav>
   )
 }

@@ -49,7 +49,15 @@ type PalSub = 'pallets' | 'bins'
 type PalletFilter = '' | 'notag' | 'nopo' | 'po' | 'full' | 'short' | 'open'
 /** where a drill came from: "‹ Volver" puts all of it back (the shift as it was chosen: null = the report decides) */
 type Snap = { view: View; rec: RecSub; pal: PalSub; dept: Dept | ''; shift: 0 | 1 | 2 | null; line: string; code: string; lot: string; cause: string; runChip: '' | 'live' | 'waste'; palF: PalletFilter }
-type ReportProps = { s: State; now: number; only?: Dept; mgr: boolean; admin: boolean; wholeDay: boolean }
+type ReportProps = { s: State; now: number; only?: Dept; mgr: boolean; admin: boolean; wholeDay: boolean; part?: ReportPart; pin?: string }
+/**
+ * the redesign (2026-11-05): the report's parts live in three sections of the app, Reportes (the day, Registros,
+ * Cambios), Indicadores (Pesos, Dashboard, Mini KPI, PPLH) and Trazabilidad (Pallets); without a part, all of them, as before
+ */
+export type ReportPart = 'rep' | 'ind' | 'tra'
+const PART_VIEWS: Record<ReportPart, View[]> = { rep: ['gen', 'code', 'shift', 'rec', 'chg'], ind: ['wt', 'dash', 'mini', 'pplh'], tra: ['pal'] }
+/** the views of a part this person has, and where a part opens (a view kept from another part is let go) */
+export const partOf = (v: string): ReportPart => (PART_VIEWS.ind as string[]).includes(v) ? 'ind' : v === 'pal' ? 'tra' : 'rep'
 
 /** the shift somebody chose to look at in the report, kept while the app stays open (null = none chosen: the report decides) */
 let shiftChosen: 0 | 1 | 2 | null = null
@@ -164,7 +172,7 @@ export function useFixers() {
   return { fixable, fix, seeBtn, fixBtn }
 }
 
-function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
+function useReport({ s, now, only, mgr, admin, wholeDay, part, pin }: ReportProps) {
   const can = useCan(), who = useWho(), viewOnly = who.role === 'viewer'
   // (what another tab asked for, taken once: see reportOpenAt)
   const [at] = useState(() => { const x = openAt; openAt = null; return x })
@@ -210,7 +218,9 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
   /** "12 corridas · 5 paros", as the history wrote it, in the words of the screen */
   const tookText = (t: string) => { const m = /^(\d+) corridas? · (\d+) paros?$/.exec(t); return m ? howMany(Number(m[1]), Number(m[2])) : t }
   // the part of the report in view, the list of Registros and of Pallets, and the search (kept like the shift and the room)
-  const [view, setViewPick] = useState<View>(viewChosen)
+  const [view, setViewPick] = useState<View>(() => (pin ? (pin as View) : part && !PART_VIEWS[part].includes(viewChosen) ? PART_VIEWS[part][0] : viewChosen))
+  // a section's own tab chose the part (Indicadores › Pesos, Trazabilidad › Pallets): it follows that tab
+  useEffect(() => { if (pin) { viewChosen = pin as View; setViewPick(pin as View) } }, [pin])
   const setView = (v: View) => { viewChosen = v; setViewPick(v) }
   useEffect(() => { keepRep(view, date) }, [view, date])
   const [recSub, setRecPick] = useState<RecSub>(recChosen)
@@ -462,8 +472,10 @@ function useReport({ s, now, only, mgr, admin, wholeDay }: ReportProps) {
   // a room's column in the lists only when more than one room is in view
   const manyRooms = !dept
   // ---- the parts: which ones this person has, and how many things each holds (or how many the search found in it) ----
-  const views: View[] = ['gen', 'code', 'shift', ...(!only || only === 'Packing' ? ['pal' as const] : []), ...(wt.rows.length ? ['wt' as const] : []), ...(mgr ? ['dash' as const, 'mini' as const] : []), ...(seesPplh(s, admin, user.get()) ? ['pplh' as const] : []), 'rec', ...(mgr ? ['chg' as const] : [])]
-  const v: View = views.includes(view) ? view : 'gen'
+  const allViews: View[] = ['gen', 'code', 'shift', ...(!only || only === 'Packing' ? ['pal' as const] : []), ...(wt.rows.length ? ['wt' as const] : []), ...(mgr ? ['dash' as const, 'mini' as const] : []), ...(seesPplh(s, admin, user.get()) ? ['pplh' as const] : []), 'rec', ...(mgr ? ['chg' as const] : [])]
+  // in a section of the redesign only its own parts, plus the one a drill took to (so "‹ Volver" still has a way back)
+  const views: View[] = part ? [...allViews.filter((x) => PART_VIEWS[part].includes(x) || x === view), ...(pin && !allViews.includes(pin as View) ? [pin as View] : [])] : allViews
+  const v: View = views.includes(view) ? view : (views[0] ?? 'gen')
   const hitCount = (x: View) => (x === 'code' ? hitsOf('code').length : x === 'pal' ? hitsOf('pallet', 'bin').length : x === 'rec' ? hitsOf('unit', 'run', 'stop').length : x === 'chg' ? hitsOf('change').length : null)
   const tabs = views.map((x) => {
     const hits = hitCount(x)
@@ -566,7 +578,7 @@ export function Report(props: ReportProps) {
   return (
     <section className="report">
       <div className="rhead">
-        <div className="rtitle"><h2>{tr('Reporte del día')}{only && <> <DeptBadge d={only} /></>}</h2><span>{longDate(date)}</span></div>
+        <div className="rtitle"><h2>{props.part === 'ind' ? tr('Indicadores del día') : props.part === 'tra' ? tr('Pallets y bins') : tr('Reporte del día')}{only && <> <DeptBadge d={only} /></>}</h2><span>{longDate(date)}</span></div>
         <div className="racts">
           <button type="button" className="btn primary" onClick={() => setPicking('send')} disabled={!any || preparing}>{preparing ? tr('Preparando…') : <>{tr('✉ Enviar')}<span className="opt"> {' '}{tr('reporte')}</span></>}</button>
           <button type="button" className="btn" onClick={() => setPicking('pdf')} disabled={!any}>{tr('📄 PDF')}<span className="opt"> {' '}{tr('/ imprimir')}</span></button>
@@ -628,7 +640,7 @@ export function Report(props: ReportProps) {
         </div>
       ))}
       {shiftsOpen && <ShiftsDialog s={s} date={date} onClose={() => setShiftsOpen(false)} />}
-      <ViewTabs tabs={tabs} on={v} onPick={pickView} />
+      {!props.pin && <ViewTabs tabs={tabs} on={v} onPick={pickView} />}
       <div className="rp-sub"><span>{viewSub(v)}</span><button type="button" className="btn sm" onClick={() => setHelp(true)}>ⓘ {tr('Cómo leer este reporte')}</button></div>
       <div id="rp-panel" role="tabpanel" aria-labelledby={'rp-tab-' + v} className="rp-panel">
         {/* (a day, or a filter, with no code but with stops: every part says so and Registros opens on them) */}

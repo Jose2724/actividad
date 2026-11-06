@@ -23,7 +23,7 @@ const seenOf = (side: string, d: ChatRoom) => { try { return Number(localStorage
 const HIDDEN = 'act_chat_hidden'
 const markSeen = (side: string, d: ChatRoom, at: number) => { try { localStorage.setItem(SEEN + side + ':' + d, String(at)) } catch { /* private window: counted again next time */ } }
 
-export function Chat({ s, home }: { s: State; home: Dept }) {
+export function Chat({ s, home, onInbox }: { s: State; home: Dept; onInbox?: () => void }) {
   const who = useWho()
   const side = who.role === 'op' ? 'room' : 'office'
   const rooms: ChatRoom[] = side === 'room' ? [home] : CHAT_ROOMS
@@ -46,6 +46,14 @@ export function Chat({ s, home }: { s: State; home: Dept }) {
   // como un zumbido ... que noten cuando hay un mensaje nuevo")
   const ringing = hidden ? total > 0 : rooms.some((d) => unread[d] > 0 && open !== d)
   useEffect(() => { if (!ringing) return; const id = window.setInterval(ring, 5000); return () => window.clearInterval(id) }, [ringing])
+  // the redesign: the office reads its conversations in Mensajes; one button says how many wait, wherever it is
+  if (onInbox && side === 'office') {
+    return (
+      <button type="button" className={'chat-fab rd-chatfab' + (total > 0 ? ' new' : '')} onClick={onInbox} aria-label={tr('Mensajes')} title={tr('Mensajes')}>
+        <span className="chat-fab-ico" aria-hidden="true">💬</span>{total > 0 && <i className="chat-badge">{total}</i>}
+      </button>
+    )
+  }
   if (hidden) {
     return (
       <button type="button" className={'chat-peek' + (total > 0 ? ' new' : '')} onClick={() => setHidden(false)} aria-label={tr('Mostrar los mensajes')} title={tr('Mostrar los mensajes')}>
@@ -253,6 +261,36 @@ function ChatWindow({ s, dept, side, onClose }: { s: State; dept: ChatRoom; side
           </form>
         : <p className="chat-ro">{tr('Solo ver: aquí no se escribe.')}</p>}
       {zoom && <div className="veil chat-zoom" onClick={() => setZoom('')} role="dialog" aria-label={tr('Foto')}><img src={zoom} alt={tr('Foto')} /><button type="button" className="chat-x" onClick={() => setZoom('')} aria-label={tr('Cerrar')}>×</button></div>}
+    </div>
+  )
+}
+
+/**
+ * Mensajes (the redesign, 2026-11-05): the office's conversations in one inbox, each room and Freezer with what it said
+ * last and how many wait to be read; one opens in the same window as always (photos, voice notes, "Visto")
+ */
+export function ChatInbox({ s }: { s: State }) {
+  const side = 'office' as const
+  const [open, setOpen] = useState<ChatRoom | null>(null)
+  const [, bump] = useState(0)
+  const last = open ? (chatOf(s, open).at(-1)?.at ?? 0) : 0
+  useEffect(() => { if (open && last > seenOf(side, open)) { markSeen(side, open, last); bump((n) => n + 1) } }, [open, last])
+  useEffect(() => { if (open && last) markChatSeen(open, last) }, [open, last])
+  const rooms = [...CHAT_ROOMS].sort((a, b) => (chatOf(s, b).at(-1)?.at ?? 0) - (chatOf(s, a).at(-1)?.at ?? 0))
+  return (
+    <div className="rd-inbox">
+      {rooms.map((d) => {
+        const m = chatOf(s, d).at(-1), n = chatUnread(s, d, side, seenOf(side, d)), look = lookOf(d)
+        const what = !m ? tr('Sin mensajes todavía') : m.text === CHAT_PHOTO_TEXT ? '📷 ' + tr('Foto') : m.text === CHAT_AUDIO_TEXT ? '🎤 ' + tr('Nota de voz') : m.text
+        return (
+          <button key={d} type="button" className={'rd-conv' + (n ? ' new' : '')} style={lookVars(look)} onClick={() => setOpen(d)}>
+            <span className="rd-conv-e" aria-hidden="true">{look.emoji}</span>
+            <span className="rd-conv-t"><b>{d}<small>{m ? (dayOf(m.at) === dayOf(Date.now()) ? fmtTime(m.at) : longDate(dayOf(m.at))) : ''}</small></b><span>{m && m.side === side ? tr('Tú: {0}', what) : what}</span></span>
+            {n > 0 && <i className="chat-badge">{n}</i>}
+          </button>
+        )
+      })}
+      {open && <ChatWindow s={s} dept={open} side={side} onClose={() => setOpen(null)} />}
     </div>
   )
 }
