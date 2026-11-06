@@ -33,6 +33,8 @@ html[data-theme="dark"] .app.rd .k-copas{--kt:#1c1d3d;--kk:#a5b4fc}
 html[data-theme="dark"] .app.rd .k-bags{--kt:#122c2a;--kk:#5eead4}
 html[data-theme="dark"] .app.rd .k-pouches{--kt:#10292f;--kk:#67e8f9}
 html[data-theme="dark"] .app.rd .dlg{border-color:#3a4048;background:#23262b}
+html[data-theme="dark"] .dlg tr.rp-focus td,html[data-theme="dark"] .report tr.rp-focus td{background:#3d3212;color:var(--ink)}
+html[data-theme="dark"] .report mark,html[data-theme="dark"] .dlg mark{background:#5a4712;color:#fff3c4}
 html[data-theme="dark"] .rc-mat{--tone:#271a2e;--tone-line:#8f5bbf;--tone-edge:#3d2a4a;--tone-ink:#c9a8ea}
 html[data-theme="dark"] .kpi-tile.go{--c:#c9a8ea}
 html[data-theme="dark"] .lt-lot.go,html[data-theme="dark"] .lt-detail.go{--lc:#c9a8ea}
@@ -68,7 +70,7 @@ def bg(h):
         return 'var(--surface)'
     if l >= 0.86 and s < 0.3:
         return '#202327'
-    if l >= 0.78:  # a pastel tint: the same hue, dark
+    if l >= 0.78 or (l >= 0.7 and s > 0.5):  # a pastel tint, or a bright light one (#fde68a): the same hue, dark
         return hexof(*colorsys.hls_to_rgb(hh, 0.16, min(s, 0.32)))
     return None
 
