@@ -83,7 +83,15 @@ export function RdNav({ secs, on, op, badge, onPick, freezer }: { secs: RdSec[];
   )
 }
 
-/** a section's own tabs, in the style of the attendance window (underline and a count) */
+/** each tab with its sign, so it is found at a glance (Jose, 2026-11-06, Trazabilidad: "que se note que están ahí") */
+const TAB_ICON: Record<RdTab, string> = {
+  act: '🟢', pt: '📋', wo: '🏭', po: '🧾', prod: '🥫', goals: '🏁',
+  av: '📈', lt: '🏷️', pal: '📦', hold: '⏸️', fl: '🔀',
+  home: '🧭', kpi: '🎯', wt: '⚖️', dash: '📊', mini: '🗓️', pplh: '👷',
+  rep: '📄', rtime: '⏱️', rstop: '🛑', ratt: '✍️', msg: '💬', set: '⚙',
+}
+
+/** a section's own tabs: real buttons, each with its sign and a count, the one open in purple (Jose, 2026-11-06) */
 export function RdTabs({ tabs, on, onPick, counts }: { tabs: RdTab[]; on: RdTab; onPick: (t: RdTab) => void; counts?: Partial<Record<RdTab, number>> }) {
   useEffect(() => { document.querySelector('.rd-tabs .on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }) }, [on])
   if (tabs.length < 2) return null
@@ -91,7 +99,7 @@ export function RdTabs({ tabs, on, onPick, counts }: { tabs: RdTab[]; on: RdTab;
     <div className="rd-tabs" role="tablist">
       {tabs.map((t) => (
         <button key={t} type="button" role="tab" aria-selected={on === t} className={'rd-tab' + (on === t ? ' on' : '') + ((counts?.[t] ?? 0) > 0 && t === 'hold' ? ' hot' : '')} onClick={() => onPick(t)}>
-          {tabLabel(t)}{(counts?.[t] ?? 0) > 0 && <span className="n">{counts?.[t]}</span>}
+          <span className="ic" aria-hidden="true">{TAB_ICON[t]}</span>{tabLabel(t)}{(counts?.[t] ?? 0) > 0 && <span className="n">{counts?.[t]}</span>}
         </button>
       ))}
     </div>

@@ -603,7 +603,12 @@ export function Report(props: ReportProps) {
       ws.forEach((w) => { w.style.maxHeight = '' })
       if (ws.length !== 1 || window.innerWidth <= 720) return
       const top = ws[0].getBoundingClientRect().top + window.scrollY
-      ws[0].style.maxHeight = Math.max(280, window.innerHeight - top - 16) + 'px'
+      const h = Math.max(280, window.innerHeight - top - 16)
+      ws[0].style.maxHeight = h + 'px'
+      // what still sits under the table (the page's own margin, a note) is taken from it too, so the page itself never
+      // scrolls, only the table (Jose, 2026-11-06: "afuera de la tabla se puede hacer scroll lo cual no es necesario")
+      const over = (document.scrollingElement?.scrollHeight ?? 0) - window.innerHeight
+      if (over > 0) ws[0].style.maxHeight = Math.max(280, h - over) + 'px'
     }
     fit()
     window.addEventListener('resize', fit)

@@ -1819,3 +1819,10 @@ html:where([data-theme="dark"]),:where(html[data-theme="dark"]) body{background:
 :where(html[data-theme="dark"]) .app.rd .dp-tabs .rp-tab .n{background:var(--surface);color:var(--ink)}
 :where(html[data-theme="dark"]) .app.rd .dp-tabs .rp-tab.on{background:var(--accent);border-color:var(--accent-line);border-bottom-color:var(--accent-line);color:#fff;box-shadow:0 2px 0 #8f5bbf}
 :where(html[data-theme="dark"]) .app.rd .dp-tabs .rp-tab.on .n{background:rgba(255,255,255,.22);color:#fff}
+:where(html[data-theme="dark"]) .app.rd .rd-tabs{border-bottom:0}
+:where(html[data-theme="dark"]) .app.rd .rd-tab{border-radius:12px;border:1.5px solid var(--btn-line);background:var(--btn);box-shadow:0 2px 0 var(--btn-edge);color:var(--ink)}
+:where(html[data-theme="dark"]) .app.rd .rd-tab .n{background:var(--surface)}
+:where(html[data-theme="dark"]) .app.rd .rd-tab:hover:not(.on){color:var(--ink);border-color:var(--accent-line)}
+:where(html[data-theme="dark"]) .app.rd .rd-tab.on{background:var(--accent);border-color:var(--accent-line);color:#fff;box-shadow:0 2px 0 #8f5bbf}
+:where(html[data-theme="dark"]) .app.rd .rd-tab.on .n{background:rgba(255,255,255,.22);color:#fff}
+:where(html[data-theme="dark"]) .app.rd .rd-tab.hot .n{background:#f59e0b;color:#fff}

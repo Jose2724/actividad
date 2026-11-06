@@ -3646,3 +3646,15 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 .app.rd .dp-tabs .rp-tab.on{background:var(--accent);border-color:var(--accent);border-bottom-color:var(--accent);color:#fff;box-shadow:0 2px 0 #3a0d2f}
 .app.rd .dp-tabs .rp-tab.on .n{background:rgba(255,255,255,.22);color:#fff}
 @media (max-width:700px){.app.rd .dp-tabs{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px}.app.rd .dp-tabs .rp-tab{justify-content:center;padding:0 10px;font-size:14px;flex-direction:row}}
+
+/* a section's tabs (Avance, Lotes, Pallets y bins... in every section) as real buttons (Jose, 2026-11-06: "mejorarlo que
+   se note que están ahí"): filled face and edge, a sign each, the open one in purple; they wrap, never hide sideways */
+.app.rd .rd-tabs{flex-wrap:wrap;gap:8px;border-bottom:0;overflow:visible;padding:2px 0 4px}
+.app.rd .rd-tab{min-height:44px;padding:0 16px;border-radius:12px;border:1.5px solid var(--btn-line);background:var(--btn);box-shadow:0 2px 0 var(--btn-edge);color:var(--ink);font-weight:800;font-size:15px;gap:8px}
+.app.rd .rd-tab .ic{font-size:16px;line-height:1}
+.app.rd .rd-tab .n{background:var(--surface)}
+.app.rd .rd-tab:hover:not(.on){color:var(--ink);border-color:var(--accent)}
+.app.rd .rd-tab.on{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 2px 0 #3a0d2f}
+.app.rd .rd-tab.on .n{background:rgba(255,255,255,.22);color:#fff}
+.app.rd .rd-tab.hot .n{background:#f59e0b;color:#fff}
+@media (max-width:700px){.app.rd .rd-tabs{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px}.app.rd .rd-tab{justify-content:center;padding:0 10px;font-size:14px}}
