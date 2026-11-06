@@ -2848,3 +2848,6 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 .atw-twin-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .atw-twin-row>span{flex:1;min-width:180px;color:var(--ink)}
 .atw-twin-row>span b{color:var(--accent)}
+/* the top bar is exactly as tall as the page counts it (its purple edge included): no few pixels left to scroll when
+   everything fits (Jose, 2026-11-05: "se mueve un poquito aun cuando no es necesario") */
+.rd-top{box-sizing:border-box;height:var(--topH);min-height:0}
