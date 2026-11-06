@@ -1,3 +1,4 @@
+import { RD } from './rd'
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { extraOfChoice, runChoiceOf, runChoices, setRunChoice, joinedInto, joinPallet, unjoinPallet, palletsToFinish, unitQty, orderFullWhy, addRunLater, dayBefore, lineTimes, runsOnLine, shiftAt, shiftsOf, turnOf, addUnit, applyDraft, draftChecks, draftUnitOf, NOTE_MAX, usualFor, usualOf, wasteProblem, BIN_WORDS, binOf, binWord, byLineName, cfgFor, checkLaterPallets, DEPTS, fmtN, kindClass, LATER_MAX, laterPalletUnits, laterPoFits, laterStart, laterToOrder, MFO_WORDS, tagTwice, unitStartPo, type LaterPalletRow, plainDay, planRows, SPIRAL_UNITS, type Dept, byShip, CFG, cfgOf, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, reasonText, setUnitOrder, splitStop, store, updateRun, updateStop, type Order, type Run, type State, type Stop, lineLabel, orderFull, orderFullText, orderOver } from './store'
 import { clockNow } from './clock'
@@ -24,6 +25,9 @@ export function RunEditor({ s, run, mgr, focusAt, onClose }: { s: State; run: Ru
   const can = useCan()
   // opened from a unit of the report (a pallet, a cart): that unit is marked and brought into view inside the box
   const focusRow = useRef<HTMLTableRowElement>(null)
+  // the record tapped stays marked in a colour that reads well (Jose, 2026-11-06), and the explanations behind ⓘ
+  const [picked, setPicked] = useState<number | null>(focusAt ?? null)
+  const [why, setWhy] = useState(false)
   useEffect(() => { focusRow.current?.scrollIntoView({ block: 'nearest' }) }, []) // (braces: in new browsers scrollIntoView returns a promise, which an effect must not return)
   // what the run makes can be changed here (Jose, 2026-11-04: the wrong choice at the start, pouches instead of platos):
   // the form speaks in the words of the choice shown, and saving writes it to the run
@@ -87,8 +91,9 @@ export function RunEditor({ s, run, mgr, focusAt, onClose }: { s: State; run: Ru
   }
   return (
     <div className="veil" onClick={onClose}>
-      <div className="dlg wide" onClick={(e) => e.stopPropagation()}>
-        <h3>{trx('Corregir · {0} · {1}', run.code, lineNameOf(s, run.lineId, run.line))}</h3>
+      {/* in the redesign the top stays put and only the records scroll (Jose, 2026-11-06: "que la parte de arriba no se mueva, solo los registros") */}
+      <div className={'dlg wide' + (RD ? ' rd-runedit' : '')} onClick={(e) => e.stopPropagation()}>
+        <h3>{trx('Corregir · {0} · {1}', run.code, lineNameOf(s, run.lineId, run.line))}{RD && <button type="button" className={'rd-why' + (why ? ' on' : '')} aria-expanded={why} aria-label={tr('¿Qué es esto?')} title={tr('¿Qué es esto?')} onClick={() => setWhy(!why)}>ⓘ</button>}</h3>
         {sure.ui}
         {choices.length > 1 && (
           <div className="makes">
@@ -118,7 +123,7 @@ export function RunEditor({ s, run, mgr, focusAt, onClose }: { s: State; run: Ru
             <table>
               <thead><tr><th>#</th><th>{tr('Hora')}</th>{cfg.qty !== 'none' && <th>{cfg.qtyUnit}</th>}{lotEdit && <th>{cfg.lots ? tr('Lotes y tags') : tr('Lotes')}</th>}{cfg.refLabel && !tagsInLots && <th>{cfg.refLabel}</th>}{withOrders && <th>{tr('Pedido')}</th>}<th>{tr('Por')}</th><th>{tr('Comentario')}</th><th></th></tr></thead>
               <tbody>{units.map((u, i) => (
-                <tr key={u.at + ':' + i} ref={focusAt != null && u.at === focusAt ? focusRow : undefined} className={focusAt != null && u.at === focusAt ? 'rp-focus' : undefined}>
+                <tr key={u.at + ':' + i} ref={focusAt != null && u.at === focusAt ? focusRow : undefined} className={picked != null && u.at === picked ? 'rp-focus' : undefined} onClick={() => setPicked(u.at)} onFocusCapture={() => setPicked(u.at)}>
                   {/* on hold from here too (2026-10-23), beside its hour as in the report: applied at once, as the order is */}
                   <td>{i + 1}</td><td className="nowrap">{fmtTime(u.at)}{(run.units.some((x) => x.at === u.at) || holdOf(s, run.id, u.at)) && <> <HoldButton s={s} runId={run.id} at={u.at} dept={run.dept} /></>}</td>
                   {cfg.qty !== 'none' && <td><input className="num" inputMode="numeric" value={u.qty} disabled={!!u.lots?.length} title={u.lots?.length ? tr('Es la suma de sus lotes') : ''} onChange={(e) => setUnits(units.map((x, k) => (k === i ? { ...x, qty: e.target.value.replace(/\D/g, '') } : x)))} /></td>}
@@ -147,8 +152,8 @@ export function RunEditor({ s, run, mgr, focusAt, onClose }: { s: State; run: Ru
         {/* the record's comment, as it was typed when it was added (or none): corrected or cleared here like the rest,
             with its line in the history (Jose, 2026-10-18) */}
         <NoteBox value={note} onChange={setNote} />
-        <p className="hint">{tr('Quita con ✕ una unidad tocada de más. Los cambios quedan al tocar Guardar.')}{later > 0 && ' ' + tr('Mientras corregías se {0}', (later === 1 ? tr('registró 1 {0} más: se conserva.', cfg.unit.toLowerCase()) : tr('registraron {0} {1} más: se conservan.', later, cfg.plural.toLowerCase())))}</p>
-        {can('del') && <p className="hint">{run.units.length ? tr('Esta corrida ya tiene producción: "Borrar corrida" la saca toda del reporte. Si la línea sí trabajó, no la borres.') : tr('Si la línea no estaba trabajando y se tocó por error, "Borrar corrida" la saca del reporte.')} {tr('Todo cambio queda en el historial con tu nombre.')}</p>}
+        {(!RD || why) && <p className="hint">{tr('Quita con ✕ una unidad tocada de más. Los cambios quedan al tocar Guardar.')}{later > 0 && ' ' + tr('Mientras corregías se {0}', (later === 1 ? tr('registró 1 {0} más: se conserva.', cfg.unit.toLowerCase()) : tr('registraron {0} {1} más: se conservan.', later, cfg.plural.toLowerCase())))}</p>}
+        {can('del') && (!RD || why) && <p className="hint">{run.units.length ? tr('Esta corrida ya tiene producción: "Borrar corrida" la saca toda del reporte. Si la línea sí trabajó, no la borres.') : tr('Si la línea no estaba trabajando y se tocó por error, "Borrar corrida" la saca del reporte.')} {tr('Todo cambio queda en el historial con tu nombre.')}</p>}
         {problem && <span className="err">{problem}</span>}
         {fullWhy && <NoticeDialog title={tr('Ese PO no lleva más pallets')} text={fullWhy} onClose={() => setFullWhy('')} />}
         <div className="dbtns spread">

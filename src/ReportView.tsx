@@ -591,6 +591,24 @@ export function Report(props: ReportProps) {
   const [more, setMore] = useState(() => !!(k.q || k.rep.line || k.rep.code || k.rep.lot))
   const [exp, setExp] = useState(false)
   const dateRef = useRef<HTMLInputElement>(null)
+  // a part that is one table fills the screen under the choices and scrolls inside, its heads in sight, so the top
+  // never moves (Jose, 2026-11-06: "que la parte de arriba no se mueva, solo los registros"); on a phone it is cards
+  const panelRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!slim) return
+    const fit = () => {
+      const p = panelRef.current
+      if (!p) return
+      const ws = p.querySelectorAll<HTMLElement>('.twrap')
+      ws.forEach((w) => { w.style.maxHeight = '' })
+      if (ws.length !== 1 || window.innerWidth <= 720) return
+      const top = ws[0].getBoundingClientRect().top + window.scrollY
+      ws[0].style.maxHeight = Math.max(280, window.innerHeight - top - 16) + 'px'
+    }
+    fit()
+    window.addEventListener('resize', fit)
+    return () => window.removeEventListener('resize', fit)
+  })
   const { s, now, only, mgr, admin, can, date, pickDate, today, day, rep, rows, dept, lineChosen, purges, recovering, recover, tookText, sending, setSending, preparing, send, pdf, excel, csv, shiftsOpen, setShiftsOpen, wiping, setWiping, notice, setNotice, editRun, setEditRun, runToEdit, stopToEdit, setEditStop, addFor, setAddFor, detail, setDetail, stopSheet, setStopSheet, picking, setPicking, any, help, setHelp, v, tabs, pickView, setFShift, hrs, setFCode, setFLot, fix, fixable } = k
   return (
     <section className="report">
@@ -640,24 +658,29 @@ export function Report(props: ReportProps) {
               </div>
             )}
           </div>
-          {more && (
-            <div className="rd-rpmore">
-              <SearchBox k={k} />
-              <div className="rf-two rf-three">
-                <label className="rf"><span className="lab">{tr('Línea')}</span>
-                  <select value={rep.line} disabled={!rep.lineChoices.length} onChange={(e) => k.setFLine(e.target.value)}><option value="">{tr('Todas')}</option>{rep.lineChoices.map((l) => <option key={l.id} value={l.id}>{k.lineChoiceText(l.id)}</option>)}</select>
-                </label>
-                <label className="rf"><span className="lab">{tr('Código')}</span>
-                  <select value={rep.code} disabled={!rep.codes.length} onChange={(e) => setFCode(e.target.value)}><option value="">{tr('Todos')}</option>{rep.codes.map((c) => <option key={c} value={c}>{c}</option>)}</select>
-                </label>
-                <label className="rf"><span className="lab">{tr('Lote')}</span>
-                  <select value={rep.lot} disabled={!rep.lots.length} onChange={(e) => setFLot(e.target.value)}><option value="">{tr('Todos')}</option>{rep.lots.map((l) => <option key={l} value={l}>{l}</option>)}</select>
-                </label>
+        </div>
+      )}
+      {/* the search and the filters stay in sight while the records scroll under them (Jose, 2026-11-06: "mi propia búsqueda también me sirve de referencia") */}
+      {slim && (
+        <div className="rd-stick rd-rpstick">
+            {more && (
+              <div className="rd-rpmore">
+                <SearchBox k={k} />
+                <div className="rf-two rf-three">
+                  <label className="rf"><span className="lab">{tr('Línea')}</span>
+                    <select value={rep.line} disabled={!rep.lineChoices.length} onChange={(e) => k.setFLine(e.target.value)}><option value="">{tr('Todas')}</option>{rep.lineChoices.map((l) => <option key={l.id} value={l.id}>{k.lineChoiceText(l.id)}</option>)}</select>
+                  </label>
+                  <label className="rf"><span className="lab">{tr('Código')}</span>
+                    <select value={rep.code} disabled={!rep.codes.length} onChange={(e) => setFCode(e.target.value)}><option value="">{tr('Todos')}</option>{rep.codes.map((c) => <option key={c} value={c}>{c}</option>)}</select>
+                  </label>
+                  <label className="rf"><span className="lab">{tr('Lote')}</span>
+                    <select value={rep.lot} disabled={!rep.lots.length} onChange={(e) => setFLot(e.target.value)}><option value="">{tr('Todos')}</option>{rep.lots.map((l) => <option key={l} value={l}>{l}</option>)}</select>
+                  </label>
+                </div>
+                {can('shifts') && <button type="button" className="btn sm soft" onClick={() => setShiftsOpen(true)}>🕐 {tr('Cambiar horario')}</button>}
               </div>
-              {can('shifts') && <button type="button" className="btn sm soft" onClick={() => setShiftsOpen(true)}>🕐 {tr('Cambiar horario')}</button>}
-            </div>
-          )}
-          <Scope k={k} rd />
+            )}
+            <Scope k={k} rd />
         </div>
       )}
       {!lean && !slim && (
@@ -729,7 +752,7 @@ export function Report(props: ReportProps) {
       {shiftsOpen && <ShiftsDialog s={s} date={date} onClose={() => setShiftsOpen(false)} />}
       {!props.pin && (slim ? <ViewPills tabs={tabs} on={v} onPick={pickView} /> : <ViewTabs tabs={tabs} on={v} onPick={pickView} />)}
       {!lean && !slim && <div className="rp-sub"><span>{viewSub(v)}</span><button type="button" className="btn sm" onClick={() => setHelp(true)}>ⓘ {tr('Cómo leer este reporte')}</button></div>}
-      <div id="rp-panel" role="tabpanel" aria-labelledby={'rp-tab-' + v} className="rp-panel">
+      <div id="rp-panel" role="tabpanel" aria-labelledby={'rp-tab-' + v} className="rp-panel" ref={panelRef}>
         {/* (a day, or a filter, with no code but with stops: every part says so and Registros opens on them) */}
         {v === 'cons' ? <><MeatWhere k={k} /><ConsumeWhere k={k} /></> : v === 'par' ? <CodePareto k={k} /> : v === 'chg' ? <ChangesView k={k} /> : v === 'wt' ? <WeightsView k={k} /> : v === 'dash' ? <DashView s={k.s} date={k.date} now={k.now} pplh={seesPplh(k.s, k.admin, user.get())} /> : v === 'mini' ? <MiniKpiView k={k} /> : v === 'pplh' ? <PplhView s={k.s} date={k.date} today={k.today} now={k.now} edit={!k.viewOnly} admin={k.admin} /> : k.searching && (v === 'gen' || v === 'shift') ? <SearchResults k={k} />
           : rows.length === 0 ? (v === 'rec' && k.stops.length > 0 ? <RecordsView k={k} /> : <EmptyDay k={k} />)

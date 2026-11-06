@@ -3425,3 +3425,37 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
   .rd-pick .seg.rd-roomseg{display:grid;grid-auto-flow:row;grid-template-columns:repeat(3,minmax(0,1fr))}
   .rd-pick .seg.rd-roomseg button{justify-content:center;padding:0 6px}
 }
+/* ---- Corregir in the redesign: the fields stay put, only the records scroll, their heads in sight (Jose, 2026-11-06) ---- */
+.dlg.rd-runedit{display:flex;flex-direction:column;overflow:hidden}
+.dlg.rd-runedit>*{flex:none}
+.dlg.rd-runedit>h3{position:static;margin:0;padding:0;display:flex;align-items:center;gap:8px}
+.dlg.rd-runedit>.dbtns{position:static;margin:0;padding:12px 0 0}
+.report .dlg.rd-runedit>.twrap,.dlg.rd-runedit>.twrap{flex:1 1 auto;min-height:150px;max-height:none;overflow:auto;overscroll-behavior:contain}
+.dlg.rd-runedit thead th{position:sticky;top:0;z-index:2;background:var(--surface);box-shadow:0 1px 0 var(--line)}
+.dlg.rd-runedit tbody tr{cursor:pointer}
+.dlg.rd-runedit tbody tr:not(.rp-focus):hover td{background:var(--bg)}
+.dlg.rd-runedit tr.rp-focus td:first-child{box-shadow:inset 4px 0 0 #e0a030}
+.dlg.rd-runedit textarea{min-height:56px}
+/* ---- tables that read well (Jose, 2026-11-06: "que las filas sean zebra ... cuando está verde no se nota la división de
+   las columnas"): every other row a shade apart, a thin line between the columns, visible on a green (running) row too ---- */
+:root{--zebra:#f0f3f7;--colline:rgba(120,130,140,.28)}
+.app.rd .report .twrap tbody tr:nth-child(even):not(.live):not(.rp-focus) td,.app.rd .dlg.rd-runedit tbody tr:nth-child(even):not(.rp-focus) td{background:var(--zebra)}
+.app.rd .report .twrap table.pallets tbody:nth-of-type(even):not(.live) td{background:var(--zebra)}
+.app.rd .report .twrap td+td,.app.rd .dlg.rd-runedit td+td{box-shadow:inset 1px 0 0 var(--colline)}
+.app.rd .report .twrap th+th,.app.rd .dlg.rd-runedit th+th{box-shadow:inset 1px 0 0 var(--colline),0 1px 0 var(--line)}
+.app.rd .report .twrap tr.live td:first-child,.app.rd .report .twrap tbody.live td:first-child{box-shadow:inset 4px 0 0 var(--ok)}
+/* ---- what was searched stays in sight while scrolling, everywhere there is a search (Jose, 2026-11-06: "que el search
+   bar y lo necesario no se me esconda, porque mi propia búsqueda también me sirve de referencia") ---- */
+.app.rd :is(.rd-stick,.rd-avrow,.wohist>.rd-wtbar,.phead,.ofilters.otop,.emptools,.lt>.chips){position:sticky;top:var(--topH);z-index:6;background:var(--bg);box-shadow:0 8px 10px -10px rgba(0,0,0,.45)}
+.app.rd :is(.rd-avrow,.wohist>.rd-wtbar,.phead,.ofilters.otop,.emptools,.lt>.chips){padding-top:8px;padding-bottom:8px}
+.app.rd .setcard .btns:has(>.kpi-q){position:sticky;top:var(--topH);z-index:6;background:var(--surface);padding:8px 0}
+.rd-rpstick{display:grid;gap:8px}
+.rd-rpstick:has(.rd-rpmore){padding:8px 0}
+/* the search and its three filters on one row on a wide screen, so what stays in sight takes little room */
+@media (min-width:1100px){
+  .rd-rpmore{grid-template-columns:minmax(0,1.5fr) minmax(0,1.5fr) auto;align-items:end;padding:10px 12px;column-gap:14px}
+  .rd-rpmore>.rp-searchrow{align-self:start}
+  .rd-rpmore .rf-two.rf-three{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+  .rd-rpmore .rf-two select{min-height:46px}
+  .rd-rpmore>.btn{width:auto;min-height:46px;white-space:nowrap}
+}
