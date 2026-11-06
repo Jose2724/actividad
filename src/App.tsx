@@ -2487,7 +2487,7 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
           {/* what the freezer has ready for this room, and asking for it (Jose, 2026-10-27): Freezer RTE's own screen for the room's people */}
           {dept === 'Kitchen' && <WeightNoteButton s={s} date={day.date} now={now} />}
           {!RD && CFG[dept].waste && <RoomWasteButton s={s} dept={dept} date={day.date} />}
-          {(dept === 'Packing' || dept === 'MFO') && <a className="btn soft" href={FREEZER_URL + '#listo'}>{tr('🧊 Listo para {0}', dept)}</a>}
+          {/* the redesign leaves it out (Jose, 2026-11-05: "listo para packing quitarlo"): Freezer is in the rail */}{!RD && (dept === 'Packing' || dept === 'MFO') && <a className="btn soft" href={FREEZER_URL + '#listo'}>{tr('🧊 Listo para {0}', dept)}</a>}
         </div>}
       </div>
       <LineGuardBar now={now} />
