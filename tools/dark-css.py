@@ -25,6 +25,7 @@ html[data-theme="dark"] .app.rd .veil{background:rgba(0,0,0,.7)}
 html[data-theme="dark"] .app.rd .line.mode-bin{border-color:#8b5cf6;box-shadow:0 0 0 1px #8b5cf6}
 html[data-theme="dark"] .app.rd .line.mode-bin .hero{border-color:#5b4a8a}
 html[data-theme="dark"]{--sb-ok:#2f9e66;--sb-warn:#e0a030;--sb-bad:#e5534b;--sb-goal:#e08ccd;--sb-lab:#a0a8b1}
+html[data-theme="dark"]{--t-work:#2f9e66;--t-stop:#e0a030;--t-setup:#8b74d6;--t-lunch:#5c6b7d;--t-track:#23262b;--t-gap:repeating-linear-gradient(135deg,#2a2d33 0 4px,#1f2226 4px 8px)}
 html[data-theme="dark"]{--wt-band:#163a26;--wt-edge:#2f7a4d;--wt-line:#e08ccd;--wt-ok:#e08ccd;--wt-bad:#f87171;--wt-warn:#fbbf24;--wt-lab:#a0a8b1}
 html[data-theme="dark"] .app.rd .k-lb{--kt:#2e2412;--kk:#fcd34d}
 html[data-theme="dark"] .app.rd .k-cajas{--kt:#16233d;--kk:#93c5fd}

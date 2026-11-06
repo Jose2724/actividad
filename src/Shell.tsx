@@ -15,15 +15,15 @@ import { saveTheme, themePick, type ThemePick } from './theme'
  * app's own (App.tsx), so every link that already led somewhere (a number to the Reporte, a lot to Avance, an order to
  * Flujo) leads to the same place in its section.
  */
-export type RdTab = 'act' | 'pt' | 'wo' | 'po' | 'prod' | 'goals' | 'av' | 'lt' | 'pal' | 'hold' | 'fl' | 'home' | 'kpi' | 'wt' | 'dash' | 'mini' | 'pplh' | 'rep' | 'msg' | 'set'
+export type RdTab = 'act' | 'pt' | 'wo' | 'po' | 'prod' | 'goals' | 'av' | 'lt' | 'pal' | 'hold' | 'fl' | 'home' | 'kpi' | 'wt' | 'dash' | 'mini' | 'pplh' | 'rep' | 'rtime' | 'rstop' | 'ratt' | 'msg' | 'set'
 export type RdSec = 'planta' | 'ind' | 'plan' | 'tra' | 'rep' | 'msg' | 'set'
-export const RD_TABS: RdTab[] = ['act', 'pt', 'wo', 'po', 'prod', 'goals', 'av', 'lt', 'pal', 'hold', 'fl', 'home', 'kpi', 'wt', 'dash', 'mini', 'pplh', 'rep', 'msg', 'set']
+export const RD_TABS: RdTab[] = ['act', 'pt', 'wo', 'po', 'prod', 'goals', 'av', 'lt', 'pal', 'hold', 'fl', 'home', 'kpi', 'wt', 'dash', 'mini', 'pplh', 'rep', 'rtime', 'rstop', 'ratt', 'msg', 'set']
 const SEC_TABS: Record<RdSec, RdTab[]> = {
   planta: ['act'],
   ind: ['home', 'kpi', 'wt', 'dash', 'mini', 'pplh'],
   plan: ['pt', 'wo', 'po', 'prod', 'goals'],
   tra: ['av', 'lt', 'pal', 'hold', 'fl'],
-  rep: ['rep'],
+  rep: ['rep', 'rtime', 'rstop', 'ratt'],
   msg: ['msg'],
   set: ['set'],
 }
@@ -35,7 +35,7 @@ export const tabLabel = (t: RdTab) => ({
   act: tr('En vivo'), pt: tr('Programa del día'), wo: tr('Pedidos de producción'), po: tr('Pedidos con PO'), prod: tr('Productos'), goals: tr('Metas'),
   av: tr('Avance'), lt: tr('Lotes'), pal: tr('Pallets y bins'), hold: tr('On hold'), fl: tr('Flujo'),
   home: tr('Resumen'), kpi: tr('KPI diario'), wt: tr('Pesos'), dash: 'Dashboard', mini: tr('Mini KPI'), pplh: 'PPLH',
-  rep: tr('Reportes'), msg: tr('Mensajes'), set: tr('Ajustes'),
+  rep: tr('Producción'), rtime: tr('Tiempo'), rstop: tr('Paros'), ratt: tr('Asistencia'), msg: tr('Mensajes'), set: tr('Ajustes'),
 })[t]
 
 /** whether the screen is narrow enough for the bar at the bottom (the same width as the CSS) */

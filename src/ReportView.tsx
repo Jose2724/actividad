@@ -43,7 +43,7 @@ import { trx } from './trx'
  */
 
 /** the parts of the report, one tab each */
-type View = 'gen' | 'code' | 'shift' | 'pal' | 'wt' | 'dash' | 'mini' | 'pplh' | 'rec' | 'chg'
+type View = 'gen' | 'code' | 'shift' | 'pal' | 'wt' | 'dash' | 'mini' | 'pplh' | 'rec' | 'chg' | 'cons' | 'par'
 /** the three lists of Registros, and the two of Pallets */
 type RecSub = 'runs' | 'units' | 'stops'
 type PalSub = 'pallets' | 'bins'
@@ -57,7 +57,9 @@ type ReportProps = { s: State; now: number; only?: Dept; mgr: boolean; admin: bo
  * Cambios), Indicadores (Pesos, Dashboard, Mini KPI, PPLH) and Trazabilidad (Pallets); without a part, all of them, as before
  */
 export type ReportPart = 'rep' | 'ind' | 'tra'
-const PART_VIEWS: Record<ReportPart, View[]> = { rep: ['gen', 'code', 'shift', 'rec', 'chg'], ind: ['wt', 'dash', 'mini', 'pplh'], tra: ['pal'] }
+/** a time in the redesign: '7 h 50' / '45 min' (the report's tables keep h:mm:ss) */
+const durText = (ms: number) => { if (!RD) return fmtDur(ms); const m = Math.round(Math.max(0, ms) / 60_000), h = Math.floor(m / 60); return h ? h + ' h ' + String(m % 60).padStart(2, '0') : m + ' min' }
+const PART_VIEWS: Record<ReportPart, View[]> = { rep: ['gen', 'code', 'shift', 'cons', 'par', 'rec', 'chg'], ind: ['wt', 'dash', 'mini', 'pplh'], tra: ['pal'] }
 /** the views of a part this person has, and where a part opens (a view kept from another part is let go) */
 export const partOf = (v: string): ReportPart => (PART_VIEWS.ind as string[]).includes(v) ? 'ind' : v === 'pal' ? 'tra' : 'rep'
 
@@ -138,8 +140,8 @@ const onScreen = (hits: Hit[]) => hits.filter((h) => !(h.kind === 'unit' && h.de
 const none = (v: unknown) => (v === '—' ? 'c-none' : undefined)
 
 /** what each part of the report is called, and what it holds (said under the tabs and in the help) */
-const viewLabel = (v: View) => (v === 'gen' ? tr('General') : v === 'code' ? tr('Por código') : v === 'shift' ? tr('Por turno') : v === 'pal' ? '📦 ' + tr('Pallets') : v === 'wt' ? '⚖ ' + tr('Pesos') : v === 'dash' ? '📊 Dashboard' : v === 'mini' ? '📅 ' + tr('Mini KPI') : v === 'pplh' ? '📈 PPLH' : v === 'rec' ? tr('Registros') : tr('Cambios'))
-const viewSub = (v: View) => (v === 'gen' ? tr('Lo hecho por cada departamento, cada turno y por qué se paró.')
+const viewLabel = (v: View) => (v === 'cons' ? '🥩 ' + tr('Carne y consumo') : v === 'par' ? '🏷️ Reason Codes' : v === 'gen' ? tr('General') : v === 'code' ? tr('Por código') : v === 'shift' ? tr('Por turno') : v === 'pal' ? '📦 ' + tr('Pallets') : v === 'wt' ? '⚖ ' + tr('Pesos') : v === 'dash' ? '📊 Dashboard' : v === 'mini' ? '📅 ' + tr('Mini KPI') : v === 'pplh' ? '📈 PPLH' : v === 'rec' ? tr('Registros') : tr('Cambios'))
+const viewSub = (v: View) => (v === 'cons' || v === 'par' ? '' : v === 'gen' ? tr('Lo hecho por cada departamento, cada turno y por qué se paró.')
   : v === 'code' ? tr('Cada código con sus lotes, como en el Excel. Toca un código o un lote para ver solo eso; toca lo hecho para ver cada unidad.')
     : v === 'shift' ? tr('Cada departamento con el día completo y cada turno: lo hecho, el reloj y la suma de sus líneas.')
       : v === 'pal' ? tr('Los pallets de Packing uno por uno, con sus lotes, tags y PO, y sus bins aparte.')
@@ -474,7 +476,12 @@ function useReport({ s, now, only, mgr, admin, wholeDay, part, pin }: ReportProp
   // a room's column in the lists only when more than one room is in view
   const manyRooms = !dept
   // ---- the parts: which ones this person has, and how many things each holds (or how many the search found in it) ----
-  const allViews: View[] = ['gen', 'code', 'shift', ...(!only || only === 'Packing' ? ['pal' as const] : []), ...(wt.rows.length ? ['wt' as const] : []), ...(mgr ? ['dash' as const, 'mini' as const] : []), ...(seesPplh(s, admin, user.get()) ? ['pplh' as const] : []), 'rec', ...(mgr ? ['chg' as const] : [])]
+  // the redesign splits the long General (Jose, 2026-11-06: "pantalla corta y dividir cosas"): Spiral's meat and the
+  // weighed consumption, and the Reason Codes, are parts of their own when the day has them
+  const consRoom = (dept || only || '') as RoomDept | ''
+  const hasCons = RD && (meatReport(s, rep, date, dept || only || '').list.length > 0 || consumesOf(s, date, consRoom || undefined).length > 0 || inventoryOf(s, consRoom || undefined).length > 0)
+  const hasPar = RD && (s.reasonCodes.on || hasCodedStops(rep)) && paretoOf(rep).rows.length > 0
+  const allViews: View[] = ['gen', 'code', 'shift', ...(!only || only === 'Packing' ? ['pal' as const] : []), ...(wt.rows.length ? ['wt' as const] : []), ...(mgr ? ['dash' as const, 'mini' as const] : []), ...(seesPplh(s, admin, user.get()) ? ['pplh' as const] : []), ...(RD && hasCons ? ['cons' as const] : []), ...(RD && hasPar ? ['par' as const] : []), 'rec', ...(mgr ? ['chg' as const] : [])]
   // in a section of the redesign only its own parts, plus the one a drill took to (so "‹ Volver" still has a way back)
   const views: View[] = part ? [...allViews.filter((x) => PART_VIEWS[part].includes(x) || x === view), ...(pin && !allViews.includes(pin as View) ? [pin as View] : [])] : allViews
   const v: View = views.includes(view) ? view : (views[0] ?? 'gen')
@@ -578,10 +585,69 @@ export function Report(props: ReportProps) {
   const k = useReport(props)
   // the redesign's Indicadores › Pesos: a screen of its own, its bar instead of the day report's header and filters (Jose, 2026-11-05)
   const lean = RD && (props.pin === 'wt' || props.pin === 'dash' || props.pin === 'mini' || props.pin === 'pplh')
+  // Reportes › Producción in the redesign: one bar (day, shift, export), the rooms, and the search and filters behind one button
+  const slim = RD && props.part === 'rep' && !props.pin
+  const [more, setMore] = useState(() => !!(k.q || k.rep.line || k.rep.code || k.rep.lot))
+  const [exp, setExp] = useState(false)
+  const dateRef = useRef<HTMLInputElement>(null)
   const { s, now, only, mgr, admin, can, date, pickDate, today, day, rep, rows, dept, lineChosen, purges, recovering, recover, tookText, sending, setSending, preparing, send, pdf, excel, csv, shiftsOpen, setShiftsOpen, wiping, setWiping, notice, setNotice, editRun, setEditRun, runToEdit, stopToEdit, setEditStop, addFor, setAddFor, detail, setDetail, stopSheet, setStopSheet, picking, setPicking, any, help, setHelp, v, tabs, pickView, setFShift, hrs, setFCode, setFLot, fix, fixable } = k
   return (
     <section className="report">
-      {!lean && (
+      {slim && (
+        <div className="rd-rphead">
+          <div className="rd-wtbar">
+            <h2 className="rd-wttitle">📄 {tr('Producción')}{only && <> <DeptBadge d={only} /></>}</h2>
+            <div className="rd-daynav">
+              <button type="button" className="btn sm" aria-label={tr('Día anterior')} title={tr('Día anterior')} onClick={() => pickDate(addDays(date, -1))}>‹</button>
+              <button type="button" className="btn sm rd-datesbtn" onClick={() => { const i = dateRef.current; if (i) { try { i.showPicker() } catch { i.focus() } } }}>📅 {new Date(date + 'T12:00:00').toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' })}</button>
+              <input ref={dateRef} className="rd-daypick" type="date" value={date} max={today} tabIndex={-1} aria-label={tr('Fecha del reporte')} onChange={(e) => { if (e.target.value) pickDate(e.target.value) }} />
+              <button type="button" className="btn sm" aria-label={tr('Día siguiente')} title={tr('Día siguiente')} disabled={date >= today} onClick={() => pickDate(addDays(date, 1))}>›</button>
+              {date !== today && <button type="button" className="btn sm soft" onClick={() => pickDate(today)}>{tr('Hoy')}</button>}
+            </div>
+            <div className="seg rd-rangeseg" role="group" aria-label={tr('Turno')}>
+              {([0, 1, 2] as const).filter((x) => !x || !rep.plan.only || rep.plan.only === x).map((x) => <button key={x} type="button" className={rep.shift === x ? 'on' : ''} aria-pressed={rep.shift === x} onClick={() => setFShift(x)}>{x ? tr('Turno {0}', x) : tr('Día completo')}</button>)}
+            </div>
+            <div className="rd-wtacts">
+              <button type="button" className={'btn soft' + (more ? ' on' : '')} aria-expanded={more} onClick={() => setMore(!more)}>🔍 {tr('Buscar y filtrar')}{k.q || rep.line || rep.code || rep.lot ? ' •' : ''}</button>
+              <div className="rd-menuwrap">
+                <button type="button" className="btn primary" aria-expanded={exp} disabled={!any || preparing} onClick={() => setExp(!exp)}>{preparing ? tr('Preparando…') : tr('⬇ Exportar') + ' ▾'}</button>
+                {exp && <div className="rd-dropdown" onMouseLeave={() => setExp(false)}>
+                  <button type="button" onClick={() => { setExp(false); setPicking('send') }}>✉️ {tr('Enviar reporte')}<small>{tr('por correo o WhatsApp')}</small></button>
+                  <button type="button" onClick={() => { setExp(false); setPicking('pdf') }}>📄 {tr('PDF / imprimir')}<small>{tr('lo que estás viendo')}</small></button>
+                  <button type="button" onClick={() => { setExp(false); setPicking('xlsx') }}>📊 Excel<small>{tr('con una hoja por parte')}</small></button>
+                  <button type="button" disabled={!rows.length} onClick={() => { setExp(false); csv() }}>🧾 CSV<small>{tr('cada corrida en una fila')}</small></button>
+                </div>}
+              </div>
+              <button type="button" className="btn rd-iconbtn" title={tr('Cómo leer este reporte')} aria-label={tr('Cómo leer este reporte')} onClick={() => setHelp(true)}>ⓘ</button>
+            </div>
+          </div>
+          {!only && (
+            <div className="seg rd-rangeseg rd-roomseg" role="group" aria-label={tr('Departamento')}>
+              <button type="button" className={!dept ? 'on' : ''} aria-pressed={!dept} onClick={() => k.setFDept('')}>{tr('Todos')}</button>
+              {DEPTS.map((d) => <button key={d} type="button" className={dept === d ? 'on' : ''} aria-pressed={dept === d} onClick={() => k.setFDept(d)}><span aria-hidden="true">{DEPT_LOOK[d].emoji}</span> {d}</button>)}
+            </div>
+          )}
+          {more && (
+            <div className="rd-rpmore">
+              <SearchBox k={k} />
+              <div className="rf-two rf-three">
+                <label className="rf"><span className="lab">{tr('Línea')}</span>
+                  <select value={rep.line} disabled={!rep.lineChoices.length} onChange={(e) => k.setFLine(e.target.value)}><option value="">{tr('Todas')}</option>{rep.lineChoices.map((l) => <option key={l.id} value={l.id}>{k.lineChoiceText(l.id)}</option>)}</select>
+                </label>
+                <label className="rf"><span className="lab">{tr('Código')}</span>
+                  <select value={rep.code} disabled={!rep.codes.length} onChange={(e) => setFCode(e.target.value)}><option value="">{tr('Todos')}</option>{rep.codes.map((c) => <option key={c} value={c}>{c}</option>)}</select>
+                </label>
+                <label className="rf"><span className="lab">{tr('Lote')}</span>
+                  <select value={rep.lot} disabled={!rep.lots.length} onChange={(e) => setFLot(e.target.value)}><option value="">{tr('Todos')}</option>{rep.lots.map((l) => <option key={l} value={l}>{l}</option>)}</select>
+                </label>
+              </div>
+              {can('shifts') && <button type="button" className="btn sm soft" onClick={() => setShiftsOpen(true)}>🕐 {tr('Cambiar horario')}</button>}
+            </div>
+          )}
+          <Scope k={k} />
+        </div>
+      )}
+      {!lean && !slim && (
       <div className="rhead">
         <div className="rtitle"><h2>{props.part === 'ind' ? tr('Indicadores del día') : props.part === 'tra' ? tr('Pallets y bins') : tr('Reporte del día')}{only && <> <DeptBadge d={only} /></>}</h2><span>{longDate(date)}</span></div>
         <div className="racts">
@@ -596,7 +662,7 @@ export function Report(props: ReportProps) {
       {sending && <SendDialog files={sending} subject={tr('E.R. - Ops Summary · Reporte {0}', date) + (dept ? ' · ' + dept : '') + filterTitle(rep.code, rep.lot, rep.shift, lineChosen)} onClose={() => setSending(null)} />}
       {/* what to look at: the search first, then the day, the shift, the room, the line, the code and the lot. They add up.
           (On a phone the captions marked rf-cap are left out: the box, the date and the rooms already say what they are) */}
-      {!lean && (
+      {!lean && !slim && (
       <div className="rp-filters">
         <SearchBox k={k} />
         <div className="rf-row">
@@ -649,10 +715,10 @@ export function Report(props: ReportProps) {
       ))}
       {shiftsOpen && <ShiftsDialog s={s} date={date} onClose={() => setShiftsOpen(false)} />}
       {!props.pin && <ViewTabs tabs={tabs} on={v} onPick={pickView} />}
-      {!lean && <div className="rp-sub"><span>{viewSub(v)}</span><button type="button" className="btn sm" onClick={() => setHelp(true)}>ⓘ {tr('Cómo leer este reporte')}</button></div>}
+      {!lean && !slim && <div className="rp-sub"><span>{viewSub(v)}</span><button type="button" className="btn sm" onClick={() => setHelp(true)}>ⓘ {tr('Cómo leer este reporte')}</button></div>}
       <div id="rp-panel" role="tabpanel" aria-labelledby={'rp-tab-' + v} className="rp-panel">
         {/* (a day, or a filter, with no code but with stops: every part says so and Registros opens on them) */}
-        {v === 'chg' ? <ChangesView k={k} /> : v === 'wt' ? <WeightsView k={k} /> : v === 'dash' ? <DashView s={k.s} date={k.date} now={k.now} pplh={seesPplh(k.s, k.admin, user.get())} /> : v === 'mini' ? <MiniKpiView k={k} /> : v === 'pplh' ? <PplhView s={k.s} date={k.date} today={k.today} now={k.now} edit={!k.viewOnly} admin={k.admin} /> : k.searching && (v === 'gen' || v === 'shift') ? <SearchResults k={k} />
+        {v === 'cons' ? <><MeatWhere k={k} /><ConsumeWhere k={k} /></> : v === 'par' ? <CodePareto k={k} /> : v === 'chg' ? <ChangesView k={k} /> : v === 'wt' ? <WeightsView k={k} /> : v === 'dash' ? <DashView s={k.s} date={k.date} now={k.now} pplh={seesPplh(k.s, k.admin, user.get())} /> : v === 'mini' ? <MiniKpiView k={k} /> : v === 'pplh' ? <PplhView s={k.s} date={k.date} today={k.today} now={k.now} edit={!k.viewOnly} admin={k.admin} /> : k.searching && (v === 'gen' || v === 'shift') ? <SearchResults k={k} />
           : rows.length === 0 ? (v === 'rec' && k.stops.length > 0 ? <RecordsView k={k} /> : <EmptyDay k={k} />)
             : v === 'gen' ? <GeneralView k={k} /> : v === 'code' ? <CodesView k={k} /> : v === 'shift' ? <ShiftsView k={k} /> : v === 'pal' ? <PalletsView k={k} /> : <RecordsView k={k} />}
       </div>
@@ -960,9 +1026,9 @@ function GeneralView({ k }: { k: Kit }) {
           <h3>{tr('Todos los departamentos')} <WhatIs id="trabajando" /></h3>
           <div className="rp-plant">
             <button type="button" className="rp-tile" onClick={() => go('code')}><span className="lab">{tr('Códigos')}</span><b>{rep.distinct}</b><small>{rows.length} {rows.length === 1 ? tr('corrida') : tr('corridas')}</small></button>
-            <button type="button" className="rp-tile" onClick={() => go('rec', { rec: 'runs' })}><span className="lab">{tr('Trabajando')}</span><b>{fmtDur(working)}</b><small>{linesText(rep.lines)}</small></button>
-            <button type="button" className="rp-tile" onClick={() => go('rec', { rec: 'stops', cause: '!setup' })}><span className="lab">{tr('Parado')}</span><b className={down ? 'red' : ''}>{fmtDur(down)}</b><small>{linesText(rep.lines)}</small></button>
-            <button type="button" className="rp-tile" onClick={() => go('rec', { rec: 'stops', cause: SETUP })}><span className="lab">Set up</span><b className={setup ? 'amber' : ''}>{setup ? fmtDur(setup) : '—'}</b><small>{tr('preparando las líneas')}</small></button>
+            <button type="button" className="rp-tile" onClick={() => go('rec', { rec: 'runs' })}><span className="lab">{tr('Trabajando')}</span><b>{durText(working)}</b><small>{linesText(rep.lines)}</small></button>
+            <button type="button" className="rp-tile" onClick={() => go('rec', { rec: 'stops', cause: '!setup' })}><span className="lab">{tr('Parado')}</span><b className={down ? 'red' : ''}>{durText(down)}</b><small>{linesText(rep.lines)}</small></button>
+            <button type="button" className="rp-tile" onClick={() => go('rec', { rec: 'stops', cause: SETUP })}><span className="lab">Set up</span><b className={setup ? 'amber' : ''}>{setup ? durText(setup) : '—'}</b><small>{tr('preparando las líneas')}</small></button>
           </div>
         </>
       )}
@@ -971,24 +1037,26 @@ function GeneralView({ k }: { k: Kit }) {
       </div>
       {idle.length > 0 && <p className="hint rp-idle">{tr('Sin registros este día: {0}', idle.map((d) => DEPT_LOOK[d].emoji + ' ' + d).join(' · '))}{canAdd && <> <button type="button" className="btn sm soft" onClick={() => setAddFor({})}>{tr('+ Agregar registro')}</button></>}</p>}
       {/* what the "Parado" total is made of: each cause opens its stops */}
-      {rep.reasons.length > 0 && (
+      {!RD && rep.reasons.length > 0 && (
         <>
           <h3>{tr('Parado por causa')} <WhatIs id="causas" /></h3>
           <div className="reasons">
             {rep.reasons.map((x) => (
               <div key={x.reason} className="reason">
-                <button type="button" className="drill" onClick={() => go('rec', { rec: 'stops', cause: x.reason })}>{reasonText(s, x.reason)}</button><span>{fmtDur(x.ms)}</span><span className="pct">{down > 0 ? Math.round((x.ms / down) * 100) + '%' : ''}</span>
+                <button type="button" className="drill" onClick={() => go('rec', { rec: 'stops', cause: x.reason })}>{reasonText(s, x.reason)}</button><span>{durText(x.ms)}</span><span className="pct">{down > 0 ? Math.round((x.ms / down) * 100) + '%' : ''}</span>
                 <div className="rbar"><i style={{ width: Math.max(2, Math.round((x.ms / rep.reasons[0].ms) * 100)) + '%' }} /></div>
               </div>
             ))}
           </div>
         </>
       )}
-      <MeatWhere k={k} />
-      <ConsumeWhere k={k} />
-      {(s.attView.on || k.admin) && <AttendanceWhere k={k} />}
-      <StopsWhere k={k} />
-      {(s.reasonCodes.on || hasCodedStops(rep)) && <CodePareto k={k} />}
+      {!RD && <>
+        <MeatWhere k={k} />
+        <ConsumeWhere k={k} />
+        {(s.attView.on || k.admin) && <AttendanceWhere k={k} />}
+        <StopsWhere k={k} />
+        {(s.reasonCodes.on || hasCodedStops(rep)) && <CodePareto k={k} />}
+      </>}
     </>
   )
 }
@@ -1387,7 +1455,7 @@ function RoomCard({ k, d }: { k: Kit; d: ReportData['byDept'][number] }) {
         <span className="rp-emoji" aria-hidden="true">{DEPT_LOOK[d.dept].emoji}</span>
         <div>
           <h4>{d.dept}</h4>
-          <small>{rep.shift ? tr('Duración del turno {0}', rep.shift) : tr('Duración del día')} {fmtDur(d.span)}{d.from ? ' · ' + fmtTime(d.from) + ' ' + tr('a {0}', d.open ? tr('ahora') : fmtTime(d.to)) : ''} · {d.lines === 1 ? tr('1 línea') : tr('{0} líneas', d.lines)}</small>
+          <small>{RD ? (d.from ? '🕐 ' + fmtTime(d.from) + ' – ' + (d.open ? tr('ahora') : fmtTime(d.to)) + ' · ' : '') : (rep.shift ? tr('Duración del turno {0}', rep.shift) : tr('Duración del día')) + ' ' + durText(d.span) + (d.from ? ' · ' + fmtTime(d.from) + ' ' + tr('a {0}', d.open ? tr('ahora') : fmtTime(d.to)) : '') + ' · '}{d.lines === 1 ? tr('1 línea') : tr('{0} líneas', d.lines)}</small>
         </div>
         {d.open && <span className="pill run">● {tr('en curso')}</span>}
       </div>
@@ -1416,7 +1484,7 @@ function RoomCard({ k, d }: { k: Kit; d: ReportData['byDept'][number] }) {
               return (
                 <button key={n} type="button" className="rp-tile" onClick={() => go('gen', { shift: n })}>
                   <span className="lab">{tr('Turno {0}', n)}</span><b>{val}</b>
-                  <small>{q && !first && x.codes > 0 ? unitsText(d.dept, x.units) : ''}{x.down > 0 && <span className="red">{(q && !first && x.codes > 0 ? ' · ' : '') + '⏸ ' + fmtDur(x.down)}</span>}</small>
+                  <small>{q && !first && x.codes > 0 ? unitsText(d.dept, x.units) : ''}{x.down > 0 && <span className="red">{(q && !first && x.codes > 0 ? ' · ' : '') + '⏸ ' + durText(x.down)}</span>}</small>
                 </button>
               )
             })}
@@ -1424,9 +1492,9 @@ function RoomCard({ k, d }: { k: Kit; d: ReportData['byDept'][number] }) {
         )}
         <LineTotals k={k} d={d.dept} />
         <div className="rp-times">
-          <span>{tr('Trabajando')} <button type="button" className="drill" onClick={toRuns}>{fmtDur(d.working)}</button></span>
-          <span>{tr('Parado')} <button type="button" className={'drill' + (d.down > 0 ? ' red' : '')} onClick={() => go('rec', { rec: 'stops', dept: d.dept, cause: '!setup' })}>{fmtDur(d.down)}</button></span>
-          <span>Set up {d.setup ? <button type="button" className="drill amber" onClick={() => go('rec', { rec: 'stops', dept: d.dept, cause: SETUP })}>{fmtDur(d.setup)}</button> : '—'}</span>
+          <span>{tr('Trabajando')} <button type="button" className="drill" onClick={toRuns}>{durText(d.working)}</button></span>
+          <span>{tr('Parado')} <button type="button" className={'drill' + (d.down > 0 ? ' red' : '')} onClick={() => go('rec', { rec: 'stops', dept: d.dept, cause: '!setup' })}>{durText(d.down)}</button></span>
+          <span>Set up {d.setup ? <button type="button" className="drill amber" onClick={() => go('rec', { rec: 'stops', dept: d.dept, cause: SETUP })}>{durText(d.setup)}</button> : '—'}</span>
         </div>
       </div>
       <div className="rp-card-foot">

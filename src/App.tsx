@@ -1,3 +1,4 @@
+import { AttTab, StopsTab, TimeTab } from './RepTabs'
 import { Component, createContext, Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
 import { planUrgentOf, setPlanUrgent, PLAN_ROOM_NOTE_MAX, planRoomNoteOf, setPlanRoomNote, roomWaste, wasteRuns, roomWastesOf, addRoomWaste, dropRoomWaste, isOven, PLAN_NOTE_MAX, PLAN_SPAN_MAX, attGated, attOf, lineSlow, addLine, plantCut, roomMark, CUT_WINDOW, startSecondShift, addWaste, awayDay, batch, byPlanLot, planLot, cameFrom, carriedOver, dayAfter, dayBefore, orderUnitDefault, programOrderChoices, ordersOf, orderStatus, orderUnitWord, prevPending, workOrderOf, type WorkOrder, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, MFO_CHOICES, mfoChoiceOf, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, cartCratesOf, cartPouchesOf, cartSpecOf, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, noteOf, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderAddRuns, orderOfId, poMates, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, PLAN_LOT_MAX, productOf, productsCsv, purgeDay, reasonText, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay, orderFull, orderFullText, orderNoteOf, setOrderNote, setOrderUrgent, programCap, programCapOf, holdsOpen } from './store'
@@ -645,7 +646,8 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
   const isOp = who.role === 'op', readsAll = can('depts')
   const sees = (t: RdTab): boolean => {
     switch (t) {
-      case 'act': case 'rep': case 'set': return true
+      case 'act': case 'rep': case 'rtime': case 'rstop': case 'set': return true
+      case 'ratt': return s.attView.on || admin
       case 'pt': return seesProgram
       case 'wo': return !isOp && (can('products') || viewOnly)
       case 'po': return !isOp && readsAll
@@ -698,6 +700,9 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
       case 'kpi': return <KpiView s={s} now={now} today={day.date} admin={admin} />
       case 'wt': case 'dash': case 'mini': case 'pplh': return report('ind', shownTab)
       case 'rep': return report('rep')
+      case 'rtime': return <TimeTab s={s} now={now} today={day.date} only={can('depts') ? undefined : home} />
+      case 'rstop': return <StopsTab s={s} now={now} today={day.date} only={can('depts') ? undefined : home} />
+      case 'ratt': return <AttTab s={s} now={now} today={day.date} only={can('depts') ? undefined : home} />
       case 'msg': return <ChatInbox s={s} />
       case 'set': return settings()
     }

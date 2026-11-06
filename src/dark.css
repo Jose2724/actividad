@@ -6,6 +6,7 @@ html[data-theme="dark"] .app.rd .veil{background:rgba(0,0,0,.7)}
 html[data-theme="dark"] .app.rd .line.mode-bin{border-color:#8b5cf6;box-shadow:0 0 0 1px #8b5cf6}
 html[data-theme="dark"] .app.rd .line.mode-bin .hero{border-color:#5b4a8a}
 html[data-theme="dark"]{--sb-ok:#2f9e66;--sb-warn:#e0a030;--sb-bad:#e5534b;--sb-goal:#e08ccd;--sb-lab:#a0a8b1}
+html[data-theme="dark"]{--t-work:#2f9e66;--t-stop:#e0a030;--t-setup:#8b74d6;--t-lunch:#5c6b7d;--t-track:#23262b;--t-gap:repeating-linear-gradient(135deg,#2a2d33 0 4px,#1f2226 4px 8px)}
 html[data-theme="dark"]{--wt-band:#163a26;--wt-edge:#2f7a4d;--wt-line:#e08ccd;--wt-ok:#e08ccd;--wt-bad:#f87171;--wt-warn:#fbbf24;--wt-lab:#a0a8b1}
 html[data-theme="dark"] .app.rd .k-lb{--kt:#2e2412;--kk:#fcd34d}
 html[data-theme="dark"] .app.rd .k-cajas{--kt:#16233d;--kk:#93c5fd}
@@ -1567,3 +1568,60 @@ html:where([data-theme="dark"]),:where(html[data-theme="dark"]) body{background:
 :where(html[data-theme="dark"]) .rd-daypick{border:0}
 :where(html[data-theme="dark"]) .rd-lockpill{background:var(--bg);border:1px solid var(--line);color:var(--muted)}
 :where(html[data-theme="dark"]) .rd-kpisec .kpi-plan{border-top:0}
+:where(html[data-theme="dark"]) .rd-ktile{border-left:5px solid var(--kc,var(--line))}
+:where(html[data-theme="dark"]) .rd-tbar i.k-work,:where(html[data-theme="dark"]) .rd-tlseg.k-work,:where(html[data-theme="dark"]) .rd-legend i.k-work,:where(html[data-theme="dark"]) .rd-howkind i.k-work,:where(html[data-theme="dark"]) .rd-causebar i.k-work{background:var(--t-work)}
+:where(html[data-theme="dark"]) .rd-tbar i.k-stop,:where(html[data-theme="dark"]) .rd-tlseg.k-stop,:where(html[data-theme="dark"]) .rd-legend i.k-stop,:where(html[data-theme="dark"]) .rd-howkind i.k-stop,:where(html[data-theme="dark"]) .rd-causebar i.k-stop{background:var(--t-stop)}
+:where(html[data-theme="dark"]) .rd-tbar i.k-setup,:where(html[data-theme="dark"]) .rd-tlseg.k-setup,:where(html[data-theme="dark"]) .rd-legend i.k-setup,:where(html[data-theme="dark"]) .rd-howkind i.k-setup,:where(html[data-theme="dark"]) .rd-causebar i.k-setup{background:var(--t-setup)}
+:where(html[data-theme="dark"]) .rd-tbar i.k-lunch,:where(html[data-theme="dark"]) .rd-tlseg.k-lunch,:where(html[data-theme="dark"]) .rd-legend i.k-lunch,:where(html[data-theme="dark"]) .rd-howkind i.k-lunch,:where(html[data-theme="dark"]) .rd-causebar i.k-lunch{background:var(--t-lunch)}
+:where(html[data-theme="dark"]) .rd-tbar{border-radius:6px;background:var(--t-track)}
+:where(html[data-theme="dark"]) .rd-legend{color:var(--muted)}
+:where(html[data-theme="dark"]) .rd-legend i{border-radius:3px}
+:where(html[data-theme="dark"]) .rd-cardsub{color:var(--muted)}
+:where(html[data-theme="dark"]) .rd-howlab{color:var(--muted)}
+:where(html[data-theme="dark"]) .rd-howticks{color:var(--muted)}
+:where(html[data-theme="dark"]) .rd-howkind{border:1px solid var(--line);border-radius:10px;background:var(--bg)}
+:where(html[data-theme="dark"]) .rd-howkind i{border-radius:4px}
+:where(html[data-theme="dark"]) .rd-howkind span{color:var(--muted)}
+:where(html[data-theme="dark"]) .rd-tsname{color:var(--d-ink,inherit)}
+:where(html[data-theme="dark"]) .rd-tsnums{color:var(--muted)}
+:where(html[data-theme="dark"]) .rd-tsnums b{color:var(--ink)}
+:where(html[data-theme="dark"]) .rd-tlroom+.rd-tlroom{border-top:1px solid var(--line)}
+:where(html[data-theme="dark"]) .rd-tlhead b{color:var(--d-ink,inherit)}
+:where(html[data-theme="dark"]) .rd-tltrack{border-radius:6px;background:var(--t-track)}
+:where(html[data-theme="dark"]) .rd-tlrow.axis .rd-tltrack{background:none}
+:where(html[data-theme="dark"]) .rd-tltick{color:var(--muted)}
+:where(html[data-theme="dark"]) .rd-tlgrid{background:var(--line)}
+:where(html[data-theme="dark"]) .rd-tlgap{background:var(--t-gap)}
+:where(html[data-theme="dark"]) .rd-tlseg{border:0;border-radius:3px}
+:where(html[data-theme="dark"]) .rd-tlseg:hover,:where(html[data-theme="dark"]) .rd-tlseg:focus-visible{outline:2px solid var(--ink)}
+:where(html[data-theme="dark"]) .rd-tlnow{background:var(--accent)}
+:where(html[data-theme="dark"]) .rd-tltip{border-radius:8px;background:var(--bg);border:1px solid var(--line)}
+:where(html[data-theme="dark"]) .rd-causebar{border-radius:5px;background:var(--t-track)}
+:where(html[data-theme="dark"]) .rd-causebar i{border-radius:5px}
+:where(html[data-theme="dark"]) .rd-causenums small{color:var(--muted)}
+:where(html[data-theme="dark"]) .rd-stoproom{border:1px solid var(--line);border-left:5px solid var(--d,var(--line));border-radius:12px;background:var(--bg)}
+:where(html[data-theme="dark"]) .rd-stoproomhead>b{color:var(--d-ink,inherit)}
+:where(html[data-theme="dark"]) .rd-stopchips{color:var(--muted)}
+:where(html[data-theme="dark"]) .rd-causechip{border-radius:999px;border-left:4px solid var(--t-stop);background:var(--bg)}
+:where(html[data-theme="dark"]) .rd-causechip.k-setup{border-left-color:var(--t-setup)}
+:where(html[data-theme="dark"]) .rd-causechip.k-lunch{border-left-color:var(--t-lunch)}
+:where(html[data-theme="dark"]) .rd-tbl{border-collapse:collapse}
+:where(html[data-theme="dark"]) .rd-tbl th{color:var(--muted);border-bottom:1px solid var(--line)}
+:where(html[data-theme="dark"]) .rd-tbl td{border-bottom:1px solid var(--line)}
+:where(html[data-theme="dark"]) .rd-tdnote{color:var(--muted)}
+:where(html[data-theme="dark"]) .rd-atttrack{border-radius:6px;background:var(--t-track)}
+:where(html[data-theme="dark"]) .rd-atttrack i{border-radius:6px}
+:where(html[data-theme="dark"]) .rd-atttrack i.exp,:where(html[data-theme="dark"]) .rd-legend i.exp{box-shadow:inset 0 0 0 2px var(--muted);background:transparent}
+:where(html[data-theme="dark"]) .rd-atttrack i.got.ok,:where(html[data-theme="dark"]) .rd-legend i.got.ok{background:var(--sb-ok)}
+:where(html[data-theme="dark"]) .rd-atttrack i.got.warn{background:var(--sb-warn)}
+:where(html[data-theme="dark"]) .rd-atttrack i.got.bad{background:var(--sb-bad)}
+:where(html[data-theme="dark"]) .rd-move{border:1px solid var(--line);border-radius:10px;background:var(--bg)}
+:where(html[data-theme="dark"]) .rd-move.mline{border-style:dashed}
+:where(html[data-theme="dark"]) .rd-attroom{border:1px solid var(--line);border-left:5px solid var(--d,var(--line));border-radius:12px}
+:where(html[data-theme="dark"]) .rd-attroomhead{background:var(--bg);border:0;color:inherit}
+:where(html[data-theme="dark"]) .rd-attroomhead b{color:var(--d-ink,inherit)}
+:where(html[data-theme="dark"]) .rd-attroomhead span{color:var(--muted)}
+:where(html[data-theme="dark"]) .rd-tag{border-radius:999px;background:var(--bg);border:1px solid var(--line);color:var(--muted)}
+:where(html[data-theme="dark"]) .rd-rpmore{border:1px solid var(--line);border-radius:14px;background:var(--surface)}
+:where(html[data-theme="dark"]) .rd-wtacts .btn.soft.on{border-color:var(--accent);color:var(--accent)}
+:where(html[data-theme="dark"]) .app.rd .rp-plant b.red,:where(html[data-theme="dark"]) .app.rd .rp-card .drill.red,:where(html[data-theme="dark"]) .app.rd .rp-card .red{color:var(--t-stop)}
