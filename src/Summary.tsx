@@ -1,5 +1,11 @@
 import { attExpectedOf, attOf, attendanceOf, DEPTS, deptStop, deptToday, fmtN, holdsOpen, lineLabel, openRun, openStop, SETUP, shiftGoalOf, shiftsOf, stopsWaiting, turnOf, type Dept, type State } from './store'
 import { DEPT_LOOK, deptVars } from './look'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { awayDay } from './store'
+import { loadDay } from './sync'
+import { RangePick } from './PplhView'
+import { datesFrom, keepRange, rangeKept } from './pplh'
+import { reportOf } from './report'
 import { fmtTime } from './clock-fmt'
 import { locale, tr } from './i18n'
 
@@ -74,7 +80,7 @@ function Spark({ values, unit }: { values: { date: string; qty: number }[]; unit
 }
 
 type Go = 'wt' | 'pplh' | 'mini' | 'dash' | 'act' | 'hold'
-export function Summary({ s, now, date, onGo, has }: { s: State; now: number; date: string; onGo: (t: Go) => void; has: (t: Go) => boolean }) {
+function SummaryNow({ s, now, date, onGo, has, picker }: { s: State; now: number; date: string; onGo: (t: Go) => void; has: (t: Go) => boolean; picker: ReactNode }) {
   const rooms = DEPTS.map((d) => ({ d, ...roomNow(s, d, date, now) }))
   const withGoal = rooms.filter((r) => r.due > 0)
   const vsGoal = withGoal.length ? Math.round(withGoal.reduce((t, r) => t + Math.min(2, r.made / r.due), 0) / withGoal.length * 100) : null
@@ -98,6 +104,7 @@ export function Summary({ s, now, date, onGo, has }: { s: State; now: number; da
     <div className="rd-sum">
       <div className="rd-sumbar">
         <h2>📊 {tr('Resumen de la planta')}</h2>
+        {picker}
         <span className="rd-sumwhen">{tr('Turno en curso · en vivo · {0}', fmtTime(now))}</span>
       </div>
       <div className="rd-tiles six">
@@ -149,6 +156,100 @@ export function Summary({ s, now, date, onGo, has }: { s: State; now: number; da
         {has('dash') && <button type="button" className="rd-morecard" onClick={() => onGo('dash')}><b>📊 Dashboard</b><span>{tr('yield, shorts y PPLH con su gráfica')}</span></button>}
         {has('mini') && <button type="button" className="rd-morecard" onClick={() => onGo('mini')}><b>📅 {tr('Mini KPI')}</b><span>{tr('la semana de cada turno contra la meta')}</span></button>}
         {has('pplh') && <button type="button" className="rd-morecard" onClick={() => onGo('pplh')}><b>📈 PPLH</b><span>{tr('libras por hora de trabajo y downtime')}</span></button>}
+      </div>
+    </div>
+  )
+}
+
+
+/**
+ * Resumen over days (Jose, 2026-11-06: the same dates as Pesos and Dashboard): "Hoy" is the shift in course, live; a
+ * week or a month is each room's production against the goals of the days' shifts, its time stopped, its people
+ * against those expected, and a bar a day. Days older than the device keeps are brought from the server.
+ */
+export function Summary(props: { s: State; now: number; date: string; onGo: (t: Go) => void; has: (t: Go) => boolean }) {
+  const { date } = props
+  const [from, setFrom] = useState(() => rangeKept('sum')?.from ?? date)
+  const [to, setTo] = useState(() => rangeKept('sum')?.to ?? date)
+  useEffect(() => { keepRange('sum', from, to) }, [from, to])
+  const picker = <RangePick compact from={from} to={to} today={date} onChange={(a, b) => { setFrom(a); setTo(b) }} />
+  const live = from === date && to === date
+  const days = useMemo(() => (from && to && from <= to ? datesFrom(from, to) : [date]), [from, to, date])
+  useEffect(() => { if (!live) for (const d of days) if (awayDay(d)) void loadDay(d) }, [days, live])
+  if (live) return <SummaryNow {...props} picker={picker} />
+  return <SummaryRange {...props} days={days} picker={picker} />
+}
+
+function SummaryRange({ s, now, date, onGo, has, days, picker }: { s: State; now: number; date: string; onGo: (t: Go) => void; has: (t: Go) => boolean; days: string[]; picker: ReactNode }) {
+  const reps = useMemo(() => days.map((d) => ({ d, rep: reportOf(s, d, now) })), [s, days]) // eslint-disable-line react-hooks/exhaustive-deps
+  const rooms = DEPTS.map((dept) => {
+    let made = 0, goal = 0, down = 0, came = 0, expected = 0
+    const bars = reps.map(({ d, rep }) => {
+      const qty = deptToday(s, dept, d, now).qty, plan = shiftsOf(s, d, dept), shifts: (1 | 2)[] = plan.only ? [plan.only] : [1, 2]
+      const g = qty > 0 ? shifts.reduce((t, k) => t + (shiftGoalOf(s, dept, k)?.total ?? 0), 0) : 0
+      made += qty; goal += g
+      down += (rep.byShift.find((x) => x.dept === dept)?.day.down ?? 0) / 60_000
+      for (const k of shifts) { const a = attendanceOf(s, d, k, [dept]).rows[0]; if (a && a.actual) { came += a.actual; expected += a.expected } }
+      return { date: d, qty }
+    })
+    return { dept, made, goal, down, came, expected, bars, unit: deptToday(s, dept, date, now).unitLabel, worked: bars.filter((b) => b.qty > 0).length }
+  })
+  const withGoal = rooms.filter((r) => r.goal > 0)
+  const vsGoal = withGoal.length ? Math.round(withGoal.reduce((t, r) => t + Math.min(2, r.made / r.goal), 0) / withGoal.length * 100) : null
+  const worked = new Set(rooms.flatMap((r) => r.bars.filter((b) => b.qty > 0).map((b) => b.date))).size
+  const downMin = Math.round(rooms.reduce((t, r) => t + r.down, 0)), came = rooms.reduce((t, r) => t + r.came, 0), expected = rooms.reduce((t, r) => t + r.expected, 0)
+  const week = days.map((d) => ({ date: d, pct: plantDay(s, d, now), today: d === date }))
+  const waiting = DEPTS.reduce((t, d) => t + stopsWaiting(s, d).length, 0), held = holdsOpen(s).length
+  const hm = (m: number) => (m >= 60 ? Math.floor(m / 60) + ' h ' + String(Math.round(m % 60)).padStart(2, '0') : Math.round(m) + ' min')
+  const low = rooms.filter((r) => r.goal > 0 && r.made / r.goal < 0.9)
+  return (
+    <div className="rd-sum">
+      <div className="rd-sumbar">
+        <h2>📊 {tr('Resumen de la planta')}</h2>
+        {picker}
+        <span className="rd-sumwhen">{tr('{0} días · {1} con producción', days.length, worked)}</span>
+      </div>
+      <div className="rd-tiles six">
+        <div className={'rd-tile' + (vsGoal == null ? '' : vsGoal >= 90 ? ' ok' : vsGoal < 70 ? ' bad' : ' warn')}><label>🎯 {tr('Producción vs meta')}</label><b>{vsGoal == null ? '—' : vsGoal + '%'}</b><small>{vsGoal == null ? tr('sin metas puestas') : tr('de la meta de esos días')}</small></div>
+        <div className="rd-tile"><label>📅 {tr('Días con producción')}</label><b>{worked}<small> / {days.length}</small></b><small>{tr('días del periodo')}</small></div>
+        <div className={'rd-tile' + (worked && downMin >= 60 * worked ? ' warn' : '')}><label>⏸️ {tr('Tiempo parado')}</label><b>{hm(downMin)}</b><small>{tr('todas las líneas, sin contar Set up')}</small></div>
+        <div className={'rd-tile' + (expected && came / expected < 0.9 ? ' warn' : '')}><label>👥 {tr('Asistencia')}</label><b>{expected ? Math.round((came / expected) * 100) + '%' : '—'}</b><small>{expected ? tr('{0} de {1} esperados', came, expected) : tr('sin asistencia anotada')}</small></div>
+        <button type="button" className={'rd-tile link' + (waiting ? ' warn' : '')} onClick={() => onGo('act')} disabled={!has('act')}><label>❓ {tr('Paros sin razón')}</label><b>{waiting}</b><small>{tr('ahora · Ver la planta ›')}</small></button>
+        <button type="button" className={'rd-tile link' + (held ? ' warn' : '')} onClick={() => onGo('hold')} disabled={!has('hold')}><label>🔍 {tr('On hold')}</label><b>{held}</b><small>{tr('ahora · Ver las unidades ›')}</small></button>
+      </div>
+      <div className="rd-sumgrid">
+        <div className="rd-sumrooms">
+          {rooms.map((r) => {
+            const pct = r.goal ? Math.round((r.made / r.goal) * 100) : null
+            return (
+              <article key={r.dept} className="rd-sumroom" style={deptVars(r.dept)}>
+                <header><b><i aria-hidden="true">{DEPT_LOOK[r.dept].emoji}</i>{r.dept}</b><span className="rd-sumdays">{r.worked === 1 ? tr('1 día') : tr('{0} días', r.worked)}</span></header>
+                <div className="rd-sumroom-main">
+                  <div><b className={'rd-sumpct ' + (pct == null ? '' : pct >= 90 ? 'ok-c' : pct < 70 ? 'bad-c' : 'wait-c')}>{pct == null ? '—' : pct + '%'}</b><small>{pct == null ? tr('sin meta') : tr('de la meta')}</small></div>
+                  <Spark values={r.bars} unit={r.unit} />
+                </div>
+                <span className="rd-bar"><i style={{ width: Math.min(100, pct ?? 0) + '%' }} /></span>
+                <div className="rd-sumroom-nums">
+                  <span><b>{fmtN(r.made)}</b> {r.unit}{r.goal ? <small> / {fmtN(r.goal)}</small> : null}</span>
+                  <span>⏸️ <b>{hm(r.down)}</b></span>
+                  <span>👥 <b>{r.expected ? Math.round((r.came / r.expected) * 100) + '%' : '—'}</b></span>
+                </div>
+              </article>
+            )
+          })}
+        </div>
+        <div className="rd-sumside">
+          <article className="rd-card">
+            <h3>📈 {tr('Producción vs meta por día')}</h3>
+            {week.some((w) => w.pct != null) ? <Bars values={week} /> : <p className="rd-calm warn">{tr('Pon las metas de cada cuarto (Planeación › Metas) para ver aquí el % de cada día.')}</p>}
+            <small className="rd-sumnote">{tr('Lo hecho cada día contra la meta de sus turnos, promedio de los cuartos con meta.')}</small>
+          </article>
+          <article className="rd-card">
+            <h3>🔔 {tr('Lo que necesita atención')}{low.length > 0 && <span className="rd-pill stop">{low.length}</span>}</h3>
+            {low.length ? low.map((r) => <div key={r.dept} className="rd-alert w"><b>{tr('{0} hizo el {1}% de su meta', r.dept, Math.round((r.made / r.goal) * 100))}</b><span>{tr('{0} de {1} {2} en el periodo', fmtN(r.made), fmtN(r.goal), r.unit)}</span></div>)
+              : <p className="rd-calm">{withGoal.length ? tr('Todos los cuartos con meta llegaron al 90% o más.') : tr('Sin metas puestas: no hay contra qué comparar.')}</p>}
+          </article>
+        </div>
       </div>
     </div>
   )

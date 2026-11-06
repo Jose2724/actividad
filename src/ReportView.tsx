@@ -577,7 +577,7 @@ type Kit = ReturnType<typeof useReport>
 export function Report(props: ReportProps) {
   const k = useReport(props)
   // the redesign's Indicadores › Pesos: a screen of its own, its bar instead of the day report's header and filters (Jose, 2026-11-05)
-  const lean = RD && (props.pin === 'wt' || props.pin === 'dash')
+  const lean = RD && (props.pin === 'wt' || props.pin === 'dash' || props.pin === 'mini')
   const { s, now, only, mgr, admin, can, date, pickDate, today, day, rep, rows, dept, lineChosen, purges, recovering, recover, tookText, sending, setSending, preparing, send, pdf, excel, csv, shiftsOpen, setShiftsOpen, wiping, setWiping, notice, setNotice, editRun, setEditRun, runToEdit, stopToEdit, setEditStop, addFor, setAddFor, detail, setDetail, stopSheet, setStopSheet, picking, setPicking, any, help, setHelp, v, tabs, pickView, setFShift, hrs, setFCode, setFLot, fix, fixable } = k
   return (
     <section className="report">
@@ -1975,6 +1975,52 @@ function MiniKpiView({ k }: { k: Kit }) {
     const page = () => xlsxNow(miniBook(s, date, shift, now, (d) => miniComing.has(d)))
     const bytes = page() ?? (await loadZip(), page())
     if (bytes) download(new File([bytes], tr('Mini-KPI') + '-' + week.days[0] + '.xlsx', { type: XLSX_TYPE }))
+  }
+  // the redesign (Jose, 2026-11-06: "Mini KPI"): one bar with the week, the shift, the view and the Excel; a card per
+  // room with its colour, each row with its sign; the same numbers and the same file
+  if (RD) {
+    const icon: Record<string, string> = { att: '👥', start: '▶️', end: '🏁', wt: '⚖️', hours: '⏱️', down: '⏸️', in: '🥩', waste: '🗑️', prod: '🎯' }
+    const dshort = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString(locale, { day: 'numeric', month: 'short' })
+    const cls = (c?: string) => (c === 'bad' ? 'red' : c === 'warn' ? 'amber' : c ?? '')
+    return (
+      <div className="rd-mini">
+        <div className="rd-wtbar">
+          <h2 className="rd-wttitle">📅 {tr('Mini KPI')}</h2>
+          <div className="rd-weeknav">
+            <button type="button" className="btn sm" aria-label={tr('‹ Semana anterior')} onClick={() => pickDate(addDays(week.days[0], -7))}>‹</button>
+            <span>{tr('Semana del {0} al {1}', dshort(week.days[0]), dshort(week.days[5]))}</span>
+            <button type="button" className="btn sm" aria-label={tr('Semana siguiente ›')} disabled={addDays(week.days[0], 7) > today} onClick={() => pickDate(addDays(week.days[0], 7))}>›</button>
+          </div>
+          <div className="seg rd-rangeseg" role="group" aria-label={tr('Turno')}>{([1, 2] as const).map((n) => <button key={n} type="button" className={shift === n ? 'on' : ''} aria-pressed={shift === n} onClick={() => setShift(n)}>{tr('Turno {0}', n)}</button>)}</div>
+          <div className="seg rd-rangeseg" role="group" aria-label={tr('Vista')}><button type="button" className={!full ? 'on' : ''} aria-pressed={!full} onClick={() => setFull(false)}>{tr('Lo importante')}</button><button type="button" className={full ? 'on' : ''} aria-pressed={full} onClick={() => setFull(true)}>{tr('Todo')}</button></div>
+          <div className="rd-wtacts">
+            <button type="button" className="btn primary" onClick={() => void excel()}>{tr('⬇ Excel')}</button>
+            <WhatIs id="mini" label="ⓘ" />
+          </div>
+        </div>
+        {bringing && <p className="hint">{tr('Se están trayendo las semanas anteriores del servidor. El Excel sale al instante con la semana de arriba; las semanas anteriores entran al Resumen cuando ya estén.')}</p>}
+        {failed > 0 && <p className="hint red">{tr('No se pudieron traer {0} días del servidor: esas semanas salen vacías en el Excel. Vuelve a abrir esta pestaña cuando haya señal.', failed)}</p>}
+        {!full && <div className="rd-minirooms">{miniSimple(week).map((b) => (
+          <article key={b.dept} className="rd-miniroom" style={deptVars(b.dept)}>
+            <h3><i aria-hidden="true">{DEPT_LOOK[b.dept].emoji}</i>{b.dept}</h3>
+            <div className="scroll"><table className="wt-rp-tbl mini simple rd-minitbl">
+              <thead><tr><th></th><th>{tr('Target')}</th>{week.days.map((d) => <th key={d}>{new Date(d + 'T12:00:00').toLocaleDateString(locale, { weekday: 'short', day: 'numeric' })}</th>)}<th>{tr('Semana')}</th></tr></thead>
+              <tbody>{b.rows.map((r) => <tr key={r.id}><td><b>{(icon[r.id] ?? (/persona/i.test(r.label) ? '🧑‍🏭' : '🎯')) + ' '}{r.label}</b></td><td className="muted">{r.target.t}</td>{r.days.map((c, j) => <td key={j} className={cls(c.c)}>{c.t}</td>)}<td className={'rd-miniweek ' + cls(r.week.c)}><b>{r.week.t}</b></td></tr>)}</tbody>
+            </table></div>
+          </article>
+        ))}</div>}
+        {full && miniTables(week).map((t) => (
+          <article key={t.title} className="rd-card">
+            <h3>{t.title} <WhatIs id={t.id} /></h3>
+            {t.rows.length ? <div className="scroll"><table className="wt-rp-tbl mini">
+              <thead><tr>{t.head.map((h) => <th key={h}>{h}</th>)}</tr></thead>
+              <tbody>{t.rows.map((r, i) => <tr key={i}>{r.map((c, j) => <td key={j} className={cls(c.c)}>{j === 0 ? <b>{c.t}</b> : c.t}</td>)}</tr>)}</tbody>
+            </table></div> : <p className="hint">{tr('Nada esta semana')}</p>}
+            {t.note && <p className="hint">{t.note}</p>}
+          </article>
+        ))}
+      </div>
+    )
   }
   return (
     <>
