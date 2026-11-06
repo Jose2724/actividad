@@ -1718,3 +1718,6 @@ html:where([data-theme="dark"]),:where(html[data-theme="dark"]) body{background:
 :where(html[data-theme="dark"]) .app.rd .report .twrap tr.live td:first-child,:where(html[data-theme="dark"]) .app.rd .report .twrap tbody.live td:first-child{box-shadow:inset 4px 0 0 var(--ok)}
 :where(html[data-theme="dark"]) .app.rd :is(.rd-stick,:where(html[data-theme="dark"]) .rd-avrow,:where(html[data-theme="dark"]) .wohist>.rd-wtbar,:where(html[data-theme="dark"]) .phead,:where(html[data-theme="dark"]) .ofilters.otop,:where(html[data-theme="dark"]) .emptools,:where(html[data-theme="dark"]) .lt>.chips){background:var(--bg);box-shadow:0 8px 10px -10px rgba(0,0,0,.45)}
 :where(html[data-theme="dark"]) .app.rd .setcard .btns:has(>.kpi-q){background:var(--surface)}
+:where(html[data-theme="dark"]) .app.rd .rd-dmid .twrap thead th{background:var(--surface);box-shadow:0 1px 0 var(--line)}
+:where(html[data-theme="dark"]) .app.rd .rd-dmid .twrap tbody tr:nth-child(even):not(.live):not(.rp-focus) td{background:var(--zebra)}
+:where(html[data-theme="dark"]) .app.rd .rd-dmid .twrap td+td{box-shadow:inset 1px 0 0 var(--colline)}

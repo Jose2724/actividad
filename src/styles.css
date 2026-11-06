@@ -3459,3 +3459,14 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
   .rd-rpmore .rf-two select{min-height:46px}
   .rd-rpmore>.btn{width:auto;min-height:46px;white-space:nowrap}
 }
+/* ---- a run's detail: the title and the buttons stay, only the middle scrolls; many changes scroll in their own box (Jose, 2026-11-06) ---- */
+.rd-dmid{display:grid;gap:12px;align-content:start;grid-auto-rows:max-content;min-width:0}
+.app.rd .dlg.rp-detail{display:flex;flex-direction:column;overflow:hidden}
+.app.rd .dlg.rp-detail>*{flex:none}
+.app.rd .dlg.rp-detail>.rd-dmid{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;margin:0 -18px;padding:0 18px}
+.app.rd .dlg.rp-detail>h3,.app.rd .dlg.rp-detail>.dbtns{position:static}
+.app.rd .rd-dmid .twrap{max-height:none}
+.app.rd .rd-dmid .twrap.rd-chgwrap{max-height:230px;overflow:auto}
+.app.rd .rd-dmid .twrap thead th{position:sticky;top:0;z-index:2;background:var(--surface);box-shadow:0 1px 0 var(--line)}
+.app.rd .rd-dmid .twrap tbody tr:nth-child(even):not(.live):not(.rp-focus) td{background:var(--zebra)}
+.app.rd .rd-dmid .twrap td+td{box-shadow:inset 1px 0 0 var(--colline)}

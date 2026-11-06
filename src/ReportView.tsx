@@ -2407,6 +2407,8 @@ export function RunDetail({ s, runId, at, now, mgr, fix, fixable, onFix, onFixSt
     <div className="veil" onClick={onClose}>
       <div className="dlg wide rp-detail" onClick={(e) => e.stopPropagation()}>
         <h3><DeptBadge d={r.dept} /> {r.code} · {lineNameOf(s, r.lineId, r.line)}{product && <small> · {product}</small>}<small className="rp-dsub">{tr('Detalle de la corrida')}</small></h3>
+        {/* in the redesign only the middle scrolls: the title and the buttons stay in sight (Jose, 2026-11-06) */}
+        <div className="rd-dmid">
         <div className="setfacts">
           <Fact label={tr('Lote')} value={lots.join(', ') || '—'} />
           <Fact label={tr('Horario')} value={fmtTime(r.startedAt) + ' – ' + (r.endedAt ? fmtTime(r.endedAt) : tr('en curso'))} />
@@ -2464,7 +2466,7 @@ export function RunDetail({ s, runId, at, now, mgr, fix, fixable, onFix, onFixSt
         {changes.length > 0 && (
           <>
             <h4>{tr('Cambios de esta corrida')}</h4>
-            <div className="twrap">
+            <div className="twrap rd-chgwrap">
               <table className="changes">
                 <thead><tr><th>{tr('Hora')}</th><th>{tr('Quién')}</th><th>{tr('Qué')}</th><th>{tr('Antes')}</th><th>{tr('Después')}</th></tr></thead>
                 <tbody>{changes.map((c) => <tr key={c.id}><td>{fmtTime(c.at)}</td><td>{c.by}</td><td>{c.what}</td><td className={c.before ? 'was' : ''}>{c.before || '—'}</td><td><b>{c.after || '—'}</b></td></tr>)}</tbody>
@@ -2472,6 +2474,7 @@ export function RunDetail({ s, runId, at, now, mgr, fix, fixable, onFix, onFixSt
             </div>
           </>
         )}
+        </div>
         <div className="dbtns spread">
           <div className="btns">
             <button type="button" className="btn" onClick={onClose}>{tr('Cerrar')}</button>
