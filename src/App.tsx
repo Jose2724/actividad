@@ -1831,6 +1831,10 @@ function OrderAddChooser({ s, order, onPick, onNew, onClose }: { s: State; order
  * An order is written or changed. What matters is the PO number and the product it is for; a new one can name several
  * products at once (one order each, with the same PO). Everything else is optional, the PO too: it can come later.
  */
+/** each part of a room with its sign, so the buttons are told apart at a glance (Jose, 2026-11-06: "no parece que son
+ * botones y también a veces quiero buscarlo y no lo veo tan rápido"); On hold carries its own ⏸ in its name */
+const ROOM_TAB_ICON: Record<string, string> = { live: '🟢', done: '✅', plan: '📋', orders: '📦' }
+
 /**
  * On top of Packing, in every tab ("En vivo" too), for whoever looks at the tablet (the office, 2026-10-22: "que resalte
  * en la parte superior ... que le llegue mensaje, o cualquier parte de anuncio ... para que pueda recibir referencia de
@@ -2721,7 +2725,7 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
       <div className="rp-tabs dp-tabs" role="tablist" aria-label={tr('Partes de {0}', dept)}>
         {parts.map((x) => (
           <button key={x.t} type="button" role="tab" aria-selected={shown === x.t} className={'rp-tab' + (shown === x.t ? ' on' : '')} title={x.sub} onClick={() => pick(x.t)}>
-            <span>{x.label}</span><span className="n">{x.n}</span>
+            {RD && x.t !== 'hold' && <span className="ic" aria-hidden="true">{ROOM_TAB_ICON[x.t]}</span>}<span>{x.label}</span><span className="n">{x.n}</span>
           </button>
         ))}
       </div>

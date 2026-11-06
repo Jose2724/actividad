@@ -3656,3 +3656,14 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 @media (max-width:720px){
   .app.rd .side{position:static;align-self:stretch;max-height:none;overflow-y:hidden;overflow-x:auto}
 }
+
+/* a room's parts (En vivo, Terminados, Programa, Pedidos, On hold) as real buttons in the redesign (Jose, 2026-11-06:
+   "no parece que son botones ... no lo veo tan rápido"): filled face and edge, a sign each, the one open in purple */
+.app.rd .dp-tabs{display:flex;flex-wrap:wrap;gap:8px;overflow:visible;border-bottom:0;margin:10px 0 6px}
+.app.rd .dp-tabs .rp-tab{min-height:46px;padding:0 16px;border-radius:12px;border:1.5px solid var(--btn-line);border-bottom:1.5px solid var(--btn-line);background:var(--btn);box-shadow:0 2px 0 var(--btn-edge);color:var(--ink);font-weight:800;font-size:15px;gap:8px}
+.app.rd .dp-tabs .rp-tab:hover{border-color:var(--accent)}
+.app.rd .dp-tabs .rp-tab .ic{font-size:16px;line-height:1}
+.app.rd .dp-tabs .rp-tab .n{background:var(--surface);color:var(--ink);font-size:12.5px;font-weight:800}
+.app.rd .dp-tabs .rp-tab.on{background:var(--accent);border-color:var(--accent);border-bottom-color:var(--accent);color:#fff;box-shadow:0 2px 0 #3a0d2f}
+.app.rd .dp-tabs .rp-tab.on .n{background:rgba(255,255,255,.22);color:#fff}
+@media (max-width:700px){.app.rd .dp-tabs{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px}.app.rd .dp-tabs .rp-tab{justify-content:center;padding:0 10px;font-size:14px;flex-direction:row}}
