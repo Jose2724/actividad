@@ -4131,4 +4131,9 @@ export const EN: Record<string, string> = {
   "Nada coincide con la búsqueda.": "Nothing matches the search.",
   "de eso, en este turno: {0}": "of that, this shift: {0}",
   "waste {0}": "waste {0}",
+  "Turno y quién": "Shift and who",
+  "Tags {0}": "Tags {0}",
+  "Turno 1 → 2": "Shift 1 → 2",
+  "Empezó en el turno 1 y terminó en el 2": "Started in shift 1 and ended in shift 2",
+  "Todo en el turno {0}": "All in shift {0}",
 }

@@ -2415,6 +2415,18 @@ function ChangesView({ k }: { k: Kit }) {
 }
 
 /** a fact of a run with its name, as in Ajustes */
+/** tags as ranges: "1510–1528" for numbers one after the other, the rest one by one ("1510–1512, 1520, A7") */
+function tagRange(tags: string[]) {
+  const out: string[] = []
+  const num = (t: string) => (/^\d+$/.test(t) ? Number(t) : NaN)
+  for (let i = 0; i < tags.length; ) {
+    let j = i
+    while (j + 1 < tags.length && !Number.isNaN(num(tags[j])) && num(tags[j + 1]) === num(tags[j]) + 1) j++
+    out.push(j > i ? tags[i] + '–' + tags[j] : tags[i])
+    i = j + 1
+  }
+  return out.join(', ')
+}
 const Fact = ({ label, value, cls }: { label: string; value: ReactNode; cls?: string }) => <div className="setfact"><label>{label}</label><b className={cls}>{value}</b></div>
 
 /**
@@ -2437,13 +2449,50 @@ export function RunDetail({ s, runId, at, now, mgr, fix, fixable, onFix, onFixSt
   // the stops of its line (and of the whole room) while it ran: the same rule as the report's
   const stopsOf = s.stops.filter((x) => !x.deleted && x.dept === r.dept && (x.lineId === r.lineId || x.lineId === null) && x.startedAt < (r.endedAt ?? now) && (x.endedAt ?? now) > r.startedAt).sort((a, b) => a.startedAt - b.startedAt)
   const changes = mgr ? s.changes.filter((c) => !c.deleted && c.refTable === 'act_runs' && c.refKey === r.id).sort((a, b) => a.at - b.at) : []
+  // the redesign (Jose, 2026-11-06: "lote está en un cuadro muy grande para solo tener lote ... y eso de turno 1 y 2 qué
+  // es? ... una mejor organización y agregar colores"): the facts in three coloured groups, what was made, the time and
+  // the shifts with who, each one short; the tags as a range (the table lists each one), the shifts said in words
+  const tags = r.units.flatMap((u) => unitParts(s, r, u).map((p) => p.tag)).filter(Boolean)
+  const both = shifts === '1 y 2'
+  const runFacts = (
+    <div className="rd-runfacts">
+      <section className="rf-made">
+        <h5>📦 {tr('Producción')}</h5>
+        <div className="rf-big">{madeText(r, st.qty)}</div>
+        {tags.length > 0 && <small className="rf-sub">{tr('Tags {0}', tagRange(tags))}</small>}
+        <dl>
+          <div><dt>{tr('Lote')}</dt><dd><span className="rf-chip">{lots.join(', ') || '—'}</span></dd></div>
+          {r.units.length > 0 && <div><dt>{tr('Prom./unidad')}</dt><dd>{fmtDur(st.avg)}</dd></div>}
+          {cfg.waste && <div><dt>Waste</dt><dd className={r.waste ? 'red' : 'muted'}>{r.waste ? r.waste + ' lb' : '—'}</dd></div>}
+        </dl>
+      </section>
+      <section className="rf-time">
+        <h5>⏱️ {tr('Tiempo')}</h5>
+        <div className="rf-big">{fmtTime(r.startedAt) + ' – ' + (r.endedAt ? fmtTime(r.endedAt) : tr('en curso'))}</div>
+        <dl>
+          <div><dt>{tr('Trabajando')}</dt><dd className="green">{fmtDur(st.working)}</dd></div>
+          <div><dt>{tr('Parado')}</dt><dd className={st.down ? 'red' : 'muted'}>{fmtDur(st.down)}</dd></div>
+          <div><dt>Set up</dt><dd className={st.setup ? 'amber' : 'muted'}>{st.setup ? fmtDur(st.setup) : '—'}</dd></div>
+        </dl>
+        {Object.keys(st.reasons).length > 0 && <div className="rf-stops">{Object.entries(st.reasons).map(([key, v]) => <span key={key} className="rf-stop">⏸ {tr(key)} · <b>{fmtDur(v)}</b></span>)}</div>}
+      </section>
+      <section className="rf-who">
+        <h5>👥 {tr('Turno y quién')}</h5>
+        <div className="rf-big">{both ? tr('Turno 1 → 2') : tr('Turno {0}', shifts)}</div>
+        <small className="rf-sub">{both ? tr('Empezó en el turno 1 y terminó en el 2') : tr('Todo en el turno {0}', shifts)}</small>
+        <dl><div><dt>{tr('Registró')}</dt><dd>{whoText(r) || '—'}</dd></div></dl>
+      </section>
+      {noteOf(r) && <div className="rf-note">💬 {noteOf(r)}</div>}
+    </div>
+  )
   return (
     <div className="veil" onClick={onClose}>
-      <div className="dlg wide rp-detail" onClick={(e) => e.stopPropagation()}>
+      <div className={'dlg wide rp-detail' + (RD ? ' rd-run' : '')} onClick={(e) => e.stopPropagation()}>
         <h3><DeptBadge d={r.dept} /> {r.code} · {lineNameOf(s, r.lineId, r.line)}{product && <small> · {product}</small>}<small className="rp-dsub">{tr('Detalle de la corrida')}</small></h3>
-        {/* in the redesign only the middle scrolls: the title and the buttons stay in sight (Jose, 2026-11-06) */}
+        {RD && runFacts}
+        {/* in the redesign only the middle scrolls: the title, the facts and the buttons stay in sight (Jose, 2026-11-06) */}
         <div className="rd-dmid">
-        <div className="setfacts">
+        {!RD && <div className="setfacts">
           <Fact label={tr('Lote')} value={lots.join(', ') || '—'} />
           <Fact label={tr('Horario')} value={fmtTime(r.startedAt) + ' – ' + (r.endedAt ? fmtTime(r.endedAt) : tr('en curso'))} />
           <Fact label={tr('Turno')} value={shifts} />
@@ -2457,7 +2506,7 @@ export function RunDetail({ s, runId, at, now, mgr, fix, fixable, onFix, onFixSt
           <Fact label={tr('Registró')} value={whoText(r) || '—'} />
           {/* its comment, the whole width (Jose, 2026-10-18: comments on the records) */}
           {noteOf(r) && <div className="setfact rp-dnote"><label>{tr('Comentario')}</label><span>{noteOf(r)}</span></div>}
-        </div>
+        </div>}
         {r.units.length > 0 && (
           <div className="twrap">
             <table>

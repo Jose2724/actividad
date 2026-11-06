@@ -3769,3 +3769,37 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
   .app.rd .plan .pctable tfoot td{padding:12px;background:var(--bg);font-size:15px;border-top:2px solid var(--line)}
   .app.rd .plan .pctable tfoot td.pc-made b{color:var(--d-ink,var(--accent))}
 }
+
+/* a run's detail in the redesign (Jose, 2026-11-06: "lote está en un cuadro muy grande ... una mejor organización y
+   agregar colores"): three small groups side by side, each with its colour on the left: what was made (the room's),
+   the time (blue), the shifts and who (grey); green worked, red stopped, amber set up; under them only the table moves */
+.rd-runfacts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.rd-runfacts section{background:var(--bg);border:1px solid var(--line);border-left:5px solid var(--line);border-radius:12px;padding:10px 12px;display:grid;gap:4px;align-content:start;min-width:0}
+.rd-runfacts .rf-made{border-left-color:var(--d,var(--accent))}
+.rd-runfacts .rf-time{border-left-color:#3b82f6}
+.rd-runfacts .rf-who{border-left-color:#94a3b8}
+.rd-runfacts h5{margin:0;font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:800}
+.rd-runfacts .rf-big{font-size:18px;font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums;line-height:1.2}
+.rd-runfacts .rf-made .rf-big{color:var(--d-ink,var(--accent))}
+.rd-runfacts .rf-sub{color:var(--muted);font-size:12.5px;overflow-wrap:anywhere}
+.rd-runfacts dl{margin:4px 0 0;display:grid;grid-template-columns:repeat(auto-fit,minmax(84px,1fr));gap:6px 10px}
+.rd-runfacts dl div{min-width:0}
+.rd-runfacts dt{font-size:11px;color:var(--muted);font-weight:700}
+.rd-runfacts dd{margin:0;font-weight:800;font-size:15px;font-variant-numeric:tabular-nums}
+.rd-runfacts dd.green{color:#16a34a}
+.rd-runfacts dd.red{color:#dc2626}
+.rd-runfacts dd.amber{color:#d97706}
+.rd-runfacts dd.muted{color:var(--muted);font-weight:600}
+.rd-runfacts .rf-chip{display:inline-block;padding:1px 9px;border-radius:99px;background:var(--d-tint,var(--btn));color:var(--d-ink,var(--ink));font-size:14px}
+.rd-runfacts .rf-stops{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.rd-runfacts .rf-stop{display:inline-block;padding:2px 8px;border-radius:8px;background:#fee2e2;color:#991b1b;font-size:12.5px;overflow-wrap:anywhere}
+.rd-runfacts .rf-note{grid-column:1/-1;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:8px 12px;color:var(--ink);font-size:14px;overflow-wrap:anywhere}
+.app.rd .dlg.rp-detail.rd-run{width:min(1000px,100%);max-height:min(900px,calc(100dvh - 24px))}
+.app.rd .dlg.rp-detail.rd-run>.rd-dmid{border-top:1px solid var(--line);padding-top:10px}
+@media (max-width:760px){.rd-runfacts{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.rd-runfacts .rf-who{grid-column:1/-1}}
+/* a short phone: the whole window moves, the facts with the table */
+@media (max-width:560px),(max-height:620px){
+  .app.rd .dlg.rp-detail.rd-run{overflow:auto;height:auto}
+  .app.rd .dlg.rp-detail.rd-run>.rd-dmid{overflow:visible;flex:none}
+  .rd-runfacts{grid-template-columns:minmax(0,1fr)}
+}
