@@ -1,4 +1,4 @@
-import { apartOf, binOf, cfgOf, DEPTS, fmtN, lineNameOf, measureOf, measureUnit, mfoBinWord, normCode, noteOf, orderLabel, orderOfId, orderPallets, plainText, planLot, productOf, unitQty, whoText, type Dept, type Measure, type Order, type PackRoom, type Product, type Run, type State } from './store'
+import { apartOf, binOf, cfgOf, DEPTS, fmtN, lineNameOf, measureOf, measureUnit, mfoWordOf, normCode, noteOf, orderLabel, orderOfId, orderPallets, plainText, planLot, productOf, unitQty, whoText, type Dept, type Measure, type Order, type PackRoom, type Product, type Run, type State } from './store'
 import { avanceLots, datesBetween, lotAcrossDays, lotOrder, mfoList, mfoText, mfoWord, packRoomOf, type AvancePart, type LotDay, type MfoMade } from './avance'
 import { palletOwner, runLots, unitParts } from './report'
 import type { Cell } from './xlsx'
@@ -372,7 +372,7 @@ export function flujoRow(s: State, lot: string, c: FlujoCode, onPo?: Map<string,
   // lb", never "0 of 300 platos"); with no bin of the lot yet, the word of the code's newest bin on this device, else
   // platos. Packing: cases on pallets
   const spiralWord: string = product?.spiralUnit ? product.spiralUnit : c.spiralApart[0]?.word ?? 'mezclas'
-  const mfoWordProg = mfoWordUsed || (mfoLb > 0 ? 'lb' : mfoBinWord(s.runs, c.code) || 'platos')
+  const mfoWordProg = mfoWordUsed || (mfoLb > 0 ? 'lb' : mfoWordOf(s, c.code) || 'platos')
   const madeOf = (dept: Dept, word: string) => (dept === 'Kitchen' ? c.kitchen : dept === 'Spiral' ? (word === 'mezclas' ? c.spiral : c.spiralApart.find((a) => a.word === word)?.qty ?? 0) : dept === 'RTE' ? c.pouches : dept === 'MFO' ? c.mfo[word] ?? 0 : c.cases)
   const prog: FlujoProg[] = c.prog.map((p) => { const word = p.dept === 'Spiral' ? spiralWord : p.dept === 'RTE' ? 'pouches' : p.dept === 'MFO' ? mfoWordProg : p.dept === 'Packing' ? 'cajas' : 'mezclas'; const made = madeOf(p.dept, word); return { dept: p.dept, word, qty: p.qty, made: r2(made), left: r2(p.qty - made) } })
   return {

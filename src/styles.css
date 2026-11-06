@@ -694,7 +694,7 @@ table.pallets th.num,table.pallets td.num{text-align:right;font-variant-numeric:
   .emp > .btn,.emp > .nobtn{grid-area:btn}
 }
 /* Spiral: each code of its program in its own unit (mezclas, lb, cajas), typed with it */
-.planrow.spiral{grid-template-columns:minmax(0,1.1fr) minmax(0,.8fr) minmax(0,.9fr) minmax(0,.8fr) minmax(0,1.1fr)}
+.planrow.spiral{grid-template-columns:minmax(0,1.5fr) minmax(0,.7fr) minmax(0,.85fr) minmax(0,.7fr) minmax(0,1.15fr)}
 .planrow.spiral select{min-height:46px;padding:0 8px;border-radius:12px;border:1.5px solid var(--btn-line);background:var(--surface);font-size:15px;font-weight:600}
 /* on a phone Spiral's four boxes do not fit in one line (the Unidad select was 75 px wide and "mezclas" read "mezcl",
    review of 2026-10-19): each row wraps, code and quantity above, unit and lot under them, the labels the same way */

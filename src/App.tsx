@@ -1,7 +1,7 @@
 import { AttTab, StopsTab, TimeTab } from './RepTabs'
 import { Component, createContext, Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
-import { planUrgentOf, setPlanUrgent, PLAN_ROOM_NOTE_MAX, planRoomNoteOf, setPlanRoomNote, roomWaste, wasteRuns, roomWastesOf, addRoomWaste, dropRoomWaste, isOven, PLAN_NOTE_MAX, PLAN_SPAN_MAX, attGated, attOf, lineSlow, addLine, plantCut, roomMark, CUT_WINDOW, startSecondShift, addWaste, awayDay, batch, byPlanLot, planLot, cameFrom, carriedOver, dayAfter, dayBefore, orderUnitDefault, programOrderChoices, ordersOf, orderStatus, orderUnitWord, prevPending, workOrderOf, type WorkOrder, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, MFO_CHOICES, mfoChoiceOf, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, cartCratesOf, cartPouchesOf, cartSpecOf, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, noteOf, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderAddRuns, orderOfId, poMates, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, PLAN_LOT_MAX, productOf, productsCsv, purgeDay, reasonText, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay, orderFull, orderFullText, orderNoteOf, setOrderNote, setOrderUrgent, programCap, programCapOf, holdsOpen } from './store'
+import { planUrgentOf, setPlanUrgent, PLAN_ROOM_NOTE_MAX, planRoomNoteOf, setPlanRoomNote, roomWaste, wasteRuns, roomWastesOf, addRoomWaste, dropRoomWaste, isOven, PLAN_NOTE_MAX, PLAN_SPAN_MAX, attGated, attOf, lineSlow, addLine, plantCut, roomMark, CUT_WINDOW, startSecondShift, addWaste, awayDay, batch, byPlanLot, planLot, cameFrom, carriedOver, dayAfter, dayBefore, orderUnitDefault, programOrderChoices, ordersOf, orderStatus, orderUnitWord, prevPending, workOrderOf, type WorkOrder, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, MFO_CHOICES, mfoChoiceOf, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, mfoUnitOf, setMfoUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, cartCratesOf, cartPouchesOf, cartSpecOf, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, noteOf, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderAddRuns, orderOfId, poMates, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, PLAN_LOT_MAX, productOf, productsCsv, purgeDay, reasonText, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay, orderFull, orderFullText, orderNoteOf, setOrderNote, setOrderUrgent, programCap, programCapOf, holdsOpen } from './store'
 import { avanceLots, avanceRange, avanceRows, datesBetween, lotAcrossDays, lotRows, lotsKnown, mfoList, mfoText, mfoWord, n1, pending, type AvancePart, type AvanceRow, type MfoMade } from './avance'
 import { loadZip, type Cell } from './xlsx'
 
@@ -2368,10 +2368,13 @@ function PlanDialog({ s, dept, today, unit, onClose }: { s: State; dept: Dept; t
   // order: undefined = not chosen (the oldest open order of the code, when there is one); null = none; an id = that order
   // from = the day the row's program started when it is not the day being programmed (a program of several days seen
   // from one of its later days: it is changed where it started); to = its last day ('' = that day only)
-  type Line = { code: string; qty: string; unit: SpiralUnit; lot: string; order?: string | null; from?: string; to: string; note: string }
+  type Line = { code: string; qty: string; unit: string; lot: string; order?: string | null; from?: string; to: string; note: string }
   // ("Hasta" comes filled with the day itself, a day's program, so a longer one is only a change of it: Jose, 2026-10-28)
-  const blank = (d: string): Line => ({ code: '', qty: '', unit: 'mezclas', lot: lotFor(d), to: d, note: '' })
-  const draftOf = (date: string): Line[] => [...planOf(s, date, dept).sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }) || byPlanLot(a, b)).map((p) => ({ code: productOf(s, p.code)?.code ?? p.code, qty: String(p.qty), unit: productOf(s, p.code)?.spiralUnit ?? 'mezclas', lot: p.lot, order: p.orderId ?? null, ...(p.date !== date ? { from: p.date } : {}), to: p.endDate ?? p.date, note: p.note ?? '' })), blank(date)]
+  // the unit of a code (Spiral since 2026-10-20; MFO since 2026-11-06, Eli of the office: "si es plato, libras o copas"):
+  // as it was chosen before, else as it is counted (MFO: its last bins, platos when none)
+  const unitDefault = (code: string): string | undefined => (dept === 'Spiral' ? productOf(s, code)?.spiralUnit : dept === 'MFO' && normCode(code) ? mfoUnitOf(s, code) ?? orderUnitDefault(s, dept, code) : undefined)
+  const blank = (d: string): Line => ({ code: '', qty: '', unit: dept === 'MFO' ? 'platos' : 'mezclas', lot: lotFor(d), to: d, note: '' })
+  const draftOf = (date: string): Line[] => [...planOf(s, date, dept).sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }) || byPlanLot(a, b)).map((p) => ({ code: productOf(s, p.code)?.code ?? p.code, qty: String(p.qty), unit: unitDefault(p.code) ?? (dept === 'MFO' ? 'platos' : 'mezclas'), lot: p.lot, order: p.orderId ?? null, ...(p.date !== date ? { from: p.date } : {}), to: p.endDate ?? p.date, note: p.note ?? '' })), blank(date)]
   const lastDay = (from: string) => { const x = new Date(from + 'T12:00:00'); x.setDate(x.getDate() + PLAN_SPAN_MAX); return dayOf(x.getTime()) }
   const [date, setDate] = useState(today)
   const [lines, setLines] = useState<Line[]>(() => draftOf(today))
@@ -2383,7 +2386,7 @@ function PlanDialog({ s, dept, today, unit, onClose }: { s: State; dept: Dept; t
   // row changes it on all the rows of that code)
   const change = (i: number, patch: Partial<Line>) => setLines((cur) => {
     const key = normCode(patch.code ?? cur[i].code), sibling = patch.code != null && key ? cur.find((l, k) => k !== i && normCode(l.code) === key) : undefined
-    const unitNow = patch.code != null ? productOf(s, patch.code)?.spiralUnit ?? sibling?.unit : undefined
+    const unitNow = patch.code != null ? sibling?.unit ?? unitDefault(patch.code) : undefined
     const next = cur.map((l, k) => (k === i ? { ...l, ...patch, ...(unitNow ? { unit: unitNow } : {}), ...(patch.code != null || patch.unit != null || patch.lot != null ? { order: undefined } : {}) } : patch.unit != null && key && normCode(l.code) === key && l.unit !== patch.unit ? { ...l, unit: patch.unit, order: undefined } : l))
     return next[next.length - 1].code.trim() ? [...next, blank(date)] : next
   })
@@ -2412,12 +2415,12 @@ function PlanDialog({ s, dept, today, unit, onClose }: { s: State; dept: Dept; t
     // row whose lot was changed. The rest are set to what was typed, each with its order (or none). Saved and shown once
     batch(() => {
       for (const p of planOf(s, date, dept)) if (!typed.has(normCode(p.code) + '|' + planLot(p.lot))) setPlan(p.date, dept, p.code, 0, p.lot)
-      for (const l of typed.values()) { setPlan(l.from ?? date, dept, l.code, numOf(l.qty), l.lot, orderOf(l), l.to || '', l.note); if (dept === 'Spiral') setSpiralUnit(l.code, l.unit) }
+      for (const l of typed.values()) { setPlan(l.from ?? date, dept, l.code, numOf(l.qty), l.lot, orderOf(l), l.to || '', l.note); if (dept === 'Spiral') setSpiralUnit(l.code, l.unit as SpiralUnit); if (dept === 'MFO' && numOf(l.qty) > 0) setMfoUnit(l.code, l.unit) }
     })
     onClose()
   }
   const making = creating != null ? lines[creating] : undefined
-  const makingUnit = !making ? undefined : dept === 'Spiral' ? making.unit : dept === 'MFO' ? orderUnitDefault(s, dept, making.code) : undefined
+  const makingUnit = !making ? undefined : dept === 'Spiral' || dept === 'MFO' ? making.unit : undefined
   const listId = 'plan-codes-' + dept
   return (
     <div className="veil" onClick={onClose}>
@@ -2427,7 +2430,7 @@ function PlanDialog({ s, dept, today, unit, onClose }: { s: State; dept: Dept; t
         <form className="qform" onSubmit={(e) => { e.preventDefault(); if (!twice && !noQty) save() }}>
           <label>{tr('Día')}{' '}<input type="date" value={date} onChange={(e) => pickDate(e.target.value)} /></label>
           <div className="planrows">
-            <div className={'planrow head' + (dept === 'Spiral' ? ' spiral' : '')}><span>{tr('Código')}</span><span>{dept === 'Spiral' || dept === 'MFO' ? tr('Cantidad') : trx('Cantidad ({0})', unit)}</span>{dept === 'Spiral' && <span>{tr('Unidad')}</span>}<span>{tr('Lote')}</span><span>{tr('Hasta')}</span></div>
+            <div className={'planrow head' + (dept === 'Spiral' || dept === 'MFO' ? ' spiral' : '')}><span>{tr('Código')}</span><span>{dept === 'Spiral' || dept === 'MFO' ? tr('Cantidad') : trx('Cantidad ({0})', unit)}</span>{(dept === 'Spiral' || dept === 'MFO') && <span>{tr('Unidad')}</span>}<span>{tr('Lote')}</span><span>{tr('Hasta')}</span></div>
             {lines.map((l, i) => {
               // the production order of the row (2026-10-19): the open ones of its code, the oldest first and chosen by
               // default; the one the program already names stays in the list even when it is no longer open
@@ -2438,10 +2441,11 @@ function PlanDialog({ s, dept, today, unit, onClose }: { s: State; dept: Dept; t
               const avail = chosen && st ? availOn(chosen, st, date, today) : null, q = cur ? lines.filter((x) => normCode(x.code) && orderOf(x) === cur).reduce((t, x) => t + numOf(x.qty), 0) : numOf(l.qty)
               return (
                 <div key={i} className="planline">
-                  <div className={'planrow' + (dept === 'Spiral' ? ' spiral' : '')}>
+                  <div className={'planrow' + (dept === 'Spiral' || dept === 'MFO' ? ' spiral' : '')}>
                     <input list={listId} value={l.code} placeholder={tr('ej. 0100')} autoComplete="off" aria-label={tr('Código')} onChange={(e) => change(i, { code: e.target.value })} />
                     <input value={l.qty} inputMode="decimal" placeholder="0" autoComplete="off" aria-label={tr('Cantidad ({0})', unit)} onChange={(e) => change(i, { qty: e.target.value.replace(/[^\d.,]/g, '') })} />
                     {dept === 'Spiral' && <select value={l.unit} aria-label={tr('Unidad')} onChange={(e) => change(i, { unit: e.target.value as SpiralUnit })}>{SPIRAL_UNITS.map((u) => <option key={u} value={u}>{measureUnit(u)}</option>)}</select>}
+                    {dept === 'MFO' && <select value={l.unit} aria-label={tr('Unidad')} onChange={(e) => change(i, { unit: e.target.value })}>{MFO_WORDS.map((u) => <option key={u} value={u}>{u === 'lb' ? tr('libras') : binWord(u)}</option>)}</select>}
                     {/* the lot, offered as the day's (lotFor) and free to change or clear: the only box the app fills in for the person (Jose, 2026-10-19) */}
                     <input value={l.lot} inputMode="numeric" maxLength={PLAN_LOT_MAX} placeholder={tr('sin lote')} autoComplete="off" aria-label={tr('Lote')} onChange={(e) => change(i, { lot: e.target.value })} />
                     {/* the program's last day (2026-10-28): blank, or the first day itself, = that day only (Jose, 2026-10-28: "necesito poner hoy"); at most 14 days on */}

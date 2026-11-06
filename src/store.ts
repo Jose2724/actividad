@@ -4165,6 +4165,24 @@ export function setPlan(date: string, dept: Dept, code: string, qty: number, lot
  */
 export const mfoBinWord = (runs: Run[], code: string): string | undefined => { const key = normCode(code); return runs.filter((r) => r.dept === 'MFO' && normCode(r.code) === key && !!binOf(r)).sort((a, b) => b.startedAt - a.startedAt).map(apartOf)[0] }
 /**
+ * The unit an MFO code is programmed in, chosen by the office in its program (Eli of the office, 2026-11-06: "agregar la
+ * unidad de medida ... si es plato, libras o copas en la programación de MFO"): platos, copas, lb or pouches, one per
+ * code (as Spiral's unit), kept on the server with the KPI's records (key 'mfounit:<code>', no SQL). undefined = never
+ * chosen: then the code is read as its last bins said, as before
+ */
+const MFO_UNIT_KEY = 'mfounit:'
+export function mfoUnitOf(s: State, code: string): string | undefined {
+  const key = normCode(code), u = key ? kpiGet(s, MFO_UNIT_KEY + key)?.data?.unit : undefined
+  return typeof u === 'string' && MFO_WORDS.includes(u) ? u : undefined
+}
+export function setMfoUnit(code: string, unit: string) {
+  const key = normCode(code)
+  if (!key || !MFO_WORDS.includes(unit) || mfoUnitOf(state, key) === unit) return
+  kpiPut(MFO_UNIT_KEY + key, { unit })
+}
+/** the word an MFO code is counted in, as runs carry it ('' = platos): the program's unit when chosen, else its last bins' */
+export const mfoWordOf = (s: State, code: string, runs: Run[] = s.runs): string | undefined => { const u = mfoUnitOf(s, code); return u ? (u === 'platos' ? '' : u) : mfoBinWord(runs, code) }
+/**
  * What one unit gives each lot it carries, counted as a room's program counts it (planRows, madeOfLot): a unit that
  * says its lots (a pallet of two lots, a Packing bin of a lot that is not its run's) gives each lot its part; one that
  * says none belongs whole to its run's lot, as unitParts in report.ts reads a unit (written again here: report.ts reads
@@ -4214,7 +4232,7 @@ export function planRows(s: State, date: string, dept: Dept): PlanRow[] {
     // Spiral: the code's measure is the products table's; or else the one its mezclas were started with today. MFO:
     // what the code's bins hold (platos, copas, pounds): as today's bins of it say, else as it was counted last on this
     // device, else platos
-    const mfoKind = () => mfoBinWord(ofCode, key) ?? mfoBinWord(s.runs, key) ?? ''
+    const mfoKind = () => ((u) => (u ? (u === 'platos' ? '' : u) : undefined))(mfoUnitOf(s, key)) ?? mfoBinWord(ofCode, key) ?? mfoBinWord(s.runs, key) ?? ''
     const measure: string = dept === 'MFO' ? mfoKind() : dept !== 'Spiral' ? '' : product?.spiralUnit ? (product.spiralUnit === 'mezclas' ? '' : product.spiralUnit) : (ofCode.map(measureOf).find(Boolean) ?? '')
     // what counts for the program: the runs in the code's measure (bins, and mezclas in another measure, stay apart)
     const mine = ofCode.filter((r) => apartOf(r) === measure), byCount = cfg.qty === 'none' && !measure
@@ -4368,11 +4386,12 @@ export function orderKind(o: Pick<WorkOrder, 'dept' | 'unit'>): string {
 export const orderQueue = (o: Pick<WorkOrder, 'dept' | 'code' | 'unit'>) => woQueue(o.dept, o.code, orderKind(o))
 /**
  * the unit a new order of a code is offered in (shown, and changed with a tap): Spiral's as the products table counts
- * the code, MFO's as its last bins on this device said (platos when none did), the room's own elsewhere
+ * the code, MFO's as its program says (mfoUnitOf), else as its last bins on this device said (platos when none did),
+ * the room's own elsewhere
  */
 export function orderUnitDefault(s: State, dept: Dept, code: string): string {
   if (dept === 'Spiral') return productOf(s, code)?.spiralUnit ?? 'mezclas'
-  if (dept === 'MFO') { const w = mfoBinWord(s.runs, code); return w && WO_UNITS.MFO.includes(w) ? w : 'platos' }
+  if (dept === 'MFO') { const w = mfoWordOf(s, code); return w && WO_UNITS.MFO.includes(w) ? w : 'platos' }
   return WO_UNITS[dept][0]
 }
 /** an order's unit as the screen says it: mezclas, lb, cajas, pouches, platos, copas */
@@ -4696,7 +4715,7 @@ export function programOrderChoices(s: State, dept: Dept, code: string, date: st
   if (!normCode(code)) return []
   if (dept === 'Spiral') return openWorkOrdersFor(s, dept, code, spiralUnit === 'lb' || spiralUnit === 'cajas' ? spiralUnit : '', date)
   if (dept !== 'MFO') return openWorkOrdersFor(s, dept, code, '', date)
-  const kinds = [...new Set(WO_UNITS.MFO.map((u) => orderKind({ dept, unit: u })))], w = mfoBinWord(s.runs, code)
+  const kinds = [...new Set(WO_UNITS.MFO.map((u) => orderKind({ dept, unit: u })))], w = mfoWordOf(s, code)
   const first = w !== undefined && kinds.includes(w) ? openWorkOrdersFor(s, dept, code, w, date) : []
   return [...first, ...kinds.flatMap((k) => (w !== undefined && k === w ? [] : openWorkOrdersFor(s, dept, code, k, date))).sort(fifo)]
 }

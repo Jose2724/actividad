@@ -2836,6 +2836,9 @@ section('MFO: cada bin guarda lo que escriben, en platos, copas o libras; nada s
     eq('Avance: MFO en lo que escribieron, platos primero, y nada esperado en cajas', m.avanceRows(st(), DAY).filter((r) => ['M100', 'M200', 'M300'].includes(r.code)).map((r) => [r.code, r.mfo, r.mfoExp]), [['M100', [{ word: 'platos', qty: 87 }, { word: 'cajas', qty: 3 }], null], ['M200', [{ word: 'copas', qty: 37 }], null], ['M300', [{ word: 'lb', qty: 120.5 }], null]])
     eq('y en texto, como lo dice la pantalla', [m.mfoText([{ word: 'platos', qty: 87 }, { word: 'lb', qty: 120.5 }]), m.mfoText({ copas: 37 })], ['87 platos · 120.5 lb', '37 copas'])
     eq('la corrida sube con su palabra', m.outbox.items().filter((i) => i.table === 'act_runs').map((i) => i.row).find((x) => x.code === 'M300').extra, { bin: 'lb' })
+    // the office chooses the unit of an MFO code in its program (Eli, 2026-11-06: "si es plato, libras o copas"): one per code, kept with the KPI's records
+    eq('sin elegir, el código se lee como dicen sus bins; elegida, la unidad manda: M100 en libras no cuenta sus platos', [m.mfoUnitOf(st(), 'M100'), (m.setMfoUnit('m100', 'lb'), m.mfoUnitOf(st(), 'M100')), m.planRows(st(), DAY, 'MFO').filter((r) => r.code === 'M100').map((r) => [r.unit, r.planned, r.done, r.other])], [undefined, 'lb', [['lb', 100, 0, [{ word: 'platos', n: 87 }, { word: 'cajas', n: 3 }]]]])
+    eq('una unidad que MFO no usa no se guarda; volver a platos cuenta sus platos otra vez; el pedido nuevo sale en esa unidad', [(m.setMfoUnit('M100', 'mezclas'), m.mfoUnitOf(st(), 'M100')), (m.setMfoUnit('M100', 'platos'), m.planRows(st(), DAY, 'MFO').find((r) => r.code === 'M100').done), m.orderUnitDefault(st(), 'MFO', 'M100'), (m.setMfoUnit('M200', 'lb'), m.orderUnitDefault(st(), 'MFO', 'M200'))], ['lb', 87, 'platos', 'lb'])
     eq('los bins de MFO no van en la lista de bins de Packing', rep.bins.length, 0)
   })
 }
