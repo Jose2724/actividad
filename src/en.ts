@@ -4067,4 +4067,13 @@ export const EN: Record<string, string> = {
   "¿Que todos usen la Ayuda?": "Everybody uses Help?",
   "La usan todos: operadores, managers, la oficina y \"Solo ver\". Cada pregunta cuesta un poco en la cuenta de la IA. Se puede apagar aquí mismo cuando quieras.": "Everybody uses it: operators, managers, the office and \"View only\". Each question costs a little on the AI account. It can be turned off right here whenever you like.",
   "Ver en grande": "See it big",
+  "Ese número ya es de otra persona de este turno.": "That number already belongs to someone else in this shift.",
+  "Hay otra persona con ese nombre sin número: ponle su número primero.": "Someone else has that name with no number: give them their number first.",
+  "Ya hay alguien con ese nombre en este turno. Si son dos personas, pon el número de empleado.": "Someone in this shift already has that name. If they are two people, add the employee number.",
+  "El número de empleado lleva solo números.": "The employee number is digits only.",
+  "Nº de empleado": "Employee #",
+  "Número de empleado de {0} (opcional)": "Employee number of {0} (optional)",
+  "El número es opcional: sirve cuando dos personas se llaman igual.": "The number is optional: it helps when two people have the same name.",
+  "Corregir el nombre o el número": "Correct the name or the number",
+  "Número de empleado (opcional)": "Employee number (optional)",
 }

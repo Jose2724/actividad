@@ -6,7 +6,7 @@ import { DEPT_LOOK, deptVars } from './look'
 import { Devices } from './DevicesView'
 import { supabase } from './supabase'
 import { syncStore } from './sync'
-import { consumeEvery, consumeOn, setConsumeEvery, rosterOf, rosterOn, rosterParse, rosterRoom, setConsumeOn, setRoster, setRosterOn, type RosterPerson } from './store'
+import { consumeEvery, consumeOn, setConsumeEvery, rosterNum, rosterOf, rosterOn, rosterParse, rosterRoom, setConsumeOn, setRoster, setRosterOn, type RosterPerson } from './store'
 import { cartCratesOf, setAllCartCrates, setCartCrates, orderCodesList, setOrderCodes, type OrderCode } from './store'
 import { miniOpts, setMiniOpts, type MiniOpts } from './miniKpi'
 import { attWriteOn, kpiPut, LUNCH_MIN, lunchOf, setAttWriteOn, setLunch, setStopRules } from './store'
@@ -345,8 +345,11 @@ function RosterCard({ s, viewOnly }: { s: State; viewOnly: boolean }) {
   const [pasting, setPasting] = useState(false)
   const [added, setAdded] = useState('')
   const [addCode, setAddCode] = useState('')
-  // a name written wrong in the pasted list, corrected here (Jose, 2026-11-06: "si me voy dando cuenta ... cómo se escriben, pueda editar el nombre al correcto")
-  const [fixing, setFixing] = useState<{ name: string; to: string } | null>(null)
+  const [addNum, setAddNum] = useState('')
+  // a name written wrong in the pasted list, corrected here (Jose, 2026-11-06: "si me voy dando cuenta ... cómo se escriben, pueda editar el nombre al correcto"), with the employee number, optional
+  const [fixing, setFixing] = useState<{ id: string; to: string; num: string } | null>(null)
+  /** one person of the list: by the number when there is one, else by the name */
+  const pid = (p: RosterPerson) => (p.num ? '#' + p.num : '=' + p.name)
   const r = rosterOf(s, shift), codes = [...new Set(r.people.map((p) => p.code))].sort(), parsed = text.trim() ? rosterParse(text) : null
   const n1 = parsed?.lists[1].length ?? 0, n2 = parsed?.lists[2].length ?? 0
   const save = () => {
@@ -354,17 +357,31 @@ function RosterCard({ s, viewOnly }: { s: State; viewOnly: boolean }) {
     for (const k of [1, 2] as const) if (parsed.lists[k].length) setRoster(k, { people: parsed.lists[k], rooms: rosterOf(s, k).rooms })
     setText(''); setPasting(false); setShift(n2 || !n1 ? 2 : 1)
   }
-  const add = () => {
-    const name = added.replace(/\s+/g, ' ').trim().slice(0, 60), code = addCode || codes[0]
-    if (!name || !code || r.people.some((p) => p.name.toLowerCase() === name.toLowerCase())) return
-    setRoster(shift, { ...r, people: [...r.people, { name, code }] }); setAdded('')
-  }
   const key = (x: string) => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '')
-  const fixTo = fixing ? fixing.to.replace(/\s+/g, ' ').trim().slice(0, 60) : ''
-  const fixTaken = !!fixing && r.people.some((x) => x.name !== fixing.name && key(x.name) === key(fixTo))
+  /**
+   * why a name (and number) cannot be kept beside the others of the shift: the number is someone else's, or the name is,
+   * unless both have a number of their own (two people of one name, told apart by it)
+   */
+  const clash = (name: string, num: string, but?: RosterPerson) => {
+    const others = r.people.filter((x) => x !== but)
+    if (num && others.some((x) => x.num === num)) return tr('Ese número ya es de otra persona de este turno.')
+    if (others.some((x) => key(x.name) === key(name) && !(num && x.num))) return num ? tr('Hay otra persona con ese nombre sin número: ponle su número primero.') : tr('Ya hay alguien con ese nombre en este turno. Si son dos personas, pon el número de empleado.')
+    return ''
+  }
+  const addName = added.replace(/\s+/g, ' ').trim().slice(0, 60), addN = rosterNum(addNum), addBad = addName ? clash(addName, addN) : ''
+  const add = () => {
+    const code = addCode || codes[0]
+    if (!addName || !code || addBad || (addNum.trim() && !addN)) return
+    setRoster(shift, { ...r, people: [...r.people, { name: addName, code, ...(addN ? { num: addN } : {}) }] }); setAdded(''); setAddNum('')
+  }
+  const fixP = fixing ? r.people.find((x) => pid(x) === fixing.id) : undefined
+  const fixTo = fixing ? fixing.to.replace(/\s+/g, ' ').trim().slice(0, 60) : '', fixN = fixing ? rosterNum(fixing.num) : ''
+  const fixBadNum = !!fixing && !!fixing.num.trim() && !fixN
+  const fixWhy = fixing && fixP && fixTo ? (fixBadNum ? tr('El número de empleado lleva solo números.') : clash(fixTo, fixN, fixP)) : ''
   const rename = () => {
-    if (!fixing || !fixTo || fixTaken) return
-    if (fixTo !== fixing.name) setRoster(shift, { ...r, people: r.people.map((x) => (x.name === fixing.name ? { ...x, name: fixTo } : x)) })
+    if (!fixing || !fixP || !fixTo || fixWhy) return
+    const { num: _n, ...rest } = fixP
+    setRoster(shift, { ...r, people: r.people.map((x) => (x === fixP ? { ...rest, name: fixTo, ...(fixN ? { num: fixN } : {}) } : x)) })
     setFixing(null)
   }
   return (
@@ -379,24 +396,27 @@ function RosterCard({ s, viewOnly }: { s: State; viewOnly: boolean }) {
           <details key={c} className="roster-area">
             <summary><b>{c}</b> · {howMany(mine.length)}</summary>
             <label className="minirow"><span>{tr('Es el cuarto')}</span><select value={rosterRoom(r, c)} disabled={viewOnly} onChange={(e) => setRoster(shift, { ...r, rooms: { ...r.rooms, [c]: e.target.value as Dept | '' } })}><option value="">{tr('Ninguno')}</option>{DEPTS.map((d) => <option key={d} value={d}>{d}</option>)}</select></label>
-            <ul className="roster-list">{mine.map((p) => fixing?.name === p.name ? (
-              <li key={p.name} className="roster-fix">
+            <ul className="roster-list">{mine.map((p) => fixing?.id === pid(p) ? (
+              <li key={pid(p)} className="roster-fix">
                 <form onSubmit={(e) => { e.preventDefault(); rename() }}>
-                  <input autoFocus value={fixing.to} maxLength={60} aria-label={tr('Nombre correcto de {0}', p.name)} onChange={(e) => setFixing({ name: p.name, to: e.target.value })} onKeyDown={(e) => { if (e.key === 'Escape') setFixing(null) }} />
-                  <button type="submit" className="btn sm primary" disabled={!fixTo || fixTaken}>{tr('✓ Guardar')}</button>
+                  <input autoFocus value={fixing.to} maxLength={60} aria-label={tr('Nombre correcto de {0}', p.name)} onChange={(e) => setFixing({ ...fixing, to: e.target.value })} onKeyDown={(e) => { if (e.key === 'Escape') setFixing(null) }} />
+                  <input className="roster-num" value={fixing.num} maxLength={9} inputMode="numeric" placeholder={tr('Nº de empleado')} aria-label={tr('Número de empleado de {0} (opcional)', p.name)} onChange={(e) => setFixing({ ...fixing, num: e.target.value.replace(/\D/g, '') })} onKeyDown={(e) => { if (e.key === 'Escape') setFixing(null) }} />
+                  <button type="submit" className="btn sm primary" disabled={!fixTo || !!fixWhy}>{tr('✓ Guardar')}</button>
                   <button type="button" className="btn sm" onClick={() => setFixing(null)}>{tr('Cancelar')}</button>
                 </form>
-                {fixTaken && <small className="red">{tr('Ya hay alguien con ese nombre en este turno.')}</small>}
+                {fixWhy ? <small className="red">{fixWhy}</small> : <small className="hint">{tr('El número es opcional: sirve cuando dos personas se llaman igual.')}</small>}
               </li>
-            ) : <li key={p.name}><span>{p.name}{p.lead && <small> · {tr('supervisor o líder')}</small>}{!viewOnly && <button type="button" className="lnk sm roster-pen" aria-label={tr('Corregir el nombre de {0}', p.name)} title={tr('Corregir el nombre')} onClick={() => setFixing({ name: p.name, to: p.name })}>✏️</button>}</span><select className="roster-room" value={p.room ?? ''} disabled={viewOnly} aria-label={tr('Cuarto de {0}', p.name)} onChange={(e) => setRoster(shift, { ...r, people: r.people.map((x): RosterPerson => (x.name !== p.name ? x : e.target.value ? { ...x, room: e.target.value as Dept } : { name: x.name, code: x.code, ...(x.lead ? { lead: true } : {}) })) })}><option value="">{tr('Como su área ({0})', rosterRoom(r, c) || tr('ninguno'))}</option>{DEPTS.map((d) => <option key={d} value={d}>{d}</option>)}</select>{!viewOnly && <button type="button" className="lnk sm" aria-label={tr('Quitar a {0}', p.name)} onClick={() => setRoster(shift, { ...r, people: r.people.filter((x) => x.name !== p.name) })}>{tr('Quitar')}</button>}</li>)}</ul>
+            ) : <li key={pid(p)}><span>{p.name}{p.num && <small className="roster-numtag">#{p.num}</small>}{p.lead && <small> · {tr('supervisor o líder')}</small>}{!viewOnly && <button type="button" className="lnk sm roster-pen" aria-label={tr('Corregir el nombre de {0}', p.name)} title={tr('Corregir el nombre o el número')} onClick={() => setFixing({ id: pid(p), to: p.name, num: p.num ?? '' })}>✏️</button>}</span><select className="roster-room" value={p.room ?? ''} disabled={viewOnly} aria-label={tr('Cuarto de {0}', p.name)} onChange={(e) => setRoster(shift, { ...r, people: r.people.map((x): RosterPerson => (pid(x) !== pid(p) ? x : e.target.value ? { ...x, room: e.target.value as Dept } : { name: x.name, code: x.code, ...(x.lead ? { lead: true } : {}), ...(x.num ? { num: x.num } : {}) })) })}><option value="">{tr('Como su área ({0})', rosterRoom(r, c) || tr('ninguno'))}</option>{DEPTS.map((d) => <option key={d} value={d}>{d}</option>)}</select>{!viewOnly && <button type="button" className="lnk sm" aria-label={tr('Quitar a {0}', p.name)} onClick={() => setRoster(shift, { ...r, people: r.people.filter((x) => pid(x) !== pid(p)) })}>{tr('Quitar')}</button>}</li>)}</ul>
           </details>
         )
       })}
       {!viewOnly && codes.length > 0 && (
         <form className="roster-add" onSubmit={(e) => { e.preventDefault(); add() }}>
           <input value={added} maxLength={60} placeholder={tr('Nombre de alguien nuevo')} aria-label={tr('Nombre de alguien nuevo')} onChange={(e) => setAdded(e.target.value)} />
+          <input className="roster-num" value={addNum} maxLength={9} inputMode="numeric" placeholder={tr('Nº de empleado')} aria-label={tr('Número de empleado (opcional)')} onChange={(e) => setAddNum(e.target.value.replace(/\D/g, ''))} />
           <select value={addCode || codes[0]} aria-label={tr('Área')} onChange={(e) => setAddCode(e.target.value)}>{codes.map((c) => <option key={c} value={c}>{c}</option>)}</select>
-          <button type="submit" className="btn soft" disabled={!added.trim()}>{tr('+ Agregar')}</button>
+          <button type="submit" className="btn soft" disabled={!addName || !!addBad}>{tr('+ Agregar')}</button>
+          {addBad && <small className="red roster-addwhy">{addBad}</small>}
         </form>
       )}
       {!viewOnly && (pasting ? (
