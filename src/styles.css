@@ -3691,3 +3691,81 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
   .makes .seg.mfoseg button small{font-size:11.5px;line-height:1.2}
   .makes .seg.mfoseg .rd-choiceico{font-size:18px}
 }
+
+/* what was finished in a room, as a table in the redesign (Jose, 2026-11-06: "todas las letras blancas se hace difícil de
+   leer o buscar algo en específico ... en todos los departamentos"): a name on top of each column, the code big with its
+   product under it, what was made in the room's colour, the time stopped in red, Corregir as a button; a card each on a phone */
+.rd-donetools{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.rd-donesearch{flex:1 1 260px;max-width:420px;min-height:42px;border-radius:12px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);padding:0 12px;font:inherit;font-size:15px}
+.rd-done{gap:8px}
+.rd-done h3{margin:6px 0 0}
+.rd-donewrap{overflow-x:auto;border:1px solid var(--line);border-radius:14px;background:var(--surface)}
+.rd-donetbl{width:100%;border-collapse:collapse;font-size:14px}
+/* the same column at the same place in the tables of both shifts, so the eye goes down one column */
+@media (min-width:761px){
+  .rd-donetbl{table-layout:fixed;min-width:960px}
+  .rd-donetbl th:nth-child(1){width:180px}.rd-donetbl th:nth-child(2){width:64px}.rd-donetbl th:nth-child(3){width:90px}.rd-donetbl th:nth-child(4){width:160px}
+  .rd-donetbl th:nth-child(5){width:190px}.rd-donetbl th:nth-child(6){width:104px}.rd-donetbl th:nth-child(7){width:80px}.rd-donetbl th:nth-child(8){width:96px}.rd-donetbl th:nth-child(9){width:120px}
+  .rd-donetbl .c-code .code{overflow-wrap:anywhere}
+  .rd-donetbl .c-who{overflow:hidden;text-overflow:ellipsis}
+}
+.rd-donetbl th{text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:800;padding:9px 12px;background:var(--bg);border-bottom:1px solid var(--line);white-space:nowrap}
+.rd-donetbl td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:middle;color:var(--ink)}
+.rd-donetbl tbody tr:last-child td{border-bottom:0}
+.rd-donetbl tbody tr:not(.c-note):hover td{background:var(--soft)}
+.rd-donetbl tr.hasnote td{border-bottom:0}
+.rd-donetbl .num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.rd-donetbl .muted{color:var(--muted)}
+.rd-donetbl .c-code .code{display:block;font:800 16px ui-monospace,Consolas,monospace;color:var(--d-ink,var(--ink))}
+.rd-donetbl .c-code small{display:block;color:var(--muted);font-size:12px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rd-donetbl .c-made b{color:var(--d-ink,var(--accent));font-size:15px;white-space:nowrap}
+.rd-donetbl .c-made small{display:block;font-size:12px;color:var(--muted)}
+.rd-donetbl .c-made small.red{color:#dc2626;font-weight:700}
+.rd-donetbl .c-work{font-weight:700}
+.rd-donetbl .c-down{color:#dc2626;font-weight:800}
+.rd-donetbl .c-who{color:var(--muted);white-space:nowrap}
+.rd-donetbl .c-act{text-align:right;white-space:nowrap}
+.rd-donetbl .rd-linechip{display:inline-block;padding:2px 9px;border-radius:99px;background:var(--d-tint,var(--btn));color:var(--d-ink,var(--ink));font-weight:700;font-size:13px;white-space:nowrap}
+.rd-donetbl tr.c-note td{padding:0 12px 10px;color:var(--muted);font-size:13px;overflow-wrap:anywhere}
+@media (max-width:760px){
+  .rd-donewrap{border:0;background:none;overflow:visible}
+  .rd-donetbl,.rd-donetbl tbody{display:block}
+  .rd-donetbl thead{display:none}
+  .rd-donetbl tbody tr:not(.c-note){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 12px;padding:12px;margin-top:8px;border:1px solid var(--line);border-radius:14px;background:var(--surface)}
+  .rd-donetbl tbody tr.hasnote{border-radius:14px 14px 0 0;border-bottom:0}
+  .rd-donetbl tr.c-note{display:block;padding:0 12px 12px;border:1px solid var(--line);border-top:0;border-radius:0 0 14px 14px;background:var(--surface)}
+  .rd-donetbl tr.c-note td{display:block;padding:0}
+  .rd-donetbl td{display:block;padding:0;border:0}
+  .rd-donetbl td[data-label]::before{content:attr(data-label);display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:800;margin-bottom:1px}
+  .rd-donetbl tbody tr:not(.c-note){grid-template-columns:repeat(3,minmax(0,1fr))}
+  .rd-donetbl .c-code{grid-column:span 2;order:1}
+  .rd-donetbl .c-line{order:2;align-self:start;justify-self:end}
+  .rd-donetbl .c-lot{order:3}.rd-donetbl .c-time{order:4}.rd-donetbl .c-made{order:5}.rd-donetbl .c-work{order:6}.rd-donetbl .c-stop{order:7}.rd-donetbl .c-who{order:8}.rd-donetbl .c-act{order:9}
+  .rd-donetbl .c-line::before{display:none!important}
+  .rd-donetbl .c-time,.rd-donetbl .c-made{grid-column:span 2}
+  .rd-donetbl .c-act{grid-column:1/-1;text-align:left}
+  .rd-donetbl .c-act:empty{display:none}
+  .rd-donetbl tbody tr:not(.c-note):hover td{background:none}
+}
+
+/* a room's program in the redesign, read at a glance (Jose, 2026-11-06: "en todos los programas de los departamentos que
+   se pueda leer mucho más fácil y mejor, intuitivo"): names of the columns on a band, the code big in the room's colour,
+   the numbers grouped behind a line (what was set, each shift, what was made, what is left), what was made in the
+   room's colour, what is left red or green, rows told apart, the comment a button. (From 1280 px; under it, cards.) */
+@media (min-width:1280px){
+  .app.rd .plan .pctable{font-size:14.5px;border-collapse:collapse}
+  .app.rd .plan .pctable thead th{background:var(--bg);font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:800;padding:10px 12px;border-bottom:1px solid var(--line)}
+  .app.rd .plan .pctable tbody td{padding:12px;border-bottom:1px solid var(--line);vertical-align:middle}
+  .app.rd .plan .pctable tbody tr:nth-child(even) td{background:rgba(127,127,127,.06)}
+  .app.rd .plan .pctable tbody tr:hover td{background:var(--soft)}
+  .app.rd .plan .pctable .c-head .code{font-size:16.5px;color:var(--d-ink,var(--ink))}
+  .app.rd .plan .pctable .pc-plan{border-left:2px solid var(--line);font-weight:700}
+  .app.rd .plan .pctable td.pc-turn{color:var(--muted)}
+  .app.rd .plan .pctable td.pc-made b{color:var(--d-ink,var(--accent));font-size:16.5px}
+  .app.rd .plan .pctable td.pc-left span{font-size:16.5px;font-weight:800}
+  .app.rd .plan .pctable td.pc-left.left span{color:#dc2626}
+  .app.rd .plan .pctable td.pc-left.ok span{color:#16a34a}
+  .app.rd .plan .pctable td.pc-rnote .lnk{display:inline-flex;align-items:center;min-height:34px;padding:0 12px;border-radius:10px;border:1.5px solid var(--btn-line);background:var(--btn);box-shadow:0 2px 0 var(--btn-edge);color:var(--ink);text-decoration:none;font-weight:700;white-space:nowrap}
+  .app.rd .plan .pctable tfoot td{padding:12px;background:var(--bg);font-size:15px;border-top:2px solid var(--line)}
+  .app.rd .plan .pctable tfoot td.pc-made b{color:var(--d-ink,var(--accent))}
+}

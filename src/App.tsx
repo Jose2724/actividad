@@ -2246,6 +2246,9 @@ function PlanCard({ s, dept, date, mgr, today }: { s: State; dept: Dept; date: s
   // what was made of a code in a lot no row names: "9,556 del lote 6290" (in the code's word where each code has its own)
   const alsoText = (r: (typeof rows)[number], a: { lot: string; n: number }) => fmtN(a.n) + (byCode ? ' ' + r.unit : '') + ' ' + (a.lot ? tr('del lote {0}', a.lot) : tr('sin lote'))
   const offLots = planned.flatMap((r) => r.also.map((a) => r.code + ' · ' + (a.lot ? tr('lote {0}', a.lot) : tr('sin lote')) + ' (' + fmtN(a.n) + ')'))
+  // the redesign leaves out the order's three columns while no row of the day has an order (Jose, 2026-11-06: "en todos
+  // los programas ... que se pueda leer mucho más fácil"): three columns saying "sin pedido" pushed the numbers apart
+  const ords = !RD || planned.some((r) => r.orderId)
   // (its windows are drawn beside the card, not inside it: the card's own table rules restyled the run sheet and the
   // tables of the order's window; review of 2026-10-20)
   return (
@@ -2279,7 +2282,7 @@ function PlanCard({ s, dept, date, mgr, today }: { s: State; dept: Dept; date: s
           <table className="pctable">
             {/* (Jose and the floor, 2026-11-04: the office's comment is a description; the comment of reference, the room's, the supervisor's,
                 the manager's or the office's, at the far right; the lot only when the day's program names one) */}
-            <thead><tr><th>{tr('Código')}</th>{showLot && <th>{tr('Lote')}</th>}<th className="pc-note">{tr('Descripción')}</th><th className="pc-order">{tr('Pedido de producción')}</th><th>{tr('Desde')}</th><th className="num">{tr('Programado')}</th><th className="num pc-turn">{tr('Turno 1')}</th><th className="num pc-turn">{tr('Turno 2')}</th><th className="num">{tr('Hecho hoy')}</th><th className="num">{tr('Pendiente')}</th><th className="num">{tr('Disponible del pedido')}</th><th className="pc-rnote">{tr('Comentario')}</th></tr></thead>
+            <thead><tr><th>{tr('Código')}</th>{showLot && <th>{tr('Lote')}</th>}<th className="pc-note">{tr('Descripción')}</th>{ords && <th className="pc-order">{tr('Pedido de producción')}</th>}{ords && <th>{tr('Desde')}</th>}<th className="num pc-plan">{tr('Programado')}</th><th className="num pc-turn">{tr('Turno 1')}</th><th className="num pc-turn">{tr('Turno 2')}</th><th className="num pc-made">{tr('Hecho hoy')}</th><th className="num">{tr('Pendiente')}</th>{ords && <th className="num">{tr('Disponible del pedido')}</th>}<th className="pc-rnote">{tr('Comentario')}</th></tr></thead>
             <tbody>{[...planned].sort((a, b) => Number(urgent(b)) - Number(urgent(a))).map((r) => {
               const pct = Math.max(0, Math.min(100, Math.floor((r.done / r.planned) * 100)))
               const o = r.orderId ? workOrderOf(s, r.orderId) : undefined, st = o && !o.deleted ? orderStatus(s, o, date) : null
@@ -2296,28 +2299,28 @@ function PlanCard({ s, dept, date, mgr, today }: { s: State; dept: Dept; date: s
                   <td className={'pc-note' + (r.note ? '' : ' c-none')} data-label={tr('Descripción')}>{r.note ? <span className="pc-notetext">{r.note}</span> : '—'}</td>
                   {/* the production order this program is a part of: a tap opens it (its window has the whole sum) */}
                   {/* "de producción" said in full: in Packing a "pedido" is also the customer's PO (its Pedidos tab, the live card's "Pedido de C300"); review of 2026-10-20 */}
-                  <td className="pc-order" data-label={tr('Pedido de producción')}>
+                  {ords && <td className="pc-order" data-label={tr('Pedido de producción')}>
                     {o && st ? <button type="button" className="drill wolink" title={tr('Ver el pedido')} onClick={() => setDetail(o.id)}><span>{woName(o)}</span><small>{tr('de {0} {1}', woN(o.qty), orderUnitWord(o))}</small></button>
                       : <span className="wo-none">{!r.orderId ? tr('sin pedido de producción') : o ? tr('pedido borrado') : tr('pedido que este aparato no tiene')}</span>}
                     {o && st && st.state !== 'abierto' && <WoStateTag o={o} st={st} />}
-                  </td>
+                  </td>}
                   {/* since when (Jose, 2026-10-19): the order's start day, "hoy", or the day with how long ago in amber */}
-                  <td className={'pc-since' + (old ? ' old' : '') + (o && st ? '' : ' c-none')} data-label={tr('Desde')}>{o && st ? <>{startText(o, date)}{old > 0 && <small className="wo-age"> 🕒 {daysText(old)}</small>}</> : '—'}</td>
+                  {ords && <td className={'pc-since' + (old ? ' old' : '') + (o && st ? '' : ' c-none')} data-label={tr('Desde')}>{o && st ? <>{startText(o, date)}{old > 0 && <small className="wo-age"> 🕒 {daysText(old)}</small>}</> : '—'}</td>}
                   {/* in the word of its order when it has one (an MFO code's copas order before its first bin of copas read "platos") */}
                   {/* a program of several days (2026-10-28): its total, with its days under it */}
-                  <td className="num" data-label={tr('Programado')}>{woN(r.planned)}{byCode && <small className="punit"> {o && st ? orderUnitWord(o) : r.unit}</small>}{r.to !== r.from && <small className="pc-span">📅 {tr('hasta el {0}', shortDay(r.to))}</small>}</td>
+                  <td className="num pc-plan" data-label={tr('Programado')}>{woN(r.planned)}{byCode && <small className="punit"> {o && st ? orderUnitWord(o) : r.unit}</small>}{r.to !== r.from && <small className="pc-span">📅 {tr('hasta el {0}', shortDay(r.to))}</small>}</td>
                   {/* each shift's part: for wider screens (a phone keeps the code, what was set, what is made and what is left, as before the orders) */}
                   <td className="num pc-turn" data-label={tr('Turno 1')}>{woN(r.byShift[0])}</td>
                   <td className="num pc-turn" data-label={tr('Turno 2')}>{woN(r.byShift[1])}</td>
-                  <td className="num" data-label={tr('Hecho hoy')}><b>{woN(r.today)}</b>{r.before > 0 && <small className="pc-span">{tr('antes: {0}', woN(r.before))}</small>}{lotsMade(r) && <small className="pc-lots">{lotsMade(r)}</small>}</td>
+                  <td className="num pc-made" data-label={tr('Hecho hoy')}><b>{woN(r.today)}</b>{r.before > 0 && <small className="pc-span">{tr('antes: {0}', woN(r.before))}</small>}{lotsMade(r) && <small className="pc-lots">{lotsMade(r)}</small>}</td>
                   <td className={'num pc-left ' + (r.left <= 0 ? 'ok' : 'left')} data-label={tr('Pendiente')}>
                     <span>{r.left > 0 ? woN(r.left) : tr('✓ completo') + (r.left < 0 ? ' (+' + woN(-r.left) + ')' : '')}</span>
                     <div className="pc-bar"><div className="bar"><i className={pct >= 100 ? 'ok' : 'pend'} style={{ width: pct + '%' }} /></div><small>{pct}%</small></div>
                   </td>
-                  <td className={'num pc-disp' + (o && st ? '' : ' c-none')} data-label={tr('Disponible del pedido')}>
+                  {ords && <td className={'num pc-disp' + (o && st ? '' : ' c-none')} data-label={tr('Disponible del pedido')}>
                     {!o || !st ? '—' : st.state === 'completado' || st.disponible <= 0 ? <span className="ok">{st.over > 0 ? tr('✓ completo (+{0})', woN(st.over)) : tr('✓ completo')}</span> : <><b>{woN(st.disponible)}</b><small className="wo-sub">{tr('de {0}', woN(o.qty))}</small></>}
                     {st && shortOf(st) && <small className="wo-short" title={tr('Faltan días viejos de este pedido en este aparato: los números pueden cambiar cuando lleguen del servidor.')}> …</small>}
-                  </td>
+                  </td>}
                   {/* the comment of reference (2026-11-04): why it was not done, what happened; the room's people, the supervisor, a manager or the office */}
                   {(() => { const rn = planRoomNoteOf(s, date, dept, r.code, r.lot); return (
                     <td className={'pc-rnote' + (rn || writesNote ? '' : ' c-none')} data-label={tr('Comentario')}>
@@ -2330,13 +2333,13 @@ function PlanCard({ s, dept, date, mgr, today }: { s: State; dept: Dept; date: s
             {/* the totals of the day, by shift and both together (2026-11-04), one line per unit when the codes count in different ones */}
             <tfoot>{totals.map((x) => (
               <tr key={x.unit} className="pc-total">
-                <td colSpan={showLot ? 5 : 4} className="c-head"><b>{totals.length > 1 ? tr('Total en {0}', x.unit) : tr('Total')}</b></td>
-                <td className="num" data-label={tr('Programado')}>{woN(x.planned)}</td>
+                <td colSpan={(showLot ? 5 : 4) - (ords ? 0 : 2)} className="c-head"><b>{totals.length > 1 ? tr('Total en {0}', x.unit) : tr('Total')}</b></td>
+                <td className="num pc-plan" data-label={tr('Programado')}>{woN(x.planned)}</td>
                 <td className="num" data-label={tr('Turno 1')}><b>{woN(x.one)}</b></td>
                 <td className="num" data-label={tr('Turno 2')}><b>{woN(x.two)}</b></td>
-                <td className="num" data-label={tr('Los dos turnos')}><b>{woN(x.today)}</b></td>
+                <td className="num pc-made" data-label={tr('Los dos turnos')}><b>{woN(x.today)}</b></td>
                 <td className="num" data-label={tr('Pendiente')}>{x.left > 0 ? woN(x.left) : tr('✓ completo')}</td>
-                <td className="c-none" /><td className="c-none" />
+                {ords && <td className="c-none" />}<td className="c-none" />
               </tr>
             ))}</tfoot>
           </table>
@@ -2597,6 +2600,8 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
   const ds = deptStop(s, dept)
   const can = useCan(), who = useWho(), viewOnly = who.role === 'viewer'
   const [stopAll, setStopAll] = useState(false)
+  // the search over what was finished (the redesign, Jose, 2026-11-06: "se hace difícil de leer o buscar algo en específico")
+  const [doneQ, setDoneQ] = useState('')
   const [waitingStop, setWaitingStop] = useState('')
   const [adding, setAdding] = useState(false)
   const [leaving, setLeaving] = useState(false)
@@ -2635,6 +2640,40 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
         {/* its comment, under the rest and small (Jose, 2026-10-18: comments on the records) */}
         {noteOf(r) && <div className="rnote">💬 {noteOf(r)}</div>}
       </div>
+    )
+  }
+  // the redesign (Jose, 2026-11-06: "todas las letras blancas se hace difícil de leer o buscar algo en específico ... en
+  // todos los departamentos"): what was finished as a table, each thing in its own column with its name on top, the code
+  // big with its product, what was made in the room's colour, the time stopped in red; on a phone each one a card
+  const doneHit = (r: Run) => { const q = doneQ.trim().toLowerCase(); return !q || [r.code, r.lot, lineNameOf(s, r.lineId, r.line), productOf(s, r.code)?.name ?? '', whoText(r)].some((x) => String(x).toLowerCase().includes(q)) }
+  const doneTr = (r: Run) => {
+    const st = runStats(s, r, now), mine = runSince(s, r, turn.since, now), note = noteOf(r)
+    const fixIt = can('fix') && canShift(who, spanShifts(shiftsOf(s, r.date), r.startedAt, r.endedAt ?? now))
+    return (
+      <Fragment key={r.id}>
+        <tr className={note ? 'hasnote' : undefined}>
+          <td data-label={tr('Código')} className="c-code"><b className="code">{r.code}</b>{productOf(s, r.code)?.name && <small>{productOf(s, r.code)?.name}</small>}</td>
+          <td data-label={tr('Lote')} className="num c-lot">{r.lot || '—'}</td>
+          <td data-label={tr('Línea')} className="c-line"><span className="rd-linechip">{lineNameOf(s, r.lineId, r.line)}</span></td>
+          <td data-label={tr('Horario')} className="num c-time">{fmtTime(r.startedAt)} – {fmtTime(r.endedAt ?? now)}</td>
+          <td data-label={tr('Hecho')} className="c-made"><b>{madeText(r, st.qty)}</b>{mine.carried && (r.endedAt ?? 0) > turn.since && <small>{trx('de eso, en este turno: {0}', unitsText(r.dept, mine.units, mine.qty))}</small>}{r.waste > 0 && <small className="red">{trx('waste {0}', r.waste + ' lb')}</small>}</td>
+          <td data-label={tr('Trabajando')} className="num c-work">{fmtDur(st.working)}</td>
+          <td data-label={tr('Parado')} className={'num c-stop' + (st.down ? ' c-down' : ' muted')}>{fmtDur(st.down)}</td>
+          <td data-label={tr('Registró')} className="c-who">{whoText(r)}</td>
+          <td className="c-act">{fixIt && <button type="button" className="btn sm soft" onClick={() => setEditRun(r.id)}>✏️ {tr('Corregir')}</button>}</td>
+        </tr>
+        {note && <tr className="c-note"><td colSpan={9}>💬 {note}</td></tr>}
+      </Fragment>
+    )
+  }
+  const doneTable = (list: Run[]) => {
+    const hits = list.filter(doneHit)
+    if (!hits.length) return <p className="hint">{tr('Nada coincide con la búsqueda.')}</p>
+    return (
+      <div className="rd-donewrap"><table className="rd-donetbl">
+        <thead><tr><th>{tr('Código')}</th><th>{tr('Lote')}</th><th>{tr('Línea')}</th><th>{tr('Horario')}</th><th>{tr('Hecho')}</th><th>{tr('Trabajando')}</th><th>{tr('Parado')}</th><th>{tr('Registró')}</th><th></th></tr></thead>
+        <tbody>{hits.map(doneTr)}</tbody>
+      </table></div>
     )
   }
   const hasOrders = !!CFG[dept].orders
@@ -2745,15 +2784,20 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
       {adding && <LineNameDialog s={s} dept={dept} onClose={() => setAdding(false)} />}
       {shown === 'done' && (
         <>
-          {can('fix') && !viewOnly && <div className="dp-tools"><button type="button" className="btn soft" onClick={() => setAddingRun({})}>{tr('+ Agregar un registro que nadie registró')}</button></div>}
-          <div className="done">
+          {RD ? (
+            <div className="dp-tools rd-donetools">
+              {doneNow.length + doneBefore.length > 0 && <input type="search" className="rd-donesearch" value={doneQ} onChange={(e) => setDoneQ(e.target.value)} placeholder={'🔍 ' + tr('Buscar código, lote o línea')} aria-label={tr('Buscar código, lote o línea')} />}
+              {can('fix') && !viewOnly && <button type="button" className="btn soft" onClick={() => setAddingRun({})}>{tr('+ Agregar un registro que nadie registró')}</button>}
+            </div>
+          ) : can('fix') && !viewOnly && <div className="dp-tools"><button type="button" className="btn soft" onClick={() => setAddingRun({})}>{tr('+ Agregar un registro que nadie registró')}</button></div>}
+          <div className={'done' + (RD ? ' rd-done' : '')}>
             <h3>{trx('Terminados en el turno {0} en {1}', turn.shift, dept)}<small> · {doneNow.length}</small></h3>
-            {doneNow.length ? doneNow.map(doneRow) : <p className="hint">{tr('Todavía nada terminado en este turno.')}</p>}
+            {doneNow.length ? (RD ? doneTable(doneNow) : doneNow.map(doneRow)) : <p className="hint">{tr('Todavía nada terminado en este turno.')}</p>}
           </div>
           {doneBefore.length > 0 && (
-            <div className="done">
+            <div className={'done' + (RD ? ' rd-done' : '')}>
               <h3>{turn.shift === 2 ? tr('Terminados en el turno 1') : tr('Terminados antes de este turno')}<small> · {doneBefore.length}</small></h3>
-              {doneBefore.map(doneRow)}
+              {RD ? doneTable(doneBefore) : doneBefore.map(doneRow)}
             </div>
           )}
         </>

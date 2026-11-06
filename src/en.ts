@@ -4127,4 +4127,8 @@ export const EN: Record<string, string> = {
   "Ver todos": "See all",
   "Próximo: {0}": "Next: {0}",
   "Toca un pedido para abrirlo en Pedidos.": "Tap an order to open it in Orders.",
+  "Buscar código, lote o línea": "Search code, lot or line",
+  "Nada coincide con la búsqueda.": "Nothing matches the search.",
+  "de eso, en este turno: {0}": "of that, this shift: {0}",
+  "waste {0}": "waste {0}",
 }
