@@ -2673,3 +2673,6 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 @media (max-width:520px){.rd-brand small{display:none}}
 @media (prefers-reduced-motion:reduce){.rd-room:hover,.rd-room:active{transform:none}}
 .rd-menu-it .langsw .globe{display:none}
+/* the rail and the top bar stay in place while the page scrolls: html/body above clip instead of hiding (hidden made body a
+ scroll box that never scrolls, so nothing could stick: Jose, 2026-11-05, "que este panel no se mueva cuando esté yo haciendo scroll") */
+html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
