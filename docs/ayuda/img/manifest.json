@@ -1,0 +1,92 @@
+[
+ {
+  "id": "en-vivo-linea",
+  "caption": "Mi cuarto › En vivo: cada línea con su código, lote, lo que lleva, el botón verde y Parar · Set up · Peso · Terminar · Corregir",
+  "roles": [
+   "op",
+   "mgr",
+   "office",
+   "viewer"
+  ]
+ },
+ {
+  "id": "empezar-codigo",
+  "caption": "La ventana de ▶ Empezar código: código, lote, fecha y lo que pregunta el cuarto",
+  "roles": [
+   "op",
+   "mgr",
+   "office",
+   "viewer"
+  ]
+ },
+ {
+  "id": "carro-listo",
+  "caption": "RTE · ✓ Carro listo › Carro corto: guacales de cada columna y pouches del último guacal; la app suma",
+  "roles": [
+   "op",
+   "mgr",
+   "office",
+   "viewer"
+  ],
+  "depts": [
+   "RTE"
+  ]
+ },
+ {
+  "id": "corregir-linea",
+  "caption": "Corregir en la tarjeta de la línea: código, lote, fecha y cada unidad registrada (✕ la quita), luego Guardar",
+  "roles": [
+   "op",
+   "mgr",
+   "office",
+   "viewer"
+  ]
+ },
+ {
+  "id": "asistencia",
+  "caption": "La ventana de Asistencia: Esperados, Vinieron, Faltan; el supervisor se anota primero y luego cada persona",
+  "roles": [
+   "op",
+   "mgr",
+   "office",
+   "viewer"
+  ]
+ },
+ {
+  "id": "paro-codigos",
+  "caption": "La ventana de paro con reason codes: la Ayuda arriba (¿Qué pasó?), luego la categoría y el código",
+  "roles": [
+   "all"
+  ]
+ },
+ {
+  "id": "reporte-produccion",
+  "caption": "Reportes › Producción: Día, Turno, Cuarto, Qué ver (General, Por código, Por turno, Registros, Cambios) y los cuadros de Trabajando, Parado y Set up",
+  "roles": [
+   "mgr",
+   "office",
+   "viewer",
+   "admin"
+  ]
+ },
+ {
+  "id": "mini-kpi",
+  "caption": "Indicadores › Mini KPI: la gráfica de líneas de la semana (cada cuarto una línea, arriba = mejor) y la tabla de cada cuarto",
+  "roles": [
+   "mgr",
+   "office",
+   "viewer",
+   "admin"
+  ]
+ },
+ {
+  "id": "avance",
+  "caption": "Trazabilidad › Avance: totales del día y cada código con lo de cada cuarto, su estado y lo que falta",
+  "roles": [
+   "mgr",
+   "office",
+   "viewer",
+   "admin"
+  ]
+ }
+]
