@@ -60,7 +60,7 @@ function Bars({ values }: { values: { date: string; pct: number | null; today: b
         const x = L + i * bw + bw * 0.18, w = bw * 0.64, p = v.pct ?? 0, c = v.pct == null ? 'none' : p >= 0.9 ? 'ok' : p >= 0.7 ? 'warn' : 'bad'
         return (
           <g key={v.date}>
-            {v.pct != null && <rect className={'bar ' + c + (v.today ? ' today' : '')} x={x} y={Y(p)} width={w} height={Math.max(1, Y(0) - Y(p))} rx="4" />}
+            {v.pct != null && <rect className={'sbar ' + c + (v.today ? ' today' : '')} x={x} y={Y(p)} width={w} height={Math.max(1, Y(0) - Y(p))} rx="4" />}
             <text className={'val ' + c} x={x + w / 2} y={v.pct == null ? Y(0) - 6 : Y(p) - 5} textAnchor="middle">{v.pct == null ? '—' : Math.round(p * 100) + '%'}</text>
             <text className={'lab' + (v.today ? ' strong' : '')} x={x + w / 2} y={H - 7} textAnchor="middle">{v.today ? tr('hoy') : short(v.date)}</text>
           </g>

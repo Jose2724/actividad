@@ -3020,8 +3020,8 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 .rd-sumbars{width:100%;height:auto;display:block}
 .rd-sumbars .goal{stroke:var(--sb-goal);stroke-width:1.5;stroke-dasharray:5 4}
 .rd-sumbars .axis{stroke:var(--line)}
-.rd-sumbars .bar.ok{fill:var(--sb-ok)}.rd-sumbars .bar.warn{fill:var(--sb-warn)}.rd-sumbars .bar.bad{fill:var(--sb-bad)}
-.rd-sumbars .bar:not(.today){opacity:.8}
+.rd-sumbars .sbar.ok{fill:var(--sb-ok)}.rd-sumbars .sbar.warn{fill:var(--sb-warn)}.rd-sumbars .sbar.bad{fill:var(--sb-bad)}
+.rd-sumbars .sbar:not(.today){opacity:.8}
 .rd-sumbars text{font:600 11px system-ui,sans-serif}
 .rd-sumbars .lab{fill:var(--sb-lab)}.rd-sumbars .lab.strong{fill:var(--ink);font-weight:800}
 .rd-sumbars .val{font-weight:800;fill:var(--ink)}.rd-sumbars .val.none{fill:var(--sb-lab)}
@@ -3065,3 +3065,15 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 .rd-miniroom .rd-minitbl td:first-child{white-space:nowrap}
 .rd-sumdays{font-size:12.5px;color:var(--muted);font-weight:700}
 .rd-sumbar{align-items:center}
+/* ---- PPLH in the redesign (2026-11-06) ---- */
+.rd-pplh{display:grid;gap:12px}
+.rd-pplhtiles{grid-template-columns:repeat(4,minmax(0,1fr))}
+.rd-pplhchart{width:100%;height:auto;display:block}
+.rd-pplhchart .axis{stroke:var(--line)}
+.rd-pplhchart .pbar{fill:var(--accent);opacity:.85}
+.rd-pplhchart .avg{stroke:var(--sb-ok);stroke-width:1.5;stroke-dasharray:5 4}
+.rd-pplhchart text{font:600 11px system-ui,sans-serif}
+.rd-pplhchart .lab{fill:var(--sb-lab)}.rd-pplhchart .avgl{fill:var(--sb-ok);font-weight:800}
+.rd-pplhchart .val{fill:var(--ink);font-weight:800}
+.rd-pplh>.wt-rp{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+@media (max-width:760px){.rd-pplhtiles{grid-template-columns:repeat(2,minmax(0,1fr))}}

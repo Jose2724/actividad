@@ -5,6 +5,7 @@ import { datesFrom, downtimeOf, HOURS_FLAG, keepRange, plusDays, rangeKept, nets
 import { loadZip, readCsv, readXlsx, xlsxNow, XLSX_TYPE } from './xlsx'
 import { download } from './App'
 import { locale, tr } from './i18n'
+import { RD } from './rd'
 
 const lb = (x: number) => Math.round(x).toLocaleString('en-US')
 const one = (x: number) => x.toFixed(1)
@@ -101,9 +102,26 @@ export function PplhView({ s, date, today, now, edit, admin }: { s: State; date:
   }
   // (trimmed to a readable width as the dashboard, Jose 2026-11-03: "darle algo de diseño y trim it")
   return (
-    <div className="pplh">
-      <p className="hint">{tr('Libras por hora de trabajo de {0}: las libras de NetSuite (el archivo de Melissa) ÷ las horas de Recursos Humanos. El día del reporte es ayer; si cambias la fecha de arriba, es esa.', PPLH_SITE)}</p>
-      <article className="wt-rp">
+    <div className={'pplh' + (RD ? ' rd-pplh' : '')}>
+      {RD && (
+        <>
+          <div className="rd-wtbar">
+            <h2 className="rd-wttitle">📈 PPLH</h2>
+            <RangePick compact from={from} to={to} today={day0} dayLabel={day0 !== date ? tr('Ayer') : undefined} onChange={(a, b) => { setFrom(a); setTo(b) }} />
+            <div className="seg rd-rangeseg" role="group" aria-label={tr('Ver')}>{(['day', 'week', 'month'] as PplhBy[]).map((b) => <button key={b} type="button" className={by === b ? 'on' : ''} aria-pressed={by === b} onClick={() => setBy(b)}>{b === 'day' ? tr('Por día') : b === 'week' ? tr('Por semana') : tr('Por mes')}</button>)}</div>
+            <div className="rd-wtacts"><button type="button" className="btn primary" onClick={() => void excel()}>{tr('⬇ Excel para Mike')}</button></div>
+          </div>
+          <div className="rd-tiles rd-pplhtiles">
+            <div className={'rd-tile' + (rep.lbs == null ? ' pend' : '')}><label>⚖️ {tr('Libras')} · {day0}</label><b>{rep.lbs == null ? '—' : lb(rep.lbs)}</b><small>{rep.lbs == null ? tr('Falta el archivo de NetSuite de este día.') : tr('NetSuite')}</small></div>
+            <div className={'rd-tile' + (rep.hours == null ? ' pend' : '')}><label>⏱️ {tr('Horas')} · {day0}</label><b>{rep.hours == null ? '—' : one(rep.hours)}</b><small>{rep.hours == null ? tr('Faltan las horas de Recursos Humanos de este día.') : tr('Recursos Humanos')}</small></div>
+            <div className={'rd-tile' + (rep.pplh == null ? ' pend' : ' ok')}><label>📈 PPLH · {day0}</label><b>{rep.pplh == null ? '—' : one(rep.pplh)}</b><small>{tr('lb por hora de trabajo')}</small></div>
+            <div className={'rd-tile' + (all.pplh == null ? ' pend' : '')}><label>📊 {tr('PPLH del rango')}</label><b>{all.pplh == null ? '—' : one(all.pplh)}</b><small>{range.length === 1 ? tr('1 día') : tr('{0} días', range.length)}</small></div>
+          </div>
+          {range.length > 1 && rows.some((r) => r.pplh != null) && <article className="rd-card"><h3>📊 {tr('PPLH por día')}</h3><PplhChart rows={rows} avg={all.pplh} /></article>}
+        </>
+      )}
+      {!RD && <p className="hint">{tr('Libras por hora de trabajo de {0}: las libras de NetSuite (el archivo de Melissa) ÷ las horas de Recursos Humanos. El día del reporte es ayer; si cambias la fecha de arriba, es esa.', PPLH_SITE)}</p>}
+      {!RD && <article className="wt-rp">
         <h3>{tr('Día del reporte')} · {day0}</h3>
         <div className="pplh-tiles">
           <div><small>{tr('Libras')}</small><b>{rep.lbs == null ? '—' : lb(rep.lbs)}</b></div>
@@ -113,7 +131,7 @@ export function PplhView({ s, date, today, now, edit, admin }: { s: State; date:
         {rep.lbs == null && <p className="hint amber">{tr('Falta el archivo de NetSuite de este día.')}</p>}
         {rep.hours == null && <p className="hint amber">{tr('Faltan las horas de Recursos Humanos de este día.')}</p>}
         <div className="btns"><button type="button" className="btn primary" onClick={() => void excel()}>{tr('⬇ Excel para Mike')}</button></div>
-      </article>
+      </article>}
       {edit && <div className="pplh-uploads">
         <article className="wt-rp">
           <h3>{tr('Subir el archivo de NetSuite')}</h3>
@@ -154,8 +172,8 @@ export function PplhView({ s, date, today, now, edit, admin }: { s: State; date:
       </div>}
       <article className="wt-rp">
         <h3>{by === 'week' ? tr('Semana por semana') : by === 'month' ? tr('Mes por mes') : tr('Día por día')}{edit && <button type="button" className={'btn sm ' + (unlocked ? 'primary' : 'soft')} onClick={() => setUnlocked((x) => !x)}>{unlocked ? tr('🔒 Bloquear') : tr('✏️ Editar')}</button>}</h3>
-        <RangePick from={from} to={to} today={day0} dayLabel={day0 !== date ? tr('Ayer') : undefined} onChange={(a, b) => { setFrom(a); setTo(b) }} />
-        <div className="btns pplh-by">{(['day', 'week', 'month'] as PplhBy[]).map((b) => <button key={b} type="button" className={'btn sm ' + (by === b ? 'primary' : 'soft')} onClick={() => setBy(b)}>{b === 'day' ? tr('Por día') : b === 'week' ? tr('Por semana') : tr('Por mes')}</button>)}</div>
+        {!RD && <RangePick from={from} to={to} today={day0} dayLabel={day0 !== date ? tr('Ayer') : undefined} onChange={(a, b) => { setFrom(a); setTo(b) }} />}
+        {!RD && <div className="btns pplh-by">{(['day', 'week', 'month'] as PplhBy[]).map((b) => <button key={b} type="button" className={'btn sm ' + (by === b ? 'primary' : 'soft')} onClick={() => setBy(b)}>{b === 'day' ? tr('Por día') : b === 'week' ? tr('Por semana') : tr('Por mes')}</button>)}</div>}
         <div className="scroll"><table className="wt-rp-tbl mini">
           <thead><tr><th>{by === 'week' ? tr('Semana') : by === 'month' ? tr('Mes') : tr('Fecha')}</th><th>{tr('Libras (NetSuite)')}</th><th>{tr('Horas (RR. HH.)')}</th><th>PPLH</th>{by !== 'day' && <th>{tr('Días con libras')}</th>}</tr></thead>
           <tbody>
@@ -251,5 +269,28 @@ function PplhAccess({ s }: { s: State }) {
         <button type="submit" className="btn sm primary" disabled={!name.trim()}>{tr('Agregar')}</button>
       </form>
     </article>
+  )
+}
+
+/** each day's PPLH as a bar, the range's as a dashed line (the redesign, 2026-11-06) */
+function PplhChart({ rows, avg }: { rows: { date: string; pplh: number | null }[]; avg: number | null }) {
+  const W = 640, H = 170, L = 40, B = 24, T = 16, vals = rows.map((r) => r.pplh ?? 0), top = Math.max(1, ...vals, avg ?? 0) * 1.15
+  const Y = (v: number) => T + (1 - v / top) * (H - T - B), bw = (W - L - 8) / rows.length
+  const every = Math.max(1, Math.ceil(rows.length / 14))
+  return (
+    <svg className="rd-pplhchart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={tr('PPLH por día')}>
+      <line className="axis" x1={L} x2={W - 4} y1={Y(0)} y2={Y(0)} />
+      {avg != null && <><line className="avg" x1={L} x2={W - 4} y1={Y(avg)} y2={Y(avg)} /><text className="lab avgl" x={W - 6} y={Y(avg) - 5} textAnchor="end">{tr('rango {0}', avg.toFixed(1))}</text></>}
+      {rows.map((r, i) => {
+        const x = L + i * bw + bw * 0.15, w = bw * 0.7
+        return (
+          <g key={r.date}>
+            {r.pplh != null && <rect className="pbar" x={x} y={Y(r.pplh)} width={w} height={Math.max(1, Y(0) - Y(r.pplh))} rx="3" />}
+            {r.pplh != null && rows.length <= 16 && <text className="val" x={x + w / 2} y={Y(r.pplh) - 4} textAnchor="middle">{r.pplh.toFixed(1)}</text>}
+            {(i % every === 0 || i === rows.length - 1) && <text className="lab" x={x + w / 2} y={H - 7} textAnchor="middle">{r.date.slice(5).replace('-', '/')}</text>}
+          </g>
+        )
+      })}
+    </svg>
   )
 }

@@ -577,7 +577,7 @@ type Kit = ReturnType<typeof useReport>
 export function Report(props: ReportProps) {
   const k = useReport(props)
   // the redesign's Indicadores › Pesos: a screen of its own, its bar instead of the day report's header and filters (Jose, 2026-11-05)
-  const lean = RD && (props.pin === 'wt' || props.pin === 'dash' || props.pin === 'mini')
+  const lean = RD && (props.pin === 'wt' || props.pin === 'dash' || props.pin === 'mini' || props.pin === 'pplh')
   const { s, now, only, mgr, admin, can, date, pickDate, today, day, rep, rows, dept, lineChosen, purges, recovering, recover, tookText, sending, setSending, preparing, send, pdf, excel, csv, shiftsOpen, setShiftsOpen, wiping, setWiping, notice, setNotice, editRun, setEditRun, runToEdit, stopToEdit, setEditStop, addFor, setAddFor, detail, setDetail, stopSheet, setStopSheet, picking, setPicking, any, help, setHelp, v, tabs, pickView, setFShift, hrs, setFCode, setFLot, fix, fixable } = k
   return (
     <section className="report">

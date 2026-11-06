@@ -1529,9 +1529,9 @@ html:where([data-theme="dark"]),:where(html[data-theme="dark"]) body{background:
 :where(html[data-theme="dark"]) .rd-spark rect{fill:var(--d,var(--accent))}
 :where(html[data-theme="dark"]) .rd-sumbars .goal{stroke:var(--sb-goal)}
 :where(html[data-theme="dark"]) .rd-sumbars .axis{stroke:var(--line)}
-:where(html[data-theme="dark"]) .rd-sumbars .bar.ok{fill:var(--sb-ok)}
-:where(html[data-theme="dark"]) .rd-sumbars .bar.warn{fill:var(--sb-warn)}
-:where(html[data-theme="dark"]) .rd-sumbars .bar.bad{fill:var(--sb-bad)}
+:where(html[data-theme="dark"]) .rd-sumbars .sbar.ok{fill:var(--sb-ok)}
+:where(html[data-theme="dark"]) .rd-sumbars .sbar.warn{fill:var(--sb-warn)}
+:where(html[data-theme="dark"]) .rd-sumbars .sbar.bad{fill:var(--sb-bad)}
 :where(html[data-theme="dark"]) .rd-sumbars .lab{fill:var(--sb-lab)}
 :where(html[data-theme="dark"]) .rd-sumbars .lab.strong{fill:var(--ink)}
 :where(html[data-theme="dark"]) .rd-sumbars .val{fill:var(--ink)}
@@ -1545,3 +1545,10 @@ html:where([data-theme="dark"]),:where(html[data-theme="dark"]) body{background:
 :where(html[data-theme="dark"]) .rd-miniroom h3{color:var(--d-ink)}
 :where(html[data-theme="dark"]) .rd-miniweek{background:var(--d-tint)}
 :where(html[data-theme="dark"]) .rd-sumdays{color:var(--muted)}
+:where(html[data-theme="dark"]) .rd-pplhchart .axis{stroke:var(--line)}
+:where(html[data-theme="dark"]) .rd-pplhchart .pbar{fill:var(--accent)}
+:where(html[data-theme="dark"]) .rd-pplhchart .avg{stroke:var(--sb-ok)}
+:where(html[data-theme="dark"]) .rd-pplhchart .lab{fill:var(--sb-lab)}
+:where(html[data-theme="dark"]) .rd-pplhchart .avgl{fill:var(--sb-ok)}
+:where(html[data-theme="dark"]) .rd-pplhchart .val{fill:var(--ink)}
+:where(html[data-theme="dark"]) .rd-pplh>.wt-rp{background:var(--surface);border:1px solid var(--line);border-radius:14px}

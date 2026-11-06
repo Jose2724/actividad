@@ -3643,6 +3643,11 @@ export const EN: Record<string, string> = {
   // the redesign (2026-11-05): sections, menu, search, Resumen, Toda la planta
   "Toda la planta": "Whole plant",
   "Más": "More",
+  "NetSuite": "NetSuite",
+  "Recursos Humanos": "Human Resources",
+  "PPLH del rango": "Range PPLH",
+  "PPLH por día": "PPLH per day",
+  "rango {0}": "range {0}",
   "{0} días · {1} con producción": "{0} days · {1} with production",
   "de la meta de esos días": "of those days' goal",
   "Días con producción": "Days with production",
