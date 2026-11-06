@@ -1,4 +1,4 @@
-import { DEPTS, kpiGet, kpiPut, rosterNum, rosterOf, type Dept, type State } from './store'
+import { DEPTS, kpiGet, kpiPut, rosterNum, rosterOf, rosterRoom, rosterRoomOf, type Dept, type State } from './store'
 import { reportOf } from './report'
 import { downKind } from './miniKpi'
 import { X, colName, xN, xT, type Cell, type Chart, type ReadCell, type Sheet } from './xlsx'
@@ -124,14 +124,26 @@ const sameName = (a: string[], b: string[]) => {
   const [few, many] = a.length <= b.length ? [a, b] : [b, a]
   return few.length >= 2 && few.every((w) => many.some((m) => nearWord(w, m)))
 }
-export function hoursShift(s: State, x: { name: string; div?: string; num?: string }): 1 | 2 | null {
+export const hoursShift = (s: State, x: { name: string; div?: string; num?: string }): 1 | 2 | null => hoursWho(s, x).shift
+/** a department as its area code says it: "Sanitation1-ER" → Sanitation, "WH1-ER" → WH, "QC" → QC */
+export const deptName = (code: string) => code.replace(/\s*[123]?\s*-\s*er$/i, '').replace(/\s*[123]$/, '').trim() || code
+/**
+ * Who checks a person of the hours file: their shift, and their department when it is not one of the rooms (Josh,
+ * 2026-11-06: of the three nobody knew, "Daniel Morales is sanitation, Esteban is warehouse & Lucerito is QC"; Jose: a
+ * column of their own, not Josh's nor Santiago's). From the row's area when the file brings one, else from the
+ * Employee List: by the employee number first, then by the name. A person of the list whose area is no room (Ninguno
+ * in Ajustes, or an area like Sanitation) is of another department
+ */
+export function hoursWho(s: State, x: { name: string; div?: string; num?: string }): { shift: 1 | 2 | null; other: string } {
   const own = /^[a-z]+\s*([12])\s*-/i.exec(x.div ?? '')
-  if (own) return Number(own[1]) as 1 | 2
+  if (x.div && !rosterRoom({ people: [], rooms: {} }, x.div)) return { shift: own ? (Number(own[1]) as 1 | 2) : null, other: deptName(x.div) }
+  if (own) return { shift: Number(own[1]) as 1 | 2, other: '' }
+  const w = nameWords(x.name)
+  const hits = (num: boolean) => ([1, 2] as const).flatMap((sh) => { const r = rosterOf(s, sh); return r.people.filter((p) => (num ? !!x.num && p.num === x.num : sameName(w, nameWords(p.name)))).map((p) => ({ sh, other: rosterRoomOf(r, p) ? '' : deptName(p.code) })) })
   // the employee number, when the list has it (2026-11-06): exact, before any name
-  const byNum = x.num ? ([1, 2] as const).filter((sh) => rosterOf(s, sh).people.some((p) => p.num === x.num)) : []
-  if (byNum.length === 1) return byNum[0]
-  const w = nameWords(x.name), found = ([1, 2] as const).filter((sh) => rosterOf(s, sh).people.some((p) => sameName(w, nameWords(p.name))))
-  return found.length === 1 ? found[0] : null
+  const found = hits(true).length ? hits(true) : hits(false)
+  const shifts = [...new Set(found.map((h) => h.sh))], others = [...new Set(found.map((h) => h.other))]
+  return { shift: shifts.length === 1 ? shifts[0] : null, other: others.length === 1 ? others[0] : '' }
 }
 /** who confirms the hours of each shift (Jose, 2026-11-06); a person of no known shift goes to both */
 export const SHIFT_CHECKER: Record<1 | 2, string> = { 1: 'Josh', 2: 'Santiago' }

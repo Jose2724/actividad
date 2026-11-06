@@ -346,6 +346,8 @@ function RosterCard({ s, viewOnly }: { s: State; viewOnly: boolean }) {
   const [added, setAdded] = useState('')
   const [addCode, setAddCode] = useState('')
   const [addNum, setAddNum] = useState('')
+  // a person of another department (Sanitation, Warehouse, QC...: Josh, 2026-11-06), so their hours go to "Otros departamentos"
+  const [addDept, setAddDept] = useState('')
   // a name written wrong in the pasted list, corrected here (Jose, 2026-11-06: "si me voy dando cuenta ... cómo se escriben, pueda editar el nombre al correcto"), with the employee number, optional
   const [fixing, setFixing] = useState<{ id: string; to: string; num: string } | null>(null)
   /** one person of the list: by the number when there is one, else by the name */
@@ -369,10 +371,12 @@ function RosterCard({ s, viewOnly }: { s: State; viewOnly: boolean }) {
     return ''
   }
   const addName = added.replace(/\s+/g, ' ').trim().slice(0, 60), addN = rosterNum(addNum), addBad = addName ? clash(addName, addN) : ''
+  const NEW_DEPT = '+dept'
   const add = () => {
-    const code = addCode || codes[0]
+    const code = addCode === NEW_DEPT ? addDept.replace(/\s+/g, ' ').trim().slice(0, 30) : addCode || codes[0]
     if (!addName || !code || addBad || (addNum.trim() && !addN)) return
     setRoster(shift, { ...r, people: [...r.people, { name: addName, code, ...(addN ? { num: addN } : {}) }] }); setAdded(''); setAddNum('')
+    if (addCode === NEW_DEPT) { setAddCode(code); setAddDept('') }
   }
   const fixP = fixing ? r.people.find((x) => pid(x) === fixing.id) : undefined
   const fixTo = fixing ? fixing.to.replace(/\s+/g, ' ').trim().slice(0, 60) : '', fixN = fixing ? rosterNum(fixing.num) : ''
@@ -395,6 +399,7 @@ function RosterCard({ s, viewOnly }: { s: State; viewOnly: boolean }) {
         return (
           <details key={c} className="roster-area">
             <summary><b>{c}</b> · {howMany(mine.length)}</summary>
+            {!rosterRoom(r, c) && <p className="hint">{tr('Otro departamento: no sale en la asistencia de los cuartos, y en las horas de PPLH va a "Otros departamentos".')}</p>}
             <label className="minirow"><span>{tr('Es el cuarto')}</span><select value={rosterRoom(r, c)} disabled={viewOnly} onChange={(e) => setRoster(shift, { ...r, rooms: { ...r.rooms, [c]: e.target.value as Dept | '' } })}><option value="">{tr('Ninguno')}</option>{DEPTS.map((d) => <option key={d} value={d}>{d}</option>)}</select></label>
             <ul className="roster-list">{mine.map((p) => fixing?.id === pid(p) ? (
               <li key={pid(p)} className="roster-fix">
@@ -414,8 +419,9 @@ function RosterCard({ s, viewOnly }: { s: State; viewOnly: boolean }) {
         <form className="roster-add" onSubmit={(e) => { e.preventDefault(); add() }}>
           <input value={added} maxLength={60} placeholder={tr('Nombre de alguien nuevo')} aria-label={tr('Nombre de alguien nuevo')} onChange={(e) => setAdded(e.target.value)} />
           <input className="roster-num" value={addNum} maxLength={9} inputMode="numeric" placeholder={tr('Nº de empleado')} aria-label={tr('Número de empleado (opcional)')} onChange={(e) => setAddNum(e.target.value.replace(/\D/g, ''))} />
-          <select value={addCode || codes[0]} aria-label={tr('Área')} onChange={(e) => setAddCode(e.target.value)}>{codes.map((c) => <option key={c} value={c}>{c}</option>)}</select>
-          <button type="submit" className="btn soft" disabled={!addName || !!addBad}>{tr('+ Agregar')}</button>
+          <select value={addCode || codes[0]} aria-label={tr('Área')} onChange={(e) => setAddCode(e.target.value)}>{codes.map((c) => <option key={c} value={c}>{rosterRoom(r, c) ? c : c + ' · ' + tr('otro depto.')}</option>)}<option value={NEW_DEPT}>{tr('+ Otro departamento…')}</option></select>
+          {addCode === NEW_DEPT && <input className="roster-dept" value={addDept} maxLength={30} placeholder={tr('Sanitation, Warehouse, QC…')} aria-label={tr('Departamento')} onChange={(e) => setAddDept(e.target.value)} />}
+          <button type="submit" className="btn soft" disabled={!addName || !!addBad || (addCode === NEW_DEPT && !addDept.trim())}>{tr('+ Agregar')}</button>
           {addBad && <small className="red roster-addwhy">{addBad}</small>}
         </form>
       )}

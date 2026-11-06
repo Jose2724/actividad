@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { awayDay, dayBefore, rosterOf, type State } from './store'
 import { loadDay } from './sync'
-import { datesFrom, downtimeOf, HOURS_FLAG, hoursShift, SHIFT_CHECKER, keepRange, plusDays, rangeKept, netsuiteSheet, pplhBook, pplhLbsByHand, readHours, setPplhLbsHand, type HoursRead, pplhGroups, pplhNames, pplhOfGroups, pplhOfRange, pplhRow, pplhWeekHours, rangeShortcuts, readNetsuite, savePplhLbs, setPplhHours, setPplhNames, setPplhWeekHours, PPLH_SITE, type NetsuiteRead, type PplhBy } from './pplh'
+import { datesFrom, downtimeOf, HOURS_FLAG, hoursWho, SHIFT_CHECKER, keepRange, plusDays, rangeKept, netsuiteSheet, pplhBook, pplhLbsByHand, readHours, setPplhLbsHand, type HoursRead, pplhGroups, pplhNames, pplhOfGroups, pplhOfRange, pplhRow, pplhWeekHours, rangeShortcuts, readNetsuite, savePplhLbs, setPplhHours, setPplhNames, setPplhWeekHours, PPLH_SITE, type NetsuiteRead, type PplhBy } from './pplh'
 import { loadZip, readCsv, readXlsx, xlsxNow, XLSX_TYPE } from './xlsx'
 import { download } from './App'
 import { locale, tr } from './i18n'
@@ -255,12 +255,16 @@ function HoursReview({ s, file, r, onCancel, onSave }: { s: State; file: string;
  * side by side. A shift whose Employee List is not in Ajustes says so in its column, since its people fall to both
  */
 function HoursOverList({ s, days }: { s: State; days: HoursRead['days'] }) {
-  const all = days.flatMap((d) => d.over.map((x) => ({ ...x, date: d.date, shift: hoursShift(s, x) })))
+  const all = days.flatMap((d) => d.over.map((x) => ({ ...x, date: d.date, ...hoursWho(s, x) })))
+  const mine = all.filter((x) => !x.other), others = all.filter((x) => x.other)
+  const depts = [...new Set(others.map((x) => x.other))].sort()
   const groups = [
-    { k: 1, who: SHIFT_CHECKER[1], sub: tr('Turno 1'), list: all.filter((x) => x.shift === 1), noList: !rosterOf(s, 1).people.length },
-    { k: 2, who: SHIFT_CHECKER[2], sub: tr('Turno 2'), list: all.filter((x) => x.shift === 2), noList: !rosterOf(s, 2).people.length },
-    { k: 0, who: tr('{0} y {1}', SHIFT_CHECKER[1], SHIFT_CHECKER[2]), sub: tr('No se sabe el turno'), list: all.filter((x) => x.shift == null), noList: false },
-  ].filter((g) => g.k !== 0 || g.list.length)
+    { k: 1, who: SHIFT_CHECKER[1], sub: tr('Turno 1'), list: mine.filter((x) => x.shift === 1), noList: !rosterOf(s, 1).people.length },
+    { k: 2, who: SHIFT_CHECKER[2], sub: tr('Turno 2'), list: mine.filter((x) => x.shift === 2), noList: !rosterOf(s, 2).people.length },
+    { k: 0, who: tr('{0} y {1}', SHIFT_CHECKER[1], SHIFT_CHECKER[2]), sub: tr('No se sabe el turno'), list: mine.filter((x) => x.shift == null), noList: false },
+    // people of another department (Sanitation, Warehouse, QC...): their own supervisor checks them, not Josh nor Santiago (2026-11-06)
+    { k: 3, who: tr('Otros departamentos'), sub: depts.join(' · '), list: others.sort((a, b) => a.other.localeCompare(b.other) || b.hours - a.hours), noList: false },
+  ].filter((g) => (g.k !== 0 && g.k !== 3) || g.list.length)
   const multi = days.filter((d) => d.over.length).length > 1
   return (
     <div className="hov">
@@ -273,15 +277,16 @@ function HoursOverList({ s, days }: { s: State; days: HoursRead['days'] }) {
         {groups.map((g) => (
           <section key={g.k} className={'hov-g s' + g.k}>
             <header>
-              <span className="hov-av" aria-hidden="true">{g.k ? '👤' : '👥'}</span>
+              <span className="hov-av" aria-hidden="true">{g.k === 3 ? '🏢' : g.k ? '👤' : '👥'}</span>
               <div><b>{g.who}</b><small>{g.sub}</small></div>
               <span className="hov-n">{g.list.length}</span>
             </header>
-            {g.k === 0 && <p className="hov-why">{tr('No están en la lista de empleados de Ajustes, o el nombre se escribe distinto. Les toca a los dos.')}</p>}
+            {g.k === 0 && <p className="hov-why">{tr('No están en la lista de empleados de Ajustes, o el nombre se escribe distinto. Si son de otro departamento, agrégalos a la lista con su departamento. Mientras, les toca a los dos.')}</p>}
+            {g.k === 3 && <p className="hov-why">{tr('No son de producción: los revisa el supervisor de su departamento.')}</p>}
             {g.noList && <p className="hov-why">{tr('Falta la lista de empleados del {0} en Ajustes › Asistencia: su gente sale con los dos.', g.sub)}</p>}
             {g.list.length ? <ul>{g.list.map((x) => (
               <li key={x.date + x.name}>
-                <div className="hov-top"><b>{x.name}</b><span className="hov-h">{tr('{0} h', x.hours.toFixed(2))}</span></div>
+                <div className="hov-top"><b>{x.name}{x.other && <small className="hov-dept">{x.other}{x.shift ? ' · ' + tr('Turno {0}', x.shift) : ''}</small>}</b><span className="hov-h">{tr('{0} h', x.hours.toFixed(2))}</span></div>
                 {multi && <small className="hov-date">{x.date}</small>}
                 <div className="hov-p">{x.punches.map((p, i) => <span key={i}>{p}</span>)}</div>
               </li>

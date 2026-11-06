@@ -4076,4 +4076,11 @@ export const EN: Record<string, string> = {
   "El número es opcional: sirve cuando dos personas se llaman igual.": "The number is optional: it helps when two people have the same name.",
   "Corregir el nombre o el número": "Correct the name or the number",
   "Número de empleado (opcional)": "Employee number (optional)",
+  "Otros departamentos": "Other departments",
+  "No son de producción: los revisa el supervisor de su departamento.": "Not production: their own department's supervisor checks them.",
+  "No están en la lista de empleados de Ajustes, o el nombre se escribe distinto. Si son de otro departamento, agrégalos a la lista con su departamento. Mientras, les toca a los dos.": "They aren't in the Employee List in Settings, or the name is written differently. If they're from another department, add them to the list with their department. Meanwhile, both check them.",
+  "otro depto.": "other dept.",
+  "+ Otro departamento…": "+ Another department…",
+  "Sanitation, Warehouse, QC…": "Sanitation, Warehouse, QC…",
+  "Otro departamento: no sale en la asistencia de los cuartos, y en las horas de PPLH va a \"Otros departamentos\".": "Another department: not shown in the rooms' attendance, and in the PPLH hours it goes to \"Other departments\".",
 }
