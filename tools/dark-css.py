@@ -18,21 +18,24 @@ ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / 'src' / 'styles.css'
 OUT = ROOT / 'src' / 'dark.css'
 
-TOKENS = """html[data-theme="dark"]{color-scheme:dark;--bg:#1b1d20;--surface:#111214;--rd-box:#1f2226;--rd-made:#e08ccd;--rd-now:#7fb2ff;--rd-work:#5fd394;--ink:#e8ebee;--muted:#a0a8b1;--line:#2d3238;--accent:#b8549f;--accent-ink:#fff;--ok:#2f9e66;--warn:#e5534b;--amber:#e0a030;--soft:#33202e;--red-soft:#3a1f1d;--btn:#262a30;--btn-line:#4b525b;--btn-edge:#08090b}
+TOKENS = """html[data-theme="dark"]{color-scheme:dark;--bg:#1b1d20;--surface:#111214;--rd-box:#1f2226;--rd-made:#c9a8ea;--rd-now:#7fb2ff;--rd-work:#5fd394;--ink:#e8ebee;--muted:#a0a8b1;--line:#2d3238;--accent:#581447;--accent-text:#c9a8ea;--accent-line:#8f5bbf;--accent-ink:#fff;--ok:#2f9e66;--warn:#e5534b;--amber:#e0a030;--soft:#271a2e;--red-soft:#3a1f1d;--btn:#262a30;--btn-line:#4b525b;--btn-edge:#08090b}
 html[data-theme="dark"] .app.rd .logo{background:#fff;border-radius:10px;padding:3px}
 html[data-theme="dark"] .app.rd .btn.go{background:#1f8a55;border-color:#1f8a55}
 html[data-theme="dark"] .app.rd .veil{background:rgba(0,0,0,.7)}
 html[data-theme="dark"] .app.rd .line.mode-bin{border-color:#8b5cf6;box-shadow:0 0 0 1px #8b5cf6}
 html[data-theme="dark"] .app.rd .line.mode-bin .hero{border-color:#5b4a8a}
-html[data-theme="dark"]{--sb-ok:#2f9e66;--sb-warn:#e0a030;--sb-bad:#e5534b;--sb-goal:#e08ccd;--sb-lab:#a0a8b1}
+html[data-theme="dark"]{--sb-ok:#2f9e66;--sb-warn:#e0a030;--sb-bad:#e5534b;--sb-goal:#c9a8ea;--sb-lab:#a0a8b1}
 html[data-theme="dark"]{--t-work:#2f9e66;--t-stop:#e0a030;--t-setup:#8b74d6;--t-lunch:#5c6b7d;--t-track:#23262b;--t-gap:repeating-linear-gradient(135deg,#2a2d33 0 4px,#1f2226 4px 8px)}
-html[data-theme="dark"]{--wt-band:#163a26;--wt-edge:#2f7a4d;--wt-line:#e08ccd;--wt-ok:#e08ccd;--wt-bad:#f87171;--wt-warn:#fbbf24;--wt-lab:#a0a8b1}
+html[data-theme="dark"]{--wt-band:#163a26;--wt-edge:#2f7a4d;--wt-line:#c9a8ea;--wt-ok:#c9a8ea;--wt-bad:#f87171;--wt-warn:#fbbf24;--wt-lab:#a0a8b1}
 html[data-theme="dark"] .app.rd .k-lb{--kt:#2e2412;--kk:#fcd34d}
 html[data-theme="dark"] .app.rd .k-cajas{--kt:#16233d;--kk:#93c5fd}
 html[data-theme="dark"] .app.rd .k-copas{--kt:#1c1d3d;--kk:#a5b4fc}
 html[data-theme="dark"] .app.rd .k-bags{--kt:#122c2a;--kk:#5eead4}
 html[data-theme="dark"] .app.rd .k-pouches{--kt:#10292f;--kk:#67e8f9}
 html[data-theme="dark"] .app.rd .dlg{border-color:#3a4048;background:#23262b}
+html[data-theme="dark"] .rc-mat{--tone:#271a2e;--tone-line:#8f5bbf;--tone-edge:#3d2a4a;--tone-ink:#c9a8ea}
+html[data-theme="dark"] .kpi-tile.go{--c:#c9a8ea}
+html[data-theme="dark"] .lt-lot.go,html[data-theme="dark"] .lt-detail.go{--lc:#c9a8ea}
 """
 
 HEX = re.compile(r'#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b')
@@ -52,7 +55,14 @@ def hls(h):
     return colorsys.rgb_to_hls(*rgb(h))
 
 
+# the purple's light tints and mid tones, purple on the dark page too (left alone they turn plum-pink)
+PURPLE_BG = {'#b5579c': '#8f5bbf', '#f1dfec': '#271a2e', '#f6eaf2': '#271a2e', '#fbf7fa': '#1f1a24'}
+PURPLE_EDGE = {'#c48bb4': '#6a4590', '#e3c6da': '#3d2a4a'}
+
+
 def bg(h):
+    if h.lower() in PURPLE_BG:
+        return PURPLE_BG[h.lower()]
     hh, l, s = hls(h)
     if l >= 0.985 and s < 0.2:
         return 'var(--surface)'
@@ -63,7 +73,12 @@ def bg(h):
     return None
 
 
+PURPLE = {'#581447', '#3a0d2f'}
+
+
 def fg(h):
+    if h.lower() in PURPLE:
+        return '#c9a8ea'
     hh, l, s = hls(h)
     if l < 0.45:
         return hexof(*colorsys.hls_to_rgb(hh, max(0.78, 1 - l * 0.55), min(s, 0.75)))
@@ -71,6 +86,10 @@ def fg(h):
 
 
 def edge(h):
+    if h.lower() in PURPLE:
+        return '#8f5bbf'
+    if h.lower() in PURPLE_EDGE:
+        return PURPLE_EDGE[h.lower()]
     hh, l, s = hls(h)
     if l >= 0.6:
         return hexof(*colorsys.hls_to_rgb(hh, 0.3 if s > 0.2 else 0.26, min(s, 0.45)))
@@ -90,6 +109,10 @@ def turn(prop, value):
     def rep(m):
         n = f('#' + m.group(1))
         return m.group(0) if n is None else n
+    if f is fg:
+        value = value.replace('var(--accent)', 'var(--accent-text)')
+    elif f is edge:
+        value = value.replace('var(--accent)', 'var(--accent-line)')
     # (every colour of these properties is said again, turned or not, so the cascade of styles.css is repeated in the
     # same order: a later rule that changes a colour still wins over an earlier one, as it does in the light theme)
     return HEX.sub(rep, value)
