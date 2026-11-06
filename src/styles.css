@@ -2831,3 +2831,13 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 .rd-day.on{background:var(--soft);color:var(--ink)}
 .rd-day .btn.sm{min-height:32px;font-size:13px;padding:0 10px}
 @media (max-width:1100px){.rd-day .rd-day-t{display:none}.rd-day{padding:2px;background:none;border:0}}
+/* a person's options in the attendance window (Jose, 2026-11-05: "los botones son casi del mismo color del fondo y las
+   letras son difícil de leer ... el nombre de la persona tiene que estar también de otro color"): the person alone, the
+   name in the accent colour, the choices as plain grey buttons with clear text over the tinted panel */
+.app.rd .atw-person.open .atw-pname b{color:var(--accent);font-size:18px}
+.app.rd .atw-panel .atw-q{color:var(--ink);font-size:16px}
+.app.rd .atw-panel .atw-sub{color:var(--ink);font-weight:700;opacity:.85}
+.app.rd .atw-panel .btn.soft,.app.rd .atw-panel .btn:not(.stopbtn):not(.danger):not(.primary){background:var(--btn);border-color:var(--btn-line);color:var(--ink);box-shadow:0 2px 0 var(--btn-edge)}
+.app.rd .atw-backlist{justify-self:start;min-height:40px}
+/* while one person is being changed, the window keeps to that person: the tiles and the note wait above (Jose, 2026-11-05) */
+.app.rd .atw-focus .atw-stats,.app.rd .atw-focus .atw-note{display:none}

@@ -1450,3 +1450,7 @@ html:where([data-theme="dark"]),:where(html[data-theme="dark"]) body{background:
 :where(html[data-theme="dark"]) .rd-day{border-radius:99px;background:var(--btn);border:1px solid var(--line);color:var(--muted)}
 :where(html[data-theme="dark"]) .rd-day.on{background:var(--soft);color:var(--ink)}
 @media (max-width:1100px){:where(html[data-theme="dark"]) .rd-day{background:none;border:0}}
+:where(html[data-theme="dark"]) .app.rd .atw-person.open .atw-pname b{color:var(--accent)}
+:where(html[data-theme="dark"]) .app.rd .atw-panel .atw-q{color:var(--ink)}
+:where(html[data-theme="dark"]) .app.rd .atw-panel .atw-sub{color:var(--ink)}
+:where(html[data-theme="dark"]) .app.rd .atw-panel .btn.soft,:where(html[data-theme="dark"]) .app.rd .atw-panel .btn:not(.stopbtn):not(.danger):not(.primary){background:var(--btn);border-color:var(--btn-line);color:var(--ink);box-shadow:0 2px 0 var(--btn-edge)}

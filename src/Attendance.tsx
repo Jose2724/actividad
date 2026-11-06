@@ -193,7 +193,10 @@ export function AttendanceDialog({ s, dept, date, shift: inCourse, edit, note = 
   // the people here, by line (the room's lines in order, then those on no line in particular), narrowed by the search
   const fk = norm(find)
   const shown = fk ? here.filter((x) => norm(x.name).includes(fk)) : here
-  const groups = [...lines.map((l) => ({ id: l.id, name: attLineText(s, l.id), people: shown.filter((x) => x.line === l.id) })), { id: '', name: tr('Sin línea'), people: shown.filter((x) => !lineOk(x.line)) }].filter((g) => g.people.length > 0)
+  // the redesign: a person's options open with that person alone in view, the list one tap back (Jose, 2026-11-05:
+  // "sería bueno solo ver a María y evitar hacer scroll")
+  const focus = RD && out ? here.find((x) => x.id === out.id) : undefined
+  const groups = [...lines.map((l) => ({ id: l.id, name: attLineText(s, l.id), people: (focus ? [focus] : shown).filter((x) => x.line === l.id) })), { id: '', name: tr('Sin línea'), people: (focus ? [focus] : shown).filter((x) => !lineOk(x.line)) }].filter((g) => g.people.length > 0)
   // what the search of "Anotar" finds: already here, already in another room, the employee list, or a new name to write
   const q = name.trim(), qk = norm(q)
   const foundHere = qk ? list.filter((x) => !x.gone && norm(x.name).includes(qk)) : []
@@ -217,7 +220,7 @@ export function AttendanceDialog({ s, dept, date, shift: inCourse, edit, note = 
   const back = (x: AttEntry) => <button type="button" className="btn" onClick={() => setOut({ id: x.id, mode: 'menu' })}>{tr('← Atrás')}</button>
   return (
     <div className="veil atw-veil" onClick={onClose}>
-      <div className="dlg atw" role="dialog" aria-modal="true" aria-labelledby="atw-title" onClick={(e) => e.stopPropagation()} style={deptVars(dept)}>
+      <div className={"dlg atw" + (focus ? " atw-focus" : "")} role="dialog" aria-modal="true" aria-labelledby="atw-title" onClick={(e) => e.stopPropagation()} style={deptVars(dept)}>
         <div className="atw-top">
           <div className="atw-head">
             <h3 id="atw-title">{tr('Asistencia · {0} {1}', DEPT_LOOK[dept].emoji, dept)}</h3>
@@ -252,6 +255,7 @@ export function AttendanceDialog({ s, dept, date, shift: inCourse, edit, note = 
                 <div className="atw-empty"><p>{tr('Nadie anotado todavía en este turno.')}</p>{edit && <button type="button" className="btn primary" onClick={() => pickTab('add')}>{tr('➕ Anotar personas')}</button>}</div>
               ) : !groups.length ? <p className="hint">{tr('Nadie con ese nombre en la lista del turno.')}</p> : (
                 <div className="atw-groups">
+                  {focus && <button type="button" className="btn atw-backlist" onClick={() => setOut(null)}>{tr('‹ Volver a la lista')}</button>}
                   {groups.map((g) => (
                     <section key={g.id || '-'} className="atw-group">
                       <h4>{g.name}<span className="n">{g.people.length}</span></h4>
