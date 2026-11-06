@@ -30,7 +30,7 @@ function usePick(today: string, only?: Dept) {
 }
 type PickKit = ReturnType<typeof usePick>
 
-const hm = (ms: number) => { const m = Math.round(Math.max(0, ms) / 60_000), h = Math.floor(m / 60); return h ? h + ' h ' + String(m % 60).padStart(2, '0') : m + ' min' }
+export const hm = (ms: number) => { const m = Math.round(Math.max(0, ms) / 60_000), h = Math.floor(m / 60); return h ? h + ' h ' + String(m % 60).padStart(2, '0') : m + ' min' }
 const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : 0)
 const dayText = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' })
 
@@ -61,15 +61,15 @@ function PickBar({ icon, title, k, today, only, children }: { icon: string; titl
 }
 
 // ---- time: what a report's lines did with their time ----
-type Kind = 'work' | 'stop' | 'setup' | 'lunch'
-const KINDS: { k: Kind; icon: string; name: () => string; what: () => string }[] = [
+export type Kind = 'work' | 'stop' | 'setup' | 'lunch'
+export const KINDS: { k: Kind; icon: string; name: () => string; what: () => string }[] = [
   { k: 'work', icon: '✅', name: () => tr('Trabajando'), what: () => tr('La línea tiene un código y nadie la paró.') },
   { k: 'stop', icon: '⏸️', name: () => tr('Parado'), what: () => tr('Un paro con su razón mientras corre un código.') },
   { k: 'setup', icon: '🔧', name: () => tr('Set up'), what: () => tr('Preparando la línea para el siguiente código.') },
   { k: 'lunch', icon: '🍽️', name: () => tr('Lunch y break'), what: () => tr('Se cuenta aparte: no es un paro.') },
 ]
-const kindOfReason = (why: string): Kind => (why === SETUP ? 'setup' : downKind(why) === 'lunch' ? 'lunch' : 'stop')
-function timeOf(rep: Report) {
+export const kindOfReason = (why: string): Kind => (why === SETUP ? 'setup' : downKind(why) === 'lunch' ? 'lunch' : 'stop')
+export function timeOf(rep: Report) {
   const lunch = rep.reasons.filter((x) => kindOfReason(x.reason) === 'lunch').reduce((t, x) => t + x.ms, 0)
   const t = { work: rep.working, stop: Math.max(0, rep.down - lunch), setup: rep.setup, lunch }
   return { ...t, all: t.work + t.stop + t.setup + t.lunch }
@@ -102,7 +102,7 @@ function lineSegs(s: State, date: string, dept: Dept, lineId: string, A: number,
   return segs.sort((a, b) => a.from - b.from)
 }
 
-function SplitBar({ t }: { t: ReturnType<typeof timeOf> }) {
+export function SplitBar({ t }: { t: ReturnType<typeof timeOf> }) {
   return <div className="rd-tbar" role="img" aria-label={KINDS.map((x) => x.name() + ' ' + pct(t[x.k], t.all) + '%').join(', ')}>{KINDS.map((x) => t[x.k] > 0 && <i key={x.k} className={'k-' + x.k} style={{ width: (t[x.k] / t.all) * 100 + '%' }} title={x.name() + ' · ' + hm(t[x.k])} />)}</div>
 }
 
@@ -223,7 +223,7 @@ export function TimeTab({ s, now, today, only }: { s: State; now: number; today:
 
 // ---- stops by cause ----
 const CAUSE_ICON: Record<string, string> = { mech: '⚙️', people: '👥', clean: '🧽', lunch: '🍽️', other: '⏸️' }
-const causeIcon = (why: string) => (why === SETUP ? '🔧' : CAUSE_ICON[downKind(why)] ?? '⏸️')
+export const causeIcon = (why: string) => (why === SETUP ? '🔧' : CAUSE_ICON[downKind(why)] ?? '⏸️')
 const noReason = (why: string) => !why || why === ASK_MANAGER
 
 export function StopsTab({ s, now, today, only }: { s: State; now: number; today: string; only?: Dept }) {

@@ -6,7 +6,7 @@ import { DEPT_LOOK, FREEZER_LOOK, lookVars } from './look'
 /** a room's look, the freezer's too */
 const lookOf = (d: ChatRoom) => (d === 'Freezer' ? FREEZER_LOOK : DEPT_LOOK[d])
 import { longDate, useWho } from './App'
-import { tr } from './i18n'
+import { locale, tr } from './i18n'
 
 /**
  * Messages between each room and the office (Jose, 2026-10-28: "que el operador de la tablet pueda escribir también
@@ -135,7 +135,7 @@ function ChatAudio({ path }: { path: string }) {
   return <audio className="chat-audio" controls preload="none" src={url} onError={() => { links.delete(path); setGone(true) }} />
 }
 
-function ChatWindow({ s, dept, side, onClose }: { s: State; dept: ChatRoom; side: 'room' | 'office'; onClose: () => void }) {
+function ChatWindow({ s, dept, side, onClose, embedded }: { s: State; dept: ChatRoom; side: 'room' | 'office'; onClose: () => void; embedded?: boolean }) {
   const who = useWho()
   const canWrite = who.role !== 'viewer' && writesRoom(dept)
   const list = chatOf(s, dept)
@@ -215,11 +215,12 @@ function ChatWindow({ s, dept, side, onClose }: { s: State; dept: ChatRoom; side
     setSending(false)
   }
   return (
-    <div className={'chat-win' + (side === 'office' ? ' office' : '')} style={lookVars(lookOf(dept))} role="dialog" aria-label={tr('Mensajes · {0}', dept)}>
+    <div className={'chat-win' + (side === 'office' ? ' office' : '') + (embedded ? ' embedded' : '')} style={lookVars(lookOf(dept))} role={embedded ? 'region' : 'dialog'} aria-label={tr('Mensajes · {0}', dept)}>
       <div className="chat-head">
+        {embedded && <button type="button" className="chat-back" onClick={onClose} aria-label={tr('Volver a las conversaciones')}>‹</button>}
         <span className="chat-avatar" aria-hidden="true">{side === 'room' ? '🏢' : lookOf(dept).emoji}</span>
-        <div><b>{side === 'room' ? tr('Oficina') : dept}</b><small>{side === 'room' ? tr('Mensajes con la oficina y los managers') : tr('Mensajes con {0}', dept)}</small></div>
-        <button type="button" className="chat-x" onClick={onClose} aria-label={tr('Cerrar')}>×</button>
+        <div><b>{side === 'room' ? tr('Oficina') : dept}</b><small>{side === 'room' ? tr('Mensajes con la oficina y los managers') : dept === 'Freezer' ? tr('Freezer RTE, en sus teléfonos') : tr('la tablet del cuarto')}</small></div>
+        {!embedded && <button type="button" className="chat-x" onClick={onClose} aria-label={tr('Cerrar')}>×</button>}
       </div>
       <div className="chat-body">
         {!list.length && <p className="chat-empty">{side === 'room' ? tr('Escribe aquí a la oficina. Lo ven en su pantalla y te contestan aquí mismo.') : dept === 'Freezer' ? tr('Todavía no hay mensajes con el freezer. Escribe abajo: lo ven en Freezer RTE, en sus teléfonos.') : tr('Todavía no hay mensajes con {0}. Escribe abajo: lo ven en las tablets de ese cuarto.', dept)}</p>}
@@ -271,26 +272,36 @@ function ChatWindow({ s, dept, side, onClose }: { s: State; dept: ChatRoom; side
  */
 export function ChatInbox({ s }: { s: State }) {
   const side = 'office' as const
-  const [open, setOpen] = useState<ChatRoom | null>(null)
+  // wide: the most recent conversation is open beside the list; narrow: the list, and one conversation over it
+  const wide = () => typeof matchMedia === 'function' && matchMedia('(min-width: 900px)').matches
+  const [open, setOpen] = useState<ChatRoom | null>(() => (wide() ? [...CHAT_ROOMS].sort((a, b) => (chatOf(s, b).at(-1)?.at ?? 0) - (chatOf(s, a).at(-1)?.at ?? 0))[0] ?? null : null))
+  const [q, setQ] = useState('')
   const [, bump] = useState(0)
   const last = open ? (chatOf(s, open).at(-1)?.at ?? 0) : 0
   useEffect(() => { if (open && last > seenOf(side, open)) { markSeen(side, open, last); bump((n) => n + 1) } }, [open, last])
   useEffect(() => { if (open && last) markChatSeen(open, last) }, [open, last])
-  const rooms = [...CHAT_ROOMS].sort((a, b) => (chatOf(s, b).at(-1)?.at ?? 0) - (chatOf(s, a).at(-1)?.at ?? 0))
+  const needle = q.trim().toLowerCase()
+  // a search finds the conversations that said it, with the message that says it
+  const hitOf = (d: ChatRoom) => (needle ? chatOf(s, d).filter((x) => x.text.toLowerCase().includes(needle) || x.by.toLowerCase().includes(needle)).at(-1) : undefined)
+  const rooms = [...CHAT_ROOMS].sort((a, b) => (chatOf(s, b).at(-1)?.at ?? 0) - (chatOf(s, a).at(-1)?.at ?? 0)).filter((d) => !needle || !!hitOf(d) || d.toLowerCase().includes(needle))
   return (
-    <div className="rd-inbox">
+    <div className={'rd-inbox rd-chat' + (open ? ' has-open' : '')}>
+      <div className="rd-convs">
+      <div className="rd-convsearch"><input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={'🔍 ' + tr('Buscar en los mensajes…')} aria-label={tr('Buscar en los mensajes…')} autoComplete="off" /></div>
+      {!rooms.length && <p className="rd-calm">{tr('Nada con "{0}".', q.trim())}</p>}
       {rooms.map((d) => {
-        const m = chatOf(s, d).at(-1), n = chatUnread(s, d, side, seenOf(side, d)), look = lookOf(d)
+        const m = hitOf(d) ?? chatOf(s, d).at(-1), n = chatUnread(s, d, side, seenOf(side, d)), look = lookOf(d)
         const what = !m ? tr('Sin mensajes todavía') : m.text === CHAT_PHOTO_TEXT ? '📷 ' + tr('Foto') : m.text === CHAT_AUDIO_TEXT ? '🎤 ' + tr('Nota de voz') : m.text
         return (
-          <button key={d} type="button" className={'rd-conv' + (n ? ' new' : '')} style={lookVars(look)} onClick={() => setOpen(d)}>
+          <button key={d} type="button" className={'rd-conv' + (n ? ' new' : '') + (open === d ? ' on' : '')} aria-current={open === d ? 'true' : undefined} style={lookVars(look)} onClick={() => setOpen(d)}>
             <span className="rd-conv-e" aria-hidden="true">{look.emoji}</span>
-            <span className="rd-conv-t"><b>{d}<small>{m ? (dayOf(m.at) === dayOf(Date.now()) ? fmtTime(m.at) : longDate(dayOf(m.at))) : ''}</small></b><span>{m && m.side === side ? tr('Tú: {0}', what) : what}</span></span>
+            <span className="rd-conv-t"><b>{d}<small>{m ? (dayOf(m.at) === dayOf(Date.now()) ? fmtTime(m.at) : new Date(m.at).toLocaleDateString(locale, { day: 'numeric', month: 'short' })) : ''}</small></b><span>{m && m.side === side ? tr('Tú: {0}', what) : what}</span></span>
             {n > 0 && <i className="chat-badge">{n}</i>}
           </button>
         )
       })}
-      {open && <ChatWindow s={s} dept={open} side={side} onClose={() => setOpen(null)} />}
+      </div>
+      {open ? <ChatWindow key={open} s={s} dept={open} side={side} embedded onClose={() => setOpen(null)} /> : <div className="rd-chatnone"><span aria-hidden="true">💬</span><b>{tr('Escoge una conversación')}</b><small>{tr('Cada cuarto y Freezer, con lo último que dijo')}</small></div>}
     </div>
   )
 }

@@ -3232,3 +3232,44 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 .app.rd .wohist{display:grid;gap:10px}
 .rd-rangeseg button{display:inline-flex;flex-direction:row;align-items:center;gap:4px}
 .app.rd .pt-legend{display:flex;align-items:center;flex-wrap:wrap;gap:6px 14px}
+
+/* Resumen: the lines' time as a ring and bars; what happened this week (Jose, 2026-11-06) */
+.rd-sumtime-grid{display:grid;grid-template-columns:150px minmax(0,1fr);gap:16px;align-items:center}
+@media (max-width:620px){.rd-sumtime-grid{grid-template-columns:minmax(0,1fr)}.rd-ring{justify-self:center}}
+.rd-ring{position:relative;width:150px;height:150px}
+.rd-ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+.rd-ring circle{fill:none;stroke-width:18}
+.rd-ring .track{stroke:var(--t-track)}
+.rd-ring .arc.k-work{stroke:var(--t-work)}.rd-ring .arc.k-stop{stroke:var(--t-stop)}.rd-ring .arc.k-setup{stroke:var(--t-setup)}.rd-ring .arc.k-lunch{stroke:var(--t-lunch)}
+.rd-ringmid{position:absolute;inset:0;display:grid;place-content:center;text-align:center;line-height:1.1}
+.rd-ringmid b{font-size:26px}.rd-ringmid small{font-size:12px;color:var(--muted)}
+.rd-sumtime-rooms{display:grid;gap:8px;min-width:0}
+.rd-sumtime h3,.rd-weeknotes+*{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.rd-sumtime .rd-legend b{color:var(--ink);margin-left:2px}
+.rd-weeknotes{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.rd-sumrooms+.rd-sumtime{margin-top:12px}
+/* Mensajes: the list and the open conversation side by side (the catalogue) */
+.rd-chat{display:grid;grid-template-columns:320px minmax(0,1fr);gap:0;max-width:none;height:calc(100dvh - var(--topH,64px) - 110px);min-height:460px;border:1px solid var(--line);border-radius:16px;overflow:hidden;background:var(--surface)}
+.rd-convs{display:flex;flex-direction:column;gap:0;overflow:auto;border-right:1px solid var(--line);min-width:0}
+.rd-convsearch{padding:10px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surface);z-index:1}
+.rd-convsearch input{width:100%;min-height:40px;border-radius:10px}
+.rd-chat .rd-conv{border:0;border-bottom:1px solid var(--line);border-radius:0;box-shadow:none;padding:12px 14px}
+.rd-chat .rd-conv.on{background:var(--d-tint);box-shadow:inset 4px 0 0 var(--d)}
+.rd-chat .rd-conv.new:not(.on){box-shadow:inset 4px 0 0 var(--d)}
+.rd-chat .rd-conv-e{width:42px;height:42px;font-size:20px}
+.rd-chat .rd-conv-t b{font-size:15px}.rd-chat .rd-conv-t>span{font-size:13px}
+.chat-win.embedded{position:static;inset:auto;width:auto;height:auto;min-height:0;border-radius:0;box-shadow:none;z-index:auto}
+.chat-win.embedded .chat-head{background:var(--surface);color:var(--ink);border-bottom:1px solid var(--line);box-shadow:inset 0 3px 0 var(--d)}
+.chat-win.embedded .chat-head small{color:var(--muted)}
+.chat-back{display:none;border:0;background:none;color:inherit;font-size:28px;line-height:1;padding:0 6px;cursor:pointer}
+.rd-chatnone{display:grid;place-content:center;justify-items:center;gap:6px;color:var(--muted);text-align:center;padding:20px}
+.rd-chatnone span{font-size:40px}.rd-chatnone b{color:var(--ink);font-size:16px}
+@media (max-width:899px){
+  .rd-chat{grid-template-columns:minmax(0,1fr);height:calc(100dvh - var(--topH,64px) - 150px)}
+  .rd-chat.has-open .rd-convs{display:none}
+  .rd-chat:not(.has-open) .rd-chatnone{display:none}
+  .rd-chat:not(.has-open) .rd-convs{border-right:0}
+  .chat-back{display:block}
+}
+.rd-sumleft{display:grid;gap:12px;min-width:0;align-content:start}
+.rd-sum .rd-card h3{display:flex;align-items:center;gap:6px 8px;flex-wrap:wrap}

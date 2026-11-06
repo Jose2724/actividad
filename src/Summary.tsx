@@ -7,6 +7,8 @@ import { RangePick } from './PplhView'
 import { datesFrom, keepRange, rangeKept } from './pplh'
 import { reportOf } from './report'
 import { fmtTime } from './clock-fmt'
+import { KINDS, SplitBar, causeIcon, hm, kindOfReason, timeOf } from './RepTabs'
+import { lineNameOf } from './store'
 import { locale, tr } from './i18n'
 
 /**
@@ -79,7 +81,7 @@ function Spark({ values, unit }: { values: { date: string; qty: number }[]; unit
   )
 }
 
-type Go = 'wt' | 'pplh' | 'mini' | 'dash' | 'act' | 'hold'
+type Go = 'wt' | 'pplh' | 'mini' | 'dash' | 'act' | 'hold' | 'rtime' | 'rstop' | 'ratt'
 function SummaryNow({ s, now, date, onGo, has, picker }: { s: State; now: number; date: string; onGo: (t: Go) => void; has: (t: Go) => boolean; picker: ReactNode }) {
   const rooms = DEPTS.map((d) => ({ d, ...roomNow(s, d, date, now) }))
   const withGoal = rooms.filter((r) => r.due > 0)
@@ -116,6 +118,7 @@ function SummaryNow({ s, now, date, onGo, has, picker }: { s: State; now: number
         <button type="button" className={'rd-tile link' + (held ? ' warn' : '')} onClick={() => onGo('hold')} disabled={!has('hold')}><label>🔍 {tr('On hold')}</label><b>{held}</b><small>{tr('Ver las unidades ›')}</small></button>
       </div>
       <div className="rd-sumgrid">
+        <div className="rd-sumleft">
         <div className="rd-sumrooms">
           {rooms.map((r) => {
             const pct = r.due ? Math.round((r.made / r.due) * 100) : null, st = state(r)
@@ -137,6 +140,8 @@ function SummaryNow({ s, now, date, onGo, has, picker }: { s: State; now: number
             )
           })}
         </div>
+          <ShiftTime s={s} date={date} now={now} onGo={has('rtime') ? () => onGo('rtime') : undefined} />
+        </div>
         <div className="rd-sumside">
           <article className="rd-card">
             <h3>📈 {tr('Producción vs meta · últimos 7 días')}</h3>
@@ -150,12 +155,7 @@ function SummaryNow({ s, now, date, onGo, has, picker }: { s: State; now: number
           </article>
         </div>
       </div>
-      <div className="rd-more">
-        {has('wt') && <button type="button" className="rd-morecard" onClick={() => onGo('wt')}><b>⚖️ {tr('Pesos')}</b><span>{tr('pruebas hechas, en rango, bajos y sobre')}</span></button>}
-        {has('dash') && <button type="button" className="rd-morecard" onClick={() => onGo('dash')}><b>📊 Dashboard</b><span>{tr('yield, shorts y PPLH con su gráfica')}</span></button>}
-        {has('mini') && <button type="button" className="rd-morecard" onClick={() => onGo('mini')}><b>📅 {tr('Mini KPI')}</b><span>{tr('la semana de cada turno contra la meta')}</span></button>}
-        {has('pplh') && <button type="button" className="rd-morecard" onClick={() => onGo('pplh')}><b>📈 PPLH</b><span>{tr('libras por hora de trabajo y downtime')}</span></button>}
-      </div>
+      <WeekNotes s={s} date={date} now={now} onGo={onGo} has={has} />
     </div>
   )
 }
@@ -252,3 +252,94 @@ function SummaryRange({ s, now, date, onGo, has, days, picker }: { s: State; now
     </div>
   )
 }
+
+/**
+ * The lines' time in the shift in course, as a picture (Jose, 2026-11-06: "aquí cabe ... a ellos les gustan las
+ * gráficas"): the whole plant as a ring, each room as a bar of its working, stopped, set up and lunch time. The same
+ * numbers as Reportes › Tiempo.
+ */
+function ShiftTime({ s, date, now, onGo }: { s: State; date: string; now: number; onGo?: () => void }) {
+  const per = DEPTS.map((d) => { const k = turnOf(s, date, now, d).shift || 0; return { d, t: timeOf(reportOf(s, date, now, { only: d, shift: k as 0 | 1 | 2 })) } }).filter((x) => x.t.all > 0)
+  const t = per.reduce((a, x) => ({ work: a.work + x.t.work, stop: a.stop + x.t.stop, setup: a.setup + x.t.setup, lunch: a.lunch + x.t.lunch, all: a.all + x.t.all }), { work: 0, stop: 0, setup: 0, lunch: 0, all: 0 })
+  const pc = (x: number) => (t.all ? Math.round((x / t.all) * 100) : 0)
+  // the ring: one arc per kind, in the order of the legend
+  const R = 52, C = 2 * Math.PI * R
+  let at = 0
+  const arcs = KINDS.map((x) => { const len = t.all ? (t[x.k] / t.all) * C : 0, a = { k: x.k, len, off: at }; at += len; return a }).filter((a) => a.len > 0)
+  return (
+    <article className="rd-card rd-sumtime">
+      <h3>⏱️ {tr('Tiempo de las líneas · este turno')}{onGo && <button type="button" className="btn sm soft rd-howbtn" onClick={onGo}>{tr('Ver detalle ›')}</button>}</h3>
+      {!per.length ? <p className="rd-calm">{tr('Ninguna línea ha trabajado en este turno todavía.')}</p> : (
+        <div className="rd-sumtime-grid">
+          <div className="rd-ring">
+            <svg viewBox="0 0 140 140" role="img" aria-label={KINDS.map((x) => x.name() + ' ' + pc(t[x.k]) + '%').join(', ')}>
+              <circle cx="70" cy="70" r={R} className="track" />
+              {arcs.map((a) => <circle key={a.k} cx="70" cy="70" r={R} className={'arc k-' + a.k} strokeDasharray={a.len + ' ' + (C - a.len)} strokeDashoffset={-a.off} />)}
+            </svg>
+            <div className="rd-ringmid"><b>{pc(t.work)}%</b><small>{tr('trabajando')}</small></div>
+          </div>
+          <div className="rd-sumtime-rooms">
+            {per.map((x) => (
+              <div key={x.d} className="rd-tsplit" style={deptVars(x.d)}>
+                <span className="rd-tsname">{DEPT_LOOK[x.d].emoji} {x.d}</span>
+                <SplitBar t={x.t} />
+                <span className="rd-tsnums"><b>{x.t.all ? Math.round((x.t.work / x.t.all) * 100) : 0}%</b> · {hm(x.t.all)}</span>
+              </div>
+            ))}
+            <div className="rd-legend">{KINDS.map((x) => <span key={x.k}><i className={'k-' + x.k} />{x.name()} <b>{hm(t[x.k])}</b></span>)}</div>
+          </div>
+        </div>
+      )}
+    </article>
+  )
+}
+
+/**
+ * "Lo que pasó esta semana" (Jose, 2026-11-06, from the catalogue): a few findings of the last seven days, worked out
+ * from what the app has: the rooms under their goal most days and the best day (only with goals set), the cause that
+ * stopped the lines the most, the longest stop, and the lowest attendance of a room and shift. Each opens its tab.
+ */
+function WeekNotes({ s, date, now, onGo, has }: { s: State; date: string; now: number; onGo: (t: Go) => void; has: (t: Go) => boolean }) {
+  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => day(date, i - 6)), [date])
+  const reps = useMemo(() => days.map((d) => ({ d, rep: reportOf(s, d, now) })), [s, days]) // eslint-disable-line react-hooks/exhaustive-deps
+  const wd = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString(locale, { weekday: 'long' })
+  const notes: { k: string; lvl: 'r' | 'w' | 'i'; text: string; sub: string; go?: Go }[] = []
+  // the goals: each room's days under 90% of its goal, and the plant's best day
+  const pcts = days.map((d) => ({ d, pct: plantDay(s, d, now) })).filter((x) => x.pct != null) as { d: string; pct: number }[]
+  if (pcts.length) {
+    const under = DEPTS.map((dept) => {
+      const worked = days.filter((d) => deptToday(s, dept, d, now).qty > 0)
+      const goal = (k: 1 | 2) => shiftGoalOf(s, dept, k)?.total ?? 0
+      const low = worked.filter((d) => { const plan = shiftsOf(s, d, dept), ks: (1 | 2)[] = plan.only ? [plan.only] : [1, 2]; const g = ks.reduce((t, k) => t + goal(k), 0); return g > 0 && deptToday(s, dept, d, now).qty < g * 0.9 })
+      return { dept, low: low.length, of: worked.length }
+    }).filter((x) => x.low > 0).sort((a, b) => b.low - a.low)[0]
+    if (under) notes.push({ k: 'under', lvl: 'w', text: tr('{0} bajo la meta {1} de {2} días', under.dept, under.low, under.of), sub: tr('menos del 90% de su meta'), go: 'rtime' })
+    const best = [...pcts].sort((a, b) => b.pct - a.pct)[0]
+    notes.push({ k: 'best', lvl: 'i', text: tr('Mejor día: {0}, {1}%', wd(best.d), Math.round(best.pct * 100)), sub: tr('de la meta de la planta') })
+  }
+  // the cause that stopped the lines the most, and the longest stop (not Set up nor lunch)
+  const causes = new Map<string, { ms: number; n: number }>()
+  for (const { rep } of reps) {
+    for (const r of rep.reasons) if (kindOfReason(r.reason) === 'stop') { const e = causes.get(r.reason) ?? { ms: 0, n: 0 }; e.ms += r.ms; causes.set(r.reason, e) }
+    for (const x of rep.stops) if (kindOfReason(x.reason) === 'stop') { const e = causes.get(x.reason) ?? { ms: 0, n: 0 }; e.n++; causes.set(x.reason, e) }
+  }
+  const top = [...causes].sort((a, b) => b[1].ms - a[1].ms)[0]
+  if (top && top[1].ms > 0) notes.push({ k: 'cause', lvl: 'w', text: tr('Lo que más paró: {0}', causeIcon(top[0]) + ' ' + tr(top[0])), sub: tr('{0} en la semana · {1} veces', hm(top[1].ms), top[1].n), go: 'rstop' })
+  const long = reps.flatMap(({ d, rep }) => rep.stops.filter((x) => kindOfReason(x.reason) === 'stop').map((x) => ({ d, x }))).sort((a, b) => b.x.ms - a.x.ms)[0]
+  if (long && long.x.ms >= 10 * 60_000) notes.push({ k: 'long', lvl: 'r', text: tr('Paro más largo: {0}', hm(long.x.ms)), sub: long.x.dept + (long.x.lineId ? ' · ' + lineNameOf(s, long.x.lineId) : '') + ' · ' + tr(long.x.reason) + ' · ' + wd(long.d), go: 'rstop' })
+  // the lowest attendance of a room and shift with people written
+  let low: { d: string; dept: Dept; k: 1 | 2; att: number; miss: number } | null = null
+  for (const d of days) for (const k of [1, 2] as const) for (const r of attendanceOf(s, d, k).rows) if (r.actual > 0 && r.expected > 0 && (!low || r.att < low.att)) low = { d, dept: r.dept, k, att: r.att, miss: r.miss }
+  if (low && low.att < 0.95) notes.push({ k: 'att', lvl: low.att < 0.85 ? 'r' : 'w', text: tr('Asistencia {0} turno {1}: {2}%', low.dept, low.k, Math.round(low.att * 100)), sub: low.miss === 1 ? tr('1 falta el {0}', wd(low.d)) : tr('{0} faltas el {1}', low.miss, wd(low.d)), go: 'ratt' })
+  return (
+    <article className="rd-card">
+      <h3>🗓️ {tr('Lo que pasó esta semana')}<small className="rd-cardsub">{tr('últimos 7 días')}</small></h3>
+      {notes.length ? (
+        <div className="rd-weeknotes">
+          {notes.slice(0, 4).map((n) => <button key={n.k} type="button" className={'rd-alert ' + n.lvl} disabled={!n.go || !has(n.go)} onClick={() => n.go && onGo(n.go)}><b>{n.text}</b><span>{n.sub}</span></button>)}
+        </div>
+      ) : <p className="rd-calm">✓ {tr('Nada fuera de lo normal en la semana.')}</p>}
+    </article>
+  )
+}
+

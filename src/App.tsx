@@ -709,7 +709,7 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
   }
   if (RD) return (
     <div className={'app rd' + (isOp ? ' rd-op' : '')}>
-      <Chat s={s} home={home} onInbox={isOp ? undefined : () => setTab('msg')} />
+      {!(shownTab === 'msg' && !isOp) && <Chat s={s} home={home} onInbox={isOp ? undefined : () => setTab('msg')} />}
       <header className="rd-top">
         <div className="rd-brand"><img className="logo" src={import.meta.env.BASE_URL + 'mamas-logo.png'} alt="Mama's Creations" /><div><h1>{APP}{!supabase && <span className="demotag">DEMO</span>}</h1><small>{new Date(now).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })} · <b className="livetime">{new Date(now).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</b></small></div></div>
         <DayBar s={s} now={now} day={day} mgr={can('day')} calendar={can('shifts')} compact />
