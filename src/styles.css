@@ -3635,3 +3635,24 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 .app.rd .line .rd-orderline{display:block;padding:5px 10px;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @keyframes slowblink-dark{0%,100%{background:var(--surface);border-color:#dc2626;box-shadow:0 0 0 0 rgba(220,38,38,0)}50%{background:#4a1f22;border-color:#ef4444;box-shadow:0 0 0 8px rgba(220,38,38,.25)}}
 :where(html[data-theme="dark"]) .line.slow{animation-name:slowblink-dark}
+/* ---- phones (Jose, 2026-11-06, on his iPhone: "no se ve bien ... y también hay otros lugares"): the Resumen, PPLH, KPI
+   diario, Pesos, Dashboard, Mini KPI and Pedidos were wider than the screen and cut on the right, because a box in a grid or
+   a row grows to its widest content (a table, a row of choices). Here no box grows past the screen: a wide table scrolls
+   inside its own box and a row of choices wraps to a second line. The list of rooms on top is a row that slides. ---- */
+@media (max-width:1023px){
+  .app.rd .rd-main :is(div,article,section,form,details,header,footer,main,label,fieldset,nav){min-width:0}
+  .app.rd .rd-sum,.app.rd .rd-sumleft{grid-template-columns:minmax(0,1fr)}
+  .app.rd .rd-main .scroll{overflow-x:auto;max-width:100%}
+}
+@media (max-width:760px){
+  .app.rd .rd-rangeseg{display:grid;grid-auto-flow:row;grid-template-columns:repeat(3,minmax(0,1fr));width:100%}
+  .app.rd .rd-rangeseg button{white-space:normal;line-height:1.15;padding:4px 6px}
+  .app.rd .rd-main :is(article,section,div,details):not(.scroll):not(.twrap):not(.rd-twrap)>table{display:block;overflow-x:auto;max-width:100%}
+}
+@media (max-width:520px){
+  .app.rd .rd-find{flex:0 0 44px;justify-content:center;padding:0;font-size:18px}
+  .app.rd .rd-find-t{display:none}
+}
+@media (max-width:720px){
+  .app.rd .side{position:static;align-self:stretch;max-height:none;overflow-y:hidden;overflow-x:auto}
+}

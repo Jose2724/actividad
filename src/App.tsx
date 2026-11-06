@@ -598,6 +598,8 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
         : <div className="stalebar top"><span>{sync.fresh ? trx('⚠ Este aparato muestra lo de las {0}: lleva {1} sin bajar del servidor ({2}). Si en otra tablet cambió algo, aquí todavía no se ve.', fmtTime(sync.fresh), agoText(staleMs), why) : trx('⚠ Este aparato no ha bajado nada del servidor todavía ({0}).', why)}</span><button type="button" className="btn sm" onClick={() => window.dispatchEvent(new Event('act-resync'))}>{tr('Reintentar')}</button></div>)
   // the floor: the rooms on the side and the room chosen (in the redesign, "Toda la planta" first: every room at a glance)
   const showAll = RD && overview && can('depts')
+  // on a phone the rooms are a row that slides: the one tapped comes fully into view (Jose, 2026-11-06, his iPhone)
+  const seen = (el: HTMLElement) => { try { el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' }) } catch { /* old browsers */ } }
   const actView = (
         <>
         {!RD && <DayBar s={s} now={now} day={day} mgr={can('day')} calendar={can('shifts')} />}
@@ -605,14 +607,14 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
           {/* the manager moves between rooms; a supervisor or operator only has their own */}
           {can('depts') && (
             <aside className="side">
-              {RD && <button type="button" className={'dept rd-all' + (showAll ? ' on' : '')} onClick={() => setOverview(true)}><span className="dname"><span className="dtitle"><i className="demoji" aria-hidden="true">🏭</i>{tr('Toda la planta')}</span></span></button>}
+              {RD && <button type="button" className={'dept rd-all' + (showAll ? ' on' : '')} onClick={(e) => { setOverview(true); seen(e.currentTarget) }}><span className="dname"><span className="dtitle"><i className="demoji" aria-hidden="true">🏭</i>{tr('Toda la planta')}</span></span></button>}
               {DEPTS.map((d) => {
                 const lines = s.lines.filter((l) => l.dept === d)
                 const running = lines.filter((l) => openRun(s, l.id) && !openStop(s, d, l.id)).length
                 const stopped = lines.filter((l) => openRun(s, l.id) && openStop(s, d, l.id)).length
                 const goal = shiftGoalOf(s, d, turnOf(s, day.date, now, d).shift).total, td = goal ? deptToday(s, d, day.date, now) : null
                 return (
-                  <button key={d} type="button" className={'dept' + (dept === d && !showAll ? ' on' : '')} style={deptVars(d)} onClick={() => { setDept(d); setOverview(false) }}>
+                  <button key={d} type="button" className={'dept' + (dept === d && !showAll ? ' on' : '')} style={deptVars(d)} onClick={(e) => { setDept(d); setOverview(false); seen(e.currentTarget) }}>
                     <span className="dname"><span className="dtitle"><i className="demoji" aria-hidden="true">{DEPT_LOOK[d].emoji}</i>{d}</span>{td && goal && <small className="goalmini">{fmtN(td.shiftQty)} / {fmtN(goal)} {td.unitLabel}</small>}</span>
                     <span className="dots">{running > 0 && <i className="dot g">{running}</i>}{stopped > 0 && <i className="dot r">{stopped}</i>}</span>
                   </button>
