@@ -2683,3 +2683,60 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 .rd-theme{display:inline-flex;background:var(--btn);border-radius:10px;padding:3px;gap:2px;flex-wrap:wrap}
 .rd-theme button{border:0;background:none;border-radius:8px;padding:6px 10px;font-weight:700;font-size:13.5px;color:var(--ink)}
 .rd-theme button.on{background:var(--accent);color:#fff}
+
+/* ---- the room as in the catalogue (Jose, 2026-11-05: "está mejor el diseño como lo tienes tú en el catálogo"; "la
+   asistencia, me gusta más arriba"): its actions in one row with the attendance first and "+ Agregar" on the right, four
+   tiles in a row, and line cards with a coloured header, the code on one line, the count big and one big button ---- */
+.app.rd .panel{gap:12px}
+.app.rd .phead{padding:0;background:none;border:0;box-shadow:none}
+.app.rd .phead .dhead{display:none}
+.app.rd .phead .acts{display:flex;flex-wrap:wrap;gap:8px;width:100%;align-items:center}
+.app.rd .phead .acts .rd-addline{margin-left:auto}
+.app.rd .rd-attbtn{display:inline-flex;align-items:center;gap:8px}
+.rd-chipn{background:var(--surface);color:var(--ink);border-radius:99px;padding:1px 9px;font-size:13.5px}
+.rd-room-tiles{display:grid;gap:8px}
+.rd-room-tiles .rd-tile.tap{cursor:pointer}
+.rd-room-tiles .rd-tile.tap:hover{border-color:#c48bb4}
+.rd-room-tiles .rd-tile label{display:flex;justify-content:space-between;align-items:center;gap:6px}
+.rd-goal{font-size:12px;text-transform:none;letter-spacing:0;padding:0}
+.rd-room-tiles .rd-bar{height:7px;margin:3px 0 1px}
+.rd-room-tiles .rd-bar i{background:var(--d,var(--accent))}
+.rd-room-tiles .rd-bar i.ok{background:var(--ok)}
+.rd-room-tiles .tc-codes{display:flex;flex-wrap:wrap;gap:6px}
+/* the line card */
+.app.rd .line{padding:0 0 14px;gap:0;overflow:hidden;border-width:1px;border-left-width:1px;border-radius:14px}
+.app.rd .line>*:not(.veil){margin-left:14px;margin-right:14px}
+.app.rd .line>*:not(.lhead):not(.veil){margin-top:10px}
+.app.rd .line .lhead{margin:0;padding:10px 14px;background:var(--d-tint);border-bottom:1px solid var(--line);align-items:center}
+.app.rd .line .lhead h3{margin-right:auto;font-size:17px}
+.app.rd .line .pill{font-size:12.5px;font-weight:800;padding:3px 10px;border-radius:99px}
+.app.rd .line.running{border-color:var(--line)}
+.app.rd .line.running .pill.run{background:#dcfce7;color:#166534}
+.app.rd .line.stopped{border-color:#df9a93;box-shadow:0 0 0 2px var(--red-soft)}
+.app.rd .line.insetup{border-color:#dcae58}
+.app.rd .line .hero{background:none;padding:0;gap:2px}
+.app.rd .line .hero-main .code{font-size:22px}
+.app.rd .line .hero-main .lot b{font-size:18px}
+.app.rd .line .hero-facts{gap:2px 12px;margin:0}
+.app.rd .line .fact{background:none;border:0;padding:0;font-size:13px;color:var(--muted)}
+.app.rd .line .fact small{text-transform:none;letter-spacing:0;font-weight:600}
+.app.rd .line .fact b{color:var(--ink)}
+.app.rd .line .tiles,.app.rd .line .tiles.four{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 14px}
+.app.rd .line .tile{background:none;padding:0;display:inline-flex;align-items:baseline;gap:5px}
+.app.rd .line .tile label{order:2;text-transform:none;letter-spacing:0;font-size:13px;font-weight:600}
+.app.rd .line .tile b{order:1;font-size:15px;color:var(--ink)}
+.app.rd .line .tile small{order:3;font-size:12px}
+.app.rd .line .tile.main{background:none}
+.app.rd .line .tile.main b{font-size:20px;color:var(--ink)}
+.app.rd .line .tiles.four .tile.main+.tile.main{flex-basis:100%;order:-1}
+.app.rd .line .tiles.four .tile.main+.tile.main b,.app.rd .line .tiles:not(.four) .tile.main b{font-size:34px;line-height:1}
+.app.rd .line .tiles:not(.four) .tile.main{flex-basis:100%;order:-1}
+.app.rd .line .tiles.four .tile.main+.tile.main label,.app.rd .line .tiles:not(.four) .tile.main label{font-size:15px}
+.app.rd .line .btn.huge{min-height:60px;font-size:19px}
+.app.rd .line .acts2{display:grid;grid-auto-flow:row;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px}
+.app.rd .line .acts2 .btn{min-height:44px;font-size:14px}
+.app.rd .line .acts2 .btn .opt{display:none}
+.app.rd .line .tile label,.app.rd .line .tile b,.app.rd .line .tile small{white-space:normal;overflow:visible;text-overflow:clip}
+.app.rd .line .tile:not(.main){font-size:13px}
+.app.rd .line>.btn,.app.rd .line>.acts2,.app.rd .line>div{width:auto;min-width:0}
+.app.rd .line .lhead .lacts{display:inline-flex;gap:8px;align-items:center}

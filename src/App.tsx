@@ -9,7 +9,7 @@ import { loadPdf } from './pdf'
 import { sharePick, shareProblem, type Kind } from './send'
 import { runLots, spanShifts, unitParts } from './report'
 import { canDo, canShift, keepsPin, writesIn, type Power, type Who } from './powers'
-import { ASK_MANAGER, isMechanical, LUNCH, LUNCH_MIN, lunchOver, mechNote, stopChoices, stopsWaiting, type Stop } from './store'
+import { ASK_MANAGER, isMechanical, LUNCH, LUNCH_MIN, lunchOver, mechNote, stopChoices, stopsWaiting, type Stop, attendanceOf } from './store'
 import { AddRunDialog, AddUnitDialog, NoteBox, RunEditor, StopEditor } from './editors'
 import { CodePicker, codeReady, DetailNeeded, detailHint } from './CodePicker'
 import { fetchMe, finishSignOut, loginEmail, rememberedMe, rememberedUser, rememberMe, rememberUser, signedOut, signOutHere, supabase, type Me } from './supabase'
@@ -1858,7 +1858,7 @@ function OrderDialog({ s, order, onClose }: { s: State; order: Order | undefined
  * lines, and the manager's goal: so much in the whole day, and so much per hour (the pace is the shift's in course,
  * and it is red as soon as it falls under the goal)
  */
-function TodayCard({ s, dept, now, mgr, date }: { s: State; dept: Dept; now: number; mgr: boolean; date: string }) {
+function TodayCard({ s, dept, now, mgr, date, onPeople }: { s: State; dept: Dept; now: number; mgr: boolean; date: string; onPeople?: () => void }) {
   const cfg = CFG[dept]
   const t = deptToday(s, dept, date, now)
   // The goal is the shift's: its manager sets it for his people, and only what this shift makes counts against it
@@ -1884,6 +1884,53 @@ function TodayCard({ s, dept, now, mgr, date }: { s: State; dept: Dept; now: num
   const goShift = (x: Partial<ReportAt> = {}) => (toRep ? () => toRep({ date, dept, shift: t.shift, view: 'rec', rec: 'runs', ...x }) : null)
   /** "Braiser 1, 2, 3" when the lines share their word; "Línea 1, Línea 2" otherwise */
   const linesText = (lines: string[]) => { const m = lines.map((l) => /^(.*?)\s*(\d+)$/.exec(l)); const w = m[0]?.[1]; return lines.length > 1 && w && m.every((x) => x && x[1] === w) ? w + ' ' + m.map((x) => x![2]).join(', ') : lines.join(', ') }
+  // the redesign (2026-11-05, as in the catalogue Jose approved): four tiles in a row, what the shift made against its
+  // goal, its pace and clock, its stops, and its people; the codes under them as before
+  if (RD) {
+    const tt = turnOf(s, date, now, dept)
+    const stops = s.stops.filter((x) => !x.deleted && x.dept === dept && x.reason !== SETUP && x.startedAt < now && (x.endedAt ?? now) > tt.since)
+    const stopMin = Math.round(stops.reduce((m, x) => m + (Math.min(x.endedAt ?? now, now) - Math.max(x.startedAt, tt.since)) / 60_000, 0))
+    const openStops = stops.filter((x) => !x.endedAt).length
+    const att = onPeople ? attendanceOf(s, date, (tt.shift || 1) as 1 | 2, [dept]).rows[0] : null
+    return (
+      <div className="rd-room-tiles">
+        <div className="rd-tiles">
+          <div className={'rd-tile' + (toRep ? ' tap' : '')} {...tapProps(goShift())}>
+            <label>{trx('{0} del turno', t.unitLabel.charAt(0).toUpperCase() + t.unitLabel.slice(1))}{mgr && <button type="button" className="lnk sm rd-goal" onClick={(e) => { e.stopPropagation(); setEditing(true) }}>{hasGoal ? tr('✎ meta') : tr('+ meta')}</button>}</label>
+            <b>{fmtN(t.shiftQty)}{goal.total ? <small> / {fmtN(goal.total)}</small> : null}</b>
+            {goal.total ? <div className="rd-bar"><i className={pct >= 100 ? 'ok' : ''} style={{ width: pct + '%' }} /></div> : null}
+            <small>{goal.total ? (left > 0 ? <>{trx('faltan {0}', fmtN(left))}{eta && <> · {etaText(eta, now)}</>}</> : <span className="ok-c">{tr('✓ meta cumplida')}</span>) : cfg.qty !== 'none' ? t.shiftUnits + ' ' + unitWord(t.shiftUnits) : tr('sin meta')}</small>
+          </div>
+          <div className={'rd-tile ' + paceCls}>
+            <label>{tr('Ritmo')}</label>
+            <b>{t.shiftRate != null ? fmtN(t.shiftRate) : '—'}<small> / h</small></b>
+            <small>{goal.perHour ? <span className={paceCls === 'red' ? 'bad-c' : paceCls === 'ok' ? 'ok-c' : ''}>{paceArrow}{trx('meta {0}/h', fmtN(goal.perHour))}</span> : t.shiftSince > 0 ? trx('desde las {0} · {1}', fmtTime(t.shiftSince), fmtDur(t.shiftMs)) : tr('nada empezado todavía')}</small>
+          </div>
+          <div className={'rd-tile' + (openStops ? ' bad' : '')}>
+            <label>{tr('Paros del turno')}</label>
+            <b>{stops.length}<small> · {stopMin} min</small></b>
+            <small>{openStops ? (openStops === 1 ? tr('1 sigue abierto') : tr('{0} siguen abiertos', openStops)) : tr('sin contar Set up')}</small>
+          </div>
+          {att ? (
+            <button type="button" className={'rd-tile link' + (att.actual < att.expected ? ' warn' : ' ok')} onClick={onPeople}>
+              <label>{tr('Gente')}</label>
+              <b>{att.actual}<small> {tr('de {0}', att.expected)}</small></b>
+              <small>{tr('Anotar o ver la asistencia ›')}</small>
+            </button>
+          ) : (
+            <div className="rd-tile">
+              <label>{tr('Reloj del turno')}</label>
+              <b>{t.shiftSince > 0 ? fmtDur(t.shiftMs) : '—'}</b>
+              <small>{t.shiftSince > 0 ? trx('desde las {0}', fmtTime(t.shiftSince)) : tr('nada empezado todavía')}</small>
+            </div>
+          )}
+        </div>
+        {t.paused > 0 && <p className="tc-paused">{tr('Ese rato no cuenta. Si siguen trabajando, al registrar lo siguiente cuenta todo; si ya se fueron, toca "Terminar turno".')}</p>}
+        {many && <div className="tc-codes">{t.shiftCodes.map((c) => <span key={c.code} className={'tc-code' + (toRep ? ' tap' : '')} {...tapProps(goShift({ code: c.code, view: 'code' }))}><b>{c.code}</b> {fmtN(c.qty)} {label(c.qty)}{cfg.qty !== 'none' ? ' · ' + c.units + ' ' + unitWord(c.units) : ''} · {linesText(c.lines)}</span>)}</div>}
+        {editing && <TargetDialog s={s} dept={dept} unit={t.unitLabel} inCourse={t.shift} onClose={() => setEditing(false)} />}
+      </div>
+    )
+  }
   return (
     <div className="todaycard tc2">
       <div className="tc-head">
@@ -2420,15 +2467,17 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
       <div className="phead">
         <h2 className="dhead"><i className="demoji" aria-hidden="true">{DEPT_LOOK[dept].emoji}</i>{dept}</h2>
         {!viewOnly && <div className="acts">
+          {RD && (s.attView.on || !!who.admin) && (() => { const r = attendanceOf(s, day.date, (turn.shift || 1) as 1 | 2, [dept]).rows[0]; return <button type="button" className="btn soft rd-attbtn" onClick={() => setAttWin(true)}>{tr('✍️ Asistencia')} <b className="rd-chipn">{tr('{0} / {1}', r.actual, r.expected)}</b></button> })()}
+          {RD && CFG[dept].waste && <RoomWasteButton s={s} dept={dept} date={day.date} />}
           {guard.locked ? null : ds
             ? <button type="button" className="btn danger" onClick={() => endStop(ds.id)}>{trx('▶ Reanudar departamento · {0}', fmtDur(now - ds.startedAt))}</button>
             : <button type="button" className="btn stopbtn" disabled={!anyRunning} onClick={() => setStopAll(true)}>{tr('⏸ Parar departamento')}</button>}
           {canStart2 && !guard.locked && <button type="button" className="btn soft" onClick={() => setStarting2(true)}>{tr('▶ Empezar Turno 2')}</button>}
           {!guard.locked && <button type="button" className="btn" disabled={!left.runs.length && !left.setups.length && !left.stops.length} onClick={openLeaving}>{tr('🏁 Terminar turno')}</button>}
-          {(can('fix') || s.lineRules.add) && <button type="button" className="btn soft" onClick={() => setAdding(true)}>{trx('+ Agregar {0}', CFG[dept].lineWord.toLowerCase())}</button>}
+          {(can('fix') || s.lineRules.add) && <button type="button" className={"btn soft" + (RD ? " rd-addline" : "")} onClick={() => setAdding(true)}>{trx('+ Agregar {0}', CFG[dept].lineWord.toLowerCase())}</button>}
           {/* what the freezer has ready for this room, and asking for it (Jose, 2026-10-27): Freezer RTE's own screen for the room's people */}
           {dept === 'Kitchen' && <WeightNoteButton s={s} date={day.date} now={now} />}
-          {CFG[dept].waste && <RoomWasteButton s={s} dept={dept} date={day.date} />}
+          {!RD && CFG[dept].waste && <RoomWasteButton s={s} dept={dept} date={day.date} />}
           {(dept === 'Packing' || dept === 'MFO') && <a className="btn soft" href={FREEZER_URL + '#listo'}>{tr('🧊 Listo para {0}', dept)}</a>}
         </div>}
       </div>
@@ -2494,9 +2543,9 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
       </div>
       {shown === 'live' && (
         <>
-          <TodayCard s={s} dept={dept} now={now} mgr={can('goals')} date={day.date} />
-          {/* who came to work in the room this shift (Santiago, 2026-10-20) */}
-          {(s.attView.on || !!who.admin) && <AttendanceCard s={s} dept={dept} date={day.date} shift={(turnOf(s, day.date, now, dept).shift || 1) as 1 | 2} edit={!viewOnly} />}
+          <TodayCard s={s} dept={dept} now={now} mgr={can('goals')} date={day.date} onPeople={(s.attView.on || !!who.admin) ? () => setAttWin(true) : undefined} />
+          {/* who came to work in the room this shift (Santiago, 2026-10-20); in the redesign, its tile and button above */}
+          {!RD && (s.attView.on || !!who.admin) && <AttendanceCard s={s} dept={dept} date={day.date} shift={(turnOf(s, day.date, now, dept).shift || 1) as 1 | 2} edit={!viewOnly} />}
           <div className="lines">{lines.map((l) => <LineCard key={l.id} s={s} line={l} now={now} mgr={can('fix')} day={day} />)}</div>
         </>
       )}
@@ -3340,7 +3389,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       {slow && <div className="slowbar" role="status">{trx('🔴 Ritmo bajo: {0} {1} por hora en la última hora · mínimo {2}', <b>{fmtN(slow.rate)}</b>, cfg.qty === 'none' ? cfg.plural.toLowerCase() : cfg.qtyUnit, <b>{fmtN(slow.limit)}</b>)}</div>}
       <div className="lhead">
         <h3><i className="lemoji" aria-hidden="true">{oven ? '🔥' : DEPT_LOOK[line.dept].emoji}</i>{lineLabel(line.name)} {nameIt}</h3>
-        <span className={'pill ' + (inSetup ? 'setup' : stop ? 'stop' : 'run')}>{inSetup ? tr('⏱ Set up') : stop ? tr('⏸ Parado') : tr('● Corriendo')}</span>
+        <span className={'pill ' + (inSetup ? 'setup' : stop ? 'stop' : 'run')}>{inSetup ? tr('⏱ Set up') : stop ? tr('⏸ Parado') : tr('● Corriendo')}{RD && <> · {fmtDur(stop ? stopTime(s, stop, now) : mineNow.working)}</>}</span>
         <span className="lacts">{goalBtn}{!hold && <button type="button" className="lnk sm" onClick={() => setFixing(true)}>{tr('Corregir')}</button>}</span>
       </div>
       {/* what runs here, big: the code and the lot going on now; a Packing line says first whether it makes pallets or fills bins */}
