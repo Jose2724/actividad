@@ -1280,7 +1280,9 @@ export function kpiPut(key: string, data: Record<string, unknown>, deleted = fal
  */
 export type RosterPerson = { name: string; code: string; lead?: boolean
   /** a person whose room is not the area's (Jose, 2026-11-02: Kitchen's people are part of Prod2-ER): set in Ajustes */
-  room?: Dept }
+  room?: Dept
+  /** the employee number, optional (Jose, 2026-11-06: "si hay personas que tienen el mismo nombre ... identificarlo con su employee ID"): tells two of one name apart, and matches HR's hours file */
+  num?: string }
 export type Roster = { people: RosterPerson[]; rooms: Record<string, Dept | ''> }
 const ROSTER_KEY = 'roster:'
 const rosterGuess = (code: string): Dept | '' => { const c = code.toLowerCase(); return c.startsWith('mfo') ? 'MFO' : c.startsWith('rte') ? 'RTE' : c.startsWith('pack') ? 'Packing' : c.startsWith('raw') || c.startsWith('kitchen') ? 'Kitchen' : c.startsWith('prod') || c.startsWith('spiral') ? 'Spiral' : '' }
@@ -1296,19 +1298,37 @@ export const rosterRoom = (r: Roster, code: string): Dept | '' => r.rooms[code] 
 /** a person's room: their own when Ajustes gives them one, else their area's */
 export const rosterRoomOf = (r: Roster, p: RosterPerson): Dept | '' => (p.room && DEPTS.includes(p.room) ? p.room : rosterRoom(r, p.code))
 const ROSTER_CODE = /^[a-z]+\s*([12])\s*-\s*[a-z]+$/i
-/** the plant's list as pasted from Excel: a line per person, the columns by tabs; a line with no area of a shift is told back, not guessed */
+/** an employee number as HR writes it: digits only, 1 to 9 of them */
+export const rosterNum = (x: unknown) => { const t = String(x ?? '').trim().replace(/\.0+$/, ''); return /^\d{1,9}$/.test(t) ? t : '' }
+/** one person of a list: by the employee number when there is one, else by the name */
+export const rosterSame = (a: RosterPerson, b: RosterPerson) => (a.num && b.num ? a.num === b.num : attKey(a.name) === attKey(b.name))
+/**
+ * the plant's list as pasted from Excel: a line per person, the columns by tabs; a line with no area of a shift is told
+ * back, not guessed. A column of employee numbers is taken when there is one (2026-11-06), so two people of one name
+ * both stay
+ */
 export function rosterParse(text: string) {
   const lists: Record<1 | 2, RosterPerson[]> = { 1: [], 2: [] }, bad: string[] = []
   for (const line of text.split(/\r?\n/)) {
     const cells = line.split(/\t|;/).map((c) => c.replace(/\s+/g, ' ').trim()).filter(Boolean)
-    if (!cells.length || /^(employee name|nombre)$/i.test(cells[0])) continue
-    const code = cells.slice(1).find((c) => ROSTER_CODE.test(c)), name = cells[0].slice(0, 60)
+    if (!cells.length || cells.some((c) => /^(employee name|nombre)$/i.test(c))) continue
+    const num = cells.map(rosterNum).find(Boolean) ?? '', rest = cells.filter((c) => rosterNum(c) !== num || !num)
+    const code = rest.slice(1).find((c) => ROSTER_CODE.test(c)), name = (rest[0] ?? '').slice(0, 60)
+    if (!name) continue
     if (!code) { bad.push(name); continue }
     const shift = Number(ROSTER_CODE.exec(code)?.[1]) as 1 | 2
-    if (lists[shift].some((p) => attKey(p.name) === attKey(name))) continue
-    lists[shift].push({ name, code: code.replace(/\s+/g, ''), ...(cells.slice(1).some((c) => c !== code && /supervisor|lead/i.test(c)) ? { lead: true } : {}) })
+    const p: RosterPerson = { name, code: code.replace(/\s+/g, ''), ...(rest.slice(1).some((c) => c !== code && /supervisor|lead/i.test(c)) ? { lead: true } : {}), ...(num ? { num } : {}) }
+    if (lists[shift].some((x) => rosterSame(x, p))) continue
+    lists[shift].push(p)
   }
   return { lists, bad }
+}
+/**
+ * the name a person of the list is written with in the attendance: their name, and their employee number after it when
+ * someone else of the shift's list has the same name (2026-11-06), so the two are two people
+ */
+export function rosterLabel(r: Roster, p: RosterPerson) {
+  return p.num && r.people.some((x) => x !== p && attKey(x.name) === attKey(p.name)) ? `${p.name} #${p.num}` : p.name
 }
 /**
  * The names to tap in a room's attendance: its people of the shift not written yet. While someone types, also those
@@ -1318,7 +1338,8 @@ export function attPeople(s: State, date: string, dept: Dept, shift: 1 | 2, type
   const r = rosterOf(s, shift), here = new Set(attOf(s, date, dept, shift).map((x) => attKey(x.name))), where = new Map<string, Dept>()
   for (const d of DEPTS) if (d !== dept) for (const x of attOf(s, date, d, shift)) if (!x.gone) where.set(attKey(x.name), d)
   const want = plain(typed.trim())
-  const left = r.people.filter((p) => !here.has(attKey(p.name)) && (!want || plain(p.name).includes(want))).sort((a, b) => a.name.localeCompare(b.name))
+  const all = r.people.map((p) => ({ ...p, name: rosterLabel(r, p) }))
+  const left = all.filter((p) => !here.has(attKey(p.name)) && (!want || plain(p.name).includes(want))).sort((a, b) => a.name.localeCompare(b.name))
   const tag = (p: RosterPerson) => ({ ...p, in: where.get(attKey(p.name)) ?? ('' as Dept | '') })
   return { mine: left.filter((p) => rosterRoomOf(r, p) === dept).map(tag), others: want ? left.filter((p) => rosterRoomOf(r, p) !== dept).map(tag) : [], loaded: rosterOn(s) && r.people.length > 0 }
 }

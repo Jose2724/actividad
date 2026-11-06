@@ -1,4 +1,4 @@
-import { DEPTS, kpiGet, kpiPut, rosterOf, type Dept, type State } from './store'
+import { DEPTS, kpiGet, kpiPut, rosterNum, rosterOf, type Dept, type State } from './store'
 import { reportOf } from './report'
 import { downKind } from './miniKpi'
 import { X, colName, xN, xT, type Cell, type Chart, type ReadCell, type Sheet } from './xlsx'
@@ -93,7 +93,7 @@ export function readNetsuite(rows: ReadCell[][]): NetsuiteRead {
 }
 /** Will's hours file read: each day's hours over the whole plant, how many people and clock entries, and the entries with no hours ("--") */
 /** a person with too many hours in one day, shown at upload time only (never kept): the name as the file writes it, the hours, each punch */
-export type HoursOver = { name: string; hours: number; punches: string[]; div?: string }
+export type HoursOver = { name: string; hours: number; punches: string[]; div?: string; num?: string }
 /** from how many hours in one day a person is flagged (Mike, 2026-11-04: "14 or 15"; Jose: 14): to confirm with Josh and Santiago and correct in Bamboo */
 export const HOURS_FLAG = 14
 /**
@@ -101,7 +101,7 @@ export const HOURS_FLAG = 14
  * Santiago, así cada uno con su lista, y si no se sabe que le salga a los dos"). The file has no shift: it comes from
  * the area of the row when the file brings one ("RTE2-ER"), else from the plant's Employee List kept in Ajustes, matched
  * by the words of the name whatever their order ("Morales, Daniel" = "Daniel Morales"; "Yactayo Cabrera, Mauricio" =
- * "Mauricio Yactayo"), a word of 4 letters or more one letter off ("Bleny" = "Blenny"). Nothing is guessed from the
+ * "Mauricio Yactayo"), a word of 4 letters or more one letter off; first of all by the employee number when the list has it ("Bleny" = "Blenny"). Nothing is guessed from the
  * hours: null when nobody is found, or the name is in both lists
  */
 const nameWords = (t: string) => plainName(t).split(/[^a-z0-9]+/).filter(Boolean)
@@ -124,9 +124,12 @@ const sameName = (a: string[], b: string[]) => {
   const [few, many] = a.length <= b.length ? [a, b] : [b, a]
   return few.length >= 2 && few.every((w) => many.some((m) => nearWord(w, m)))
 }
-export function hoursShift(s: State, x: { name: string; div?: string }): 1 | 2 | null {
+export function hoursShift(s: State, x: { name: string; div?: string; num?: string }): 1 | 2 | null {
   const own = /^[a-z]+\s*([12])\s*-/i.exec(x.div ?? '')
   if (own) return Number(own[1]) as 1 | 2
+  // the employee number, when the list has it (2026-11-06): exact, before any name
+  const byNum = x.num ? ([1, 2] as const).filter((sh) => rosterOf(s, sh).people.some((p) => p.num === x.num)) : []
+  if (byNum.length === 1) return byNum[0]
   const w = nameWords(x.name), found = ([1, 2] as const).filter((sh) => rosterOf(s, sh).people.some((p) => sameName(w, nameWords(p.name))))
   return found.length === 1 ? found[0] : null
 }
@@ -159,6 +162,7 @@ export function readHours(sheets: { name: string; rows: ReadCell[][] }[]): Hours
       // (each person's day, to flag too many hours: Mike, 2026-11-04. Shown once at upload and let go: nothing of it is kept)
       const one: HoursOver = e.each.get(id) ?? { name: String((name >= 0 ? r[name] : r[who]) ?? '').trim(), hours: 0, punches: [] }
       if (div >= 0 && !one.div && String(r[div] ?? '').trim()) one.div = String(r[div]).trim()
+      if (!one.num && rosterNum(id)) one.num = rosterNum(id)
       if (Number.isFinite(n)) { one.hours += n; one.punches.push(`${String(cin >= 0 ? r[cin] ?? '' : '')}–${String(cout >= 0 ? r[cout] ?? '' : '')} (${Math.round(n * 100) / 100} h)`) }
       e.each.set(id, one)
       byDay.set(d, e)
