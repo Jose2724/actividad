@@ -600,15 +600,25 @@ export function Report(props: ReportProps) {
       const p = panelRef.current
       if (!p) return
       const ws = p.querySelectorAll<HTMLElement>('.twrap')
-      ws.forEach((w) => { w.style.maxHeight = '' })
-      if (ws.length !== 1 || window.innerWidth <= 720) return
-      const top = ws[0].getBoundingClientRect().top + window.scrollY
-      const h = Math.max(280, window.innerHeight - top - 16)
-      ws[0].style.maxHeight = h + 'px'
-      // what still sits under the table (the page's own margin, a note) is taken from it too, so the page itself never
-      // scrolls, only the table (Jose, 2026-11-06: "afuera de la tabla se puede hacer scroll lo cual no es necesario")
-      const over = (document.scrollingElement?.scrollHeight ?? 0) - window.innerHeight
-      if (over > 0) ws[0].style.maxHeight = Math.max(280, h - over) + 'px'
+      if (ws.length !== 1 || window.innerWidth <= 720) { ws.forEach((w) => { if (w.style.maxHeight) w.style.maxHeight = '' }); return }
+      // measured without touching the table: taking its height away for a moment (as it was) moved the rows under the
+      // finger, every second, with the clock (Jose, 2026-11-06: "cuando llego al final de la tabla se sube solo un poquito")
+      const w = ws[0], main = w.closest('.rd-main') ?? document.body
+      const top = w.getBoundingClientRect().top + window.scrollY
+      // what sits under the table up to the page's end (the pager, the gaps and the page's margin), so the page itself
+      // never scrolls, only the table ("afuera de la tabla se puede hacer scroll lo cual no es necesario")
+      let below = 0
+      for (let e: Element = w; e !== main && e.parentElement; e = e.parentElement) {
+        const cs = getComputedStyle(e.parentElement), gap = parseFloat(cs.rowGap) || 0
+        for (let n = e.nextElementSibling; n; n = n.nextElementSibling) {
+          const ns = getComputedStyle(n)
+          if (ns.display === 'none' || ns.position === 'absolute' || ns.position === 'fixed') continue
+          below += n.getBoundingClientRect().height + gap + (parseFloat(ns.marginTop) || 0) + (parseFloat(ns.marginBottom) || 0)
+        }
+        below += (parseFloat(cs.paddingBottom) || 0) + (parseFloat(cs.borderBottomWidth) || 0)
+      }
+      const h = Math.max(280, Math.floor(window.innerHeight - top - below - 2))
+      if (Math.abs((parseFloat(w.style.maxHeight) || 0) - h) > 1) w.style.maxHeight = h + 'px'
     }
     fit()
     window.addEventListener('resize', fit)
