@@ -2996,3 +2996,36 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 .rd-wtacts .btn{min-height:38px;padding:0 12px;font-size:14px}
 .rd-wtacts .rd-iconbtn{width:40px;padding:0;font-size:17px}
 .rd-wtbar{row-gap:8px}
+/* ---- Resumen, rebuilt (2026-11-06): one bar, six tiles, a card per room with its 7 days, the plant's week against the
+   goal and what needs attention ---- */
+:root{--sb-ok:#1b7446;--sb-warn:#d97706;--sb-bad:#b91c1c;--sb-goal:#581447;--sb-lab:#5b6b7a}
+.rd-sumbar{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px}
+.rd-sumbar h2{margin:0;font-size:22px}
+.rd-sumwhen{color:var(--muted);font-size:13.5px;font-weight:600}
+.rd-sumgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,380px);gap:12px;align-items:start}
+.rd-sumrooms{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
+.rd-sumroom{background:var(--surface);border:1px solid var(--line);border-top:5px solid var(--d);border-radius:14px;padding:10px 12px;display:grid;gap:7px}
+.rd-sumroom header{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.rd-sumroom header b{display:inline-flex;align-items:center;gap:6px;font-size:17px;color:var(--d-ink)}
+.rd-sumroom header i{font-style:normal}
+.rd-sumroom-main{display:flex;justify-content:space-between;align-items:flex-end;gap:8px}
+.rd-sumroom-main>div{display:grid}
+.rd-sumpct{font-size:30px;line-height:1;font-variant-numeric:tabular-nums}
+.rd-sumroom-main small{font-size:12px;color:var(--muted)}
+.rd-sumroom .rd-bar i{background:var(--d)}
+.rd-sumroom-nums{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:13px;color:var(--muted)}
+.rd-sumroom-nums b{color:var(--ink);font-variant-numeric:tabular-nums}
+.rd-spark rect{fill:var(--d,var(--accent))}
+.rd-sumside{display:grid;gap:12px}
+.rd-sumbars{width:100%;height:auto;display:block}
+.rd-sumbars .goal{stroke:var(--sb-goal);stroke-width:1.5;stroke-dasharray:5 4}
+.rd-sumbars .axis{stroke:var(--line)}
+.rd-sumbars .bar.ok{fill:var(--sb-ok)}.rd-sumbars .bar.warn{fill:var(--sb-warn)}.rd-sumbars .bar.bad{fill:var(--sb-bad)}
+.rd-sumbars .bar:not(.today){opacity:.8}
+.rd-sumbars text{font:600 11px system-ui,sans-serif}
+.rd-sumbars .lab{fill:var(--sb-lab)}.rd-sumbars .lab.strong{fill:var(--ink);font-weight:800}
+.rd-sumbars .val{font-weight:800;fill:var(--ink)}.rd-sumbars .val.none{fill:var(--sb-lab)}
+.rd-sumnote{color:var(--muted);font-size:12px}
+.rd-calm.warn{background:#fff7e6;color:#7a4700}
+.rd-alert:disabled{cursor:default}
+@media (max-width:1100px){.rd-sumgrid{grid-template-columns:minmax(0,1fr)}}
