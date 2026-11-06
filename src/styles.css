@@ -3598,3 +3598,40 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 .call-bar button{flex:none;border-radius:999px;padding:8px 16px;font-size:15px}
 .call-mute{background:#e4ebf2;border:2px solid #9cadbe;font-size:18px;padding:6px 10px!important}
 .call-mute.on{background:#fde8e6;border-color:#b3261e}
+
+/* Packing (and every room) in the redesign, made to fit one screen (Jose, 2026-11-06: "se acumula muchas cosas y luego
+   nada cabe en la pantalla"): the urgent orders in one band, the line cards as wide as the screen allows, and the notes
+   inside a card one line each */
+.rd-urgbar{display:flex;align-items:center;gap:12px;min-width:0;margin:8px 0;padding:6px 8px 6px 14px;background:var(--surface);border:1px solid var(--line);border-left:5px solid #dc2626;border-radius:12px}
+.rd-urg-n{flex:none;color:#b91c1c;font-size:15px;white-space:nowrap}
+.rd-urg-next{flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:8px;background:none;border:0;padding:4px 0;font:inherit;color:inherit;text-align:left;cursor:pointer;white-space:nowrap;overflow:hidden}
+.rd-urg-next>*{flex:none}
+.rd-urg-next small{color:var(--muted);font-size:12.5px}
+.rd-urg-next .code{font:800 15px ui-monospace,Consolas,monospace}
+.rd-urg-next .who{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:13.5px}
+.rd-urg-next .po{font-size:13.5px;font-variant-numeric:tabular-nums;color:var(--muted)}
+.rd-urg-next b{color:#b91c1c;font-size:13.5px}
+.rd-urg-all{flex:none}
+.dlg.rd-urgdlg{width:min(920px,100%);display:flex;flex-direction:column;gap:10px;overflow:hidden;max-height:min(720px,calc(100dvh - 32px))}
+.rd-urgdlg-h{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.rd-urgdlg-h h3{margin:0;color:#b91c1c}
+.rd-urgdlg-body{flex:1 1 auto;min-height:0;overflow:auto;border:1px solid var(--line);border-radius:12px}
+.rd-urgtbl{width:100%;border-collapse:collapse;font-size:14px}
+.rd-urgtbl th{position:sticky;top:0;z-index:1;background:var(--bg);text-align:left;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--line)}
+.rd-urgtbl td{padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+.rd-urgtbl tbody tr{cursor:pointer}
+.rd-urgtbl tbody tr:hover,.rd-urgtbl tbody tr:focus-visible{background:var(--soft);outline:none}
+.rd-urgtbl .code{font:800 15px ui-monospace,Consolas,monospace}
+.rd-urgtbl .num{font-variant-numeric:tabular-nums}
+.rd-urgtbl .left{color:#b91c1c;font-weight:800;font-variant-numeric:tabular-nums}
+.rd-urgtbl .note{white-space:normal;color:var(--muted);font-size:13px;min-width:160px}
+.rd-urgdlg .hint{margin:0}
+@media (max-width:700px){.rd-urg-next .who,.rd-urg-next .po,.rd-urg-next small:last-child{display:none}}
+@media (max-width:460px){.rd-urgbar{flex-wrap:wrap}.rd-urg-next{order:3;flex-basis:100%}}
+.app.rd .lines{grid-template-columns:repeat(auto-fit,minmax(min(330px,100%),1fr))}
+.app.rd .lines>.line{max-width:680px}
+.app.rd .line .rd-carried{padding:5px 10px;font-size:13px;line-height:1.3;display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px}
+.app.rd .line .rd-carried small{color:var(--muted);font-size:11.5px}
+.app.rd .line .rd-orderline{display:block;padding:5px 10px;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@keyframes slowblink-dark{0%,100%{background:var(--surface);border-color:#dc2626;box-shadow:0 0 0 0 rgba(220,38,38,0)}50%{background:#4a1f22;border-color:#ef4444;box-shadow:0 0 0 8px rgba(220,38,38,.25)}}
+:where(html[data-theme="dark"]) .line.slow{animation-name:slowblink-dark}

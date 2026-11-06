@@ -1798,3 +1798,18 @@ html:where([data-theme="dark"]),:where(html[data-theme="dark"]) body{background:
 :where(html[data-theme="dark"]) .call-bar button{border-radius:999px}
 :where(html[data-theme="dark"]) .call-mute{background:#1c2936;border:2px solid #3d4c5c}
 :where(html[data-theme="dark"]) .call-mute.on{background:#361e1c;border-color:#b3261e}
+:where(html[data-theme="dark"]) .rd-urgbar{background:var(--surface);border:1px solid var(--line);border-left:5px solid #dc2626;border-radius:12px}
+:where(html[data-theme="dark"]) .rd-urg-n{color:#f09e9e}
+:where(html[data-theme="dark"]) .rd-urg-next{background:none;border:0;color:inherit}
+:where(html[data-theme="dark"]) .rd-urg-next small{color:var(--muted)}
+:where(html[data-theme="dark"]) .rd-urg-next .po{color:var(--muted)}
+:where(html[data-theme="dark"]) .rd-urg-next b{color:#f09e9e}
+:where(html[data-theme="dark"]) .rd-urgdlg-h h3{color:#f09e9e}
+:where(html[data-theme="dark"]) .rd-urgdlg-body{border:1px solid var(--line);border-radius:12px}
+:where(html[data-theme="dark"]) .rd-urgtbl{border-collapse:collapse}
+:where(html[data-theme="dark"]) .rd-urgtbl th{background:var(--bg);color:var(--muted);border-bottom:1px solid var(--line)}
+:where(html[data-theme="dark"]) .rd-urgtbl td{border-bottom:1px solid var(--line)}
+:where(html[data-theme="dark"]) .rd-urgtbl tbody tr:hover,:where(html[data-theme="dark"]) .rd-urgtbl tbody tr:focus-visible{background:var(--soft);outline:none}
+:where(html[data-theme="dark"]) .rd-urgtbl .left{color:#f09e9e}
+:where(html[data-theme="dark"]) .rd-urgtbl .note{color:var(--muted)}
+:where(html[data-theme="dark"]) .app.rd .line .rd-carried small{color:var(--muted)}

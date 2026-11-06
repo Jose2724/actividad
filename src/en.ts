@@ -4118,4 +4118,13 @@ export const EN: Record<string, string> = {
   "Llamar a la oficina": "Call the office",
   "Llamar a {0}": "Call {0}",
   "Están en otra llamada": "They are on another call",
+  "🔴 Ritmo bajo: {0}/h · mínimo {1}": "🔴 Slow: {0}/h · minimum {1}",
+  "↪ Del turno {0}: {1} · desde las {2}": "↪ From shift {0}: {1} · since {2}",
+  "↪ De antes ({0}): {1} · desde las {2}": "↪ From before ({0}): {1} · since {2}",
+  "📦 {0} · próximo: {1}": "📦 {0} · next: {1}",
+  "1 pedido": "1 order",
+  "{0} pedidos": "{0} orders",
+  "Ver todos": "See all",
+  "Próximo: {0}": "Next: {0}",
+  "Toca un pedido para abrirlo en Pedidos.": "Tap an order to open it in Orders.",
 }

@@ -1842,6 +1842,55 @@ function PackingNotice({ s, onOrders }: { s: State; onOrders: () => void }) {
   const [all, setAll] = useState(false)
   const urgent = s.orders.filter((o) => o.urgent && !o.closed).map((o) => ({ o, left: o.cases != null ? o.cases - orderMade(s, o.id) : null })).filter((x) => x.left == null || x.left > 0).sort((a, b) => byShip(a.o, b.o))
   if (!urgent.length) return null
+  // the redesign (Jose, 2026-11-06: "se acumula muchas cosas y luego nada cabe en la pantalla ... si tienes un diseño
+  // profesional para eso te doy green"): one slim bar that says how many and which ships first; the whole list, a table
+  // by ship date, opens over the screen ("Ver todos"); a row there opens Pedidos
+  if (RD) {
+    const first = urgent[0]
+    const left = (x: (typeof urgent)[number]) => (x.left == null ? tr('sin cantidad') : trx('faltan {0} {1}', fmtN(x.left), tr('cajas')))
+    return (
+      <>
+        <div className="rd-urgbar" role="status">
+          <b className="rd-urg-n">{urgent.length === 1 ? tr('🔥 1 pedido urgente') : tr('🔥 {0} pedidos urgentes', urgent.length)}</b>
+          <button type="button" className="rd-urg-next" onClick={() => setAll(true)} title={orderLabel(first.o)}>
+            <small>{tr('Próximo: {0}', '')}</small>
+            <span className="code">{first.o.code}</span>
+            <span className="who">{first.o.customer || orderLabel(first.o)}</span>
+            {first.o.customer && first.o.po && <span className="po">{'PO ' + first.o.po}</span>}
+            <b>{left(first)}</b>
+            {first.o.shipBy && <small>{tr('envío {0}', shipText(first.o.shipBy))}</small>}
+          </button>
+          <button type="button" className="btn sm soft rd-urg-all" onClick={() => setAll(true)}>{tr('Ver todos')} ›</button>
+        </div>
+        {all && (
+          <div className="veil" onClick={() => setAll(false)}>
+            <div className="dlg rd-urgdlg" role="dialog" aria-label={tr('🔥 {0} pedidos urgentes', urgent.length)} onClick={(e) => e.stopPropagation()}>
+              <div className="rd-urgdlg-h">
+                <h3>{urgent.length === 1 ? tr('🔥 1 pedido urgente') : tr('🔥 {0} pedidos urgentes', urgent.length)}</h3>
+                <button type="button" className="btn sm" onClick={() => setAll(false)} aria-label={tr('Cerrar')}>✕</button>
+              </div>
+              <div className="rd-urgdlg-body">
+                <table className="rd-urgtbl">
+                  <thead><tr><th>{tr('Código')}</th><th>{tr('Cliente')}</th><th>PO</th><th>{tr('Faltan')}</th><th>{tr('Envío')}</th><th>{tr('Comentario')}</th></tr></thead>
+                  <tbody>{urgent.map((x) => { const n = orderNoteOf(s, x.o.id); return (
+                    <tr key={x.o.id} tabIndex={0} onClick={() => { setAll(false); onOrders() }} onKeyDown={(e) => { if (e.key === 'Enter') { setAll(false); onOrders() } }}>
+                      <td className="code">{x.o.code}</td>
+                      <td>{x.o.customer || '—'}</td>
+                      <td className="num">{x.o.po || tr('sin PO')}</td>
+                      <td className="left">{x.left == null ? tr('sin cantidad') : fmtN(x.left) + ' ' + tr('cajas')}</td>
+                      <td className="num">{x.o.shipBy ? shipText(x.o.shipBy) : '—'}</td>
+                      <td className="note">{n ? '💬 ' + n.text : ''}</td>
+                    </tr>
+                  ) })}</tbody>
+                </table>
+              </div>
+              <p className="hint">{tr('Toca un pedido para abrirlo en Pedidos.')}</p>
+            </div>
+          </div>
+        )}
+      </>
+    )
+  }
   return (
     <div className="pk-notice">
       {urgent.length > 0 && (
@@ -3558,7 +3607,8 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   return (
     <div className={'line ' + (inSetup ? 'insetup' : stop ? 'stopped' : 'running') + (kind ? ' rd-kind k-' + kind : '') + (just ? ' justdone' : '') + (slow ? ' slow' : '') + (packBins ? ' mode-bin' : pallets ? ' mode-pal' : '') + (oven ? ' oven' : '')}>
       {naming}
-      {slow && <div className="slowbar" role="status">{trx('🔴 Ritmo bajo: {0} {1} por hora en la última hora · mínimo {2}', <b>{fmtN(slow.rate)}</b>, cfg.qty === 'none' ? cfg.plural.toLowerCase() : cfg.qtyUnit, <b>{fmtN(slow.limit)}</b>)}</div>}
+      {slow && RD && <div className="slowbar" role="status" title={tr('🔴 Ritmo bajo: {0} {1} por hora en la última hora · mínimo {2}', fmtN(slow.rate), cfg.qty === 'none' ? cfg.plural.toLowerCase() : cfg.qtyUnit, fmtN(slow.limit))}>{trx('🔴 Ritmo bajo: {0}/h · mínimo {1}', <b>{fmtN(slow.rate)}</b>, <b>{fmtN(slow.limit)}</b>)}</div>}
+      {slow && !RD && <div className="slowbar" role="status">{trx('🔴 Ritmo bajo: {0} {1} por hora en la última hora · mínimo {2}', <b>{fmtN(slow.rate)}</b>, cfg.qty === 'none' ? cfg.plural.toLowerCase() : cfg.qtyUnit, <b>{fmtN(slow.limit)}</b>)}</div>}
       <div className="lhead">
         <h3><i className="lemoji" aria-hidden="true">{oven ? '🔥' : RD && packBins ? <BinIcon /> : kind === 'pouches' && !mfoCart ? <BinIcon /> : kind ? KIND_ICON[kind] : DEPT_LOOK[line.dept].emoji}</i>{lineLabel(line.name)} {nameIt}</h3>
         <span className={'pill ' + (inSetup ? 'setup' : stop ? 'stop' : 'run')}>{inSetup ? tr('⏱ Set up') : stop ? tr('⏸ Parado') : tr('● Corriendo')}{RD && <> · {fmtDur(stop ? stopTime(s, stop, now) : mineNow.working)}</>}</span>
@@ -3580,7 +3630,14 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
           {measureOf(run) && <span className="fact"><small>{tr('Se cuenta en')}</small><b>{measureName(measureOf(run))}</b></span>}
         </div>
       </div>
-      {mineNow.carried && (
+      {mineNow.carried && RD && (
+        <div className="carried rd-carried">
+          {run.date === day.date && cameFrom !== turn.shift
+            ? trx('↪ Del turno {0}: {1} · desde las {2}', cameFrom, <b>{unitsText(line.dept, mineNow.before.units, mineNow.before.qty, rc)}</b>, <b>{fmtTime(run.startedAt)}</b>)
+            : trx('↪ De antes ({0}): {1} · desde las {2}', shortDay(run.date), <b>{unitsText(line.dept, mineNow.before.units, mineNow.before.qty, rc)}</b>, <b>{fmtTime(run.startedAt)}</b>)}
+        </div>
+      )}
+      {mineNow.carried && !RD && (
         <div className="carried">
           {run.date === day.date && cameFrom !== turn.shift
             ? trx('↪ Viene del turno {0}: empezó a las {1} y traía {2}.', cameFrom, <b>{fmtTime(run.startedAt)}</b>, <b>{unitsText(line.dept, mineNow.before.units, mineNow.before.qty, rc)}</b>)
@@ -3597,7 +3654,15 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         </div>
       )}
       {closingOld && run && <ConfirmDialog title={tr('¿Terminar {0} en {1}', twice.slice(1).map((r) => r.code + ' ' + tr('desde las {0}', fmtTime(r.startedAt))).join(', '), lineLabel(line.name)) + '?'} text={tr('Termina a la hora en que empezó {0} (o en su última unidad, si fue después). Lo que registró queda tal cual, y queda en el historial. Si el que sobra es el nuevo, termínalo desde Reporte › Corregir.', run.code + ' ' + fmtTime(run.startedAt))} yes={tr('Terminar')} onYes={() => { endOlderRuns(line.id); setClosingOld(false) }} onNo={() => setClosingOld(false)} />}
-      {openOrders.length > 0 && (
+      {openOrders.length > 0 && RD && (() => {
+        const o = openOrders.find((x) => x.id === nextOrder) ?? openOrders[0]
+        return (
+          <div className="orderstrip rd-orderline" title={openOrders.map((x) => orderLabel(x) + leftText(s, x)).join(' · ')}>
+            {trx('📦 {0} · próximo: {1}', openOrders.length === 1 ? tr('1 pedido') : tr('{0} pedidos', openOrders.length), <b>{orderLabel(o)}</b>)}{leftText(s, o)}{o.shipBy && ' ' + tr('· envío {0}', shipText(o.shipBy))}
+          </div>
+        )
+      })()}
+      {openOrders.length > 0 && !RD && (
         <div className="orderstrip">
           <span>{trx('📦 {0} de {1}:', openOrders.length === 1 ? tr('Pedido') : tr('Pedidos'), run.code)}</span>
           {openOrders.slice(0, 2).map((o) => <span key={o.id} className={o.id === nextOrder ? 'next' : ''}><b>{orderLabel(o)}</b>{leftText(s, o)}{o.shipBy && ' ' + tr('· envío {0}', shipText(o.shipBy))}</span>)}
