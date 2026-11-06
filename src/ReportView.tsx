@@ -598,16 +598,6 @@ export function Report(props: ReportProps) {
         <div className="rd-rphead">
           <div className="rd-wtbar">
             <h2 className="rd-wttitle">{props.part === 'tra' ? '📦 ' + tr('Pallets y bins') : '📄 ' + tr('Producción')}{only && <> <DeptBadge d={only} /></>}</h2>
-            <div className="rd-daynav">
-              <button type="button" className="btn sm" aria-label={tr('Día anterior')} title={tr('Día anterior')} onClick={() => pickDate(addDays(date, -1))}>‹</button>
-              <button type="button" className="btn sm rd-datesbtn" onClick={() => { const i = dateRef.current; if (i) { try { i.showPicker() } catch { i.focus() } } }}>📅 {new Date(date + 'T12:00:00').toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' })}</button>
-              <input ref={dateRef} className="rd-daypick" type="date" value={date} max={today} tabIndex={-1} aria-label={tr('Fecha del reporte')} onChange={(e) => { if (e.target.value) pickDate(e.target.value) }} />
-              <button type="button" className="btn sm" aria-label={tr('Día siguiente')} title={tr('Día siguiente')} disabled={date >= today} onClick={() => pickDate(addDays(date, 1))}>›</button>
-              {date !== today && <button type="button" className="btn sm soft" onClick={() => pickDate(today)}>{tr('Hoy')}</button>}
-            </div>
-            <div className="seg rd-rangeseg" role="group" aria-label={tr('Turno')}>
-              {([0, 1, 2] as const).filter((x) => !x || !rep.plan.only || rep.plan.only === x).map((x) => <button key={x} type="button" className={rep.shift === x ? 'on' : ''} aria-pressed={rep.shift === x} onClick={() => setFShift(x)}>{x ? tr('Turno {0}', x) : tr('Día completo')}</button>)}
-            </div>
             <div className="rd-wtacts">
               <button type="button" className={'btn soft' + (more ? ' on' : '')} aria-expanded={more} onClick={() => setMore(!more)}>🔍 {tr('Buscar y filtrar')}{k.q || rep.line || rep.code || rep.lot ? ' •' : ''}</button>
               <div className="rd-menuwrap">
@@ -622,12 +612,34 @@ export function Report(props: ReportProps) {
               <button type="button" className="btn rd-iconbtn" title={tr('Cómo leer este reporte')} aria-label={tr('Cómo leer este reporte')} onClick={() => setHelp(true)}>ⓘ</button>
             </div>
           </div>
-          {!only && props.part !== 'tra' && (
-            <div className="seg rd-rangeseg rd-roomseg" role="group" aria-label={tr('Departamento')}>
-              <button type="button" className={!dept ? 'on' : ''} aria-pressed={!dept} onClick={() => k.setFDept('')}>{tr('Todos')}</button>
-              {DEPTS.map((d) => <button key={d} type="button" className={dept === d ? 'on' : ''} aria-pressed={dept === d} onClick={() => k.setFDept(d)}><span aria-hidden="true">{DEPT_LOOK[d].emoji}</span> {d}</button>)}
+          {/* each choice says what it is (Jose, 2026-11-06: "que yo sepa qué estoy presionando o qué presionar") */}
+          <div className="rd-pickers">
+            <div className="rd-pick">
+              <span className="rd-picklab">📅 {tr('Día')}</span>
+              <div className="rd-daynav">
+                <button type="button" className="btn sm" aria-label={tr('Día anterior')} title={tr('Día anterior')} onClick={() => pickDate(addDays(date, -1))}>‹</button>
+                <button type="button" className="btn sm rd-datesbtn" onClick={() => { const i = dateRef.current; if (i) { try { i.showPicker() } catch { i.focus() } } }}>{new Date(date + 'T12:00:00').toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' })}</button>
+                <input ref={dateRef} className="rd-daypick" type="date" value={date} max={today} tabIndex={-1} aria-label={tr('Fecha del reporte')} onChange={(e) => { if (e.target.value) pickDate(e.target.value) }} />
+                <button type="button" className="btn sm" aria-label={tr('Día siguiente')} title={tr('Día siguiente')} disabled={date >= today} onClick={() => pickDate(addDays(date, 1))}>›</button>
+                {date !== today && <button type="button" className="btn sm soft" onClick={() => pickDate(today)}>{tr('Hoy')}</button>}
+              </div>
             </div>
-          )}
+            <div className="rd-pick">
+              <span className="rd-picklab">🕐 {tr('Turno')}</span>
+              <div className="seg rd-rangeseg" role="group" aria-label={tr('Turno')}>
+                {([0, 1, 2] as const).filter((x) => !x || !rep.plan.only || rep.plan.only === x).map((x) => <button key={x} type="button" className={rep.shift === x ? 'on' : ''} aria-pressed={rep.shift === x} onClick={() => setFShift(x)}>{x ? tr('Turno {0}', x) : tr('Todo el día')}</button>)}
+              </div>
+            </div>
+            {!only && props.part !== 'tra' && (
+              <div className="rd-pick">
+                <span className="rd-picklab">🏭 {tr('Cuarto')}</span>
+                <div className="seg rd-rangeseg rd-roomseg" role="group" aria-label={tr('Cuarto')}>
+                  <button type="button" className={!dept ? 'on' : ''} aria-pressed={!dept} onClick={() => k.setFDept('')}>{tr('Todos')}</button>
+                  {DEPTS.map((d) => <button key={d} type="button" className={dept === d ? 'on' : ''} aria-pressed={dept === d} onClick={() => k.setFDept(d)}><span aria-hidden="true">{DEPT_LOOK[d].emoji}</span> {d}</button>)}
+                </div>
+              </div>
+            )}
+          </div>
           {more && (
             <div className="rd-rpmore">
               <SearchBox k={k} />
@@ -645,7 +657,7 @@ export function Report(props: ReportProps) {
               {can('shifts') && <button type="button" className="btn sm soft" onClick={() => setShiftsOpen(true)}>🕐 {tr('Cambiar horario')}</button>}
             </div>
           )}
-          <Scope k={k} />
+          <Scope k={k} rd />
         </div>
       )}
       {!lean && !slim && (
@@ -715,7 +727,7 @@ export function Report(props: ReportProps) {
         </div>
       ))}
       {shiftsOpen && <ShiftsDialog s={s} date={date} onClose={() => setShiftsOpen(false)} />}
-      {!props.pin && <ViewTabs tabs={tabs} on={v} onPick={pickView} />}
+      {!props.pin && (slim ? <ViewPills tabs={tabs} on={v} onPick={pickView} /> : <ViewTabs tabs={tabs} on={v} onPick={pickView} />)}
       {!lean && !slim && <div className="rp-sub"><span>{viewSub(v)}</span><button type="button" className="btn sm" onClick={() => setHelp(true)}>ⓘ {tr('Cómo leer este reporte')}</button></div>}
       <div id="rp-panel" role="tabpanel" aria-labelledby={'rp-tab-' + v} className="rp-panel">
         {/* (a day, or a filter, with no code but with stops: every part says so and Registros opens on them) */}
@@ -817,17 +829,20 @@ function DeptChips({ s, date, dept, onPick }: { s: State; date: string; dept: De
 }
 
 /** "Viendo …": always on screen, it says in words the shift and the room in view, and every filter on, each with its ✕ */
-function Scope({ k }: { k: Kit }) {
+function Scope({ k, rd }: { k: Kit; rd?: boolean }) {
   const { rep, only, dept, who, shiftPick, setFShift, setFDept, setFLine, setFCode, setFLot, lineChosen, lineChoiceText, q, setQ, active, clear, back, goBack, scopeRef } = k
   const chip = (key: string, label: ReactNode, name: string, off: () => void) => <button key={key} type="button" className="btn sm rp-on" aria-label={tr('Quitar {0}', name)} onClick={off}>{label}<span className="x" aria-hidden="true">✕</span></button>
   const shiftName = rep.shift ? tr('Turno {0}', rep.shift) + (shiftPick === null ? ' ' + (who.shift ? tr('(tu turno)') : tr('(en curso)')) : '') : ''
+  if (rd && !back && !rep.line && !rep.code && !rep.lot && !q.trim()) return <div ref={scopeRef} />
   return (
     <div className="rp-scopebox" ref={scopeRef}>
       <div className="rp-scope">
         {back && <button type="button" className="btn sm" onClick={goBack}>{'‹ ' + tr('Volver')}</button>}
+        {rd ? (rep.line || rep.code || rep.lot || q.trim()) && <span>🔎 {tr('Filtros')}</span> : <>
         <span>{tr('Viendo')}</span>
         {rep.shift ? chip('shift', shiftName, shiftName, () => setFShift(0)) : <b>{tr('Día completo')}{rep.plan.only ? ' · ' + tr('un solo turno') : ''}</b>}
         {only ? <DeptBadge d={only} /> : dept ? chip('dept', <DeptBadge d={dept} />, dept, () => setFDept('')) : <b>{tr('Todos los departamentos')}</b>}
+        </>}
         {rep.line && chip('line', lineChoiceText(rep.line) || lineChosen, lineChosen, () => setFLine(''))}
         {rep.code && chip('code', tr('Código {0}', rep.code), tr('Código {0}', rep.code), () => setFCode(''))}
         {rep.lot && chip('lot', tr('Lote {0}', rep.lot), tr('Lote {0}', rep.lot), () => setFLot(''))}
@@ -835,6 +850,24 @@ function Scope({ k }: { k: Kit }) {
         {active.length > 0 && <button type="button" className="btn sm" onClick={clear}>{tr('✕ Quitar filtros')}</button>}
       </div>
       {active.length > 0 && <p className="rf-foot">{tr('Los archivos salen con lo que estás viendo.')}{rep.lot && !rep.shift && ' ' + tr('Con un lote, los tiempos y el waste son los de las corridas completas.')}</p>}
+    </div>
+  )
+}
+
+/** the redesign's parts of the report: buttons with a sign under "Qué ver", so they never look like the section's tabs */
+const VIEW_ICON: Partial<Record<View, string>> = { gen: '📊', code: '🔢', shift: '🕐', rec: '📋', chg: '✏️' } // (the others carry their sign in their name)
+function ViewPills({ tabs, on, onPick }: { tabs: { v: View; label: string; n: number | null; zero: boolean }[]; on: View; onPick: (v: View) => void }) {
+  if (tabs.length < 2) return null
+  return (
+    <div className="rd-views">
+      <span className="rd-picklab">👁️ {tr('Qué ver')}</span>
+      <div className="rd-viewlist" role="tablist" aria-label={tr('Partes del reporte')}>
+        {tabs.map((t) => (
+          <button key={t.v} id={'rp-tab-' + t.v} type="button" role="tab" aria-selected={on === t.v} aria-controls="rp-panel" className={'rd-viewbtn' + (on === t.v ? ' on' : '') + (t.zero ? ' zero' : '')} onClick={() => onPick(t.v)}>
+            {VIEW_ICON[t.v] && <i aria-hidden="true">{VIEW_ICON[t.v]}</i>}<span>{t.label}</span>{t.n != null && <b className="n">{t.n}</b>}
+          </button>
+        ))}
+      </div>
     </div>
   )
 }
@@ -1024,7 +1057,7 @@ function GeneralView({ k }: { k: Kit }) {
     <>
       {rep.byDept.length > 1 && (
         <>
-          <h3>{tr('Todos los departamentos')} <WhatIs id="trabajando" /></h3>
+          {!RD && <h3>{tr('Todos los departamentos')} <WhatIs id="trabajando" /></h3>}
           <div className="rp-plant">
             <button type="button" className="rp-tile" onClick={() => go('code')}><span className="lab">{tr('Códigos')}</span><b>{rep.distinct}</b><small>{rows.length} {rows.length === 1 ? tr('corrida') : tr('corridas')}</small></button>
             <button type="button" className="rp-tile" onClick={() => go('rec', { rec: 'runs' })}><span className="lab">{tr('Trabajando')}</span><b>{durText(working)}</b><small>{linesText(rep.lines)}</small></button>

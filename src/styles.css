@@ -3390,3 +3390,38 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 @media (prefers-reduced-motion:reduce){.rd-trend-line path{animation:none}}
 @media (max-width:560px){.rd-trend-chip{font-size:12.5px;padding:3px 10px 3px 8px}}
 @media (max-width:560px){.rd-trend-tip{position:static;width:auto;margin-top:8px;box-shadow:none;background:var(--bg)}}
+/* ---- choices that look like buttons, each with its name (Jose, 2026-11-06: "que yo sepa qué estoy presionando o qué
+   presionar"): a segmented choice is a framed track; the one chosen is filled purple, the others are plain words you can tap ---- */
+:root{--seg:#e9eef3}
+.app.rd .seg{background:var(--seg);border:1px solid var(--line)}
+:where(.app.rd) .seg button:not([class*="c-"]):not(.on){color:var(--ink)}
+:where(.app.rd) .seg button:not([class*="c-"]):not(.on):hover{background:var(--soft)}
+.rd-pickers{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px 22px}
+.rd-pick{display:grid;gap:5px;min-width:0}
+.rd-picklab{font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.rd-pick .rd-daynav .btn{min-height:40px}
+.rd-pick .rd-datesbtn{min-width:120px;font-weight:800}
+.rd-pick .seg.rd-rangeseg button{min-height:38px}
+.rd-views{display:grid;gap:6px;padding-top:12px;margin-top:2px;border-top:1px solid var(--line)}
+.rd-viewlist{display:flex;flex-wrap:wrap;gap:6px}
+.rd-viewbtn{display:inline-flex;align-items:center;gap:7px;min-height:40px;padding:0 14px;border-radius:10px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);font-weight:700;font-size:14px;cursor:pointer;white-space:nowrap}
+.rd-viewbtn i{font-style:normal}
+.rd-viewbtn:hover{border-color:var(--accent-line,var(--accent))}
+.rd-viewbtn.on{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 2px 0 rgba(0,0,0,.2)}
+.rd-viewbtn .n{min-width:22px;padding:1px 7px;border-radius:99px;background:var(--bg);color:var(--muted);font-size:12px;text-align:center}
+.rd-viewbtn.on .n{background:rgba(255,255,255,.18);color:#fff}
+.rd-viewbtn.zero{opacity:.5}
+@media (max-width:720px){
+  .rd-pickers{display:grid;grid-template-columns:minmax(0,1fr)}
+  .rd-pick .seg.rd-rangeseg{display:flex;flex-wrap:wrap;width:100%}
+  .rd-pick .seg.rd-rangeseg button{flex:1 0 auto}
+  .rd-viewlist{flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px}
+}
+.rd-pickers{align-items:flex-start}
+@media (max-width:720px){
+  .rd-viewlist{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));overflow:visible}
+  .rd-viewbtn{justify-content:flex-start;min-width:0;white-space:normal;line-height:1.15;padding:6px 12px}
+  .rd-viewbtn .n{margin-left:auto}
+  .rd-pick .seg.rd-roomseg{display:grid;grid-auto-flow:row;grid-template-columns:repeat(3,minmax(0,1fr))}
+  .rd-pick .seg.rd-roomseg button{justify-content:center;padding:0 6px}
+}

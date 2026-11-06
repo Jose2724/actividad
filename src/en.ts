@@ -3991,4 +3991,7 @@ export const EN: Record<string, string> = {
   'Meta {0}%': 'Goal {0}%',
   'Todos 100%': 'Everyone 100%',
   'Sin datos este día': 'No data this day',
+  'Todo el día': 'All day',
+  'Filtros': 'Filters',
+  'Qué ver': 'What to see',
 }
