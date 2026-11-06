@@ -3074,6 +3074,19 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 .rd-pplhchart .avg{stroke:var(--sb-ok);stroke-width:1.5;stroke-dasharray:5 4}
 .rd-pplhchart text{font:600 11px system-ui,sans-serif}
 .rd-pplhchart .lab{fill:var(--sb-lab)}.rd-pplhchart .avgl{fill:var(--sb-ok);font-weight:800}
+/* PPLH uploads: two big buttons that say what they take and whether the day has it (Jose, 2026-11-06: "que se entienda solo y rápido") */
+.rd-pplhup{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}@media(max-width:620px){.rd-pplhup{grid-template-columns:1fr}}
+.rd-upbtn{position:relative;display:flex;align-items:center;gap:12px;min-width:0;padding:12px 14px;border:1.5px solid var(--line);border-radius:14px;background:var(--rd-box,var(--surface));cursor:pointer}
+.rd-upbtn:hover{border-color:var(--accent)}.rd-upbtn:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+.rd-upbtn>i{font-style:normal;font-size:26px;line-height:1}
+.rd-upbtn>span{display:grid;min-width:0;flex:1}.rd-upbtn>span b{font-size:16px}.rd-upbtn>span small{color:var(--muted);font-size:12.5px}
+.rd-upbtn>em{font-style:normal;font-weight:800;font-size:12.5px;padding:4px 10px;border-radius:999px;white-space:nowrap}
+.rd-upbtn.has>em{color:var(--sb-ok);background:color-mix(in srgb,var(--sb-ok) 16%,transparent)}
+.rd-upbtn.miss{border-color:color-mix(in srgb,#d97706 60%,var(--line))}.rd-upbtn.miss>em{color:#b45309;background:color-mix(in srgb,#f59e0b 18%,transparent)}
+.rd-upbtn input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.rd-pplhread .rd-hide{display:none}.pplh-uploads.rd-pplhread:not(:has(.wt-rp:not(.rd-hide))){display:none}
+.rd-why{margin-left:8px;width:26px;height:26px;border-radius:50%;border:1.5px solid var(--line);background:transparent;color:var(--muted);font-weight:800;cursor:pointer;vertical-align:middle}.rd-why.on,.rd-why:hover{border-color:var(--accent);color:var(--accent)}
+.rd-pplhyield h3{display:flex;align-items:center;gap:8px}.rd-pplhyield small{color:var(--muted)}
 .rd-pplhchart .val{fill:var(--ink);font-weight:800}
 .rd-pplh>.wt-rp{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
 @media (max-width:760px){.rd-pplhtiles{grid-template-columns:repeat(2,minmax(0,1fr))}}

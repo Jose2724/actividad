@@ -1550,5 +1550,16 @@ html:where([data-theme="dark"]),:where(html[data-theme="dark"]) body{background:
 :where(html[data-theme="dark"]) .rd-pplhchart .avg{stroke:var(--sb-ok)}
 :where(html[data-theme="dark"]) .rd-pplhchart .lab{fill:var(--sb-lab)}
 :where(html[data-theme="dark"]) .rd-pplhchart .avgl{fill:var(--sb-ok)}
+:where(html[data-theme="dark"]) .rd-upbtn{border:1.5px solid var(--line);border-radius:14px;background:var(--rd-box,var(--surface))}
+:where(html[data-theme="dark"]) .rd-upbtn:hover{border-color:var(--accent)}
+:where(html[data-theme="dark"]) .rd-upbtn:focus-within{outline:2px solid var(--accent)}
+:where(html[data-theme="dark"]) .rd-upbtn>span small{color:var(--muted)}
+:where(html[data-theme="dark"]) .rd-upbtn>em{border-radius:999px}
+:where(html[data-theme="dark"]) .rd-upbtn.has>em{color:var(--sb-ok);background:color-mix(in srgb,var(--sb-ok) 16%,transparent)}
+:where(html[data-theme="dark"]) .rd-upbtn.miss{border-color:color-mix(in srgb,#d97706 60%,var(--line))}
+:where(html[data-theme="dark"]) .rd-upbtn.miss>em{color:#f2c6a4;background:color-mix(in srgb,#f59e0b 18%,transparent)}
+:where(html[data-theme="dark"]) .rd-why{border-radius:50%;border:1.5px solid var(--line);background:transparent;color:var(--muted)}
+:where(html[data-theme="dark"]) .rd-why.on,:where(html[data-theme="dark"]) .rd-why:hover{border-color:var(--accent);color:var(--accent)}
+:where(html[data-theme="dark"]) .rd-pplhyield small{color:var(--muted)}
 :where(html[data-theme="dark"]) .rd-pplhchart .val{fill:var(--ink)}
 :where(html[data-theme="dark"]) .rd-pplh>.wt-rp{background:var(--surface);border:1px solid var(--line);border-radius:14px}

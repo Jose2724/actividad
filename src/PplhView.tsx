@@ -36,6 +36,7 @@ export function PplhView({ s, date, today, now, edit, admin }: { s: State; date:
   // the table opens locked, with its numbers; Editar shows the boxes (Jose, 2026-11-03: a button to edit and to lock, so nothing changes by a stray tap)
   const [unlocked, setUnlocked] = useState(false)
   const open = edit && unlocked
+  const [why, setWhy] = useState(false)
   const groups = useMemo(() => (by === 'day' || !range.length ? [] : pplhGroups(s, from, to, by)), [s, from, to, by, range.length]), allG = pplhOfGroups(groups)
   const down = useMemo(() => downtimeOf(s, [day0], now), [s, day0, now])
   const [read, setRead] = useState<{ file: string; r: NetsuiteRead } | null>(null)
@@ -112,8 +113,8 @@ export function PplhView({ s, date, today, now, edit, admin }: { s: State; date:
             <div className="rd-wtacts"><button type="button" className="btn primary" onClick={() => void excel()}>{tr('⬇ Excel para Mike')}</button></div>
           </div>
           <div className="rd-tiles rd-pplhtiles">
-            <div className={'rd-tile' + (rep.lbs == null ? ' pend' : '')}><label>⚖️ {tr('Libras')} · {day0}</label><b>{rep.lbs == null ? '—' : lb(rep.lbs)}</b><small>{rep.lbs == null ? tr('Falta el archivo de NetSuite de este día.') : tr('NetSuite')}</small></div>
-            <div className={'rd-tile' + (rep.hours == null ? ' pend' : '')}><label>⏱️ {tr('Horas')} · {day0}</label><b>{rep.hours == null ? '—' : one(rep.hours)}</b><small>{rep.hours == null ? tr('Faltan las horas de Recursos Humanos de este día.') : tr('Recursos Humanos')}</small></div>
+            <div className={'rd-tile' + (rep.lbs == null ? ' pend' : '')}><label>⚖️ {tr('Libras')} · {day0}</label><b>{rep.lbs == null ? '—' : lb(rep.lbs)}</b><small>{rep.lbs == null ? tr('Falta el archivo') : 'NetSuite'}</small></div>
+            <div className={'rd-tile' + (rep.hours == null ? ' pend' : '')}><label>⏱️ {tr('Horas')} · {day0}</label><b>{rep.hours == null ? '—' : one(rep.hours)}</b><small>{rep.hours == null ? tr('Falta el archivo') : tr('Recursos Humanos')}</small></div>
             <div className={'rd-tile' + (rep.pplh == null ? ' pend' : ' ok')}><label>📈 PPLH · {day0}</label><b>{rep.pplh == null ? '—' : one(rep.pplh)}</b><small>{tr('lb por hora de trabajo')}</small></div>
             <div className={'rd-tile' + (all.pplh == null ? ' pend' : '')}><label>📊 {tr('PPLH del rango')}</label><b>{all.pplh == null ? '—' : one(all.pplh)}</b><small>{range.length === 1 ? tr('1 día') : tr('{0} días', range.length)}</small></div>
           </div>
@@ -132,25 +133,31 @@ export function PplhView({ s, date, today, now, edit, admin }: { s: State; date:
         {rep.hours == null && <p className="hint amber">{tr('Faltan las horas de Recursos Humanos de este día.')}</p>}
         <div className="btns"><button type="button" className="btn primary" onClick={() => void excel()}>{tr('⬇ Excel para Mike')}</button></div>
       </article>}
-      {edit && <div className="pplh-uploads">
-        <article className="wt-rp">
-          <h3>{tr('Subir el archivo de NetSuite')}</h3>
-          <label className="btn soft pplh-file">{tr('📄 Elegir el archivo (.xlsx o .csv)')}<input type="file" accept=".xlsx,.csv,.txt" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void pick(f) }} /></label>
+      {edit && RD && (
+        <div className="rd-pplhup">
+          <label className={'rd-upbtn' + (rep.lbs == null ? ' miss' : ' has')}><i aria-hidden="true">⚖️</i><span><b>{tr('Subir libras')}</b><small>NetSuite · .xlsx .csv</small></span><em>{rep.lbs == null ? tr('Falta {0}', day0) : '✓ ' + day0}</em><input type="file" accept=".xlsx,.csv,.txt" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void pick(f) }} /></label>
+          <label className={'rd-upbtn' + (rep.hours == null ? ' miss' : ' has')}><i aria-hidden="true">⏱️</i><span><b>{tr('Subir horas')}</b><small>{tr('Will · .xlsx')}</small></span><em>{rep.hours == null ? tr('Falta {0}', day0) : '✓ ' + day0}</em><input type="file" accept=".xlsx" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void pickHours(f) }} /></label>
+        </div>
+      )}
+      {edit && <div className={'pplh-uploads' + (RD ? ' rd-pplhread' : '')}>
+        <article className={'wt-rp' + (RD && !err && !said && !read ? ' rd-hide' : '')}>
+          {!RD && <h3>{tr('Subir el archivo de NetSuite')}</h3>}
+          {!RD && <label className="btn soft pplh-file">{tr('📄 Elegir el archivo (.xlsx o .csv)')}<input type="file" accept=".xlsx,.csv,.txt" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void pick(f) }} /></label>}
           {err && <p className="hint red">{err}</p>}
           {said && <p className="hint ok">{said}</p>}
           {read && (
             <div className="pplh-read">
               <p>{tr('{0}: {1} días de {2}, del {3} al {4}, {5} lb en total.', read.file, read.r.days.length, PPLH_SITE, read.r.days[0].date, read.r.days[read.r.days.length - 1].date, lb(read.r.days.reduce((t, d) => t + d.lbs, 0)))}</p>
-              <p className="hint">{tr('No se cuentan: {0} filas de otras plantas, {1} líneas de total y {2} subtotales sin fecha.', read.r.other, read.r.totals, read.r.undated)}{read.r.bad ? ' ' + tr('{0} filas sin libras.', read.r.bad) : ''}</p>
+              {!RD && <p className="hint">{tr('No se cuentan: {0} filas de otras plantas, {1} líneas de total y {2} subtotales sin fecha.', read.r.other, read.r.totals, read.r.undated)}{read.r.bad ? ' ' + tr('{0} filas sin libras.', read.r.bad) : ''}</p>}
               {replaced > 0 && <p className="hint amber">{tr('Reemplaza las libras de {0} días que ya estaban.', replaced)}</p>}
               <div className="btns"><button type="button" className="btn" onClick={() => setRead(null)}>{tr('Cancelar')}</button><button type="button" className="btn primary" onClick={save}>{tr('✓ Guardar las libras')}</button></div>
             </div>
           )}
         </article>
-        <article className="wt-rp">
-          <h3>{tr('Subir el archivo de horas de Will')}</h3>
-          <p className="hint">{tr('El reporte diario de horas de Recursos Humanos (Timesheet Entries): la app suma las horas de cada día de toda la planta y las escribe en la tabla. No guarda nombres.')}</p>
-          <label className="btn soft pplh-file">{tr('📄 Elegir el archivo de horas (.xlsx)')}<input type="file" accept=".xlsx" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void pickHours(f) }} /></label>
+        <article className={'wt-rp' + (RD && !hErr && !hSaid && !hrs ? ' rd-hide' : '')}>
+          {!RD && <h3>{tr('Subir el archivo de horas de Will')}</h3>}
+          {!RD && <p className="hint">{tr('El reporte diario de horas de Recursos Humanos (Timesheet Entries): la app suma las horas de cada día de toda la planta y las escribe en la tabla. No guarda nombres.')}</p>}
+          {!RD && <label className="btn soft pplh-file">{tr('📄 Elegir el archivo de horas (.xlsx)')}<input type="file" accept=".xlsx" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void pickHours(f) }} /></label>}
           {hErr && <p className="hint red">{hErr}</p>}
           {hSaid && <p className="hint ok">{hSaid}</p>}
           {hrs && (
@@ -158,12 +165,12 @@ export function PplhView({ s, date, today, now, edit, admin }: { s: State; date:
               {hrs.r.days.map((d) => <p key={d.date}>{tr('{0}: {1} horas, {2} personas, {3} entradas de reloj.', d.date, one(d.hours), d.people, d.entries)}{d.blank ? ' ' + tr('{0} entradas sin horas ("--").', d.blank) : ''}</p>)}
               {hrs.r.days.some((d) => d.over.length > 0) && (
                 <div className="pplh-over">
-                  <p className="red"><b>{tr('⚠ Personas con {0} horas o más en un día: confirmar con Josh y Santiago y corregir en Bamboo si no es real.', HOURS_FLAG)}</b></p>
+                  <p className="red"><b>{RD ? tr('⚠ {0} h o más en un día: revisar', HOURS_FLAG) : tr('⚠ Personas con {0} horas o más en un día: confirmar con Josh y Santiago y corregir en Bamboo si no es real.', HOURS_FLAG)}</b></p>
                   <ul>{hrs.r.days.flatMap((d) => d.over.map((x) => <li key={d.date + x.name}><b>{x.name}</b> · {d.date} · <b>{x.hours.toFixed(2)} h</b><small> {x.punches.join(' · ')}</small></li>))}</ul>
-                  <p className="hint">{tr('Horas de más que no son reales suben el total de la planta y bajan el PPLH. Esta lista solo se ve aquí y ahora: la app no guarda nombres.')}</p>
+                  {!RD && <p className="hint">{tr('Horas de más que no son reales suben el total de la planta y bajan el PPLH. Esta lista solo se ve aquí y ahora: la app no guarda nombres.')}</p>}
                 </div>
               )}
-              {hrs.r.divisions.length > 0 && <p className="hint">{tr('Divisiones: {0}.', hrs.r.divisions.join(', '))}</p>}
+              {!RD && hrs.r.divisions.length > 0 && <p className="hint">{tr('Divisiones: {0}.', hrs.r.divisions.join(', '))}</p>}
               {hReplaced > 0 && <p className="hint amber">{tr('Reemplaza las horas de {0} días que ya estaban.', hReplaced)}</p>}
               <div className="btns"><button type="button" className="btn" onClick={() => setHrs(null)}>{tr('Cancelar')}</button><button type="button" className="btn primary" onClick={saveHrs}>{tr('✓ Guardar las horas')}</button></div>
             </div>
@@ -171,7 +178,7 @@ export function PplhView({ s, date, today, now, edit, admin }: { s: State; date:
         </article>
       </div>}
       <article className="wt-rp">
-        <h3>{by === 'week' ? tr('Semana por semana') : by === 'month' ? tr('Mes por mes') : tr('Día por día')}{edit && <button type="button" className={'btn sm ' + (unlocked ? 'primary' : 'soft')} onClick={() => setUnlocked((x) => !x)}>{unlocked ? tr('🔒 Bloquear') : tr('✏️ Editar')}</button>}</h3>
+        <h3>{RD && '📋 '}{by === 'week' ? tr('Semana por semana') : by === 'month' ? tr('Mes por mes') : tr('Día por día')}{RD && <button type="button" className={'rd-why' + (why ? ' on' : '')} aria-expanded={why} aria-label={tr('Cómo se calcula')} onClick={() => setWhy((x) => !x)}>ⓘ</button>}{edit && <button type="button" className={'btn sm ' + (unlocked ? 'primary' : 'soft')} onClick={() => setUnlocked((x) => !x)}>{unlocked ? tr('🔒 Bloquear') : tr('✏️ Editar')}</button>}</h3>
         {!RD && <RangePick from={from} to={to} today={day0} dayLabel={day0 !== date ? tr('Ayer') : undefined} onChange={(a, b) => { setFrom(a); setTo(b) }} />}
         {!RD && <div className="btns pplh-by">{(['day', 'week', 'month'] as PplhBy[]).map((b) => <button key={b} type="button" className={'btn sm ' + (by === b ? 'primary' : 'soft')} onClick={() => setBy(b)}>{b === 'day' ? tr('Por día') : b === 'week' ? tr('Por semana') : tr('Por mes')}</button>)}</div>}
         <div className="scroll"><table className="wt-rp-tbl mini">
@@ -197,10 +204,10 @@ export function PplhView({ s, date, today, now, edit, admin }: { s: State; date:
               : <tr><td><b>{tr('Rango')}</b></td><td>{lb(allG.lbs)}</td><td>{one(allG.hours)}</td><td>{allG.pplh == null ? '—' : one(allG.pplh)}</td><td>{groups.reduce((t, g) => t + g.lbsDays, 0)} / {range.length}</td></tr>}
           </tbody>
         </table></div>
-        <p className="hint">{tr('El rango suma las libras y las horas de los días que tienen las dos, y luego divide: no es un promedio de los días. Un día sin archivo o sin horas queda vacío, nunca estimado.')}{edit && ' ' + tr('Toca Editar para escribir libras u horas; cada casilla se guarda al salir de ella, y Bloquear vuelve a dejar los números fijos. Si Mike dicta las libras de un día, escríbelas en su casilla; el archivo de NetSuite, cuando llegue, las reemplaza.')}{by !== 'day' && ' ' + tr('Las semanas van de lunes a domingo, como el SUMMARY de Mike. Si Recursos Humanos da las horas por semana y no por día, se escriben en la fila de la semana completa (Por semana) y toman todas las libras de esa semana.')}</p>
+        {(!RD || why) && <p className="hint">{tr('El rango suma las libras y las horas de los días que tienen las dos, y luego divide: no es un promedio de los días. Un día sin archivo o sin horas queda vacío, nunca estimado.')}{edit && ' ' + tr('Toca Editar para escribir libras u horas; cada casilla se guarda al salir de ella, y Bloquear vuelve a dejar los números fijos. Si Mike dicta las libras de un día, escríbelas en su casilla; el archivo de NetSuite, cuando llegue, las reemplaza.')}{by !== 'day' && ' ' + tr('Las semanas van de lunes a domingo, como el SUMMARY de Mike. Si Recursos Humanos da las horas por semana y no por día, se escriben en la fila de la semana completa (Por semana) y toman todas las libras de esa semana.')}</p>}
       </article>
       <article className="wt-rp">
-        <h3>{tr('Downtime por cuarto · día del reporte')}</h3>
+        <h3>{RD ? '⏸️ ' + tr('Downtime por cuarto') + ' · ' + day0 : tr('Downtime por cuarto · día del reporte')}</h3>
         <div className="scroll"><table className="wt-rp-tbl mini">
           <thead><tr><th>{tr('Departamento')}</th><th>{tr('Trabajado (h)')}</th><th>{tr('Parado (h)')}</th><th>{tr('% Paros')}</th><th>{tr('Lunch y Break (h)')}</th><th>{tr('Set up (h)')}</th><th>{tr('Causa principal')}</th></tr></thead>
           <tbody>{down.map((x) => { const top = [...x.causes].sort((a, b) => b[1] - a[1])[0]; return (
@@ -208,10 +215,10 @@ export function PplhView({ s, date, today, now, edit, admin }: { s: State; date:
           ) })}</tbody>
         </table></div>
       </article>
-      <article className="wt-rp">
+      {RD ? <article className="wt-rp rd-pplhyield"><h3>🎯 {tr('Yield de 0889 y 2234')}<span className="rd-pill su">{tr('Pendiente')}</span></h3><small>{tr('Falta saber de dónde salen las libras de cada producto.')}</small></article> : <article className="wt-rp">
         <h3>{tr('Yield de 0889 y 2234')}</h3>
         <p className="hint amber">{tr('Falta la fuente de las libras de cada producto: el archivo de NetSuite trae ingredientes, no dice a qué producto fueron. Sale vacío en el Excel hasta que se defina.')}</p>
-      </article>
+      </article>}
       {admin && <PplhAccess s={s} />}
     </div>
   )
@@ -262,7 +269,7 @@ function PplhAccess({ s }: { s: State }) {
   return (
     <article className="wt-rp kpi-access">
       <h3>{tr('🔒 Quién ve esta pestaña')}</h3>
-      <p className="hint">{tr('Tú siempre. Además, los nombres de esta lista, escritos como sale su nombre en su cuenta (Ajustes › Empleados). Nadie más la ve.')}</p>
+      {RD ? <p className="hint">{tr('Tú y estos nombres (como salen en su cuenta).')}</p> : <p className="hint">{tr('Tú siempre. Además, los nombres de esta lista, escritos como sale su nombre en su cuenta (Ajustes › Empleados). Nadie más la ve.')}</p>}
       <ul>{names.map((n) => <li key={n}>{n} <button type="button" className="lnk sm" onClick={() => setPplhNames(names.filter((x) => x !== n))}>{tr('Quitar')}</button></li>)}</ul>
       <form className="btns" onSubmit={(e) => { e.preventDefault(); const t = name.trim(); if (t && !names.includes(t)) setPplhNames([...names, t]); setName('') }}>
         <input value={name} maxLength={60} placeholder={tr('Nombre, por ejemplo Edgar Carhuapoma')} onChange={(e) => setName(e.target.value)} aria-label={tr('Nombre')} />
