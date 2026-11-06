@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react'
 import type { Dept } from './store'
+import { DARK } from './theme'
 /**
  * Each room told apart at a glance (Jose, 2026-10-17: "que cada departamento tenga su color"): its emoji and its colour,
  * always beside its name. The colour says WHICH ROOM, never a state: green (running, the main button), red (stopped),
@@ -17,6 +18,19 @@ export const DEPT_LOOK: Record<Dept, { emoji: string; color: string; ink: string
 }
 /** the freezer, which talks with the office though it is not a room of the floor (2026-10-28): Freezer RTE's blue */
 export const FREEZER_LOOK = { emoji: '🧊', color: '#1f5fbf', ink: '#1e3a8a', tint: '#eaf2ff', edge: '#bfd3f6' }
-export const lookVars = (l: { color: string; ink: string; tint: string; edge: string }) => ({ '--d': l.color, '--d-ink': l.ink, '--d-tint': l.tint, '--d-edge': l.edge }) as CSSProperties
+/**
+ * the same rooms on the dark theme (theme.ts): the stripe a little brighter, the room's text light, the band behind its
+ * header a dark shade of its colour
+ */
+const DARK_LOOK: Record<Dept | 'Freezer', { color: string; ink: string; tint: string; edge: string }> = {
+  Kitchen: { color: '#c43fd1', ink: '#f0abfc', tint: '#36173c', edge: '#8b3a94' },
+  RTE: { color: '#1f8fd1', ink: '#7dd3fc', tint: '#0f2c40', edge: '#2f6f99' },
+  Spiral: { color: '#8a63b8', ink: '#cdb8ec', tint: '#2a2140', edge: '#6b5394' },
+  MFO: { color: '#8f9c20', ink: '#dbe68e', tint: '#272c0e', edge: '#6f7a2a' },
+  Packing: { color: '#a07d68', ink: '#e6cfc0', tint: '#33271f', edge: '#7a6252' },
+  Freezer: { color: '#3b7ddd', ink: '#a9c8ff', tint: '#13274a', edge: '#35588f' },
+}
+const dark = (l: { color: string; ink: string; tint: string; edge: string }) => (DARK ? (Object.entries(DEPT_LOOK).find(([, v]) => v.color === l.color)?.[0] ?? (l.color === FREEZER_LOOK.color ? 'Freezer' : '')) : '')
+export const lookVars = (l0: { color: string; ink: string; tint: string; edge: string }) => { const k = dark(l0), l = k ? DARK_LOOK[k as Dept | 'Freezer'] : l0; return { '--d': l.color, '--d-ink': l.ink, '--d-tint': l.tint, '--d-edge': l.edge } as CSSProperties }
 /** a room's colours as CSS variables on the element that wears them (styles.css uses only var(--d…), never a room's hex) */
-export const deptVars = (d: Dept) => ({ '--d': DEPT_LOOK[d].color, '--d-ink': DEPT_LOOK[d].ink, '--d-tint': DEPT_LOOK[d].tint, '--d-edge': DEPT_LOOK[d].edge }) as CSSProperties
+export const deptVars = (d: Dept) => lookVars(DEPT_LOOK[d])

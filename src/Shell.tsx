@@ -7,7 +7,8 @@ import { LangSwitch, QrLink } from './App'
 import { WhatIs } from './Numbers'
 import { lang, tr } from './i18n'
 import { trx } from './trx'
-import { BUILD } from './update'
+import { BUILD, reloadHeld } from './update'
+import { saveTheme, themePick, type ThemePick } from './theme'
 
 /**
  * The frame of the redesign (2026-11-05, see rd.ts): the app in sections, each with its own tabs. The tab ids are the
@@ -133,6 +134,7 @@ export function PersonMenu({ name, role, mgr, onDevice, onLeave, leaveWord }: { 
           <div className="rd-menu" role="dialog" aria-modal="true" aria-label={tr('Menú de {0}', name)} onClick={(e) => e.stopPropagation()}>
             <div className="rd-menu-who"><span className="rd-av big" aria-hidden="true">{initials}</span><div><b>{name}</b><small>{role}</small></div><button type="button" className="rd-x" aria-label={tr('Cerrar')} onClick={() => setOpen(false)}>✕</button></div>
             <div className="rd-menu-it"><i aria-hidden="true">🌐</i><span>{tr('Idioma')}</span><LangSwitch /></div>
+            <div className="rd-menu-it"><i aria-hidden="true">🌓</i><span>{tr('Tema')}</span><ThemeSwitch /></div>
             <div className="rd-menu-it"><i aria-hidden="true">ⓘ</i><WhatIs label={tr('Qué significa cada número')} /></div>
             {mgr && <div className="rd-menu-it"><i aria-hidden="true">▦</i><QrLink label={tr('QR para abrir la app')} /></div>}
             <button type="button" className="rd-menu-it" onClick={() => { setOpen(false); onDevice() }}><i aria-hidden="true">📱</i><span>{tr('Este aparato')}</span><em>{tr('versión {0}', BUILD.slice(0, 7))}</em></button>
@@ -211,4 +213,18 @@ export function HoldsAll({ s }: { s: State }) {
   const rooms = DEPTS.filter((d) => holdsOpen(s, d).length)
   if (!rooms.length) return <p className="hint rd-empty">{tr('Nada en On hold.')}</p>
   return <div className="rd-stack">{rooms.map((d) => <section key={d} className="rd-holdroom" style={deptVars(d)}><h3><i aria-hidden="true">{DEPT_LOOK[d].emoji}</i> {d}</h3><HoldList s={s} dept={d} /></section>)}</div>
+}
+
+/** Claro, Oscuro or the device's own (theme.ts); the page opens again with it, as with the language */
+function ThemeSwitch() {
+  const [held, setHeld] = useState(false)
+  const now = themePick()
+  const pick = (t: ThemePick) => { if (t === now) return; if (reloadHeld()) { setHeld(true); return } saveTheme(t); location.reload() }
+  const opts: { t: ThemePick; label: string }[] = [{ t: 'light', label: '☀ ' + tr('Claro') }, { t: 'dark', label: '🌙 ' + tr('Oscuro') }, { t: 'auto', label: tr('Auto') }]
+  return (
+    <span className="rd-theme" role="group" aria-label={tr('Tema')}>
+      {opts.map((o) => <button key={o.t} type="button" className={now === o.t ? 'on' : ''} aria-pressed={now === o.t} title={o.t === 'auto' ? tr('Como el aparato') : undefined} onClick={() => pick(o.t)}>{o.label}</button>)}
+      {held && <small className="err">{tr('La memoria del aparato está llena: cambia el tema después de hacer espacio.')}</small>}
+    </span>
+  )
 }

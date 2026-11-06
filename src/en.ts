@@ -3643,6 +3643,12 @@ export const EN: Record<string, string> = {
   // the redesign (2026-11-05): sections, menu, search, Resumen, Toda la planta
   "Toda la planta": "Whole plant",
   "Más": "More",
+  "Tema": "Theme",
+  "Claro": "Light",
+  "Oscuro": "Dark",
+  "Auto": "Auto",
+  "Como el aparato": "Like the device",
+  "La memoria del aparato está llena: cambia el tema después de hacer espacio.": "The device's storage is full: change the theme after making room.",
   "Soy jefe: solo ver (Resumen e indicadores)": "I'm a boss: view only (Summary and indicators)",
   "Buscar código, lote, PO, tag…": "Search code, lot, PO, tag…",
   "Mensajes": "Messages",

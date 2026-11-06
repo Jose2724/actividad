@@ -10,15 +10,4 @@ import { supabase } from './supabase'
 const kept = (() => { try { return localStorage.getItem('act_rd') } catch { return null } })()
 export const RD: boolean = kept === '1' ? true : kept === '0' ? false : !supabase
 
-/**
- * The redesign keeps its own light colours (Jose, 2026-11-05: a window "sale casi del mismo color que el de abajo ... me
- * gustaría que tenga mejor colores para que se note mejor todo"): his browser darkens every page by itself, and its
- * guess turned the windows, the cards and the page all the same dark grey. "only light" asks the browser not to repaint
- * the page; darkreader-lock tells the Dark Reader extension the same
- */
-if (RD && typeof document !== 'undefined') {
-  document.documentElement.style.colorScheme = 'only light'
-  for (const [name, content] of [['color-scheme', 'only light'], ['darkreader-lock', '']]) {
-    const m = document.createElement('meta'); m.name = name; m.content = content; document.head.appendChild(m)
-  }
-}
+// (its colours, light or dark, are set in theme.ts)
