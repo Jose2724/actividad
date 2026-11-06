@@ -200,8 +200,26 @@ export function PplhView({ s, date, today, now, edit, admin }: { s: State; date:
 }
 
 /** From / To, and the ranges one taps instead of typing: this week (Monday to Sunday), last week, this month, last month */
-export function RangePick({ from, to, today, dayLabel, onChange }: { from: string; to: string; today: string; dayLabel?: string; onChange: (from: string, to: string) => void }) {
+export function RangePick({ from, to, today, dayLabel, onChange, compact }: { from: string; to: string; today: string; dayLabel?: string; onChange: (from: string, to: string) => void; compact?: boolean }) {
   const label = { day: dayLabel ?? tr('Hoy'), week: tr('Esta semana'), lastWeek: tr('Semana pasada'), month: tr('Este mes'), lastMonth: tr('Mes pasado') }
+  const [open, setOpen] = useState(false)
+  // the redesign: the ranges one taps in one row, the exact dates behind one button (Jose, 2026-11-05: Pesos in one screen)
+  if (compact) {
+    const short = (d: string) => (d ? new Date(d + 'T12:00:00').toLocaleDateString(locale, { day: 'numeric', month: 'short' }) : '')
+    return (
+      <div className="rd-range">
+        <div className="seg rd-rangeseg" role="group" aria-label={tr('Fechas')}>{rangeShortcuts(today).map((q) => <button key={q.id} type="button" className={from === q.from && to === q.to ? 'on' : ''} aria-pressed={from === q.from && to === q.to} onClick={() => onChange(q.from, q.to)}>{label[q.id]}</button>)}</div>
+        <div className="rd-menuwrap">
+          <button type="button" className="btn sm rd-datesbtn" aria-expanded={open} onClick={() => setOpen((x) => !x)}>📅 {short(from)}{to && to !== from ? ' – ' + short(to) : ''} ▾</button>
+          {open && <div className="rd-dropdown rd-dates">
+            <label>{tr('Desde')} <input type="date" value={from} onChange={(e) => onChange(e.target.value, to)} /></label>
+            <label>{tr('Hasta')} <input type="date" value={to} onChange={(e) => onChange(from, e.target.value)} /></label>
+            <button type="button" className="btn sm primary" onClick={() => setOpen(false)}>{tr('Listo')}</button>
+          </div>}
+        </div>
+      </div>
+    )
+  }
   return (
     <div className="btns pplh-range">
       <div className="pplh-dates">

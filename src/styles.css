@@ -2929,8 +2929,70 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 .app.rd .line .wt-remind,.app.rd .line .slowbar,.app.rd .line .stopbar,.app.rd .line .setupbar{overflow-wrap:anywhere}
 /* five or six buttons under a line (Spiral: Parar, Set up, Peso, Carne, Terminar) in two rows, each word whole (Jose,
    2026-11-06: "hace overlap la palabra terminar y quizás también carne"); four or fewer stay in one row */
-.app.rd .line .acts2:has(> :nth-child(5)){grid-template-columns:repeat(6,minmax(0,1fr))}
-.app.rd .line .acts2:has(> :nth-child(5)) > *{grid-column:span 2}
-.app.rd .line .acts2:has(> :nth-child(5)):not(:has(> :nth-child(6))) > :nth-child(n+4){grid-column:span 3}
+.app.rd .line .acts2:has(> .btn:nth-of-type(5)){grid-template-columns:repeat(6,minmax(0,1fr))}
+.app.rd .line .acts2:has(> .btn:nth-of-type(5)) > .btn{grid-column:span 2}
+.app.rd .line .acts2:has(> .btn:nth-of-type(5)):not(:has(> .btn:nth-of-type(6))) > .btn:nth-of-type(n+4){grid-column:span 3}
 .app.rd .line .acts2 .btn{white-space:nowrap;min-width:0}
-@container line (max-width:330px){.app.rd .line .acts2:not(:has(> :nth-child(5))):has(> :nth-child(4)){grid-template-columns:repeat(2,minmax(0,1fr))}}
+@container line (max-width:330px){.app.rd .line .acts2:not(:has(> .btn:nth-of-type(5))):has(> .btn:nth-of-type(4)){grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* ---- Indicadores › Pesos (Jose, 2026-11-05: "que ese dashboard del 0889 y 2234 salga en la pantalla sin tener que hacer
+   scroll ... las gráficas nítidas y bien puestas"): one bar (title, range, export), four tiles, the codes' board and a
+   chart for each thing weighed, QA's range as a green band ---- */
+:root{--wt-band:#dcfce7;--wt-edge:#86efac;--wt-line:#581447;--wt-ok:#581447;--wt-bad:#b91c1c;--wt-warn:#b45309;--wt-lab:#5b6b7a}
+.rd-wtbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
+.rd-wttitle{margin:0;font-size:22px;white-space:nowrap}
+.rd-wtbar .rangepick,.rd-wtbar .rpk{margin:0}
+.rd-wtacts{display:flex;gap:8px;margin-left:auto;flex-wrap:wrap}
+.rd-menuwrap{position:relative}
+.rd-dropdown{position:absolute;right:0;top:calc(100% + 6px);z-index:13;min-width:280px;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 14px 34px rgba(0,0,0,.25);padding:6px;display:grid;gap:2px}
+.rd-dropdown button{display:grid;text-align:left;gap:2px;border:0;background:none;border-radius:8px;padding:9px 12px;font:inherit;font-weight:700;color:var(--ink)}
+.rd-dropdown button small{font-weight:500;color:var(--muted);font-size:12.5px}
+.rd-dropdown button:hover{background:var(--soft)}
+.rd-wttiles{margin-top:2px}
+.rd-wttiles .rd-bar{height:7px;margin-top:4px}
+.rd-wttiles .rd-bar i{background:var(--ok)}
+.rd-wtcharts{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
+.rd-wtcard{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px 12px 6px;display:grid;gap:4px;border-top:4px solid var(--wt-edge)}
+.rd-wtcard.bad{border-top-color:var(--wt-bad)}
+.rd-wtcard.empty{border-top-color:var(--line)}
+.rd-wtcard header{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:15px}
+.rd-wtstate{font-size:12.5px;font-weight:800;color:var(--ok);white-space:nowrap}
+.rd-wtcard.bad .rd-wtstate{color:var(--wt-bad)}
+.rd-wtcard.empty .rd-wtstate{color:var(--muted)}
+.rd-wtsub{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12.5px;color:var(--muted)}
+.rd-wtsub b{color:var(--ink)}
+.rd-wtnone{margin:10px 0;color:var(--muted);font-size:13.5px}
+.rd-wtchart{width:100%;height:auto;display:block}
+.rd-wtchart .band{fill:var(--wt-band)}
+.rd-wtchart .edge{stroke:var(--wt-edge);stroke-width:1;stroke-dasharray:3 3}
+.rd-wtchart .line{fill:none;stroke:var(--wt-line);stroke-width:2.2;stroke-linejoin:round;stroke-linecap:round}
+.rd-wtchart .dot{stroke:var(--surface);stroke-width:1.5}
+.rd-wtchart .dot.ok{fill:var(--wt-ok)}.rd-wtchart .dot.bad{fill:var(--wt-bad)}.rd-wtchart .dot.warn{fill:var(--wt-warn)}
+.rd-wtchart text{font:600 10.5px system-ui,sans-serif}
+.rd-wtchart .lab{fill:var(--wt-lab)}
+.rd-wtchart .val{font-weight:800}
+.rd-wtchart .val.ok{fill:var(--wt-ok)}.rd-wtchart .val.bad{fill:var(--wt-bad)}.rd-wtchart .val.warn{fill:var(--wt-warn)}
+.rd-wteach{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.rd-wtshift{margin-left:auto}
+.rd-wtshift button{min-height:34px;font-size:13px;padding:0 12px}
+@media (max-width:760px){.rd-wtacts{margin-left:0;width:100%}.rd-wttitle{font-size:19px}}
+.rd-range{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.rd-rangeseg button{min-height:38px;font-size:13.5px;padding:0 12px;white-space:nowrap}
+.rd-datesbtn{min-height:38px;white-space:nowrap}
+.rd-dates{left:0;right:auto;padding:12px;gap:10px;min-width:240px}
+.rd-dates label{display:grid;gap:4px;font-size:12.5px;font-weight:700;color:var(--muted)}
+.rd-dates input{min-height:42px;border-radius:10px;border:1.5px solid var(--line);padding:0 10px;font-size:15px;background:var(--surface);color:var(--ink)}
+/* the board of 0889 and 2234 side by side, compact */
+.app.rd .wt-board{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:10px}
+.app.rd .wt-boardrow{padding:10px 12px;gap:6px}
+.app.rd .wt-boardhead b{font-size:20px}
+.app.rd .wt-bigs{gap:6px}
+.app.rd .wt-big{padding:6px 8px}
+.app.rd .wt-big b{font-size:20px}
+.app.rd .wt-boardrow>p{margin:0;font-size:13.5px}
+.rd-rangeseg{display:inline-flex;width:auto}
+.rd-rangeseg button{flex:none}
+.rd-wtmissing{display:flex;flex-wrap:wrap;gap:4px 10px;margin:0;font-size:13px;color:var(--muted)}
+.rd-wtmissing span{background:var(--btn);border-radius:99px;padding:2px 10px;color:var(--ink);font-weight:600}
+.rd-wtacts .btn{min-height:38px;padding:0 12px;font-size:14px}
+.rd-wtacts .rd-iconbtn{width:40px;padding:0;font-size:17px}
+.rd-wtbar{row-gap:8px}

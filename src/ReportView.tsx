@@ -10,6 +10,8 @@ import { awayDay, byLineName, COOKS, consumeDelete, consumeEdit, consumesOf, inv
 import { MINI_WEEKS, miniBook, miniSimple, miniSpan, miniTables, miniWeek } from './miniKpi'
 import { PplhView, RangePick } from './PplhView'
 import { DashView } from './DashView'
+import { WtCharts } from './WtCharts'
+import { RD } from './rd'
 import { datesFrom, keepRange, rangeKept, seesPplh } from './pplh'
 import { loadDay } from './sync'
 import { pctText } from './Attendance'
@@ -574,9 +576,12 @@ type Kit = ReturnType<typeof useReport>
 
 export function Report(props: ReportProps) {
   const k = useReport(props)
+  // the redesign's Indicadores › Pesos: a screen of its own, its bar instead of the day report's header and filters (Jose, 2026-11-05)
+  const lean = RD && props.pin === 'wt'
   const { s, now, only, mgr, admin, can, date, pickDate, today, day, rep, rows, dept, lineChosen, purges, recovering, recover, tookText, sending, setSending, preparing, send, pdf, excel, csv, shiftsOpen, setShiftsOpen, wiping, setWiping, notice, setNotice, editRun, setEditRun, runToEdit, stopToEdit, setEditStop, addFor, setAddFor, detail, setDetail, stopSheet, setStopSheet, picking, setPicking, any, help, setHelp, v, tabs, pickView, setFShift, hrs, setFCode, setFLot, fix, fixable } = k
   return (
     <section className="report">
+      {!lean && (
       <div className="rhead">
         <div className="rtitle"><h2>{props.part === 'ind' ? tr('Indicadores del día') : props.part === 'tra' ? tr('Pallets y bins') : tr('Reporte del día')}{only && <> <DeptBadge d={only} /></>}</h2><span>{longDate(date)}</span></div>
         <div className="racts">
@@ -586,10 +591,12 @@ export function Report(props: ReportProps) {
           <button type="button" className="btn" onClick={csv} disabled={!rows.length}>CSV</button>
         </div>
       </div>
+      )}
       {picking && <PartsDialog k={k} mode={picking} onClose={() => setPicking(null)} onGo={(parts) => { const m = picking; setPicking(null); if (m === 'xlsx') void excel(parts); else if (m === 'pdf') void pdf(parts); else void send(parts) }} />}
       {sending && <SendDialog files={sending} subject={tr('E.R. - Ops Summary · Reporte {0}', date) + (dept ? ' · ' + dept : '') + filterTitle(rep.code, rep.lot, rep.shift, lineChosen)} onClose={() => setSending(null)} />}
       {/* what to look at: the search first, then the day, the shift, the room, the line, the code and the lot. They add up.
           (On a phone the captions marked rf-cap are left out: the box, the date and the rooms already say what they are) */}
+      {!lean && (
       <div className="rp-filters">
         <SearchBox k={k} />
         <div className="rf-row">
@@ -630,6 +637,7 @@ export function Report(props: ReportProps) {
         </div>
         <Scope k={k} />
       </div>
+      )}
       <DayNote day={day} />
       {purges.map((c) => (
         <div key={c.id} className="purged">
@@ -641,7 +649,7 @@ export function Report(props: ReportProps) {
       ))}
       {shiftsOpen && <ShiftsDialog s={s} date={date} onClose={() => setShiftsOpen(false)} />}
       {!props.pin && <ViewTabs tabs={tabs} on={v} onPick={pickView} />}
-      <div className="rp-sub"><span>{viewSub(v)}</span><button type="button" className="btn sm" onClick={() => setHelp(true)}>ⓘ {tr('Cómo leer este reporte')}</button></div>
+      {!lean && <div className="rp-sub"><span>{viewSub(v)}</span><button type="button" className="btn sm" onClick={() => setHelp(true)}>ⓘ {tr('Cómo leer este reporte')}</button></div>}
       <div id="rp-panel" role="tabpanel" aria-labelledby={'rp-tab-' + v} className="rp-panel">
         {/* (a day, or a filter, with no code but with stops: every part says so and Registros opens on them) */}
         {v === 'chg' ? <ChangesView k={k} /> : v === 'wt' ? <WeightsView k={k} /> : v === 'dash' ? <DashView s={k.s} date={k.date} now={k.now} pplh={seesPplh(k.s, k.admin, user.get())} /> : v === 'mini' ? <MiniKpiView k={k} /> : v === 'pplh' ? <PplhView s={k.s} date={k.date} today={k.today} now={k.now} edit={!k.viewOnly} admin={k.admin} /> : k.searching && (v === 'gen' || v === 'shift') ? <SearchResults k={k} />
@@ -1707,6 +1715,10 @@ function WeightsView({ k }: { k: Kit }) {
   useEffect(() => { for (const d of wDays) void miniBring(d) }, [wDays])
   const wRows = useMemo(() => wDays.flatMap((d) => weightsOf(s, d, now)), [s, wDays]) // eslint-disable-line react-hooks/exhaustive-deps
   const wLabel = wDays.length > 1 ? tr('Del {0} al {1}', wDays[0], wDays[wDays.length - 1]) : undefined
+  // the redesign: the days one by one for the charts, and the four numbers of the range
+  const wByDay = useMemo(() => wDays.map((d) => ({ date: d, rows: weightsOf(s, d, now) })), [s, wDays]) // eslint-disable-line react-hooks/exhaustive-deps
+  const wAll = useMemo(() => { const c = wtCompliance(wRows), counted = wRows.filter((r) => r.tests.length); return { ...c, checked: counted.reduce((t, r) => t + r.checked, 0), good: counted.reduce((t, r) => t + r.good, 0), under: counted.reduce((t, r) => t + r.under, 0), over: counted.reduce((t, r) => t + r.over, 0) } }, [wRows])
+  const [exp, setExp] = useState(false)
   const summaryRows = useMemo(() => wtSummary(s, wRows), [s, wRows])
   const boardRows = useMemo(() => wtBoard(s, wRows), [s, wRows])
   // the weights too far from their range, in purple, to find them at once (Jose, 2026-10-30); not in the file for the heads
@@ -1733,11 +1745,36 @@ function WeightsView({ k }: { k: Kit }) {
   const late = (r: WtRow) => r.due != null && r.complete + r.skipped.length < r.due
   return (
     <>
-      {(wt.rows.length > 0 || canFix) && <div className="btns">{wt.rows.length > 0 && <><button type="button" className="btn primary" onClick={() => void summary()}>{tr('⬇ Resumen y control de peso')}</button><button type="button" className="btn soft" onClick={() => void sheets()}>{tr('⬇ Excel de pesos: Turno 1, Turno 2 y Todos')}</button></>}{canFix && <button type="button" className="btn soft" onClick={() => setPaper(true)}>{tr('📝 Agregar pesos de papel')}</button>}</div>}
+      {RD && (
+        <div className="rd-wtbar">
+          <h2 className="rd-wttitle">⚖️ {tr('Pesos')}</h2>
+          <RangePick compact from={wFrom} to={wTo} today={date} onChange={(a, b) => { setWFrom(a); setWTo(b) }} />
+          <div className="rd-wtacts">
+            {canFix && <button type="button" className="btn soft" onClick={() => setPaper(true)}>{tr('📝 Pesos de papel')}</button>}
+            <div className="rd-menuwrap">
+              <button type="button" className="btn primary" aria-expanded={exp} onClick={() => setExp((x) => !x)}>{tr('⬇ Exportar')} ▾</button>
+              {exp && <div className="rd-dropdown" onMouseLeave={() => setExp(false)}>
+                <button type="button" onClick={() => { setExp(false); void summary() }}>📊 {tr('Resumen y control de peso')}<small>{tr('para los jefes, del rango elegido')}</small></button>
+                <button type="button" onClick={() => { setExp(false); void sheets() }}>📄 {tr('Excel de pesos')}<small>{tr('Turno 1, Turno 2 y Todos, del día')}</small></button>
+              </div>}
+            </div>
+            <button type="button" className="btn rd-iconbtn" title={tr('Cómo leer')} aria-label={tr('Cómo leer')} onClick={() => k.setHelp(true)}>ⓘ</button>
+          </div>
+        </div>
+      )}
+      {RD && (
+        <div className="rd-tiles rd-wttiles">
+          <div className={'rd-tile' + (wAll.due && wAll.done < wAll.due ? ' warn' : wAll.due ? ' ok' : '')}><label>🧪 {tr('Pruebas hechas')}</label><b>{wAll.due ? wAll.done : wAll.checked ? wRows.reduce((t, r) => t + r.tests.length, 0) : 0}{wAll.due ? <small> {tr('de {0}', wAll.due)}</small> : null}</b>{wAll.due ? <span className="rd-bar"><i style={{ width: Math.round((wAll.done / wAll.due) * 100) + '%' }} /></span> : <small>{tr('ninguna tocaba')}</small>}</div>
+          <div className={'rd-tile' + (!wAll.checked ? '' : wAll.good / wAll.checked >= 0.95 ? ' ok' : ' warn')}><label>✅ {tr('En rango')}</label><b>{wAll.checked ? Math.round((wAll.good / wAll.checked) * 1000) / 10 + '%' : '—'}</b><small>{wAll.checked ? tr('{0} de {1} pesos', wAll.good, wAll.checked) : tr('sin pesos')}</small></div>
+          <div className={'rd-tile' + (wAll.under ? ' bad' : '')}><label>⬇️ {tr('Bajos')}</label><b>{wAll.under}</b><small>{tr('pesos bajo el rango')}</small></div>
+          <div className={'rd-tile' + (wAll.over ? ' warn' : '')}><label>⬆️ {tr('Sobre')}</label><b>{wAll.over}</b><small>{tr('pesos sobre el rango')}</small></div>
+        </div>
+      )}
+      {!RD && (wt.rows.length > 0 || canFix) && <div className="btns">{wt.rows.length > 0 && <><button type="button" className="btn primary" onClick={() => void summary()}>{tr('⬇ Resumen y control de peso')}</button><button type="button" className="btn soft" onClick={() => void sheets()}>{tr('⬇ Excel de pesos: Turno 1, Turno 2 y Todos')}</button></>}{canFix && <button type="button" className="btn soft" onClick={() => setPaper(true)}>{tr('📝 Agregar pesos de papel')}</button>}</div>}
       {paper && <WeightPaperDialog s={s} date={date} onClose={() => setPaper(false)} />}
       {fixing && <WeightsFixDialog s={s} row={fixing} onClose={() => setFixing(null)} />}
       {editing && <WeightTestDialog s={s} test={editing.t} row={editing.w} onClose={() => setEditing(null)} />}
-      <RangePick from={wFrom} to={wTo} today={date} onChange={(a, b) => { setWFrom(a); setWTo(b) }} />
+      {!RD && <RangePick from={wFrom} to={wTo} today={date} onChange={(a, b) => { setWFrom(a); setWTo(b) }} />}
       {wLabel && <p className="hint">{tr('El resumen y Por departamento son del {0} al {1} ({2} días); las pruebas de abajo, del día del reporte.', wDays[0], wDays[wDays.length - 1], wDays.length)}</p>}
       <div className="wt-board">{boardRows.map((x) => (
         <article key={x.code} className="wt-boardrow">
@@ -1746,6 +1783,7 @@ function WeightsView({ k }: { k: Kit }) {
           <p className={x.action ? 'red' : x.weighed ? 'ok' : 'muted'}>{x.result}</p>
         </article>
       ))}</div>
+      {RD && <WtCharts s={s} days={wByDay} />}
       <div className="wt-legend"><span className="ok">{tr('✓ Dentro del objetivo')}</span><span className="bad">{tr('✗ Bajo el objetivo')}</span><span className="warn">{tr('✗ Sobre el objetivo')}</span></div>
       {mixed.length > 0 && <p className="hint amber">{tr('Kitchen tiene pesos con el código {0}: no salen en el resumen. Toca Corregir y ponles 0889 o 2234.', mixed.join(', '))}</p>}
       <article className="wt-rp">
@@ -1786,7 +1824,7 @@ function WeightsView({ k }: { k: Kit }) {
           {yields.filter((y) => y.dept === g[0].dept && normCode(y.code) === normCode(g[0].code)).map((y) => <p key={y.cook} className="wt-yield">{tr('Rendimiento {0}: {1} oz crudo → {2} oz cocinado = {3} (se pierde {4})', cookTextOf(y.cook), oz(y.raw), oz(y.cooked), pc(y.pct), pc(1 - y.pct))}</p>)}
         </article>
       ))}
-      <h3>{tr('Cada prueba')}{rep.shift ? ' · ' + tr('Turno {0}', rep.shift) : ''} <WhatIs id="peso-pruebas" /></h3>
+      <h3 className={RD ? 'rd-wteach' : ''}>{tr('Cada prueba')}{!RD && rep.shift ? ' · ' + tr('Turno {0}', rep.shift) : ''} <WhatIs id="peso-pruebas" />{RD && <span className="seg rd-wtshift" role="group" aria-label={tr('Turno')}>{([0, 1, 2] as const).map((x) => <button key={x} type="button" className={rep.shift === x ? 'on' : ''} aria-pressed={rep.shift === x} onClick={() => k.setFShift(x)}>{x ? tr('Turno {0}', x) : tr('Todos')}</button>)}</span>}</h3>
       {oddN > 0 && <p className="wt-oddsay">{oddN === 1 ? tr('1 peso sospechoso, en morado: revísalo') : tr('{0} pesos sospechosos, en morado: revísalos', oddN)}</p>}
       {wt.tests.length ? <div className="scroll"><table className="wt-rp-tbl each">
         <thead><tr><th>{tr('Hora')}</th><th>{tr('Turno')}</th><th>{tr('Línea')}</th><th>{tr('Código')}</th><th>{tr('Qué')}</th><th>{tr('Pesos (oz)')}</th><th className="n">{tr('Promedio')}</th><th className="n">✓</th><th className="n">▼</th><th className="n">▲</th><th>{tr('Anotó')}</th>{canFix && <th />}</tr></thead>

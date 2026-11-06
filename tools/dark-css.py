@@ -24,6 +24,7 @@ html[data-theme="dark"] .app.rd .btn.go{background:#1f8a55;border-color:#1f8a55}
 html[data-theme="dark"] .app.rd .veil{background:rgba(0,0,0,.7)}
 html[data-theme="dark"] .app.rd .line.mode-bin{border-color:#8b5cf6;box-shadow:0 0 0 1px #8b5cf6}
 html[data-theme="dark"] .app.rd .line.mode-bin .hero{border-color:#5b4a8a}
+html[data-theme="dark"]{--wt-band:#163a26;--wt-edge:#2f7a4d;--wt-line:#e08ccd;--wt-ok:#e08ccd;--wt-bad:#f87171;--wt-warn:#fbbf24;--wt-lab:#a0a8b1}
 html[data-theme="dark"] .app.rd .k-lb{--kt:#2e2412;--kk:#fcd34d}
 html[data-theme="dark"] .app.rd .k-cajas{--kt:#16233d;--kk:#93c5fd}
 html[data-theme="dark"] .app.rd .k-copas{--kt:#1c1d3d;--kk:#a5b4fc}
