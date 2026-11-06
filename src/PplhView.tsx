@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { awayDay, dayBefore, type State } from './store'
+import { awayDay, dayBefore, rosterOf, type State } from './store'
 import { loadDay } from './sync'
 import { datesFrom, downtimeOf, HOURS_FLAG, hoursShift, SHIFT_CHECKER, keepRange, plusDays, rangeKept, netsuiteSheet, pplhBook, pplhLbsByHand, readHours, setPplhLbsHand, type HoursRead, pplhGroups, pplhNames, pplhOfGroups, pplhOfRange, pplhRow, pplhWeekHours, rangeShortcuts, readNetsuite, savePplhLbs, setPplhHours, setPplhNames, setPplhWeekHours, PPLH_SITE, type NetsuiteRead, type PplhBy } from './pplh'
 import { loadZip, readCsv, readXlsx, xlsxNow, XLSX_TYPE } from './xlsx'
@@ -66,7 +66,6 @@ export function PplhView({ s, date, today, now, edit, admin }: { s: State; date:
       setHrs({ file: f.name, r })
     } catch { setHErr(tr('No se pudo leer el archivo. Si es de Excel, guárdalo como .xlsx y vuelve a subirlo.')) }
   }
-  const hReplaced = hrs ? hrs.r.days.filter((d) => pplhRow(s, d.date).hours != null).length : 0
   const saveHrs = () => {
     if (!hrs) return
     for (const d of hrs.r.days) setPplhHours(d.date, d.hours)
@@ -154,23 +153,16 @@ export function PplhView({ s, date, today, now, edit, admin }: { s: State; date:
             </div>
           )}
         </article>
-        <article className={'wt-rp' + (RD && !hErr && !hSaid && !hrs ? ' rd-hide' : '')}>
+        <article className={'wt-rp' + (RD && !hErr && !hSaid ? ' rd-hide' : '')}>
           {!RD && <h3>{tr('Subir el archivo de horas de Will')}</h3>}
           {!RD && <p className="hint">{tr('El reporte diario de horas de Recursos Humanos (Timesheet Entries): la app suma las horas de cada día de toda la planta y las escribe en la tabla. No guarda nombres.')}</p>}
           {!RD && <label className="btn soft pplh-file">{tr('📄 Elegir el archivo de horas (.xlsx)')}<input type="file" accept=".xlsx" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void pickHours(f) }} /></label>}
           {hErr && <p className="hint red">{hErr}</p>}
           {hSaid && <p className="hint ok">{hSaid}</p>}
-          {hrs && (
-            <div className="pplh-read">
-              {hrs.r.days.map((d) => <p key={d.date}>{tr('{0}: {1} horas, {2} personas, {3} entradas de reloj.', d.date, one(d.hours), d.people, d.entries)}{d.blank ? ' ' + tr('{0} entradas sin horas ("--").', d.blank) : ''}</p>)}
-              {hrs.r.days.some((d) => d.over.length > 0) && <HoursOverList s={s} days={hrs.r.days} />}
-              {!RD && hrs.r.divisions.length > 0 && <p className="hint">{tr('Divisiones: {0}.', hrs.r.divisions.join(', '))}</p>}
-              {hReplaced > 0 && <p className="hint amber">{tr('Reemplaza las horas de {0} días que ya estaban.', hReplaced)}</p>}
-              <div className="btns"><button type="button" className="btn" onClick={() => setHrs(null)}>{tr('Cancelar')}</button><button type="button" className="btn primary" onClick={saveHrs}>{tr('✓ Guardar las horas')}</button></div>
-            </div>
-          )}
+          {hrs && <p className="hint">{tr('Revisa el archivo abajo y guárdalo.')}</p>}
         </article>
       </div>}
+      {edit && hrs && <HoursReview s={s} file={hrs.file} r={hrs.r} onCancel={() => setHrs(null)} onSave={saveHrs} />}
       <article className="wt-rp">
         <h3>{RD && '📋 '}{by === 'week' ? tr('Semana por semana') : by === 'month' ? tr('Mes por mes') : tr('Día por día')}{RD && <button type="button" className={'rd-why' + (why ? ' on' : '')} aria-expanded={why} aria-label={tr('Cómo se calcula')} onClick={() => setWhy((x) => !x)}>ⓘ</button>}{edit && <button type="button" className={'btn sm ' + (unlocked ? 'primary' : 'soft')} onClick={() => setUnlocked((x) => !x)}>{unlocked ? tr('🔒 Bloquear') : tr('✏️ Editar')}</button>}</h3>
         {!RD && <RangePick from={from} to={to} today={day0} dayLabel={day0 !== date ? tr('Ayer') : undefined} onChange={(a, b) => { setFrom(a); setTo(b) }} />}
@@ -220,17 +212,55 @@ export function PplhView({ s, date, today, now, edit, admin }: { s: State; date:
 
 /** From / To, and the ranges one taps instead of typing: this week (Monday to Sunday), last week, this month, last month */
 /**
+ * Will's hours file before it is saved (Jose, 2026-11-06, on the first real file: the list was squeezed in half the
+ * screen; "que se vea profesional y robusto"): the whole width, what each day brings against what the table has, then
+ * the people with too many hours side by side, one column for whoever confirms them, and the two buttons at the top
+ * and at the bottom. Saving writes each day's hours in the table, as before
+ */
+function HoursReview({ s, file, r, onCancel, onSave }: { s: State; file: string; r: HoursRead; onCancel: () => void; onSave: () => void }) {
+  const box = useRef<HTMLElement>(null)
+  useEffect(() => { box.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }, [file, r])
+  const was = (date: string) => pplhRow(s, date).hours
+  const over = r.days.reduce((n, d) => n + d.over.length, 0)
+  const acts = <div className="hrv-acts"><button type="button" className="btn" onClick={onCancel}>{tr('Cancelar')}</button><button type="button" className="btn primary" onClick={onSave}>{tr('✓ Guardar las horas')}</button></div>
+  return (
+    <article ref={box} className="wt-rp hrv">
+      <header className="hrv-top">
+        <div><h3>⏱️ {tr('Revisar las horas antes de guardar')}</h3><small>{file}</small></div>
+        {acts}
+      </header>
+      <div className="scroll"><table className="wt-rp-tbl mini hrv-days">
+        <thead><tr><th>{tr('Fecha')}</th><th>{tr('Horas del archivo')}</th><th>{tr('En la tabla ahora')}</th><th>{tr('Personas')}</th><th>{tr('Entradas de reloj')}</th><th>{tr('Sin horas')}</th><th>{tr('{0} h o más', HOURS_FLAG)}</th></tr></thead>
+        <tbody>{r.days.map((d) => { const w = was(d.date); return (
+          <tr key={d.date}>
+            <td><b>{d.date}</b></td>
+            <td><b>{one(d.hours)}</b></td>
+            <td>{w == null ? <span className="hrv-new">{tr('Nuevo')}</span> : w === d.hours ? <span className="hrv-same">{tr('Igual')}</span> : <span className="hrv-chg">{one(w)} → {one(d.hours)}</span>}</td>
+            <td>{d.people}</td>
+            <td>{d.entries}</td>
+            <td>{d.blank || '—'}</td>
+            <td>{d.over.length ? <b className="hrv-bad">{d.over.length}</b> : <span className="hrv-ok">0</span>}</td>
+          </tr>) })}</tbody>
+      </table></div>
+      {over > 0 ? <HoursOverList s={s} days={r.days} /> : <p className="hrv-allok">✓ {tr('Nadie tiene {0} horas o más en un día.', HOURS_FLAG)}</p>}
+      {r.divisions.length > 0 && <details className="hrv-div"><summary>{tr('Divisiones del archivo ({0})', r.divisions.length)}</summary><p>{r.divisions.join(' · ')}</p></details>}
+      <footer className="hrv-foot"><small>{tr('Al guardar, las horas de cada día van a la tabla de abajo. La app no guarda nombres.')}</small>{acts}</footer>
+    </article>
+  )
+}
+
+/**
  * The people with too many hours in one day, each in the list of whoever confirms them (Jose, 2026-11-06: "lo que sean
- * del turno 1 que diga Josh y los del turno 2 Santiago, así cada uno con su lista y si no se sabe que le salga a los dos
- * ... que se vea bonito y entendible")
+ * del turno 1 que diga Josh y los del turno 2 Santiago, así cada uno con su lista y si no se sabe que le salga a los dos"),
+ * side by side. A shift whose Employee List is not in Ajustes says so in its column, since its people fall to both
  */
 function HoursOverList({ s, days }: { s: State; days: HoursRead['days'] }) {
   const all = days.flatMap((d) => d.over.map((x) => ({ ...x, date: d.date, shift: hoursShift(s, x) })))
   const groups = [
-    { k: 1, who: SHIFT_CHECKER[1], sub: tr('Turno 1'), list: all.filter((x) => x.shift === 1) },
-    { k: 2, who: SHIFT_CHECKER[2], sub: tr('Turno 2'), list: all.filter((x) => x.shift === 2) },
-    { k: 0, who: tr('{0} y {1}', SHIFT_CHECKER[1], SHIFT_CHECKER[2]), sub: tr('No se sabe el turno'), list: all.filter((x) => x.shift == null) },
-  ].filter((g) => g.list.length)
+    { k: 1, who: SHIFT_CHECKER[1], sub: tr('Turno 1'), list: all.filter((x) => x.shift === 1), noList: !rosterOf(s, 1).people.length },
+    { k: 2, who: SHIFT_CHECKER[2], sub: tr('Turno 2'), list: all.filter((x) => x.shift === 2), noList: !rosterOf(s, 2).people.length },
+    { k: 0, who: tr('{0} y {1}', SHIFT_CHECKER[1], SHIFT_CHECKER[2]), sub: tr('No se sabe el turno'), list: all.filter((x) => x.shift == null), noList: false },
+  ].filter((g) => g.k !== 0 || g.list.length)
   const multi = days.filter((d) => d.over.length).length > 1
   return (
     <div className="hov">
@@ -239,24 +269,27 @@ function HoursOverList({ s, days }: { s: State; days: HoursRead['days'] }) {
         <div><b>{all.length === 1 ? tr('1 persona con {0} horas o más en un día', HOURS_FLAG) : tr('{0} personas con {1} horas o más en un día', all.length, HOURS_FLAG)}</b>
           <small>{tr('Cada supervisor revisa su lista. Si las horas no son reales, se corrigen en Bamboo.')}</small></div>
       </div>
-      {groups.map((g) => (
-        <section key={g.k} className={'hov-g s' + g.k}>
-          <header>
-            <span className="hov-av" aria-hidden="true">{g.k ? '👤' : '👥'}</span>
-            <div><b>{g.who}</b><small>{g.sub}</small></div>
-            <span className="hov-n">{g.list.length}</span>
-          </header>
-          {g.k === 0 && <p className="hov-why">{tr('No están en la lista de empleados de Ajustes, o el nombre se escribe distinto. Les toca a los dos.')}</p>}
-          <ul>{g.list.map((x) => (
-            <li key={x.date + x.name}>
-              <div className="hov-top"><b>{x.name}</b><span className="hov-h">{tr('{0} h', x.hours.toFixed(2))}</span></div>
-              {multi && <small className="hov-date">{x.date}</small>}
-              <div className="hov-p">{x.punches.map((p, i) => <span key={i}>{p}</span>)}</div>
-            </li>
-          ))}</ul>
-        </section>
-      ))}
-      {!RD && <p className="hint">{tr('Horas de más que no son reales suben el total de la planta y bajan el PPLH. Esta lista solo se ve aquí y ahora: la app no guarda nombres.')}</p>}
+      <div className="hov-cols">
+        {groups.map((g) => (
+          <section key={g.k} className={'hov-g s' + g.k}>
+            <header>
+              <span className="hov-av" aria-hidden="true">{g.k ? '👤' : '👥'}</span>
+              <div><b>{g.who}</b><small>{g.sub}</small></div>
+              <span className="hov-n">{g.list.length}</span>
+            </header>
+            {g.k === 0 && <p className="hov-why">{tr('No están en la lista de empleados de Ajustes, o el nombre se escribe distinto. Les toca a los dos.')}</p>}
+            {g.noList && <p className="hov-why">{tr('Falta la lista de empleados del {0} en Ajustes › Asistencia: su gente sale con los dos.', g.sub)}</p>}
+            {g.list.length ? <ul>{g.list.map((x) => (
+              <li key={x.date + x.name}>
+                <div className="hov-top"><b>{x.name}</b><span className="hov-h">{tr('{0} h', x.hours.toFixed(2))}</span></div>
+                {multi && <small className="hov-date">{x.date}</small>}
+                <div className="hov-p">{x.punches.map((p, i) => <span key={i}>{p}</span>)}</div>
+              </li>
+            ))}</ul> : !g.noList && <p className="hov-none">✓ {tr('Nadie')}</p>}
+          </section>
+        ))}
+      </div>
+      <p className="hint">{tr('Horas de más que no son reales suben el total de la planta y bajan el PPLH. Esta lista solo se ve aquí y ahora: la app no guarda nombres.')}</p>
     </div>
   )
 }
