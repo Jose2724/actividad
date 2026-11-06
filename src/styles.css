@@ -2316,6 +2316,9 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 .hov-g.s1 header{background:#eff6ff;color:#1e3a8a}.hov-g.s1 .hov-n{background:#2563eb}
 .hov-g.s2 header{background:#f5ecf3;color:#581447}.hov-g.s2 .hov-n{background:#581447}
 .hov-g.s0 header{background:#fffbeb;color:#92400e}.hov-g.s0 .hov-n{background:#d97706}
+.hov-g.s3 header{background:#f0fdfa;color:#115e59}.hov-g.s3 .hov-n{background:#0f766e}.hov-g.s3 .hov-why{color:#115e59;background:#f7fefd}
+.hov-dept{display:inline-block;margin-left:8px;font-size:11.5px;font-weight:600;color:#115e59;background:#ccfbf1;border-radius:6px;padding:1px 6px;vertical-align:middle}
+.roster-add input.roster-dept{flex:0 0 200px;width:200px;min-width:0}
 .hov-why{margin:0;padding:6px 12px;font-size:12.5px;color:#92400e;background:#fffdf5;border-bottom:1px solid var(--line)}
 .hov-g ul{list-style:none;margin:0;padding:0}
 .hov-g li{padding:8px 12px;border-top:1px solid #f1f5f9}.hov-g li:first-child{border-top:0}
