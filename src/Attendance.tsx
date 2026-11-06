@@ -3,6 +3,7 @@ import { ATT_SPOTS, attSpotId, attAccept, attAdd, attBack, attDecline, attDelete
 import { useWho } from './App'
 import { DEPT_LOOK, deptVars } from './look'
 import { tr } from './i18n'
+import { RD } from './rd'
 import { hourOnShift, seesLabor, workSpan } from './kpi'
 
 /**
@@ -268,7 +269,8 @@ export function AttendanceDialog({ s, dept, date, shift: inCourse, edit, note = 
                                   <button type="button" className="btn soft" onClick={() => setOut({ id: x.id, mode: 'move' })}>{tr('⇄ Trasladar')}</button>
                                   <button type="button" className="btn stopbtn" onClick={() => setOut({ id: x.id, mode: 'out' })}>{tr('✕ Sacar')}</button>
                                   {!x.sup && <button type="button" className="btn" onClick={() => { attSetSup(x.id, true); setOut(null); setSaid(tr('{0} es el supervisor del turno.', x.name)) }}>{tr('👤 Es supervisor')}</button>}
-                                  <button type="button" className="btn" onClick={() => { attSetTemp(x.id, !x.temp); setOut(null) }}>{x.temp ? tr('No es temporal') : tr('Es temporal')}</button>
+                                  {/* the company has no agency people (Jose, 2026-11-05): the redesign only undoes one marked before */}
+                                  {(!RD || x.temp) && <button type="button" className="btn" onClick={() => { attSetTemp(x.id, !x.temp); setOut(null) }}>{x.temp ? tr('No es temporal') : tr('Es temporal')}</button>}
                                   {labor && <button type="button" className="btn" onClick={() => { setOut({ id: x.id, mode: 'came' }); setCameHm('') }}>{x.came || writeIsCame ? tr('🕐 Cambiar la hora de llegada') : tr('🕐 Llegó tarde')}</button>}
                                 </div>
                               </div>
@@ -332,7 +334,7 @@ export function AttendanceDialog({ s, dept, date, shift: inCourse, edit, note = 
                 {lines.length > 0 && <label className="atw-opt"><span>{tr('Línea')}</span><select value={addLine} onChange={(e) => setAddLine(e.target.value)}><option value="">{tr('Sin línea')}</option>{lines.map((l) => <option key={l.id} value={l.id}>{attLineText(s, l.id)}</option>)}</select></label>}
                 <div className="atw-opt kind"><span>{tr('Es')}</span><div className="seg atw-kind" role="group" aria-label={tr('Es')}>
                   <button type="button" className={!addTemp && !addSup ? 'on' : ''} aria-pressed={!addTemp && !addSup} onClick={() => { setAddTemp(false); setAddSup(false) }}>{tr('De la compañía')}</button>
-                  <button type="button" className={addTemp ? 'on' : ''} aria-pressed={addTemp} onClick={() => { setAddTemp(true); setAddSup(false) }}>{tr('Temporal (agencia)')}</button>
+                  {!RD && <button type="button" className={addTemp ? 'on' : ''} aria-pressed={addTemp} onClick={() => { setAddTemp(true); setAddSup(false) }}>{tr('Temporal (agencia)')}</button>}
                   <button type="button" className={addSup ? 'on' : ''} aria-pressed={addSup} onClick={() => { setAddSup(true); setAddTemp(false) }}>{tr('Supervisor o líder')}</button>
                 </div></div>
               </div>

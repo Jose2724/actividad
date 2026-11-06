@@ -2763,3 +2763,17 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 @keyframes rdStopPulse{0%,100%{box-shadow:0 0 0 2px rgba(229,83,75,.25);border-color:#df9a93}50%{box-shadow:0 0 0 6px rgba(229,83,75,.7);border-color:#e5534b}}
 .app.rd .line.stopped{animation:rdStopPulse 1.4s ease-in-out infinite}
 @media (prefers-reduced-motion:reduce){.app.rd .line.stopped{animation:none}}
+/* the attendance window, smaller (Jose, 2026-11-05: "es necesario que sea tan grande? ... como está pero más pequeño"):
+   narrower, as tall as what it holds, scrolling inside past that; full screen on phones as before */
+@media (min-width:761px){
+  .app.rd .dlg.atw{width:min(760px,100%);height:auto;max-height:min(680px,calc(100dvh - 32px))}
+  .app.rd .atw-top{padding:12px 16px 0;gap:10px}
+  .app.rd .dlg .atw-head h3{font-size:19px}
+  .app.rd .atw-stat{padding:6px 10px}
+  .app.rd .atw-stat>b{font-size:22px}
+  .app.rd .atw-tab{min-height:42px;font-size:14.5px}
+  .app.rd .atw-body{flex:1 1 auto;padding:12px 16px 14px;gap:10px}
+  .app.rd .atw-find,.app.rd .atw-search input{min-height:44px;font-size:16px}
+  .app.rd .dlg.atw>.atw-foot{padding:8px 16px}
+}
+.rd-lockbtn small{font-weight:600;opacity:.85;margin-left:4px}

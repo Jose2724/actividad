@@ -3643,6 +3643,7 @@ export const EN: Record<string, string> = {
   // the redesign (2026-11-05): sections, menu, search, Resumen, Toda la planta
   "Toda la planta": "Whole plant",
   "Más": "More",
+  "abierto hasta las {0}": "open until {0}",
   "Supervisor: {0}": "Supervisor: {0}",
   "{0} del turno": "{0} this shift",
   "✎ meta": "✎ goal",

@@ -2379,9 +2379,17 @@ const useLineGuard = (now: number) => {
   const who = useWho(), until = useSyncExternalStore(lineGuard.subscribe, lineGuard.get)
   return { applies: who.role !== 'op' && who.role !== 'viewer', locked: who.role !== 'op' && who.role !== 'viewer' && now > until, until }
 }
-function LineGuardBar({ now }: { now: number }) {
+/** the redesign: the same lock as one button in the room's row of actions (Jose, 2026-11-05: "este botón ... ponerlo arriba también donde está asistencia, waste") */
+function LineGuardButton({ now }: { now: number }) {
   const g = useLineGuard(now)
   if (!g.applies) return null
+  return g.locked
+    ? <button type="button" className="btn rd-lockbtn" title={tr('🔒 Los botones de las líneas están bloqueados para que no se toquen sin querer. Corregir, el Programa y lo demás siguen abiertos.')} onClick={() => lineGuard.set(Date.now() + LINE_UNLOCK_MS)}>{tr('🔓 Desbloquear 15 min')}</button>
+    : <button type="button" className="btn soft rd-lockbtn" title={tr('🔓 Botones de las líneas desbloqueados hasta las {0}.', fmtTime(g.until))} onClick={() => lineGuard.set(0)}>{tr('🔒 Bloquear ya')} <small>{tr('abierto hasta las {0}', fmtTime(g.until))}</small></button>
+}
+function LineGuardBar({ now }: { now: number }) {
+  const g = useLineGuard(now)
+  if (RD || !g.applies) return null
   return g.locked
     ? <div className="guardbar"><span>{tr('🔒 Los botones de las líneas están bloqueados para que no se toquen sin querer. Corregir, el Programa y lo demás siguen abiertos.')}</span><button type="button" className="btn sm" onClick={() => lineGuard.set(Date.now() + LINE_UNLOCK_MS)}>{tr('🔓 Desbloquear 15 min')}</button></div>
     : <div className="guardbar open"><span>{trx('🔓 Botones de las líneas desbloqueados hasta las {0}.', <b>{fmtTime(g.until)}</b>)}</span><button type="button" className="btn sm" onClick={() => lineGuard.set(0)}>{tr('🔒 Bloquear ya')}</button></div>
@@ -2469,6 +2477,7 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
         {!viewOnly && <div className="acts">
           {RD && (s.attView.on || !!who.admin) && (() => { const r = attendanceOf(s, day.date, (turn.shift || 1) as 1 | 2, [dept]).rows[0]; return <button type="button" className="btn soft rd-attbtn" onClick={() => setAttWin(true)}>{tr('✍️ Asistencia')} <b className="rd-chipn">{tr('{0} / {1}', r.actual, r.expected)}</b></button> })()}
           {RD && CFG[dept].waste && <RoomWasteButton s={s} dept={dept} date={day.date} />}
+          {RD && <LineGuardButton now={now} />}
           {guard.locked ? null : ds
             ? <button type="button" className="btn danger" onClick={() => endStop(ds.id)}>{trx('▶ Reanudar departamento · {0}', fmtDur(now - ds.startedAt))}</button>
             : <button type="button" className="btn stopbtn" disabled={!anyRunning} onClick={() => setStopAll(true)}>{tr('⏸ Parar departamento')}</button>}
