@@ -1,6 +1,7 @@
 import { Fragment, useState, useSyncExternalStore } from 'react'
 import { type ViewOpt, wallAt, byLineName, lineShiftGoalOf, CFG, dayShiftsText, DEPTS, lineLabel, lotFor, managerPin, nightText, openRun, removedLines, removeLine, reset, resetRecords, restoreLine, setDayShifts, setLineRules, setProgramView, setReasonCodes, shiftGoalOf, shiftHours, shiftSpan, shiftsOf, turnOf, uploadAll, weekOf, type Dept, type Line, type State, type WorkDay, setViewOpt } from './store'
 import { ConfirmDialog, LangSwitch, LineNameDialog, LineTargetDialog, longDate, NoticeDialog, Products, QrLink, ShiftsDialog, StartDayDialog, StopDialog, TargetDialog, useCan, useWho } from './App'
+import { rdNames, setRdNames } from './rdAccess'
 import { Employees } from './Employees'
 import { DEPT_LOOK, deptVars } from './look'
 import { Devices } from './DevicesView'
@@ -115,7 +116,7 @@ export function Settings({ s, now, day, name, home, mgr, admin, viewOnly, meId, 
         {sec === 'mini' && <MiniSettings s={s} viewOnly={viewOnly} now={now} day={day} goals={can('goals') && !viewOnly} />}
         {sec === 'stops' && <StopRulesSettings s={s} viewOnly={viewOnly} />}
         {sec === 'stops' && <StopCodesSettings s={s} viewOnly={viewOnly} />}
-        {sec === 'program' && <><ProgramViewSettings s={s} /><ViewOptSettings s={s} name="lotes" /><ViewOptSettings s={s} name="flujo" />{RD && <ViewOptSettings s={s} name="ayuda" />}</>}
+        {sec === 'program' && <><RdAccessSettings s={s} /><ProgramViewSettings s={s} /><ViewOptSettings s={s} name="lotes" /><ViewOptSettings s={s} name="flujo" />{RD && <ViewOptSettings s={s} name="ayuda" />}</>}
         {sec === 'weights' && <SlowSettings s={s} viewOnly={viewOnly} />}
         {sec === 'kpi' && <KpiSettings s={s} viewOnly={viewOnly} part={part} />}
         {sec === 'consumo' && <ConsumeSettings s={s} viewOnly={viewOnly} />}
@@ -586,6 +587,23 @@ function ViewOptSettings({ s, name }: { s: State; name: ViewOpt }) {
       </div>
       {asking && <ConfirmDialog title={name === 'lotes' ? tr('¿Que todos vean la pestaña Lotes?') : name === 'ayuda' ? tr('¿Que todos usen la Ayuda?') : tr('¿Que todos vean la pestaña Flujo?')} text={name === 'ayuda' ? tr('La usan todos: operadores, managers, la oficina y "Solo ver". Cada pregunta cuesta un poco en la cuenta de la IA. Se puede apagar aquí mismo cuando quieras.') : tr('La ven los managers, la oficina y "Solo ver". Se puede apagar aquí mismo cuando quieras.')} yes={tr('Prender para todos')} onYes={() => { setViewOpt(name, true); setAsking(false) }} onNo={() => setAsking(false)} />}
     </>
+  )
+}
+
+/** who sees the new design before everybody (Jose, 2026-11-06: Santiago and Eli of the office), by their account's name */
+function RdAccessSettings({ s }: { s: State }) {
+  const names = rdNames(s)
+  const [name, setName] = useState('')
+  return (
+    <div className="setcard">
+      <div className="sethead"><h3>{tr('🎨 Diseño nuevo')}</h3><span className={'rc-state' + (names.length ? ' on' : '')}>{names.length ? tr('{0} personas', names.length) : tr('Solo tú')}</span></div>
+      <p className="hint">{tr('Lo ven estos nombres, escritos como sale su nombre en su cuenta. Al entrar, la app se les abre con el diseño nuevo; si quitas un nombre, vuelve al de siempre. Nadie más lo ve.')}</p>
+      {names.length > 0 && <ul className="rd-accesslist">{names.map((n) => <li key={n}><b>{n}</b> <button type="button" className="btn sm soft" onClick={() => setRdNames(names.filter((x) => x !== n))}>{tr('Quitar')}</button></li>)}</ul>}
+      <form className="btns" onSubmit={(e) => { e.preventDefault(); const t = name.trim(); if (t && !names.some((x) => x.toLowerCase() === t.toLowerCase())) setRdNames([...names, t]); setName('') }}>
+        <input value={name} maxLength={60} placeholder={tr('Nombre, por ejemplo Ana Torres')} onChange={(e) => setName(e.target.value)} aria-label={tr('Nombre')} />
+        <button type="submit" className="btn sm primary" disabled={!name.trim()}>{tr('Agregar')}</button>
+      </form>
+    </div>
   )
 }
 

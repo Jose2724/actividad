@@ -1,6 +1,7 @@
 import { attExpectedOf, attOf, attendanceOf, DEPTS, deptStop, deptToday, fmtN, holdsOpen, lineLabel, openRun, openStop, SETUP, shiftGoalOf, shiftsOf, stopsWaiting, turnOf, type Dept, type State } from './store'
+import { sameData } from './slow'
 import { DEPT_LOOK, deptVars } from './look'
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode, memo } from 'react'
 import { awayDay } from './store'
 import { loadDay } from './sync'
 import { RangePick } from './PplhView'
@@ -166,7 +167,9 @@ function SummaryNow({ s, now, date, onGo, has, picker }: { s: State; now: number
  * week or a month is each room's production against the goals of the days' shifts, its time stopped, its people
  * against those expected, and a bar a day. Days older than the device keeps are brought from the server.
  */
-export function Summary(props: { s: State; now: number; date: string; onGo: (t: Go) => void; has: (t: Go) => boolean }) {
+/** (drawn again only when its data change: see slow.ts) */
+export const Summary = memo(SummaryView, sameData)
+function SummaryView(props: { s: State; now: number; date: string; onGo: (t: Go) => void; has: (t: Go) => boolean }) {
   const { date } = props
   const [from, setFrom] = useState(() => rangeKept('sum')?.from ?? date)
   const [to, setTo] = useState(() => rangeKept('sum')?.to ?? date)

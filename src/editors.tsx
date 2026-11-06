@@ -1,5 +1,5 @@
 import { RD } from './rd'
-import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { memo, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { extraOfChoice, runChoiceOf, runChoices, setRunChoice, joinedInto, joinPallet, unjoinPallet, palletsToFinish, unitQty, orderFullWhy, addRunLater, dayBefore, lineTimes, runsOnLine, shiftAt, shiftsOf, turnOf, addUnit, applyDraft, draftChecks, draftUnitOf, NOTE_MAX, usualFor, usualOf, wasteProblem, BIN_WORDS, binOf, binWord, byLineName, cfgFor, checkLaterPallets, DEPTS, fmtN, kindClass, LATER_MAX, laterPalletUnits, laterPoFits, laterStart, laterToOrder, MFO_WORDS, tagTwice, unitStartPo, type LaterPalletRow, plainDay, planRows, SPIRAL_UNITS, type Dept, byShip, CFG, cfgOf, deleteRun, deleteStop, draftOf, fmtDur, fmtTime, lineNameOf, lotsText, moveRun, nearDay, normCode, openRun, orderLabel, reasonText, setUnitOrder, splitStop, store, updateRun, updateStop, type Order, type Run, type State, type Stop, lineLabel, orderFull, orderFullText, orderOver } from './store'
 import { clockNow } from './clock'
 import { unitStartLot } from './report'
@@ -21,7 +21,12 @@ const hm = (ms: number) => { const d = new Date(ms); return String(d.getHours())
  * line's card is passed to the right one; one tapped on a line that was not working is dropped. A code finished too
  * early can be reopened.
  */
-export function RunEditor({ s, run, mgr, focusAt, onClose }: { s: State; run: Run; mgr: boolean; focusAt?: number; onClose: () => void }) {
+type RunEditorProps = { s: State; run: Run; mgr: boolean; focusAt?: number; onClose: () => void }
+/** drawn again only when the records, the run or who edits change: the clock's tick every second redrew its whole table
+ * of units under the finger while scrolling (Jose, 2026-11-06: "aquí estoy haciendo scroll y tiene como delay"). Every
+ * onClose only closes the window, so a new one each second changes nothing */
+export const RunEditor = memo(RunEditorView, (a: RunEditorProps, b: RunEditorProps) => a.s === b.s && a.run === b.run && a.mgr === b.mgr && a.focusAt === b.focusAt)
+function RunEditorView({ s, run, mgr, focusAt, onClose }: RunEditorProps) {
   const can = useCan()
   // opened from a unit of the report (a pallet, a cart): that unit is marked and brought into view inside the box
   const focusRow = useRef<HTMLTableRowElement>(null)

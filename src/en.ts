@@ -4136,4 +4136,6 @@ export const EN: Record<string, string> = {
   "Turno 1 → 2": "Shift 1 → 2",
   "Empezó en el turno 1 y terminó en el 2": "Started in shift 1 and ended in shift 2",
   "Todo en el turno {0}": "All in shift {0}",
+  "🎨 Diseño nuevo": "🎨 New design",
+  "Lo ven estos nombres, escritos como sale su nombre en su cuenta. Al entrar, la app se les abre con el diseño nuevo; si quitas un nombre, vuelve al de siempre. Nadie más lo ve.": "These names see it, written as the name shows on their account. When they sign in the app opens in the new design; take a name off and it goes back to the usual one. Nobody else sees it.",
 }

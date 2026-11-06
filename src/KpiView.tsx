@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, memo } from 'react'
+import { sameData } from './slow'
 import { cookText, wtRangeText, fmtN, awayDay, dayBefore, fmtTime, kpiGet, kpiPut, type Dept, type State } from './store'
 import { loadDay } from './sync'
 import { COSTCO_CODE, cookYields, costcoLast, costcoMonth, costcoPlan, kpiNames, kpiNote, kpiSheets, laborOf, parsePlanner, weightsOf, wtCompliance, wtDoneText, type KpiPart } from './kpi'
@@ -21,7 +22,9 @@ const n0 = (x: number) => Math.round(x).toLocaleString('en-US')
 const pc = (x: number | null) => (x == null ? '—' : Math.round(x * 1000) / 10 + '%')
 const nice = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })
 
-export function KpiView({ s, now, today, admin }: { s: State; now: number; today: string; admin: boolean }) {
+/** (drawn again only when its data change: see slow.ts) */
+export const KpiView = memo(KpiViewView, sameData)
+function KpiViewView({ s, now, today, admin }: { s: State; now: number; today: string; admin: boolean }) {
   const viewOnly = useViewOnly()
   const pickRef = useRef<HTMLInputElement>(null)
   const [date, setDate] = useState(() => dayBefore(today))

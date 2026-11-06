@@ -4240,7 +4240,7 @@ section('¿Seguro?: más del doble de lo usual se pregunta antes de guardar; sin
   const body = (text, name) => { const i = text.search(new RegExp('function ' + name + '\\b')); const j = text.slice(i + 1).search(/\n(?:export )?function /); return i < 0 ? '' : text.slice(i, j < 0 ? undefined : i + 1 + j) }
   const uses = (text, tag) => text.split('\n').filter((l) => l.includes('<' + tag + ' '))
   eq('cada ventana de cantidad dice lo usual (menos la del waste, que no es una unidad)', [...uses(app, 'QtyDialog'), ...uses(app, 'LotsDialog')].map((l) => l.includes('usual=') || /Waste de/.test(l)), [...uses(app, 'QtyDialog'), ...uses(app, 'LotsDialog')].map(() => true))
-  eq('se pregunta antes de guardar en cada ventana: carro, pallet, lote del pallet, empezar, Corregir, agregar unidad, agregar registro', [body(app, 'QtyDialog'), body(app, 'LotsDialog'), body(app, 'PalletDoneDialog'), body(app, 'LotEndDialog'), body(app, 'PartDialog'), body(app, 'LineCard'), body(editors, 'RunEditor'), body(editors, 'AddUnitDialog'), body(editors, 'AddRunDialog')].map((b) => b.includes('useSure()') && b.includes('sure.check(') && b.includes('{sure.ui}')), [true, true, true, true, true, true, true, true, true])
+  eq('se pregunta antes de guardar en cada ventana: carro, pallet, lote del pallet, empezar, Corregir, agregar unidad, agregar registro', [body(app, 'QtyDialog'), body(app, 'LotsDialog'), body(app, 'PalletDoneDialog'), body(app, 'LotEndDialog'), body(app, 'PartDialog'), body(app, 'LineCard'), body(editors, 'RunEditorView'), body(editors, 'AddUnitDialog'), body(editors, 'AddRunDialog')].map((b) => b.includes('useSure()') && b.includes('sure.check(') && b.includes('{sure.ui}')), [true, true, true, true, true, true, true, true, true])
   const sureUi = body(app, 'SureDialog'), hook = body(app, 'useSure')
   eq('la pregunta no tiene ninguna caja que llenar: dice el número escrito y lo usual; "Sí, n" verde y "Corregir" gris', [sureUi.includes('<input'), /className="btn primary"[^>]*>\{tr\('Sí, \{0\}'/.test(sureUi), /className="btn"[^>]*>\{tr\('Corregir'\)/.test(sureUi), sureUi.includes('box.n') && sureUi.includes('box.usual')], [false, true, true, true])
   eq('"Corregir" solo cierra la pregunta: no toca la caja, y nada queda confirmado', [/onBack=\{\(\) => setAsking\(null\)\}/.test(hook), (hook.match(/sure\.current\[/g) ?? []).length], [true, 1])
@@ -6909,6 +6909,29 @@ section('Borrar una corrida con producción pide escribir cuántas unidades tien
     eq('con producción, sin escribir nada no se borra', m.dropOk(made, ''), false)
     eq('con otro número tampoco', m.dropOk(made, '2'), false)
     eq('con el número exacto, sí', m.dropOk(made, ' 3 '), true)
+  })
+}
+
+section('El diseño nuevo solo para los nombres de su lista, y los reportes sin redibujarse cada segundo (Jose, 2026-11-06)')
+{
+  const d = await device('rd-access', { user: 'Jose' })
+  d.use((m) => {
+    const st = () => m.store.get()
+    eq('sin lista nadie entra por la lista, y una tablet sin nada queda igual', [m.rdListed(st(), 'Ana Torres'), m.rdFollow(st(), 'Ana Torres'), localStorage.getItem('act_rd')], [false, false, null])
+    m.setRdNames(['Ana Torres', 'Luis Pérez'])
+    eq('con su nombre en la lista, sin importar mayúsculas ni acentos', [m.rdListed(st(), 'ana torres'), m.rdListed(st(), 'Luis Perez'), m.rdListed(st(), 'Otra Persona')], [true, true, false])
+    eq('al entrar alguien de la lista, el aparato prende el diseño nuevo y se abre otra vez', [m.rdFollow(st(), 'Ana Torres'), localStorage.getItem('act_rd'), localStorage.getItem('act_rd_by')], [true, '1', 'list'])
+    eq('la siguiente vez ya no vuelve a abrir (no da vueltas)', m.rdFollow(st(), 'Ana Torres'), false)
+    eq('si entra otra persona en ese aparato, vuelve al diseño de siempre', [m.rdFollow(st(), 'Otra Persona'), localStorage.getItem('act_rd'), localStorage.getItem('act_rd_by')], [true, null, null])
+    localStorage.setItem('act_rd', '1')
+    eq('un aparato donde Jose lo prendió a mano no se toca', [m.rdFollow(st(), 'Otra Persona'), localStorage.getItem('act_rd')], [false, '1'])
+    localStorage.removeItem('act_rd')
+    m.setRdNames(['Luis Pérez'])
+    m.rdFollow(st(), 'Ana Torres')
+    eq('quitada de la lista, su aparato no lo prende', localStorage.getItem('act_rd'), null)
+    eq('el reloj lento cambia cada 15 s', [m.slowClock(1_000_000), m.slowClock(1_014_999), m.slowClock(1_015_000)], [990_000, 1_005_000, 1_005_000])
+    const f = () => 1
+    eq('los datos iguales con otra flecha y otra lista igual no redibujan', [m.sameData({ s: 1, on: f, l: [1, 2] }, { s: 1, on: () => 2, l: [1, 2] }), m.sameData({ s: 1, l: [1, 2] }, { s: 2, l: [1, 2] }), m.sameData({ l: [1, 2] }, { l: [1, 3] })], [true, false, false])
   })
 }
 

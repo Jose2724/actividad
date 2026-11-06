@@ -1,4 +1,4 @@
-import { Fragment, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useDeferredValue, useEffect, useMemo, useRef, useState, memo } from 'react'
 import type { ReactNode } from 'react'
 import { cookText as cookTextOf, entryClass as entryClassOf, expiryOf, wtRangeText, apartLabel, apartWord, binWord, cameFrom, carriedOver, casesText, CFG, cfgFor, cfgOf, csvCell, DEPTS, fmtDur, roomKnown, fmtN, fmtTime, inCases, kindClass, lineLabel, lineNameOf, looksLikeTwoLots, madeText, measureName, measureUnit, normCode, noteLabel, noteOf, orderLabel, orderOfId, plainDay, plainText, productOf, purgesOf, reasonText, restorePurged, runStats, SETUP, shiftAt, shiftHours, shiftSpan, shiftsOf, stopTime, unitQty, user, whoText, workDay, type Dept, type State, type AttEntry, type AttRow } from './store'
 import { avanceRows, mfoText, mfoWord, pending } from './avance'
@@ -272,7 +272,11 @@ function useReport({ s, now, only, mgr, admin, wholeDay, part, pin }: ReportProp
   // what the report holds, with the filter by code, by lot and by shift when one is chosen (the same for the screen and every file)
   const dept: Dept | undefined = only ?? (fDept || undefined)
   const filter: ReportFilter = { only: dept, code: fCode, lot: fLot, shift: fShift, line: fLine }
-  const rep = reportOf(s, date, now, filter)
+  // worked out again when the records or the choices change, and for what runs now at most every 15 s: the clock's
+  // tick drew the whole day's report every second, and scrolling and taps waited on it (Jose, 2026-11-06: "estoy
+  // haciendo scroll y tiene como delay ... a veces quiero dar click y se nota un delay")
+  const repNow = Math.floor(now / 15_000) * 15_000
+  const rep = useMemo(() => reportOf(s, date, repNow, filter), [s, date, repNow, dept, fCode, fLot, fShift, fLine]) // eslint-disable-line react-hooks/exhaustive-deps
   const { runs, stops, rows, unitRows, working, down, byCode, setup } = rep
   const withOrders = unitRows.some((x) => x.order) // a column says the order of each pallet when any has one
   const unitsText = (dept: Dept, n: number) => n + ' ' + (n === 1 ? CFG[dept].unit : CFG[dept].plural).toLowerCase()
@@ -582,7 +586,9 @@ function useReport({ s, now, only, mgr, admin, wholeDay, part, pin }: ReportProp
 }
 type Kit = ReturnType<typeof useReport>
 
-export function Report(props: ReportProps) {
+/** drawn again when the records or the choices change, not with the clock's every second (see App's slow clock) */
+export const Report = memo(ReportScreen)
+function ReportScreen(props: ReportProps) {
   const k = useReport(props)
   // the redesign's Indicadores › Pesos: a screen of its own, its bar instead of the day report's header and filters (Jose, 2026-11-05)
   const lean = RD && (props.pin === 'wt' || props.pin === 'dash' || props.pin === 'mini' || props.pin === 'pplh')

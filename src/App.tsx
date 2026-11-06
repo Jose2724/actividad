@@ -36,6 +36,8 @@ import { seesKpi } from './kpi'
 import { ArrivalsDialog, AttendanceCard, AttendanceDialog } from './Attendance'
 import { Chat, ChatInbox } from './Chat'
 import { CallHost } from './Call'
+import { rdFollow } from './rdAccess'
+import { slowClock } from './slow'
 import { RD } from './rd'
 import { AyudaButton, AyudaParo, AyudaWindow, ayudaShown } from './Ayuda'
 import { HoldsAll, PersonMenu, PlantOverview, RD_TABS, RdNav, RdTabs, secOf, StatusStrip, tabsOf, type RdSec, type RdTab } from './Shell'
@@ -559,6 +561,9 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
   // a device that has not brought the server's rows for a while shows an old picture of the day (what Jose saw on an
   // RTE tablet on 2026-10-15: the code before, and the pouches of hours earlier): said loud, and each line asks before recording
   const sync = useSyncExternalStore(syncStore.subscribe, syncStore.get)
+  // the new design for the names on its list (Ajustes › Pestañas nuevas), once the server's rows are here: before
+  // them the list is not known, and opening again on an empty list would turn it off and on in a loop
+  useEffect(() => { if (supabase && sync.pulled && rdFollow(s, name)) location.reload() }, [s, name, sync.pulled])
   const staleMs = supabase ? now - sync.fresh : 0
   const stale = !!supabase && staleMs > STALE_MS
   const why = sync.state === 'signedOut' ? tr('sin sesión') : sync.state === 'offline' ? tr('sin señal') : tr('sin alcanzar el servidor')
@@ -701,12 +706,15 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
     if (t === 'set' && sub) setSec(sub as SettingsKey)
     setTab(t)
   }
-  const report = (part: 'rep' | 'ind' | 'tra', pin?: RdTab) => <Report s={s} now={now} only={can('depts') ? undefined : home} mgr={can('depts')} admin={admin} wholeDay={!!wholeDay} part={part} pin={pin} />
+  // the reports, indicators and traceability read the clock every 15 s, not every second: a report is a big table, and
+  // drawing it again each second made scrolling and taps wait (Jose, 2026-11-06: "se nota un delay")
+  const slowNow = slowClock(now)
+  const report = (part: 'rep' | 'ind' | 'tra', pin?: RdTab) => <Report s={s} now={slowNow} only={can('depts') ? undefined : home} mgr={can('depts')} admin={admin} wholeDay={!!wholeDay} part={part} pin={pin} />
   const settings = (only?: SettingsKey) => <Settings s={s} now={now} day={day} name={name} home={home} mgr={mgr} admin={admin} viewOnly={viewOnly} meId={meId ?? ''} section={only ?? sec} onSection={setSec} onLeave={() => setLeaving(true)} bare={!!only} />
   const rdView = () => {
     switch (shownTab) {
       case 'act': return actView
-      case 'pt': return <ProgramToday s={s} date={day.date} now={now} rooms={programRooms(can('depts'), home)} onReport={toReport} />
+      case 'pt': return <ProgramToday s={s} date={day.date} now={slowNow} rooms={programRooms(can('depts'), home)} onReport={toReport} />
       case 'wo': return <OrderHistory s={s} dept={home} today={day.date} edit={can('products')} readsAll={readsAll} />
       case 'po': return <OrdersCard s={s} mgr={can('orders')} />
       case 'prod': return settings('products')
@@ -716,8 +724,8 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
       case 'fl': return <Flujo s={s} today={day.date} onLot={openLot} />
       case 'pal': return report('tra', 'pal')
       case 'hold': return <HoldsAll s={s} />
-      case 'home': return <Summary s={s} now={now} date={day.date} onGo={(t) => setTab(t)} has={sees} />
-      case 'kpi': return <KpiView s={s} now={now} today={day.date} admin={admin} />
+      case 'home': return <Summary s={s} now={slowNow} date={day.date} onGo={(t) => setTab(t)} has={sees} />
+      case 'kpi': return <KpiView s={s} now={slowNow} today={day.date} admin={admin} />
       case 'wt': case 'dash': case 'mini': case 'pplh': return report('ind', shownTab)
       case 'rep': return report('rep')
       case 'rtime': return <TimeTab s={s} now={now} today={day.date} only={can('depts') ? undefined : home} />
@@ -786,7 +794,7 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
       <WoNavCtx.Provider value={woNav}>
       <ReportLinkCtx.Provider value={mgr ? toReport : null}>
       <ViewGuard reset={tab + '|' + dept}>
-      {tab === 'act' ? actView : tab === 'pt' && seesProgram ? <ProgramToday s={s} date={day.date} now={now} rooms={programRooms(can('depts'), home)} onReport={toReport} /> : tab === 'av' && (can('products') || viewOnly) ? <Avance s={s} startLot={avLot} /> : tab === 'lt' && seesLotes ? <LotesView s={s} today={day.date} onReport={toReport} /> : tab === 'kpi' && seesKpiTab ? <KpiView s={s} now={now} today={day.date} admin={admin} />: tab === 'fl' && seesFlujo ? <Flujo s={s} today={day.date} onLot={openLot} /> : tab === 'set' ? <Settings s={s} now={now} day={day} name={name} home={home} mgr={mgr} admin={admin} viewOnly={viewOnly} meId={meId ?? ''} section={sec} onSection={setSec} onLeave={() => setLeaving(true)} /> : <Report s={s} now={now} only={can('depts') ? undefined : home} mgr={can('depts')} admin={admin} wholeDay={!!wholeDay} />}
+      {tab === 'act' ? actView : tab === 'pt' && seesProgram ? <ProgramToday s={s} date={day.date} now={now} rooms={programRooms(can('depts'), home)} onReport={toReport} /> : tab === 'av' && (can('products') || viewOnly) ? <Avance s={s} startLot={avLot} /> : tab === 'lt' && seesLotes ? <LotesView s={s} today={day.date} onReport={toReport} /> : tab === 'kpi' && seesKpiTab ? <KpiView s={s} now={now} today={day.date} admin={admin} />: tab === 'fl' && seesFlujo ? <Flujo s={s} today={day.date} onLot={openLot} /> : tab === 'set' ? <Settings s={s} now={now} day={day} name={name} home={home} mgr={mgr} admin={admin} viewOnly={viewOnly} meId={meId ?? ''} section={sec} onSection={setSec} onLeave={() => setLeaving(true)} /> : <Report s={s} now={slowNow} only={can('depts') ? undefined : home} mgr={can('depts')} admin={admin} wholeDay={!!wholeDay} />}
       </ViewGuard>
       </ReportLinkCtx.Provider>
       </WoNavCtx.Provider>

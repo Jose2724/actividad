@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, memo } from 'react'
+import { sameData } from './slow'
 import { RD } from './rd'
 import { planRoomNoteOf, CFG, dayAfter, dayBefore, DEPTS, fmtDur, lineNameOf, normCode, orderStatus, orderUnitWord, planRows, prevPending, reasonText, SETUP, shiftAt, shiftsOf, workOrderOf, type Dept, type PlanRow, type State } from './store'
 import { shortDay } from './App'
@@ -21,7 +22,9 @@ import { locale, tr } from './i18n'
 type Look = { kind: 'stop' | 'setup' | 'run' | 'done' | 'started' | 'wait'; text: string; at?: ReportAt }
 type Row = PlanRow & { look: Look; carry: number; order: string; roomNote: { text: string; by: string } | null }
 
-export function ProgramToday({ s, date: today, now, rooms, onReport }: { s: State; date: string; now: number; rooms: Dept[]; onReport: (x: ReportAt) => void }) {
+/** (drawn again only when its data change: see slow.ts) */
+export const ProgramToday = memo(ProgramTodayView, sameData)
+function ProgramTodayView({ s, date: today, now, rooms, onReport }: { s: State; date: string; now: number; rooms: Dept[]; onReport: (x: ReportAt) => void }) {
   // the day shown (2026-10-28, the office: "programar también para días más adelante"): today, or any other day
   const [picked, setPicked] = useState('')
   // the redesign shows one room at a time, chosen on its tile ('*' = all of them; Jose, 2026-11-06: pantalla corta)
