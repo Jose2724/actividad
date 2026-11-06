@@ -1563,3 +1563,7 @@ html:where([data-theme="dark"]),:where(html[data-theme="dark"]) body{background:
 :where(html[data-theme="dark"]) .rd-pplhyield small{color:var(--muted)}
 :where(html[data-theme="dark"]) .rd-pplhchart .val{fill:var(--ink)}
 :where(html[data-theme="dark"]) .rd-pplh>.wt-rp{background:var(--surface);border:1px solid var(--line);border-radius:14px}
+:where(html[data-theme="dark"]) .rd-kpitiles .rd-tile{color:inherit}
+:where(html[data-theme="dark"]) .rd-daypick{border:0}
+:where(html[data-theme="dark"]) .rd-lockpill{background:var(--bg);border:1px solid var(--line);color:var(--muted)}
+:where(html[data-theme="dark"]) .rd-kpisec .kpi-plan{border-top:0}

@@ -3090,3 +3090,23 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 .rd-pplhchart .val{fill:var(--ink);font-weight:800}
 .rd-pplh>.wt-rp{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
 @media (max-width:760px){.rd-pplhtiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* KPI diario in the redesign (Jose, 2026-11-06): a bar, five tiles that take you to their part, short cards, notes behind a button */
+.rd-kpi{display:grid;gap:12px}
+.rd-kpitiles{grid-template-columns:repeat(5,minmax(0,1fr))}
+@media (max-width:1100px){.rd-kpitiles{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:620px){.rd-kpitiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.rd-kpitiles .rd-tile{text-align:left;font:inherit;color:inherit}
+.rd-kpisec{display:grid;gap:10px;min-width:0;scroll-margin-top:calc(var(--topH,64px) + 12px)}
+.rd-kpisec h3{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0}
+.rd-kpisec .hint{margin:0}
+.rd-kpipair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media (max-width:760px){.rd-kpipair{grid-template-columns:minmax(0,1fr)}}
+.rd-daynav{position:relative;display:inline-flex;gap:4px;align-items:center}
+.rd-daynav .btn{min-height:38px}
+.rd-daypick{position:absolute;left:30px;bottom:0;width:1px;height:1px;opacity:0;pointer-events:none;border:0;padding:0}
+.rd-lockpill{background:var(--bg);border:1px solid var(--line);color:var(--muted)}
+.rd-notebtn{justify-self:start}
+.rd-kpitiles .rd-tile b.txt{font-size:20px;line-height:1.25}
+.rd-lockpill::before{display:none!important}
+.rd-kpisec .kpi-plan{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;border-top:0;padding:0}
+.rd-kpisec .kpi-plan .btn{width:auto;flex:0 0 auto}

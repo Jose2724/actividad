@@ -7,6 +7,8 @@ import { xlsxBytes, XLSX_TYPE } from './xlsx'
 import { DEPT_LOOK } from './look'
 import { WhatIs } from './Numbers'
 import { locale, tr } from './i18n'
+import { RD } from './rd'
+import { plusDays } from './pplh'
 
 /**
  * The Daily KPI Report (2026-10-22), for Jose and Edgar: the COO's five daily KPIs for East Rutherford on one screen,
@@ -21,6 +23,7 @@ const nice = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString(locale,
 
 export function KpiView({ s, now, today, admin }: { s: State; now: number; today: string; admin: boolean }) {
   const viewOnly = useViewOnly()
+  const pickRef = useRef<HTMLInputElement>(null)
   const [date, setDate] = useState(() => dayBefore(today))
   // the days the report reads that this device no longer keeps come from the server (the month of the day, its last week)
   useEffect(() => {
@@ -46,6 +49,103 @@ export function KpiView({ s, now, today, admin }: { s: State; now: number; today
     { part: tr('4 · Costco MVM'), cls: !plan ? 'grey' : day.pct == null ? 'grey' : day.pct >= 1 ? 'ok' : day.pct >= 0.9 ? 'warn' : 'bad', big: tr('{0} cajas', n0(day.cases)), small: plan ? tr('plan {0} · {1}', n0(day.planCases), pc(day.pct)) : tr('falta cargar el planner') },
     { part: tr('5 · Grill y freidora'), cls: 'grey', big: tr('sus hojas'), small: tr('se siguen llevando como hoy') },
   ]
+  const wtTbl = (wts.length > 0 ? <div className="scroll"><table className="kpi-tbl">
+          <thead><tr><th>{tr('Código')}</th><th>{tr('Qué se pesó')}</th><th className="n">{tr('Pruebas')}</th><th className="n">{tr('Pesados')}</th><th className="n">{tr('Promedio (oz)')}</th><th className="n">{tr('Mín · Máx')}</th><th className="n">{tr('Objetivo (oz)')}</th><th className="n">{tr('Bien')}</th><th className="n">{tr('Bajos')}</th><th className="n">{tr('Sobre')}</th><th className="n">{tr('% en peso')}</th></tr></thead>
+          <tbody>{wts.map((w) => { const miss = w.due != null && w.complete + w.skipped.length < w.due; return <tr key={w.dept + w.code + w.label}><td>{DEPT_LOOK[w.dept].emoji} {w.code}</td><td>{w.label}</td><td className={'n' + (miss ? ' red' : '')}>{wtDoneText(w)}{w.short > 0 && <small className="amber"> · {tr('{0} incompletas', w.short)}</small>}{w.skipped.length > 0 && <small> · {tr('{0} sin usar', w.skipped.length)}</small>}</td><td className="n">{w.n}</td><td className="n">{w.avg ?? '—'}{w.avgPct != null && <small className={Math.abs(w.avgPct) > 0.02 ? 'red' : ''}> ({(w.avgPct > 0 ? '+' : '') + Math.round(w.avgPct * 1000) / 10}%)</small>}</td><td className="n">{w.min == null ? '—' : w.min + ' · ' + w.max}</td><td className="n">{wtRangeText(w.target) || '—'}</td><td className={'n' + (w.good ? ' ok' : '')}>{w.good}</td><td className={'n' + (w.under ? ' red' : '')}>{w.under}</td><td className={'n' + (w.over ? ' red' : '')}>{w.over}</td><td className={'n' + (w.okPct != null && w.okPct < 0.9 ? ' red' : '')}>{pc(w.okPct)}</td></tr> })}</tbody>
+        </table></div> : <p className="hint">{tr('No hay pruebas de peso este día.')}</p>)
+  const yTbl = (yields.length > 0 && <div className="scroll"><table className="kpi-tbl">
+          <thead><tr><th>{tr('Rendimiento de cocción')}</th><th>{tr('Código')}</th><th className="n">{tr('Crudo (oz)')}</th><th className="n">{tr('Cocinado (oz)')}</th><th className="n">{tr('Cocinado ÷ crudo')}</th><th className="n">{tr('Se pierde')}</th></tr></thead>
+          <tbody>{yields.map((y) => <tr key={y.code + y.cook}><td>{cookText(y.cook)}</td><td>{y.code}</td><td className="n">{y.raw}</td><td className="n">{y.cooked}</td><td className="n">{pc(y.pct)}</td><td className="n">{pc(1 - y.pct)}</td></tr>)}</tbody>
+        </table></div>)
+  const labTbl = (<div className="scroll"><table className="kpi-tbl">
+          <thead><tr><th>{tr('Cuarto')}</th><th className="n">{tr('Programados')}</th><th className="n">{tr('Vinieron')}</th><th className="n">{tr('Temporales')}</th><th className="n">{tr('Horas-persona')}</th><th className="n">{tr('Producción')}</th><th className="n">{tr('Por hora-persona')}</th>{lab.total.lb != null && <><th className="n">{tr('Libras')}</th><th className="n">{tr('Lb por hora-persona')}</th></>}</tr></thead>
+          <tbody>
+            {lab.rows.map((r) => <tr key={r.dept}><td>{DEPT_LOOK[r.dept as Dept].emoji} {r.dept}</td><td className="n">{r.scheduled}</td><td className="n">{r.written ? r.showed : '—'}</td><td className="n">{r.written ? r.temps : '—'}</td><td className="n">{r.written ? r.hours : '—'}</td><td className="n">{n0(r.made)} {r.unit}</td><td className="n">{r.perHour == null ? '—' : r.perHour + ' ' + r.unit}</td>{lab.total.lb != null && <><td className="n">{r.lb == null ? '—' : fmtN(r.lb)}</td><td className="n">{r.lb == null || r.hours <= 0 ? '—' : fmtN(Math.round((r.lb / r.hours) * 100) / 100)}</td></>}</tr>)}
+            <tr className="tot"><td>{tr('Total')}</td><td className="n">{lab.total.scheduled}</td><td className="n">{lab.total.written ? lab.total.showed : '—'}</td><td className="n">{lab.total.written ? lab.total.temps : '—'}</td><td className="n">{lab.total.written ? lab.total.hours : '—'}</td><td className="n">{n0(lab.total.cases)} {tr('cajas')}</td><td className="n">{lab.total.perHour == null ? '—' : lab.total.perHour + ' ' + tr('cajas')}</td>{lab.total.lb != null && <><td className="n">{fmtN(lab.total.lb)} lb</td><td className="n">{lab.total.lbPerHour == null ? '—' : fmtN(lab.total.lbPerHour) + ' lb'}</td></>}</tr>
+          </tbody>
+        </table></div>)
+  const costcoBox = (plan && (
+          <>
+            <div className="kpi-chart" aria-hidden="true">
+              {last.map((x) => { const top = Math.max(1, ...last.map((y) => Math.max(y.planCases, y.cases))); return <div key={x.date} className="kpi-col"><i className="p" style={{ height: (x.planCases / top) * 100 + '%' }} /><i className="a" style={{ height: (x.cases / top) * 100 + '%' }} /><span>{Number(x.date.slice(8))}</span></div> })}
+            </div>
+            <div className="kpi-legend"><span><i className="p" />{tr('Plan')}</span><span><i className="a" />{tr('Hecho')}</span></div>
+            <div className="scroll"><table className="kpi-tbl">
+              <thead><tr><th>{tr('Fecha')}</th><th className="n">{tr('Mezclas plan')}</th><th className="n">{tr('Mezclas')}</th><th className="n">{tr('Cajas plan')}</th><th className="n">{tr('Cajas')}</th><th className="n">{tr('Diferencia')}</th><th className="n">%</th></tr></thead>
+              <tbody>{last.map((x) => <tr key={x.date} className={x.date === date ? 'on' : ''}><td>{x.date.slice(5)}</td><td className="n">{n0(x.planMixes)}</td><td className="n">{n0(x.mixes)}</td><td className="n">{n0(x.planCases)}</td><td className="n">{n0(x.cases)}</td><td className={'n ' + (x.diff < 0 ? 'red' : 'ok')}>{(x.diff > 0 ? '+' : '') + n0(x.diff)}</td><td className="n">{pc(x.pct)}</td></tr>)}</tbody>
+            </table></div>
+            <div className="kpi-month">
+              <div><label>{tr('Plan del mes')}</label><b>{n0(mo.monthPlan)}</b></div>
+              <div><label>{tr('Hecho en el mes')}</label><b>{n0(mo.actualToDate)}</b><small>{tr('de {0} planeadas hasta este día · {1}', n0(mo.planToDate), pc(mo.pct))}</small></div>
+              <div><label>{tr('Necesario por día')}</label><b className={mo.perDay != null && mo.perDay > (plan.perMix * 100) ? 'red' : ''}>{mo.perDay == null ? '—' : n0(mo.perDay)}</b><small>{tr('para cumplir el plan del mes · {0} días planeados quedan', mo.left)}</small></div>
+              <div><label>{tr('Forecast de Costco')}</label><b>{mo.forecast == null ? '—' : n0(mo.forecast)}</b><small>{tr('del mes, según el planner')}</small></div>
+            </div>
+          </>
+        ))
+  if (RD) {
+    const short = new Date(date + 'T12:00:00').toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' })
+    const go = (id: string) => document.getElementById('kpi-' + id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    const cls = (c: string) => (c === 'grey' ? ' pend' : c === 'go' ? '' : ' ' + c)
+    const rdTiles = [
+      { id: 'wt', icon: '⚖️', name: tr('Pesos'), cls: cls(tiles[0].cls), big: tiles[0].big, small: cw.due ? tr('{0} de {1} pruebas hechas', cw.done, cw.due) : allW ? tr('pesados contra el objetivo') : '' },
+      { id: 'lab', icon: '👥', name: tr('Productividad'), cls: cls(tiles[2].cls), big: tiles[2].big, small: lab.total.written ? tr('{0} de {1} vinieron', lab.total.showed, lab.total.scheduled) : tr('sin asistencia') },
+      { id: 'cos', icon: '🛒', name: tr('Costco MVM'), cls: cls(tiles[3].cls), big: tiles[3].big, small: plan ? tiles[3].small : tr('falta el planner') },
+      { id: 'cut', icon: '✂️', name: tr('Cortes'), cls: ' pend', big: tr('Pendiente'), small: kpiNote(s, date, 'cuts') ? tr('con nota') : '' },
+      { id: 'grill', icon: '🔥', name: tr('Grill y freidora'), cls: ' pend', big: tr('En sus hojas'), small: kpiNote(s, date, 'grill') ? tr('con nota') : '' },
+    ]
+    return (
+      <section className="kpi rd-kpi">
+        <div className="rd-wtbar">
+          <h2 className="rd-wttitle">📋 {tr('KPI diario')}</h2>
+          <div className="seg rd-rangeseg" role="group" aria-label={tr('Día')}>
+            <button type="button" className={date === dayBefore(today) ? 'on' : ''} aria-pressed={date === dayBefore(today)} onClick={() => setDate(dayBefore(today))}>{tr('Ayer')}</button>
+            <button type="button" className={date === today ? 'on' : ''} aria-pressed={date === today} onClick={() => setDate(today)}>{tr('Hoy')}</button>
+          </div>
+          <div className="rd-daynav">
+            <button type="button" className="btn sm" aria-label={tr('Día anterior')} title={tr('Día anterior')} onClick={() => setDate(dayBefore(date))}>‹</button>
+            <button type="button" className="btn sm rd-datesbtn" onClick={() => { const i = pickRef.current; if (i) { try { i.showPicker() } catch { i.focus() } } }}>📅 {short}</button>
+            <input ref={pickRef} className="rd-daypick" type="date" value={date} max={today} tabIndex={-1} aria-label={tr('Escoger día')} onChange={(e) => e.target.value && setDate(e.target.value)} />
+            <button type="button" className="btn sm" aria-label={tr('Día siguiente')} title={tr('Día siguiente')} disabled={date >= today} onClick={() => setDate(plusDays(date, 1))}>›</button>
+          </div>
+          <span className="rd-pill rd-lockpill" title={tr('Solo tú y quien pusiste en la lista')}>🔒 {tr('Privado')}</span>
+          <div className="rd-wtacts"><button type="button" className="btn primary" onClick={() => void excel()}>{tr('⬇ Excel')}</button></div>
+        </div>
+        <div className="rd-tiles rd-kpitiles">{rdTiles.map((t) => (
+          <button key={t.id} type="button" className={'rd-tile link' + t.cls} onClick={() => go(t.id)}><label>{t.icon} {t.name}</label><b className={/^[\d—]/.test(t.big) ? '' : 'txt'}>{t.big}</b>{t.small && <small>{t.small}</small>}</button>
+        ))}</div>
+        <article id="kpi-wt" className="rd-card rd-kpisec">
+          <h3>⚖️ {tr('Pesos y rendimiento')} <WhatIs id="peso-bien" /></h3>
+          {wtTbl}
+          {yTbl}
+          <Note s={s} date={date} part="weights" ro={viewOnly} />
+        </article>
+        <article id="kpi-lab" className="rd-card rd-kpisec">
+          <h3>👥 {tr('Productividad laboral')} <WhatIs id="kpi-prod" /></h3>
+          {!s.attView.on && <p className="rd-calm warn">👥 {tr('Asistencia: solo la ves tú · Ajustes › Asistencia')}</p>}
+          {labTbl}
+          {lab.total.lb != null && lab.total.lbMissing.length > 0 && <p className="rd-calm warn">{tr('Sin lb por caja: {0} · Ajustes › Productos', lab.total.lbMissing.join(', '))}</p>}
+          <Note s={s} date={date} part="labor" ro={viewOnly} />
+        </article>
+        <article id="kpi-cos" className="rd-card rd-kpisec">
+          <h3>🛒 {tr('Costco MVM ({0})', COSTCO_CODE)} <WhatIs id="kpi-costco" /></h3>
+          <PlanLoader s={s} ro={viewOnly} />
+          {costcoBox}
+          <Note s={s} date={date} part="costco" ro={viewOnly} />
+        </article>
+        <div className="rd-kpipair">
+          <article id="kpi-cut" className="rd-card rd-kpisec">
+            <h3>✂️ {tr('Cortes y faltantes')}<span className="rd-pill su">{tr('Pendiente')}</span></h3>
+            <Note s={s} date={date} part="cuts" ro={viewOnly} />
+          </article>
+          <article id="kpi-grill" className="rd-card rd-kpisec">
+            <h3>🔥 {tr('Grill y freidora')}<span className="rd-pill">{tr('En sus hojas')}</span></h3>
+            <Note s={s} date={date} part="grill" ro={viewOnly} />
+          </article>
+        </div>
+        {admin && <Access s={s} />}
+      </section>
+    )
+  }
   return (
     <section className="kpi">
       <div className="kpi-top">
@@ -63,14 +163,8 @@ export function KpiView({ s, now, today, admin }: { s: State; now: number; today
       <article className="kpi-sec">
         <h3>{tr('1 · Pesos y rendimiento')} <WhatIs id="peso-bien" /></h3>
         <p className="hint">{tr('Lo que las líneas pesan con ⚖ Peso: Spiral 10 bolas crudas antes de cada cocinador (Spiral y Racks) y 10 cocinadas al salir, RTE 10 pouches, cada hora mientras corre el código. Pruebas = las hechas completas de las que tocaban por las horas que corrió el código. Cada peso se compara con el objetivo de QA.')}</p>
-        {wts.length > 0 ? <div className="scroll"><table className="kpi-tbl">
-          <thead><tr><th>{tr('Código')}</th><th>{tr('Qué se pesó')}</th><th className="n">{tr('Pruebas')}</th><th className="n">{tr('Pesados')}</th><th className="n">{tr('Promedio (oz)')}</th><th className="n">{tr('Mín · Máx')}</th><th className="n">{tr('Objetivo (oz)')}</th><th className="n">{tr('Bien')}</th><th className="n">{tr('Bajos')}</th><th className="n">{tr('Sobre')}</th><th className="n">{tr('% en peso')}</th></tr></thead>
-          <tbody>{wts.map((w) => { const miss = w.due != null && w.complete + w.skipped.length < w.due; return <tr key={w.dept + w.code + w.label}><td>{DEPT_LOOK[w.dept].emoji} {w.code}</td><td>{w.label}</td><td className={'n' + (miss ? ' red' : '')}>{wtDoneText(w)}{w.short > 0 && <small className="amber"> · {tr('{0} incompletas', w.short)}</small>}{w.skipped.length > 0 && <small> · {tr('{0} sin usar', w.skipped.length)}</small>}</td><td className="n">{w.n}</td><td className="n">{w.avg ?? '—'}{w.avgPct != null && <small className={Math.abs(w.avgPct) > 0.02 ? 'red' : ''}> ({(w.avgPct > 0 ? '+' : '') + Math.round(w.avgPct * 1000) / 10}%)</small>}</td><td className="n">{w.min == null ? '—' : w.min + ' · ' + w.max}</td><td className="n">{wtRangeText(w.target) || '—'}</td><td className={'n' + (w.good ? ' ok' : '')}>{w.good}</td><td className={'n' + (w.under ? ' red' : '')}>{w.under}</td><td className={'n' + (w.over ? ' red' : '')}>{w.over}</td><td className={'n' + (w.okPct != null && w.okPct < 0.9 ? ' red' : '')}>{pc(w.okPct)}</td></tr> })}</tbody>
-        </table></div> : <p className="hint">{tr('No hay pruebas de peso este día.')}</p>}
-        {yields.length > 0 && <div className="scroll"><table className="kpi-tbl">
-          <thead><tr><th>{tr('Rendimiento de cocción')}</th><th>{tr('Código')}</th><th className="n">{tr('Crudo (oz)')}</th><th className="n">{tr('Cocinado (oz)')}</th><th className="n">{tr('Cocinado ÷ crudo')}</th><th className="n">{tr('Se pierde')}</th></tr></thead>
-          <tbody>{yields.map((y) => <tr key={y.code + y.cook}><td>{cookText(y.cook)}</td><td>{y.code}</td><td className="n">{y.raw}</td><td className="n">{y.cooked}</td><td className="n">{pc(y.pct)}</td><td className="n">{pc(1 - y.pct)}</td></tr>)}</tbody>
-        </table></div>}
+        {wtTbl}
+        {yTbl}
         <Note s={s} date={date} part="weights" ro={viewOnly} />
       </article>
 
@@ -84,13 +178,7 @@ export function KpiView({ s, now, today, admin }: { s: State; now: number; today
         <h3>{tr('3 · Productividad laboral')} <WhatIs id="kpi-prod" /></h3>
         <p className="hint">{tr('Programados = las personas esperadas de cada cuarto; vinieron, los temporales y las horas salen de la Asistencia que anotan los supervisores; la producción, de E.R. - Ops Summary.')}</p>
         {!s.attView.on && <p className="hint amber">{tr('La Asistencia todavía solo la ves tú: para que los supervisores anoten a su gente, préndela para todos en Ajustes › Asistencia.')}</p>}
-        <div className="scroll"><table className="kpi-tbl">
-          <thead><tr><th>{tr('Cuarto')}</th><th className="n">{tr('Programados')}</th><th className="n">{tr('Vinieron')}</th><th className="n">{tr('Temporales')}</th><th className="n">{tr('Horas-persona')}</th><th className="n">{tr('Producción')}</th><th className="n">{tr('Por hora-persona')}</th>{lab.total.lb != null && <><th className="n">{tr('Libras')}</th><th className="n">{tr('Lb por hora-persona')}</th></>}</tr></thead>
-          <tbody>
-            {lab.rows.map((r) => <tr key={r.dept}><td>{DEPT_LOOK[r.dept as Dept].emoji} {r.dept}</td><td className="n">{r.scheduled}</td><td className="n">{r.written ? r.showed : '—'}</td><td className="n">{r.written ? r.temps : '—'}</td><td className="n">{r.written ? r.hours : '—'}</td><td className="n">{n0(r.made)} {r.unit}</td><td className="n">{r.perHour == null ? '—' : r.perHour + ' ' + r.unit}</td>{lab.total.lb != null && <><td className="n">{r.lb == null ? '—' : fmtN(r.lb)}</td><td className="n">{r.lb == null || r.hours <= 0 ? '—' : fmtN(Math.round((r.lb / r.hours) * 100) / 100)}</td></>}</tr>)}
-            <tr className="tot"><td>{tr('Total')}</td><td className="n">{lab.total.scheduled}</td><td className="n">{lab.total.written ? lab.total.showed : '—'}</td><td className="n">{lab.total.written ? lab.total.temps : '—'}</td><td className="n">{lab.total.written ? lab.total.hours : '—'}</td><td className="n">{n0(lab.total.cases)} {tr('cajas')}</td><td className="n">{lab.total.perHour == null ? '—' : lab.total.perHour + ' ' + tr('cajas')}</td>{lab.total.lb != null && <><td className="n">{fmtN(lab.total.lb)} lb</td><td className="n">{lab.total.lbPerHour == null ? '—' : fmtN(lab.total.lbPerHour) + ' lb'}</td></>}</tr>
-          </tbody>
-        </table></div>
+        {labTbl}
         {lab.total.lb != null && lab.total.lbMissing.length > 0 && <p className="hint amber">{tr('Sin libras por caja (no cuentan en las libras): {0}. Ponlas en Ajustes › Productos.', lab.total.lbMissing.join(', '))}</p>}
         <Note s={s} date={date} part="labor" ro={viewOnly} />
       </article>
@@ -99,24 +187,7 @@ export function KpiView({ s, now, today, admin }: { s: State; now: number; today
         <h3>{tr('4 · Costco MVM tracker ({0})', COSTCO_CODE)} <WhatIs id="kpi-costco" /></h3>
         <p className="hint">{tr('Lo planeado sale del planner de Yasbelth; lo hecho, de E.R. - Ops Summary: las mezclas de Spiral y las cajas de Packing del {0}. Nadie tiene que escribirlo.', COSTCO_CODE)}</p>
         <PlanLoader s={s} ro={viewOnly} />
-        {plan && (
-          <>
-            <div className="kpi-chart" aria-hidden="true">
-              {last.map((x) => { const top = Math.max(1, ...last.map((y) => Math.max(y.planCases, y.cases))); return <div key={x.date} className="kpi-col"><i className="p" style={{ height: (x.planCases / top) * 100 + '%' }} /><i className="a" style={{ height: (x.cases / top) * 100 + '%' }} /><span>{Number(x.date.slice(8))}</span></div> })}
-            </div>
-            <div className="kpi-legend"><span><i className="p" />{tr('Plan')}</span><span><i className="a" />{tr('Hecho')}</span></div>
-            <div className="scroll"><table className="kpi-tbl">
-              <thead><tr><th>{tr('Fecha')}</th><th className="n">{tr('Mezclas plan')}</th><th className="n">{tr('Mezclas')}</th><th className="n">{tr('Cajas plan')}</th><th className="n">{tr('Cajas')}</th><th className="n">{tr('Diferencia')}</th><th className="n">%</th></tr></thead>
-              <tbody>{last.map((x) => <tr key={x.date} className={x.date === date ? 'on' : ''}><td>{x.date.slice(5)}</td><td className="n">{n0(x.planMixes)}</td><td className="n">{n0(x.mixes)}</td><td className="n">{n0(x.planCases)}</td><td className="n">{n0(x.cases)}</td><td className={'n ' + (x.diff < 0 ? 'red' : 'ok')}>{(x.diff > 0 ? '+' : '') + n0(x.diff)}</td><td className="n">{pc(x.pct)}</td></tr>)}</tbody>
-            </table></div>
-            <div className="kpi-month">
-              <div><label>{tr('Plan del mes')}</label><b>{n0(mo.monthPlan)}</b></div>
-              <div><label>{tr('Hecho en el mes')}</label><b>{n0(mo.actualToDate)}</b><small>{tr('de {0} planeadas hasta este día · {1}', n0(mo.planToDate), pc(mo.pct))}</small></div>
-              <div><label>{tr('Necesario por día')}</label><b className={mo.perDay != null && mo.perDay > (plan.perMix * 100) ? 'red' : ''}>{mo.perDay == null ? '—' : n0(mo.perDay)}</b><small>{tr('para cumplir el plan del mes · {0} días planeados quedan', mo.left)}</small></div>
-              <div><label>{tr('Forecast de Costco')}</label><b>{mo.forecast == null ? '—' : n0(mo.forecast)}</b><small>{tr('del mes, según el planner')}</small></div>
-            </div>
-          </>
-        )}
+        {costcoBox}
         <Note s={s} date={date} part="costco" ro={viewOnly} />
       </article>
 
@@ -137,10 +208,13 @@ function Note({ s, date, part, ro }: { s: State; date: string; part: KpiPart; ro
   const [text, setText] = useState(saved)
   useEffect(() => setText(saved), [saved, date])
   const dirty = text.trim() !== saved.trim()
+  const [open, setOpen] = useState(false)
+  useEffect(() => setOpen(false), [date])
+  if (RD && !saved && !open) return ro ? null : <button type="button" className="btn soft sm rd-notebtn" onClick={() => setOpen(true)}>📝 {tr('Agregar nota')}</button>
   return (
     <div className="kpi-note">
-      <label>{tr('Qué vimos · causa raíz · acción')}</label>
-      {ro ? <p>{saved || '—'}</p> : <textarea rows={3} value={text} maxLength={2000} placeholder={tr('Qué pasó, por qué (pregunta "¿por qué?" hasta la causa raíz) y qué se va a hacer')} onChange={(e) => setText(e.target.value)} />}
+      <label>{RD ? '📝 ' + tr('Qué vimos · causa · acción') : tr('Qué vimos · causa raíz · acción')}</label>
+      {ro ? <p>{saved || '—'}</p> : <textarea rows={3} value={text} maxLength={2000} autoFocus={RD && open && !saved} placeholder={RD ? tr('Qué pasó, por qué y qué se va a hacer') : tr('Qué pasó, por qué (pregunta "¿por qué?" hasta la causa raíz) y qué se va a hacer')} onChange={(e) => setText(e.target.value)} />}
       <div className="kpi-nfoot">
         {rec && <small>{tr('{0} · {1}', rec.by, fmtTime(rec.at))}</small>}
         {!ro && <button type="button" className="btn sm primary" disabled={!dirty} onClick={() => kpiPut('note:' + date + ':' + part, { text: text.trim() })}>{tr('Guardar')}</button>}
@@ -163,8 +237,8 @@ function PlanLoader({ s, ro }: { s: State; ro: boolean }) {
   }
   return (
     <div className="kpi-plan">
-      {plan ? <span>{tr('Planner: {0} · cargado por {1} el {2}', plan.file || 'CSV', plan.by, new Date(plan.at).toLocaleDateString(locale))}</span> : <span className="amber">{tr('Falta cargar el planner de Costco de Yasbelth (en Excel: Archivo › Guardar como › CSV).')}</span>}
-      {!ro && <><button type="button" className="btn sm soft" onClick={() => box.current?.click()}>{plan ? tr('Cargar uno nuevo') : tr('Cargar el planner (CSV)')}</button><input ref={box} type="file" accept=".csv,text/csv" hidden onChange={(e) => { void pick(e.target.files?.[0]); e.target.value = '' }} /></>}
+      {plan ? <span>{tr('Planner: {0} · cargado por {1} el {2}', plan.file || 'CSV', plan.by, new Date(plan.at).toLocaleDateString(locale))}</span> : <span className="amber">{RD ? '⚠ ' + tr('Falta el planner de Costco') : tr('Falta cargar el planner de Costco de Yasbelth (en Excel: Archivo › Guardar como › CSV).')}</span>}
+      {!ro && <><button type="button" className="btn sm soft" title={tr('En Excel: Archivo › Guardar como › CSV')} onClick={() => box.current?.click()}>{plan ? tr('Cargar uno nuevo') : RD ? '📄 ' + tr('Cargar planner (CSV)') : tr('Cargar el planner (CSV)')}</button><input ref={box} type="file" accept=".csv,text/csv" hidden onChange={(e) => { void pick(e.target.files?.[0]); e.target.value = '' }} /></>}
       {said && <p className="hint ok">{said}</p>}
     </div>
   )
@@ -176,9 +250,9 @@ function Access({ s }: { s: State }) {
   const [name, setName] = useState('')
   const save = (list: string[]) => kpiPut('access', { names: list })
   return (
-    <article className="kpi-sec kpi-access">
+    <article className={'kpi-sec kpi-access' + (RD ? ' rd-card' : '')}>
       <h3>{tr('🔒 Quién ve este reporte')}</h3>
-      <p className="hint">{tr('Tú siempre. Además, los nombres de esta lista, escritos como sale su nombre en su cuenta (Ajustes › Empleados). Tienen que ser manager u oficina para poder guardar notas.')}</p>
+      {RD ? <p className="hint">{tr('Tú y estos nombres (como salen en su cuenta).')}</p> : <p className="hint">{tr('Tú siempre. Además, los nombres de esta lista, escritos como sale su nombre en su cuenta (Ajustes › Empleados). Tienen que ser manager u oficina para poder guardar notas.')}</p>}
       <ul>{names.map((n) => <li key={n}>{n} <button type="button" className="lnk sm" onClick={() => save(names.filter((x) => x !== n))}>{tr('Quitar')}</button></li>)}</ul>
       <form onSubmit={(e) => { e.preventDefault(); const t = name.trim(); if (t && !names.includes(t)) save([...names, t]); setName('') }}>
         <input value={name} maxLength={60} placeholder={tr('Nombre, por ejemplo Edgar Carhuapoma')} onChange={(e) => setName(e.target.value)} aria-label={tr('Nombre')} />
