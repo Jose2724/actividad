@@ -18,11 +18,11 @@ ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / 'src' / 'styles.css'
 OUT = ROOT / 'src' / 'dark.css'
 
-TOKENS = """html[data-theme="dark"]{color-scheme:dark;--bg:#0e1318;--surface:#19212a;--ink:#e6ecf2;--muted:#9eadbb;--line:#2f3b47;--accent:#b8549f;--accent-ink:#fff;--ok:#2f9e66;--warn:#e5534b;--amber:#e0a030;--soft:#3a2234;--red-soft:#3d1f1d;--btn:#26313d;--btn-line:#4a5b6d;--btn-edge:#0a0e12}
+TOKENS = """html[data-theme="dark"]{color-scheme:dark;--bg:#0f1113;--surface:#17191c;--ink:#e8ebee;--muted:#a0a8b1;--line:#2d3238;--accent:#b8549f;--accent-ink:#fff;--ok:#2f9e66;--warn:#e5534b;--amber:#e0a030;--soft:#33202e;--red-soft:#3a1f1d;--btn:#262a30;--btn-line:#4b525b;--btn-edge:#08090b}
 html[data-theme="dark"] .app.rd .logo{background:#fff;border-radius:10px;padding:3px}
 html[data-theme="dark"] .app.rd .btn.go{background:#1f8a55;border-color:#1f8a55}
 html[data-theme="dark"] .app.rd .veil{background:rgba(0,0,0,.7)}
-html[data-theme="dark"] .app.rd .dlg{border-color:#3d4b59;background:#202a35}
+html[data-theme="dark"] .app.rd .dlg{border-color:#3a4048;background:#1d2024}
 """
 
 HEX = re.compile(r'#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b')
@@ -47,9 +47,9 @@ def bg(h):
     if l >= 0.985 and s < 0.2:
         return 'var(--surface)'
     if l >= 0.86 and s < 0.3:
-        return '#222c37'
+        return '#202327'
     if l >= 0.78:  # a pastel tint: the same hue, dark
-        return hexof(*colorsys.hls_to_rgb(hh, 0.17, min(s, 0.55)))
+        return hexof(*colorsys.hls_to_rgb(hh, 0.16, min(s, 0.32)))
     return None
 
 

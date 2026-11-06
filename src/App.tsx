@@ -1915,7 +1915,7 @@ function TodayCard({ s, dept, now, mgr, date, onPeople }: { s: State; dept: Dept
             <button type="button" className={'rd-tile link' + (att.actual < att.expected ? ' warn' : ' ok')} onClick={onPeople}>
               <label>{tr('Gente')}</label>
               <b>{att.actual}<small> {tr('de {0}', att.expected)}</small></b>
-              <small>{tr('Anotar o ver la asistencia ›')}</small>
+              <small>{(() => { const sup = attOf(s, date, dept, (tt.shift || 1) as 1 | 2).filter((x) => x.sup && !x.gone).map((x) => x.name); return sup.length ? tr('Supervisor: {0}', sup.join(', ')) : tr('Anotar o ver la asistencia ›') })()}</small>
             </button>
           ) : (
             <div className="rd-tile">
@@ -3390,7 +3390,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       <div className="lhead">
         <h3><i className="lemoji" aria-hidden="true">{oven ? '🔥' : DEPT_LOOK[line.dept].emoji}</i>{lineLabel(line.name)} {nameIt}</h3>
         <span className={'pill ' + (inSetup ? 'setup' : stop ? 'stop' : 'run')}>{inSetup ? tr('⏱ Set up') : stop ? tr('⏸ Parado') : tr('● Corriendo')}{RD && <> · {fmtDur(stop ? stopTime(s, stop, now) : mineNow.working)}</>}</span>
-        <span className="lacts">{goalBtn}{!hold && <button type="button" className="lnk sm" onClick={() => setFixing(true)}>{tr('Corregir')}</button>}</span>
+        {!RD && <span className="lacts">{goalBtn}{!hold && <button type="button" className="lnk sm" onClick={() => setFixing(true)}>{tr('Corregir')}</button>}</span>}
       </div>
       {/* what runs here, big: the code and the lot going on now; a Packing line says first whether it makes pallets or fills bins */}
       <div className={'hero' + (packBins ? ' bin' : pallets ? ' pal' : '')}>
@@ -3480,6 +3480,8 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         <button type="button" className="btn" disabled={!!stop && !inSetup} onClick={() => setEnding(true)}>{tr('■ Terminar')}<span className="opt"> {' '}{tr('código')}</span></button>
       </div>
       )}
+      {/* the redesign: "Corregir" and the goal under the buttons, as in the catalogue (the header is one line) */}
+      {RD && <span className="lacts rd-lacts">{!hold && <button type="button" className="lnk sm" onClick={() => setFixing(true)}>{tr('Corregir')}</button>}{goalBtn}</span>}
       {!quiet && fillLink && <div className="fillmore">{fillLink}</div>}
       {ending && <EndDialog cfg={rc} code={run.code} line={lineLabel(line.name)} now={now} lastAt={run.units.length ? run.units[run.units.length - 1].at : null}
         summary={tr('Lleva {0} · trabajando {1}{2}', madeText(run, st.qty), fmtDur(st.working), (st.down ? ' ' + tr('· parado {0}', fmtDur(st.down)) : '')) + '.'}

@@ -2740,3 +2740,5 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 .app.rd .line .tile:not(.main){font-size:13px}
 .app.rd .line>.btn,.app.rd .line>.acts2,.app.rd .line>div{width:auto;min-width:0}
 .app.rd .line .lhead .lacts{display:inline-flex;gap:8px;align-items:center}
+.app.rd .line .rd-lacts{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.rd-goal{white-space:nowrap;flex:none}
