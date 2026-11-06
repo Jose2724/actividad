@@ -2877,3 +2877,20 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 .app.rd .line.rd-kind .hero{border-color:var(--k)}
 .app.rd .line .acts2{grid-template-columns:repeat(auto-fit,minmax(56px,1fr))}
 .app.rd .line .acts2 .btn{font-size:12.5px;padding:0 2px}
+/* the start form's choices with the same signs as the cards (Jose, 2026-11-05: "que salga también la caja y el bin"),
+   the bins in their violet */
+.rd-choiceico{font-style:normal;margin-right:6px;display:inline-block}
+.rd-choiceico .rd-binico{vertical-align:-5px}
+.seg button.rd-binchoice{background:#f5f3ff;color:#5b21b6;border:1.5px solid #c4b5fd}
+.seg button.rd-binchoice.on{background:#7c3aed;color:#fff;border-color:#7c3aed}
+.seg button.rd-binchoice.on .rd-binico{color:#fff}
+/* copas in indigo everywhere in the redesign: red is only for what is wrong (Jose, 2026-11-05) */
+.app.rd .seg button.c-rose{background:#e0e7ff;color:#3730a3;border:1.5px solid #a5b4fc}
+.app.rd .seg button.c-rose.on{background:#4f46e5;color:#fff;border-color:#4f46e5}
+.app.rd .hero .mode.c-rose{color:#3730a3}
+.app.rd .rp-ktag.c-rose{background:#e0e7ff;color:#3730a3;border-color:#a5b4fc}
+.app.rd .rp-big span.k.c-rose{color:#3730a3}
+/* the start form's unit choices in the same colours as the cards: the room's usual one plain, the others their unit's */
+.app.rd .seg button.rd-ch[class*=" k-"]{background:var(--kt);color:var(--kk);border:1.5px solid var(--k)}
+.app.rd .seg button.rd-ch[class*=" k-"].on{background:var(--k);color:#fff;border-color:var(--k)}
+.app.rd .seg button.rd-ch:not([class*=" k-"]).on{background:var(--accent);color:#fff}

@@ -1476,3 +1476,14 @@ html:where([data-theme="dark"]),:where(html[data-theme="dark"]) body{background:
 :where(html[data-theme="dark"]) .app.rd .line.rd-kind .lhead{background:var(--kt);border-bottom-color:var(--k)}
 :where(html[data-theme="dark"]) .app.rd .line.rd-kind .lhead h3,:where(html[data-theme="dark"]) .app.rd .line.rd-kind .hero .mode,:where(html[data-theme="dark"]) .app.rd .line.rd-kind .tile.main b{color:var(--kk)}
 :where(html[data-theme="dark"]) .app.rd .line.rd-kind .hero{border-color:var(--k)}
+:where(html[data-theme="dark"]) .seg button.rd-binchoice{background:#201c36;color:#bea0ee;border:1.5px solid #382a6f}
+:where(html[data-theme="dark"]) .seg button.rd-binchoice.on{background:#7c3aed;color:#fff;border-color:#7c3aed}
+:where(html[data-theme="dark"]) .seg button.rd-binchoice.on .rd-binico{color:#fff}
+:where(html[data-theme="dark"]) .app.rd .seg button.c-rose{background:#1c2236;color:#aca8e5;border:1.5px solid #2a366f}
+:where(html[data-theme="dark"]) .app.rd .seg button.c-rose.on{background:#4f46e5;color:#fff;border-color:#4f46e5}
+:where(html[data-theme="dark"]) .app.rd .hero .mode.c-rose{color:#aca8e5}
+:where(html[data-theme="dark"]) .app.rd .rp-ktag.c-rose{background:#1c2236;color:#aca8e5;border-color:#2a366f}
+:where(html[data-theme="dark"]) .app.rd .rp-big span.k.c-rose{color:#aca8e5}
+:where(html[data-theme="dark"]) .app.rd .seg button.rd-ch[class*=" k-"]{background:var(--kt);color:var(--kk);border:1.5px solid var(--k)}
+:where(html[data-theme="dark"]) .app.rd .seg button.rd-ch[class*=" k-"].on{background:var(--k);color:#fff;border-color:var(--k)}
+:where(html[data-theme="dark"]) .app.rd .seg button.rd-ch:not([class*=" k-"]).on{background:var(--accent);color:#fff}

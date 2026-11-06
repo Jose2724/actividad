@@ -3296,7 +3296,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
             <div className="makes">
               <span className="lab">{tr('¿En qué se cuenta este código?')}</span>
               <div className="seg" role="group" aria-label={tr('¿En qué se cuenta este código?')}>
-                {SPIRAL_UNITS.map((u) => <button key={u} type="button" className={kindClass('Spiral', u === 'mezclas' ? '' : u) + (spiralNow === u ? ' on' : '')} aria-pressed={spiralNow === u} onClick={() => setMeasure(u)}>{u === 'mezclas' ? tr('Mezclas') : u === 'lb' ? tr('Libras') : tr('Cajas')}<small>{u === 'mezclas' ? tr('una por una') : u === 'lb' ? tr('cada mezcla dice sus libras') : tr('cada mezcla dice sus cajas')}</small></button>)}
+                {SPIRAL_UNITS.map((u) => <button key={u} type="button" className={(RD ? 'rd-ch' + (u === 'mezclas' ? '' : ' k-' + u) : kindClass('Spiral', u === 'mezclas' ? '' : u)) + (spiralNow === u ? ' on' : '')} aria-pressed={spiralNow === u} onClick={() => setMeasure(u)}>{RD && u !== 'mezclas' && <i className="rd-choiceico" aria-hidden="true">{u === 'lb' ? '⚖️' : '📦'}</i>}{u === 'mezclas' ? tr('Mezclas') : u === 'lb' ? tr('Libras') : tr('Cajas')}<small>{u === 'mezclas' ? tr('una por una') : u === 'lb' ? tr('cada mezcla dice sus libras') : tr('cada mezcla dice sus cajas')}</small></button>)}
               </div>
             </div>
           )}
@@ -3304,8 +3304,8 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
             <div className="makes">
               <span className="lab">{tr('¿Qué van a hacer?')}</span>
               <div className="seg" role="group" aria-label={tr('¿Qué van a hacer?')}>
-                <button type="button" className={'c-green' + (makes === 'pallet' ? ' on' : '')} aria-pressed={makes === 'pallet'} onClick={() => setMaking('pallet')}>{tr('Pallets')}<small>{tr('cajas con su tag')}</small></button>
-                <button type="button" className={'c-indigo' + (makes === 'bin' ? ' on' : '')} aria-pressed={makes === 'bin'} onClick={() => setMaking('bin')}>{tr('Bins')}<small>{tr('platos, copas, pouches…')}</small></button>
+                <button type="button" className={'c-green' + (makes === 'pallet' ? ' on' : '')} aria-pressed={makes === 'pallet'} onClick={() => setMaking('pallet')}>{RD && <i className="rd-choiceico" aria-hidden="true">📦</i>}{tr('Pallets')}<small>{tr('cajas con su tag')}</small></button>
+                <button type="button" className={(RD ? 'rd-binchoice' : 'c-indigo') + (makes === 'bin' ? ' on' : '')} aria-pressed={makes === 'bin'} onClick={() => setMaking('bin')}>{RD && <i className="rd-choiceico" aria-hidden="true"><BinIcon /></i>}{tr('Bins')}<small>{tr('platos, copas, pouches…')}</small></button>
               </div>
               {makes === 'bin' && (
                 <div className="binwords">
@@ -3320,7 +3320,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
             <div className="makes">
               <span className="lab">{tr('¿En qué se llena y qué lleva?')}</span>
               <div className="seg" role="group" aria-label={tr('¿En qué se llena y qué lleva?')}>
-                {MFO_CHOICES.map((w) => <button key={w} type="button" className={(w === 'bags' ? 'c-blue' : kindClass('MFO', w)) + (mfoWord === w ? ' on' : '')} aria-pressed={mfoWord === w} onClick={() => setBinText(w)}>{w === 'bags' ? tr('Bags') : w === 'lb' ? tr('Libras') : w === 'copas' ? tr('Copas') : w === 'pouches' ? tr('Pouches') : tr('Platos')}<small>{w === 'bags' ? tr('bags de libras (roaster)') : w === 'lb' ? tr('cada bin se pesa') : w === 'copas' ? tr('cada bin dice cuántas') : tr('cada bin dice cuántos')}</small></button>)}
+                {MFO_CHOICES.map((w) => <button key={w} type="button" className={(RD ? 'rd-ch' + (w === 'platos' ? '' : ' k-' + w) : w === 'bags' ? 'c-blue' : kindClass('MFO', w)) + (mfoWord === w ? ' on' : '')} aria-pressed={mfoWord === w} onClick={() => setBinText(w)}>{RD && w !== 'platos' && <i className="rd-choiceico" aria-hidden="true">{w === 'bags' ? '🛍️' : w === 'lb' ? '⚖️' : w === 'copas' ? '🍨' : '🛒'}</i>}{w === 'bags' ? tr('Bags') : w === 'lb' ? tr('Libras') : w === 'copas' ? tr('Copas') : w === 'pouches' ? tr('Pouches') : tr('Platos')}<small>{w === 'bags' ? tr('bags de libras (roaster)') : w === 'lb' ? tr('cada bin se pesa') : w === 'copas' ? tr('cada bin dice cuántas') : tr('cada bin dice cuántos')}</small></button>)}
               </div>
             </div>
           )}
