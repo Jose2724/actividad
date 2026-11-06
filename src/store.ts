@@ -1283,7 +1283,7 @@ export type RosterPerson = { name: string; code: string; lead?: boolean
   room?: Dept }
 export type Roster = { people: RosterPerson[]; rooms: Record<string, Dept | ''> }
 const ROSTER_KEY = 'roster:'
-const rosterGuess = (code: string): Dept | '' => { const c = code.toLowerCase(); return c.startsWith('mfo') ? 'MFO' : c.startsWith('rte') ? 'RTE' : c.startsWith('pack') ? 'Packing' : c.startsWith('raw') ? 'Kitchen' : c.startsWith('prod') ? 'Spiral' : '' }
+const rosterGuess = (code: string): Dept | '' => { const c = code.toLowerCase(); return c.startsWith('mfo') ? 'MFO' : c.startsWith('rte') ? 'RTE' : c.startsWith('pack') ? 'Packing' : c.startsWith('raw') || c.startsWith('kitchen') ? 'Kitchen' : c.startsWith('prod') || c.startsWith('spiral') ? 'Spiral' : '' }
 export function rosterOf(s: State, shift: 1 | 2): Roster {
   const d = kpiGet(s, ROSTER_KEY + shift)?.data as Partial<Roster> | undefined
   return { people: Array.isArray(d?.people) ? d.people : [], rooms: d?.rooms && typeof d.rooms === 'object' ? d.rooms : {} }

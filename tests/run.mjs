@@ -6155,6 +6155,9 @@ section('La lista de empleados: la asistencia se toca, no se escribe (Santiago p
     eq('el área de la fila manda cuando el archivo de horas la trae', m.hoursShift(st(), { name: 'Uno, Ana', div: 'Pack1-ER' }), 1)
     eq('el archivo de horas guarda el área de la persona cuando trae la columna', m.readHours([{ name: 'T', rows: [['Employee Number', 'Employee Name', 'Date', 'Clock In', 'Clock Out', 'Total (Hours)', 'Division'], [5, 'E, E', '2026-11-03', '5:00 AM', '8:00 PM', 15, 'RTE2-ER']] }]).days[0].over[0].div, 'RTE2-ER')
     eq('quién revisa cada turno', [m.SHIFT_CHECKER[1], m.SHIFT_CHECKER[2]], ['Josh', 'Santiago'])
+    // Santiago's staff chart turned into the list (2026-11-06): the area says the room by its own name too
+    const chart = m.rosterParse(['Employee Name' + String.fromCharCode(9) + 'Production Code' + String.fromCharCode(9) + 'Role', 'Uno Kitchen' + String.fromCharCode(9) + 'Kitchen1-ER' + String.fromCharCode(9) + 'Supervisor', 'Dos Spiral' + String.fromCharCode(9) + 'Spiral2-ER', 'Tres Pack' + String.fromCharCode(9) + 'Packing1-ER' + String.fromCharCode(9) + 'Lead'].join(String.fromCharCode(13, 10)))
+    eq('Kitchen1-ER y Spiral2-ER van a su cuarto sin escogerlo en Ajustes; Supervisor y Lead quedan marcados', [m.rosterRoom({ people: [], rooms: {} }, 'Kitchen1-ER'), m.rosterRoom({ people: [], rooms: {} }, 'Spiral2-ER'), m.rosterRoom({ people: [], rooms: {} }, 'Packing1-ER'), chart.lists[1].map((x) => !!x.lead), chart.lists[2].length], ['Kitchen', 'Spiral', 'Packing', [true, true], 1])
   })
   const back = await device('roster-again', { seed: JSON.parse(disks.get('roster').get('act_v1')), user: 'Op' })
   eq('al volver a abrir sigue la lista', back.use((m) => m.rosterOf(m.store.get(), 2).people.length), 4)
