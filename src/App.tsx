@@ -3201,13 +3201,15 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
     const lastRun = isPack || isMfo ? s.runs.filter((r) => r.lineId === line.id).sort((a, b) => b.startedAt - a.startedAt)[0] : undefined
     const makes = making ?? (lastRun && binOf(lastRun) ? 'bin' : 'pallet')
     const word = binText.trim() || (lastRun ? binOf(lastRun) : '') || BIN_WORDS[0]
-    const needPer = !!cfg.perUnitLabel && !(isPack && makes === 'bin')
-    const isCart = line.dept === 'RTE'
+    const mfoWordOf = () => ([...MFO_CHOICES, 'carros'].includes(binText) ? binText : '') || (isMfo && code.trim() ? (() => { const r = s.runs.filter((x) => x.dept === 'MFO' && normCode(x.code) === normCode(code) && !!binOf(x)).sort((a, b) => b.startedAt - a.startedAt)[0]; return r ? mfoChoiceOf(r) : '' })() : '') || (lastRun ? mfoChoiceOf(lastRun) : '') || MFO_WORDS[0]
+    const needPer = (!!cfg.perUnitLabel && !(isPack && makes === 'bin')) || (RD && isMfo && mfoWordOf() === 'carros')
+    // MFO's pouches are made in carts as RTE's (Jose, 2026-11-05: "están haciendo carro, no bin"): the redesign asks crates × pouches
+    const isCart = line.dept === 'RTE' || (RD && isMfo && mfoWordOf() === 'carros')
     const prod = productOf(s, code)
     // MFO: its bins hold platos or copas (so many to a case) or are weighed in pounds: as tapped; else as this code was
     // counted last (on this device); else as this line did last; else platos
     const mfoLast = isMfo && code.trim() ? s.runs.filter((r) => r.dept === 'MFO' && normCode(r.code) === normCode(code) && !!binOf(r)).sort((a, b) => b.startedAt - a.startedAt)[0] : undefined
-    const mfoWord = !isMfo ? '' : (MFO_CHOICES.includes(binText) ? binText : '') || (mfoLast ? mfoChoiceOf(mfoLast) : '') || (lastRun ? mfoChoiceOf(lastRun) : '') || MFO_WORDS[0]
+    const mfoWord = !isMfo ? '' : ([...MFO_CHOICES, ...(RD ? ['carros'] : [])].includes(binText) ? binText : '') || (mfoLast ? mfoChoiceOf(mfoLast) : '') || (lastRun ? mfoChoiceOf(lastRun) : '') || MFO_WORDS[0]
     const suggested = needPer ? lastPerUnit(s, line.dept, code) : null
     // Spiral: mezcla by mezcla, or each mezcla weighed in pounds or counted in cases: the products table's word for the
     // code, else the way it was started last on this device, else mezcla by mezcla
@@ -3241,7 +3243,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
           // only a quantity typed is asked about (the one the line proposes is the usual); RTE's is crates × pouches
           const typedPer = needPer && perUnit != null && (!!per.trim() || (isCart && !!crates.trim()))
           sure.check(typedPer ? [{ key: 'per', n: perUnit, usual: usualFor(s, line.dept, code, ''), unit: cfg.qtyUnit, per: cfg.unit.toLowerCase(), total: isCart }] : [], () => {
-            const go = () => { startRun(line, code.trim().toUpperCase(), lot.trim(), date, needPer ? perUnit : null, isPack && makes === 'bin' ? word : mfoWord === 'bags' ? 'lb' : mfoWord, isSpiral && spiralNow !== 'mezclas' ? spiralNow : '', mfoWord === 'bags' ? 'bag' : ''); setDateText(null); setLotText(null); setEditDate(false); setMaking(null); setBinText(''); setMeasure(null) }
+            const go = () => { startRun(line, code.trim().toUpperCase(), lot.trim(), date, needPer ? perUnit : null, isPack && makes === 'bin' ? word : mfoWord === 'bags' ? 'lb' : mfoWord === 'carros' ? 'pouches' : mfoWord, isSpiral && spiralNow !== 'mezclas' ? spiralNow : '', mfoWord === 'bags' ? 'bag' : mfoWord === 'carros' ? 'cart' : ''); setDateText(null); setLotText(null); setEditDate(false); setMaking(null); setBinText(''); setMeasure(null) }
             void (async () => {
               setCheckingOpen(true)
               const open = await checkLineOpen(line.id)
@@ -3281,7 +3283,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
             <div className="makes">
               <span className="lab">{tr('¿En qué se llena y qué lleva?')}</span>
               <div className="seg" role="group" aria-label={tr('¿En qué se llena y qué lleva?')}>
-                {MFO_CHOICES.map((w) => <button key={w} type="button" className={(RD ? 'rd-ch' + (w === 'platos' ? '' : ' k-' + w) : w === 'bags' ? 'c-blue' : kindClass('MFO', w)) + (mfoWord === w ? ' on' : '')} aria-pressed={mfoWord === w} onClick={() => setBinText(w)}>{RD && w !== 'platos' && <i className="rd-choiceico" aria-hidden="true">{w === 'bags' ? '🛍️' : w === 'lb' ? '⚖️' : w === 'copas' ? '🍨' : '🛒'}</i>}{w === 'bags' ? tr('Bags') : w === 'lb' ? tr('Libras') : w === 'copas' ? tr('Copas') : w === 'pouches' ? tr('Pouches') : tr('Platos')}<small>{w === 'bags' ? tr('bags de libras (roaster)') : w === 'lb' ? tr('cada bin se pesa') : w === 'copas' ? tr('cada bin dice cuántas') : tr('cada bin dice cuántos')}</small></button>)}
+                {(RD ? [...MFO_CHOICES.filter((x) => x !== 'bags'), 'carros', 'bags'] : MFO_CHOICES).map((w) => <button key={w} type="button" className={(RD ? 'rd-ch' + (w === 'platos' ? '' : ' k-' + (w === 'carros' ? 'pouches' : w)) : w === 'bags' ? 'c-blue' : kindClass('MFO', w)) + (mfoWord === w ? ' on' : '')} aria-pressed={mfoWord === w} onClick={() => setBinText(w)}>{RD && w !== 'platos' && <i className="rd-choiceico" aria-hidden="true">{w === 'bags' ? '🛍️' : w === 'lb' ? '⚖️' : w === 'copas' ? '🍨' : w === 'carros' ? '🛒' : <BinIcon />}</i>}{w === 'carros' ? tr('Pouches en carros') : RD && w === 'pouches' ? tr('Pouches en bin') : w === 'bags' ? tr('Bags') : w === 'lb' ? tr('Libras') : w === 'copas' ? tr('Copas') : w === 'pouches' ? tr('Pouches') : tr('Platos')}<small>{w === 'bags' ? tr('bags de libras (roaster)') : w === 'lb' ? tr('cada bin se pesa') : w === 'copas' ? tr('cada bin dice cuántas') : (w === 'carros' ? tr('como RTE: carro listo') : tr('cada bin dice cuántos'))}</small></button>)}
               </div>
             </div>
           )}
@@ -3380,7 +3382,9 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   }
   const st = runStats(s, run, now)
   // a Packing line that fills bins speaks of bins; one that makes pallets builds each one lot by lot (see PalletPanel)
-  const rc = cfgOf(run), pallets = run.dept === 'Packing' && !binOf(run), packBins = run.dept === 'Packing' && !!binOf(run), runWord = rc.unit.toLowerCase()
+  // MFO's pouches in carts, counted as RTE counts them (the redesign, Jose 2026-11-05)
+  const mfoCart = RD && run.dept === 'MFO' && run.extra?.pack === 'cart'
+  const rc = mfoCart ? { ...cfgOf(run), unit: CFG.RTE.unit, plural: CFG.RTE.plural, done: CFG.RTE.done, saved: CFG.RTE.saved, qty: CFG.RTE.qty, qtyQ: CFG.RTE.qtyQ, qtyUnit: CFG.RTE.qtyUnit, refLabel: CFG.RTE.refLabel, refWord: CFG.RTE.refWord } : cfgOf(run), pallets = run.dept === 'Packing' && !binOf(run), packBins = run.dept === 'Packing' && !!binOf(run), runWord = rc.unit.toLowerCase()
   // A code that came running from the shift before: what this shift sees of it starts from zero at the hand-over (its
   // units, its quantity, its time), and one line says what it brought. A code this shift started is shown whole.
   const mineNow = runSince(s, run, turn.since, now)
@@ -3427,7 +3431,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   // pouches are also told as full cases and loose pouches, where the products table says how many go in a case
   const perCase = perCaseOf(run.code)
   // an RTE cart is counted by its crates (two columns) and the pouches of the last one: the app adds it up (2026-10-28)
-  const cart = run.dept === 'RTE' ? cartSpecOf(s, run) : null
+  const cart = run.dept === 'RTE' || mfoCart ? cartSpecOf(s, run) : null
   const cases = perCase && mineNow.qty > 0 ? inCases(s, run.code, mineNow.qty) : null
   // a set up on this line while its code runs: amber like every set up, never the red of a stop
   const inSetup = !!stop && stop.lineId === line.id && stop.reason === SETUP
@@ -3445,14 +3449,15 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
       {naming}
       {slow && <div className="slowbar" role="status">{trx('🔴 Ritmo bajo: {0} {1} por hora en la última hora · mínimo {2}', <b>{fmtN(slow.rate)}</b>, cfg.qty === 'none' ? cfg.plural.toLowerCase() : cfg.qtyUnit, <b>{fmtN(slow.limit)}</b>)}</div>}
       <div className="lhead">
-        <h3><i className="lemoji" aria-hidden="true">{oven ? '🔥' : RD && packBins ? <BinIcon /> : kind ? KIND_ICON[kind] : DEPT_LOOK[line.dept].emoji}</i>{lineLabel(line.name)} {nameIt}</h3>
+        <h3><i className="lemoji" aria-hidden="true">{oven ? '🔥' : RD && packBins ? <BinIcon /> : kind === 'pouches' && !mfoCart ? <BinIcon /> : kind ? KIND_ICON[kind] : DEPT_LOOK[line.dept].emoji}</i>{lineLabel(line.name)} {nameIt}</h3>
         <span className={'pill ' + (inSetup ? 'setup' : stop ? 'stop' : 'run')}>{inSetup ? tr('⏱ Set up') : stop ? tr('⏸ Parado') : tr('● Corriendo')}{RD && <> · {fmtDur(stop ? stopTime(s, stop, now) : mineNow.working)}</>}</span>
         {!RD && <span className="lacts">{goalBtn}{!hold && <button type="button" className="lnk sm" onClick={() => setFixing(true)}>{tr('Corregir')}</button>}</span>}
       </div>
       {/* what runs here, big: the code and the lot going on now; a Packing line says first whether it makes pallets or fills bins */}
       <div className={'hero' + (packBins ? ' bin' : pallets ? ' pal' : '')}>
         {run.dept === 'Packing' && <span className="mode">{binOf(run) ? trx('BINS · {0}', binWord(binOf(run))) : tr('PALLETS')}</span>}
-        {run.dept === 'MFO' && binOf(run) && <span className={'mode ' + (run.extra?.pack === 'bag' ? 'c-blue' : kindClass('MFO', binOf(run)))}>{run.extra?.pack === 'bag' ? trx('BAGS · {0}', binWord(binOf(run))) : trx('BINS · {0}', binWord(binOf(run)))}</span>}
+        {mfoCart && <span className="mode">{trx('CARROS · {0}', binWord('pouches'))}</span>}
+        {!mfoCart && run.dept === 'MFO' && binOf(run) && <span className={'mode ' + (run.extra?.pack === 'bag' ? 'c-blue' : kindClass('MFO', binOf(run)))}>{run.extra?.pack === 'bag' ? trx('BAGS · {0}', binWord(binOf(run))) : trx('BINS · {0}', binWord(binOf(run)))}</span>}
         <div className="hero-main"><b className="code">{run.code}</b><span className="lot">{trx('lote {0}', <b>{lotNowOf(run)}</b>)}</span></div>
         {productOf(s, run.code)?.name && <div className="hero-name">{productOf(s, run.code)?.name}</div>}
         {/* the facts of the run, each with its name: when it started, what a unit carries, and what is not the usual */}

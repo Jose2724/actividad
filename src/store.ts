@@ -110,7 +110,7 @@ export type Run = { id: string; dept: Dept; lineId: string; line: string; code: 
 export type PalletPart = { lot: string; qty: number; tag: string; at: number; by: string }
 export type RunExtra = { bin?: string; lotNow?: string; open?: { parts: PalletPart[]; po?: string }; measure?: Measure; removed?: number[]
   /** MFO filling bags instead of bins (Jose, 2026-10-22: the ROASTER chicken, "que en vez de bin diga bags"): bin is 'lb' then, so every sum counts pounds as before; only the words change */
-  pack?: 'bag'; note?: string }
+  pack?: 'bag' | 'cart'; note?: string }
 // removed = the moments of the units taken off this run on purpose (a cart recorded twice): kept on the row, so that no
 // merge, on any device, brings one back (see updateRun, mergeRun)
 /**
@@ -129,7 +129,8 @@ export const MFO_WORDS = ['platos', 'copas', 'lb', 'pouches']
 /** what an MFO line may fill, as chosen when a code starts: its bin words, and bags of pounds (2026-10-22) */
 export const MFO_CHOICES = [...MFO_WORDS, 'bags']
 /** the choice a run was started with */
-export const mfoChoiceOf = (r: Pick<Run, 'dept' | 'extra'>) => (r.dept === 'MFO' && r.extra?.pack === 'bag' ? 'bags' : binOf(r))
+// (pouches in carts as RTE's, 2026-11-05: 'carros')
+export const mfoChoiceOf = (r: Pick<Run, 'dept' | 'extra'>) => (r.dept === 'MFO' && r.extra?.pack === 'bag' ? 'bags' : r.dept === 'MFO' && r.extra?.pack === 'cart' ? 'carros' : binOf(r))
 /**
  * What a run makes, as one choice a person can change in Corregir (Jose, 2026-11-04: "eligieron otra opción que no fue
  * pouches ... que en Corregir se pueda elegir la correcta", for every room with more than one thing): Packing pallets
@@ -193,7 +194,7 @@ export function cleanExtra(x: unknown): RunExtra | undefined {
   if (typeof e.bin === 'string' && e.bin.trim()) out.bin = e.bin.trim().slice(0, 30)
   if (typeof e.lotNow === 'string' && e.lotNow.trim()) out.lotNow = e.lotNow.trim().slice(0, 30)
   if (e.measure === 'lb' || e.measure === 'cajas') out.measure = e.measure
-  if (e.pack === 'bag') out.pack = 'bag'
+  if (e.pack === 'bag' || e.pack === 'cart') out.pack = e.pack
   if (Array.isArray(e.removed)) { const dead = [...new Set(e.removed.map(Number).filter((n) => Number.isFinite(n) && n > 0))].sort((a, b) => a - b); if (dead.length) out.removed = dead.slice(-500) }
   const o = e.open as { parts?: unknown; po?: unknown } | undefined
   if (o && typeof o === 'object') {
@@ -2371,7 +2372,7 @@ export const idleStop = (s: State, lineId: string, now: number) =>
  * was divided into) ends at this moment, and from this moment it counts. A set up of seconds is not one, and neither
  * is what was left open for hours on a line nobody was using, or since the day before: those are dropped.
  */
-export function startRun(line: Line, code: string, lot: string, date: string, perUnit: number | null, bin = '', measure: Measure | '' = '', pack: '' | 'bag' = '') {
+export function startRun(line: Line, code: string, lot: string, date: string, perUnit: number | null, bin = '', measure: Measure | '' = '', pack: '' | 'bag' | 'cart' = '') {
   const at = clockNow()
   batch(() => {
     for (const x of state.stops.filter((y) => y.lineId === line.id && !y.endedAt)) {
@@ -2379,7 +2380,7 @@ export function startRun(line: Line, code: string, lot: string, date: string, pe
       if (age > SETUP_MAX_MS || fromOtherDay(state, x, at) || (x.reason === SETUP && age < 60_000)) putStop({ ...x, deleted: true })
       else putStop({ ...x, endedAt: Math.max(at, x.startedAt), note: x.reason === SETUP && x.note.startsWith(AFTER) ? 'De ' + x.note.slice(AFTER.length) + ' a ' + code : x.note })
     }
-    putRun({ id: uid(), dept: line.dept, lineId: line.id, line: line.name, code, lot, date, startedAt: at, endedAt: null, units: [], perUnit, waste: 0, by: user.get(), updatedAt: 0, ...((line.dept === 'Packing' || line.dept === 'MFO') && bin.trim() ? { extra: { bin: bin.trim().slice(0, 30), ...(line.dept === 'MFO' && pack === 'bag' ? { pack } : {}) } } : line.dept === 'Spiral' && measure ? { extra: { measure } } : {}) })
+    putRun({ id: uid(), dept: line.dept, lineId: line.id, line: line.name, code, lot, date, startedAt: at, endedAt: null, units: [], perUnit, waste: 0, by: user.get(), updatedAt: 0, ...((line.dept === 'Packing' || line.dept === 'MFO') && bin.trim() ? { extra: { bin: bin.trim().slice(0, 30), ...(line.dept === 'MFO' && pack === 'bag' || pack === 'cart' ? { pack } : {}) } } : line.dept === 'Spiral' && measure ? { extra: { measure } } : {}) })
   })
 }
 const run = (id: string) => state.runs.find((r) => r.id === id)

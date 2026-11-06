@@ -3643,6 +3643,11 @@ export const EN: Record<string, string> = {
   // the redesign (2026-11-05): sections, menu, search, Resumen, Toda la planta
   "Toda la planta": "Whole plant",
   "Más": "More",
+  "Pouches en carros": "Pouches in carts",
+  "Pouches en bin": "Pouches in a bin",
+  "como RTE: carro listo": "like RTE: cart ready",
+  "CARROS · {0}": "CARTS · {0}",
+  "en carros, como RTE": "in carts, like RTE",
   "▶ Empezar código": "▶ Start code",
   "Empezar un código en {0}": "Start a code on {0}",
   "Lo que el cuarto anota sin código cuenta en el total del cuarto y de su turno, no en el de un código.": "What the room writes without a code counts in the room's and its shift's total, not in a code's.",
