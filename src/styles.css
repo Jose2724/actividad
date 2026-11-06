@@ -2867,7 +2867,8 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
    the words; the colours are the ones those units already wear on the labels of the app */
 .app.rd .k-lb{--k:#d97706;--kt:#fef3c7;--kk:#92400e}
 .app.rd .k-cajas{--k:#2563eb;--kt:#dbeafe;--kk:#1e40af}
-.app.rd .k-copas{--k:#e11d48;--kt:#ffe4e6;--kk:#9f1239}
+/* (copas in indigo, not rose: red is only for what is wrong, Jose 2026-11-05) */
+.app.rd .k-copas{--k:#6366f1;--kt:#e0e7ff;--kk:#3730a3}
 .app.rd .k-bags{--k:#0d9488;--kt:#ccfbf1;--kk:#115e59}
 .app.rd .k-pouches{--k:#0891b2;--kt:#cffafe;--kk:#155e75}
 .app.rd .line.rd-kind{border-color:var(--k);box-shadow:0 0 0 1px var(--k)}

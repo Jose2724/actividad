@@ -3423,7 +3423,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   // cases, MFO's copas, pounds, bags or pouches. (Packing's bins have their own violet, mode-bin; the oven its orange)
   const kind = !RD ? '' : run.dept === 'Spiral' ? (measureOf(run) === 'lb' ? 'lb' : measureOf(run) === 'cajas' ? 'cajas' : '')
     : run.dept === 'MFO' ? (run.extra?.pack === 'bag' ? 'bags' : binOf(run) === 'copas' ? 'copas' : binOf(run) === 'lb' ? 'lb' : binOf(run) === 'pouches' ? 'pouches' : '') : ''
-  const KIND_ICON: Record<string, string> = { lb: '⚖️', cajas: '📦', copas: '🥤', bags: '🛍️', pouches: '🛒' }
+  const KIND_ICON: Record<string, string> = { lb: '⚖️', cajas: '📦', copas: '🍨', bags: '🛍️', pouches: '🛒' }
   return (
     <div className={'line ' + (inSetup ? 'insetup' : stop ? 'stopped' : 'running') + (kind ? ' rd-kind k-' + kind : '') + (just ? ' justdone' : '') + (slow ? ' slow' : '') + (packBins ? ' mode-bin' : pallets ? ' mode-pal' : '') + (oven ? ' oven' : '')}>
       {naming}
