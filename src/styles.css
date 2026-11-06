@@ -2742,3 +2742,24 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 .app.rd .line .lhead .lacts{display:inline-flex;gap:8px;align-items:center}
 .app.rd .line .rd-lacts{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .rd-goal{white-space:nowrap;flex:none}
+
+/* ---- the line card's numbers in boxes, each with its colour (Jose, 2026-11-05: "los datos por favor ponerlo en cuadrado
+   ... de diferentes colores para leer mejor"), and a stopped line that blinks (Santiago asked for it) ---- */
+:root{--rd-box:#f1f4f8;--rd-made:#581447;--rd-now:#1d4ed8;--rd-work:#166534}
+.app.rd .line .hero{background:var(--rd-box);border:1px solid var(--line);border-radius:10px;padding:8px 10px;gap:3px}
+.app.rd .line .fact small{text-transform:uppercase;letter-spacing:.04em;font-size:10.5px;font-weight:800}
+.app.rd .line .tiles,.app.rd .line .tiles.four{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;align-items:stretch}
+.app.rd .line .tiles:not(.four){grid-template-columns:repeat(3,minmax(0,1fr))}
+.app.rd .line .tile,.app.rd .line .tile.main{display:grid;align-content:start;gap:1px;background:var(--rd-box);border:1px solid var(--line);border-radius:10px;padding:7px 10px;order:0;flex-basis:auto}
+.app.rd .line .tile label,.app.rd .line .tiles.four .tile.main+.tile.main label,.app.rd .line .tiles:not(.four) .tile.main label{order:0;text-transform:uppercase;letter-spacing:.05em;font-size:10.5px;font-weight:800;color:var(--muted)}
+.app.rd .line .tile b,.app.rd .line .tile.main b,.app.rd .line .tiles.four .tile.main+.tile.main b,.app.rd .line .tiles:not(.four) .tile.main b{order:0;font-size:22px;line-height:1.1}
+.app.rd .line .tile small{order:0}
+.app.rd .line .tiles.four .tile.main+.tile.main,.app.rd .line .tiles:not(.four) .tile.main{order:0;flex-basis:auto}
+.app.rd .line .tile.main b{color:var(--rd-made)}
+.app.rd .line .tiles.four .tile.main+.tile.main b,.app.rd .line .tiles:not(.four) .tile.main b{font-size:28px}
+.app.rd .line .tile:nth-last-child(2):not(.main) b{color:var(--rd-now)}
+.app.rd .line .tile:last-child:not(.main) b{color:var(--rd-work)}
+.app.rd .line .tile small .red{color:var(--warn);font-weight:800}
+@keyframes rdStopPulse{0%,100%{box-shadow:0 0 0 2px rgba(229,83,75,.25);border-color:#df9a93}50%{box-shadow:0 0 0 6px rgba(229,83,75,.7);border-color:#e5534b}}
+.app.rd .line.stopped{animation:rdStopPulse 1.4s ease-in-out infinite}
+@media (prefers-reduced-motion:reduce){.app.rd .line.stopped{animation:none}}

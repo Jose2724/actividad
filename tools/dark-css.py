@@ -18,11 +18,11 @@ ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / 'src' / 'styles.css'
 OUT = ROOT / 'src' / 'dark.css'
 
-TOKENS = """html[data-theme="dark"]{color-scheme:dark;--bg:#0f1113;--surface:#17191c;--ink:#e8ebee;--muted:#a0a8b1;--line:#2d3238;--accent:#b8549f;--accent-ink:#fff;--ok:#2f9e66;--warn:#e5534b;--amber:#e0a030;--soft:#33202e;--red-soft:#3a1f1d;--btn:#262a30;--btn-line:#4b525b;--btn-edge:#08090b}
+TOKENS = """html[data-theme="dark"]{color-scheme:dark;--bg:#1b1d20;--surface:#111214;--rd-box:#1f2226;--rd-made:#e08ccd;--rd-now:#7fb2ff;--rd-work:#5fd394;--ink:#e8ebee;--muted:#a0a8b1;--line:#2d3238;--accent:#b8549f;--accent-ink:#fff;--ok:#2f9e66;--warn:#e5534b;--amber:#e0a030;--soft:#33202e;--red-soft:#3a1f1d;--btn:#262a30;--btn-line:#4b525b;--btn-edge:#08090b}
 html[data-theme="dark"] .app.rd .logo{background:#fff;border-radius:10px;padding:3px}
 html[data-theme="dark"] .app.rd .btn.go{background:#1f8a55;border-color:#1f8a55}
 html[data-theme="dark"] .app.rd .veil{background:rgba(0,0,0,.7)}
-html[data-theme="dark"] .app.rd .dlg{border-color:#3a4048;background:#1d2024}
+html[data-theme="dark"] .app.rd .dlg{border-color:#3a4048;background:#23262b}
 """
 
 HEX = re.compile(r'#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b')
