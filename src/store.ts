@@ -3376,7 +3376,17 @@ export function chatRoomKnown(d: unknown): d is ChatRoom { return d === 'Freezer
 /** img = a photo with the message (2026-10-28): its path in the server's bucket act_chat ('<room>/<id>.jpg', SQL 027), or a data: URL on a device without a server (the demo) */
 export type ChatMsg = { id: string; dept: ChatRoom; text: string; by: string; at: number; side: 'room' | 'office'; img?: string
   /** a voice note with the message (2026-10-29): its path in the bucket ('<room>/<id>.webm' or .mp4, SQL 028), or a data: URL without a server */
-  audio?: string; deleted?: boolean; updatedAt: number; syncedAt?: number }
+  audio?: string
+  /** a call between the room and the office (2026-11-06): how it went and how long it lasted, written by whoever called */
+  call?: ChatCall; deleted?: boolean; updatedAt: number; syncedAt?: number }
+/** done = they talked (secs); missed = nobody answered or the caller hung up first; declined = Colgar on the ringing screen; failed = the audio never connected */
+export type ChatCall = { how: 'done' | 'missed' | 'declined' | 'failed'; secs: number }
+// (a function declaration with its list inside: load() reads the chat through chatFrom before the file's consts exist, see the TDZ note above load)
+function callFrom(x: unknown): ChatCall | undefined {
+  const c = x as Partial<ChatCall> | null | undefined
+  if (!c || typeof c !== 'object' || !['done', 'missed', 'declined', 'failed'].includes(String(c.how))) return undefined
+  return { how: c.how as ChatCall['how'], secs: Math.max(0, Math.round(Number(c.secs) || 0)) }
+}
 /** what a photo / a voice note says for whoever cannot show it (a build from before, the freezer's app): the message's text when none was typed */
 export const CHAT_PHOTO_TEXT = '📷 Foto', CHAT_AUDIO_TEXT = '🎤 Nota de voz'
 const CHAT_ID = 'chat:'
@@ -3385,14 +3395,16 @@ function chatFrom(x: Partial<ChatMsg> | null | undefined): ChatMsg | null {
   if (!x || typeof x !== 'object' || typeof x.id !== 'string' || !x.id || !chatRoomKnown(x.dept)) return null
   const text = String(x.text ?? '').replace(/\s+/g, ' ').trim().slice(0, 600), img = String(x.img ?? '').trim().slice(0, 400_000), audio = String(x.audio ?? '').trim().slice(0, 1_500_000)
   if (!text && !img && !audio) return null
-  return { id: x.id, dept: x.dept, text, by: String(x.by ?? ''), at: Number(x.at) || 0, side: x.side === 'room' ? 'room' : 'office', ...(img ? { img } : {}), ...(audio ? { audio } : {}), ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
+  const call = callFrom(x.call)
+  return { id: x.id, dept: x.dept, text, by: String(x.by ?? ''), at: Number(x.at) || 0, side: x.side === 'room' ? 'room' : 'office', ...(img ? { img } : {}), ...(audio ? { audio } : {}), ...(call ? { call } : {}), ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(Number(x.syncedAt) > 0 ? { syncedAt: Number(x.syncedAt) } : {}) }
 }
 /** a room's conversation, oldest first */
 export const chatOf = (s: State, dept: ChatRoom) => (s.chat ?? []).filter((x) => x.dept === dept && !x.deleted).sort((a, b) => a.at - b.at || a.id.localeCompare(b.id))
 /** which side this device writes from: a room's operator, or the office and the managers */
 export const chatSide = (): ChatMsg['side'] => (role.get() === 'op' ? 'room' : 'office')
 /** the messages from the other side later than the moment this device last looked (`seen`) */
-export const chatUnread = (s: State, dept: ChatRoom, side: ChatMsg['side'], seen: number) => chatOf(s, dept).filter((x) => x.side !== side && x.at > seen).length
+// (a call that was answered is not news to the other side: they were in it. A missed one is, as Jose asked, 2026-11-06)
+export const chatUnread = (s: State, dept: ChatRoom, side: ChatMsg['side'], seen: number) => chatOf(s, dept).filter((x) => x.side !== side && x.at > seen && x.call?.how !== 'done').length
 /**
  * How far each side of a room's conversation has looked (Jose, 2026-10-28: "si el supervisor de la plataforma vio el
  * mensaje o no"): one record per room and side, 'chat:seen:<room>:<side>' in act_changes with the room (act_chat, so
@@ -3423,13 +3435,14 @@ export function markChatSeen(dept: ChatRoom, upTo: number) {
  * is nothing to say or this device may not write that room. A photo with no words goes up saying "📷 Foto" for whoever
  * cannot show it; here it is only the photo
  */
-export function sendChat(dept: ChatRoom, text: string, img = '', audio = ''): string {
+export function sendChat(dept: ChatRoom, text: string, img = '', audio = '', call?: ChatCall): string {
   const t = text.replace(/\s+/g, ' ').trim().slice(0, 600), i = img.trim(), a = audio.trim()
   if ((!t && !i && !a) || !chatRoomKnown(dept) || !writesRoom(dept)) return ''
   const side = chatSide()
-  const x: ChatMsg = { id: uid(), dept, text: t, by: user.get(), at: clockNow(), side, ...(i ? { img: i } : {}), ...(a ? { audio: a } : {}), updatedAt: stamp(undefined) }
+  const c = callFrom(call)
+  const x: ChatMsg = { id: uid(), dept, text: t, by: user.get(), at: clockNow(), side, ...(i ? { img: i } : {}), ...(a ? { audio: a } : {}), ...(c ? { call: c } : {}), updatedAt: stamp(undefined) }
   set({ ...state, chat: [...(state.chat ?? []), x] })
-  push('act_changes', CHAT_ID + x.id, { id: CHAT_ID + x.id, at: iso(x.at), by_name: x.by, dept, what: side === 'room' ? 'Mensaje de ' + dept : 'Mensaje para ' + dept, before: '', after: JSON.stringify({ text: t || (i ? CHAT_PHOTO_TEXT : a ? CHAT_AUDIO_TEXT : ''), side, ...(i ? { img: i } : {}), ...(a ? { audio: a } : {}) }), ref_table: CHAT_REF, ref_key: x.id, deleted: false, updated_at: iso(x.updatedAt), updated_by: user.get() })
+  push('act_changes', CHAT_ID + x.id, { id: CHAT_ID + x.id, at: iso(x.at), by_name: x.by, dept, what: side === 'room' ? 'Mensaje de ' + dept : 'Mensaje para ' + dept, before: '', after: JSON.stringify({ text: t || (i ? CHAT_PHOTO_TEXT : a ? CHAT_AUDIO_TEXT : ''), side, ...(i ? { img: i } : {}), ...(a ? { audio: a } : {}), ...(c ? { call: c } : {}) }), ref_table: CHAT_REF, ref_key: x.id, deleted: false, updated_at: iso(x.updatedAt), updated_by: user.get() })
   return x.id
 }
 /** an order is complete (Packing is no longer offered it), or is opened again */

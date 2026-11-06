@@ -3558,3 +3558,36 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 .ay-paro .btn{justify-self:start}
 .ay-parobtn{justify-self:start;margin:4px 0}
 @media (max-width:560px){.veil:has(.rd-ayuda){padding:0}.dlg.rd-ayuda{height:100dvh;border-radius:0;max-width:none}.ay-msg{max-width:96%}}
+/* ---- calls inside Mensajes (2026-11-06, src/Call.tsx) ---- */
+.call-audio{display:none}
+.chat-call{margin-left:auto;position:relative;flex:none;width:42px;height:42px;border-radius:50%;border:2px solid #14532d;background:#1b7446;color:#fff;font-size:20px;line-height:1;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 0 rgba(0,0,0,.25)}
+.chat-call+.chat-x{margin-left:2px}
+.chat-call.no,.chat-call.busy{background:#e4ebf2;border-color:#9cadbe;color:#16202a}
+.chat-call:disabled{opacity:.55;cursor:default}
+.chat-call i{position:absolute;right:-1px;bottom:-1px;width:12px;height:12px;border-radius:50%;border:2px solid #fff;background:#9cadbe}
+.chat-call.yes i{background:#22c55e}.chat-call.busy i{background:#f59e0b}
+.chat-callline{align-self:center;display:flex;flex-direction:column;align-items:center;gap:2px;margin:6px 0;max-width:90%}
+.chat-callline span{background:var(--d-tint,#eef2f6);border:1px solid var(--d-edge,var(--line));color:var(--ink);border-radius:999px;padding:5px 14px;font-weight:700;font-size:14.5px}
+.chat-callline.missed span,.chat-callline.declined span,.chat-callline.failed span{background:#fde8e6;border-color:#f3b4ad;color:#9b1c13}
+.chat-callline small{font-size:11.5px}
+.call-in{position:fixed;inset:0;z-index:90;background:rgba(10,14,20,.72);display:flex;align-items:center;justify-content:center;padding:16px}
+.call-in-card{background:var(--surface);color:var(--ink);border-radius:22px;padding:26px 22px 20px;width:min(380px,100%);display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.45);border-top:6px solid var(--d,var(--accent))}
+.call-in-e{width:84px;height:84px;border-radius:50%;background:var(--d,var(--accent));color:#fff;font-size:44px;display:flex;align-items:center;justify-content:center;margin-bottom:6px;animation:call-pulse 1.3s ease-in-out infinite}
+.call-in-card b{font-size:22px}.call-in-card small{font-size:15px}
+.call-in-btns{display:grid;grid-template-columns:1fr 1fr;gap:12px;width:100%;margin-top:16px}
+.call-in-btns button{display:flex;flex-direction:column;align-items:center;gap:4px;padding:14px 8px;border-radius:16px;font-size:18px;font-weight:800}
+.call-in-btns button span{font-size:26px}
+.call-yes{background:#1b7446;border:2px solid #14532d;color:#fff;box-shadow:0 3px 0 #14532d}
+.call-no{background:#b3261e;border:2px solid #7f1d1d;color:#fff;box-shadow:0 3px 0 #7f1d1d;font-weight:800}
+.call-ok{background:#e4ebf2;border:2px solid #9cadbe;color:#16202a;font-weight:800}
+@keyframes call-pulse{0%,100%{transform:scale(1);box-shadow:0 0 0 0 rgba(27,116,70,.5)}50%{transform:scale(1.06);box-shadow:0 0 0 14px rgba(27,116,70,0)}}
+.call-bar{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:85;display:flex;align-items:center;gap:10px;background:var(--surface);color:var(--ink);border:2px solid var(--d,var(--accent));border-radius:999px;padding:6px 6px 6px 12px;box-shadow:0 10px 30px rgba(0,0,0,.3);max-width:calc(100vw - 20px)}
+.call-bar.live{border-color:#1b7446}
+.call-bar.bad{border-color:#b3261e;border-radius:16px}
+.call-bar-e{font-size:22px;flex:none}
+.call-bar-t{display:flex;flex-direction:column;font-weight:700;font-size:15px;line-height:1.25;min-width:0}
+.call-bar-t small{font-weight:600;font-size:12.5px}
+.call-bar-t b{font-variant-numeric:tabular-nums}
+.call-bar button{flex:none;border-radius:999px;padding:8px 16px;font-size:15px}
+.call-mute{background:#e4ebf2;border:2px solid #9cadbe;font-size:18px;padding:6px 10px!important}
+.call-mute.on{background:#fde8e6;border-color:#b3261e}

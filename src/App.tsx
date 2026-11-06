@@ -35,6 +35,7 @@ import { HoldButton, HoldList } from './Holds'
 import { seesKpi } from './kpi'
 import { ArrivalsDialog, AttendanceCard, AttendanceDialog } from './Attendance'
 import { Chat, ChatInbox } from './Chat'
+import { CallHost } from './Call'
 import { RD } from './rd'
 import { AyudaButton, AyudaParo, AyudaWindow, ayudaShown } from './Ayuda'
 import { HoldsAll, PersonMenu, PlantOverview, RD_TABS, RdNav, RdTabs, secOf, StatusStrip, tabsOf, type RdSec, type RdTab } from './Shell'
@@ -727,6 +728,7 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
   if (RD) return (
     <div className={'app rd' + (isOp ? ' rd-op' : '')}>
       {!(shownTab === 'msg' && !isOp) && <Chat s={s} home={home} onInbox={isOp ? undefined : () => setTab('msg')} />}
+      <CallHost side={isOp ? 'room' : 'office'} home={home} on={!viewOnly} />
       <header className="rd-top">
         <div className="rd-brand"><img className="logo" src={import.meta.env.BASE_URL + 'mamas-logo.png'} alt="Mama's Creations" /><div><h1>{APP}{!supabase && <span className="demotag">DEMO</span>}</h1><small>{new Date(now).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })} · <b className="livetime">{new Date(now).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</b></small></div></div>
         <DayBar s={s} now={now} day={day} mgr={can('day')} calendar={can('shifts')} compact />
@@ -759,6 +761,7 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
   return (
     <div className="app">
       <Chat s={s} home={home} />
+      <CallHost side={who.role === 'op' ? 'room' : 'office'} home={home} on={!viewOnly} />
       {[zoneBar, clockBar, updBar, unsentBar, othersBar, fullBar].map((x, k) => <Fragment key={k}>{x}</Fragment>)}
       {gate}
       {staleBar}

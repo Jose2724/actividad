@@ -1214,6 +1214,7 @@ html:where([data-theme="dark"]),:where(html[data-theme="dark"]) body{background:
 :where(html[data-theme="dark"]) .pplh .pplh-read{border-radius:12px;background:#1f1a24}
 :where(html[data-theme="dark"]) .pplh-over{border:1.5px solid #6f2a2a;border-radius:10px;background:#361c1c}
 :where(html[data-theme="dark"]) .pplh-over small{color:#64748b}
+:where(html[data-theme="dark"]) .roster-numtag{color:#c5cdd8;background:#1c2936;border-radius:6px}
 :where(html[data-theme="dark"]) .hrv{border:1.5px solid #5e3b52}
 :where(html[data-theme="dark"]) .hrv-top small{color:#64748b}
 :where(html[data-theme="dark"]) .hrv-new{color:#cef8ec;background:#1c3628;border-radius:6px}
@@ -1238,6 +1239,10 @@ html:where([data-theme="dark"]),:where(html[data-theme="dark"]) body{background:
 :where(html[data-theme="dark"]) .hov-g.s2 .hov-n{background:#581447}
 :where(html[data-theme="dark"]) .hov-g.s0 header{background:#36311c;color:#f4cbb2}
 :where(html[data-theme="dark"]) .hov-g.s0 .hov-n{background:#d97706}
+:where(html[data-theme="dark"]) .hov-g.s3 header{background:#1c3630;color:#cbf6f3}
+:where(html[data-theme="dark"]) .hov-g.s3 .hov-n{background:#0f766e}
+:where(html[data-theme="dark"]) .hov-g.s3 .hov-why{color:#cbf6f3;background:#1c3632}
+:where(html[data-theme="dark"]) .hov-dept{color:#cbf6f3;background:#1c3630;border-radius:6px}
 :where(html[data-theme="dark"]) .hov-why{color:#f4cbb2;background:#36311c;border-bottom:1px solid var(--line)}
 :where(html[data-theme="dark"]) .hov-g li{border-top:1px solid #2e4d6b}
 :where(html[data-theme="dark"]) .hov-g li:first-child{border-top:0}
@@ -1773,3 +1778,23 @@ html:where([data-theme="dark"]),:where(html[data-theme="dark"]) body{background:
 :where(html[data-theme="dark"]) .ay-paro{border:1.5px dashed #4d2a6f;border-radius:12px;background:var(--soft)}
 :where(html[data-theme="dark"]) .ay-paro textarea{border:1.5px solid var(--line);border-radius:10px}
 @media (max-width:560px){:where(html[data-theme="dark"]) .dlg.rd-ayuda{border-radius:0}}
+:where(html[data-theme="dark"]) .chat-call{border-radius:50%;border:2px solid #14532d;background:#1b7446;color:#fff;box-shadow:0 2px 0 rgba(0,0,0,.25)}
+:where(html[data-theme="dark"]) .chat-call.no,:where(html[data-theme="dark"]) .chat-call.busy{background:#1c2936;border-color:#3d4c5c;color:#e8edf3}
+:where(html[data-theme="dark"]) .chat-call i{border-radius:50%;border:2px solid #424242;background:#9cadbe}
+:where(html[data-theme="dark"]) .chat-call.yes i{background:#22c55e}
+:where(html[data-theme="dark"]) .chat-call.busy i{background:#f59e0b}
+:where(html[data-theme="dark"]) .chat-callline span{background:var(--d-tint,#1c2935);border:1px solid var(--d-edge,var(--line));color:var(--ink);border-radius:999px}
+:where(html[data-theme="dark"]) .chat-callline.missed span,:where(html[data-theme="dark"]) .chat-callline.declined span,:where(html[data-theme="dark"]) .chat-callline.failed span{background:#361e1c;border-color:#6f312a;color:#f3b0ab}
+:where(html[data-theme="dark"]) .call-in{background:rgba(10,14,20,.72)}
+:where(html[data-theme="dark"]) .call-in-card{background:var(--surface);color:var(--ink);border-radius:22px;box-shadow:0 20px 60px rgba(0,0,0,.45);border-top:6px solid var(--d,var(--accent-line))}
+:where(html[data-theme="dark"]) .call-in-e{border-radius:50%;background:var(--d,var(--accent));color:#fff}
+:where(html[data-theme="dark"]) .call-in-btns button{border-radius:16px}
+:where(html[data-theme="dark"]) .call-yes{background:#1b7446;border:2px solid #14532d;color:#fff;box-shadow:0 3px 0 #14532d}
+:where(html[data-theme="dark"]) .call-no{background:#b3261e;border:2px solid #7f1d1d;color:#fff;box-shadow:0 3px 0 #7f1d1d}
+:where(html[data-theme="dark"]) .call-ok{background:#1c2936;border:2px solid #3d4c5c;color:#e8edf3}
+:where(html[data-theme="dark"]) .call-bar{background:var(--surface);color:var(--ink);border:2px solid var(--d,var(--accent-line));border-radius:999px;box-shadow:0 10px 30px rgba(0,0,0,.3)}
+:where(html[data-theme="dark"]) .call-bar.live{border-color:#1b7446}
+:where(html[data-theme="dark"]) .call-bar.bad{border-color:#b3261e;border-radius:16px}
+:where(html[data-theme="dark"]) .call-bar button{border-radius:999px}
+:where(html[data-theme="dark"]) .call-mute{background:#1c2936;border:2px solid #3d4c5c}
+:where(html[data-theme="dark"]) .call-mute.on{background:#361e1c;border-color:#b3261e}

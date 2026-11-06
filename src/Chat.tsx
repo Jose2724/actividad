@@ -7,6 +7,7 @@ import { DEPT_LOOK, FREEZER_LOOK, lookVars } from './look'
 const lookOf = (d: ChatRoom) => (d === 'Freezer' ? FREEZER_LOOK : DEPT_LOOK[d])
 import { longDate, useWho } from './App'
 import { locale, tr } from './i18n'
+import { CallButton, callLine } from './Call'
 
 /**
  * Messages between each room and the office (Jose, 2026-10-28: "que el operador de la tablet pueda escribir también
@@ -220,6 +221,8 @@ function ChatWindow({ s, dept, side, onClose, embedded }: { s: State; dept: Chat
         {embedded && <button type="button" className="chat-back" onClick={onClose} aria-label={tr('Volver a las conversaciones')}>‹</button>}
         <span className="chat-avatar" aria-hidden="true">{side === 'room' ? '🏢' : lookOf(dept).emoji}</span>
         <div><b>{side === 'room' ? tr('Oficina') : dept}</b><small>{side === 'room' ? tr('Mensajes con la oficina y los managers') : dept === 'Freezer' ? tr('Freezer RTE, en sus teléfonos') : tr('la tablet del cuarto')}</small></div>
+        {/* a call (2026-11-06): the office and each room, not the freezer */}
+        {dept !== 'Freezer' && canWrite && <CallButton room={dept} side={side} />}
         {!embedded && <button type="button" className="chat-x" onClick={onClose} aria-label={tr('Cerrar')}>×</button>}
       </div>
       <div className="chat-body">
@@ -229,13 +232,14 @@ function ChatWindow({ s, dept, side, onClose, embedded }: { s: State; dept: Chat
           return (
             <Fragment key={x.id}>
               {day !== before && <div className="chat-day">{longDate(day)}</div>}
+              {x.call ? <div className={'chat-callline ' + x.call.how}><span>📞 {callLine(x.call)}</span><small>{x.by} · {fmtTime(x.at)}</small></div> :
               <div className={'chat-msg ' + (x.side === side ? 'mine' : 'theirs')}>
                 {x.img && <ChatImg path={x.img} onOpen={setZoom} />}
                 {x.audio && <ChatAudio path={x.audio} />}
                 {(x.text && !(x.img && x.text === CHAT_PHOTO_TEXT) && !(x.audio && x.text === CHAT_AUDIO_TEXT)) && <div className="chat-bubble">{x.text}</div>}
                 <small>{x.by} · {fmtTime(x.at)}</small>
                 {x.side === side && seenMark(x.at)}
-              </div>
+              </div>}
             </Fragment>
           )
         })}
@@ -291,7 +295,7 @@ export function ChatInbox({ s }: { s: State }) {
       {!rooms.length && <p className="rd-calm">{tr('Nada con "{0}".', q.trim())}</p>}
       {rooms.map((d) => {
         const m = hitOf(d) ?? chatOf(s, d).at(-1), n = chatUnread(s, d, side, seenOf(side, d)), look = lookOf(d)
-        const what = !m ? tr('Sin mensajes todavía') : m.text === CHAT_PHOTO_TEXT ? '📷 ' + tr('Foto') : m.text === CHAT_AUDIO_TEXT ? '🎤 ' + tr('Nota de voz') : m.text
+        const what = !m ? tr('Sin mensajes todavía') : m.call ? '📞 ' + callLine(m.call) : m.text === CHAT_PHOTO_TEXT ? '📷 ' + tr('Foto') : m.text === CHAT_AUDIO_TEXT ? '🎤 ' + tr('Nota de voz') : m.text
         return (
           <button key={d} type="button" className={'rd-conv' + (n ? ' new' : '') + (open === d ? ' on' : '')} aria-current={open === d ? 'true' : undefined} style={lookVars(look)} onClick={() => setOpen(d)}>
             <span className="rd-conv-e" aria-hidden="true">{look.emoji}</span>
