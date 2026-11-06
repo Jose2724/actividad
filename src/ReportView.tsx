@@ -586,7 +586,7 @@ export function Report(props: ReportProps) {
   // the redesign's Indicadores › Pesos: a screen of its own, its bar instead of the day report's header and filters (Jose, 2026-11-05)
   const lean = RD && (props.pin === 'wt' || props.pin === 'dash' || props.pin === 'mini' || props.pin === 'pplh')
   // Reportes › Producción in the redesign: one bar (day, shift, export), the rooms, and the search and filters behind one button
-  const slim = RD && props.part === 'rep' && !props.pin
+  const slim = RD && ((props.part === 'rep' && !props.pin) || props.part === 'tra')
   const [more, setMore] = useState(() => !!(k.q || k.rep.line || k.rep.code || k.rep.lot))
   const [exp, setExp] = useState(false)
   const dateRef = useRef<HTMLInputElement>(null)
@@ -596,7 +596,7 @@ export function Report(props: ReportProps) {
       {slim && (
         <div className="rd-rphead">
           <div className="rd-wtbar">
-            <h2 className="rd-wttitle">📄 {tr('Producción')}{only && <> <DeptBadge d={only} /></>}</h2>
+            <h2 className="rd-wttitle">{props.part === 'tra' ? '📦 ' + tr('Pallets y bins') : '📄 ' + tr('Producción')}{only && <> <DeptBadge d={only} /></>}</h2>
             <div className="rd-daynav">
               <button type="button" className="btn sm" aria-label={tr('Día anterior')} title={tr('Día anterior')} onClick={() => pickDate(addDays(date, -1))}>‹</button>
               <button type="button" className="btn sm rd-datesbtn" onClick={() => { const i = dateRef.current; if (i) { try { i.showPicker() } catch { i.focus() } } }}>📅 {new Date(date + 'T12:00:00').toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' })}</button>
@@ -621,7 +621,7 @@ export function Report(props: ReportProps) {
               <button type="button" className="btn rd-iconbtn" title={tr('Cómo leer este reporte')} aria-label={tr('Cómo leer este reporte')} onClick={() => setHelp(true)}>ⓘ</button>
             </div>
           </div>
-          {!only && (
+          {!only && props.part !== 'tra' && (
             <div className="seg rd-rangeseg rd-roomseg" role="group" aria-label={tr('Departamento')}>
               <button type="button" className={!dept ? 'on' : ''} aria-pressed={!dept} onClick={() => k.setFDept('')}>{tr('Todos')}</button>
               {DEPTS.map((d) => <button key={d} type="button" className={dept === d ? 'on' : ''} aria-pressed={dept === d} onClick={() => k.setFDept(d)}><span aria-hidden="true">{DEPT_LOOK[d].emoji}</span> {d}</button>)}

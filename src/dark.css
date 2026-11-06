@@ -1654,3 +1654,10 @@ html:where([data-theme="dark"]),:where(html[data-theme="dark"]) body{background:
 :where(html[data-theme="dark"]) .rd-chatnone{color:var(--muted)}
 :where(html[data-theme="dark"]) .rd-chatnone b{color:var(--ink)}
 @media (max-width:899px){:where(html[data-theme="dark"]) .rd-chat:not(.has-open) .rd-convs{border-right:0}}
+:where(html[data-theme="dark"]) .rd-avrow .lotsel{border-radius:10px}
+:where(html[data-theme="dark"]) .rd-avadd input{border-radius:10px}
+:where(html[data-theme="dark"]) .rd-datein input{border:0;background:transparent;color:inherit}
+:where(html[data-theme="dark"]) .app.rd .rd-avance .heads .made{background:var(--surface);border:1px solid var(--line);border-top:4px solid var(--d,var(--line));color:var(--ink)}
+:where(html[data-theme="dark"]) .app.rd .rd-avance .heads .made label{color:var(--d-ink,var(--muted))}
+:where(html[data-theme="dark"]) .app.rd .rd-avance .heads .made b{color:var(--ink)}
+:where(html[data-theme="dark"]) .app.rd .rd-avance .heads .made small{color:var(--muted)}

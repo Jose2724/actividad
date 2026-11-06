@@ -4,6 +4,7 @@ import { chainMatch, lossClass, lotChains, lotsSummary, type LotChain, type Step
 import { DEPT_LOOK } from './look'
 import type { ReportAt } from './ReportView'
 import { tr } from './i18n'
+import { RD } from './rd'
 import { trx } from './trx'
 
 /**
@@ -40,18 +41,25 @@ export function LotesView({ s, today, onReport }: { s: State; today: string; onR
   const count = (k: Show) => found.filter((c) => isShow(c, k)).length
   return (
     <div className="lt">
-      <div className="lt-head"><h2>{tr('🔗 Lotes')}</h2><small>{tr('Lo que hizo Kitchen o Spiral, lo que debería salir en cada cuarto, lo que falta y lo que se perdió en el camino.')}</small></div>
+      {RD ? <div className="rd-wtbar"><h2 className="rd-wttitle">🔗 {tr('Lotes')}</h2><span className="rd-cardsub">{tr('de Kitchen o Spiral hasta Packing, y lo que se perdió')}</span></div> : <div className="lt-head"><h2>{tr('🔗 Lotes')}</h2><small>{tr('Lo que hizo Kitchen o Spiral, lo que debería salir en cada cuarto, lo que falta y lo que se perdió en el camino.')}</small></div>}
       <div className="chips">
         {(['today', 'yesterday', 'week', 'pick'] as const).map((r) => <button key={r} type="button" className={'chip' + (range === r ? ' on' : '')} aria-pressed={range === r} onClick={() => pickRange(r)}>{r === 'today' ? tr('Hoy') : r === 'yesterday' ? tr('Ayer') : r === 'week' ? tr('Esta semana') : tr('Escoger días')}</button>)}
         {range === 'pick' && <span className="lt-days"><input type="date" value={from} onChange={(e) => e.target.value && setFrom(e.target.value)} aria-label={tr('Desde')} /> – <input type="date" value={to} onChange={(e) => e.target.value && setTo(e.target.value)} aria-label={tr('Hasta')} /></span>}
         <input className="lt-q" value={q} placeholder={tr('Buscar código, lote o producto…')} aria-label={tr('Buscar código, lote o producto…')} onChange={(e) => { keptQ = e.target.value; setQ(e.target.value) }} />
       </div>
-      <div className="lt-tiles">
+      {RD ? (
+        <div className="rd-tiles rd-lttiles">
+          <div className="rd-tile"><label>🚚 {tr('En camino')}</label><b>{sum.running}</b><small>{tr('lotes que se siguen trabajando')}</small></div>
+          <div className="rd-tile ok"><label>✅ {tr('Terminados')}</label><b>{sum.done}</b><small>{tr('ya salieron de Packing')}</small></div>
+          <div className={'rd-tile ' + (lossClass(sum.pct) === 'bad' ? 'bad' : lossClass(sum.pct) === 'warn' ? 'warn' : sum.pct == null ? '' : 'ok')}><label>📉 {tr('Pérdida')}</label><b>{pctText(sum.pct)}</b><small>{sum.pct == null ? tr('ningún lote terminado') : tr('{0} cajas de {1}', fmtN(sum.lost), fmtN(sum.expected))}</small></div>
+          <div className="rd-tile"><label>⚠️ {tr('El que más perdió')}</label><b className="txt">{sum.worst ? sum.worst.code + ' · ' + sum.worst.lot : '—'}</b><small>{sum.worst ? pctText(sum.worst.totalPct) + ' · ' + tr('{0} cajas', fmtN(sum.worst.totalLoss ?? 0)) : ''}</small></div>
+        </div>
+      ) : <div className="lt-tiles">
         <div className="lt-tile"><label>{tr('Lotes en camino')}</label><b>{sum.running}</b><small>{tr('todavía los está trabajando algún cuarto, o van atrás')}</small></div>
         <div className="lt-tile ok"><label>{tr('Lotes terminados')}</label><b>{sum.done}</b><small>{tr('ya salieron de Packing')}</small></div>
         <div className={'lt-tile ' + lossClass(sum.pct)}><label>{tr('Pérdida de lo terminado')}</label><b>{pctText(sum.pct)}</b><small>{sum.pct == null ? tr('ningún lote terminado todavía') : tr('{0} cajas de {1} esperadas', fmtN(sum.lost), fmtN(sum.expected))}</small></div>
         <div className="lt-tile"><label>{tr('El que más perdió')}</label><b>{sum.worst ? sum.worst.code + ' · ' + sum.worst.lot : '—'}</b><small>{sum.worst ? pctText(sum.worst.totalPct) + ' · ' + tr('{0} cajas', fmtN(sum.worst.totalLoss ?? 0)) : ''}</small></div>
-      </div>
+      </div>}
       <div className="chips lt-show">
         {([['', tr('Todos')], ['run', tr('En camino')], ['late', tr('Van atrás')], ['done', tr('Terminados')], ['bad', tr('Pérdida alta')]] as const).map(([k, label]) => (count(k) > 0 || show === k || !k) && <button key={k} type="button" className={'chip sm' + (show === k ? ' on' : '') + (k === 'bad' ? ' warnc' : '')} aria-pressed={show === k} onClick={() => { keptShow = k; setShow(k); setOpen(null) }}>{label}<small>{count(k)}</small></button>)}
       </div>

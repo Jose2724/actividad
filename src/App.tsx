@@ -895,15 +895,76 @@ function Avance({ s, startLot = '' }: { s: State; startLot?: string }) {
   const miniRow = (key: string, label: ReactNode, x: AvancePart) => <tr key={key}><td>{label}</td><td>{x.mixes || '—'}</td><td>{x.spiral || '—'}</td><td>{x.pouches ? fmtN(x.pouches) : '—'}</td><td>{x.cases ? fmtN(x.cases) : '—'}</td><td>{mfoText(x.mfo) || '—'}</td><td>{x.pallets || '—'}</td></tr>
   const acrossText = (x: AvancePart) => [x.mixes ? x.mixes + ' ' + tr('mezclas') : '', x.pouches ? fmtN(x.pouches) + ' pouches' : '', x.cases ? fmtN(x.cases) + ' ' + tr('cajas') : '', mfoText(x.mfo) ? 'MFO ' + mfoText(x.mfo) : '', x.pallets ? x.pallets + ' pallets' : ''].filter(Boolean).join(' · ') || tr('nada')
   return (
-    <section className="report avance av2">
-      <div className="rhead">
+    <section className={'report avance av2' + (RD ? ' rd-avance' : '')}>
+      {RD && (
+        <>
+          <div className="rd-wtbar">
+            <h2 className="rd-wttitle">📈 {range ? tr('Avance de varios días') : tr('Avance del día')}</h2>
+            {range ? (
+              <div className="rangepick">
+                <label>{tr('Desde')} <input type="date" value={from} onChange={(e) => { if (e.target.value) setFrom(e.target.value) }} /></label>
+                <label>{tr('Hasta')} <input type="date" value={to} onChange={(e) => { if (e.target.value) setTo(e.target.value) }} /></label>
+                <button type="button" className={'chip sm' + (preset(7) ? ' on' : '')} aria-pressed={preset(7)} onClick={() => { setFrom(addDays(today, -6)); setTo(today) }}>{tr('7 días')}</button>
+                <button type="button" className={'chip sm' + (preset(30) ? ' on' : '')} aria-pressed={preset(30)} onClick={() => { setFrom(addDays(today, -29)); setTo(today) }}>{tr('30 días')}</button>
+              </div>
+            ) : (
+              <div className="rd-daynav">
+                <button type="button" className="btn sm" aria-label={tr('Día anterior')} title={tr('Día anterior')} onClick={() => setDate(addDays(date, -1))}>‹</button>
+                <label className="btn sm rd-datesbtn rd-datein">📅 <input type="date" aria-label={tr('Fecha')} value={date} onChange={(e) => { if (e.target.value) setDate(e.target.value) }} /></label>
+                <button type="button" className="btn sm" aria-label={tr('Día siguiente')} title={tr('Día siguiente')} onClick={() => setDate(addDays(date, 1))}>›</button>
+                {date !== today && <button type="button" className="btn sm soft" onClick={() => setDate(today)}>{tr('Hoy')}</button>}
+              </div>
+            )}
+            <button type="button" className={'btn sm soft' + (range ? ' on' : '')} aria-pressed={range} onClick={() => setRange(!range)}>{range ? tr('Un día') : '🗓️ ' + tr('Varios días')}</button>
+            <div className="rd-wtacts">
+              <button type="button" className={'btn soft' + (editing ? ' on' : '')} onClick={() => setEditing(!editing)}>{editing ? tr('Cerrar productos') : tr('⚙ Productos')}</button>
+              <button type="button" className="btn rd-iconbtn" title={tr('Cómo leer Avance')} aria-label={tr('Cómo leer Avance')} onClick={() => setHelp(true)}>ⓘ</button>
+            </div>
+          </div>
+          <div className="rd-avrow">
+            {lots.length > 6 ? (
+              <select className={'lotsel wide' + (lotNow ? ' on' : '')} value={lotNow} aria-label={tr('Lote')} onChange={(e) => { const l = e.target.value; setLot(l); if (l && !lots.includes(l)) setScope('all') }}>
+                <option value="">{tr('Todos · {0} lotes', lots.length)}</option>
+                {lots.map((l) => <option key={l} value={l}>{tr('Lote {0}', l)}</option>)}
+                {known.some((l) => !lots.includes(l)) && <optgroup label={tr('De otros días')}>{known.filter((l) => !lots.includes(l)).map((l) => <option key={l} value={l}>{l}</option>)}</optgroup>}
+              </select>
+            ) : (
+              <div className="seg rd-rangeseg" role="group" aria-label={tr('Lote')}>
+                <button type="button" className={!lotNow ? 'on' : ''} aria-pressed={!lotNow} onClick={() => setLot('')}>{tr('Todos los lotes')}</button>
+                {lots.map((l) => <button key={l} type="button" className={lotNow === l ? 'on' : ''} aria-pressed={lotNow === l} onClick={() => setLot(l)}>{l}</button>)}
+                {lotNow && !lots.includes(lotNow) && <button type="button" className="on" aria-pressed>{lotNow}</button>}
+              </div>
+            )}
+            {lots.length <= 6 && known.some((l) => !lots.includes(l)) && (
+              <select className="lotsel" value="" aria-label={tr('Otro lote')} onChange={(e) => { const l = e.target.value; if (!l) return; setLot(l); if (!lots.includes(l)) setScope('all') }}>
+                <option value="">{tr('Otro lote…')}</option>
+                {known.filter((l) => !lots.includes(l)).map((l) => <option key={l} value={l}>{l}</option>)}
+              </select>
+            )}
+            {lotNow && !range && (
+              <div className="seg rd-rangeseg" role="group" aria-label={tr('De cuándo')}>
+                <button type="button" className={scope === 'date' ? 'on' : ''} aria-pressed={scope === 'date'} onClick={() => setScope('date')}>{tr('Solo esta fecha')}</button>
+                <button type="button" className={scope === 'all' ? 'on' : ''} aria-pressed={scope === 'all'} onClick={() => setScope('all')}>{tr('Todos los días')}</button>
+              </div>
+            )}
+            <input className="rd-searchin" value={q} onChange={(e) => setQ(e.target.value)} placeholder={'🔍 ' + tr('Código o producto')} aria-label={tr('Buscar')} autoComplete="off" />
+            {!viewOnly && !isAll && !range && (
+              <form className="rd-avadd" onSubmit={(e) => { e.preventDefault(); if (newCode.trim()) { typing.current.codes.add(normCode(newCode)); setSchedule(date, newCode, 0); setNewCode('') } }}>
+                <input placeholder={tr('Código a programar')} value={newCode} onChange={(e) => setNewCode(e.target.value)} autoComplete="off" aria-label={tr('Código a programar')} />
+                <button className="btn primary" type="submit" disabled={!newCode.trim()}>{tr('+ Programar')}</button>
+              </form>
+            )}
+          </div>
+        </>
+      )}
+      {!RD && <div className="rhead">
         <div className="rtitle"><h2>{range ? tr('Avance de varios días') : tr('Avance del día')}</h2><span>{range ? trx('del {0} al {1} · {2} días', shortDay(from <= to ? from : to), shortDay(from <= to ? to : from), span.length) : longDate(date)}</span></div>
         <div className="racts">
           <button type="button" className="btn" onClick={() => setEditing(!editing)}>{editing ? tr('Cerrar productos') : tr('⚙ Productos')}</button>
         </div>
-      </div>
+      </div>}
       {/* what to look at: the day, one of its lots, a code; and the program typed from here */}
-      <div className="rfilters">
+      {!RD && <div className="rfilters">
         <div className="rf-row">
           <div className="rf">
             <span className="lab">{tr('Fecha')}<button type="button" className="lnk sm" onClick={() => setRange(!range)}>{range ? tr('Un día') : tr('Rango de fechas')}</button></span>
@@ -961,7 +1022,7 @@ function Avance({ s, startLot = '' }: { s: State; startLot?: string }) {
             </form>
           )}
         </div>
-      </div>
+      </div>}
       {range ? (away > 0 && <p className="avlotnote">{trx('Trayendo del servidor {0} de los {1} días…', away, span.length)}</p>) : <DayNote day={day} />}
       {lotNow && across && (
         <p className="avlotnote">
@@ -996,7 +1057,7 @@ function Avance({ s, startLot = '' }: { s: State; startLot?: string }) {
                 </button>
               ))}
             </div>
-            <button type="button" className="btn sm" onClick={() => setHelp(true)}>{tr('ⓘ Cómo leer Avance')}</button>
+            {!RD && <button type="button" className="btn sm" onClick={() => setHelp(true)}>{tr('ⓘ Cómo leer Avance')}</button>}
           </div>
           {help && <AvanceHelp onClose={() => setHelp(false)} />}
           <div className="twrap">

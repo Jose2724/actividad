@@ -211,8 +211,10 @@ export function PlantOverview({ s, now, date, onRoom, freezer }: { s: State; now
 /** every room's units on hold in one place (Trazabilidad › On hold) */
 export function HoldsAll({ s }: { s: State }) {
   const rooms = DEPTS.filter((d) => holdsOpen(s, d).length)
-  if (!rooms.length) return <p className="hint rd-empty">{tr('Nada en On hold.')}</p>
-  return <div className="rd-stack">{rooms.map((d) => <section key={d} className="rd-holdroom" style={deptVars(d)}><h3><i aria-hidden="true">{DEPT_LOOK[d].emoji}</i> {d}</h3><HoldList s={s} dept={d} /></section>)}</div>
+  const n = holdsOpen(s).length
+  const bar = <div className="rd-wtbar"><h2 className="rd-wttitle">🔍 {tr('On hold')}</h2><span className="rd-cardsub">{n ? (n === 1 ? tr('1 unidad en revisión') : tr('{0} unidades en revisión', n)) : ''}</span></div>
+  if (!rooms.length) return <div className="rd-stack">{bar}<p className="rd-calm">✓ {tr('Nada en On hold.')}</p></div>
+  return <div className="rd-stack">{bar}{rooms.map((d) => <section key={d} className="rd-holdroom" style={deptVars(d)}><h3><i aria-hidden="true">{DEPT_LOOK[d].emoji}</i> {d}</h3><HoldList s={s} dept={d} /></section>)}</div>
 }
 
 /** Claro, Oscuro or the device's own (theme.ts); the page opens again with it, as with the language */
