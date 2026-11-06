@@ -116,6 +116,11 @@ export function AttendanceDialog({ s, dept, date, shift: inCourse, edit, note = 
   const [shift, setShift] = useState<1 | 2>(inCourse)
   const [name, setName] = useState('')
   const [twice, setTwice] = useState('')
+  // two people with the same name (Jose, 2026-11-05: "puede haber personas con el mismo nombre ... debe aceptar que agregue
+  // a María aunque hay otra María en otro departamento"): the second is written with what tells them apart, a last name or
+  // a number, so the lists, the report and the Excel never mix them up
+  const [other, setOther] = useState<string | null>(null)
+  const [otherTag, setOtherTag] = useState('')
   // the person being acted on: their options open, taken out (home, by mistake), moved (to another line here, or another
   // room and its line), or the hour they really came written (2026-10-29: the labor hours count from it)
   const [out, setOut] = useState<{ id: string; mode: 'menu' | 'out' | 'move' | 'came'; to?: Dept } | null>(null)
@@ -158,6 +163,15 @@ export function AttendanceDialog({ s, dept, date, shift: inCourse, edit, note = 
     if (!attAdd(date, dept, shift, n, '', lineOk(addLine), addTemp, addSup)) { setTwice(tr('{0} ya está anotado en este turno.', n)); return }
     setAddSup(false)
     done(n)
+  }
+  const addOther = (base: string) => {
+    const full = (base.trim() + ' ' + otherTag.trim()).replace(/\s+/g, ' ')
+    if (!otherTag.trim()) return
+    const where = elsewhere.get(norm(full))?.d ?? (list.some((x) => !x.gone && norm(x.name) === norm(full)) ? dept : '')
+    if (where) { setTwice(tr('También hay un {0} en {1}. Usa otro apellido o su número.', full, where)); return }
+    if (!attAdd(date, dept, shift, full, '', lineOk(addLine), addTemp, addSup)) { setTwice(tr('{0} ya está anotado en este turno.', full)); return }
+    setAddSup(false); setOther(null); setOtherTag('')
+    done(full)
   }
   // a name tapped from the shift's list (Santiago, 2026-11-01): a supervisor or lead of the list is written as such
   const pick = attPeople(s, date, dept, shift, name)
@@ -346,6 +360,23 @@ export function AttendanceDialog({ s, dept, date, shift: inCourse, edit, note = 
                 <div className="atw-found">
                   {foundHere.map((x) => <div key={x.id} className="atw-hit here"><b>{x.name}</b><span>{x.via ? tr('✓ Ya está en {0} · falta aceptarlo', dept) : tr('✓ Ya está anotado aquí') + (lineOk(x.line) ? ' · ' + attLineText(s, x.line) : '')}</span></div>)}
                   {foundThere.map(([k, x]) => <div key={k} className="atw-hit there"><b>{x.name}</b><span>{tr('Ya está anotado en {0}', x.d)}</span></div>)}
+                  {RD && edit && (exactHere || exactThere) && other !== qk && (
+                    <div className="atw-twin">
+                      <span>{exactThere ? tr('¿Es la misma persona? Que la trasladen aquí desde {0}.', elsewhere.get(qk)?.d ?? '') : tr('¿Es la misma persona? Ya está en la lista de este turno.')}</span>
+                      <button type="button" className="btn soft" onClick={() => { setOther(qk); setOtherTag(''); setTwice('') }}>{tr('Es otra persona: anotarla')}</button>
+                    </div>
+                  )}
+                  {RD && edit && other === qk && (
+                    <div className="atw-twin open">
+                      <label htmlFor="atw-other-tag">{tr('Otra persona con el mismo nombre. Escribe su apellido o su número para distinguirla:')}</label>
+                      <input id="atw-other-tag" autoFocus value={otherTag} maxLength={30} placeholder={tr('ej. García o 1043')} onChange={(e) => setOtherTag(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addOther(q) } }} />
+                      <div className="atw-twin-row">
+                        <span>{otherTag.trim() ? <>{tr('Se anota como:')} <b>{q + ' ' + otherTag.trim()}</b></> : '\u00a0'}</span>
+                        <button type="button" className="btn" onClick={() => setOther(null)}>{tr('Cancelar')}</button>
+                        <button type="button" className="btn primary" disabled={!otherTag.trim()} onClick={() => addOther(q)}>{tr('Anotar')}</button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
               {pick.loaded && (

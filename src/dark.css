@@ -1454,3 +1454,7 @@ html:where([data-theme="dark"]),:where(html[data-theme="dark"]) body{background:
 :where(html[data-theme="dark"]) .app.rd .atw-panel .atw-q{color:var(--ink)}
 :where(html[data-theme="dark"]) .app.rd .atw-panel .atw-sub{color:var(--ink)}
 :where(html[data-theme="dark"]) .app.rd .atw-panel .btn.soft,:where(html[data-theme="dark"]) .app.rd .atw-panel .btn:not(.stopbtn):not(.danger):not(.primary){background:var(--btn);border-color:var(--btn-line);color:var(--ink);box-shadow:0 2px 0 var(--btn-edge)}
+:where(html[data-theme="dark"]) .atw-twin{border-radius:12px;border:1.5px solid #6f552a;background:#362e1c;color:#f7e2c4}
+:where(html[data-theme="dark"]) .atw-twin input{border-radius:10px;border:1.5px solid var(--btn-line);background:var(--surface);color:var(--ink)}
+:where(html[data-theme="dark"]) .atw-twin-row>span{color:var(--ink)}
+:where(html[data-theme="dark"]) .atw-twin-row>span b{color:var(--accent)}

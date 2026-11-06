@@ -2841,3 +2841,10 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 .app.rd .atw-backlist{justify-self:start;min-height:40px}
 /* while one person is being changed, the window keeps to that person: the tiles and the note wait above (Jose, 2026-11-05) */
 .app.rd .atw-focus .atw-stats,.app.rd .atw-focus .atw-note{display:none}
+/* the same name twice (Jose, 2026-11-05): the question, and the second person written with what tells them apart */
+.atw-twin{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;padding:10px 12px;border-radius:12px;border:1.5px solid #f5c26b;background:#fff7e6;color:#7a4700;font-weight:600;font-size:14.5px}
+.atw-twin.open{display:grid;justify-content:stretch}
+.atw-twin input{min-height:46px;padding:0 12px;border-radius:10px;border:1.5px solid var(--btn-line);font-size:17px;background:var(--surface);color:var(--ink)}
+.atw-twin-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.atw-twin-row>span{flex:1;min-width:180px;color:var(--ink)}
+.atw-twin-row>span b{color:var(--accent)}
