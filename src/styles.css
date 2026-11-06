@@ -2854,3 +2854,25 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 .rd-wastelist{display:grid;gap:4px}
 .rd-wasteitem{display:flex;align-items:center;gap:8px;font-size:14px}
 .rd-wasteitem .lnk{margin-left:auto}
+/* a Packing line filling bins, told apart at a glance from one making pallets (Jose, 2026-11-05: "el bin de un color
+   diferente, quizás morado"): violet edge, header and words, and the drawn bin instead of the box */
+.app.rd .line.mode-bin{border-color:#8b5cf6;box-shadow:0 0 0 1px #8b5cf6}
+.app.rd .line.mode-bin .lhead{background:#ede9fe;border-bottom-color:#c4b5fd}
+.app.rd .line.mode-bin .lhead h3{color:#5b21b6}
+.app.rd .line.mode-bin .hero{border-color:#c4b5fd}
+.app.rd .line.mode-bin .hero .mode{color:#6d28d9}
+.app.rd .line.mode-bin .tile.main b{color:#6d28d9}
+.rd-binico{display:inline-block;vertical-align:-4px;color:#7c3aed}
+/* a line making another unit than its room's usual one (Jose, 2026-11-05): its unit's colour on the edge, the header and
+   the words; the colours are the ones those units already wear on the labels of the app */
+.app.rd .k-lb{--k:#d97706;--kt:#fef3c7;--kk:#92400e}
+.app.rd .k-cajas{--k:#2563eb;--kt:#dbeafe;--kk:#1e40af}
+.app.rd .k-copas{--k:#e11d48;--kt:#ffe4e6;--kk:#9f1239}
+.app.rd .k-bags{--k:#0d9488;--kt:#ccfbf1;--kk:#115e59}
+.app.rd .k-pouches{--k:#0891b2;--kt:#cffafe;--kk:#155e75}
+.app.rd .line.rd-kind{border-color:var(--k);box-shadow:0 0 0 1px var(--k)}
+.app.rd .line.rd-kind .lhead{background:var(--kt);border-bottom-color:var(--k)}
+.app.rd .line.rd-kind .lhead h3,.app.rd .line.rd-kind .hero .mode,.app.rd .line.rd-kind .tile.main b{color:var(--kk)}
+.app.rd .line.rd-kind .hero{border-color:var(--k)}
+.app.rd .line .acts2{grid-template-columns:repeat(auto-fit,minmax(56px,1fr))}
+.app.rd .line .acts2 .btn{font-size:12.5px;padding:0 2px}

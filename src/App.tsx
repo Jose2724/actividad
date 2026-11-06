@@ -2620,6 +2620,19 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
   )
 }
 
+/**
+ * a bin, drawn (Jose, 2026-11-05: "cambiarle el ícono de caja al bin", with a photo of the plant's folding plastic bin):
+ * the box with its grid sides and its feet, in the colour of the text around it
+ */
+function BinIcon() {
+  return (
+    <svg className="rd-binico" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+      <path d="M3 6.5h18v11.5H3z" fill="currentColor" opacity=".22" />
+      <path d="M3 6.5h18v11.5H3zM7.5 6.5v11.5M12 6.5v11.5M16.5 6.5v11.5M3 10.3h18M3 14.2h18M4 18v2.5h3V18M10.5 18v2.5h3V18M17 18v2.5h3V18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 /** how long a line's card says that a unit was just recorded */
 const SAVED_MS = 2000
 /** a short tick on devices that can vibrate (Android phones, some tablets): the tap is felt as well as seen */
@@ -3405,12 +3418,18 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   // the slow-line signal (2026-10-28): under the room's minimum in its last hour, the card goes red and back
   const slow = !stop && !hold ? lineSlow(s, line, run, now) : null
   const oven = line.dept === 'Kitchen' && isOven(line.name)
+  // the redesign: a line making something else than its room's usual unit wears that unit's colour and sign (Jose,
+  // 2026-11-05: "si están haciendo algo diferente ... de solo verlo sabemos que es otra unidad"): Spiral's pounds or
+  // cases, MFO's copas, pounds, bags or pouches. (Packing's bins have their own violet, mode-bin; the oven its orange)
+  const kind = !RD ? '' : run.dept === 'Spiral' ? (measureOf(run) === 'lb' ? 'lb' : measureOf(run) === 'cajas' ? 'cajas' : '')
+    : run.dept === 'MFO' ? (run.extra?.pack === 'bag' ? 'bags' : binOf(run) === 'copas' ? 'copas' : binOf(run) === 'lb' ? 'lb' : binOf(run) === 'pouches' ? 'pouches' : '') : ''
+  const KIND_ICON: Record<string, string> = { lb: '⚖️', cajas: '📦', copas: '🥤', bags: '🛍️', pouches: '🛒' }
   return (
-    <div className={'line ' + (inSetup ? 'insetup' : stop ? 'stopped' : 'running') + (just ? ' justdone' : '') + (slow ? ' slow' : '') + (packBins ? ' mode-bin' : pallets ? ' mode-pal' : '') + (oven ? ' oven' : '')}>
+    <div className={'line ' + (inSetup ? 'insetup' : stop ? 'stopped' : 'running') + (kind ? ' rd-kind k-' + kind : '') + (just ? ' justdone' : '') + (slow ? ' slow' : '') + (packBins ? ' mode-bin' : pallets ? ' mode-pal' : '') + (oven ? ' oven' : '')}>
       {naming}
       {slow && <div className="slowbar" role="status">{trx('🔴 Ritmo bajo: {0} {1} por hora en la última hora · mínimo {2}', <b>{fmtN(slow.rate)}</b>, cfg.qty === 'none' ? cfg.plural.toLowerCase() : cfg.qtyUnit, <b>{fmtN(slow.limit)}</b>)}</div>}
       <div className="lhead">
-        <h3><i className="lemoji" aria-hidden="true">{oven ? '🔥' : DEPT_LOOK[line.dept].emoji}</i>{lineLabel(line.name)} {nameIt}</h3>
+        <h3><i className="lemoji" aria-hidden="true">{oven ? '🔥' : RD && packBins ? <BinIcon /> : kind ? KIND_ICON[kind] : DEPT_LOOK[line.dept].emoji}</i>{lineLabel(line.name)} {nameIt}</h3>
         <span className={'pill ' + (inSetup ? 'setup' : stop ? 'stop' : 'run')}>{inSetup ? tr('⏱ Set up') : stop ? tr('⏸ Parado') : tr('● Corriendo')}{RD && <> · {fmtDur(stop ? stopTime(s, stop, now) : mineNow.working)}</>}</span>
         {!RD && <span className="lacts">{goalBtn}{!hold && <button type="button" className="lnk sm" onClick={() => setFixing(true)}>{tr('Corregir')}</button>}</span>}
       </div>

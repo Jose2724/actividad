@@ -22,6 +22,13 @@ TOKENS = """html[data-theme="dark"]{color-scheme:dark;--bg:#1b1d20;--surface:#11
 html[data-theme="dark"] .app.rd .logo{background:#fff;border-radius:10px;padding:3px}
 html[data-theme="dark"] .app.rd .btn.go{background:#1f8a55;border-color:#1f8a55}
 html[data-theme="dark"] .app.rd .veil{background:rgba(0,0,0,.7)}
+html[data-theme="dark"] .app.rd .line.mode-bin{border-color:#8b5cf6;box-shadow:0 0 0 1px #8b5cf6}
+html[data-theme="dark"] .app.rd .line.mode-bin .hero{border-color:#5b4a8a}
+html[data-theme="dark"] .app.rd .k-lb{--kt:#2e2412;--kk:#fcd34d}
+html[data-theme="dark"] .app.rd .k-cajas{--kt:#16233d;--kk:#93c5fd}
+html[data-theme="dark"] .app.rd .k-copas{--kt:#33161d;--kk:#fda4af}
+html[data-theme="dark"] .app.rd .k-bags{--kt:#122c2a;--kk:#5eead4}
+html[data-theme="dark"] .app.rd .k-pouches{--kt:#10292f;--kk:#67e8f9}
 html[data-theme="dark"] .app.rd .dlg{border-color:#3a4048;background:#23262b}
 """
 
