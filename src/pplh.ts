@@ -1,4 +1,4 @@
-import { DEPTS, kpiGet, kpiPut, type Dept, type State } from './store'
+import { DEPTS, kpiGet, kpiPut, rosterOf, type Dept, type State } from './store'
 import { reportOf } from './report'
 import { downKind } from './miniKpi'
 import { X, colName, xN, xT, type Cell, type Chart, type ReadCell, type Sheet } from './xlsx'
@@ -93,9 +93,29 @@ export function readNetsuite(rows: ReadCell[][]): NetsuiteRead {
 }
 /** Will's hours file read: each day's hours over the whole plant, how many people and clock entries, and the entries with no hours ("--") */
 /** a person with too many hours in one day, shown at upload time only (never kept): the name as the file writes it, the hours, each punch */
-export type HoursOver = { name: string; hours: number; punches: string[] }
+export type HoursOver = { name: string; hours: number; punches: string[]; div?: string }
 /** from how many hours in one day a person is flagged (Mike, 2026-11-04: "14 or 15"; Jose: 14): to confirm with Josh and Santiago and correct in Bamboo */
 export const HOURS_FLAG = 14
+/**
+ * The shift of a person of the hours file (Jose, 2026-11-06: "lo que sean del turno 1 que diga Josh y los del turno 2
+ * Santiago, así cada uno con su lista, y si no se sabe que le salga a los dos"). The file has no shift: it comes from
+ * the area of the row when the file brings one ("RTE2-ER"), else from the plant's Employee List kept in Ajustes, matched
+ * by the words of the name whatever their order ("Morales, Daniel" = "Daniel Morales"; "Yactayo Cabrera, Mauricio" =
+ * "Mauricio Yactayo"). Nothing is guessed from the hours: null when nobody is found, or the name is in both lists
+ */
+const nameWords = (t: string) => plainName(t).split(/[^a-z0-9]+/).filter(Boolean)
+const sameName = (a: string[], b: string[]) => {
+  const [few, many] = a.length <= b.length ? [a, b] : [b, a]
+  return few.length >= 2 && few.every((w) => many.includes(w))
+}
+export function hoursShift(s: State, x: { name: string; div?: string }): 1 | 2 | null {
+  const own = /^[a-z]+\s*([12])\s*-/i.exec(x.div ?? '')
+  if (own) return Number(own[1]) as 1 | 2
+  const w = nameWords(x.name), found = ([1, 2] as const).filter((sh) => rosterOf(s, sh).people.some((p) => sameName(w, nameWords(p.name))))
+  return found.length === 1 ? found[0] : null
+}
+/** who confirms the hours of each shift (Jose, 2026-11-06); a person of no known shift goes to both */
+export const SHIFT_CHECKER: Record<1 | 2, string> = { 1: 'Josh', 2: 'Santiago' }
 export type HoursRead = { days: { date: string; hours: number; people: number; entries: number; blank: number; over: HoursOver[] }[]; divisions: string[]; found: boolean }
 /**
  * HR's daily hours report (Will's file, 2026-11-02: sheet "Timesheet Entries": Employee Number, Employee Name, Date,
@@ -110,8 +130,8 @@ export function readHours(sheets: { name: string; rows: ReadCell[][] }[]): Hours
     if (h < 0) continue
     out.found = true
     const head = rows[h].map(norm), date = head.indexOf('date'), total = head.findIndex((c) => c.startsWith('total')), who = head.findIndex((c) => c.startsWith('employee'))
-    const name = head.findIndex((c) => c.startsWith('employee') && c.includes('name')), cin = head.indexOf('clock in'), cout = head.indexOf('clock out')
-    const byDay = new Map<string, { hours: number; people: Set<string>; entries: number; blank: number; each: Map<string, { name: string; hours: number; punches: string[] }> }>()
+    const name = head.findIndex((c) => c.startsWith('employee') && c.includes('name')), cin = head.indexOf('clock in'), cout = head.indexOf('clock out'), div = head.findIndex((c) => c === 'division' || c === 'department' || c === 'area')
+    const byDay = new Map<string, { hours: number; people: Set<string>; entries: number; blank: number; each: Map<string, HoursOver> }>()
     for (const r of rows.slice(h + 1)) {
       const d = dateText(r[date])
       if (!d) continue
@@ -121,7 +141,8 @@ export function readHours(sheets: { name: string; rows: ReadCell[][] }[]): Hours
       const id = String(r[who] ?? '')
       e.entries++; e.people.add(id)
       // (each person's day, to flag too many hours: Mike, 2026-11-04. Shown once at upload and let go: nothing of it is kept)
-      const one = e.each.get(id) ?? { name: String((name >= 0 ? r[name] : r[who]) ?? '').trim(), hours: 0, punches: [] }
+      const one: HoursOver = e.each.get(id) ?? { name: String((name >= 0 ? r[name] : r[who]) ?? '').trim(), hours: 0, punches: [] }
+      if (div >= 0 && !one.div && String(r[div] ?? '').trim()) one.div = String(r[div]).trim()
       if (Number.isFinite(n)) { one.hours += n; one.punches.push(`${String(cin >= 0 ? r[cin] ?? '' : '')}–${String(cout >= 0 ? r[cout] ?? '' : '')} (${Math.round(n * 100) / 100} h)`) }
       e.each.set(id, one)
       byDay.set(d, e)

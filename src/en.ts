@@ -3994,4 +3994,9 @@ export const EN: Record<string, string> = {
   'Todo el día': 'All day',
   'Filtros': 'Filters',
   'Qué ver': 'What to see',
+  "No se sabe el turno": "Shift not known",
+  "1 persona con {0} horas o más en un día": "1 person with {0} hours or more in one day",
+  "{0} personas con {1} horas o más en un día": "{0} people with {1} hours or more in one day",
+  "Cada supervisor revisa su lista. Si las horas no son reales, se corrigen en Bamboo.": "Each supervisor checks their list. If the hours aren't real, they're corrected in Bamboo.",
+  "No están en la lista de empleados de Ajustes, o el nombre se escribe distinto. Les toca a los dos.": "They aren't in the Employee List in Settings, or the name is written differently. Both check them.",
 }

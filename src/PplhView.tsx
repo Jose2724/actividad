@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { awayDay, dayBefore, type State } from './store'
 import { loadDay } from './sync'
-import { datesFrom, downtimeOf, HOURS_FLAG, keepRange, plusDays, rangeKept, netsuiteSheet, pplhBook, pplhLbsByHand, readHours, setPplhLbsHand, type HoursRead, pplhGroups, pplhNames, pplhOfGroups, pplhOfRange, pplhRow, pplhWeekHours, rangeShortcuts, readNetsuite, savePplhLbs, setPplhHours, setPplhNames, setPplhWeekHours, PPLH_SITE, type NetsuiteRead, type PplhBy } from './pplh'
+import { datesFrom, downtimeOf, HOURS_FLAG, hoursShift, SHIFT_CHECKER, keepRange, plusDays, rangeKept, netsuiteSheet, pplhBook, pplhLbsByHand, readHours, setPplhLbsHand, type HoursRead, pplhGroups, pplhNames, pplhOfGroups, pplhOfRange, pplhRow, pplhWeekHours, rangeShortcuts, readNetsuite, savePplhLbs, setPplhHours, setPplhNames, setPplhWeekHours, PPLH_SITE, type NetsuiteRead, type PplhBy } from './pplh'
 import { loadZip, readCsv, readXlsx, xlsxNow, XLSX_TYPE } from './xlsx'
 import { download } from './App'
 import { locale, tr } from './i18n'
@@ -163,13 +163,7 @@ export function PplhView({ s, date, today, now, edit, admin }: { s: State; date:
           {hrs && (
             <div className="pplh-read">
               {hrs.r.days.map((d) => <p key={d.date}>{tr('{0}: {1} horas, {2} personas, {3} entradas de reloj.', d.date, one(d.hours), d.people, d.entries)}{d.blank ? ' ' + tr('{0} entradas sin horas ("--").', d.blank) : ''}</p>)}
-              {hrs.r.days.some((d) => d.over.length > 0) && (
-                <div className="pplh-over">
-                  <p className="red"><b>{RD ? tr('⚠ {0} h o más en un día: revisar', HOURS_FLAG) : tr('⚠ Personas con {0} horas o más en un día: confirmar con Josh y Santiago y corregir en Bamboo si no es real.', HOURS_FLAG)}</b></p>
-                  <ul>{hrs.r.days.flatMap((d) => d.over.map((x) => <li key={d.date + x.name}><b>{x.name}</b> · {d.date} · <b>{x.hours.toFixed(2)} h</b><small> {x.punches.join(' · ')}</small></li>))}</ul>
-                  {!RD && <p className="hint">{tr('Horas de más que no son reales suben el total de la planta y bajan el PPLH. Esta lista solo se ve aquí y ahora: la app no guarda nombres.')}</p>}
-                </div>
-              )}
+              {hrs.r.days.some((d) => d.over.length > 0) && <HoursOverList s={s} days={hrs.r.days} />}
               {!RD && hrs.r.divisions.length > 0 && <p className="hint">{tr('Divisiones: {0}.', hrs.r.divisions.join(', '))}</p>}
               {hReplaced > 0 && <p className="hint amber">{tr('Reemplaza las horas de {0} días que ya estaban.', hReplaced)}</p>}
               <div className="btns"><button type="button" className="btn" onClick={() => setHrs(null)}>{tr('Cancelar')}</button><button type="button" className="btn primary" onClick={saveHrs}>{tr('✓ Guardar las horas')}</button></div>
@@ -225,6 +219,48 @@ export function PplhView({ s, date, today, now, edit, admin }: { s: State; date:
 }
 
 /** From / To, and the ranges one taps instead of typing: this week (Monday to Sunday), last week, this month, last month */
+/**
+ * The people with too many hours in one day, each in the list of whoever confirms them (Jose, 2026-11-06: "lo que sean
+ * del turno 1 que diga Josh y los del turno 2 Santiago, así cada uno con su lista y si no se sabe que le salga a los dos
+ * ... que se vea bonito y entendible")
+ */
+function HoursOverList({ s, days }: { s: State; days: HoursRead['days'] }) {
+  const all = days.flatMap((d) => d.over.map((x) => ({ ...x, date: d.date, shift: hoursShift(s, x) })))
+  const groups = [
+    { k: 1, who: SHIFT_CHECKER[1], sub: tr('Turno 1'), list: all.filter((x) => x.shift === 1) },
+    { k: 2, who: SHIFT_CHECKER[2], sub: tr('Turno 2'), list: all.filter((x) => x.shift === 2) },
+    { k: 0, who: tr('{0} y {1}', SHIFT_CHECKER[1], SHIFT_CHECKER[2]), sub: tr('No se sabe el turno'), list: all.filter((x) => x.shift == null) },
+  ].filter((g) => g.list.length)
+  const multi = days.filter((d) => d.over.length).length > 1
+  return (
+    <div className="hov">
+      <div className="hov-head">
+        <span className="hov-warn" aria-hidden="true">⚠</span>
+        <div><b>{all.length === 1 ? tr('1 persona con {0} horas o más en un día', HOURS_FLAG) : tr('{0} personas con {1} horas o más en un día', all.length, HOURS_FLAG)}</b>
+          <small>{tr('Cada supervisor revisa su lista. Si las horas no son reales, se corrigen en Bamboo.')}</small></div>
+      </div>
+      {groups.map((g) => (
+        <section key={g.k} className={'hov-g s' + g.k}>
+          <header>
+            <span className="hov-av" aria-hidden="true">{g.k ? '👤' : '👥'}</span>
+            <div><b>{g.who}</b><small>{g.sub}</small></div>
+            <span className="hov-n">{g.list.length}</span>
+          </header>
+          {g.k === 0 && <p className="hov-why">{tr('No están en la lista de empleados de Ajustes, o el nombre se escribe distinto. Les toca a los dos.')}</p>}
+          <ul>{g.list.map((x) => (
+            <li key={x.date + x.name}>
+              <div className="hov-top"><b>{x.name}</b><span className="hov-h">{tr('{0} h', x.hours.toFixed(2))}</span></div>
+              {multi && <small className="hov-date">{x.date}</small>}
+              <div className="hov-p">{x.punches.map((p, i) => <span key={i}>{p}</span>)}</div>
+            </li>
+          ))}</ul>
+        </section>
+      ))}
+      {!RD && <p className="hint">{tr('Horas de más que no son reales suben el total de la planta y bajan el PPLH. Esta lista solo se ve aquí y ahora: la app no guarda nombres.')}</p>}
+    </div>
+  )
+}
+
 export function RangePick({ from, to, today, dayLabel, onChange, compact }: { from: string; to: string; today: string; dayLabel?: string; onChange: (from: string, to: string) => void; compact?: boolean }) {
   const label = { day: dayLabel ?? tr('Hoy'), week: tr('Esta semana'), lastWeek: tr('Semana pasada'), month: tr('Este mes'), lastMonth: tr('Mes pasado') }
   const [open, setOpen] = useState(false)
