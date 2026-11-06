@@ -101,12 +101,28 @@ export const HOURS_FLAG = 14
  * Santiago, así cada uno con su lista, y si no se sabe que le salga a los dos"). The file has no shift: it comes from
  * the area of the row when the file brings one ("RTE2-ER"), else from the plant's Employee List kept in Ajustes, matched
  * by the words of the name whatever their order ("Morales, Daniel" = "Daniel Morales"; "Yactayo Cabrera, Mauricio" =
- * "Mauricio Yactayo"). Nothing is guessed from the hours: null when nobody is found, or the name is in both lists
+ * "Mauricio Yactayo"), a word of 4 letters or more one letter off ("Bleny" = "Blenny"). Nothing is guessed from the
+ * hours: null when nobody is found, or the name is in both lists
  */
 const nameWords = (t: string) => plainName(t).split(/[^a-z0-9]+/).filter(Boolean)
+/**
+ * two spellings of one word: the same, or (words of 4 letters or more) one letter apart, added, missing or changed
+ * (Jose, 2026-11-06: Santiago's list writes "Bleny" where Bamboo writes "Blenny")
+ */
+export function nearWord(a: string, b: string): boolean {
+  if (a === b) return true
+  if (a.length < 4 || b.length < 4 || Math.abs(a.length - b.length) > 1) return false
+  let i = 0, j = 0, off = 0
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { i++; j++; continue }
+    if (++off > 1) return false
+    if (a.length > b.length) i++; else if (b.length > a.length) j++; else { i++; j++ }
+  }
+  return off + (a.length - i) + (b.length - j) <= 1
+}
 const sameName = (a: string[], b: string[]) => {
   const [few, many] = a.length <= b.length ? [a, b] : [b, a]
-  return few.length >= 2 && few.every((w) => many.includes(w))
+  return few.length >= 2 && few.every((w) => many.some((m) => nearWord(w, m)))
 }
 export function hoursShift(s: State, x: { name: string; div?: string }): 1 | 2 | null {
   const own = /^[a-z]+\s*([12])\s*-/i.exec(x.div ?? '')

@@ -345,6 +345,8 @@ function RosterCard({ s, viewOnly }: { s: State; viewOnly: boolean }) {
   const [pasting, setPasting] = useState(false)
   const [added, setAdded] = useState('')
   const [addCode, setAddCode] = useState('')
+  // a name written wrong in the pasted list, corrected here (Jose, 2026-11-06: "si me voy dando cuenta ... cómo se escriben, pueda editar el nombre al correcto")
+  const [fixing, setFixing] = useState<{ name: string; to: string } | null>(null)
   const r = rosterOf(s, shift), codes = [...new Set(r.people.map((p) => p.code))].sort(), parsed = text.trim() ? rosterParse(text) : null
   const n1 = parsed?.lists[1].length ?? 0, n2 = parsed?.lists[2].length ?? 0
   const save = () => {
@@ -356,6 +358,14 @@ function RosterCard({ s, viewOnly }: { s: State; viewOnly: boolean }) {
     const name = added.replace(/\s+/g, ' ').trim().slice(0, 60), code = addCode || codes[0]
     if (!name || !code || r.people.some((p) => p.name.toLowerCase() === name.toLowerCase())) return
     setRoster(shift, { ...r, people: [...r.people, { name, code }] }); setAdded('')
+  }
+  const key = (x: string) => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '')
+  const fixTo = fixing ? fixing.to.replace(/\s+/g, ' ').trim().slice(0, 60) : ''
+  const fixTaken = !!fixing && r.people.some((x) => x.name !== fixing.name && key(x.name) === key(fixTo))
+  const rename = () => {
+    if (!fixing || !fixTo || fixTaken) return
+    if (fixTo !== fixing.name) setRoster(shift, { ...r, people: r.people.map((x) => (x.name === fixing.name ? { ...x, name: fixTo } : x)) })
+    setFixing(null)
   }
   return (
     <div className="setcard">
@@ -369,7 +379,16 @@ function RosterCard({ s, viewOnly }: { s: State; viewOnly: boolean }) {
           <details key={c} className="roster-area">
             <summary><b>{c}</b> · {howMany(mine.length)}</summary>
             <label className="minirow"><span>{tr('Es el cuarto')}</span><select value={rosterRoom(r, c)} disabled={viewOnly} onChange={(e) => setRoster(shift, { ...r, rooms: { ...r.rooms, [c]: e.target.value as Dept | '' } })}><option value="">{tr('Ninguno')}</option>{DEPTS.map((d) => <option key={d} value={d}>{d}</option>)}</select></label>
-            <ul className="roster-list">{mine.map((p) => <li key={p.name}><span>{p.name}{p.lead && <small> · {tr('supervisor o líder')}</small>}</span><select className="roster-room" value={p.room ?? ''} disabled={viewOnly} aria-label={tr('Cuarto de {0}', p.name)} onChange={(e) => setRoster(shift, { ...r, people: r.people.map((x): RosterPerson => (x.name !== p.name ? x : e.target.value ? { ...x, room: e.target.value as Dept } : { name: x.name, code: x.code, ...(x.lead ? { lead: true } : {}) })) })}><option value="">{tr('Como su área ({0})', rosterRoom(r, c) || tr('ninguno'))}</option>{DEPTS.map((d) => <option key={d} value={d}>{d}</option>)}</select>{!viewOnly && <button type="button" className="lnk sm" aria-label={tr('Quitar a {0}', p.name)} onClick={() => setRoster(shift, { ...r, people: r.people.filter((x) => x.name !== p.name) })}>{tr('Quitar')}</button>}</li>)}</ul>
+            <ul className="roster-list">{mine.map((p) => fixing?.name === p.name ? (
+              <li key={p.name} className="roster-fix">
+                <form onSubmit={(e) => { e.preventDefault(); rename() }}>
+                  <input autoFocus value={fixing.to} maxLength={60} aria-label={tr('Nombre correcto de {0}', p.name)} onChange={(e) => setFixing({ name: p.name, to: e.target.value })} onKeyDown={(e) => { if (e.key === 'Escape') setFixing(null) }} />
+                  <button type="submit" className="btn sm primary" disabled={!fixTo || fixTaken}>{tr('✓ Guardar')}</button>
+                  <button type="button" className="btn sm" onClick={() => setFixing(null)}>{tr('Cancelar')}</button>
+                </form>
+                {fixTaken && <small className="red">{tr('Ya hay alguien con ese nombre en este turno.')}</small>}
+              </li>
+            ) : <li key={p.name}><span>{p.name}{p.lead && <small> · {tr('supervisor o líder')}</small>}{!viewOnly && <button type="button" className="lnk sm roster-pen" aria-label={tr('Corregir el nombre de {0}', p.name)} title={tr('Corregir el nombre')} onClick={() => setFixing({ name: p.name, to: p.name })}>✏️</button>}</span><select className="roster-room" value={p.room ?? ''} disabled={viewOnly} aria-label={tr('Cuarto de {0}', p.name)} onChange={(e) => setRoster(shift, { ...r, people: r.people.map((x): RosterPerson => (x.name !== p.name ? x : e.target.value ? { ...x, room: e.target.value as Dept } : { name: x.name, code: x.code, ...(x.lead ? { lead: true } : {}) })) })}><option value="">{tr('Como su área ({0})', rosterRoom(r, c) || tr('ninguno'))}</option>{DEPTS.map((d) => <option key={d} value={d}>{d}</option>)}</select>{!viewOnly && <button type="button" className="lnk sm" aria-label={tr('Quitar a {0}', p.name)} onClick={() => setRoster(shift, { ...r, people: r.people.filter((x) => x.name !== p.name) })}>{tr('Quitar')}</button>}</li>)}</ul>
           </details>
         )
       })}

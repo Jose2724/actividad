@@ -4012,4 +4012,8 @@ export const EN: Record<string, string> = {
   "Al guardar, las horas de cada día van a la tabla de abajo. La app no guarda nombres.": "On saving, each day's hours go to the table below. The app keeps no names.",
   "Falta la lista de empleados del {0} en Ajustes › Asistencia: su gente sale con los dos.": "The Employee List of {0} is missing in Settings › Attendance: its people show under both.",
   "Nadie": "Nobody",
+  "Nombre correcto de {0}": "Correct name of {0}",
+  "Ya hay alguien con ese nombre en este turno.": "Someone in this shift already has that name.",
+  "Corregir el nombre de {0}": "Correct the name of {0}",
+  "Corregir el nombre": "Correct the name",
 }
