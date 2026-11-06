@@ -1,4 +1,4 @@
-import { Fragment, useState, useSyncExternalStore } from 'react'
+import { Fragment, useEffect, useState, useSyncExternalStore } from 'react'
 import { type ViewOpt, wallAt, byLineName, lineShiftGoalOf, CFG, dayShiftsText, DEPTS, lineLabel, lotFor, managerPin, nightText, openRun, removedLines, removeLine, reset, resetRecords, restoreLine, setDayShifts, setLineRules, setProgramView, setReasonCodes, shiftGoalOf, shiftHours, shiftSpan, shiftsOf, turnOf, uploadAll, weekOf, type Dept, type Line, type State, type WorkDay, setViewOpt } from './store'
 import { ConfirmDialog, LangSwitch, LineNameDialog, LineTargetDialog, longDate, NoticeDialog, Products, QrLink, ShiftsDialog, StartDayDialog, StopDialog, TargetDialog, useCan, useWho } from './App'
 import { rdNames, setRdNames } from './rdAccess'
@@ -594,15 +594,33 @@ function ViewOptSettings({ s, name }: { s: State; name: ViewOpt }) {
 function RdAccessSettings({ s }: { s: State }) {
   const names = rdNames(s)
   const [name, setName] = useState('')
+  // the accounts' names, to suggest while typing (Jose, 2026-11-06: "¿puede la app mientras escribo sugerirme
+  // nombres?"): the app's accounts, active, as they are written in Ajustes › Empleados
+  const [people, setPeople] = useState<string[]>([])
+  useEffect(() => {
+    if (!supabase) return
+    let on = true
+    void supabase.from('employees').select('name, active, deleted, act_role').order('name').then(({ data }) => {
+      if (on && data) setPeople((data as { name: string; active: boolean; deleted?: boolean; act_role: string | null }[]).filter((e) => e.active && !e.deleted && e.act_role && e.name).map((e) => e.name))
+    })
+    return () => { on = false }
+  }, [])
+  const plain = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  const q = plain(name.trim())
+  const taken = (n: string) => names.some((x) => plain(x) === plain(n))
+  const hints = q ? people.filter((n) => plain(n).includes(q) && !taken(n)).slice(0, 6) : []
+  const add = (t: string) => { t = t.trim(); if (t && !taken(t)) setRdNames([...names, t]); setName('') }
   return (
     <div className="setcard">
       <div className="sethead"><h3>{tr('🎨 Diseño nuevo')}</h3><span className={'rc-state' + (names.length ? ' on' : '')}>{names.length ? tr('{0} personas', names.length) : tr('Solo tú')}</span></div>
       <p className="hint">{tr('Lo ven estos nombres, escritos como sale su nombre en su cuenta. Al entrar, la app se les abre con el diseño nuevo; si quitas un nombre, vuelve al de siempre. Nadie más lo ve.')}</p>
       {names.length > 0 && <ul className="rd-accesslist">{names.map((n) => <li key={n}><b>{n}</b> <button type="button" className="btn sm soft" onClick={() => setRdNames(names.filter((x) => x !== n))}>{tr('Quitar')}</button></li>)}</ul>}
-      <form className="btns" onSubmit={(e) => { e.preventDefault(); const t = name.trim(); if (t && !names.some((x) => x.toLowerCase() === t.toLowerCase())) setRdNames([...names, t]); setName('') }}>
-        <input value={name} maxLength={60} placeholder={tr('Nombre, por ejemplo Ana Torres')} onChange={(e) => setName(e.target.value)} aria-label={tr('Nombre')} />
+      <form className="btns" onSubmit={(e) => { e.preventDefault(); add(hints.length === 1 ? hints[0] : name) }}>
+        <input value={name} maxLength={60} placeholder={tr('Escribe y escoge un nombre')} onChange={(e) => setName(e.target.value)} aria-label={tr('Nombre')} autoComplete="off" />
         <button type="submit" className="btn sm primary" disabled={!name.trim()}>{tr('Agregar')}</button>
       </form>
+      {hints.length > 0 && <div className="rd-namehints" role="listbox" aria-label={tr('Sugerencias')}>{hints.map((n) => <button key={n} type="button" role="option" aria-selected="false" className="btn sm soft" onClick={() => add(n)}>＋ {n}</button>)}</div>}
+      {q && !hints.length && people.length > 0 && !taken(name) && <p className="hint">{tr('Ninguna cuenta se llama así. Revisa cómo está escrito en Ajustes › Empleados.')}</p>}
     </div>
   )
 }
