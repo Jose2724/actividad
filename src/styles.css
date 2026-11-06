@@ -2927,3 +2927,10 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 .app.rd .line>*:not(.veil){width:auto;max-width:none;min-width:0;box-sizing:border-box;align-self:stretch}
 .app.rd .line .wt-remind{width:auto;box-sizing:border-box;margin-left:12px;margin-right:12px}
 .app.rd .line .wt-remind,.app.rd .line .slowbar,.app.rd .line .stopbar,.app.rd .line .setupbar{overflow-wrap:anywhere}
+/* five or six buttons under a line (Spiral: Parar, Set up, Peso, Carne, Terminar) in two rows, each word whole (Jose,
+   2026-11-06: "hace overlap la palabra terminar y quizás también carne"); four or fewer stay in one row */
+.app.rd .line .acts2:has(> :nth-child(5)){grid-template-columns:repeat(6,minmax(0,1fr))}
+.app.rd .line .acts2:has(> :nth-child(5)) > *{grid-column:span 2}
+.app.rd .line .acts2:has(> :nth-child(5)):not(:has(> :nth-child(6))) > :nth-child(n+4){grid-column:span 3}
+.app.rd .line .acts2 .btn{white-space:nowrap;min-width:0}
+@container line (max-width:330px){.app.rd .line .acts2:not(:has(> :nth-child(5))):has(> :nth-child(4)){grid-template-columns:repeat(2,minmax(0,1fr))}}
