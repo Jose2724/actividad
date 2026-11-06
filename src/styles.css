@@ -2851,3 +2851,6 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 /* the top bar is exactly as tall as the page counts it (its purple edge included): no few pixels left to scroll when
    everything fits (Jose, 2026-11-05: "se mueve un poquito aun cuando no es necesario") */
 .rd-top{box-sizing:border-box;height:var(--topH);min-height:0}
+.rd-wastelist{display:grid;gap:4px}
+.rd-wasteitem{display:flex;align-items:center;gap:8px;font-size:14px}
+.rd-wasteitem .lnk{margin-left:auto}

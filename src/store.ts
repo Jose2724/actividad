@@ -445,7 +445,7 @@ export type State = { lines: Line[]; runs: Run[]; stops: Stop[]; products: Produ
    */
   orderRuns: Run[]
   /** the production orders of every room (deleted ones kept with their flag), and the closed accounts of finished ones */
-  workOrders: WorkOrder[]; orderSeals: OrderSeal[]; attendance: AttEntry[]; attExpected: AttExpected[]; shiftMarks: ShiftMark[]; kpi: KpiRec[]; weights: WeightTest[]; orderNotes: OrderNote[]; planRoomNotes: PlanRoomNote[]; planUrgent: PlanUrgent[]; roomMsgs: RoomMsg[]; chat: ChatMsg[]; chatSeen: ChatSeen[]; weightRules: WeightRule[]; slowRules: SlowRule[]; slowLines: SlowLine[]; meats: MeatEntry[]; holds: HoldRec[]; consumes: ConsumeEntry[]; consumeOpts: ConsumeOpt[] }
+  workOrders: WorkOrder[]; orderSeals: OrderSeal[]; attendance: AttEntry[]; attExpected: AttExpected[]; shiftMarks: ShiftMark[]; kpi: KpiRec[]; weights: WeightTest[]; orderNotes: OrderNote[]; planRoomNotes: PlanRoomNote[]; roomWastes?: RoomWaste[]; planUrgent: PlanUrgent[]; roomMsgs: RoomMsg[]; chat: ChatMsg[]; chatSeen: ChatSeen[]; weightRules: WeightRule[]; slowRules: SlowRule[]; slowLines: SlowLine[]; meats: MeatEntry[]; holds: HoldRec[]; consumes: ConsumeEntry[]; consumeOpts: ConsumeOpt[] }
 /**
  * An order to fill in Packing: so many cases of one product for a customer, to ship by a date. Most carry the
  * customer's purchase order number (PO); some never do and some get it later. See "the orders Packing fills".
@@ -601,7 +601,7 @@ const SERVER = !!import.meta.env.VITE_SUPABASE_URL
 function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, reasonCodes: { on: false, updatedAt: 0 }, programView: { on: false, updatedAt: 0 }, attView: { on: !SERVER, updatedAt: 0 }, stopRules: [{ on: false, updatedAt: 0 }, { on: false, updatedAt: 0 }], attGate: { on: false, updatedAt: 0 }, cartCrates: { n: 0, updatedAt: 0 }, lunch: { min: 0, after: 0, updatedAt: 0 }, attWrite: { on: false, updatedAt: 0 }, lbCase: { on: false, updatedAt: 0 }, viewOpts: { lotes: { on: false, updatedAt: 0 }, flujo: { on: false, updatedAt: 0 } }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [], attendance: [], attExpected: [], shiftMarks: [], kpi: [], weights: [], orderNotes: [], planRoomNotes: [], planUrgent: [], roomMsgs: [], chat: [], chatSeen: [], weightRules: [], slowRules: [], slowLines: [], meats: [], holds: [], consumes: [], consumeOpts: [] } }
 function load(): State {
   try {
-    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; reasonCodes?: Partial<ReasonCodesOpt>; programView?: Partial<ReasonCodesOpt>; attView?: Partial<ReasonCodesOpt>; attGate?: Partial<ReasonCodesOpt>; stopRules?: Partial<ReasonCodesOpt>[]; cartCrates?: { n?: number; updatedAt?: number }; lunch?: Partial<Lunch>; attWrite?: Partial<ReasonCodesOpt>; lbCase?: Partial<ReasonCodesOpt>; viewOpts?: Partial<Record<ViewOpt, Partial<ReasonCodesOpt>>>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[]; attendance?: Partial<AttEntry>[]; attExpected?: Partial<AttExpected>[]; shiftMarks?: Partial<ShiftMark>[]; kpi?: Partial<KpiRec>[]; weights?: Partial<WeightTest>[]; orderNotes?: Partial<OrderNote>[]; planRoomNotes?: Partial<PlanRoomNote>[]; planUrgent?: Partial<PlanUrgent>[]; roomMsgs?: Partial<RoomMsg>[]; chat?: Partial<ChatMsg>[]; chatSeen?: Partial<ChatSeen>[]; weightRules?: Partial<WeightRule>[]; slowRules?: Partial<SlowRule>[]; slowLines?: Partial<SlowLine>[]; meats?: Partial<MeatEntry>[]; holds?: Partial<HoldRec>[]; consumes?: Partial<ConsumeEntry>[]; consumeOpts?: Partial<ConsumeOpt>[] }
+    type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; reasonCodes?: Partial<ReasonCodesOpt>; programView?: Partial<ReasonCodesOpt>; attView?: Partial<ReasonCodesOpt>; attGate?: Partial<ReasonCodesOpt>; stopRules?: Partial<ReasonCodesOpt>[]; cartCrates?: { n?: number; updatedAt?: number }; lunch?: Partial<Lunch>; attWrite?: Partial<ReasonCodesOpt>; lbCase?: Partial<ReasonCodesOpt>; viewOpts?: Partial<Record<ViewOpt, Partial<ReasonCodesOpt>>>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[]; attendance?: Partial<AttEntry>[]; attExpected?: Partial<AttExpected>[]; shiftMarks?: Partial<ShiftMark>[]; kpi?: Partial<KpiRec>[]; weights?: Partial<WeightTest>[]; orderNotes?: Partial<OrderNote>[]; planRoomNotes?: Partial<PlanRoomNote>[]; roomWastes?: Partial<RoomWaste>[]; planUrgent?: Partial<PlanUrgent>[]; roomMsgs?: Partial<RoomMsg>[]; chat?: Partial<ChatMsg>[]; chatSeen?: Partial<ChatSeen>[]; weightRules?: Partial<WeightRule>[]; slowRules?: Partial<SlowRule>[]; slowLines?: Partial<SlowLine>[]; meats?: Partial<MeatEntry>[]; holds?: Partial<HoldRec>[]; consumes?: Partial<ConsumeEntry>[]; consumeOpts?: Partial<ConsumeOpt>[] }
     const s = JSON.parse(localStorage.getItem(KEY) || 'null') as Raw | null
     // rows saved by earlier versions: carts as plain timestamps, units without a tag or a name, products with one
     // pouches-per-cart number, nothing with an update time
@@ -659,6 +659,7 @@ function load(): State {
         weights: (s.weights ?? []).map(wtFrom).filter((x): x is WeightTest => !!x),
         orderNotes: (s.orderNotes ?? []).map(orderNoteFrom).filter((x): x is OrderNote => !!x),
         planRoomNotes: (s.planRoomNotes ?? []).map(planRoomNoteFrom).filter((x): x is PlanRoomNote => !!x),
+        roomWastes: (s.roomWastes ?? []).map(roomWasteFrom).filter((x): x is RoomWaste => !!x),
         planUrgent: (s.planUrgent ?? []).map(planUrgentFrom).filter((x): x is PlanUrgent => !!x),
         roomMsgs: (s.roomMsgs ?? []).map(roomMsgFrom).filter((x): x is RoomMsg => !!x),
         chat: (s.chat ?? []).map(chatFrom).filter((x): x is ChatMsg => !!x),
@@ -2694,8 +2695,41 @@ export function addWaste(runId: string, lb: number) { const r = run(runId); if (
 export function wasteRuns(s: State, dept: Dept, date: string): Run[] {
   return s.runs.filter((r) => !r.deleted && r.dept === dept && (!r.endedAt || r.date === date)).sort((a, b) => Number(!!a.endedAt) - Number(!!b.endedAt) || b.startedAt - a.startedAt)
 }
+/**
+ * Pounds of waste the room writes without a code (Jose, 2026-11-05: "creo que no importa el código, pero si lo quieren
+ * poner que sea opcional y pueda dejar poner solo el peso"): the room's and its shift's, never a code's, so the room's
+ * totals (the report, its Excel, the Mini KPI) count them and the code's numbers stay what the codes gave. In
+ * act_changes with the room, apart from the history, as the program's comments: nothing new on the server
+ */
+export type RoomWaste = { id: string; date: string; dept: Dept; shift: 1 | 2; lb: number; by: string; at: number; deleted?: boolean; updatedAt: number; syncedAt?: number }
+const RWASTE_ID = 'rwaste:'
+export const RWASTE_REF = 'act_room_waste'
+// (a function declaration reading only what load() may read: it is used there, see the note at `let state = load()`)
+function roomWasteFrom(x: Partial<RoomWaste> | null | undefined): RoomWaste | null {
+  if (!x || typeof x !== 'object' || typeof x.id !== 'string' || !x.id || !(DEPTS as unknown[]).includes(x.dept)) return null
+  const lb = Math.round((Number(x.lb) || 0) * 100) / 100
+  if (!(lb > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(String(x.date ?? ''))) return null
+  return { id: x.id, date: String(x.date), dept: x.dept as Dept, shift: Number(x.shift) === 2 ? 2 : 1, lb, by: String(x.by ?? ''), at: Number(x.at) || 0, ...(x.deleted ? { deleted: true } : {}), updatedAt: Number(x.updatedAt) || 0, ...(x.syncedAt ? { syncedAt: Number(x.syncedAt) } : {}) }
+}
+/** the room's pounds without a code of a day (of one shift, or both with 0) */
+export const roomWasteFree = (s: State, dept: Dept, date: string, shift: 0 | 1 | 2 = 0) => Math.round((s.roomWastes ?? []).filter((x) => !x.deleted && x.dept === dept && x.date === date && (!shift || x.shift === shift)).reduce((t, x) => t + x.lb, 0) * 100) / 100
+export const roomWastesOf = (s: State, dept: Dept, date: string) => (s.roomWastes ?? []).filter((x) => !x.deleted && x.dept === dept && x.date === date).sort((a, b) => b.at - a.at)
+function putRoomWaste(x: RoomWaste) {
+  set({ ...state, roomWastes: [...(state.roomWastes ?? []).filter((y) => y.id !== x.id), x] })
+  push('act_changes', RWASTE_ID + x.id, { id: RWASTE_ID + x.id, at: iso(x.at), by_name: x.by, dept: x.dept, what: 'Waste del cuarto', before: '', after: JSON.stringify({ date: x.date, shift: x.shift, lb: x.lb }), ref_table: RWASTE_REF, ref_key: x.id, deleted: !!x.deleted, updated_at: iso(x.updatedAt), updated_by: user.get() })
+}
+export function addRoomWaste(dept: Dept, date: string, shift: 1 | 2, lb: number) {
+  const n = Math.round(lb * 100) / 100
+  if (!(n > 0) || viewOnly.get() || (role.get() === 'op' && dept !== myDept.get())) return
+  putRoomWaste({ id: uid(), date, dept, shift, lb: n, by: user.get(), at: clockNow(), updatedAt: stamp(undefined) })
+}
+export function dropRoomWaste(id: string) {
+  const x = (state.roomWastes ?? []).find((y) => y.id === id)
+  if (!x || viewOnly.get() || (role.get() === 'op' && x.dept !== myDept.get())) return
+  putRoomWaste({ ...x, deleted: true, updatedAt: stamp(x) })
+}
 /** the room's waste of the day, in pounds, over its codes */
-export const roomWaste = (s: State, dept: Dept, date: string) => Math.round(s.runs.filter((r) => !r.deleted && r.dept === dept && r.date === date).reduce((t, r) => t + (r.waste || 0), 0) * 100) / 100
+export const roomWaste = (s: State, dept: Dept, date: string) => Math.round((s.runs.filter((r) => !r.deleted && r.dept === dept && r.date === date).reduce((t, r) => t + (r.waste || 0), 0) + roomWasteFree(s, dept, date)) * 100) / 100
 /**
  * More product went on a unit that had been closed short: its quantity is raised (with its lots, where a unit carries
  * them), instead of counting another unit. It is a correction like any other: who and when go to the history.
@@ -5524,6 +5558,14 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
     try { x = JSON.parse(String(row.after ?? '')) as Partial<PlanUrgent> } catch { /* not one */ }
     const e = planUrgentFrom({ ...x, key, dept: row.dept as Dept, by: String(row.by_name ?? ''), at: fromIso(row.at) ?? 0, updatedAt: at, ...syncedOf(row) })
     if (e) set({ ...state, planUrgent: [...(state.planUrgent ?? []).filter((y) => y.key !== key), e] })
+  } else if (table === 'act_changes' && row.ref_table === RWASTE_REF && String(row.id ?? '').startsWith(RWASTE_ID)) {
+    // the room's waste without a code (2026-11-05): kept apart from the history
+    const id = String(row.id).slice(RWASTE_ID.length), cur = (state.roomWastes ?? []).find((x) => x.id === id)
+    if (!newer(cur)) return
+    let x: Partial<RoomWaste> = {}
+    try { x = JSON.parse(String(row.after ?? '')) as Partial<RoomWaste> } catch { /* not one */ }
+    const e = roomWasteFrom({ ...x, id, dept: row.dept as Dept, by: String(row.by_name ?? ''), at: fromIso(row.at) ?? 0, deleted: !!row.deleted, updatedAt: at, ...syncedOf(row) })
+    if (e) set({ ...state, roomWastes: [...(state.roomWastes ?? []).filter((y) => y.id !== id), e] })
   } else if (table === 'act_changes' && row.ref_table === PNOTE_REF && String(row.id ?? '').startsWith(PNOTE_ID)) {
     // the room's comment on a row of its program (2026-11-04): kept apart from the history
     const key = String(row.id).slice(PNOTE_ID.length), cur = (state.planRoomNotes ?? []).find((x) => x.key === key)

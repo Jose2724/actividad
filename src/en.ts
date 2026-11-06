@@ -3643,6 +3643,11 @@ export const EN: Record<string, string> = {
   // the redesign (2026-11-05): sections, menu, search, Resumen, Toda la planta
   "Toda la planta": "Whole plant",
   "Más": "More",
+  "Lo que el cuarto anota sin código cuenta en el total del cuarto y de su turno, no en el de un código.": "What the room writes without a code counts in the room's and its shift's total, not in a code's.",
+  "¿De qué código? (opcional)": "Which code? (optional)",
+  "Solo el total del cuarto": "Just the room's total",
+  "Se suma al waste de {0} de hoy: {1} lb en total.": "Added to {0}'s waste today: {1} lb in all.",
+  "Anotado hoy sin código": "Written today without a code",
   "Anotar": "Write",
   "También hay un {0} en {1}. Usa otro apellido o su número.": "There is also a {0} in {1}. Use another last name or their number.",
   "¿Es la misma persona? Que la trasladen aquí desde {0}.": "Is it the same person? Have {0} move them here.",

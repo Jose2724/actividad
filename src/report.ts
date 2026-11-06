@@ -1,4 +1,4 @@
-import { apartOf, binOf, binWord, CFG, cfgOf, countedUnits, DEPTS, expiryOf, joinedInto, fmtDur, fmtTime, kindOf, lineLabel, lineNameOf, normCode, noteLabel, noteOf, orderLabel, orderOfId, orderPallets, palletPo, plainDay, plainText, runInShift, runStats, SETUP, shiftAt, shiftPieces, shiftsOf, stopSpans, unitQty, waitsForCode, whoText, type Change, type Dept, type Run, type ShiftHours, type State, type Unit, meatsOf} from './store'
+import { roomWasteFree, apartOf, binOf, binWord, CFG, cfgOf, countedUnits, DEPTS, expiryOf, joinedInto, fmtDur, fmtTime, kindOf, lineLabel, lineNameOf, normCode, noteLabel, noteOf, orderLabel, orderOfId, orderPallets, palletPo, plainDay, plainText, runInShift, runStats, SETUP, shiftAt, shiftPieces, shiftsOf, stopSpans, unitQty, waitsForCode, whoText, type Change, type Dept, type Run, type ShiftHours, type State, type Unit, meatsOf} from './store'
 import { clockNow } from './clock'
 import { xDay, xDur, xTime, type Cell } from './xlsx'
 import { phrase, tr } from './i18n'
@@ -166,7 +166,7 @@ export function reportOf(s: State, date: string, now: number, f: ReportFilter = 
     // "working" and "down" are another thing: the sum of every line's time, so three lines for five hours are fifteen.
     const timed = mine.filter((x) => x.to > x.from)
     const from = timed.length ? Math.min(...timed.map((x) => x.from)) : 0, to = timed.length ? Math.max(...timed.map((x) => x.to)) : 0
-    return { shift: k, from, to, span: to - from, open: timed.some((x) => !x.r.endedAt && x.to >= now), distinct: new Set(mine.map((x) => normCode(x.r.code))).size, lines: new Set(mine.map((x) => x.r.lineId)).size, codes: mine.length, units: counted.reduce((t, x) => t + x.units, 0), qty: counted.reduce((t, x) => t + x.qty, 0), bins, waste: round2(mine.reduce((t, x) => t + x.waste, 0)), working: mine.reduce((t, x) => t + x.st.working, 0), down: mine.reduce((t, x) => t + x.st.down, 0), setup: setupOf(k, dept) }
+    return { shift: k, from, to, span: to - from, open: timed.some((x) => !x.r.endedAt && x.to >= now), distinct: new Set(mine.map((x) => normCode(x.r.code))).size, lines: new Set(mine.map((x) => x.r.lineId)).size, codes: mine.length, units: counted.reduce((t, x) => t + x.units, 0), qty: counted.reduce((t, x) => t + x.qty, 0), bins, waste: round2(mine.reduce((t, x) => t + x.waste, 0) + (f.code || f.lot || f.line ? 0 : roomWasteFree(s, dept, date, k))), working: mine.reduce((t, x) => t + x.st.working, 0), down: mine.reduce((t, x) => t + x.st.down, 0), setup: setupOf(k, dept) }
   }
   const here = DEPTS.filter((d) => rows.some((x) => x.r.dept === d))
   // (the day lasted what its two shifts lasted: the hours between one shift and the next are nobody's)

@@ -1,6 +1,6 @@
 import { Component, createContext, Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
-import { planUrgentOf, setPlanUrgent, PLAN_ROOM_NOTE_MAX, planRoomNoteOf, setPlanRoomNote, roomWaste, wasteRuns, isOven, PLAN_NOTE_MAX, PLAN_SPAN_MAX, attGated, attOf, lineSlow, addLine, plantCut, roomMark, CUT_WINDOW, startSecondShift, addWaste, awayDay, batch, byPlanLot, planLot, cameFrom, carriedOver, dayAfter, dayBefore, orderUnitDefault, programOrderChoices, ordersOf, orderStatus, orderUnitWord, prevPending, workOrderOf, type WorkOrder, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, MFO_CHOICES, mfoChoiceOf, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, cartCratesOf, cartPouchesOf, cartSpecOf, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, noteOf, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderAddRuns, orderOfId, poMates, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, PLAN_LOT_MAX, productOf, productsCsv, purgeDay, reasonText, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay, orderFull, orderFullText, orderNoteOf, setOrderNote, setOrderUrgent, programCap, programCapOf, holdsOpen } from './store'
+import { planUrgentOf, setPlanUrgent, PLAN_ROOM_NOTE_MAX, planRoomNoteOf, setPlanRoomNote, roomWaste, wasteRuns, roomWastesOf, addRoomWaste, dropRoomWaste, isOven, PLAN_NOTE_MAX, PLAN_SPAN_MAX, attGated, attOf, lineSlow, addLine, plantCut, roomMark, CUT_WINDOW, startSecondShift, addWaste, awayDay, batch, byPlanLot, planLot, cameFrom, carriedOver, dayAfter, dayBefore, orderUnitDefault, programOrderChoices, ordersOf, orderStatus, orderUnitWord, prevPending, workOrderOf, type WorkOrder, BIN_WORDS, binOf, binWord, cfgFor, dayShiftsText, duplicateLines, kindClass, setDayShifts, setShiftWeek, weekOf, MFO_WORDS, MFO_CHOICES, mfoChoiceOf, measureName, measureOf, measureUnit, setSpiralUnit, SPIRAL_UNITS, type SpiralUnit, byLineName, byShip, casesText, cancelDay, CFG, cfgOf, closeOrder, codeProblem, cartCratesOf, cartPouchesOf, cartSpecOf, dayOf, dayRecords, DEPTS, deptStop, deleteOrder, deptToday, dropSetup, endOlderRuns, endRun, endShift, endStop, fillUnit, fmtDur, fmtTime, freeLineNames, freeLines, idleStop, inCases, KEEP_DAYS, lastEnded, lastPerUnit, leftOpen, LINE_NAME_MAX, lineLabel, lineNamed, lineNameOf, lineShiftGoalOf, lineTargetOf, lotFor, lotNowOf, lotsText, madeText, minuteText, managerPin, mergeProducts, myDept, nextOrderFor, nightText, nearDay, normCode, noteLabel, noteOf, numOf, openIn, openOrdersFor, openRun, openRuns, openStop, orderCodes, orderLabel, orderAddRuns, orderOfId, poMates, orderPallets, orderRunsOf, unitQty, palletDone, palletLotEnds, reopenPallet, palletOrder, palletPartFix, palletPo, SETUP, switchToSetup, orderMade, parseProductsCsv, plainDay, planOf, planRows, PLAN_LOT_MAX, productOf, productsCsv, purgeDay, reasonText, removeLine, removeProduct, renameLine, reopenRun, role, runQty, runSince, runStats, saveOrder, saveProduct, setLineShiftGoal, setLotNow, setPackRoom, setPlan, setSchedule, setShiftGoal, setShifts, shiftGoalOf, startDay, startRun, startSetup, startSetupAll, setupAllFrom, startStop, stopTime, store, swapLineNames, targetOf, tidyLineName, turnOf, unitsText, savedText, shiftAt, shiftCuts, shiftsOf, shiftsProblem, shortEnded, shortUnit, unitDone, user, workDay, workedSince, type Dept, type DeptCfg, type Line, type Product, type LotPart, type Run, type Order, type PackRoom, type ShiftHours, type Short, type State, type WorkDay, orderFull, orderFullText, orderNoteOf, setOrderNote, setOrderUrgent, programCap, programCapOf, holdsOpen } from './store'
 import { avanceLots, avanceRange, avanceRows, datesBetween, lotAcrossDays, lotRows, lotsKnown, mfoList, mfoText, mfoWord, n1, pending, type AvancePart, type AvanceRow, type MfoMade } from './avance'
 import { loadZip, type Cell } from './xlsx'
 
@@ -3834,29 +3834,44 @@ function RoomWasteButton({ s, dept, date }: { s: State; dept: Dept; date: string
 }
 function RoomWasteDialog({ s, dept, date, onClose }: { s: State; dept: Dept; date: string; onClose: () => void }) {
   const runs = wasteRuns(s, dept, date)
-  // (the code running is chosen by itself when it is the only one; with several, they tap the one)
+  // (the code running is chosen by itself when it is the only one; with several, they tap the one). In the redesign the
+  // code is optional (Jose, 2026-11-05): none chosen, the pounds are the room's, of the shift in course
   const running = runs.filter((r) => !r.endedAt)
-  const [pick, setPick] = useState(runs.length === 1 ? runs[0].id : running.length === 1 ? running[0].id : '')
+  const [pick, setPick] = useState(RD ? '' : runs.length === 1 ? runs[0].id : running.length === 1 ? running[0].id : '')
   const [v, setV] = useState('')
-  const n = Number(v.replace(',', '.')), ok = !!pick && v.trim() !== '' && Number.isFinite(n) && n > 0
+  const n = Number(v.replace(',', '.')), ok = (RD || !!pick) && v.trim() !== '' && Number.isFinite(n) && n > 0
   const chosen = runs.find((r) => r.id === pick)
+  const free = RD ? roomWastesOf(s, dept, date) : []
+  const save = () => {
+    if (!ok) return
+    const lb = Math.round(n * 100) / 100
+    if (pick) addWaste(pick, lb)
+    else addRoomWaste(dept, date, (turnOf(s, date, clockNow(), dept).shift || 1) as 1 | 2, lb)
+    onClose()
+  }
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
         <h3>{tr('Waste de {0} · ¿cuántas libras?', dept)}</h3>
-        {!runs.length ? <p className="hint">{tr('No hay ningún código hoy en {0}: el waste va con el código que lo dio.', dept)}</p> : (
-          <form className="qform" onSubmit={(e) => { e.preventDefault(); if (ok) { addWaste(pick, Math.round(n * 100) / 100); onClose() } }}>
-            {runs.length > 1 && <div className="qpick"><span className="lab">{tr('¿De qué código?')}</span><div className="chips">{runs.map((r) => <button key={r.id} type="button" className={'chip' + (pick === r.id ? ' on' : '')} aria-pressed={pick === r.id} onClick={() => setPick(r.id)}><b>{r.code}</b> · {lineLabel(lineNameOf(s, r.lineId, r.line))}{!r.endedAt && <small> · {tr('corriendo')}</small>}{r.waste ? <small className="red"> · {r.waste} lb</small> : null}</button>)}</div></div>}
-            {runs.length === 1 && <p><b>{runs[0].code}</b> · {lineLabel(lineNameOf(s, runs[0].lineId, runs[0].line))}{runs[0].waste ? <span className="red"> · {tr('ya lleva {0} lb', runs[0].waste)}</span> : null}</p>}
+        {!runs.length && !RD ? <p className="hint">{tr('No hay ningún código hoy en {0}: el waste va con el código que lo dio.', dept)}</p> : (
+          <form className="qform" onSubmit={(e) => { e.preventDefault(); save() }}>
             <label>lb <input autoFocus inputMode="decimal" placeholder="lb" value={v} onChange={(e) => setV(e.target.value.replace(/[^\d.,]/g, '').replace(/([.,].*)[.,]/, '$1'))} /></label>
+            {RD && runs.length > 0 && <div className="qpick"><span className="lab">{tr('¿De qué código? (opcional)')}</span><div className="chips">
+              <button type="button" className={'chip' + (!pick ? ' on' : '')} aria-pressed={!pick} onClick={() => setPick('')}>{tr('Solo el total del cuarto')}</button>
+              {runs.map((r) => <button key={r.id} type="button" className={'chip' + (pick === r.id ? ' on' : '')} aria-pressed={pick === r.id} onClick={() => setPick(pick === r.id ? '' : r.id)}><b>{r.code}</b> · {lineLabel(lineNameOf(s, r.lineId, r.line))}{r.endedAt ? '' : <small> · {tr('corriendo')}</small>}</button>)}
+            </div></div>}
+            {!RD && runs.length > 1 && <div className="qpick"><span className="lab">{tr('¿De qué código?')}</span><div className="chips">{runs.map((r) => <button key={r.id} type="button" className={'chip' + (pick === r.id ? ' on' : '')} aria-pressed={pick === r.id} onClick={() => setPick(r.id)}><b>{r.code}</b> · {lineLabel(lineNameOf(s, r.lineId, r.line))}{r.endedAt ? '' : <small> · {tr('corriendo')}</small>}</button>)}</div></div>}
+            {!RD && runs.length === 1 && <p><b>{runs[0].code}</b> · {lineLabel(lineNameOf(s, runs[0].lineId, runs[0].line))}{runs[0].waste ? <span className="red"> · {tr('ya lleva {0} lb', runs[0].waste)}</span> : null}</p>}
             {chosen && ok && <p className="hint">{tr('Se suma al waste de {0}: {1} lb en total.', chosen.code, Math.round(((chosen.waste || 0) + n) * 100) / 100)}</p>}
+            {RD && !chosen && ok && <p className="hint">{tr('Se suma al waste de {0} de hoy: {1} lb en total.', dept, Math.round((roomWaste(s, dept, date) + n) * 100) / 100)}</p>}
+            {free.length > 0 && <div className="rd-wastelist"><span className="lab">{tr('Anotado hoy sin código')}</span>{free.map((x) => <span key={x.id} className="rd-wasteitem"><b>{x.lb} lb</b> · {fmtTime(x.at)}{x.by ? ' · ' + x.by : ''}<button type="button" className="lnk sm" onClick={() => dropRoomWaste(x.id)}>{tr('Quitar')}</button></span>)}</div>}
             <div className="dbtns">
               <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
               <button type="submit" className="btn primary" disabled={!ok}>{tr('✓ Guardar')}</button>
             </div>
           </form>
         )}
-        {!runs.length && <div className="dbtns"><button type="button" className="btn" onClick={onClose}>{tr('Cerrar')}</button></div>}
+        {!runs.length && !RD && <div className="dbtns"><button type="button" className="btn" onClick={onClose}>{tr('Cerrar')}</button></div>}
       </div>
     </div>
   )

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useWho } from './App'
+import { RD } from './rd'
 import { tr } from './i18n'
 import { miniGuide } from './miniKpi'
 
@@ -65,7 +66,7 @@ const items = (): Item[] => [
     eg: tr('El 0889 en 2 líneas = 1 código y 2 corridas.') },
   { id: 'waste', group: 'prod', title: tr('Waste'),
     means: tr('Las libras de desperdicio que anotó la línea.'),
-    math: tr('La suma de lo anotado. Si el código pasó de un turno al otro, se reparte según lo que hizo cada turno.') },
+    math: tr('La suma de lo anotado. Si el código pasó de un turno al otro, se reparte según lo que hizo cada turno.') + (RD ? ' ' + tr('Lo que el cuarto anota sin código cuenta en el total del cuarto y de su turno, no en el de un código.') : '') },
   { id: 'turnos', group: 'prod', title: tr('Cómo se reparte entre los turnos'),
     means: tr('A qué turno le toca cada cosa.'),
     math: tr('Cada registro cuenta en el turno de su hora. Un código que pasó de un turno al otro cuenta en los dos, cada uno con lo suyo.') },
