@@ -3452,7 +3452,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
           {isMfo && (
             <div className="makes">
               <span className="lab">{tr('¿En qué se llena y qué lleva?')}</span>
-              <div className="seg" role="group" aria-label={tr('¿En qué se llena y qué lleva?')}>
+              <div className="seg mfoseg" role="group" aria-label={tr('¿En qué se llena y qué lleva?')}>
                 {(RD ? [...MFO_CHOICES.filter((x) => x !== 'bags'), 'carros', 'bags'] : MFO_CHOICES).map((w) => <button key={w} type="button" className={(RD ? 'rd-ch' + (w === 'platos' ? '' : ' k-' + (w === 'carros' ? 'pouches' : w)) : w === 'bags' ? 'c-blue' : kindClass('MFO', w)) + (mfoWord === w ? ' on' : '')} aria-pressed={mfoWord === w} onClick={() => setBinText(w)}>{RD && w !== 'platos' && <i className="rd-choiceico" aria-hidden="true">{w === 'bags' ? '🛍️' : w === 'lb' ? '⚖️' : w === 'copas' ? '🍨' : w === 'carros' ? '🛒' : <BinIcon />}</i>}{w === 'carros' ? tr('Pouches en carros') : RD && w === 'pouches' ? tr('Pouches en bin') : w === 'bags' ? tr('Bags') : w === 'lb' ? tr('Libras') : w === 'copas' ? tr('Copas') : w === 'pouches' ? tr('Pouches') : tr('Platos')}<small>{w === 'bags' ? tr('bags de libras (roaster)') : w === 'lb' ? tr('cada bin se pesa') : w === 'copas' ? tr('cada bin dice cuántas') : (w === 'carros' ? tr('como RTE: carro listo') : tr('cada bin dice cuántos'))}</small></button>)}
               </div>
             </div>

@@ -3667,3 +3667,14 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 .app.rd .dp-tabs .rp-tab.on{background:var(--accent);border-color:var(--accent);border-bottom-color:var(--accent);color:#fff;box-shadow:0 2px 0 #3a0d2f}
 .app.rd .dp-tabs .rp-tab.on .n{background:rgba(255,255,255,.22);color:#fff}
 @media (max-width:700px){.app.rd .dp-tabs{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px}.app.rd .dp-tabs .rp-tab{justify-content:center;padding:0 10px;font-size:14px;flex-direction:row}}
+/* MFO's six choices when a code starts (Jose, 2026-11-06, his iPhone: "muy saturado"): one row on a wide screen; on a
+   tablet standing up three a row, and on a phone two a row, each with its sign and words on one or two lines */
+@media (max-width:900px){
+  .makes .seg.mfoseg{grid-auto-flow:row;grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media (max-width:560px){
+  .makes .seg.mfoseg{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+  .makes .seg.mfoseg button{min-height:62px;padding:6px 8px;font-size:15px;line-height:1.15;white-space:normal}
+  .makes .seg.mfoseg button small{font-size:11.5px;line-height:1.2}
+  .makes .seg.mfoseg .rd-choiceico{font-size:18px}
+}
