@@ -694,7 +694,7 @@ table.pallets th.num,table.pallets td.num{text-align:right;font-variant-numeric:
   .emp > .btn,.emp > .nobtn{grid-area:btn}
 }
 /* Spiral: each code of its program in its own unit (mezclas, lb, cajas), typed with it */
-.planrow.spiral{grid-template-columns:minmax(0,1.1fr) minmax(0,.8fr) minmax(0,.9fr) minmax(0,.8fr) minmax(0,1.1fr)}
+.planrow.spiral{grid-template-columns:minmax(0,1.5fr) minmax(0,.7fr) minmax(0,.85fr) minmax(0,.7fr) minmax(0,1.15fr)}
 .planrow.spiral select{min-height:46px;padding:0 8px;border-radius:12px;border:1.5px solid var(--btn-line);background:var(--surface);font-size:15px;font-weight:600}
 /* on a phone Spiral's four boxes do not fit in one line (the Unidad select was 75 px wide and "mezclas" read "mezcl",
    review of 2026-10-19): each row wraps, code and quantity above, unit and lot under them, the labels the same way */
@@ -3635,6 +3635,27 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 .app.rd .line .rd-orderline{display:block;padding:5px 10px;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @keyframes slowblink-dark{0%,100%{background:var(--surface);border-color:#dc2626;box-shadow:0 0 0 0 rgba(220,38,38,0)}50%{background:#4a1f22;border-color:#ef4444;box-shadow:0 0 0 8px rgba(220,38,38,.25)}}
 :where(html[data-theme="dark"]) .line.slow{animation-name:slowblink-dark}
+/* ---- phones (Jose, 2026-11-06, on his iPhone: "no se ve bien ... y también hay otros lugares"): the Resumen, PPLH, KPI
+   diario, Pesos, Dashboard, Mini KPI and Pedidos were wider than the screen and cut on the right, because a box in a grid or
+   a row grows to its widest content (a table, a row of choices). Here no box grows past the screen: a wide table scrolls
+   inside its own box and a row of choices wraps to a second line. The list of rooms on top is a row that slides. ---- */
+@media (max-width:1023px){
+  .app.rd .rd-main :is(div,article,section,form,details,header,footer,main,label,fieldset,nav){min-width:0}
+  .app.rd .rd-sum,.app.rd .rd-sumleft{grid-template-columns:minmax(0,1fr)}
+  .app.rd .rd-main .scroll{overflow-x:auto;max-width:100%}
+}
+@media (max-width:760px){
+  .app.rd .rd-rangeseg{display:grid;grid-auto-flow:row;grid-template-columns:repeat(3,minmax(0,1fr));width:100%}
+  .app.rd .rd-rangeseg button{white-space:normal;line-height:1.15;padding:4px 6px}
+  .app.rd .rd-main :is(article,section,div,details):not(.scroll):not(.twrap):not(.rd-twrap)>table{display:block;overflow-x:auto;max-width:100%}
+}
+@media (max-width:520px){
+  .app.rd .rd-find{flex:0 0 44px;justify-content:center;padding:0;font-size:18px}
+  .app.rd .rd-find-t{display:none}
+}
+@media (max-width:720px){
+  .app.rd .side{position:static;align-self:stretch;max-height:none;overflow-y:hidden;overflow-x:auto}
+}
 
 /* a room's parts (En vivo, Terminados, Programa, Pedidos, On hold) as real buttons in the redesign (Jose, 2026-11-06:
    "no parece que son botones ... no lo veo tan rápido"): filled face and edge, a sign each, the one open in purple */
@@ -3658,3 +3679,15 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 .app.rd .rd-tab.on .n{background:rgba(255,255,255,.22);color:#fff}
 .app.rd .rd-tab.hot .n{background:#f59e0b;color:#fff}
 @media (max-width:700px){.app.rd .rd-tabs{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px}.app.rd .rd-tab{justify-content:center;padding:0 10px;font-size:14px}}
+
+/* MFO's six choices when a code starts (Jose, 2026-11-06, his iPhone: "muy saturado"): one row on a wide screen; on a
+   tablet standing up three a row, and on a phone two a row, each with its sign and words on one or two lines */
+@media (max-width:900px){
+  .makes .seg.mfoseg{grid-auto-flow:row;grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media (max-width:560px){
+  .makes .seg.mfoseg{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+  .makes .seg.mfoseg button{min-height:62px;padding:6px 8px;font-size:15px;line-height:1.15;white-space:normal}
+  .makes .seg.mfoseg button small{font-size:11.5px;line-height:1.2}
+  .makes .seg.mfoseg .rd-choiceico{font-size:18px}
+}
