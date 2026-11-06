@@ -1452,6 +1452,16 @@ export const shortDay = (date: string) => new Date(date + 'T12:00:00').toLocaleD
 const etaText = (eta: number, now: number) => (dayOf(eta) === dayOf(now)
   ? trx('· a este ritmo se llega a las {0}', <b>{fmtTime(eta)}</b>)
   : trx('· a este ritmo se llega el {0} a las {1}', <b>{shortDay(dayOf(eta))}</b>, <b>{fmtTime(eta)}</b>))
+/**
+ * the goal against the pace, said within the shift (Jose, 2026-11-06: Packing at 163 an hour against 7,000 read "se llega
+ * el dom, 8 nov a las 9:45 AM", two days on, past the end of the shift): when the pace gets there before the next
+ * hand-over, the hour; when not, what the shift would have by then and what would be left
+ */
+const goalReach = (eta: number, now: number, until: number, made: number, rate: number, goal: number) => {
+  if (eta <= until) return etaText(eta, now)
+  const end = Math.round(made + (rate * (until - now)) / 3_600_000)
+  return trx('· a este ritmo, al cambio de turno ({0}) llevarían unas {1}: faltarían {2}', <b>{fmtTime(until)}</b>, <b>{fmtN(end)}</b>, <b>{fmtN(Math.max(0, goal - end))}</b>)
+}
 /** "15 oct" */
 const shipText = (date: string) => new Date(date + 'T12:00:00').toLocaleDateString(locale, { day: 'numeric', month: 'short' })
 /** " · faltan 52 de 72 cajas", " · completo", or nothing when the order does not say how many cases it is for */
@@ -2086,7 +2096,7 @@ function TodayCard({ s, dept, now, mgr, date, onPeople }: { s: State; dept: Dept
             <label>{trx('{0} del turno', t.unitLabel.charAt(0).toUpperCase() + t.unitLabel.slice(1))}{mgr && <button type="button" className="lnk sm rd-goal" onClick={(e) => { e.stopPropagation(); setEditing(true) }}>{hasGoal ? tr('✎ meta') : tr('+ meta')}</button>}</label>
             <b>{fmtN(t.shiftQty)}{goal.total ? <small> / {fmtN(goal.total)}</small> : null}</b>
             {goal.total ? <div className="rd-bar"><i className={pct >= 100 ? 'ok' : ''} style={{ width: pct + '%' }} /></div> : null}
-            <small>{goal.total ? (left > 0 ? <>{trx('faltan {0}', fmtN(left))}{eta && <> · {etaText(eta, now)}</>}</> : <span className="ok-c">{tr('✓ meta cumplida')}</span>) : cfg.qty !== 'none' ? t.shiftUnits + ' ' + unitWord(t.shiftUnits) : tr('sin meta')}</small>
+            <small>{goal.total ? (left > 0 ? <>{trx('faltan {0}', fmtN(left))}{eta && <> {goalReach(eta, now, turnOf(s, date, now, dept).until, t.shiftQty, t.shiftRate ?? 0, goal.total)}</>}</> : <span className="ok-c">{tr('✓ meta cumplida')}</span>) : cfg.qty !== 'none' ? t.shiftUnits + ' ' + unitWord(t.shiftUnits) : tr('sin meta')}</small>
           </div>
           <div className={'rd-tile ' + paceCls}>
             <label>{tr('Ritmo')}</label>
@@ -2138,7 +2148,7 @@ function TodayCard({ s, dept, now, mgr, date, onPeople }: { s: State; dept: Dept
             <>
               <b>{fmtN(t.shiftQty)} <span>/ {fmtN(goal.total)} {t.unitLabel}</span></b>
               <div className="bar"><i className={pct >= 100 ? 'ok' : ''} style={{ width: pct + '%' }} /></div>
-              <small>{left > 0 ? <>{trx('faltan {0} {1}', fmtN(left), t.unitLabel)}{eta && <> · {etaText(eta, now)}</>}</> : <span className="ok">{tr('✓ cumplida')}</span>}</small>
+              <small>{left > 0 ? <>{trx('faltan {0} {1}', fmtN(left), t.unitLabel)}{eta && <> {goalReach(eta, now, turnOf(s, date, now, dept).until, t.shiftQty, t.shiftRate ?? 0, goal.total)}</>}</> : <span className="ok">{tr('✓ cumplida')}</span>}</small>
             </>
           ) : <><b>—</b><small>{mgr ? tr('sin meta del turno') : '\u00a0'}</small></>}
         </div>
@@ -3405,7 +3415,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
             <div className="lg-goal">
               <div className="lg-row"><span>{trx('Meta del turno {0} / {1}', <b>{fmtN(mine.shiftQty)}</b>, <b>{fmtN(goal.total)}</b>)} {goalUnit}</span><b className={goalPct >= 100 ? 'ok' : ''}>{goalPct}%</b></div>
               <div className="bar"><i className={goalPct >= 100 ? 'ok' : ''} style={{ width: goalPct + '%' }} /></div>
-              <div className="lg-sub">{goalLeft > 0 ? <>{trx('Faltan {0} {1}', <b>{fmtN(goalLeft)}</b>, goalUnit)}{goalEta && <> {' '}{etaText(goalEta, now)}</>}</> : <b className="ok">{tr('✓ Meta del turno cumplida')}</b>}</div>
+              <div className="lg-sub">{goalLeft > 0 ? <>{trx('Faltan {0} {1}', <b>{fmtN(goalLeft)}</b>, goalUnit)}{goalEta && mine && <> {' '}{goalReach(goalEta, now, turn.until, mine.shiftQty, mine.shiftRate ?? 0, goal.total)}</>}</> : <b className="ok">{tr('✓ Meta del turno cumplida')}</b>}</div>
             </div>
           ) : null}
           {goal.perHour ? <div className="lg-pace">{trx('Ritmo {0} {1}/h · meta {2}', <b className={linePaceCls}>{mine.shiftRate != null ? fmtN(mine.shiftRate) : '—'}</b>, goalUnit, <b>{fmtN(goal.perHour)}</b>)}{linePace != null && <> · <span className={linePaceCls}>{linePace >= 1 ? tr('al ritmo de la meta') : tr('por debajo de la meta')}</span></>}</div> : null}

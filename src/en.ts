@@ -4141,4 +4141,5 @@ export const EN: Record<string, string> = {
   "Escribe y escoge un nombre": "Type and pick a name",
   "Sugerencias": "Suggestions",
   "Ninguna cuenta se llama así. Revisa cómo está escrito en Ajustes › Empleados.": "No account has that name. Check how it is written in Settings › Employees.",
+  "· a este ritmo, al cambio de turno ({0}) llevarían unas {1}: faltarían {2}": "· at this pace, at the shift change ({0}) they would have about {1}: {2} short",
 }
