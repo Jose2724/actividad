@@ -8,6 +8,7 @@ import { cookYields, hoursOf, seesLabor, weightsOf, wtCompliance, wtCountText, w
 import { attendanceOf, attLineText, attMovesText, attOf, attShifts, attStateText } from './store'
 import { awayDay, byLineName, COOKS, consumeDelete, consumeEdit, consumesOf, inventoryOf, type ConsumeEntry, stepText, weightEdit, weightPaperAdd, weightsFix, weightTarget, wtKindsOf, wtOdd, wtPaperAt, wtPaperLines, wtPicksCode, type Cook, type Dept as RoomDept, type WeightTest, type WtEntry } from './store'
 import { MINI_WEEKS, miniBook, miniSimple, miniSpan, miniTables, miniWeek } from './miniKpi'
+import { MiniTrend } from './MiniTrend'
 import { PplhView, RangePick } from './PplhView'
 import { DashView } from './DashView'
 import { WtCharts } from './WtCharts'
@@ -2068,6 +2069,7 @@ function MiniKpiView({ k }: { k: Kit }) {
         </div>
         {bringing && <p className="hint">{tr('Se están trayendo las semanas anteriores del servidor. El Excel sale al instante con la semana de arriba; las semanas anteriores entran al Resumen cuando ya estén.')}</p>}
         {failed > 0 && <p className="hint red">{tr('No se pudieron traer {0} días del servidor: esas semanas salen vacías en el Excel. Vuelve a abrir esta pestaña cuando haya señal.', failed)}</p>}
+        {!full && <MiniTrend week={week} />}
         {!full && <div className="rd-minirooms">{miniSimple(week).map((b) => (
           <article key={b.dept} className="rd-miniroom" style={deptVars(b.dept)}>
             <h3><i aria-hidden="true">{DEPT_LOOK[b.dept].emoji}</i>{b.dept}</h3>

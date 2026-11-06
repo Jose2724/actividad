@@ -1672,3 +1672,27 @@ html:where([data-theme="dark"]),:where(html[data-theme="dark"]) body{background:
 :where(html[data-theme="dark"]) .app.rd .settings:not(.bare) .setcard{border-radius:14px}
 @media (max-width:720px){:where(html[data-theme="dark"]) .app.rd .settings:not(.bare)>.rd-setnav{border-right:0;border-bottom:0;border-radius:16px}}
 @media (max-width:720px){:where(html[data-theme="dark"]) .rd-setback{border-radius:10px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink)}}
+:where(html[data-theme="dark"]) .rd-trend-chip{border-radius:99px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink)}
+:where(html[data-theme="dark"]) .rd-trend-chip:hover{border-color:var(--d)}
+:where(html[data-theme="dark"]) .rd-trend-chip b{color:var(--muted)}
+:where(html[data-theme="dark"]) .rd-trend-chip b.up{color:var(--ok)}
+:where(html[data-theme="dark"]) .rd-trend-chip b.down{color:var(--amber)}
+:where(html[data-theme="dark"]) .rd-trend-key{fill:var(--d);stroke:var(--surface)}
+:where(html[data-theme="dark"]) .rd-trend-key .ring{fill:var(--surface);stroke:var(--d)}
+:where(html[data-theme="dark"]) .rd-trend-good{fill:var(--ok)}
+:where(html[data-theme="dark"]) .rd-trend-grid line{stroke:var(--line)}
+:where(html[data-theme="dark"]) .rd-trend-grid text,:where(html[data-theme="dark"]) .rd-trend-day{fill:var(--muted)}
+:where(html[data-theme="dark"]) .rd-trend-day.on{fill:var(--ink)}
+:where(html[data-theme="dark"]) .rd-trend-ref{stroke:var(--ok)}
+:where(html[data-theme="dark"]) .rd-trend-reflab{fill:var(--ok)}
+:where(html[data-theme="dark"]) .rd-trend-side{fill:var(--muted)}
+:where(html[data-theme="dark"]) .rd-trend-side.up{fill:var(--ok)}
+:where(html[data-theme="dark"]) .rd-trend-cross{stroke:var(--muted)}
+:where(html[data-theme="dark"]) .rd-trend-line path{fill:none;stroke:var(--d)}
+:where(html[data-theme="dark"]) .rd-trend-line>:not(path){fill:var(--d);stroke:var(--surface)}
+:where(html[data-theme="dark"]) .rd-trend-line .ring{fill:var(--surface);stroke:var(--d)}
+:where(html[data-theme="dark"]) .rd-trend-end{fill:var(--ink)}
+:where(html[data-theme="dark"]) .rd-trend-hit{fill:transparent}
+:where(html[data-theme="dark"]) .rd-trend-tip{border-radius:12px;background:var(--surface);border:1px solid var(--line);box-shadow:0 8px 24px rgba(0,0,0,.25)}
+:where(html[data-theme="dark"]) .rd-trend-tip .row small{color:var(--muted)}
+@media (max-width:560px){:where(html[data-theme="dark"]) .rd-trend-tip{box-shadow:none;background:var(--bg)}}
