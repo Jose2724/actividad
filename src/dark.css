@@ -1813,3 +1813,9 @@ html:where([data-theme="dark"]),:where(html[data-theme="dark"]) body{background:
 :where(html[data-theme="dark"]) .rd-urgtbl .left{color:#f09e9e}
 :where(html[data-theme="dark"]) .rd-urgtbl .note{color:var(--muted)}
 :where(html[data-theme="dark"]) .app.rd .line .rd-carried small{color:var(--muted)}
+:where(html[data-theme="dark"]) .app.rd .dp-tabs{border-bottom:0}
+:where(html[data-theme="dark"]) .app.rd .dp-tabs .rp-tab{border-radius:12px;border:1.5px solid var(--btn-line);border-bottom:1.5px solid var(--btn-line);background:var(--btn);box-shadow:0 2px 0 var(--btn-edge);color:var(--ink)}
+:where(html[data-theme="dark"]) .app.rd .dp-tabs .rp-tab:hover{border-color:var(--accent-line)}
+:where(html[data-theme="dark"]) .app.rd .dp-tabs .rp-tab .n{background:var(--surface);color:var(--ink)}
+:where(html[data-theme="dark"]) .app.rd .dp-tabs .rp-tab.on{background:var(--accent);border-color:var(--accent-line);border-bottom-color:var(--accent-line);color:#fff;box-shadow:0 2px 0 #8f5bbf}
+:where(html[data-theme="dark"]) .app.rd .dp-tabs .rp-tab.on .n{background:rgba(255,255,255,.22);color:#fff}
