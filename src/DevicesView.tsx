@@ -29,7 +29,7 @@ export function Devices({ now }: { now: number }) {
       {missing && <p className="hint red">{tr('Falta ejecutar en Supabase el SQL de la tabla de tablets (013_tablets.sql).')}</p>}
       {helloState().error && <p className="hint red">{tr('Este aparato no ha podido avisar: {0}', helloState().error)}</p>}
       {err && !missing && <p className="hint red">{err}</p>}
-      {rows && rows.length === 0 && !err && <p className="hint">{tr('Ningún aparato ha avisado todavía. Avisan en cuanto abren esta versión de la app.')}</p>}
+      {rows && rows.length === 0 && !err && <p className="hint st">{tr('Ningún aparato ha avisado todavía. Avisan en cuanto abren esta versión de la app.')}</p>}
       {rows && rows.length > 0 && (
         <div className="twrap">
           <table className="devtable">

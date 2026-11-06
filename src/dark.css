@@ -1661,3 +1661,11 @@ html:where([data-theme="dark"]),:where(html[data-theme="dark"]) body{background:
 :where(html[data-theme="dark"]) .app.rd .rd-avance .heads .made label{color:var(--d-ink,var(--muted))}
 :where(html[data-theme="dark"]) .app.rd .rd-avance .heads .made b{color:var(--ink)}
 :where(html[data-theme="dark"]) .app.rd .rd-avance .heads .made small{color:var(--muted)}
+:where(html[data-theme="dark"]) .app.rd .settings:not(.bare)>.rd-setnav{border-radius:16px 0 0 16px}
+:where(html[data-theme="dark"]) .rd-seticon{border-radius:10px;background:var(--bg)}
+:where(html[data-theme="dark"]) .rd-setitem.on .rd-seticon{background:var(--accent);box-shadow:0 2px 0 rgba(0,0,0,.18)}
+:where(html[data-theme="dark"]) .rd-setitem:hover:not(.on){background:var(--bg)}
+:where(html[data-theme="dark"]) .rd-setgo{color:var(--muted)}
+:where(html[data-theme="dark"]) .app.rd .settings:not(.bare) .setcard{border-radius:14px}
+@media (max-width:720px){:where(html[data-theme="dark"]) .app.rd .settings:not(.bare)>.rd-setnav{border-right:0;border-bottom:0;border-radius:16px}}
+@media (max-width:720px){:where(html[data-theme="dark"]) .rd-setback{border-radius:10px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink)}}

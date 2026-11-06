@@ -3290,3 +3290,61 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 @media (max-width:620px){.rd-lttiles{grid-template-columns:repeat(2,minmax(0,1fr))}.rd-avadd{margin-left:0}}
 .rd-lttiles .rd-tile b.txt{font-size:18px}
 .rd-avrow .rd-searchin{width:240px;flex:0 1 240px}.rd-avadd input{flex:0 1 170px}
+/* ---- Ajustes in the redesign (2026-11-06, Jose: "Sí, Ajustes"): a sign and few words per section, the menu stays in
+   sight, one bar per section with ⓘ for the explanations (they stay folded until asked), a phone shows the list first ---- */
+.app.rd .settings:not(.bare){overflow:clip;align-items:flex-start}
+.app.rd .settings:not(.bare)>.rd-setnav{position:sticky;top:calc(var(--topH) + 8px);max-height:calc(100dvh - var(--topH) - 16px);overflow-y:auto;width:250px;align-self:flex-start;border-radius:16px 0 0 16px}
+.rd-setitem{grid-template-columns:34px minmax(0,1fr) auto;align-items:center;column-gap:10px;min-height:52px;padding:7px 10px}
+.rd-seticon{width:34px;height:34px;display:grid;place-items:center;border-radius:10px;background:var(--bg);font-size:18px;line-height:1}
+.rd-setitem.on .rd-seticon{background:var(--accent);box-shadow:0 2px 0 rgba(0,0,0,.18)}
+.rd-settext{display:grid;gap:1px;min-width:0}
+.rd-settext b,.rd-settext small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rd-setitem:hover:not(.on){background:var(--bg)}
+.rd-setgo{display:none;color:var(--muted);font-size:22px;font-weight:700;line-height:1}
+.rd-setbar{padding:2px 0 4px}
+.rd-setbar .rd-why{margin-left:0}
+.rd-setback{display:none}
+.app.rd .settings:not(.bare) .setpane:not(.why) .hint:not(.ok,.red,.amber,.st):not(.dlg *){display:none}
+.app.rd .settings:not(.bare) .setpane{padding:18px 20px}
+.app.rd .settings:not(.bare) .setcard{border-radius:14px;padding:14px 18px}
+@media (max-width:720px){
+  .app.rd .settings:not(.bare){flex-direction:column;align-items:stretch}
+  .app.rd .settings:not(.bare)>.rd-setnav{position:static;max-height:none;width:auto;flex-direction:column;overflow:visible;border-right:0;border-bottom:0;border-radius:16px;padding:12px}
+  .app.rd .rd-setnav .rd-setitem{min-height:56px}
+  .app.rd .rd-setnav .rd-setitem small{display:block}
+  .rd-setgo{display:block}
+  .app.rd .settings.rd-atlist>.setpane{display:none}
+  .app.rd .settings.rd-atsec>.rd-setnav{display:none}
+  .rd-setback{display:inline-flex;align-items:center;min-height:40px;padding:0 12px;border-radius:10px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink);font-weight:700;font-size:15px}
+  .rd-setbar{flex-wrap:nowrap}
+  .rd-setbar .rd-wttitle{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+  .app.rd .settings:not(.bare) .setpane{padding:12px}
+}
+.app.rd .settings:not(.bare) .setcard>*,.app.rd .settings:not(.bare) .kpi-plan>*{min-width:0}
+.app.rd .settings:not(.bare) .setcard .scroll{overflow-x:auto;max-width:100%}
+.rd-find{min-width:0}
+@media (max-width:720px){
+  .app.rd .settings:not(.bare)>.rd-setnav{align-self:stretch}
+}
+/* the weighing table as one small card per code where the pane is narrow (phone, tablet) */
+.app.rd .settings:not(.bare) .setpane{container-type:inline-size;container-name:setpane}
+@container setpane (max-width:780px){
+  .app.rd table.kpi-set thead{display:none}
+  .app.rd table.kpi-set,.app.rd table.kpi-set tbody{display:block}
+  .app.rd table.kpi-set tr{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:8px;align-items:end;padding:10px 0;border-top:1px solid var(--line)}
+  .app.rd table.kpi-set td{display:grid;gap:4px;padding:0;border:0;min-width:0}
+  .app.rd table.kpi-set td[data-l]::before{content:attr(data-l);font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .app.rd table.kpi-set td input{width:100%;min-width:0}
+  .app.rd table.kpi-set td.kinds{grid-column:1/-1;grid-row:2}
+  .app.rd table.kpi-set td[data-l]::before{white-space:normal;line-height:1.15}
+}
+@media (max-width:720px){
+  .app.rd .settings:not(.bare) .twrap table th,.app.rd .settings:not(.bare) .twrap table td{padding:8px 6px;font-size:14px;white-space:normal}
+  .app.rd .settings:not(.bare) table.att-set td small{display:none}
+  .app.rd .settings:not(.bare) table.att-set input{width:64px}
+}
+.app.rd .rd-setparts{display:flex;flex-wrap:wrap;width:fit-content;max-width:100%;justify-self:start}
+@media (max-width:720px){
+  .app.rd .rd-setparts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));width:100%}
+  .app.rd .rd-setparts button{white-space:normal;line-height:1.15;min-height:44px;padding:4px 6px;justify-content:center;text-align:center}
+}

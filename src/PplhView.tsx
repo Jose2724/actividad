@@ -272,7 +272,7 @@ function PplhAccess({ s }: { s: State }) {
       {RD ? <p className="hint">{tr('Tú y estos nombres (como salen en su cuenta).')}</p> : <p className="hint">{tr('Tú siempre. Además, los nombres de esta lista, escritos como sale su nombre en su cuenta (Ajustes › Empleados). Nadie más la ve.')}</p>}
       <ul>{names.map((n) => <li key={n}>{n} <button type="button" className="lnk sm" onClick={() => setPplhNames(names.filter((x) => x !== n))}>{tr('Quitar')}</button></li>)}</ul>
       <form className="btns" onSubmit={(e) => { e.preventDefault(); const t = name.trim(); if (t && !names.includes(t)) setPplhNames([...names, t]); setName('') }}>
-        <input value={name} maxLength={60} placeholder={tr('Nombre, por ejemplo Edgar Carhuapoma')} onChange={(e) => setName(e.target.value)} aria-label={tr('Nombre')} />
+        <input value={name} maxLength={60} placeholder={tr('Nombre, por ejemplo Ana Torres')} onChange={(e) => setName(e.target.value)} aria-label={tr('Nombre')} />
         <button type="submit" className="btn sm primary" disabled={!name.trim()}>{tr('Agregar')}</button>
       </form>
     </article>

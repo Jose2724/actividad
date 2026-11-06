@@ -34,13 +34,23 @@ const fmtN = (x: number) => Math.round(x).toLocaleString('en-US')
 /** the redesign's groups of Ajustes, in their order: what is used every day first, the technical last */
 export const SETTINGS_GROUPS: { title: string; keys: SettingsKey[] }[] = [
   { title: tr('Planta y turnos'), keys: ['shifts', 'day', 'lines'] },
-  { title: tr('Producción'), keys: ['stops', 'weights', 'consumo', 'products', 'goals'] },
+  { title: tr('Producción'), keys: ['stops', 'weights', 'consumo'] },
   { title: tr('Calidad'), keys: ['kpi'] },
   { title: tr('Personas'), keys: ['people', 'attendance'] },
   { title: tr('Indicadores'), keys: ['mini'] },
   { title: tr('Funciones en prueba'), keys: ['program'] },
   { title: tr('Aparatos'), keys: ['devices', 'device'] },
 ]
+/** the redesign's sign and few words for each section (Jose, 2026-11-06: "que se entienda solo y rápido") */
+const SET_ICON: Record<SettingsKey, string> = { shifts: '🕐', day: '📅', lines: '🏭', stops: '⏸️', mini: '📊', program: '🧪', attendance: '🙋', weights: '🐢', kpi: '⚖️', consumo: '🥩', products: '📦', goals: '🎯', people: '👥', devices: '📱', device: '💻' }
+const SET_SHORT: Partial<Record<SettingsKey, string>> = { shifts: tr('horas y semana'), day: tr('fecha y lote'), lines: tr('de cada cuarto'), stops: tr('reglas y códigos'), mini: tr('medidas de la semana'), program: tr('solo tú o todos'), attendance: tr('quiénes y cuántos'), weights: tr('línea lenta'), kpi: tr('pesos de QA'), consumo: tr('pesar las mezclas'), people: tr('cuentas y permisos'), devices: tr('qué aparato está en qué'), device: tr('idioma, versión, salir') }
+
+/** the long sections, one part at a time in the redesign (Jose, 2026-11-06: "pantalla corta y dividir cosas") */
+const SET_PARTS: Partial<Record<SettingsKey, [string, string][]>> = {
+  kpi: [['what', '⚖️ ' + tr('Qué se pesa')], ['must', '⏰ ' + tr('Peso obligatorio')], ['target', '🎯 ' + tr('Peso objetivo')]],
+  attendance: [['on', '🔘 ' + tr('Qué se usa')], ['list', '📋 ' + tr('Lista de empleados')], ['exp', '🙋 ' + tr('Personas esperadas')]],
+}
+
 export function settingsSections(can: (p: 'shifts' | 'day' | 'products' | 'goals' | 'people') => boolean, mgr: boolean, viewOnly: boolean, admin = false, attOn = false): { key: SettingsKey; title: string; sub: string }[] {
   return [
     ...(can('shifts') ? [{ key: 'shifts' as const, title: tr('Turnos y calendario'), sub: tr('horas, semana, días aparte') }] : []),
@@ -65,17 +75,40 @@ export function settingsSections(can: (p: 'shifts' | 'day' | 'products' | 'goals
 export function Settings({ s, now, day, name, home, mgr, admin, viewOnly, meId, section, onSection, onLeave, bare }: { bare?: boolean; s: State; now: number; day: WorkDay; name: string; home: Dept; mgr: boolean; admin: boolean; viewOnly: boolean; meId: string; section: SettingsKey; onSection: (k: SettingsKey) => void; onLeave: () => void }) {
   const can = useCan()
   const items = settingsSections(can, mgr, viewOnly, admin, s.attView.on)
-  const sec: SettingsKey = items.some((i) => i.key === section) ? section : items[0].key
+  // (in the redesign Productos and Metas are in Planeación: Ajustes opens its first section instead)
+  const inNav = (k: SettingsKey) => items.some((i) => i.key === k) && (!RD || !!bare || SETTINGS_GROUPS.some((g) => g.keys.includes(k)))
+  const sec: SettingsKey = inNav(section) ? section : (items.find((i) => inNav(i.key)) ?? items[0]).key
+  const here = items.find((i) => i.key === sec)
+  // the explanations behind ⓘ, remembered on the device; on a phone, the list first and one section at a time
+  const [why, setWhy] = useState(() => { try { return localStorage.getItem('act_set_why') === '1' } catch { return false } })
+  const flipWhy = () => { setWhy(!why); try { localStorage.setItem('act_set_why', why ? '0' : '1') } catch { /* nothing */ } }
+  const [atList, setAtList] = useState(true)
+  const [parts, setParts] = useState<Partial<Record<SettingsKey, string>>>({})
+  const partList = RD && !bare ? SET_PARTS[sec] : undefined
+  const part = partList ? (parts[sec] ?? partList[0][0]) : undefined
+  const pick = (k: SettingsKey) => { onSection(k); setAtList(false); try { window.scrollTo({ top: 0 }) } catch { /* nothing */ } }
   // Planeación › Productos in the redesign: one part at a time (Jose, 2026-11-06: "pantalla corta y dividir cosas")
   const [prodPart, setProdPart] = useState<'prod' | 'po' | 'crates' | 'lb'>('prod')
   const pp = (k: typeof prodPart) => !RD || prodPart === k
   return (
-    <div className={'settings' + (bare ? ' bare' : '')}>
-      {bare ? null : RD ? <GroupedNav items={items} sec={sec} onSection={onSection} /> : (
+    <div className={'settings' + (bare ? ' bare' : '') + (RD && !bare ? (atList ? ' rd-atlist' : ' rd-atsec') : '')}>
+      {bare ? null : RD ? <GroupedNav items={items} sec={sec} onSection={pick} /> : (
       <nav className="setnav" aria-label={tr('Ajustes')}>
         {items.map((it) => <button key={it.key} type="button" className={'setitem' + (sec === it.key ? ' on' : '')} aria-pressed={sec === it.key} onClick={() => onSection(it.key)}><b>{it.title}</b><small>{it.sub}</small></button>)}
       </nav>)}
-      <section className="setpane">
+      <section className={'setpane' + (why ? ' why' : '')}>
+        {RD && !bare && here && (
+          <div className="rd-wtbar rd-setbar">
+            <button type="button" className="rd-setback" onClick={() => setAtList(true)} aria-label={tr('Ajustes')}>‹ {tr('Ajustes')}</button>
+            <h2 className="rd-wttitle">{SET_ICON[sec]} {here.title}</h2>
+            <button type="button" className={'rd-why' + (why ? ' on' : '')} aria-expanded={why} aria-label={tr('¿Qué es esto?')} title={tr('¿Qué es esto?')} onClick={flipWhy}>ⓘ</button>
+          </div>
+        )}
+        {partList && (
+          <div className="seg rd-rangeseg rd-setparts" role="group" aria-label={here?.title}>
+            {partList.map(([k, label]) => <button key={k} type="button" className={part === k ? 'on' : ''} aria-pressed={part === k} onClick={() => setParts({ ...parts, [sec]: k })}>{label}</button>)}
+          </div>
+        )}
         {sec === 'shifts' && <ShiftsSettings s={s} day={day} />}
         {sec === 'day' && <DaySettings s={s} now={now} day={day} />}
         {sec === 'lines' && <LinesSettings s={s} />}
@@ -84,9 +117,9 @@ export function Settings({ s, now, day, name, home, mgr, admin, viewOnly, meId, 
         {sec === 'stops' && <StopCodesSettings s={s} viewOnly={viewOnly} />}
         {sec === 'program' && <><ProgramViewSettings s={s} /><ViewOptSettings s={s} name="lotes" /><ViewOptSettings s={s} name="flujo" /></>}
         {sec === 'weights' && <SlowSettings s={s} viewOnly={viewOnly} />}
-        {sec === 'kpi' && <KpiSettings s={s} viewOnly={viewOnly} />}
+        {sec === 'kpi' && <KpiSettings s={s} viewOnly={viewOnly} part={part} />}
         {sec === 'consumo' && <ConsumeSettings s={s} viewOnly={viewOnly} />}
-        {sec === 'attendance' && <AttendanceSettings s={s} date={day.date} viewOnly={viewOnly} admin={admin} name={name} />}
+        {sec === 'attendance' && <AttendanceSettings s={s} date={day.date} viewOnly={viewOnly} admin={admin} name={name} part={part} />}
         {sec === 'products' && RD && (
           <div className="rd-wtbar">
             <h2 className="rd-wttitle">📦 {tr('Productos')}</h2>
@@ -148,7 +181,7 @@ function ShiftsSettings({ s, day }: { s: State; day: WorkDay }) {
           </div>
         </div>
         {said && <p className="hint ok">{said}</p>}
-        {apart.length === 0 ? <p className="hint">{tr('Ningún día aparte: todos van como su semana.')}</p> : apart.map((x) => (
+        {apart.length === 0 ? <p className="hint st">{tr('Ningún día aparte: todos van como su semana.')}</p> : apart.map((x) => (
           <div key={x.date} className="setrow">
             <span><b>{longDate(x.date)}</b> · {dayShiftsText(x.only)}</span>
             <button type="button" className="lnk" onClick={() => { if (setDayShifts(x.date, null)) setSaid(tr('✓ {0}: {1}', longDate(x.date), tr('como su semana'))) }}>{tr('Quitar')}</button>
@@ -351,7 +384,7 @@ function RosterCard({ s, viewOnly }: { s: State; viewOnly: boolean }) {
         <div className="roster-paste">
           <p className="hint">{tr('Copia de Excel las filas de la lista (Employee List) y pégalas aquí. Reemplaza la lista del turno que traigan: el número del área dice el turno (RTE2-ER es Turno 2).')}</p>
           <textarea rows={8} value={text} aria-label={tr('Pega aquí la lista')} placeholder={tr('Pega aquí la lista')} onChange={(e) => setText(e.target.value)} />
-          {parsed && <p className="hint">{tr('Se leyeron {0} del Turno 1 y {1} del Turno 2.', n1, n2)}</p>}
+          {parsed && <p className="hint st">{tr('Se leyeron {0} del Turno 1 y {1} del Turno 2.', n1, n2)}</p>}
           {!!parsed?.bad.length && <p className="hint red">{tr('Sin área, no se guardan: {0}', parsed.bad.slice(0, 5).join(', '))}</p>}
           <div className="btns"><button type="button" className="btn" onClick={() => { setPasting(false); setText('') }}>{tr('Cancelar')}</button><button type="button" className="btn primary" disabled={!n1 && !n2} onClick={save}>{tr('✓ Guardar la lista')}</button></div>
         </div>
@@ -360,7 +393,8 @@ function RosterCard({ s, viewOnly }: { s: State; viewOnly: boolean }) {
   )
 }
 
-function AttendanceSettings({ s, date, viewOnly, admin, name }: { s: State; date: string; viewOnly: boolean; admin: boolean; name: string }) {
+function AttendanceSettings({ s, date, viewOnly, admin, name, part }: { s: State; date: string; viewOnly: boolean; admin: boolean; name: string; part?: string }) {
+  const P = (k: string) => !part || part === k
   const [asking, setAsking] = useState(false)
   const now = (d: Dept, k: 1 | 2) => String(attExpectedOf(s, d, k))
   const [typed, setTyped] = useState<Record<string, string>>({})
@@ -376,7 +410,7 @@ function AttendanceSettings({ s, date, viewOnly, admin, name }: { s: State; date
   const [gateAsk, setGateAsk] = useState(false)
   return (
     <>
-    {admin && (
+    {admin && P('on') && (
       <div className="setcard">
         <div className="sethead"><h3>{tr('Asistencia')}</h3><span className={'rc-state' + (on ? ' on' : '')}>{on ? tr('Para todos') : tr('Solo tú')}</span></div>
         <label className="switch"><span>{tr('Que todos vean la asistencia')}</span><input type="checkbox" role="switch" checked={on} onChange={(e) => (e.target.checked ? setAsking(true) : setAttView(false))} /></label>
@@ -384,20 +418,20 @@ function AttendanceSettings({ s, date, viewOnly, admin, name }: { s: State; date
         <p className="hint">{tr('Prendido: cada supervisor anota a su gente en su cuarto, y el reporte la muestra a todos.')}</p>
       </div>
     )}
-    {on && (
+    {on && P('on') && (
       <div className="setcard">
         <div className="sethead"><h3>{tr('Asistencia obligatoria para empezar')}</h3><span className={'rc-state' + (gate ? ' on' : '')}>{gate ? tr('Prendida') : tr('Apagada')}</span></div>
         <label className="switch"><span>{tr('Que anoten la asistencia antes de empezar')}</span><input type="checkbox" role="switch" checked={gate} disabled={viewOnly} onChange={(e) => (e.target.checked ? setGateAsk(true) : setAttGate(false))} /></label>
         <p className="hint">{tr('Prendida: en todos los cuartos, el supervisor o líder tiene que anotarse como supervisor del turno y anotar a su gente antes de poder empezar un código o un Set up; al tocar Empezar se abre la ventana de asistencia. Cada turno anota la suya. No aplica a managers, oficina ni "Solo ver".')}</p>
       </div>
     )}
-    {admin && <LaborAccess s={s} />}
-    {seesLabor(s, admin, name) && <AttWriteSettings s={s} readOnly={viewOnly} />}
-    {seesLabor(s, admin, name) && <LunchSettings s={s} readOnly={viewOnly} />}
+    {admin && P('on') && <LaborAccess s={s} />}
+    {seesLabor(s, admin, name) && P('on') && <AttWriteSettings s={s} readOnly={viewOnly} />}
+    {seesLabor(s, admin, name) && P('on') && <LunchSettings s={s} readOnly={viewOnly} />}
     {gateAsk && <ConfirmDialog title={tr('¿Asistencia obligatoria para empezar?')} text={tr('Desde ahora, en todos los cuartos, ningún supervisor puede empezar un código ni un Set up sin haberse anotado como supervisor del turno en la asistencia. Se puede apagar aquí mismo cuando quieras.')} yes={tr('Prender')} onYes={() => { setAttGate(true); setGateAsk(false) }} onNo={() => setGateAsk(false)} />}
     {asking && <ConfirmDialog title={tr('¿Que todos vean la asistencia?')} text={tr('Desde ahora la tarjeta de asistencia sale en el piso de todos los cuartos, y en el reporte y sus archivos. Se puede apagar aquí mismo cuando quieras.')} yes={tr('Prender para todos')} onYes={() => { setAttView(true); setAsking(false) }} onNo={() => setAsking(false)} />}
-    <RosterCard s={s} viewOnly={viewOnly} />
-    <div className="setcard">
+    {P('list') && <RosterCard s={s} viewOnly={viewOnly} />}
+    {P('exp') && <div className="setcard">
       <div className="sethead"><h3>{tr('Asistencia · personas esperadas')}</h3></div>
       <p className="hint">{tr('Cuántas personas espera cada cuarto en cada turno. Con esto la tarjeta de asistencia del piso y el reporte sacan el % de faltas. Se quedan así hasta que alguien las cambie otra vez.')}</p>
       <div className="twrap">
@@ -414,10 +448,10 @@ function AttendanceSettings({ s, date, viewOnly, admin, name }: { s: State; date
           <tfoot><tr><td>{tr('TOTAL')}</td><td className="num">{total(1)}</td><td className="num">{total(2)}</td></tr></tfoot>
         </table>
       </div>
-      {one && <p className="hint">{tr('Hoy trabaja un solo turno: cuenta el número de ese turno.')}</p>}
+      {one && <p className="hint st">{tr('Hoy trabaja un solo turno: cuenta el número de ese turno.')}</p>}
       {saved && !changed.length && <p className="hint ok">{tr('✓ Guardado: ya lo ven todas las tablets.')}</p>}
       {!viewOnly && <div className="btns"><button type="button" className="btn" disabled={!changed.length} onClick={() => setTyped({})}>{tr('Deshacer cambios')}</button><button type="button" className="btn primary" disabled={!changed.length} onClick={save}>{!changed.length ? tr('✓ Guardar') : changed.length === 1 ? tr('✓ Guardar 1 cambio') : tr('✓ Guardar {0} cambios', changed.length)}</button></div>}
-    </div>
+    </div>}
     </>
   )
 }
@@ -439,7 +473,7 @@ function LaborAccess({ s }: { s: State }) {
         <>
           <ul>{a.names.map((n) => <li key={n}>{n} <button type="button" className="lnk sm" onClick={() => save(false, a.names.filter((x) => x !== n))}>{tr('Quitar')}</button></li>)}</ul>
           <form className="btns" onSubmit={(e) => { e.preventDefault(); const t = name.trim(); if (t && !a.names.includes(t)) save(false, [...a.names, t]); setName('') }}>
-            <input value={name} maxLength={60} placeholder={tr('Nombre, por ejemplo Edgar Carhuapoma')} onChange={(e) => setName(e.target.value)} aria-label={tr('Nombre')} />
+            <input value={name} maxLength={60} placeholder={tr('Nombre, por ejemplo Ana Torres')} onChange={(e) => setName(e.target.value)} aria-label={tr('Nombre')} />
             <button type="submit" className="btn sm primary" disabled={!name.trim()}>{tr('Agregar')}</button>
           </form>
         </>
@@ -826,21 +860,22 @@ function SlowRoom({ s, dept, viewOnly }: { s: State; dept: Dept; viewOnly: boole
  * weighs every hour (which codes, every how many minutes, how many each time) and the target of each code, as QA says
  * it (minimum and maximum), over QA's sheet. A manager changes them; whoever only looks sees them
  */
-function KpiSettings({ s, viewOnly }: { s: State; viewOnly: boolean }) {
+function KpiSettings({ s, viewOnly, part }: { s: State; viewOnly: boolean; part?: string }) {
   const rooms: { dept: Dept; what: string }[] = [{ dept: 'Spiral', what: tr('bolas, en Spiral y en Racks') }, { dept: 'RTE', what: tr('pouches') }, { dept: 'Kitchen', what: tr('bolas') }]
+  const P = (k: string) => !part || part === k
   return (
     <>
-      <div className="setcard wide">
+      {P('what') && <div className="setcard wide">
         <div className="sethead"><h3>{tr('Qué se pesa cada hora')}</h3></div>
         <p className="hint">{tr('Por cuarto: los códigos que se pesan, si se pesa crudo o cocinado, cada cuántos minutos sale el aviso y cuántos se pesan cada vez. Lo que corre con otro código no pide pesar (el botón ⚖ Peso sigue ahí). Con 0 minutos no sale aviso. El KPI cuenta las pruebas que tocaban con esto.')}</p>
         {rooms.map((r) => <WeighPlan key={r.dept} s={s} dept={r.dept} what={r.what} ro={viewOnly} />)}
-      </div>
-      <div className="setcard wide">
+      </div>}
+      {P('must') && <div className="setcard wide">
         <div className="sethead"><h3>{tr('Peso obligatorio')}</h3></div>
         <p className="hint">{tr('Prendido en un cuarto: cuando su código lleva corriendo el tiempo de arriba, sale una ventana en el medio de la tablet y no deja hacer otra cosa hasta terminar los pesos. Solo a los operadores. Con la línea parada o en Set up no pide nada, y la ventana deja parar la línea. Si a un cuarto se le complica, se apaga aquí y se quita al momento.')}</p>
         {rooms.map((r) => <WeighMust key={r.dept} s={s} dept={r.dept} ro={viewOnly} />)}
-      </div>
-      <TargetsCard s={s} ro={viewOnly} />
+      </div>}
+      {P('target') && <TargetsCard s={s} ro={viewOnly} />}
     </>
   )
 }
@@ -905,11 +940,11 @@ function WeighPlan({ s, dept, what, ro }: { s: State; dept: Dept; what: string; 
             <thead><tr><th>{tr('Código')}</th><th>{tr('Qué se pesa')}</th><th>{tr('Aviso cada (min)')}</th><th>{tr('Cuántos cada vez')}</th>{!ro && <th />}</tr></thead>
             <tbody>{rows.map((r, i) => (
               <tr key={i}>
-                <td><input value={r.code} disabled={ro} placeholder="0889" aria-label={tr('Código')} onChange={(e) => put(i, 'code', e.target.value)} /></td>
-                <td><KindChips dept={dept} kinds={r.kinds} ro={ro} onChange={(k) => putKinds(i, k)} /></td>
-                <td><input inputMode="numeric" value={r.every} disabled={ro} aria-label={tr('Aviso cada (min)')} onChange={(e) => put(i, 'every', e.target.value)} /></td>
-                <td><input inputMode="numeric" value={r.count} disabled={ro} aria-label={tr('Cuántos cada vez')} onChange={(e) => put(i, 'count', e.target.value)} /></td>
-                {!ro && <td><button type="button" className="btn xs" aria-label={tr('Quitar')} onClick={() => setRows(rows.filter((_, j) => j !== i))}>✕</button></td>}
+                <td data-l={tr('Código')}><input value={r.code} disabled={ro} placeholder="0889" aria-label={tr('Código')} onChange={(e) => put(i, 'code', e.target.value)} /></td>
+                <td className="kinds"><KindChips dept={dept} kinds={r.kinds} ro={ro} onChange={(k) => putKinds(i, k)} /></td>
+                <td data-l={tr('Aviso cada (min)')}><input inputMode="numeric" value={r.every} disabled={ro} aria-label={tr('Aviso cada (min)')} onChange={(e) => put(i, 'every', e.target.value)} /></td>
+                <td data-l={tr('Cuántos cada vez')}><input inputMode="numeric" value={r.count} disabled={ro} aria-label={tr('Cuántos cada vez')} onChange={(e) => put(i, 'count', e.target.value)} /></td>
+                {!ro && <td className="x"><button type="button" className="btn xs" aria-label={tr('Quitar')} onClick={() => setRows(rows.filter((_, j) => j !== i))}>✕</button></td>}
               </tr>
             ))}</tbody>
           </table></div>
@@ -988,7 +1023,7 @@ function TargetsCard({ s, ro }: { s: State; ro: boolean }) {
           )
         })}</tbody>
       </table></div>
-      {!shown.length && <p className="hint">{tr('Ningún código con eso. Agrégalo con "+ Agregar un peso objetivo".')}</p>}
+      {!shown.length && <p className="hint st">{tr('Ningún código con eso. Agrégalo con "+ Agregar un peso objetivo".')}</p>}
       {unsure > 0 && <p className="hint amber">{tr('⚠ {0} rangos por confirmar: la hoja de QA solo dice las onzas de la bolsa, y el rango (±1 oz) lo puso la app para tener uno. Pídele a QA el mínimo y el máximo de cada uno y ponlos con ✎ Cambiar; entonces dicen "cambiado por" quien los puso.', unsure)}</p>}
       <p className="hint">{tr('Kitchen pesa sus códigos de mezcla como la bola cruda del 0889 (2.6–2.8) mientras no tengan el suyo.')}</p>
     </div>
@@ -1115,10 +1150,10 @@ function GroupedNav({ items, sec, onSection }: { items: { key: SettingsKey; titl
       {groups.map((g) => (
         <div key={g.title} className="rd-setgrp">
           <div className="rd-setgrp-t">{g.title}</div>
-          {g.list.map((it) => <button key={it.key} type="button" className={'setitem' + (sec === it.key ? ' on' : '')} aria-pressed={sec === it.key} onClick={() => onSection(it.key)}><b>{it.title}</b><small>{it.sub}</small></button>)}
+          {g.list.map((it) => <button key={it.key} type="button" className={'setitem rd-setitem' + (sec === it.key ? ' on' : '')} aria-pressed={sec === it.key} onClick={() => onSection(it.key)}><span className="rd-seticon" aria-hidden="true">{SET_ICON[it.key]}</span><span className="rd-settext"><b>{it.title}</b><small>{SET_SHORT[it.key] ?? it.sub}</small></span><span className="rd-setgo" aria-hidden="true">›</span></button>)}
         </div>
       ))}
-      {!groups.length && <p className="hint">{tr('Ningún ajuste se llama así.')}</p>}
+      {!groups.length && <p className="hint st">{tr('Ningún ajuste se llama así.')}</p>}
     </nav>
   )
 }

@@ -108,7 +108,7 @@ export function Employees({ meId, admin }: { meId: string; admin: boolean }) {
         <p>{trx('Los mismos usuarios y PIN que Freezer RTE. {0} solo ve su departamento; {1} ve todo y corrige; {2} ve todo y lleva productos y programa; {3} ve todo, también Avance y el Reporte, y no puede tocar nada. Sin rol = no entra a E.R. - Ops Summary.', <b>{tr('Operador')}</b>, <b>{tr('Manager')}</b>, <b>{tr('Oficina')}</b>, <b>{tr('Solo ver')}</b>)}</p>
         <p>{tr('Las cuentas de manager y de Oficina solo las crea y las cambia el dueño. A una cuenta de trabajador de Freezer RTE aquí se le dan su rol de E.R. - Ops Summary, sus poderes y su turno: su PIN, su nombre y activarla los cambia el dueño. Cada quien da solo los poderes que tiene.')}</p>
       </details>
-      {list !== null && shown.length === 0 && <p className="hint">{all.length ? tr('Nadie con esa búsqueda.') : tr('No hay usuarios todavía.')}</p>}
+      {list !== null && shown.length === 0 && <p className="hint st">{all.length ? tr('Nadie con esa búsqueda.') : tr('No hay usuarios todavía.')}</p>}
       <div className="emplist">
         {shown.map((e) => {
           const can = rowRights(e, me)
@@ -132,7 +132,7 @@ export function Employees({ meId, admin }: { meId: string; admin: boolean }) {
           )
         })}
       </div>
-      {hasPowers === false && <p className="hint">{tr('Los poderes y el turno de cada persona aparecen aquí cuando se aplique el cambio en la base de datos. Mientras tanto cada quien tiene los de su rol.')}</p>}
+      {hasPowers === false && <p className="hint st">{tr('Los poderes y el turno de cada persona aparecen aquí cuando se aplique el cambio en la base de datos. Mientras tanto cada quien tiene los de su rol.')}</p>}
       {creating && <NewUserDialog roles={rolesGiven(admin)} busy={busy} call={call} onClose={() => setCreating(false)} onDone={() => { setCreating(false); void load() }} />}
       {editing && <EditUserDialog emp={editing} can={rowRights(editing, me)} busy={busy} hasPowers={!!hasPowers} call={call} onPowers={() => { setPowersFor(editing); setEditing(null) }} onClose={() => setEditing(null)} onDone={() => { setEditing(null); void load() }} />}
       {powersFor && <PowersDialog emp={powersFor} grant={rowRights(powersFor, me).grant} admin={admin} busy={busy} call={call} onClose={() => setPowersFor(null)} onDone={() => { setPowersFor(null); void load() }} />}
