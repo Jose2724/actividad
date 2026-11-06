@@ -3034,6 +3034,9 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
   const sync = useSyncExternalStore(syncStore.subscribe, syncStore.get)
   // the pounds of a mezcla, asked when it is done where the room weighs what it consumes (2026-11-04); declared up here, before the card returns early without a run
   const [weighingMix, setWeighingMix] = useState(false)
+  // the redesign: a free line's form to start a code opens in a window from one big button (Jose, 2026-11-05: Packing's
+  // cards "crecieron mucho ... que quepa en la misma pantalla"); closed again once the code runs
+  const [startOpen, setStartOpen] = useState(false)
   const [unlockedUntil, setUnlockedUntil] = useState(0)
   const locked = !!supabase && !viewOnly && now - sync.fresh > STALE_MS && now > unlockedUntil
   // hold = nothing may be pressed (only looks, or an old picture of the line); guarded = a manager or the office with the
@@ -3229,51 +3232,9 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
     const chipLot = (c: string, l: string) => !!l && todo.some((x) => x.lot === l && normCode(x.code) === normCode(c))
     // Kitchen's oven in its own colour, to be told from the braisers from afar (Jose, 2026-11-04)
     const oven = line.dept === 'Kitchen' && isOven(line.name)
-    return (
-      <div className={'line idle' + (oven ? ' oven' : '')}>
-        <div className="lhead">
-          <h3><i className="lemoji" aria-hidden="true">{oven ? '🔥' : DEPT_LOOK[line.dept].emoji}</i>{lineLabel(line.name)} {nameIt}</h3>
-          <span className={'pill ' + (idle ? 'setup' : 'free')}>{idle ? '⏱ ' + tr(idle.reason) + ' · ' + fmtDur(stopTime(s, idle, now)) : tr('Libre')}</span>
-          <span className="lacts">{goalBtn}</span>
-        </div>
-        {goalStrip}
-      {staleBar}
-        {idle && (
-          <div className="setupbar">
-            <small>{trx('Esperando el código siguiente desde las {0}. Si no viene otro, no cuenta.', fmtTime(idle.startedAt))}</small>
-            {!quiet && <span className="btns two">
-              <button type="button" className="btn sm" onClick={() => endStop(idle.id)}>{trx('■ Terminar {0}', tr(idle.reason))}</button>
-              <button type="button" className="btn sm" onClick={() => dropSetup(idle.id)}>{tr('No viene otro código: quitarlo')}</button>
-            </span>}
-            {!hold && <button type="button" className="lnk sm" onClick={() => setFixingStop(true)}>{mgr ? tr('Corregir o dividir') : tr('Corregir')}</button>}
-          </div>
-        )}
-        {prev && (
-          <div className="lastcode">
-            <span>{(prev.endedAt ?? 0) > turn.since
-              ? trx('Último: {0} · lote {1} · terminó {2} · {3}', <b className="code">{prev.code}</b>, prev.lot, fmtTime(prev.endedAt ?? 0), madeText(prev, runQty(s, prev)))
-              : trx('Último, del turno anterior: {0} · lote {1} · terminó {2} · {3}', <b className="code">{prev.code}</b>, prev.lot, fmtTime(prev.endedAt ?? 0), madeText(prev, runQty(s, prev)))}</span>
-            {!hold && <span className="btns">
-              {!guarded && <button type="button" className="lnk sm" onClick={() => setReopening(prev.id)}>{trx('↩ No había terminado: seguir con {0}', prev.code)}</button>}
-              {!guarded && fillLink}
-              <button type="button" className="lnk sm" onClick={() => setFixingId(prev.id)}>{tr('Corregir')}</button>
-            </span>}
-          </div>
-        )}
-        {prev && reopening === prev.id && <ConfirmDialog title={tr('¿Seguir con {0} en {1}', prev.code, line.name) + '?'}
-          text={tr('Se marcó terminado a las {0}. Vuelve a correr como si no se hubiera terminado: el tiempo desde entonces cuenta como trabajando y el Set up que empezó se quita. Si la línea estuvo parada y el código vuelve ahora, es mejor empezarlo de nuevo abajo.', fmtTime(prev.endedAt ?? 0))}
-          yes={tr('Seguir con {0}', prev.code)} onYes={() => { reopenRun(prev.id); setReopening(null) }} onNo={() => setReopening(null)} />}
-        {fillUi}
-        {openFound && <NoticeDialog title={tr('{0} todavía tiene un código abierto', lineLabel(line.name))} text={tr('{0} · lote {1} sigue abierto desde las {2} (lo empezó {3} en otra tablet). Ya sale en esta pantalla: termínalo o sigue con él antes de empezar otro código.', openFound.code, openFound.lot, fmtTime(openFound.startedAt), openFound.by || '—')} onClose={() => setOpenFound(null)} />}
-        {fixingStop && idle && <StopEditor stop={idle} mgr={mgr} onClose={() => setFixingStop(false)} />}
-        {naming}
-        {removing && <ConfirmDialog title={tr('¿Quitar {0} de {1}', lineLabel(line.name), line.dept) + '?'} text={tr('Se puede volver a agregar cuando haga falta.')} yes={tr('Quitar')} danger onYes={() => removeLine(line.id)} onNo={() => setRemoving(false)} />}
-        {sure.ui}
-        {attAsk && <AttendanceDialog s={s} dept={line.dept} date={day.date} shift={turn.shift} edit note={tr('Antes de empezar, el supervisor o líder se anota como supervisor y anota a la gente del Turno {0} de {1}; después vuelve a tocar Empezar.', turn.shift, line.dept)} onClose={() => setAttAsk(false)} />}
-        {consumeAsk && <ConsumeStartDialog s={s} dept={line.dept} line={line.name} code={code.trim().toUpperCase()} onClose={() => setConsumeAsk(null)} onStart={(list) => { consumeAsk(); const r = openRunOn(theStore.get(), line.id); if (r) for (const e of list) consumeAdd(r, e.product, e.prodLot, e.labelDate, e.lb, e.fromId); setConsumeAsk(null) }} />}
-        {(() => { const p = consumeOn(s, line.dept) ? consumesPending(s, line.id) : []; return p.length ? <ConsumeEndDialog entries={p} /> : null })()}
-        {consumeOn(s, line.dept) && <MixOwedDialog s={s} lineId={line.id} now={now} />}
-        {!quiet && <form className="start" onSubmit={(e) => {
+    // (the same form inline, or in its window in the redesign)
+    const startForm = (
+      <form className="start" onSubmit={(e) => {
           e.preventDefault()
           if (!ok) return
           if (gated) { setAttAsk(true); return }
@@ -3353,7 +3314,62 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
               </div>
             ))}
           <button className="btn primary" type="submit" disabled={!ok || checkingOpen}>{checkingOpen ? tr('Revisando la línea…') : tr('▶ Empezar')}</button>
-        </form>}
+        </form>
+    )
+    return (
+      <div className={'line idle' + (oven ? ' oven' : '')}>
+        <div className="lhead">
+          <h3><i className="lemoji" aria-hidden="true">{oven ? '🔥' : DEPT_LOOK[line.dept].emoji}</i>{lineLabel(line.name)} {nameIt}</h3>
+          <span className={'pill ' + (idle ? 'setup' : 'free')}>{idle ? '⏱ ' + tr(idle.reason) + ' · ' + fmtDur(stopTime(s, idle, now)) : tr('Libre')}</span>
+          <span className="lacts">{goalBtn}</span>
+        </div>
+        {goalStrip}
+      {staleBar}
+        {idle && (
+          <div className="setupbar">
+            <small>{trx('Esperando el código siguiente desde las {0}. Si no viene otro, no cuenta.', fmtTime(idle.startedAt))}</small>
+            {!quiet && <span className="btns two">
+              <button type="button" className="btn sm" onClick={() => endStop(idle.id)}>{trx('■ Terminar {0}', tr(idle.reason))}</button>
+              <button type="button" className="btn sm" onClick={() => dropSetup(idle.id)}>{tr('No viene otro código: quitarlo')}</button>
+            </span>}
+            {!hold && <button type="button" className="lnk sm" onClick={() => setFixingStop(true)}>{mgr ? tr('Corregir o dividir') : tr('Corregir')}</button>}
+          </div>
+        )}
+        {prev && (
+          <div className="lastcode">
+            <span>{(prev.endedAt ?? 0) > turn.since
+              ? trx('Último: {0} · lote {1} · terminó {2} · {3}', <b className="code">{prev.code}</b>, prev.lot, fmtTime(prev.endedAt ?? 0), madeText(prev, runQty(s, prev)))
+              : trx('Último, del turno anterior: {0} · lote {1} · terminó {2} · {3}', <b className="code">{prev.code}</b>, prev.lot, fmtTime(prev.endedAt ?? 0), madeText(prev, runQty(s, prev)))}</span>
+            {!hold && <span className="btns">
+              {!guarded && <button type="button" className="lnk sm" onClick={() => setReopening(prev.id)}>{trx('↩ No había terminado: seguir con {0}', prev.code)}</button>}
+              {!guarded && fillLink}
+              <button type="button" className="lnk sm" onClick={() => setFixingId(prev.id)}>{tr('Corregir')}</button>
+            </span>}
+          </div>
+        )}
+        {prev && reopening === prev.id && <ConfirmDialog title={tr('¿Seguir con {0} en {1}', prev.code, line.name) + '?'}
+          text={tr('Se marcó terminado a las {0}. Vuelve a correr como si no se hubiera terminado: el tiempo desde entonces cuenta como trabajando y el Set up que empezó se quita. Si la línea estuvo parada y el código vuelve ahora, es mejor empezarlo de nuevo abajo.', fmtTime(prev.endedAt ?? 0))}
+          yes={tr('Seguir con {0}', prev.code)} onYes={() => { reopenRun(prev.id); setReopening(null) }} onNo={() => setReopening(null)} />}
+        {fillUi}
+        {openFound && <NoticeDialog title={tr('{0} todavía tiene un código abierto', lineLabel(line.name))} text={tr('{0} · lote {1} sigue abierto desde las {2} (lo empezó {3} en otra tablet). Ya sale en esta pantalla: termínalo o sigue con él antes de empezar otro código.', openFound.code, openFound.lot, fmtTime(openFound.startedAt), openFound.by || '—')} onClose={() => setOpenFound(null)} />}
+        {fixingStop && idle && <StopEditor stop={idle} mgr={mgr} onClose={() => setFixingStop(false)} />}
+        {naming}
+        {removing && <ConfirmDialog title={tr('¿Quitar {0} de {1}', lineLabel(line.name), line.dept) + '?'} text={tr('Se puede volver a agregar cuando haga falta.')} yes={tr('Quitar')} danger onYes={() => removeLine(line.id)} onNo={() => setRemoving(false)} />}
+        {sure.ui}
+        {attAsk && <AttendanceDialog s={s} dept={line.dept} date={day.date} shift={turn.shift} edit note={tr('Antes de empezar, el supervisor o líder se anota como supervisor y anota a la gente del Turno {0} de {1}; después vuelve a tocar Empezar.', turn.shift, line.dept)} onClose={() => setAttAsk(false)} />}
+        {consumeAsk && <ConsumeStartDialog s={s} dept={line.dept} line={line.name} code={code.trim().toUpperCase()} onClose={() => setConsumeAsk(null)} onStart={(list) => { consumeAsk(); const r = openRunOn(theStore.get(), line.id); if (r) for (const e of list) consumeAdd(r, e.product, e.prodLot, e.labelDate, e.lb, e.fromId); setConsumeAsk(null) }} />}
+        {(() => { const p = consumeOn(s, line.dept) ? consumesPending(s, line.id) : []; return p.length ? <ConsumeEndDialog entries={p} /> : null })()}
+        {consumeOn(s, line.dept) && <MixOwedDialog s={s} lineId={line.id} now={now} />}
+        {!quiet && (!RD || startOpen) && (RD ? (
+          <div className="veil" onClick={() => setStartOpen(false)}>
+            <div className="dlg rd-startdlg" onClick={(e) => e.stopPropagation()}>
+              <h3>{trx('Empezar un código en {0}', lineLabel(line.name))}</h3>
+              {startForm}
+              <div className="dbtns"><button type="button" className="btn" onClick={() => setStartOpen(false)}>{tr('Cancelar')}</button></div>
+            </div>
+          </div>
+        ) : startForm)}
+        {RD && !quiet && <button type="button" className="btn primary huge rd-startbtn" onClick={() => setStartOpen(true)}>{tr('▶ Empezar código')}</button>}
         {!quiet && <div className="tools">
           {!idle ? <button type="button" className="btn sm setupbtn" onClick={() => (gated ? setAttAsk(true) : startSetup(line))}>{tr('⏱ Empezar Set up')}</button> : <span />}
           {(mgr || s.lineRules.remove) && !idle && <button type="button" className="lnk sm muted" onClick={() => setRemoving(true)}>{trx('Quitar {0}', cfg.lineWord.toLowerCase())}</button>}

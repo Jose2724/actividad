@@ -3643,6 +3643,8 @@ export const EN: Record<string, string> = {
   // the redesign (2026-11-05): sections, menu, search, Resumen, Toda la planta
   "Toda la planta": "Whole plant",
   "Más": "More",
+  "▶ Empezar código": "▶ Start code",
+  "Empezar un código en {0}": "Start a code on {0}",
   "Lo que el cuarto anota sin código cuenta en el total del cuarto y de su turno, no en el de un código.": "What the room writes without a code counts in the room's and its shift's total, not in a code's.",
   "¿De qué código? (opcional)": "Which code? (optional)",
   "Solo el total del cuarto": "Just the room's total",

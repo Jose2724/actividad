@@ -1487,3 +1487,4 @@ html:where([data-theme="dark"]),:where(html[data-theme="dark"]) body{background:
 :where(html[data-theme="dark"]) .app.rd .seg button.rd-ch[class*=" k-"]{background:var(--kt);color:var(--kk);border:1.5px solid var(--k)}
 :where(html[data-theme="dark"]) .app.rd .seg button.rd-ch[class*=" k-"].on{background:var(--k);color:#fff;border-color:var(--k)}
 :where(html[data-theme="dark"]) .app.rd .seg button.rd-ch:not([class*=" k-"]).on{background:var(--accent);color:#fff}
+:where(html[data-theme="dark"]) .app.rd .line .pallet{border-radius:12px}

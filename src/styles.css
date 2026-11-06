@@ -2894,3 +2894,31 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 .app.rd .seg button.rd-ch[class*=" k-"]{background:var(--kt);color:var(--kk);border:1.5px solid var(--k)}
 .app.rd .seg button.rd-ch[class*=" k-"].on{background:var(--k);color:#fff;border-color:var(--k)}
 .app.rd .seg button.rd-ch:not([class*=" k-"]).on{background:var(--accent);color:#fff}
+/* Packing (and every room) in one screen (Jose, 2026-11-05): a free line is its last code and one big button, the form in
+   its window; the pallet being built told in less height */
+.app.rd .line.idle .rd-startbtn{margin-top:auto;min-height:52px;font-size:18px}
+.app.rd .line.idle .lastcode{font-size:13px;padding:6px 10px;gap:4px}
+.app.rd .line.idle .tools{margin-top:8px}
+.app.rd .rd-startdlg{width:min(560px,100%)}
+.app.rd .rd-startdlg form.start{display:grid;gap:10px}
+.app.rd .line .pallet{padding:8px 10px;gap:6px;border-radius:12px}
+.app.rd .line .pal-head{font-size:14.5px}
+.app.rd .line .pallet .bar{height:6px}
+.app.rd .line .pal-lots th,.app.rd .line .pal-lots td{padding:3px 6px;font-size:13px}
+.app.rd .line .pal-acts{gap:6px}
+.app.rd .line .pal-acts .btn{min-height:46px;font-size:14px;padding:4px 8px;line-height:1.15}
+.app.rd .line .pal-acts .btn small{font-size:11px}
+.app.rd .line .pal-reopen{font-size:12px}
+/* the numbers' names never spill out of their boxes (Jose, 2026-11-05: "trabajando se sale un poquito"): plain case, a little
+   wider cards, and two by two where a card is narrow */
+.app.rd .lines{grid-template-columns:repeat(auto-fill,minmax(330px,1fr))}
+.app.rd .line .tile label,.app.rd .line .tiles.four .tile.main+.tile.main label,.app.rd .line .tiles:not(.four) .tile.main label{text-transform:none;letter-spacing:0;font-size:11px;font-weight:700;overflow-wrap:anywhere;line-height:1.15}
+@container line (max-width:340px){.app.rd .line .tiles,.app.rd .line .tiles.four{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:420px){.app.rd .lines{grid-template-columns:minmax(0,1fr)}}
+.app.rd .line .pal-acts .btn small{display:none}
+.app.rd .line .pal-acts .btn{min-height:44px}
+.rd-room-tiles .rd-tile{padding:6px 12px}
+/* on a room's own tablet the codes' chips under the tiles are left out: each card says its code (more room for the lines) */
+.app.rd.rd-op .rd-room-tiles .tc-codes{display:none}
+.app.rd .panel{gap:8px;padding:10px 12px}
+.app.rd .rp-tab{min-height:38px}
