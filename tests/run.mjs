@@ -6767,11 +6767,16 @@ section('Programa del día: la pestaña del admin, prendida para todos desde Aju
     eq('se prende Lotes: sube opt:view:lotes con 1 y queda en el historial; Flujo sigue apagada', [m.outbox.items().find((i) => i.key === 'opt:view:lotes')?.row.per_hour, st().changes.some((c) => c.what === 'Pestaña Lotes' && c.after === 'para todos'), st().viewOpts.flujo.on], [1, true, false])
     m.applyRemote('act_targets', { dept: 'opt:view:flujo', per_hour: 1, per_shift: null, updated_at: iso(T0 + 50 * M), updated_by: 'Edgar' })
     eq('otro manager prende Flujo: llega', st().viewOpts.flujo.on, true)
+    // the 🤖 Ayuda (2026-11-06): off = the owner's alone, as the other tabs
+    eq('la Ayuda empieza apagada', st().viewOpts.ayuda.on, false)
+    m.applyRemote('act_targets', { dept: 'opt:view:ayuda', per_hour: 1, per_shift: null, updated_at: iso(T0 + 51 * M), updated_by: 'Jose' })
+    eq('el dueño la prende: llega, y Lotes y Flujo siguen igual', [st().viewOpts.ayuda.on, st().viewOpts.lotes.on, st().viewOpts.flujo.on], [true, true, true])
   })
   const back = await device('program-view-again', { seed: JSON.parse(disks.get('program-view').get('act_v1')), user: 'Jose' })
   eq('al volver a abrir sigue prendido, con su hora', back.use((m) => m.store.get().programView.on), true)
   eq('y la asistencia sigue como quedó (apagada)', back.use((m) => m.store.get().attView.on), false)
   eq('y Lotes y Flujo siguen como quedaron', back.use((m) => [m.store.get().viewOpts.lotes.on, m.store.get().viewOpts.flujo.on]), [true, true])
+  eq('y la Ayuda sigue prendida al volver a abrir', back.use((m) => m.store.get().viewOpts.ayuda.on), true)
 }
 
 section('Peso obligatorio: el producto corriendo pide sus pesos cada hora y la tablet espera (Jose, 2026-10-31)')

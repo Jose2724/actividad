@@ -36,6 +36,7 @@ import { seesKpi } from './kpi'
 import { ArrivalsDialog, AttendanceCard, AttendanceDialog } from './Attendance'
 import { Chat, ChatInbox } from './Chat'
 import { RD } from './rd'
+import { AyudaButton, AyudaParo, AyudaWindow, ayudaShown } from './Ayuda'
 import { HoldsAll, PersonMenu, PlantOverview, RD_TABS, RdNav, RdTabs, secOf, StatusStrip, tabsOf, type RdSec, type RdTab } from './Shell'
 import { Summary } from './Summary'
 import { GlobalSearch, type SearchGo } from './Search'
@@ -521,6 +522,7 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
   const [overview, setOverview] = useState(() => RD && !kept?.dept)
   const lastOf = useRef<Partial<Record<RdSec, RdTab>>>({}) // the tab each section showed last
   const [finding, setFinding] = useState(false)
+  const [helping, setHelping] = useState(false) // the 🤖 Ayuda window (2026-11-06)
   useEffect(() => {
     if (!RD) return
     const k = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setFinding(true) } }
@@ -681,6 +683,21 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
     if (g.dept) { setDept(g.dept); setOverview(false) }
     setTab(g.tab)
   }
+  // the screens an answer of the 🤖 Ayuda may open ([[ir:tab]], [[ir:act:Room]], [[ir:rep:view]], [[ir:set:section]]): only
+  // the ones this person sees, as their own menu says
+  const ayCanGo = (id: string) => {
+    const [t, sub] = id.split(':') as [RdTab, string | undefined]
+    if (!(RD_TABS as string[]).includes(t) || !sees(t)) return false
+    if (t === 'act' && sub) return readsAll && isDept(sub)
+    return true
+  }
+  const ayGo = (id: string) => {
+    const [t, sub] = id.split(':') as [RdTab, string | undefined]
+    if (t === 'act' && sub && isDept(sub)) { setDept(sub); setOverview(false) }
+    if (t === 'rep' && sub) reportOpenAt({ view: sub as ReportAt['view'] })
+    if (t === 'set' && sub) setSec(sub as SettingsKey)
+    setTab(t)
+  }
   const report = (part: 'rep' | 'ind' | 'tra', pin?: RdTab) => <Report s={s} now={now} only={can('depts') ? undefined : home} mgr={can('depts')} admin={admin} wholeDay={!!wholeDay} part={part} pin={pin} />
   const settings = (only?: SettingsKey) => <Settings s={s} now={now} day={day} name={name} home={home} mgr={mgr} admin={admin} viewOnly={viewOnly} meId={meId ?? ''} section={only ?? sec} onSection={setSec} onLeave={() => setLeaving(true)} bare={!!only} />
   const rdView = () => {
@@ -715,12 +732,14 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
         <DayBar s={s} now={now} day={day} mgr={can('day')} calendar={can('shifts')} compact />
         {isOp && <span className="rd-roomchip" style={deptVars(home)}><i aria-hidden="true">{DEPT_LOOK[home].emoji}</i>{home}</span>}
         <button type="button" className="rd-find" onClick={() => setFinding(true)} aria-label={tr('Buscar')}><span aria-hidden="true">🔍</span><span className="rd-find-t">{tr('Buscar código, lote, PO, tag…')}</span><kbd>Ctrl K</kbd></button>
+        {ayudaShown(s.viewOpts.ayuda.on, admin) && <AyudaButton onOpen={() => setHelping(true)} />}
         <SyncDot />
         <PersonMenu name={name} role={viewOnly ? tr('Solo ver') : mgr ? tr('Manager') : home} mgr={mgr} onDevice={() => { setSec('device'); setTab('set') }} onLeave={() => setLeaving(true)} leaveWord={supabase ? tr('Salir') : tr('Cambiar')} />
       </header>
       <StatusStrip bars={[unsentBar, fullBar, staleBar, othersBar, clockBar, zoneBar, updBar]} />
       {gate}
       {leaving && <LeaveDialog onYes={() => { setLeaving(false); onLogout() }} onNo={() => setLeaving(false)} />}
+      {helping && <AyudaWindow name={name} ctx={{ tab: shownTab, room: isOp ? home : showAll ? undefined : dept }} canGo={ayCanGo} onGo={ayGo} onClose={() => setHelping(false)} />}
       {finding && <GlobalSearch s={s} sees={sees} people={!isOp && (can('people') || mgr)} only={readsAll ? undefined : home} onGo={searchGo} onClose={() => setFinding(false)} />}
       <div className="rd-frame">
         <RdNav secs={secs} on={secOf(shownTab)} op={isOp} badge={{ tra: holdsOpen(s).length }} onPick={pickSec} freezer={who.role !== 'op' || who.freezer ? FREEZER_URL : undefined} />
@@ -2704,7 +2723,7 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
       )}
       {editing && <RunEditor s={s} run={editing} mgr={can('fix')} onClose={() => setEditRun(null)} />}
       {addingRun && <AddRunDialog s={s} date={day.date} dept={dept} order={addingRun.po ? s.orders.find((o) => o.id === addingRun.po) : undefined} onClose={() => setAddingRun(null)} onAdded={() => setAddingRun(null)} />}
-      {stopAll && <StopDialog title={tr('Parar todo {0}', dept)} {...stopChoices(s, dept)} codes={s.reasonCodes.on} onClose={() => setStopAll(false)} onPick={(reason, note) => startStop(dept, null, reason, note) && setStopAll(false)} />}
+      {stopAll && <StopDialog title={tr('Parar todo {0}', dept)} {...stopChoices(s, dept)} codes={s.reasonCodes.on} room={dept} onClose={() => setStopAll(false)} onPick={(reason, note) => startStop(dept, null, reason, note) && setStopAll(false)} />}
     </section>
   )
 }
@@ -3638,7 +3657,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
         summary={tr('Lleva {0} · trabajando {1}{2}', madeText(run, st.qty), fmtDur(st.working), (st.down ? ' ' + tr('· parado {0}', fmtDur(st.down)) : '')) + '.'}
         onClose={() => setEnding(false)} onDone={(next) => { endRun(run.id, next); setEnding(false) }}
         onMissing={(next) => { setEnding(false); if (pallets) { setEndAfter(next); setPacking('done') } else if (rc.qty === 'ask') { setEndAfter(next); setCounting(true) } else { record(rc.qty === 'auto' ? run.perUnit : null); endRun(run.id, next) } }} />}
-      {asking && <StopDialog title={tr('Parar {0} · {1}', lineLabel(line.name), run.code)} {...stopChoices(s, line.dept)} setup codes={s.reasonCodes.on} onClose={() => setAsking(false)} onPick={(reason, note) => startStop(line.dept, line.id, reason, note) && setAsking(false)} />}
+      {asking && <StopDialog title={tr('Parar {0} · {1}', lineLabel(line.name), run.code)} {...stopChoices(s, line.dept)} setup codes={s.reasonCodes.on} room={line.dept} line={lineLabel(line.name) + ' · ' + run.code} onClose={() => setAsking(false)} onPick={(reason, note) => startStop(line.dept, line.id, reason, note) && setAsking(false)} />}
       {fillUi}
       {counting && (rc.lots
         ? <LotsDialog title={rc.qtyQ} unit={rc.qtyUnit} refLabel={rc.refLabel} lot={run.lot} qty={run.perUnit} usual={usualOf(s, run)} per={runWord} orders={orderOptions} order={nextOrder} onClose={() => { setCounting(false); setEndAfter(null) }} onPick={(q, ref, lots, po, note) => { record(q, ref, lots, po, note); setCounting(false); if (endAfter !== null) { setEndAfter(null); endRun(run.id, endAfter) } }} />
@@ -3698,8 +3717,11 @@ function EndDialog({ cfg, code, line, summary, lastAt, onMissing, onDone, onClos
  * With the shift's rules on (rules, see stopRulesAt) the room's whole list; "Otra" only for a manager (free), the others
  * get "Avisar al manager"; a mechanical stop asks for the mechanic's name
  */
-export function StopDialog({ title, intro, reasons, setup, codes, rules, free = true, onClose, onPick }: { title: string; intro?: string; reasons: string[]; setup?: boolean; codes?: boolean; rules?: boolean; free?: boolean; onClose: () => void; onPick: (reason: string, note: string) => void }) {
+export function StopDialog({ title, intro, reasons, setup, codes, rules, free = true, room, line, onClose, onPick }: { title: string; intro?: string; reasons: string[]; setup?: boolean; codes?: boolean; rules?: boolean; free?: boolean; room?: string; line?: string; onClose: () => void; onPick: (reason: string, note: string) => void }) {
   const [reason, setReason] = useState('')
+  // the 🤖 Ayuda's suggestion picks the code (the picker opens again on it); the person still confirms the stop
+  const [aiPick, setAiPick] = useState(0)
+  const who = useWho(), helps = RD && !!codes && !!room && who.role !== 'viewer' && ayudaShown(store.get().viewOpts.ayuda.on, !!who.admin)
   const [note, setNote] = useState('')
   const [mechanic, setMechanic] = useState('')
   const other = !codes && reason === 'Otra', isSetup = reason === SETUP, asks = reason === ASK_MANAGER, mech = !codes && !!rules && isMechanical(reason)
@@ -3710,7 +3732,8 @@ export function StopDialog({ title, intro, reasons, setup, codes, rules, free = 
         <h3>{title}</h3>
         {intro && <p className="rc-try">{intro}</p>}
         <p>{codes ? tr('¿Por qué se para? Elige el código de paro: primero la categoría, después el código.') : tr('¿Por qué se para? La app cuenta el tiempo parado con esta razón.')}</p>
-        {codes ? <CodePicker value={reason} setup={setup} onPick={setReason} /> : (
+        {codes && helps && <AyudaParo room={room!} line={line} onCode={(r) => { setReason(r); setAiPick(aiPick + 1) }} />}
+        {codes ? <CodePicker key={aiPick} value={reason} setup={setup} onPick={setReason} /> : (
         <div className="chips big">
           {reasons.map((r) => <button key={r} type="button" className={'chip' + (reason === r ? ' on' : '')} onClick={() => setReason(r)}>{tr(r)}</button>)}
           {setup && <button type="button" className={'chip setupchip' + (isSetup ? ' on' : '')} onClick={() => setReason(SETUP)}>{tr('⏱ Set up')}</button>}

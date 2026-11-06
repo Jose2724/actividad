@@ -3507,3 +3507,50 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 .app.rd .rd-dmid .twrap thead th{position:sticky;top:0;z-index:2;background:var(--surface);box-shadow:0 1px 0 var(--line)}
 .app.rd .rd-dmid .twrap tbody tr:nth-child(even):not(.live):not(.rp-focus) td{background:var(--zebra)}
 .app.rd .rd-dmid .twrap td+td{box-shadow:inset 1px 0 0 var(--colline)}
+/* 🤖 Ayuda (2026-11-06): the header's button, and its window: the top and the box to write stay, only the talk scrolls */
+.rd-ayuda-btn{display:inline-flex;align-items:center;gap:6px;min-height:42px;padding:0 14px;border-radius:12px;border:1.5px solid #3a0d2f;background:var(--accent);color:#fff;font-weight:700;font-size:15px;white-space:nowrap}
+.rd-ayuda-btn:hover{filter:brightness(1.15)}
+.rd-ayuda-btn span[aria-hidden]{font-size:19px;line-height:1}
+@media (max-width:700px){.rd-ayuda-btn{padding:0 10px}.rd-ayuda-t{display:none}}
+.dlg.rd-ayuda{width:min(720px,100%);max-width:720px;height:min(820px,calc(100dvh - 32px));display:flex;flex-direction:column;padding:0;overflow:hidden;gap:0}
+.ay-top{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line);flex:none;min-width:0}
+.ay-top h3{margin:0;font-size:18px}
+.ay-bot{font-size:24px;line-height:1}
+.ay-who{margin-left:auto;font-size:13px;font-weight:600;color:var(--accent);background:var(--soft);border:1px solid #c3a6df;border-radius:999px;padding:3px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.ay-list{flex:1;min-height:0;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:12px;overscroll-behavior:contain}
+.ay-hello p{margin:0 0 10px}
+.ay-ideas{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 12px}
+.ay-ideas .btn{white-space:normal;text-align:left}
+.ay-note{color:var(--muted);font-size:14px}
+.ay-msg{max-width:90%;border-radius:16px;padding:10px 13px;line-height:1.45;overflow-wrap:anywhere}
+.ay-msg p{margin:0 0 6px}.ay-msg p:last-child{margin-bottom:0}
+.ay-msg.me{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:4px}
+.ay-msg.ai{align-self:flex-start;background:var(--surface);border:1px solid var(--line);border-bottom-left-radius:4px}
+.ay-msg.err{background:var(--red-soft);border-color:#f5b5ae;color:#8a1c14}
+.ay-text ol,.ay-text ul{margin:4px 0 8px;padding-left:22px}
+.ay-text li{margin:3px 0}
+.ay-photo{display:block;max-width:220px;max-height:180px;border-radius:10px;margin-bottom:6px;border:1px solid rgba(255,255,255,.4)}
+.ay-shot{margin:8px 0;border:1px solid var(--line);border-radius:10px;overflow:hidden;max-width:540px}
+.ay-shot img{display:block;width:100%;height:auto}
+.ay-shot figcaption{font-size:13px;color:var(--muted);padding:5px 9px;border-top:1px solid var(--line)}
+.ay-acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.btn.ay-go{background:var(--soft);border-color:#c3a6df;color:var(--accent);font-weight:700;white-space:normal;text-align:left}
+.ay-rate{display:flex;gap:4px;margin-top:6px}
+.ay-rate button{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:2px 8px;font-size:15px}
+.ay-rate small{color:var(--muted)}
+.ay-wait{display:flex;gap:5px;padding:14px}
+.ay-wait span{width:8px;height:8px;border-radius:50%;background:var(--muted);animation:ay-dot 1s infinite ease-in-out}
+.ay-wait span:nth-child(2){animation-delay:.15s}.ay-wait span:nth-child(3){animation-delay:.3s}
+@keyframes ay-dot{0%,80%,100%{opacity:.25;transform:translateY(0)}40%{opacity:1;transform:translateY(-4px)}}
+@media (prefers-reduced-motion:reduce){.ay-wait span{animation:none;opacity:.6}}
+.ay-foot{flex:none;border-top:1px solid var(--line);padding:10px 12px;display:grid;gap:8px;background:var(--surface)}
+.ay-pending{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--muted)}
+.ay-pending img{width:44px;height:44px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
+.ay-row{display:flex;gap:8px;align-items:flex-end}
+.ay-row textarea{flex:1;min-width:0;min-height:44px;max-height:140px;resize:none;border:1.5px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--bg)}
+.ay-cam,.ay-send{min-width:46px;min-height:44px;font-size:19px;padding:0}
+.ay-paro{display:grid;gap:8px;border:1.5px dashed #c3a6df;border-radius:12px;padding:10px 12px;background:var(--soft);margin:6px 0}
+.ay-paro textarea{width:100%;resize:vertical;border:1.5px solid var(--line);border-radius:10px;padding:8px 10px}
+.ay-paro .btn{justify-self:start}
+.ay-parobtn{justify-self:start;margin:4px 0}
+@media (max-width:560px){.veil:has(.rd-ayuda){padding:0}.dlg.rd-ayuda{height:100dvh;border-radius:0;max-width:none}.ay-msg{max-width:96%}}

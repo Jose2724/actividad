@@ -599,7 +599,7 @@ function tidySchedule(sch: Schedule): Schedule {
 function isDay(text: string) { return /^\d{4}-\d{2}-\d{2}$/.test(text) }
 /** with a server the lines (and products) are shared and come from it; without one, each device starts with a line per room */
 const SERVER = !!import.meta.env.VITE_SUPABASE_URL
-function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, reasonCodes: { on: false, updatedAt: 0 }, programView: { on: false, updatedAt: 0 }, attView: { on: !SERVER, updatedAt: 0 }, stopRules: [{ on: false, updatedAt: 0 }, { on: false, updatedAt: 0 }], attGate: { on: false, updatedAt: 0 }, cartCrates: { n: 0, updatedAt: 0 }, lunch: { min: 0, after: 0, updatedAt: 0 }, attWrite: { on: false, updatedAt: 0 }, lbCase: { on: false, updatedAt: 0 }, viewOpts: { lotes: { on: false, updatedAt: 0 }, flujo: { on: false, updatedAt: 0 } }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [], attendance: [], attExpected: [], shiftMarks: [], kpi: [], weights: [], orderNotes: [], planRoomNotes: [], planUrgent: [], roomMsgs: [], chat: [], chatSeen: [], weightRules: [], slowRules: [], slowLines: [], meats: [], holds: [], consumes: [], consumeOpts: [] } }
+function fresh(): State { return { lines: SERVER ? [] : DEPTS.map((d) => ({ id: uid(), dept: d, name: lineWordKept(d) + ' 1', updatedAt: 0 })), runs: [], orderRuns: [], stops: [], products: SERVER ? [] : SAMPLE_PRODUCTS, schedule: {}, changes: [], targets: [], shifts: [], shiftWeeks: [], dayShifts: [], lineRules: { add: true, remove: false, updatedAt: 0 }, reasonCodes: { on: false, updatedAt: 0 }, programView: { on: false, updatedAt: 0 }, attView: { on: !SERVER, updatedAt: 0 }, stopRules: [{ on: false, updatedAt: 0 }, { on: false, updatedAt: 0 }], attGate: { on: false, updatedAt: 0 }, cartCrates: { n: 0, updatedAt: 0 }, lunch: { min: 0, after: 0, updatedAt: 0 }, attWrite: { on: false, updatedAt: 0 }, lbCase: { on: false, updatedAt: 0 }, viewOpts: { lotes: { on: false, updatedAt: 0 }, flujo: { on: false, updatedAt: 0 }, ayuda: { on: false, updatedAt: 0 } }, lineTargets: [], orders: [], turnGoals: [], plans: [], workOrders: [], orderSeals: [], attendance: [], attExpected: [], shiftMarks: [], kpi: [], weights: [], orderNotes: [], planRoomNotes: [], planUrgent: [], roomMsgs: [], chat: [], chatSeen: [], weightRules: [], slowRules: [], slowLines: [], meats: [], holds: [], consumes: [], consumeOpts: [] } }
 function load(): State {
   try {
     type Raw = { lines: Partial<Line>[]; stops: Partial<Stop>[]; runs: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; orderRuns?: (Partial<Run> & { units?: Partial<Unit>[]; carts?: number[] })[]; products?: (Partial<Product> & { pouchesPerCart?: number })[]; schedule?: Schedule; changes?: Partial<Change>[]; targets?: Partial<Target>[]; shifts?: Partial<ShiftPlan>[]; shiftWeeks?: Partial<ShiftWeek>[]; dayShifts?: Partial<DayShifts>[]; lineRules?: Partial<LineRules>; reasonCodes?: Partial<ReasonCodesOpt>; programView?: Partial<ReasonCodesOpt>; attView?: Partial<ReasonCodesOpt>; attGate?: Partial<ReasonCodesOpt>; stopRules?: Partial<ReasonCodesOpt>[]; cartCrates?: { n?: number; updatedAt?: number }; lunch?: Partial<Lunch>; attWrite?: Partial<ReasonCodesOpt>; lbCase?: Partial<ReasonCodesOpt>; viewOpts?: Partial<Record<ViewOpt, Partial<ReasonCodesOpt>>>; lineTargets?: Partial<LineTarget>[]; orders?: Partial<Order>[]; turnGoals?: Partial<TurnGoal>[]; plans?: Partial<Plan>[]; workOrders?: Partial<WorkOrder>[]; orderSeals?: unknown[]; attendance?: Partial<AttEntry>[]; attExpected?: Partial<AttExpected>[]; shiftMarks?: Partial<ShiftMark>[]; kpi?: Partial<KpiRec>[]; weights?: Partial<WeightTest>[]; orderNotes?: Partial<OrderNote>[]; planRoomNotes?: Partial<PlanRoomNote>[]; roomWastes?: Partial<RoomWaste>[]; planUrgent?: Partial<PlanUrgent>[]; roomMsgs?: Partial<RoomMsg>[]; chat?: Partial<ChatMsg>[]; chatSeen?: Partial<ChatSeen>[]; weightRules?: Partial<WeightRule>[]; slowRules?: Partial<SlowRule>[]; slowLines?: Partial<SlowLine>[]; meats?: Partial<MeatEntry>[]; holds?: Partial<HoldRec>[]; consumes?: Partial<ConsumeEntry>[]; consumeOpts?: Partial<ConsumeOpt>[] }
@@ -643,7 +643,7 @@ function load(): State {
         lbCase: { on: s.lbCase?.on === true, updatedAt: Number(s.lbCase?.updatedAt) || 0 },
         attWrite: { on: s.attWrite?.on === true, updatedAt: Number(s.attWrite?.updatedAt) || 0 },
         // the tabs a switch turns on for everybody (2026-10-22: Lotes, and Flujo kept off): inline, as above
-        viewOpts: { lotes: { on: s.viewOpts?.lotes?.on === true, updatedAt: Number(s.viewOpts?.lotes?.updatedAt) || 0 }, flujo: { on: s.viewOpts?.flujo?.on === true, updatedAt: Number(s.viewOpts?.flujo?.updatedAt) || 0 } },
+        viewOpts: { lotes: { on: s.viewOpts?.lotes?.on === true, updatedAt: Number(s.viewOpts?.lotes?.updatedAt) || 0 }, flujo: { on: s.viewOpts?.flujo?.on === true, updatedAt: Number(s.viewOpts?.flujo?.updatedAt) || 0 }, ayuda: { on: s.viewOpts?.ayuda?.on === true, updatedAt: Number(s.viewOpts?.ayuda?.updatedAt) || 0 } },
         lineTargets: (s.lineTargets ?? []).filter((t) => !!t && !!t.lineId && !isTurnKey(String(t.lineId))).map((t) => ({ lineId: String(t.lineId), perHour: t.perHour ?? null, perDay: t.perDay ?? null, updatedAt: t.updatedAt ?? 0 })),
         orders: (s.orders ?? []).map((o) => (o ? orderOf(String(o.id ?? ''), o, String(o.by ?? ''), o.updatedAt ?? 0) : null)).filter((o): o is Order => !!o),
         // (lot since 2026-10-19: a program saved before it reads ''. Written inline, as above: nothing below load())
@@ -2155,9 +2155,9 @@ export function attendanceOf(s: State, date: string, shift: 0 | 1 | 2, rooms: De
  * until then) and Flujo (the office's old sheet, which nobody used: off, the admin keeps it, and it comes back with a
  * tap). Under 'opt:view:<name>' in act_targets, as the other switches; in the history
  */
-export type ViewOpt = 'lotes' | 'flujo'
+export type ViewOpt = 'lotes' | 'flujo' | 'ayuda'
 const OPT_VIEW = 'opt:view:'
-const VIEW_NAMES: Record<ViewOpt, string> = { lotes: 'Pestaña Lotes', flujo: 'Pestaña Flujo' }
+const VIEW_NAMES: Record<ViewOpt, string> = { lotes: 'Pestaña Lotes', flujo: 'Pestaña Flujo', ayuda: 'Ayuda con IA' }
 export function setViewOpt(name: ViewOpt, on: boolean) {
   const was = state.viewOpts[name]
   if (was.on === on) return
@@ -5676,7 +5676,7 @@ export function applyRemote(table: string, row: Record<string, unknown>) {
     set({ ...state, lineRules: { add: row.per_hour == null || Number(row.per_hour) !== 0, remove: Number(row.per_shift) === 1, updatedAt: at } })
   } else if (table === 'act_targets' && String(row.dept ?? '').startsWith(OPT_VIEW)) {
     const name = String(row.dept).slice(OPT_VIEW.length) as ViewOpt
-    if (name !== 'lotes' && name !== 'flujo') return
+    if (name !== 'lotes' && name !== 'flujo' && name !== 'ayuda') return
     if (!newer(state.viewOpts[name])) return
     set({ ...state, viewOpts: { ...state.viewOpts, [name]: { on: Number(row.per_hour) === 1, updatedAt: at } } })
   } else if (table === 'act_targets' && String(row.dept ?? '') === OPT_ATT) {

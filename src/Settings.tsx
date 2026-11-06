@@ -115,7 +115,7 @@ export function Settings({ s, now, day, name, home, mgr, admin, viewOnly, meId, 
         {sec === 'mini' && <MiniSettings s={s} viewOnly={viewOnly} now={now} day={day} goals={can('goals') && !viewOnly} />}
         {sec === 'stops' && <StopRulesSettings s={s} viewOnly={viewOnly} />}
         {sec === 'stops' && <StopCodesSettings s={s} viewOnly={viewOnly} />}
-        {sec === 'program' && <><ProgramViewSettings s={s} /><ViewOptSettings s={s} name="lotes" /><ViewOptSettings s={s} name="flujo" /></>}
+        {sec === 'program' && <><ProgramViewSettings s={s} /><ViewOptSettings s={s} name="lotes" /><ViewOptSettings s={s} name="flujo" />{RD && <ViewOptSettings s={s} name="ayuda" />}</>}
         {sec === 'weights' && <SlowSettings s={s} viewOnly={viewOnly} />}
         {sec === 'kpi' && <KpiSettings s={s} viewOnly={viewOnly} part={part} />}
         {sec === 'consumo' && <ConsumeSettings s={s} viewOnly={viewOnly} />}
@@ -550,15 +550,15 @@ function LunchSettings({ s, readOnly }: { s: State; readOnly: boolean }) {
 function ViewOptSettings({ s, name }: { s: State; name: ViewOpt }) {
   const [asking, setAsking] = useState(false)
   const on = s.viewOpts[name].on
-  const title = name === 'lotes' ? tr('Pestaña Lotes') : tr('Pestaña Flujo')
+  const title = name === 'lotes' ? tr('Pestaña Lotes') : name === 'ayuda' ? tr('🤖 Ayuda con IA') : tr('Pestaña Flujo')
   return (
     <>
       <div className="setcard">
         <div className="sethead"><h3>{title}</h3><span className={'rc-state' + (on ? ' on' : '')}>{on ? tr('Para todos') : tr('Solo tú')}</span></div>
-        <label className="switch"><span>{name === 'lotes' ? tr('Que todos vean la pestaña Lotes') : tr('Que todos vean la pestaña Flujo')}</span><input type="checkbox" role="switch" checked={on} onChange={(e) => (e.target.checked ? setAsking(true) : setViewOpt(name, false))} /></label>
-        <p className="hint">{name === 'lotes' ? tr('Lotes sigue cada lote de las mezclas a Packing: lo que cada cuarto debía hacer, lo que falta y lo que se perdió. Apagada, solo la ves tú (con 🔒).') : tr('Flujo es la hoja de la oficina (WO PENDIENTES), con todas sus columnas. La reemplaza Lotes: apagada, solo la ves tú (con 🔒). Nada se borra.')}</p>
+        <label className="switch"><span>{name === 'lotes' ? tr('Que todos vean la pestaña Lotes') : name === 'ayuda' ? tr('Que todos usen la Ayuda') : tr('Que todos vean la pestaña Flujo')}</span><input type="checkbox" role="switch" checked={on} onChange={(e) => (e.target.checked ? setAsking(true) : setViewOpt(name, false))} /></label>
+        <p className="hint">{name === 'ayuda' ? tr('La Ayuda contesta cómo se usa la app, explica una foto de la pantalla y sugiere el reason code de un paro. Solo sabe lo que le toca a cada rol, no puede cambiar nada y cada persona tiene un límite de preguntas al día. Apagada, solo la usas tú.') : name === 'lotes' ? tr('Lotes sigue cada lote de las mezclas a Packing: lo que cada cuarto debía hacer, lo que falta y lo que se perdió. Apagada, solo la ves tú (con 🔒).') : tr('Flujo es la hoja de la oficina (WO PENDIENTES), con todas sus columnas. La reemplaza Lotes: apagada, solo la ves tú (con 🔒). Nada se borra.')}</p>
       </div>
-      {asking && <ConfirmDialog title={name === 'lotes' ? tr('¿Que todos vean la pestaña Lotes?') : tr('¿Que todos vean la pestaña Flujo?')} text={tr('La ven los managers, la oficina y "Solo ver". Se puede apagar aquí mismo cuando quieras.')} yes={tr('Prender para todos')} onYes={() => { setViewOpt(name, true); setAsking(false) }} onNo={() => setAsking(false)} />}
+      {asking && <ConfirmDialog title={name === 'lotes' ? tr('¿Que todos vean la pestaña Lotes?') : name === 'ayuda' ? tr('¿Que todos usen la Ayuda?') : tr('¿Que todos vean la pestaña Flujo?')} text={name === 'ayuda' ? tr('La usan todos: operadores, managers, la oficina y "Solo ver". Cada pregunta cuesta un poco en la cuenta de la IA. Se puede apagar aquí mismo cuando quieras.') : tr('La ven los managers, la oficina y "Solo ver". Se puede apagar aquí mismo cuando quieras.')} yes={tr('Prender para todos')} onYes={() => { setViewOpt(name, true); setAsking(false) }} onNo={() => setAsking(false)} />}
     </>
   )
 }

@@ -646,6 +646,12 @@ eq('después de correr el 001 otra vez, un operador de Packing sigue sin leer RT
 await runFile(db, '013_devices.sql')
 eq('y después del 013, la tablet de un operador sigue escribiendo su palabra', await hello(ana, device('d-ana', 'Ana', await empId('Ana'), { pending: 5 })), '')
 
+section('029: las preguntas a la 🤖 Ayuda las escribe solo su función y las lee solo el dueño')
+await db.query("insert into public.act_ayuda (user_id, name, role, dept, question, answer) values ($1, 'Ana', 'op', 'Packing', '¿cómo termino el turno?', '1. ...')", [ana.id])
+const ayudaRows = (who) => as(db, who, async (tx) => (await tx.query('select count(*)::int as n from public.act_ayuda')).rows[0].n)
+eq('el dueño las lee; un operador (ni las suyas), el manager, la oficina y "Solo ver", no', [await ayudaRows(jose), await ayudaRows(ana), await ayudaRows(edgar), await ayudaRows(mike)], [1, 0, 0, 0])
+eq('nadie escribe, cambia ni borra una desde la app (ni el dueño): solo la función, con la llave del servidor', [await undone(ana, "insert into public.act_ayuda (user_id, question) values (gen_random_uuid(), 'x')"), await undone(jose, "update public.act_ayuda set rating = 1"), await undone(jose, 'delete from public.act_ayuda'), await undone(ana, 'truncate public.act_ayuda')], ['42501', '42501', '42501', '42501'])
+
 await db.close()
 console.log(failed.length ? `\n✗ ${failed.length} de ${passed + failed.length} comprobaciones fallaron:\n\n  ${failed.join('\n\n  ')}\n` : `\n✓ ${passed} comprobaciones, todas correctas (Postgres de verdad, con las migraciones del servidor)\n`)
 process.exit(failed.length ? 1 : 0)
