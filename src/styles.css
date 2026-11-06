@@ -2676,3 +2676,6 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 /* the rail and the top bar stay in place while the page scrolls: html/body above clip instead of hiding (hidden made body a
  scroll box that never scrolls, so nothing could stick: Jose, 2026-11-05, "que este panel no se mueva cuando esté yo haciendo scroll") */
 html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
+/* a window stands out from the page under it (Jose, 2026-11-05): a darker veil and a clear shadow and edge */
+.app.rd .veil{background:rgba(15,20,28,.6)}
+.app.rd .dlg{box-shadow:0 24px 64px rgba(0,0,0,.4);border:1px solid #c9d4de}
