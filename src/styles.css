@@ -2922,3 +2922,8 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 .app.rd.rd-op .rd-room-tiles .tc-codes{display:none}
 .app.rd .panel{gap:8px;padding:10px 12px}
 .app.rd .rp-tab{min-height:38px}
+/* nothing inside a line card is wider than the card (Jose, 2026-11-06: "el mensaje amarillo hace overlap, esto está así en
+   todo departamento"): every piece takes the card's width between its margins, never 100% plus the margins */
+.app.rd .line>*:not(.veil){width:auto;max-width:none;min-width:0;box-sizing:border-box;align-self:stretch}
+.app.rd .line .wt-remind{width:auto;box-sizing:border-box;margin-left:12px;margin-right:12px}
+.app.rd .line .wt-remind,.app.rd .line .slowbar,.app.rd .line .stopbar,.app.rd .line .setupbar{overflow-wrap:anywhere}
