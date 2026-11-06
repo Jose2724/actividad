@@ -1459,11 +1459,34 @@ function OrdersCard({ s, mgr, onAdd }: { s: State; mgr: boolean; onAdd?: (o: Ord
   )
   const order = viewing ? s.orders.find((o) => o.id === viewing) : undefined
   return (
-    <div className="orders">
+    <div className={'orders' + (RD ? ' rd-orders' : '')}>
+      {RD ? (() => {
+        const all = open.map(rowOf), asked = all.reduce((t, x) => t + (x.o.cases ?? 0), 0), made = all.reduce((t, x) => t + x.made, 0)
+        const left = all.reduce((t, x) => t + Math.max(0, x.left ?? 0), 0), week = all.filter((x) => isWhen(x.o, 'week') || isWhen(x.o, 'late')).length
+        return (
+          <>
+            <div className="rd-wtbar">
+              <h2 className="rd-wttitle">🚚 {tr('Pedidos con PO')}</h2>
+              {mgr && <div className="rd-wtacts"><button type="button" className="btn primary" onClick={() => setEditing('new')}>{tr('+ Agregar pedido')}</button></div>}
+            </div>
+            {all.length > 0 && (
+              <div className="rd-tiles rd-rptiles">
+                <div className="rd-tile"><label>🧾 {tr('Abiertos')}</label><b>{all.length}</b><small>{tr('pedidos')}</small></div>
+                <div className="rd-tile"><label>📦 {tr('Cajas pedidas')}</label><b>{fmtN(asked)}</b><small>{tr('de los abiertos')}</small></div>
+                <div className="rd-tile ok"><label>✅ {tr('Hechas')}</label><b>{fmtN(made)}</b><small>{asked ? Math.round((made / asked) * 100) + '%' : '—'}</small></div>
+                <div className={'rd-tile' + (left ? ' warn' : ' ok')}><label>⏳ {tr('Faltan')}</label><b>{fmtN(left)}</b><small>{tr('cajas')}</small></div>
+                <div className={'rd-tile' + (urgentN ? ' warn' : '')}><label>🔥 {tr('Urgentes')}</label><b>{urgentN}</b><small>{urgentN ? tr('van primero') : tr('ninguno')}</small></div>
+                <div className="rd-tile"><label>📅 {tr('Salen esta semana')}</label><b>{week}</b><small>{tr('o ya pasaron')}</small></div>
+              </div>
+            )}
+          </>
+        )
+      })() : (
       <div className="tc-head">
         <h3>{tr('Pedidos · PO')}</h3>
         {mgr && <button type="button" className="lnk" onClick={() => setEditing('new')}>{tr('+ Agregar pedido')}</button>}
       </div>
+      )}
       {open.length > 0 && (
         <>
           <div className="ofilters otop">
@@ -1502,7 +1525,7 @@ function OrdersCard({ s, mgr, onAdd }: { s: State; mgr: boolean; onAdd?: (o: Ord
           {shown > ORDERS_PAGE && <button type="button" className="lnk" onClick={() => setShown(ORDERS_PAGE)}>{tr('Mostrar menos')}</button>}
         </div>
       )}
-      {open.length > 0 && <p className="hint">{tr('"Hechas" suma todos los pallets que se le dieron a cada pedido, de cualquier día.')} {tr('Toca un PO para ver sus pallets, con sus lotes, tags y cajas.')}</p>}
+      {!RD && open.length > 0 && <p className="hint">{tr('"Hechas" suma todos los pallets que se le dieron a cada pedido, de cualquier día.')} {tr('Toca un PO para ver sus pallets, con sus lotes, tags y cajas.')}</p>}
       {closed.length > 0 && <button type="button" className="lnk" onClick={() => setShowClosed(!showClosed)}>{trx('{0} los marcados completos ({1})', showClosed ? tr('Ocultar') : tr('Ver'), closed.length)}</button>}
       {showClosed && closed.length > 0 && table(closed.filter(hits).map(rowOf))}
       {editing && <OrderDialog key={editing} s={s} order={s.orders.find((o) => o.id === editing)} onClose={() => setEditing(null)} />}

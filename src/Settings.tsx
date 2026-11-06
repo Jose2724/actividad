@@ -66,6 +66,9 @@ export function Settings({ s, now, day, name, home, mgr, admin, viewOnly, meId, 
   const can = useCan()
   const items = settingsSections(can, mgr, viewOnly, admin, s.attView.on)
   const sec: SettingsKey = items.some((i) => i.key === section) ? section : items[0].key
+  // Planeación › Productos in the redesign: one part at a time (Jose, 2026-11-06: "pantalla corta y dividir cosas")
+  const [prodPart, setProdPart] = useState<'prod' | 'po' | 'crates' | 'lb'>('prod')
+  const pp = (k: typeof prodPart) => !RD || prodPart === k
   return (
     <div className={'settings' + (bare ? ' bare' : '')}>
       {bare ? null : RD ? <GroupedNav items={items} sec={sec} onSection={onSection} /> : (
@@ -84,10 +87,18 @@ export function Settings({ s, now, day, name, home, mgr, admin, viewOnly, meId, 
         {sec === 'kpi' && <KpiSettings s={s} viewOnly={viewOnly} />}
         {sec === 'consumo' && <ConsumeSettings s={s} viewOnly={viewOnly} />}
         {sec === 'attendance' && <AttendanceSettings s={s} date={day.date} viewOnly={viewOnly} admin={admin} name={name} />}
-        {sec === 'products' && <OrderCodesSettings s={s} ro={!mgr || viewOnly} />}
-        {sec === 'products' && <CartCratesSettings s={s} readOnly={!can('products')} />}
-        {sec === 'products' && <LbCaseSettings s={s} readOnly={!can('products')} />}
-        {sec === 'products' && <div className="setcard wide"><div className="sethead"><h3>{tr('Productos')}</h3></div><p className="hint">{tr('La tabla maestra de la oficina: con ella las mezclas se vuelven pouches, cajas y pallets esperados, y cada cuarto sabe cuánto lleva un carro, un pallet o una caja.')}</p><Products s={s} readOnly={!can('products')} /></div>}
+        {sec === 'products' && RD && (
+          <div className="rd-wtbar">
+            <h2 className="rd-wttitle">📦 {tr('Productos')}</h2>
+            <div className="seg rd-rangeseg" role="group" aria-label={tr('Productos')}>
+              {([['prod', '📦 ' + tr('Tabla maestra')], ['po', '🧾 ' + tr('Códigos con PO')], ['crates', '🛒 ' + tr('Guacales por carro')], ['lb', '⚖️ ' + tr('Libras por caja')]] as const).map(([k, label]) => <button key={k} type="button" className={prodPart === k ? 'on' : ''} aria-pressed={prodPart === k} onClick={() => setProdPart(k)}>{label}</button>)}
+            </div>
+          </div>
+        )}
+        {sec === 'products' && pp('po') && <OrderCodesSettings s={s} ro={!mgr || viewOnly} />}
+        {sec === 'products' && pp('crates') && <CartCratesSettings s={s} readOnly={!can('products')} />}
+        {sec === 'products' && pp('lb') && <LbCaseSettings s={s} readOnly={!can('products')} />}
+        {sec === 'products' && pp('prod') && <div className="setcard wide">{!RD && <div className="sethead"><h3>{tr('Productos')}</h3></div>}{!RD && <p className="hint">{tr('La tabla maestra de la oficina: con ella las mezclas se vuelven pouches, cajas y pallets esperados, y cada cuarto sabe cuánto lleva un carro, un pallet o una caja.')}</p>}<Products s={s} readOnly={!can('products')} /></div>}
         {sec === 'goals' && <GoalsSettings s={s} now={now} day={day} />}
         {sec === 'people' && <Employees meId={meId} admin={admin} />}
         {sec === 'devices' && <Devices now={now} />}
@@ -644,7 +655,22 @@ function GoalsSettings({ s, now, day }: { s: State; now: number; day: WorkDay })
   const text = (d: Dept, k: 1 | 2) => { const g = shiftGoalOf(s, d, k), u = unitOf(d); return [g.total ? fmtN(g.total) + ' ' + u : '', g.perHour ? fmtN(g.perHour) + ' ' + u + '/h' : ''].filter(Boolean).join(' · ') || '—' }
   return (
     <>
-      <div className="setcard">
+      {RD && (
+        <>
+          <div className="rd-wtbar"><h2 className="rd-wttitle">🎯 {tr('Metas por turno')}</h2><span className="rd-cardsub">{tr('lo que cada turno debe hacer')}</span></div>
+          <div className="rd-goalgrid">
+            {DEPTS.map((d) => (
+              <article key={d} className="rd-goalcard" style={deptVars(d)}>
+                <header><b>{DEPT_LOOK[d].emoji} {d}</b><button type="button" className="btn sm soft" onClick={() => setDept(d)}>✏️ {tr('Cambiar')}</button></header>
+                <div className="rd-goalnums">
+                  {([1, 2] as const).map((k) => <div key={k}><label>{tr('Turno {0}', k)}</label><b>{text(d, k)}</b></div>)}
+                </div>
+              </article>
+            ))}
+          </div>
+        </>
+      )}
+      {!RD && <div className="setcard">
         <div className="sethead"><h3>{tr('Metas por turno')}</h3></div>
         <p className="hint">{tr('Cada turno tiene su meta, del turno entero y por hora, en la unidad del cuarto. Lo que cuenta contra ella es solo lo que ese turno hace. Las metas de cada línea se ponen desde su tarjeta.')}</p>
         <div className="twrap">
@@ -653,7 +679,7 @@ function GoalsSettings({ s, now, day }: { s: State; now: number; day: WorkDay })
             <tbody>{DEPTS.map((d) => <tr key={d}><td><b>{d}</b></td><td>{text(d, 1)}</td><td>{text(d, 2)}</td><td><button type="button" className="lnk" onClick={() => setDept(d)}>{tr('Cambiar')}</button></td></tr>)}</tbody>
           </table>
         </div>
-      </div>
+      </div>}
       {dept && <TargetDialog s={s} dept={dept} unit={unitOf(dept)} inCourse={turnOf(s, day.date, now).shift} onClose={() => setDept(null)} />}
     </>
   )

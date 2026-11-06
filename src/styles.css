@@ -3211,3 +3211,24 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 @media (max-width:1200px){.rd-rptiles{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media (max-width:620px){.rd-rptiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .rd-move .rd-pill{justify-self:start}
+
+/* Planeación in the redesign (Jose, 2026-11-06) */
+.app.rd .pt-tile.on{outline:2px solid var(--d,var(--accent));outline-offset:1px}
+.app.rd .pt-tile{cursor:pointer}
+.rd-ptall{margin-left:auto}
+.rd-ptall.on{border-color:var(--accent);color:var(--accent)}
+.rd-searchin{min-width:0;width:240px;max-width:100%;min-height:38px;border-radius:10px}
+.rd-wodates{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.rd-roomseg small,.rd-rangeseg small{font-size:11.5px;opacity:.75;margin-left:2px}
+.rd-goalgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.rd-goalcard{display:grid;gap:10px;padding:12px 14px;border:1px solid var(--line);border-top:4px solid var(--d,var(--line));border-radius:14px;background:var(--surface)}
+.rd-goalcard header{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.rd-goalcard header b{font-size:16px;color:var(--d-ink,inherit)}
+.rd-goalnums{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.rd-goalnums>div{display:grid;gap:2px;padding:8px 10px;border-radius:10px;background:var(--bg)}
+.rd-goalnums label{font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.rd-goalnums b{font-size:15px;overflow-wrap:anywhere}
+.rd-orders{display:grid;gap:12px}
+.app.rd .wohist{display:grid;gap:10px}
+.rd-rangeseg button{display:inline-flex;flex-direction:row;align-items:center;gap:4px}
+.app.rd .pt-legend{display:flex;align-items:center;flex-wrap:wrap;gap:6px 14px}

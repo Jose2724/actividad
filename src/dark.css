@@ -1625,3 +1625,10 @@ html:where([data-theme="dark"]),:where(html[data-theme="dark"]) body{background:
 :where(html[data-theme="dark"]) .rd-rpmore{border:1px solid var(--line);border-radius:14px;background:var(--surface)}
 :where(html[data-theme="dark"]) .rd-wtacts .btn.soft.on{border-color:var(--accent);color:var(--accent)}
 :where(html[data-theme="dark"]) .app.rd .rp-plant b.red,:where(html[data-theme="dark"]) .app.rd .rp-card .drill.red,:where(html[data-theme="dark"]) .app.rd .rp-card .red{color:var(--t-stop)}
+:where(html[data-theme="dark"]) .app.rd .pt-tile.on{outline:2px solid var(--d,var(--accent))}
+:where(html[data-theme="dark"]) .rd-ptall.on{border-color:var(--accent);color:var(--accent)}
+:where(html[data-theme="dark"]) .rd-searchin{border-radius:10px}
+:where(html[data-theme="dark"]) .rd-goalcard{border:1px solid var(--line);border-top:4px solid var(--d,var(--line));border-radius:14px;background:var(--surface)}
+:where(html[data-theme="dark"]) .rd-goalcard header b{color:var(--d-ink,inherit)}
+:where(html[data-theme="dark"]) .rd-goalnums>div{border-radius:10px;background:var(--bg)}
+:where(html[data-theme="dark"]) .rd-goalnums label{color:var(--muted)}

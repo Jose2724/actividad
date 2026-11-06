@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { RD } from './rd'
 import { planRoomNoteOf, CFG, dayAfter, dayBefore, DEPTS, fmtDur, lineNameOf, normCode, orderStatus, orderUnitWord, planRows, prevPending, reasonText, SETUP, shiftAt, shiftsOf, workOrderOf, type Dept, type PlanRow, type State } from './store'
 import { shortDay } from './App'
 import { woName } from './WorkOrders'
 import { woN } from './woSum'
 import { bringDay, DeptBadge, type ReportAt } from './ReportView'
 import { DEPT_LOOK, deptVars } from './look'
-import { tr } from './i18n'
+import { locale, tr } from './i18n'
 
 /**
  * "Programa del día" (Jose and the office, 2026-10-20: "que ellos vean su programación ... lo que hizo cada turno y lo
@@ -23,6 +24,9 @@ type Row = PlanRow & { look: Look; carry: number; order: string; roomNote: { tex
 export function ProgramToday({ s, date: today, now, rooms, onReport }: { s: State; date: string; now: number; rooms: Dept[]; onReport: (x: ReportAt) => void }) {
   // the day shown (2026-10-28, the office: "programar también para días más adelante"): today, or any other day
   const [picked, setPicked] = useState('')
+  // the redesign shows one room at a time, chosen on its tile ('*' = all of them; Jose, 2026-11-06: pantalla corta)
+  const [roomPick, setRoomPick] = useState<Dept | '*' | ''>('')
+  const dateRef = useRef<HTMLInputElement>(null)
   const date = picked || today, isToday = date === today
   // a day older than the device keeps is brought from the server, with the day before (what it left pending), as the
   // Reporte does (the office, 2026-11-05: "la programación del día a día ... ¿se puede tener acceso a un historial?")
@@ -53,11 +57,26 @@ export function ProgramToday({ s, date: today, now, rooms, onReport }: { s: Stat
     return { dept, list, also, share, complete, stopped }
   })
   const shown = cards.filter((c) => c.list.length || c.also.length), none = cards.filter((c) => !c.list.length && !c.also.length)
-  const toCard = (d: Dept) => document.getElementById('pt-' + d)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  const toCard = (d: Dept) => (RD ? setRoomPick(roomPick === d ? '' : d) : document.getElementById('pt-' + d)?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+  const onRoom: Dept | '*' = roomPick === '*' ? '*' : shown.find((c) => c.dept === roomPick)?.dept ?? shown[0]?.dept ?? '*'
+  const cardsShown = RD && onRoom !== '*' ? shown.filter((c) => c.dept === onRoom) : shown
   const pct = (x: number) => Math.round(x * 100) + '%'
   return (
     <div className="pt">
-      <div className="pt-head">
+      {RD && (
+        <div className="rd-wtbar">
+          <h2 className="rd-wttitle">📋 {tr('Programa del día')}</h2>
+          <div className="rd-daynav">
+            <button type="button" className="btn sm" aria-label={tr('Día anterior')} title={tr('Día anterior')} onClick={() => setPicked(dayBefore(date))}>‹</button>
+            <button type="button" className="btn sm rd-datesbtn" onClick={() => { const i = dateRef.current; if (i) { try { i.showPicker() } catch { i.focus() } } }}>📅 {new Date(date + 'T12:00:00').toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' })}</button>
+            <input ref={dateRef} className="rd-daypick" type="date" value={date} tabIndex={-1} aria-label={tr('Día')} onChange={(e) => e.target.value && setPicked(e.target.value === today ? '' : e.target.value)} />
+            <button type="button" className="btn sm" aria-label={tr('Día siguiente')} title={tr('Día siguiente')} onClick={() => { const n = dayAfter(date); setPicked(n === today ? '' : n) }}>›</button>
+            {!isToday && <button type="button" className="btn sm soft" onClick={() => setPicked('')}>{tr('Hoy')}</button>}
+          </div>
+          {shiftNow > 0 && <span className="pt-live"><i />{tr('Turno {0} en curso', shiftNow)}</span>}
+        </div>
+      )}
+      {!RD && <div className="pt-head">
         <div><h2>{isToday ? tr('📋 Programa del día') : tr('📋 Programa del {0}', shortDay(date))}</h2><small>{tr('lo que programó la oficina, lo que hizo cada turno y lo que falta')}</small></div>
         {shiftNow > 0 && <span className="pt-live"><i />{tr('Turno {0} en curso · al momento', shiftNow)}</span>}
         <div className="pt-days">
@@ -66,27 +85,27 @@ export function ProgramToday({ s, date: today, now, rooms, onReport }: { s: Stat
           <button type="button" className="btn sm" onClick={() => setPicked(dayAfter(date))}>{tr('Día siguiente ›')}</button>
           {!isToday && <button type="button" className="btn sm soft" onClick={() => setPicked('')}>{tr('Hoy')}</button>}
         </div>
-      </div>
+      </div>}
       {coming === 'wait' && <p className="hint">{tr('Trayendo ese día del servidor…')}</p>}
       {coming === 'fail' && <p className="hint amber">{tr('No se pudo traer ese día del servidor (sin señal). Lo que sale es lo que tiene este aparato.')} <button type="button" className="btn sm soft" onClick={() => setTries(tries + 1)}>{tr('Probar otra vez')}</button></p>}
       {coming === 'wait' ? null : !shown.length ? <p className="hint">{isToday ? tr('Todavía no hay programa para hoy.') : tr('No hay programa para el {0}. Se pone desde la tarjeta del cuarto, en "Cambiar programa", eligiendo ese día.', shortDay(date))}</p> : (
         <>
           <div className="pt-strip">
             {shown.map((c) => (
-              <button key={c.dept} type="button" className="pt-tile" style={deptVars(c.dept)} onClick={() => toCard(c.dept)}>
+              <button key={c.dept} type="button" className={'pt-tile' + (RD && (onRoom === c.dept || onRoom === '*') ? ' on' : '')} aria-pressed={RD ? onRoom === c.dept : undefined} style={deptVars(c.dept)} onClick={() => toCard(c.dept)}>
                 <span>{DEPT_LOOK[c.dept].emoji} {c.dept}</span><b>{c.list.length ? pct(c.share) : '—'}</b>
                 <small>{c.list.length ? tr('{0} de {1} completos', c.complete, c.list.length) : tr('sin programa')}{c.stopped > 0 && ' · ' + (c.stopped === 1 ? tr('1 línea parada') : tr('{0} líneas paradas', c.stopped))}</small>
               </button>
             ))}
           </div>
-          <div className="pt-legend"><span className="t1">{tr('Turno 1')}</span><span className="t2">{tr('Turno 2')}</span><span className="left">{tr('Falta')}</span><span>{tr('Toca un número para ver sus registros')}</span></div>
+          <div className="pt-legend"><span className="t1">{tr('Turno 1')}</span><span className="t2">{tr('Turno 2')}</span><span className="left">{tr('Falta')}</span>{!RD && <span>{tr('Toca un número para ver sus registros')}</span>}{RD && shown.length > 1 && <button type="button" className={'btn sm soft rd-ptall' + (onRoom === '*' ? ' on' : '')} aria-pressed={onRoom === '*'} onClick={() => setRoomPick(onRoom === '*' ? '' : '*')}>{onRoom === '*' ? tr('Ver uno a la vez') : tr('Ver todos los cuartos')}</button>}</div>
           <div className="pt-cards">
-            {shown.map((c) => <Card key={c.dept} {...c} date={date} shiftNow={shiftAt(shiftsOf(s, date, c.dept), now)} onReport={onReport} />)}
+            {cardsShown.map((c) => <Card key={c.dept} {...c} date={date} shiftNow={shiftAt(shiftsOf(s, date, c.dept), now)} onReport={onReport} />)}
           </div>
         </>
       )}
-      {none.length > 0 && shown.length > 0 && <p className="hint">{tr('Sin programa hoy: {0}', none.map((c) => DEPT_LOOK[c.dept].emoji + ' ' + c.dept).join(' · '))}</p>}
-      <p className="hint">{tr('"Falta" es lo que le toca al siguiente turno. Lo que el día no termina vuelve a su pedido, y mañana sale como "viene de ayer".')}</p>
+      {!RD && none.length > 0 && shown.length > 0 && <p className="hint">{tr('Sin programa hoy: {0}', none.map((c) => DEPT_LOOK[c.dept].emoji + ' ' + c.dept).join(' · '))}</p>}
+      {!RD && <p className="hint">{tr('"Falta" es lo que le toca al siguiente turno. Lo que el día no termina vuelve a su pedido, y mañana sale como "viene de ayer".')}</p>}
     </div>
   )
 }

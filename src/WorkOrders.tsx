@@ -1,3 +1,4 @@
+import { RD } from './rd'
 import { createContext, memo, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
 import { CFG, closeWorkOrder, PLAN_LOT_MAX, dayOf, deleteWorkOrder, DEPTS, fmtTime, lineNameOf, NOTE_MAX, normCode, numOf, orderKind, orderQueue, ordersOf, orderStatus, orderUnitDefault, orderUnitWord, planLinesOf, productOf, reopenWorkOrder, resealGroup, saveWorkOrder, shiftsOf, stateWith, whoText, woQueue, workOrderOf, writesRoom, WO_MAX, WO_UNITS, type Change, type Dept, type OrderStatus, type Run, type State, type WorkOrder } from './store'
@@ -291,6 +292,7 @@ export const OrderHistory = memo(function OrderHistory({ s, dept, today, edit, r
   const [from, setFrom] = useState(was.from)
   const [to, setTo] = useState(was.to)
   const [by, setBy] = useState<'start' | 'finish'>(was.by)
+  const [datesOpen, setDatesOpen] = useState(false)
   useEffect(() => { histKept.set(keyOf, { room, q, only, from, to, by }) }, [keyOf, room, q, only, from, to, by])
   const [page, setPage] = useState(0)
   const topRef = useRef<HTMLDivElement>(null)
@@ -337,11 +339,47 @@ export const OrderHistory = memo(function OrderHistory({ s, dept, today, edit, r
   return (
     <>
     <div className="plan wohist" ref={topRef}>
-      <div className="tc-head">
+      {RD && (
+        <>
+          <div className="rd-wtbar">
+            <h2 className="rd-wttitle">🧾 {tr('Pedidos de producción')}</h2>
+            <div className="seg rd-rangeseg" role="group" aria-label={tr('Estado')}>
+              {(['', 'abierto', 'completado', 'cerrado'] as const).map((k) => <button key={k} type="button" className={only === k ? 'on' : ''} aria-pressed={only === k} onClick={() => { setOnly(k); setPage(0) }}>{k === '' ? tr('Todos') : k === 'abierto' ? tr('Abiertos') : k === 'completado' ? tr('Completados') : tr('Cerrados')} <small>{count(k)}</small></button>)}
+            </div>
+            <div className="rd-wtacts">
+              <input className="rd-searchin" type="search" value={q} onChange={(e) => { setQ(e.target.value); setPage(0) }} placeholder={'🔍 ' + tr('Código, WO, lote o nota')} aria-label={tr('Buscar')} autoComplete="off" />
+              <button type="button" className={'btn soft' + (datesOpen || from || to ? ' on' : '')} aria-expanded={datesOpen} onClick={() => setDatesOpen(!datesOpen)}>📅 {tr('Fechas')}{from || to ? ' •' : ''}</button>
+              {edit && <button type="button" className="btn primary" onClick={() => setAdding(true)}>{tr('+ Nuevo pedido')}</button>}
+            </div>
+          </div>
+          {readsAll && (
+            <div className="seg rd-rangeseg rd-roomseg" role="group" aria-label={tr('Cuarto')}>
+              <button type="button" className={!room ? 'on' : ''} aria-pressed={!room} onClick={() => { setRoom(''); setPage(0) }}>{tr('Todos')} <small>{found.length}</small></button>
+              {DEPTS.map((d) => <button key={d} type="button" className={room === d ? 'on' : ''} aria-pressed={room === d} onClick={() => { setRoom(d); setPage(0) }}><span aria-hidden="true">{DEPT_LOOK[d].emoji}</span> {d} <small>{found.filter((x) => x.order.dept === d).length}</small></button>)}
+            </div>
+          )}
+          {datesOpen && (
+            <div className="rd-rpmore rd-wodates">
+              <div className="seg wo-by">
+                <button type="button" className={by === 'start' ? 'on' : ''} aria-pressed={by === 'start'} onClick={() => { setBy('start'); setPage(0) }}>{tr('Por inicio')}</button>
+                <button type="button" className={by === 'finish' ? 'on' : ''} aria-pressed={by === 'finish'} onClick={() => { setBy('finish'); setPage(0) }}>{tr('Por terminado')}</button>
+              </div>
+              <div className="rangepick">
+                <label>{tr('Desde')} <input type="date" value={from} onChange={(e) => { setFrom(e.target.value); setPage(0) }} /></label>
+                <label>{tr('Hasta')} <input type="date" value={to} onChange={(e) => { setTo(e.target.value); setPage(0) }} /></label>
+                {[7, 30, 90].map((n) => <button key={n} type="button" className={'chip sm' + (preset(n) ? ' on' : '')} aria-pressed={preset(n)} onClick={() => pick(n)}>{tr('{0} días', n)}</button>)}
+                {(from || to) && <button type="button" className="chip sm" onClick={() => { setFrom(''); setTo(''); setPage(0) }}>{tr('Todas las fechas')}</button>}
+              </div>
+            </div>
+          )}
+          {filtering && <div className="rf-now"><button type="button" className="btn sm" onClick={clear}>{tr('✕ Quitar filtros')}</button></div>}
+        </>
+      )}
+      {!RD && <div className="tc-head">
         <h3>{readsAll && !room ? tr('Pedidos de producción · todos los cuartos') : trx('Pedidos de producción de {0}', room || dept)}<small> · {list.length}</small></h3>
         {edit && <button type="button" className="btn soft sm" onClick={() => setAdding(true)}>{tr('+ Nuevo pedido')}</button>}
-      </div>
-      <div className="rfilters wofilters">
+      </div>}
+      {!RD && <div className="rfilters wofilters">
         <div className="rf-row">
           <label className="rf grow"><span className="lab">{tr('Buscar')}</span><input type="search" value={q} onChange={(e) => { setQ(e.target.value); setPage(0) }} placeholder={tr('Código, WO, lote o nota')} autoComplete="off" /></label>
           <div className="rf"><span className="lab">{tr('Estado')}</span>
@@ -379,7 +417,7 @@ export const OrderHistory = memo(function OrderHistory({ s, dept, today, edit, r
           </div>
         </div>
         {filtering && <div className="rf-now"><button type="button" className="btn sm" onClick={clear}>{tr('✕ Quitar filtros')}</button></div>}
-      </div>
+      </div>}
       {stillShort && supabase && <p className="avlotnote">{asking === 'busy' ? tr('Trayendo del servidor los días que faltan…') : sync.state === 'offline' ? tr('Sin señal: los números de los pedidos viejos salen cuando vuelva.') : asking === 'failed' ? tr('No se pudieron traer del servidor los días viejos de algunos pedidos: sus números pueden quedarse cortos.') : tr('Trayendo del servidor los días que faltan…')}{asking === 'failed' && <> {' '}<button type="button" className="btn sm" onClick={() => { asked.current.clear(); setAsking('') }}>{tr('Reintentar')}</button></>}</p>}
       {list.length === 0 ? (
         <div className="woempty">
