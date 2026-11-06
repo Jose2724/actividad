@@ -1445,3 +1445,8 @@ html:where([data-theme="dark"]),:where(html[data-theme="dark"]) body{background:
 :where(html[data-theme="dark"]) .app.rd .line .tile:nth-last-child(2):not(.main) b{color:var(--rd-now)}
 :where(html[data-theme="dark"]) .app.rd .line .tile:last-child:not(.main) b{color:var(--rd-work)}
 :where(html[data-theme="dark"]) .app.rd .line .tile small .red{color:var(--warn)}
+:where(html[data-theme="dark"]) .app.rd .line .slowbar{border-radius:8px}
+:where(html[data-theme="dark"]) .app.rd .line .tile,:where(html[data-theme="dark"]) .app.rd .line .tile.main{border-radius:8px}
+:where(html[data-theme="dark"]) .rd-day{border-radius:99px;background:var(--btn);border:1px solid var(--line);color:var(--muted)}
+:where(html[data-theme="dark"]) .rd-day.on{background:var(--soft);color:var(--ink)}
+@media (max-width:1100px){:where(html[data-theme="dark"]) .rd-day{background:none;border:0}}

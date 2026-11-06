@@ -3643,6 +3643,9 @@ export const EN: Record<string, string> = {
   // the redesign (2026-11-05): sections, menu, search, Resumen, Toda la planta
   "Toda la planta": "Whole plant",
   "Más": "More",
+  "Día empezado {0}": "Day started {0}",
+  "solo turno {0}": "shift {0} only",
+  "Día sin empezar": "Day not started",
   "abierto hasta las {0}": "open until {0}",
   "Supervisor: {0}": "Supervisor: {0}",
   "{0} del turno": "{0} this shift",

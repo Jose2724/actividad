@@ -596,7 +596,7 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
   const showAll = RD && overview && can('depts')
   const actView = (
         <>
-        <DayBar s={s} now={now} day={day} mgr={can('day')} calendar={can('shifts')} />
+        {!RD && <DayBar s={s} now={now} day={day} mgr={can('day')} calendar={can('shifts')} />}
         <div className="main">
           {/* the manager moves between rooms; a supervisor or operator only has their own */}
           {can('depts') && (
@@ -707,6 +707,7 @@ function Main({ name, home, mgr, admin, wholeDay, meId, onLogout }: { name: stri
       <Chat s={s} home={home} onInbox={isOp ? undefined : () => setTab('msg')} />
       <header className="rd-top">
         <div className="rd-brand"><img className="logo" src={import.meta.env.BASE_URL + 'mamas-logo.png'} alt="Mama's Creations" /><div><h1>{APP}{!supabase && <span className="demotag">DEMO</span>}</h1><small>{new Date(now).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })} · <b className="livetime">{new Date(now).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</b></small></div></div>
+        <DayBar s={s} now={now} day={day} mgr={can('day')} calendar={can('shifts')} compact />
         {isOp && <span className="rd-roomchip" style={deptVars(home)}><i aria-hidden="true">{DEPT_LOOK[home].emoji}</i>{home}</span>}
         <button type="button" className="rd-find" onClick={() => setFinding(true)} aria-label={tr('Buscar')}><span aria-hidden="true">🔍</span><span className="rd-find-t">{tr('Buscar código, lote, PO, tag…')}</span><kbd>Ctrl K</kbd></button>
         <SyncDot />
@@ -1216,12 +1217,24 @@ const wipeOk = (typed: string) => typed.trim().toUpperCase() === WIPE_WORD
 export const howMany = (runs: number, stops: number) => tr('{0} y {1}', runs + ' ' + (runs === 1 ? tr('corrida') : tr('corridas')), stops + ' ' + (stops === 1 ? tr('paro') : tr('paros')))
 
 /** which day of work it is, for everyone; the manager starts it here */
-function DayBar({ s, now, day, mgr, calendar }: { s: State; now: number; day: WorkDay; mgr: boolean; calendar: boolean }) {
+function DayBar({ s, now, day, mgr, calendar, compact }: { s: State; now: number; day: WorkDay; mgr: boolean; calendar: boolean; compact?: boolean }) {
   const [open, setOpen] = useState(false)
   const [cal, setCal] = useState(false) // the calendar of the plant: the day's shifts, the week, the hours
   const [notice, setNotice] = useState<{ title: string; text?: string } | null>(null)
   const plan = shiftsOf(s, day.date)
   if (!day.started && !mgr) return null
+  // the redesign: the day in the top bar, small, instead of a row of its own (Jose, 2026-11-05: "veo empezar día que está
+  // solo ahí ... para subir más y tratar de que todo esté en la pantalla")
+  if (compact) return (
+    <div className={'rd-day' + (day.started ? ' on' : '')}>
+      {day.started
+        ? <span className="rd-day-t" title={tr('Día de trabajo: {0} · empezó a las {1}', longDate(day.date), fmtTime(day.started.at)) + (day.started.by ? ' · ' + day.started.by : '')}>{trx('Día empezado {0}', <b>{fmtTime(day.started.at)}</b>)}{plan.only ? ' · ' + tr('solo turno {0}', plan.only) : ''}</span>
+        : <span className="rd-day-t">{tr('Día sin empezar')}</span>}
+      {mgr && <button type="button" className={day.started ? 'lnk sm' : 'btn primary sm'} onClick={() => setOpen(true)}>{day.started ? tr('Cambiar') : tr('▶ Empezar el día')}</button>}
+      {open && <StartDayDialog s={s} now={now} day={day} onClose={() => setOpen(false)} onDone={setNotice} />}
+      {notice && <NoticeDialog title={notice.title} text={notice.text} onClose={() => setNotice(null)} />}
+    </div>
+  )
   return (
     <div className={'daybar' + (day.started ? ' on' : '')}>
       {day.started
@@ -2483,7 +2496,7 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
             : <button type="button" className="btn stopbtn" disabled={!anyRunning} onClick={() => setStopAll(true)}>{tr('⏸ Parar departamento')}</button>}
           {canStart2 && !guard.locked && <button type="button" className="btn soft" onClick={() => setStarting2(true)}>{tr('▶ Empezar Turno 2')}</button>}
           {!guard.locked && <button type="button" className="btn" disabled={!left.runs.length && !left.setups.length && !left.stops.length} onClick={openLeaving}>{tr('🏁 Terminar turno')}</button>}
-          {(can('fix') || s.lineRules.add) && <button type="button" className={"btn soft" + (RD ? " rd-addline" : "")} onClick={() => setAdding(true)}>{trx('+ Agregar {0}', CFG[dept].lineWord.toLowerCase())}</button>}
+          {(can('fix') || s.lineRules.add) && <button type="button" className={"btn soft" + (RD ? " rd-addline" : "")} onClick={() => setAdding(true)}>{RD ? '+ ' + CFG[dept].lineWord : trx('+ Agregar {0}', CFG[dept].lineWord.toLowerCase())}</button>}
           {/* what the freezer has ready for this room, and asking for it (Jose, 2026-10-27): Freezer RTE's own screen for the room's people */}
           {dept === 'Kitchen' && <WeightNoteButton s={s} date={day.date} now={now} />}
           {!RD && CFG[dept].waste && <RoomWasteButton s={s} dept={dept} date={day.date} />}
