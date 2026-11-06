@@ -3643,6 +3643,7 @@ export const EN: Record<string, string> = {
   // the redesign (2026-11-05): sections, menu, search, Resumen, Toda la planta
   "Toda la planta": "Whole plant",
   "Más": "More",
+  "lb por hora de trabajo": "lb per labor hour",
   "Producción contra la meta, los últimos 7 días": "Production against the goal, the last 7 days",
   "{0} va al {1}% de lo que pide la meta": "{0} is at {1}% of what the goal asks",
   "{0} de {1} {2} a esta hora": "{0} of {1} {2} by this hour",

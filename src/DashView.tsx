@@ -9,6 +9,7 @@ import { loadZip, xlsxNow, XLSX_TYPE } from './xlsx'
 import { download } from './App'
 import { locale, tr } from './i18n'
 import { WhatIs } from './Numbers'
+import { RD } from './rd'
 
 const kindName = (k: DashKind) => (k === 'raw' ? tr('Crudo') : k === 'cooked' ? tr('Cocinado') : tr('Pouch'))
 const md = (d: string) => { const [, m, dd] = d.split('-').map(Number); return m + '/' + dd }
@@ -41,6 +42,55 @@ export function DashView({ s, date, now, pplh }: { s: State; date: string; now: 
     const make = () => xlsxNow(dashBook(s, dates[0], dates[dates.length - 1], dates, now))
     const bytes = make() ?? (await loadZip(), make())
     if (bytes) download(new File([bytes], 'Dashboard-' + dates[0] + (dates.length > 1 ? '_' + dates[dates.length - 1] : '') + '.xlsx', { type: XLSX_TYPE }))
+  }
+  // the redesign (Jose, 2026-11-06: "Dashboard"): one bar, three tiles, the two products' charts side by side on top and
+  // the table of days under them, so the picture is seen without scrolling
+  if (RD) {
+    const tile = (icon: string, name: string, value: string, note: string, pending: boolean) => <div className={'rd-tile' + (pending ? ' pend' : '')}><label>{icon} {name}</label><b>{value}</b><small>{note}</small></div>
+    return (
+      <div className="rd-dash">
+        <div className="rd-wtbar">
+          <h2 className="rd-wttitle">📊 Dashboard</h2>
+          <RangePick compact from={from} to={to} today={date} onChange={(a, b) => { setFrom(a); setTo(b) }} />
+          <div className="rd-wtacts">
+            <button type="button" className="btn primary" onClick={() => void excel()}>{tr('⬇ Excel')}</button>
+            <WhatIs id="dash" label="ⓘ" />
+          </div>
+        </div>
+        <div className="rd-tiles rd-dashtiles">
+          {tile('🎯', 'Yield', '—', tr('Pendiente: falta la fuente de las libras por producto'), true)}
+          {tile('📉', 'Shorts', '—', tr('Pendiente: por definir con Mike'), true)}
+          {pplh ? tile('⚙️', 'PPLH', p.pplh == null ? '—' : p.pplh.toFixed(1), p.pplh == null ? tr('Faltan las libras (NetSuite) o las horas (RR. HH.) de estos días') : tr('lb por hora de trabajo'), p.pplh == null)
+            : tile('⚙️', 'PPLH', '—', tr('Solo lo ve quien tiene permiso en PPLH'), true)}
+        </div>
+        <div className="rd-dashcharts">
+          {data.map((c) => (
+            <article key={c.code} className="rd-card rd-dashchart">
+              <h3>📈 {c.code}</h3>
+              <DashChart c={c} compact />
+            </article>
+          ))}
+        </div>
+        <article className="rd-card">
+          <h3>🗓️ {tr('Resumen de yield y pesos')} <WhatIs id="dash" /></h3>
+          <div className="scroll"><table className="wt-rp-tbl dash-tbl">
+            <thead><tr><th>{tr('Producto')}</th><th></th><th>Target</th>{dates.map((d) => <th key={d} className="n"><span>{md(d)}</span><small>{wd(d)}</small></th>)}{showWeeks && weeks.map((w) => <th key={w.monday} className="n dash-week"><span>{manyWeeks || w.days < 7 ? tr('Semana del {0}', md(w.monday)) : tr('Semana')}</span><small>{w.days === 7 ? tr('promedio') : tr('{0} de 7 días', w.days)}</small></th>)}{manyWeeks && <th className="n dash-week"><span>{tr('Rango')}</span><small>{tr('{0} días', dates.length)}</small></th>}</tr></thead>
+            <tbody>{data.map((c) => DASH_KINDS.map((k, i) => (
+              <tr key={c.code + k}>
+                {i === 0 && <td rowSpan={3} className="dash-code"><b>{c.code}</b></td>}
+                <td className={'dash-k dash-k-' + k}>{kindName(k)}</td>
+                <td className="dash-target">{c.target[k] ? wtRangeLong(c.target[k]) : '—'}</td>
+                {c.days.map((d) => cell(d[k], d.date))}
+                {showWeeks && c.weeks.map((w) => cell(w[k], 'w' + w.monday, ' dash-week'))}
+                {manyWeeks && cell(c.all[k], 'all', ' dash-week')}
+              </tr>
+            )))}</tbody>
+          </table></div>
+          <div className="wt-legend"><span className="ok">{tr('✓ Dentro del objetivo')}</span><span className="bad">{tr('✗ Bajo el objetivo')}</span><span className="warn">{tr('✗ Sobre el objetivo')}</span></div>
+          {!weighed && <p className="hint amber">{tr('No hay pesos en estos días.')}</p>}
+        </article>
+      </div>
+    )
   }
   // (trimmed to a readable width, Mike 2026-11-03: "too big, too many spaces, trim it": nothing stretches over a wide screen)
   return (
@@ -95,7 +145,7 @@ function ticks(lo: number, hi: number) {
  * a ball), the pouch below (ounces of a bag; the two cannot share an axis). QA's range of each as a soft band in its
  * colour, a dot per day, the last value written beside its line, and a tap or hover on a day says its three numbers
  */
-function DashChart({ c }: { c: DashCode }) {
+function DashChart({ c, compact }: { c: DashCode; compact?: boolean }) {
   const box = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(640)
   useLayoutEffect(() => {
@@ -108,7 +158,7 @@ function DashChart({ c }: { c: DashCode }) {
     return () => ro?.disconnect()
   }, [])
   const [on, setOn] = useState<number | null>(null)
-  const n = c.days.length, L = 46, R = 16, T = 30, PH = 150, GAP = 34, XL = 26
+  const n = c.days.length, L = 46, R = 16, T = compact ? 22 : 30, PH = compact ? 112 : 150, GAP = compact ? 28 : 34, XL = 26
   const H = T + PH + GAP + PH + XL
   // (the first and last days sit a little in from the edges, so a dot on the first day is not lost on the axis: Jose, 2026-11-04)
   const IN = 18

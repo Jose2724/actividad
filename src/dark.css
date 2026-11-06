@@ -1538,3 +1538,6 @@ html:where([data-theme="dark"]),:where(html[data-theme="dark"]) body{background:
 :where(html[data-theme="dark"]) .rd-sumbars .val.none{fill:var(--sb-lab)}
 :where(html[data-theme="dark"]) .rd-sumnote{color:var(--muted)}
 :where(html[data-theme="dark"]) .rd-calm.warn{background:#362e1c;color:#f7e2c4}
+:where(html[data-theme="dark"]) .rd-tile.pend b{color:var(--muted)}
+:where(html[data-theme="dark"]) .rd-tile.pend small{color:var(--muted)}
+:where(html[data-theme="dark"]) .rd-wtacts .whatis{border-radius:12px;border:1.5px solid var(--btn-line);background:var(--btn);box-shadow:0 2px 0 var(--btn-edge);color:var(--ink)}

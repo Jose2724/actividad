@@ -3029,3 +3029,22 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 .rd-calm.warn{background:#fff7e6;color:#7a4700}
 .rd-alert:disabled{cursor:default}
 @media (max-width:1100px){.rd-sumgrid{grid-template-columns:minmax(0,1fr)}}
+/* ---- Dashboard in the redesign (2026-11-06): the bar, three tiles, the two charts side by side, the table under them ---- */
+.rd-dash{display:grid;gap:12px}
+.rd-dashtiles{grid-template-columns:repeat(3,minmax(0,1fr))}
+.rd-tile.pend b{color:var(--muted)}
+.rd-tile.pend small{color:var(--muted)}
+.rd-dashcharts{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:12px}
+.rd-dashchart{padding:10px 12px}
+.rd-dashchart h3{font-size:17px}
+.rd-dash .dash-chart{width:100%}
+.rd-dash .wt-rp-tbl{font-size:13.5px}
+.rd-wtacts .whatis{display:inline-grid;place-items:center;width:40px;min-height:38px;border-radius:12px;border:1.5px solid var(--btn-line);background:var(--btn);box-shadow:0 2px 0 var(--btn-edge);text-decoration:none;font-size:17px;color:var(--ink)}
+@media (max-width:760px){.rd-dashtiles{grid-template-columns:minmax(0,1fr)}.rd-dashcharts{grid-template-columns:minmax(0,1fr)}}
+.rd-dashtiles .rd-tile{padding:7px 12px}
+.rd-dashtiles .rd-tile b{font-size:22px}
+.rd-dashchart h3{margin:0 0 2px}
+.rd-dash .dash-legend{margin:0}
+.rd-dashcharts>*,.rd-dash>*{min-width:0}
+.rd-dash .dash-chart{overflow:hidden}
+.rd-dash .dash-chart svg{max-width:100%;height:auto}
