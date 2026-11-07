@@ -1911,6 +1911,13 @@ table.rc-pareto small.rc-narrow{color:var(--muted);font-weight:700;font-variant-
 .later-free{grid-column:1/-1;display:grid;gap:6px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px}
 .later-free .lab{font-weight:700;margin-right:4px}
 .later-free .chip.free{background:#dcfce7;border-color:#86efac;color:#166534;font-weight:700}
+/* each line with its free times (2026-11-06) */
+.later-lines{display:grid;gap:4px}
+.later-line{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:4px 8px;border-radius:8px;border:1px solid transparent}
+.later-line>b{min-width:70px}
+.later-line.on{border-color:var(--line);background:var(--surface)}
+.later-line .muted{font-size:13px}
+.later-busy{display:grid;gap:4px;border-top:1px solid var(--line);padding-top:6px}
 
 /* the columns' filters of the report, as in Excel (the office, 2026-10-21) */
 .cf-head{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}

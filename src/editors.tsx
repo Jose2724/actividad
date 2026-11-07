@@ -512,6 +512,7 @@ function StopSplitter({ stop, onBack, onClose }: { stop: Stop; onBack: () => voi
  * Opened from an order of Packing's Pedidos tab (its "+ Pallets"), it starts on that order: see laterStart. Without
  * one it opens as it always did.
  */
+const LATER_GAP_MIN = 5 * 60_000
 export function AddRunDialog({ s, date, dept: first, order, onClose, onAdded }: { s: State; date: string; dept?: Dept; order?: Order; onClose: () => void; onAdded: (id: string) => void }) {
   // how it opens, taken once: an order that changes while the window is open does not reset what is being typed
   const [start] = useState(() => laterStart(first, order))
@@ -601,6 +602,8 @@ export function AddRunDialog({ s, date, dept: first, order, onClose, onAdded }: 
   // the line's free hours and its codes in the shift chosen (or the one the start hour typed is in, or the one in course)
   const shownShift: 1 | 2 = shiftPick ?? (Number.isFinite(startAt) ? shiftAt(shiftsOf(s, day, dept), startAt) : (turnOf(s, day, clockNow(), dept).shift || 1) as 1 | 2)
   const times = line && day ? lineTimes(s, line.id, day, dept, shownShift, clockNow()) : { window: { from: 0, to: 0 }, free: [], busy: [] }
+  // (a gap of a minute or two between one code and the next is the change, not a time a code could have run: not offered)
+  const allTimes = day ? lines.map((l) => { const t = l.id === line?.id ? times : lineTimes(s, l.id, day, dept, shownShift, clockNow()); return { l, t: { ...t, free: t.free.filter((x) => x.to - x.from >= LATER_GAP_MIN) } } }) : []
   const hm = (at: number) => { const d = new Date(at); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') }
   const busyText = (r: Run) => r.code + ' · ' + (r.date !== day ? tr('desde el {0} ', r.date.slice(5).split('-').reverse().join('/')) : '') + fmtTime(r.startedAt) + ' – ' + (r.endedAt ? fmtTime(r.endedAt) : tr('sigue en curso'))
   const save = () => {
@@ -669,9 +672,27 @@ export function AddRunDialog({ s, date, dept: first, order, onClose, onAdded }: 
             {line && day && (
               <div className="later-free">
                 <div className="chips"><span className="lab">{tr('¿Para qué turno?')}</span>{([1, 2] as const).map((k) => <button key={k} type="button" className={'chip' + (shownShift === k ? ' on' : '')} aria-pressed={shownShift === k} onClick={() => setShiftPick(k)}>{tr('Turno {0}', k)}</button>)}</div>
-                <small>{trx('{0} en el Turno {1} ({2} – {3}):', <b>{lineLabel(line.name)}</b>, shownShift, fmtTime(times.window.from), fmtTime(times.window.to))}</small>
-                {times.free.length ? <div className="chips">{times.free.map((x) => <button key={x.from} type="button" className="chip free" onClick={() => { setFrom(hm(Math.ceil(x.from / 60_000) * 60_000)); setTo(hm(Math.floor(x.to / 60_000) * 60_000)); setProblem(''); setSameRun(null) }}>{tr('Libre {0} – {1}', fmtTime(x.from), fmtTime(x.to))}</button>)}</div> : <small className="red">{tr('No tuvo ningún rato libre en ese turno.')}</small>}
-                {times.busy.length > 0 && <small>{tr('Ocupada: {0}', times.busy.map(busyText).join(' · '))}</small>}
+                {/* every line of the room with its free times, the line said on each (Jose, 2026-11-06: "en ninguna línea
+                    en el turno 2 no hay espacio ... tiene que dar la línea también"): a tap puts the line and the hours */}
+                <small>{trx('Ratos libres en el Turno {0} ({1} – {2}):', shownShift, fmtTime(times.window.from), fmtTime(times.window.to))}</small>
+                <div className="later-lines">
+                  {allTimes.map(({ l, t }) => (
+                    <div key={l.id} className={'later-line' + (l.id === line.id ? ' on' : '')}>
+                      <b>{lineLabel(l.name)}</b>
+                      {t.free.length
+                        ? t.free.map((x) => <button key={x.from} type="button" className="chip free" onClick={() => { setLinePick(l.id); setFrom(hm(Math.ceil(x.from / 60_000) * 60_000)); setTo(hm(Math.floor(x.to / 60_000) * 60_000)); setProblem(''); setSameRun(null) }}>{tr('Libre {0} – {1}', fmtTime(x.from), fmtTime(x.to))}</button>)
+                        : <span className="muted">{tr('sin rato libre')}</span>}
+                    </div>
+                  ))}
+                </div>
+                {!allTimes.some((x) => x.t.free.length) && <small className="red">{tr('Ninguna tuvo un rato libre en ese turno: todas tenían un código corriendo.')}</small>}
+                {/* what the line chosen had then: a unit that was missed goes into its run, not into a new record */}
+                {times.busy.length > 0 && (
+                  <div className="later-busy">
+                    <small>{trx('{0} tenía estos códigos. Si faltó registrar algo de uno de ellos, agrégalo a su corrida:', <b>{lineLabel(line.name)}</b>)}</small>
+                    <div className="chips">{times.busy.map((r) => <button key={r.id} type="button" className="btn soft sm" onClick={() => setIntoRun(r)}>{tr('+ Agregar a la corrida de {0} ({1} – {2})', r.code, fmtTime(r.startedAt), r.endedAt ? fmtTime(r.endedAt) : tr('sigue en curso'))}</button>)}</div>
+                  </div>
+                )}
               </div>
             )}
             {!byPallet && <label>{cfg.saved.endsWith('a') ? tr('Cuántas {0}', plural) : tr('Cuántos {0}', plural)}{' '}<input value={count} onChange={(e) => setCount(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder={tr('ej. 6')} autoComplete="off" /></label>}

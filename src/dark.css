@@ -903,6 +903,9 @@ html:where([data-theme="dark"]),:where(html[data-theme="dark"]) body{background:
 :where(html[data-theme="dark"]) .cut-set small{color:var(--muted)}
 :where(html[data-theme="dark"]) .later-free{background:var(--bg);border:1px solid var(--line);border-radius:10px}
 :where(html[data-theme="dark"]) .later-free .chip.free{background:#1c3625;border-color:#2a6f43;color:#c7f3d8}
+:where(html[data-theme="dark"]) .later-line{border-radius:8px;border:1px solid transparent}
+:where(html[data-theme="dark"]) .later-line.on{border-color:var(--line);background:var(--surface)}
+:where(html[data-theme="dark"]) .later-busy{border-top:1px solid var(--line)}
 :where(html[data-theme="dark"]) .cf-btn{border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:6px}
 :where(html[data-theme="dark"]) .cf-btn.on{background:var(--accent);border-color:var(--accent-line);color:#fff}
 :where(html[data-theme="dark"]) .cf-menu{background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.18);color:var(--ink)}
