@@ -4146,4 +4146,6 @@ export const EN: Record<string, string> = {
   "Escribe el código y cuánto. Lo que ya está en el programa no se toca; si el código ya está, su cantidad cambia a la que escribas.": "Type the code and how much. What is already on the program stays; if the code is already on it, its quantity changes to the one you type.",
   "Ya está en el programa: su cantidad cambia a la que escribas.": "Already on the program: its quantity changes to the one you type.",
   "· a este ritmo, al cambio de turno ({0}) llevarían unas {1}: faltarían {2}": "· at this pace, at the shift change ({0}) they would have about {1}: {2} short",
+  "Teclado con letras": "Letters keyboard",
+  "Teclado de números": "Number keyboard",
 }

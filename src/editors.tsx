@@ -10,6 +10,7 @@ import { ASK_MANAGER, closeAtLastRecord, dropOk, holdOf, lastRecordOf, isMechani
 import { CodePicker, codeReady, DetailNeeded, detailHint } from './CodePicker'
 import { reasonCodeOf } from './reasons'
 import { tr } from './i18n'
+import { LotInput } from './LotInput'
 import { trx } from './trx'
 
 /** "HH:MM" of a moment */
@@ -110,7 +111,7 @@ function RunEditorView({ s, run, mgr, focusAt, onClose }: RunEditorProps) {
         )}
         <div className="egrid">
           <label>{tr('Código')}{' '}<input value={code} onChange={(e) => setCode(e.target.value)} autoComplete="off" /></label>
-          <label>{tr('Lote')}{' '}<input value={lot} onChange={(e) => setLot(e.target.value)} inputMode="numeric" autoComplete="off" /></label>
+          <label>{tr('Lote')}{' '}<LotInput value={lot} onChange={(v) => setLot(v)} autoComplete="off" /></label>
           <label>{tr('Fecha')}{' '}<input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label>
           {mgr && lines.length > 1 && (
             <label>{cfg.lineWord} <small>{tr('(si se registró en otra)')}</small>
@@ -328,7 +329,7 @@ export function AddUnitDialog({ s, run, startPo, onClose, onAdded }: { s: State;
             <>
               {rows.map((r, i) => (
                 <div className="lotrow" key={i}>
-                  <label>{tr('Lote')}{' '}<input inputMode="numeric" placeholder={tr('ej. 6280')} value={r.lot} onChange={(e) => change(i, { lot: e.target.value })} autoComplete="off" /></label>
+                  <label>{tr('Lote')}{' '}<LotInput placeholder={tr('ej. 6280')} value={r.lot} onChange={(v) => change(i, { lot: v })} autoComplete="off" /></label>
                   <label>{cfg.qtyUnit} <input inputMode="numeric" placeholder={cfg.qtyUnit} value={r.qty} onChange={(e) => change(i, { qty: e.target.value.replace(/\D/g, '') })} /></label>
                   <label>{tr('Tag')}{' '}<input inputMode="numeric" placeholder={tr('ej. 1749')} value={r.tag} onChange={(e) => change(i, { tag: e.target.value })} autoComplete="off" /></label>
                   {rows.length > 1 && <button type="button" className="lnk" title={tr('Quitar este lote')} onClick={() => { hold(false); setRows(rows.filter((_, k) => k !== i)) }}>✕</button>}
@@ -661,7 +662,7 @@ export function AddRunDialog({ s, date, dept: first, order, onClose, onAdded }: 
           )}
           <div className="egrid">
             <label>{tr('Código')}{' '}<input value={code} onChange={(e) => changeCode(e.target.value)} placeholder={tr('ej. 0100')} autoComplete="off" autoFocus /></label>
-            <label>{tr('Lote')} <small>{tr('(si se sabe)')}</small><input value={lot} onChange={(e) => setLot(e.target.value)} inputMode="numeric" placeholder={tr('ej. 6280')} autoComplete="off" /></label>
+            <label>{tr('Lote')} <small>{tr('(si se sabe)')}</small><LotInput value={lot} onChange={(v) => setLot(v)} placeholder={tr('ej. 6280')} autoComplete="off" /></label>
             <label>{tr('Fecha')}{' '}<input type="date" value={day} onChange={(e) => { setDay(e.target.value); setProblem('') }} /></label>
             <label>{tr('Empezó')}{' '}<input type="time" value={from} onChange={(e) => { setFrom(e.target.value); setProblem('') }} /></label>
             <label>{tr('Terminó')} <small>{tr('(si no, con la última unidad)')}</small><input type="time" value={to} onChange={(e) => { setTo(e.target.value); setProblem('') }} /></label>

@@ -3810,3 +3810,6 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 .rd-namehints{display:flex;flex-wrap:wrap;gap:6px}
 .plan-acts{gap:6px}
 .plan-already{display:block;margin:2px 0 0;color:#b45309}
+/* lot field: number pad by default, ABC for letters (LotInput.tsx, 2026-11-06) */
+.lotin{display:flex;gap:4px;align-items:stretch;min-width:0;width:100%}.lotin>input{flex:1 1 auto;min-width:0}
+.lotin-kb{flex:none;min-width:44px;padding:0 6px;border-radius:10px;border:1.5px solid #cbd5e1;background:#e2e8f0;color:#334155;font:inherit;font-size:12px;font-weight:800;letter-spacing:.03em;cursor:pointer}.lotin-kb.on{background:#dcfce7;border-color:#16a34a;color:#166534}

@@ -50,6 +50,7 @@ import { daysBetween, daysText, OpenOrders, OrderDetail, OrderHistory, revealAbo
 import { availOn, woN } from './woSum'
 import { appUrl, qrPath } from './qr'
 import { lang, locale, saveLang, tr } from './i18n'
+import { LotInput } from './LotInput'
 import { trx } from './trx'
 
 /** the app's name on every screen (the boss, 2026-10-26: "E.R. - Ops Summary"); the tab "Actividad" keeps its own word */
@@ -2472,7 +2473,7 @@ function PlanDialog({ s, dept, today, unit, adding, onClose }: { s: State; dept:
                     {dept === 'Spiral' && <select value={l.unit} aria-label={tr('Unidad')} onChange={(e) => change(i, { unit: e.target.value as SpiralUnit })}>{SPIRAL_UNITS.map((u) => <option key={u} value={u}>{measureUnit(u)}</option>)}</select>}
                     {dept === 'MFO' && <select value={l.unit} aria-label={tr('Unidad')} onChange={(e) => change(i, { unit: e.target.value })}>{MFO_WORDS.map((u) => <option key={u} value={u}>{u === 'lb' ? tr('libras') : binWord(u)}</option>)}</select>}
                     {/* the lot, offered as the day's (lotFor) and free to change or clear: the only box the app fills in for the person (Jose, 2026-10-19) */}
-                    <input value={l.lot} inputMode="numeric" maxLength={PLAN_LOT_MAX} placeholder={tr('sin lote')} autoComplete="off" aria-label={tr('Lote')} onChange={(e) => change(i, { lot: e.target.value })} />
+                    <LotInput value={l.lot} maxLength={PLAN_LOT_MAX} placeholder={tr('sin lote')} autoComplete="off" aria-label={tr('Lote')} onChange={(v) => change(i, { lot: v })} />
                     {/* the program's last day (2026-10-28): blank, or the first day itself, = that day only (Jose, 2026-10-28: "necesito poner hoy"); at most 14 days on */}
                     <input type="date" value={l.to} min={l.from ?? date} max={lastDay(l.from ?? date)} aria-label={tr('Hasta')} onChange={(e) => change(i, { to: e.target.value && e.target.value > (l.from ?? date) ? e.target.value : '' })} />
                   </div>
@@ -3030,7 +3031,7 @@ function PalletDoneDialog({ s, run, onClose, onSaved }: { s: State; run: Run; on
             <div className="palrow head"><span>{tr('Lote')}</span><span>{tr('Cajas')}</span><span>{tr('Tag')}</span></div>
             {rows.map((r, i) => (
               <div key={i} className="palrow">
-                {i < parts.length ? <b>{r.lot}</b> : <input value={r.lot} inputMode="numeric" aria-label={tr('Lote')} autoFocus={added && i === rows.length - 1} onChange={(e) => change(i, { lot: e.target.value })} autoComplete="off" />}
+                {i < parts.length ? <b>{r.lot}</b> : <LotInput value={r.lot} aria-label={tr('Lote')} autoFocus={added && i === rows.length - 1} onChange={(v) => change(i, { lot: v })} autoComplete="off" />}
                 <input value={r.qty} inputMode="numeric" placeholder="0" aria-label={tr('Cajas')} autoFocus={!added && i === rows.length - 1 && !r.qty} onChange={(e) => change(i, { qty: e.target.value.replace(/\D/g, '') })} />
                 <input value={r.tag} inputMode="numeric" placeholder={tr('ej. 1749')} aria-label={tr('Tag')} onChange={(e) => change(i, { tag: e.target.value })} autoComplete="off" />
                 {i > parts.length ? <button type="button" className="lnk" title={tr('Quitar este lote')} onClick={() => setRows(rows.filter((_, k) => k !== i))}>✕</button> : <span />}
@@ -3080,7 +3081,7 @@ function LotEndDialog({ run, onClose }: { run: Run; onClose: () => void }) {
         <form className="qform" onSubmit={(e) => { e.preventDefault(); save() }}>
           <label>{tr('Cajas de ese lote en este pallet')}{' '}<input autoFocus value={qty} inputMode="numeric" placeholder="0" onChange={(e) => setQty(e.target.value.replace(/\D/g, ''))} /></label>
           <label>{trx('Tag de ese lote {0}', <small>{tr('(si ya lo tienen; si no, después)')}</small>)} <input value={tag} inputMode="numeric" placeholder={tr('ej. 1749')} onChange={(e) => setTag(e.target.value)} autoComplete="off" /></label>
-          <label>{tr('Lote que sigue en el mismo pallet')}{' '}<input value={next} inputMode="numeric" onChange={(e) => setNext(e.target.value)} autoComplete="off" /></label>
+          <label>{tr('Lote que sigue en el mismo pallet')}{' '}<LotInput value={next} onChange={(v) => setNext(v)} autoComplete="off" /></label>
           {looksLikeTwoLots(next) && <span className="err">{tr('Parece que son dos lotes escritos juntos: pon solo el que sigue ahora.')}</span>}
           <p className="hint">{tr('El pallet sigue abierto con el lote que sigue. Cuando esté completo, toquen "Pallet listo".')}</p>
           <div className="dbtns">
@@ -3115,7 +3116,7 @@ function ReopenPalletDialog({ run, onClose }: { run: Run; onClose: () => void })
             <button type="button" className={'chip' + (!other ? ' on' : '')} aria-pressed={!other} onClick={() => setOther(false)}>{trx('El mismo: {0}', lot)}</button>
             <button type="button" className={'chip' + (other ? ' on' : '')} aria-pressed={other} onClick={() => setOther(true)}>{tr('Otro lote')}</button>
           </div>
-          {other && <label>{tr('Lote que va ahora')}{' '}<input autoFocus value={next} inputMode="numeric" onChange={(e) => setNext(e.target.value)} autoComplete="off" /></label>}
+          {other && <label>{tr('Lote que va ahora')}{' '}<LotInput autoFocus value={next} onChange={(v) => setNext(v)} autoComplete="off" /></label>}
           <div className="dbtns">
             <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
             <button type="submit" className="btn primary" disabled={!ok}>{trx('↩ Seguir en el pallet {0}', n)}</button>
@@ -3255,7 +3256,7 @@ function LotNowDialog({ run, onClose }: { run: Run; onClose: () => void }) {
       <div className="dlg" onClick={(e) => e.stopPropagation()}>
         <h3>{tr('Cambió el lote (iba el {0})', lot)}</h3>
         <form className="qform" onSubmit={(e) => { e.preventDefault(); if (ok && setLotNow(run.id, next)) onClose() }}>
-          <label>{tr('Lote que va ahora')}{' '}<input autoFocus value={next} inputMode="numeric" onChange={(e) => setNext(e.target.value)} autoComplete="off" /></label>
+          <label>{tr('Lote que va ahora')}{' '}<LotInput autoFocus value={next} onChange={(v) => setNext(v)} autoComplete="off" /></label>
           {looksLikeTwoLots(next) && <span className="err">{tr('Parece que son dos lotes escritos juntos: pon solo el que va ahora.')}</span>}
           <div className="dbtns">
             <button type="button" className="btn" onClick={onClose}>{tr('Cancelar')}</button>
@@ -3538,7 +3539,7 @@ function LineCard({ s, line, now, mgr, day }: { s: State; line: Line; now: numbe
             </div>
           )}
           <label>{tr('Código')}{' '}<input value={code} onChange={(e) => setCode(e.target.value)} placeholder={tr('ej. 0100')} autoComplete="off" /></label>
-          <label>{tr('Lote')}{' '}<input value={lot} onChange={(e) => setLotText(e.target.value)} inputMode="numeric" placeholder={tr('ej. 6280')} autoComplete="off" /></label>
+          <label>{tr('Lote')}{' '}<LotInput value={lot} onChange={(v) => setLotText(v)} placeholder={tr('ej. 6280')} autoComplete="off" /></label>
           {looksLikeTwoLots(lot) && <p className="hint twolots">{isPack ? tr('Parece que son dos lotes escritos juntos. Empieza con el primero; cuando se acabe, toca "➕ Otro lote en este pallet" y el pallet lleva los dos, cada uno con sus cajas y su tag.') : tr('Parece que son dos lotes escritos juntos. Empieza con el primero; cuando cambie, toca "Cambió el lote".')}</p>}
           {showDate
             ? <label className="wide">{tr('Fecha')}{' '}<input type="date" value={date} onChange={(e) => { if (!lot.trim() || lot.trim() === lotFor(date)) setLotText(null); setDateText(e.target.value || null) }} /></label>
@@ -4027,7 +4028,7 @@ export function LotsDialog({ what, title, unit, refLabel, lot, qty, start, start
         <form onSubmit={(e) => { e.preventDefault(); save() }} className="qform">
           {rows.map((r, i) => (
             <div className="lotrow" key={i}>
-              <label>{tr('Lote')}{' '}<input inputMode="numeric" placeholder={tr('ej. 6280')} value={r.lot} autoFocus={added && i === rows.length - 1} onChange={(e) => change(i, { lot: e.target.value })} autoComplete="off" /></label>
+              <label>{tr('Lote')}{' '}<LotInput placeholder={tr('ej. 6280')} value={r.lot} autoFocus={added && i === rows.length - 1} onChange={(v) => change(i, { lot: v })} autoComplete="off" /></label>
               <label>{unit} <input inputMode="numeric" placeholder={unit} value={r.qty} autoFocus={!added && i === 0 && qty == null && !start} onChange={(e) => change(i, { qty: e.target.value.replace(/\D/g, '') })} /></label>
               {tags && <label>{tr('Tag')}{' '}<input inputMode="numeric" placeholder={tr('ej. 1749')} value={r.tag} onChange={(e) => change(i, { tag: e.target.value })} autoComplete="off" /></label>}
               {rows.length > 1 && <button type="button" className="lnk" title={tr('Quitar este lote')} onClick={() => setRows(rows.filter((_, k) => k !== i))}>✕</button>}

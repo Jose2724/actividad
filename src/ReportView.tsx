@@ -29,6 +29,7 @@ import { DEPT_LOOK, deptVars } from './look'
 import { HoldButton } from './Holds'
 import { ColMenu, useColFilters } from './ColFilter'
 import { locale, tr } from './i18n'
+import { LotInput } from './LotInput'
 import { trx } from './trx'
 
 /*
@@ -819,7 +820,7 @@ function SearchBox({ k }: { k: Kit }) {
           <RangePick from={rFrom} to={rTo} today={k.today} onChange={(a, b) => { setRFrom(a); setRTo(b) }} />
           <div className="rp-rangefields">
             <label>{tr('Código')} <input value={part.code} placeholder="0889" autoComplete="off" onChange={(e) => putPart({ code: e.target.value })} /></label>
-            <label>{tr('Lote')} <input value={part.lot} placeholder="6310" inputMode="numeric" autoComplete="off" onChange={(e) => putPart({ lot: e.target.value })} /></label>
+            <label>{tr('Lote')} <LotInput value={part.lot} placeholder="6310" autoComplete="off" onChange={(v) => putPart({ lot: v })} /></label>
             <label>PO <input value={part.po} placeholder="002801102104" autoComplete="off" onChange={(e) => putPart({ po: e.target.value })} /></label>
           </div>
           <p className="hint">{tr('Se combinan: sale solo lo que tiene todo lo que escribiste. También se puede escribir arriba (un producto, una persona…).')}</p>
