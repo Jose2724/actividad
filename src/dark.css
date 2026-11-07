@@ -1883,3 +1883,4 @@ html:where([data-theme="dark"]),:where(html[data-theme="dark"]) body{background:
 :where(html[data-theme="dark"]) .rd-runfacts .rf-note{background:var(--bg);border:1px solid var(--line);border-radius:12px;color:var(--ink)}
 :where(html[data-theme="dark"]) .app.rd .dlg.rp-detail.rd-run>.rd-dmid{border-top:1px solid var(--line)}
 :where(html[data-theme="dark"]) .rd-accesslist li{background:var(--bg);border:1px solid var(--line);border-radius:10px}
+:where(html[data-theme="dark"]) .plan-already{color:#f2c6a4}

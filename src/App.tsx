@@ -2225,7 +2225,9 @@ export function TargetDialog({ s, dept, unit, inCourse, onClose }: { s: State; d
  * lote 6290") and in "Fuera del programa", never added into a row (store.ts, planRows)
  */
 function PlanCard({ s, dept, date, mgr, today }: { s: State; dept: Dept; date: string; mgr: boolean; today?: string }) {
-  const [editing, setEditing] = useState(false)
+  // 'add' = only new codes, what is on the program stays; 'change' = the whole program (Jose, 2026-11-06: "sería mejor
+  // poner un botón de agregar y otro de cambiar, porque cambiar también lo usamos para agregar")
+  const [editing, setEditing] = useState<false | 'add' | 'change'>(false)
   // the room's own comment on a row (Jose, 2026-11-04: why it was not done, what happened): anyone of the room but who only looks
   const writesNote = !useViewOnly()
   const [noting, setNoting] = useState<{ code: string; lot: string } | null>(null)
@@ -2264,7 +2266,7 @@ function PlanCard({ s, dept, date, mgr, today }: { s: State; dept: Dept; date: s
     <div className="plan">
       <div className="tc-head">
         <h3>{trx('Programa de {0}', dept)}<small> · {!today || date === today ? tr('hoy') : longDate(date)} · {tr('en {0}', unit)}</small></h3>
-        {mgr && <button type="button" className="btn soft sm" onClick={() => setEditing(true)}>{planned.length ? tr('✎ Cambiar programa') : tr('+ Poner programa')}</button>}
+        {mgr && <div className="btns plan-acts"><button type="button" className="btn soft sm" onClick={() => setEditing('add')}>{tr('+ Agregar al programa')}</button>{planned.length > 0 && <button type="button" className="btn sm" onClick={() => setEditing('change')}>{tr('✎ Cambiar programa')}</button>}</div>}
       </div>
       {/* what the last day with a program left pending of each code: said, never filled in (Jose, 2026-10-19). With an
           order it went back to it: the order's link and what it has available now */}
@@ -2355,7 +2357,7 @@ function PlanCard({ s, dept, date, mgr, today }: { s: State; dept: Dept; date: s
       ) : <p className="hint">{mgr ? trx('{0} no tiene programa para hoy. Pon aquí los códigos que le tocan y cuánto de cada uno: lo que registren se descuenta solo.', dept) : trx('{0} no tiene programa para hoy.', dept)}</p>}
       {planned.length > 0 && <p className="hint">{tr('Cada vez que se registra uno de estos códigos, baja solo lo pendiente.')}{planned.some((r) => r.to !== r.from) && ' ' + tr('Un programa de varios días se descuenta con lo hecho cada uno de esos días, hasta completarlo.')}{planned.some((r) => r.orderId) && ' ' + tr('Lo que el día no hace vuelve a su pedido: no pasa solo al día siguiente, se programa otra vez.')}{extra.length + offLots.length > 0 && ' ' + tr('Fuera del programa: {0}.', [...extra.map((r) => r.code + ' (' + fmtN(r.done) + ')'), ...offLots].join(', '))}</p>}
     </div>
-    {editing && <PlanDialog s={s} dept={dept} today={date} unit={unit} onClose={() => setEditing(false)} />}
+    {editing && <PlanDialog s={s} dept={dept} today={date} unit={unit} adding={editing === 'add'} onClose={() => setEditing(false)} />}
     {detail && <OrderDetail s={s} id={detail} today={date} edit={mgr} onClose={closeDetail} />}
     </>
   )
@@ -2375,7 +2377,7 @@ function PlanCard({ s, dept, date, mgr, today }: { s: State; dept: Dept; date: s
  * typed on several rows, each with another lot, and only the same code with the same lot twice is refused. A row moved
  * to another lot is the old one taken off and the new one set, both in the history (store.ts, setPlan)
  */
-function PlanDialog({ s, dept, today, unit, onClose }: { s: State; dept: Dept; today: string; unit: string; onClose: () => void }) {
+function PlanDialog({ s, dept, today, unit, adding, onClose }: { s: State; dept: Dept; today: string; unit: string; adding?: boolean; onClose: () => void }) {
   // order: undefined = not chosen (the oldest open order of the code, when there is one); null = none; an id = that order
   // from = the day the row's program started when it is not the day being programmed (a program of several days seen
   // from one of its later days: it is changed where it started); to = its last day ('' = that day only)
@@ -2388,9 +2390,9 @@ function PlanDialog({ s, dept, today, unit, onClose }: { s: State; dept: Dept; t
   const draftOf = (date: string): Line[] => [...planOf(s, date, dept).sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }) || byPlanLot(a, b)).map((p) => ({ code: productOf(s, p.code)?.code ?? p.code, qty: String(p.qty), unit: unitDefault(p.code) ?? (dept === 'MFO' ? 'platos' : 'mezclas'), lot: p.lot, order: p.orderId ?? null, ...(p.date !== date ? { from: p.date } : {}), to: p.endDate ?? p.date, note: p.note ?? '' })), blank(date)]
   const lastDay = (from: string) => { const x = new Date(from + 'T12:00:00'); x.setDate(x.getDate() + PLAN_SPAN_MAX); return dayOf(x.getTime()) }
   const [date, setDate] = useState(today)
-  const [lines, setLines] = useState<Line[]>(() => draftOf(today))
+  const [lines, setLines] = useState<Line[]>(() => (adding ? [blank(today)] : draftOf(today)))
   const [creating, setCreating] = useState<number | null>(null) // the row whose "+ Crear pedido" is open
-  const pickDate = (d: string) => { if (d) { setDate(d); setLines(draftOf(d)) } }
+  const pickDate = (d: string) => { if (d) { setDate(d); if (!adding) setLines(draftOf(d)) } }
   // (in Spiral a code the products table knows brings how it is counted; another code or unit is another queue of
   // orders: its order is chosen again, the oldest open one by default. A code is counted one way in every row of it,
   // whatever their lots (2026-10-20): a code typed again brings the unit its other row has, and a unit changed on one
@@ -2409,7 +2411,9 @@ function PlanDialog({ s, dept, today, unit, onClose }: { s: State; dept: Dept; t
   // guardar y no se muestra"): a blank quantity only takes off a row that was already on the program. Now it is said,
   // and nothing is saved until it has its quantity or its code is cleared
   const onProgram = new Set(planOf(s, date, dept).map((p) => normCode(p.code) + '|' + planLot(p.lot)))
-  const noQty = lines.find((l) => normCode(l.code) && !(numOf(l.qty) > 0) && !onProgram.has(rowKey(l)))
+  const noQty = lines.find((l) => normCode(l.code) && !(numOf(l.qty) > 0) && (adding || !onProgram.has(rowKey(l))))
+  // adding a code already on that day's program changes its quantity: said under its row
+  const already = (l: Line) => adding && !!normCode(l.code) && onProgram.has(rowKey(l))
   // the open orders of the row's code (store.ts, programOrderChoices): in Spiral those of the unit the row says; in MFO
   // those of every word its bins are counted in (platos, copas, lb), the word of its last bins first (review of
   // 2026-10-19: a copas order of a code not binned on this device was not offered); the room's own elsewhere
@@ -2425,7 +2429,7 @@ function PlanDialog({ s, dept, today, unit, onClose }: { s: State; dept: Dept; t
     // a row (a code and its lot) that was on the program and is not typed any more is taken off: so is the old one of a
     // row whose lot was changed. The rest are set to what was typed, each with its order (or none). Saved and shown once
     batch(() => {
-      for (const p of planOf(s, date, dept)) if (!typed.has(normCode(p.code) + '|' + planLot(p.lot))) setPlan(p.date, dept, p.code, 0, p.lot)
+      if (!adding) for (const p of planOf(s, date, dept)) if (!typed.has(normCode(p.code) + '|' + planLot(p.lot))) setPlan(p.date, dept, p.code, 0, p.lot)
       for (const l of typed.values()) { setPlan(l.from ?? date, dept, l.code, numOf(l.qty), l.lot, orderOf(l), l.to || '', l.note); if (dept === 'Spiral') setSpiralUnit(l.code, l.unit as SpiralUnit); if (dept === 'MFO' && numOf(l.qty) > 0) setMfoUnit(l.code, l.unit) }
     })
     onClose()
@@ -2436,8 +2440,8 @@ function PlanDialog({ s, dept, today, unit, onClose }: { s: State; dept: Dept; t
   return (
     <div className="veil" onClick={onClose}>
       <div className="dlg plandlg" onClick={(e) => e.stopPropagation()}>
-        <h3>{trx('Programa de {0}', dept)}</h3>
-        <p>{trx('Los códigos que {0} tiene que hacer ese día y cuánto de cada uno, en {1}. Lo ven todas sus tablets, y cada vez que registran uno de esos códigos se descuenta solo. Para quitar un código, deja su cantidad en blanco.', dept, unit)} {tr('El lote es opcional: sale el del día y se puede cambiar o dejar en blanco. Con lote, "Flujo de datos" compara lo programado con lo hecho de ese lote.')} {tr('Un código puede ir en varios renglones, uno por lote: cada lote se descuenta aparte.')} {tr('Si el código tiene un pedido de producción abierto, el programa del día es una parte de él: sale el más viejo y se puede cambiar.')} {tr('Con "Hasta" el programa es de varios días (hasta 14): una sola cantidad para todos, y lo hecho cada día se va descontando del mismo programa hasta completarlo.')}</p>
+        <h3>{adding ? trx('Agregar al programa de {0}', dept) : trx('Programa de {0}', dept)}</h3>
+        {adding ? <p>{tr('Escribe el código y cuánto. Lo que ya está en el programa no se toca; si el código ya está, su cantidad cambia a la que escribas.')}</p> : <p>{trx('Los códigos que {0} tiene que hacer ese día y cuánto de cada uno, en {1}. Lo ven todas sus tablets, y cada vez que registran uno de esos códigos se descuenta solo. Para quitar un código, deja su cantidad en blanco.', dept, unit)} {tr('El lote es opcional: sale el del día y se puede cambiar o dejar en blanco. Con lote, "Flujo de datos" compara lo programado con lo hecho de ese lote.')} {tr('Un código puede ir en varios renglones, uno por lote: cada lote se descuenta aparte.')} {tr('Si el código tiene un pedido de producción abierto, el programa del día es una parte de él: sale el más viejo y se puede cambiar.')} {tr('Con "Hasta" el programa es de varios días (hasta 14): una sola cantidad para todos, y lo hecho cada día se va descontando del mismo programa hasta completarlo.')}</p>}
         <form className="qform" onSubmit={(e) => { e.preventDefault(); if (!twice && !noQty) save() }}>
           <label>{tr('Día')}{' '}<input type="date" value={date} onChange={(e) => pickDate(e.target.value)} /></label>
           <div className="planrows">
@@ -2462,6 +2466,7 @@ function PlanDialog({ s, dept, today, unit, onClose }: { s: State; dept: Dept; t
                     {/* the program's last day (2026-10-28): blank, or the first day itself, = that day only (Jose, 2026-10-28: "necesito poner hoy"); at most 14 days on */}
                     <input type="date" value={l.to} min={l.from ?? date} max={lastDay(l.from ?? date)} aria-label={tr('Hasta')} onChange={(e) => change(i, { to: e.target.value && e.target.value > (l.from ?? date) ? e.target.value : '' })} />
                   </div>
+                  {already(l) && <small className="hint plan-already">{tr('Ya está en el programa: su cantidad cambia a la que escribas.')}</small>}
                   {/* the office's comment on the row (2026-10-28), shown in the card's column and on the Programa tab */}
                   {normCode(l.code) && <input className="plannote" value={l.note} maxLength={PLAN_NOTE_MAX} placeholder={tr('Comentario (opcional): lo ve el cuarto en su programa')} aria-label={tr('Comentario')} autoComplete="off" onChange={(e) => change(i, { note: e.target.value })} />}
                   {l.from && <p className="hint planfrom">📅 {trx('Programa de varios días: empezó el {0}{1}. Lo que se cambie aquí cambia todo el programa.', shortDay(l.from), l.to ? ' ' + tr('y va hasta el {0}', shortDay(l.to)) : '')}</p>}

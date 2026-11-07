@@ -4141,4 +4141,8 @@ export const EN: Record<string, string> = {
   "Escribe y escoge un nombre": "Type and pick a name",
   "Sugerencias": "Suggestions",
   "Ninguna cuenta se llama así. Revisa cómo está escrito en Ajustes › Empleados.": "No account has that name. Check how it is written in Settings › Employees.",
+  "+ Agregar al programa": "+ Add to the program",
+  "Agregar al programa de {0}": "Add to {0}'s program",
+  "Escribe el código y cuánto. Lo que ya está en el programa no se toca; si el código ya está, su cantidad cambia a la que escribas.": "Type the code and how much. What is already on the program stays; if the code is already on it, its quantity changes to the one you type.",
+  "Ya está en el programa: su cantidad cambia a la que escribas.": "Already on the program: its quantity changes to the one you type.",
 }
