@@ -3808,3 +3808,5 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 .rd-accesslist{list-style:none;margin:0;padding:0;display:grid;gap:6px}
 .rd-accesslist li{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:6px 10px}
 .rd-namehints{display:flex;flex-wrap:wrap;gap:6px}
+.plan-acts{gap:6px}
+.plan-already{display:block;margin:2px 0 0;color:#b45309}
