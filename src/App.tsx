@@ -2646,7 +2646,8 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
   // nothing else until it is written ("que salga siempre"). Only while nobody at all is written for the shift (Jose:
   // "solo a departamento que no tiene a nadie registrado"); once someone is, the room works as usual and Empezar and
   // Set up open the attendance first when the rule is still not met
-  const [attWin, setAttWin] = useState(false)
+  // the attendance window; 'wait' opens it on the people sent from another room (the Asistencia button's 👋 number)
+  const [attWin, setAttWin] = useState<boolean | 'wait'>(false)
   // Each room hands over on its own (2026-10-21, see ShiftMark). Near the plant's hand-over: "Empezar Turno 2" while
   // the room is still in its first shift (its second came in early), and "Terminar turno" asks which shift is leaving
   const pc = plantCut(s, day.date), mark = roomMark(s, day.date, dept)
@@ -2725,7 +2726,8 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
       <div className="phead">
         <h2 className="dhead"><i className="demoji" aria-hidden="true">{DEPT_LOOK[dept].emoji}</i>{dept}</h2>
         {!viewOnly && <div className="acts">
-          {RD && (s.attView.on || !!who.admin) && (() => { const r = attendanceOf(s, day.date, (turn.shift || 1) as 1 | 2, [dept]).rows[0]; return <button type="button" className="btn soft rd-attbtn" onClick={() => setAttWin(true)}>{tr('✍️ Asistencia')} <b className="rd-chipn">{tr('{0} / {1}', r.actual, r.expected)}</b></button> })()}
+          {/* the 👋 number = people another room sent here that nobody accepted yet (Jose, 2026-11-06: "que se ponga aquí una notificación cuando hay un traslado que tiene que aceptar en números"); it opens the window on them */}
+          {RD && (s.attView.on || !!who.admin) && (() => { const sh = (turn.shift || 1) as 1 | 2, r = attendanceOf(s, day.date, sh, [dept]).rows[0], n = attOf(s, day.date, dept, sh).filter((x) => !!x.via && !x.gone).length; return <button type="button" className={'btn soft rd-attbtn' + (n ? ' wait' : '')} title={n ? (n === 1 ? tr('1 persona de otro cuarto por aceptar') : tr('{0} personas de otro cuarto por aceptar', n)) : undefined} onClick={() => setAttWin(n ? 'wait' : true)}>{tr('✍️ Asistencia')} <b className="rd-chipn">{tr('{0} / {1}', r.actual, r.expected)}</b>{n > 0 && <b className="rd-attwait" aria-label={n === 1 ? tr('1 persona de otro cuarto por aceptar') : tr('{0} personas de otro cuarto por aceptar', n)}>👋 {n}</b>}</button> })()}
           {RD && CFG[dept].waste && <RoomWasteButton s={s} dept={dept} date={day.date} />}
           {RD && <LineGuardButton now={now} />}
           {guard.locked ? null : ds
@@ -2790,9 +2792,9 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
           </div>
         </div>
       )}
-      {/* who another room sent and nobody here accepted yet (Jose, 2026-11-05), on the room's own tablets */}
-      {shown === 'live' && !gatedRoom && !attWin && who.role === 'op' && (s.attView.on || !!who.admin) && <ArrivalsDialog s={s} dept={dept} date={day.date} shift={(turn.shift || 1) as 1 | 2} />}
-      {attWin && <AttendanceDialog s={s} dept={dept} date={day.date} shift={turn.shift as 1 | 2} edit note={tr('El supervisor o líder se anota como supervisor y anota a la gente del Turno {0} de {1}.', turn.shift, dept)} onClose={() => setAttWin(false)} />}
+      {/* who another room sent and nobody here accepted yet (Jose, 2026-11-05), on the room's own tablets, on any of the room's tabs (2026-11-06) */}
+      {!gatedRoom && !attWin && who.role === 'op' && (s.attView.on || !!who.admin) && <ArrivalsDialog s={s} dept={dept} date={day.date} shift={(turn.shift || 1) as 1 | 2} />}
+      {attWin && <AttendanceDialog s={s} dept={dept} date={day.date} shift={turn.shift as 1 | 2} edit start={attWin === 'wait' ? 'wait' : undefined} note={tr('El supervisor o líder se anota como supervisor y anota a la gente del Turno {0} de {1}.', turn.shift, dept)} onClose={() => setAttWin(false)} />}
       <div className="rp-tabs dp-tabs" role="tablist" aria-label={tr('Partes de {0}', dept)}>
         {parts.map((x) => (
           <button key={x.t} type="button" role="tab" aria-selected={shown === x.t} className={'rp-tab' + (shown === x.t ? ' on' : '')} title={x.sub} onClick={() => pick(x.t)}>

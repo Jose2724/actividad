@@ -1471,6 +1471,8 @@ html:where([data-theme="dark"]),:where(html[data-theme="dark"]) body{background:
 :where(html[data-theme="dark"]) .rd-theme button.on{background:var(--accent);color:#fff}
 :where(html[data-theme="dark"]) .app.rd .phead{background:none;border:0;box-shadow:none}
 :where(html[data-theme="dark"]) .rd-chipn{background:var(--surface);color:var(--ink);border-radius:99px}
+:where(html[data-theme="dark"]) .rd-attwait{background:#f59e0b;color:#fff;border-radius:99px}
+:where(html[data-theme="dark"]) .app.rd .rd-attbtn.wait{border-color:#f59e0b;box-shadow:0 0 0 2px rgba(245,158,11,.35)}
 :where(html[data-theme="dark"]) .rd-room-tiles .rd-tile.tap:hover{border-color:#6a4590}
 :where(html[data-theme="dark"]) .rd-room-tiles .rd-bar i{background:var(--d,var(--accent))}
 :where(html[data-theme="dark"]) .rd-room-tiles .rd-bar i.ok{background:var(--ok)}
@@ -1884,3 +1886,5 @@ html:where([data-theme="dark"]),:where(html[data-theme="dark"]) body{background:
 :where(html[data-theme="dark"]) .app.rd .dlg.rp-detail.rd-run>.rd-dmid{border-top:1px solid var(--line)}
 :where(html[data-theme="dark"]) .rd-accesslist li{background:var(--bg);border:1px solid var(--line);border-radius:10px}
 :where(html[data-theme="dark"]) .plan-already{color:#f2c6a4}
+:where(html[data-theme="dark"]) .lotin-kb{border-radius:10px;border:1.5px solid #384b61;background:#1c2736;color:#d0d8e3}
+:where(html[data-theme="dark"]) .lotin-kb.on{background:#1c3625;border-color:#16a34a;color:#c7f3d8}

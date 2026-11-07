@@ -2746,6 +2746,9 @@ export const EN: Record<string, string> = {
   "Aceptar en {0}": "Accept on {0}",
   "{0} aceptado, sin línea.": "{0} accepted, no line.",
   "Aceptar sin línea": "Accept with no line",
+  // the Asistencia button's number of people waiting to be accepted (2026-11-06)
+  "1 persona de otro cuarto por aceptar": "1 person from another room to accept",
+  "{0} personas de otro cuarto por aceptar": "{0} people from another room to accept",
   // the attendance window, redesigned (2026-11-05)
   "+ Anotar “{0}”": "+ Add “{0}”",
   "+ Anotar “{0}” (no está en la lista)": "+ Add “{0}” (not on the list)",

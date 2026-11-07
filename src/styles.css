@@ -2735,6 +2735,11 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 .app.rd .phead .acts .rd-addline{margin-left:auto}
 .app.rd .rd-attbtn{display:inline-flex;align-items:center;gap:8px}
 .rd-chipn{background:var(--surface);color:var(--ink);border-radius:99px;padding:1px 9px;font-size:13.5px}
+/* people sent from another room waiting to be accepted (2026-11-06): an amber number on the Asistencia button */
+.rd-attwait{background:#f59e0b;color:#fff;border-radius:99px;padding:1px 9px;font-size:13.5px;animation:rdAttWait 1.6s ease-in-out infinite}
+.app.rd .rd-attbtn.wait{border-color:#f59e0b;box-shadow:0 0 0 2px rgba(245,158,11,.35)}
+@keyframes rdAttWait{50%{transform:scale(1.12)}}
+@media (prefers-reduced-motion:reduce){.rd-attwait{animation:none}}
 .rd-room-tiles{display:grid;gap:8px}
 .rd-room-tiles .rd-tile.tap{cursor:pointer}
 .rd-room-tiles .rd-tile.tap:hover{border-color:#c48bb4}

@@ -110,7 +110,7 @@ const norm = (x: string) => x.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCa
  * those who left. Each person's actions are behind one "Opciones" button. The same store functions as before.
  * `note` = why it opened by itself (the start of a code or a Set up, with the attendance still to write: 2026-10-27)
  */
-export function AttendanceDialog({ s, dept, date, shift: inCourse, edit, note = '', onClose }: { s: State; dept: Dept; date: string; shift: 1 | 2; edit: boolean; note?: string; onClose: () => void }) {
+export function AttendanceDialog({ s, dept, date, shift: inCourse, edit, note = '', start, onClose }: { s: State; dept: Dept; date: string; shift: 1 | 2; edit: boolean; note?: string; start?: 'wait'; onClose: () => void }) {
   const who = useWho()
   const boss = !!who.admin || who.role === 'mgr' || who.role === 'office'
   const [shift, setShift] = useState<1 | 2>(inCourse)
@@ -141,7 +141,7 @@ export function AttendanceDialog({ s, dept, date, shift: inCourse, edit, note = 
   const box = useRef<HTMLInputElement>(null)
   const list = attOf(s, date, dept, shift), here = list.filter((x) => !x.gone && !x.via), gone = list.filter((x) => !!x.gone)
   const waiting = list.filter((x) => !!x.via && !x.gone)
-  const [tabWanted, setTab] = useState<AttTab>(() => (edit && (note || !here.length) ? 'add' : 'list'))
+  const [tabWanted, setTab] = useState<AttTab>(() => (start ?? (edit && (note || !here.length) ? 'add' : 'list')))
   const tab: AttTab = (tabWanted === 'add' && !edit) || (tabWanted === 'wait' && !waiting.length) || (tabWanted === 'gone' && !gone.length) ? 'list' : tabWanted
   const pickTab = (t: AttTab) => { setTab(t); setOut(null); setSaid(''); setTwice('') }
   const r = attendanceOf(s, date, shift, [dept]).rows[0]
