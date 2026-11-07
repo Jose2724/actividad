@@ -2649,7 +2649,11 @@ function DeptPanel({ s, dept, now, day, readsAll }: { s: State; dept: Dept; now:
   const [starting2, setStarting2] = useState(false)
   const [leavingShift, setLeavingShift] = useState<1 | 2>(1)
   const openLeaving = () => { setLeavingShift(nearCut && now <= (pc ?? 0) + 2 * 3_600_000 && mark?.how !== 'inicio' ? 1 : turn.shift); setLeaving(true) }
-  const doneNow = doneToday.filter((r) => (r.endedAt ?? 0) > turn.since), doneBefore = doneToday.filter((r) => (r.endedAt ?? 0) <= turn.since)
+  // a code the shift before left running and ended after the hand-over with nothing made in this shift belongs to the
+  // shift that made it (Jose, 2026-11-06: Tito's 0889 and 4495 ended at 3:35 PM, 20 min into shift 2, and were listed
+  // as shift 2's with "en este turno: 0 pallets")
+  const madeBefore = (r: Run) => r.startedAt < turn.since && runSince(s, r, turn.since, now).units === 0
+  const doneNow = doneToday.filter((r) => (r.endedAt ?? 0) > turn.since && !madeBefore(r)), doneBefore = doneToday.filter((r) => (r.endedAt ?? 0) <= turn.since || madeBefore(r))
   const doneRow = (r: Run) => {
     const st = runStats(s, r, now), mine = runSince(s, r, turn.since, now)
     return (
