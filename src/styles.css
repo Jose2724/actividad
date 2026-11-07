@@ -3827,3 +3827,12 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 .lotin-kb{flex:none;min-width:44px;padding:0 6px;border-radius:10px;border:1.5px solid #cbd5e1;background:#e2e8f0;color:#334155;font:inherit;font-size:12px;font-weight:800;letter-spacing:.03em;cursor:pointer}.lotin-kb.on{background:#dcfce7;border-color:#16a34a;color:#166534}
 /* Consumo by shift (Eli, 2026-11-06) */
 .cons-shifts{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 8px}.cons-shift{padding:3px 10px;border-radius:999px;border:1px solid #c7d2fe;background:#eef2ff;color:#312e81;font-size:13px}.cons-shift.t2{border-color:#fbcfe8;background:#fdf2f8;color:#831843}.cons-shift.none{opacity:.55}.cons-tbl tr.cons-sub td{font-weight:600;font-size:13px;color:var(--muted)}
+/* Carne y consumo, short (2026-11-06): tiles, one small table per thing, details behind a button */
+.cm{display:grid;gap:12px}.cm-none{color:var(--muted);margin:12px 0}
+.cm-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}@media (max-width:520px){.cm-tile{padding:10px}.cm-tile-n{font-size:22px}.cm-tbl{font-size:13px}.cm-tbl th,.cm-tbl td{padding:6px 5px}}
+.cm-tile{display:grid;gap:4px;padding:12px 14px;border-radius:14px;border:1.5px solid var(--line);background:var(--surface);border-top:4px solid var(--d,#94a3b8)}
+.cm-tile-t{font-size:13px;font-weight:700;color:var(--muted)}.cm-tile-n{font-size:26px;line-height:1.1}.cm-tile-n small{font-size:14px;color:var(--muted)}
+.cm-tile-sh{display:flex;flex-wrap:wrap;gap:6px}.cm-sh{padding:2px 8px;border-radius:999px;font-size:12.5px;font-weight:700;border:1px solid #c7d2fe;background:#eef2ff;color:#312e81}.cm-sh.t2{border-color:#fbcfe8;background:#fdf2f8;color:#831843}.cm-tile-k{color:var(--muted);font-size:12px}
+.cm-card{padding:12px 14px;border-radius:14px;border:1.5px solid var(--line);background:var(--surface)}.cm-card>h3{margin:0 0 8px;font-size:16px}.cm-card>h3 small{color:var(--muted);font-weight:600}
+.cm-tbl{width:100%;border-collapse:collapse;font-size:14px}.cm-tbl th{text-align:left;font-size:12px;color:var(--muted);font-weight:700;padding:6px 8px;border-bottom:1.5px solid var(--line)}.cm-tbl td{padding:7px 8px;border-bottom:1px solid var(--line)}.cm-tbl .n{text-align:right;font-variant-numeric:tabular-nums}.cm-tbl td.cm-zero{color:var(--muted)}.cm-tbl tfoot td{font-weight:800;border-top:2px solid var(--line);border-bottom:0}
+.cm-more{margin-top:8px}.cm-card .cons-rp,.cm-card .meat-each{margin-top:10px}

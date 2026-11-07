@@ -778,7 +778,7 @@ function ReportScreen(props: ReportProps) {
       {!lean && !slim && <div className="rp-sub"><span>{viewSub(v)}</span><button type="button" className="btn sm" onClick={() => setHelp(true)}>ⓘ {tr('Cómo leer este reporte')}</button></div>}
       <div id="rp-panel" role="tabpanel" aria-labelledby={'rp-tab-' + v} className="rp-panel" ref={panelRef}>
         {/* (a day, or a filter, with no code but with stops: every part says so and Registros opens on them) */}
-        {v === 'cons' ? <><MeatWhere k={k} /><ConsumeWhere k={k} /></> : v === 'par' ? <CodePareto k={k} /> : v === 'chg' ? <ChangesView k={k} /> : v === 'wt' ? <WeightsView k={k} /> : v === 'dash' ? <DashView s={k.s} date={k.date} now={k.now} pplh={seesPplh(k.s, k.admin, user.get())} /> : v === 'mini' ? <MiniKpiView k={k} /> : v === 'pplh' ? <PplhView s={k.s} date={k.date} today={k.today} now={k.now} edit={!k.viewOnly} admin={k.admin} /> : k.searching && (v === 'gen' || v === 'shift') ? <SearchResults k={k} />
+        {v === 'cons' ? <MeatAndConsume k={k} /> : v === 'par' ? <CodePareto k={k} /> : v === 'chg' ? <ChangesView k={k} /> : v === 'wt' ? <WeightsView k={k} /> : v === 'dash' ? <DashView s={k.s} date={k.date} now={k.now} pplh={seesPplh(k.s, k.admin, user.get())} /> : v === 'mini' ? <MiniKpiView k={k} /> : v === 'pplh' ? <PplhView s={k.s} date={k.date} today={k.today} now={k.now} edit={!k.viewOnly} admin={k.admin} /> : k.searching && (v === 'gen' || v === 'shift') ? <SearchResults k={k} />
           : rows.length === 0 ? (v === 'rec' && k.stops.length > 0 ? <RecordsView k={k} /> : <EmptyDay k={k} />)
             : v === 'gen' ? <GeneralView k={k} /> : v === 'code' ? <CodesView k={k} /> : v === 'shift' ? <ShiftsView k={k} /> : v === 'pal' ? <PalletsView k={k} /> : <RecordsView k={k} />}
       </div>
@@ -1262,7 +1262,7 @@ function AttNames({ k, people }: { k: Kit; people: AttEntry[] }) {
  */
 /** the shift a weight belongs to, by its room's hours that day (as the units of the report) */
 const consumeShift = (s: State, x: ConsumeEntry): 1 | 2 => shiftAt(shiftsOf(s, x.date, x.dept), x.at)
-function ConsumeWhere({ k }: { k: Kit }) {
+function ConsumeWhere({ k, detail }: { k: Kit; detail?: boolean }) {
   const { s, date, dept, only, mgr, rep } = k
   const who = useWho(), canFix = mgr && who.role !== 'viewer'
   const [fixing, setFixing] = useState<ConsumeEntry | null>(null)
@@ -1278,7 +1278,7 @@ function ConsumeWhere({ k }: { k: Kit }) {
   const rooms = DEPTS.filter((d) => list.some((x) => x.dept === d))
   return (
     <>
-      <h3>{tr('⚖ Consumo')} <WhatIs id="consumo" /></h3>
+      {!detail && <h3>{tr('⚖ Consumo')} <WhatIs id="consumo" /></h3>}
       {rooms.map((d) => {
         const mine = list.filter((x) => x.dept === d), total = mine.reduce((t, x) => t + x.lb, 0)
         // each code of the room added up, whatever its lots and lines (Jose, 2026-11-04: "que se sume si son del mismo
@@ -1290,8 +1290,8 @@ function ConsumeWhere({ k }: { k: Kit }) {
         return (
           <article key={d} className="wt-rp cons-rp" style={deptVars(d)}>
             <h3>{DEPT_LOOK[d].emoji} {d} <span className="cons-total">{lb(total)} lb</span> <small>· {mine.length === 1 ? tr('1 peso') : tr('{0} pesos', mine.length)}</small></h3>
-            {split && <div className="cons-shifts">{perShift(mine).map((p) => <span key={p.n} className={'cons-shift t' + p.n + (p.k ? '' : ' none')}>{tr('Turno {0}', p.n)}: <b>{lb(p.lb)} lb</b> <small>· {p.k === 1 ? tr('1 peso') : tr('{0} pesos', p.k)}</small></span>)}</div>}
-            <div className="cons-codes">{codes.map((c) => <span key={c.code} className="cons-code"><b>{c.code}</b> · {c.list.length === 1 ? tr('1 peso') : tr('{0} pesos', c.list.length)} · <b>{lb(c.lb)} lb</b>{c.list.length > 1 && <small> · {tr('prom. {0} lb', lb(c.lb / c.list.length))}</small>}</span>)}</div>
+            {split && !detail && <div className="cons-shifts">{perShift(mine).map((p) => <span key={p.n} className={'cons-shift t' + p.n + (p.k ? '' : ' none')}>{tr('Turno {0}', p.n)}: <b>{lb(p.lb)} lb</b> <small>· {p.k === 1 ? tr('1 peso') : tr('{0} pesos', p.k)}</small></span>)}</div>}
+            {!detail && <div className="cons-codes">{codes.map((c) => <span key={c.code} className="cons-code"><b>{c.code}</b> · {c.list.length === 1 ? tr('1 peso') : tr('{0} pesos', c.list.length)} · <b>{lb(c.lb)} lb</b>{c.list.length > 1 && <small> · {tr('prom. {0} lb', lb(c.lb / c.list.length))}</small>}</span>)}</div>}
             <div className="scroll"><table className="wt-rp-tbl cons-tbl">
               <thead><tr>{split && <th>{tr('Turno')}</th>}<th>{tr('Hora')}</th><th>{tr('Línea')}</th><th>{tr('Código')}</th>{told && <th>{tr('Qué entró')}</th>}<th className="n">{tr('Libras')}</th>{left && <th className="n">{tr('Quedó')}</th>}<th>{tr('Anotó')}</th>{canFix && <th></th>}</tr></thead>
               <tbody>{codes.map((c) => [...c.list.map((x) => (
@@ -1315,11 +1315,11 @@ function ConsumeWhere({ k }: { k: Kit }) {
           </article>
         )
       })}
-      {inv.length > 0 && <>
+      {inv.length > 0 && !detail && <>
         <h4>{tr('Inventario ahora')}</h4>
         <ul className="meat-each">{inv.map((x) => <li key={x.id}><b>{lb(x.left ?? 0)} lb</b> {what(x)} <small>· {x.dept} · {tr('quedó el {0} del código {1}', x.date, x.code)}</small></li>)}</ul>
       </>}
-      <p className="hint">{tr('Lo que cada línea pesó: en cada Mezcla lista, o antes de empezar un código y lo que quedó al terminarlo. En el Excel va la hoja "Consumo".')}</p>
+      {!detail && <p className="hint">{tr('Lo que cada línea pesó: en cada Mezcla lista, o antes de empezar un código y lo que quedó al terminarlo. En el Excel va la hoja "Consumo".')}</p>}
       {fixing && <ConsumeFixDialog x={fixing} onClose={() => setFixing(null)} />}
     </>
   )
@@ -1350,39 +1350,110 @@ function ConsumeFixDialog({ x, onClose }: { x: ConsumeEntry; onClose: () => void
     </div>
   )
 }
+/**
+ * Carne y consumo, short (Jose, 2026-11-06: "eso está muy largo y hay muchas cosas ahí y ni sé qué estoy viendo"; and Eli
+ * of the office the same night: the pounds of each shift). On top, one tile per thing weighed with its pounds and each
+ * shift's; under it one small table per thing, a row per code with Turno 1 / Turno 2 / Total; every weight, the
+ * inventory and Corregir behind one button each, closed
+ */
+function MeatAndConsume({ k }: { k: Kit }) {
+  const { s, rep, date, dept, only } = k
+  const [open, setOpen] = useState<'' | 'meat' | 'cons' | 'inv'>('')
+  const room = (dept || only || '') as RoomDept | ''
+  const meat = meatReport(s, rep, date, room)
+  const cons = consumesOf(s, date, room || undefined).filter((x) => !rep.shift || consumeShift(s, x) === rep.shift)
+  const inv = inventoryOf(s, room || undefined)
+  if (!meat.list.length && !cons.length && !inv.length) return <p className="cm-none">{tr('Nada pesado en lo que estás viendo.')}</p>
+  const lb = (n: number) => (Math.round(n * 100) / 100).toLocaleString('en-US')
+  const both = !rep.shift, meatPlan = rep.planOf('Spiral')
+  const meatSh = (x: { at: number }) => shiftAt(meatPlan, x.at)
+  type Row = { key: string; room: string; code: string; t: number[]; lb: number; n: number; mixes?: number; perMix?: number | null }
+  const sum = <X extends { lb: number; at: number }>(xs: X[], sh: (x: X) => 1 | 2) => [1, 2].map((n) => xs.filter((x) => sh(x) === n).reduce((t, x) => t + x.lb, 0))
+  const meatRows: Row[] = meat.byCode.map((c) => { const mine = meat.list.filter((x) => normCode(x.code) === normCode(c.code)); return { key: c.code, room: 'Spiral', code: c.code, t: sum(mine, meatSh), lb: c.lb, n: mine.length, mixes: c.mixes, perMix: c.perMix } })
+  const consRows: Row[] = [...cons.reduce((m, x) => { const key = x.dept + '|' + normCode(x.code), e = m.get(key) ?? { key, room: x.dept, code: x.code, t: [0, 0], lb: 0, n: 0 }; e.t[consumeShift(s, x) - 1] += x.lb; e.lb += x.lb; e.n++; return m.set(key, e) }, new Map<string, Row>()).values()]
+    .sort((a, b) => DEPTS.indexOf(a.room as Dept) - DEPTS.indexOf(b.room as Dept) || b.lb - a.lb)
+  const consRooms = DEPTS.filter((d) => cons.some((x) => x.dept === d))
+  const tile = (key: string, emoji: string, title: string, total: number, t: number[], n: number, d?: Dept) => (
+    <div key={key} className="cm-tile" style={d ? deptVars(d) : undefined}>
+      <span className="cm-tile-t">{emoji} {title}</span>
+      <b className="cm-tile-n">{lb(total)} <small>lb</small></b>
+      {both ? <span className="cm-tile-sh"><span className="cm-sh t1">T1 {lb(t[0])}</span><span className="cm-sh t2">T2 {lb(t[1])}</span></span> : <span className="cm-tile-sh"><span className={'cm-sh t' + rep.shift}>{tr('Turno {0}', rep.shift)}</span></span>}
+      <small className="cm-tile-k">{n === 1 ? tr('1 peso') : tr('{0} pesos', n)}</small>
+    </div>
+  )
+  const table = (rows: Row[], withRoom: boolean, withMix: boolean) => {
+    const tot = rows.reduce((a, r) => ({ t: [a.t[0] + r.t[0], a.t[1] + r.t[1]], lb: a.lb + r.lb, n: a.n + r.n }), { t: [0, 0], lb: 0, n: 0 })
+    return (
+      <div className="scroll"><table className="cm-tbl">
+        <thead><tr>{withRoom && <th>{tr('Cuarto')}</th>}<th>{tr('Código')}</th>{both && <th className="n">{tr('Turno 1')}</th>}{both && <th className="n">{tr('Turno 2')}</th>}<th className="n">{tr('Total')}</th><th className="n">{tr('Pesos')}</th>{withMix && <th className="n">{tr('lb / mezcla')}</th>}</tr></thead>
+        <tbody>{rows.map((r) => (
+          <tr key={r.key}>
+            {withRoom && <td>{DEPT_LOOK[r.room as Dept]?.emoji} {r.room}</td>}<td><b>{r.code}</b></td>
+            {both && <td className={'n' + (r.t[0] ? '' : ' cm-zero')}>{r.t[0] ? lb(r.t[0]) : '—'}</td>}{both && <td className={'n' + (r.t[1] ? '' : ' cm-zero')}>{r.t[1] ? lb(r.t[1]) : '—'}</td>}
+            <td className="n"><b>{lb(r.lb)}</b></td><td className="n">{r.n}</td>{withMix && <td className="n">{r.perMix == null ? '—' : lb(r.perMix)}</td>}
+          </tr>
+        ))}</tbody>
+        {rows.length > 1 && <tfoot><tr>{withRoom && <td></td>}<td>{tr('Total')}</td>{both && <td className="n">{lb(tot.t[0])}</td>}{both && <td className="n">{lb(tot.t[1])}</td>}<td className="n">{lb(tot.lb)}</td><td className="n">{tot.n}</td>{withMix && <td></td>}</tr></tfoot>}
+      </table></div>
+    )
+  }
+  const more = (key: 'meat' | 'cons' | 'inv', text: string) => <button type="button" className={'btn sm soft cm-more' + (open === key ? ' on' : '')} onClick={() => setOpen(open === key ? '' : key)}>{open === key ? tr('▴ Ocultar') : text}</button>
+  const invLb = inv.reduce((t, x) => t + (x.left ?? 0), 0)
+  return (
+    <div className="cm">
+      <div className="cm-tiles">
+        {meat.list.length > 0 && tile('meat', '🥩', tr('Carne Spiral'), meat.list.reduce((t, x) => t + x.lb, 0), sum(meat.list, meatSh), meat.list.length, 'Spiral')}
+        {consRooms.map((d) => { const mine = cons.filter((x) => x.dept === d); return tile('c:' + d, '⚖', tr('Consumo {0}', d), mine.reduce((t, x) => t + x.lb, 0), sum(mine, (x) => consumeShift(s, x)), mine.length, d) })}
+      </div>
+      {meat.list.length > 0 && (
+        <section className="cm-card" style={deptVars('Spiral')}>
+          <h3>{tr('🥩 Carne de Spiral')} <WhatIs id="carne" /></h3>
+          {table(meatRows, false, true)}
+          {more('meat', tr('Ver cada anotación ({0})', meat.list.length))}
+          {open === 'meat' && <MeatWhere k={k} />}
+        </section>
+      )}
+      {cons.length > 0 && (
+        <section className="cm-card">
+          <h3>{tr('⚖ Consumo')} <WhatIs id="consumo" /></h3>
+          {table(consRows, consRooms.length > 1, false)}
+          {more('cons', tr('Ver cada peso ({0})', cons.length))}
+          {open === 'cons' && <ConsumeWhere k={k} detail />}
+        </section>
+      )}
+      {inv.length > 0 && (
+        <section className="cm-card cm-inv">
+          <h3>{tr('📦 Inventario')} <small>· {lb(invLb)} lb · {inv.length === 1 ? tr('1 cosa') : tr('{0} cosas', inv.length)}</small></h3>
+          {more('inv', tr('Ver qué quedó'))}
+          {open === 'inv' && <ul className="meat-each">{inv.map((x) => <li key={x.id}><b>{lb(x.left ?? 0)} lb</b> {x.product}{x.prodLot ? ' · ' + tr('lote {0}', x.prodLot) : ''} <small>· {x.dept} · {tr('quedó el {0} del código {1}', x.date, x.code)}</small></li>)}</ul>}
+        </section>
+      )}
+    </div>
+  )
+}
+/** every meat entry of Spiral, code by code with its total (behind "Ver cada anotación") */
 function MeatWhere({ k }: { k: Kit }) {
   const { s, rep, date, dept, only } = k
-  const [open, setOpen] = useState(false)
   const m = meatReport(s, rep, date, dept || only || '')
   if (!m.list.length) return null
   const lb = (n: number) => (Math.round(n * 100) / 100).toLocaleString('en-US')
+  const plan = rep.planOf('Spiral'), shOf = (at: number) => shiftAt(plan, at), split = !rep.shift && new Set(m.list.map((x) => shOf(x.at))).size > 1
   return (
-    <>
-      <h3>{tr('🥩 Carne de Spiral')}{rep.shift ? ' · ' + tr('Turno {0}', rep.shift) : ''} <WhatIs id="carne" /></h3>
-      <div className="meat-rep">
-        <div className="meat-row head"><span>{tr('Código')}</span><span>{tr('Libras de carne')}</span><span>{tr('Mezclas')}</span><span>{tr('Libras por mezcla')}</span><span>{tr('Lotes de carne')}</span></div>
-        {m.byCode.map((c) => <div key={c.code} className="meat-row"><b>{c.code}</b><span>{lb(c.lb)} lb</span><span>{c.mixes}</span><b>{c.perMix == null ? '—' : lb(c.perMix) + ' lb'}</b><span>{c.lots.join(', ') || '—'}</span></div>)}
-      </div>
-      <button type="button" className="lnk sm" onClick={() => setOpen(!open)}>{open ? tr('Ocultar cada anotación') : tr('Ver cada anotación ({0})', m.list.length)}</button>
-      {/* each entry as a table, code by code with its total (Jose, 2026-11-04: "esto se puede poner más lindo") */}
-      {open && (
-        <article className="wt-rp cons-rp" style={deptVars('Spiral')}>
-          <div className="scroll"><table className="wt-rp-tbl cons-tbl">
-            <thead><tr><th>{tr('Hora')}</th><th>{tr('Línea')}</th><th>{tr('Código')}</th><th className="n">{tr('Libras')}</th><th>{tr('Lote de carne')}</th><th>{tr('Anotó')}</th></tr></thead>
-            <tbody>{m.byCode.map((c) => { const mine = m.list.filter((x) => normCode(x.code) === normCode(c.code)); return [...mine.map((x) => (
-              <tr key={x.id}>
-                <td>{fmtTime(x.at)}</td><td>{lineNameOf(s, x.lineId, x.line)}</td><td><b>{x.code}</b>{x.lot && <small> · {tr('lote {0}', x.lot)}</small>}</td>
-                <td className="n"><b>{lb(x.lb)}</b></td><td>{x.meatLot || '—'}</td><td><small>{x.by}</small></td>
-              </tr>
-            )), <tr key={'t:' + c.code} className="cons-sum">
-              <td colSpan={3}>{tr('Total {0}', c.code)}</td><td className="n">{lb(mine.reduce((t, x) => t + x.lb, 0))}</td>
-              <td colSpan={2}><small>{mine.length === 1 ? tr('1 anotación') : tr('{0} anotaciones', mine.length)}</small></td>
-            </tr>] })}</tbody>
-          </table></div>
-        </article>
-      )}
-      <p className="hint">{tr('Libras por mezcla = la carne anotada ÷ las mezclas de ese código en lo que estás viendo. En el Excel va la hoja "Carne".')}</p>
-    </>
+    // each entry as a table, code by code with its total (Jose, 2026-11-04: "esto se puede poner más lindo")
+    <article className="wt-rp cons-rp" style={deptVars('Spiral')}>
+      <div className="scroll"><table className="wt-rp-tbl cons-tbl">
+        <thead><tr>{split && <th>{tr('Turno')}</th>}<th>{tr('Hora')}</th><th>{tr('Línea')}</th><th>{tr('Código')}</th><th className="n">{tr('Libras')}</th><th>{tr('Lote de carne')}</th><th>{tr('Anotó')}</th></tr></thead>
+        <tbody>{m.byCode.map((c) => { const mine = m.list.filter((x) => normCode(x.code) === normCode(c.code)); return [...mine.map((x) => (
+          <tr key={x.id}>
+            {split && <td>{shOf(x.at)}</td>}<td>{fmtTime(x.at)}</td><td>{lineNameOf(s, x.lineId, x.line)}</td><td><b>{x.code}</b>{x.lot && <small> · {tr('lote {0}', x.lot)}</small>}</td>
+            <td className="n"><b>{lb(x.lb)}</b></td><td>{x.meatLot || '—'}</td><td><small>{x.by}</small></td>
+          </tr>
+        )), <tr key={'t:' + c.code} className="cons-sum">
+          <td colSpan={split ? 4 : 3}>{tr('Total {0}', c.code)}</td><td className="n">{lb(mine.reduce((t, x) => t + x.lb, 0))}</td>
+          <td colSpan={2}><small>{mine.length === 1 ? tr('1 anotación') : tr('{0} anotaciones', mine.length)}</small></td>
+        </tr>] })}</tbody>
+      </table></div>
+    </article>
   )
 }
 
