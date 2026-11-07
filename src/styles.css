@@ -3825,3 +3825,5 @@ html:has(.app.rd),html:has(.app.rd) body{overflow-x:clip}
 /* lot field: number pad by default, ABC for letters (LotInput.tsx, 2026-11-06) */
 .lotin{display:flex;gap:4px;align-items:stretch;min-width:0;width:100%}.lotin>input{flex:1 1 auto;min-width:0}
 .lotin-kb{flex:none;min-width:44px;padding:0 6px;border-radius:10px;border:1.5px solid #cbd5e1;background:#e2e8f0;color:#334155;font:inherit;font-size:12px;font-weight:800;letter-spacing:.03em;cursor:pointer}.lotin-kb.on{background:#dcfce7;border-color:#16a34a;color:#166534}
+/* Consumo by shift (Eli, 2026-11-06) */
+.cons-shifts{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 8px}.cons-shift{padding:3px 10px;border-radius:999px;border:1px solid #c7d2fe;background:#eef2ff;color:#312e81;font-size:13px}.cons-shift.t2{border-color:#fbcfe8;background:#fdf2f8;color:#831843}.cons-shift.none{opacity:.55}.cons-tbl tr.cons-sub td{font-weight:600;font-size:13px;color:var(--muted)}

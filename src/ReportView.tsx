@@ -387,14 +387,16 @@ function useReport({ s, now, only, mgr, admin, wholeDay, part, pin }: ReportProp
   /** what the rooms consumed that day and what is left in their inventory (2026-10-27) */
   const consumeSheets = (): Sheet[] => {
     const room = (dept || only || '') as RoomDept | ''
-    const list = consumesOf(s, date, room || undefined), inv = inventoryOf(s, room || undefined)
+    // each weight with its shift, and only the shift chosen (Eli of the office, 2026-11-06: "que los pesos tomados puedan
+    // ser divididos por turnos, para que sume el total de uso por turnos": the meat Spiral and Kitchen weigh)
+    const list = consumesOf(s, date, room || undefined).filter((x) => !rep.shift || consumeShift(s, x) === rep.shift), inv = inventoryOf(s, room || undefined)
     if (!list.length && !inv.length) return []
-    const T = (ms: number) => xTime(ms, fmtTime(ms))
-    const rows: Cell[][] = [[tr('Fecha'), tr('Hora'), tr('Cuarto'), tr('Línea'), tr('Código'), tr('Lote del producto'), tr('Qué entró'), tr('Lote'), tr('Fecha de la etiqueta'), tr('Libras'), tr('Quedaron (lb)'), tr('Anotó')],
-      ...list.map((x): Cell[] => [x.date, T(x.at), x.dept, lineNameOf(s, x.lineId, x.line), x.code, x.lot, x.product, x.prodLot, x.labelDate, x.lb, x.left ?? '', x.by]), [],
-      // each code of each room added up (Jose, 2026-11-04: "que se sume si son del mismo código")
-      [tr('Total por código')], [tr('Cuarto'), tr('Código'), tr('Pesos'), tr('Libras'), tr('Promedio (lb)')],
-      ...[...list.reduce((m, x) => { const k = x.dept + '|' + x.code, e = m.get(k) ?? { dept: x.dept, code: x.code, n: 0, lb: 0 }; e.n++; e.lb += x.lb; return m.set(k, e) }, new Map<string, { dept: string; code: string; n: number; lb: number }>()).values()].map((c): Cell[] => [c.dept, c.code, c.n, Math.round(c.lb * 100) / 100, Math.round((c.lb / c.n) * 100) / 100]), [],
+    const T = (ms: number) => xTime(ms, fmtTime(ms)), r2 = (n: number) => Math.round(n * 100) / 100, both = !rep.shift
+    const rows: Cell[][] = [[tr('Fecha'), tr('Turno'), tr('Hora'), tr('Cuarto'), tr('Línea'), tr('Código'), tr('Lote del producto'), tr('Qué entró'), tr('Lote'), tr('Fecha de la etiqueta'), tr('Libras'), tr('Quedaron (lb)'), tr('Anotó')],
+      ...list.map((x): Cell[] => [x.date, consumeShift(s, x), T(x.at), x.dept, lineNameOf(s, x.lineId, x.line), x.code, x.lot, x.product, x.prodLot, x.labelDate, x.lb, x.left ?? '', x.by]), [],
+      // each code of each room added up (Jose, 2026-11-04: "que se sume si son del mismo código"), and its pounds by shift
+      [tr('Total por código')], [tr('Cuarto'), tr('Código'), tr('Pesos'), tr('Libras'), tr('Promedio (lb)'), ...(both ? [tr('Turno 1 (lb)'), tr('Turno 2 (lb)')] : [])],
+      ...[...list.reduce((m, x) => { const k = x.dept + '|' + x.code, e = m.get(k) ?? { dept: x.dept, code: x.code, n: 0, lb: 0, t: [0, 0] }; e.n++; e.lb += x.lb; e.t[consumeShift(s, x) - 1] += x.lb; return m.set(k, e) }, new Map<string, { dept: string; code: string; n: number; lb: number; t: number[] }>()).values()].map((c): Cell[] => [c.dept, c.code, c.n, r2(c.lb), r2(c.lb / c.n), ...(both ? [r2(c.t[0]), r2(c.t[1])] : [])]), [],
       [tr('Inventario ahora (lo que quedó y nadie ha usado)')], [tr('Cuarto'), tr('Qué es'), tr('Lote'), tr('Fecha de la etiqueta'), tr('Libras'), tr('Desde'), tr('Código donde quedó')],
       ...inv.map((x): Cell[] => [x.dept, x.product, x.prodLot, x.labelDate, x.left ?? 0, x.date, x.code])]
     return [{ name: tr('Consumo'), rows }]
@@ -1258,12 +1260,18 @@ function AttNames({ k, people }: { k: Kit; people: AttEntry[] }) {
  * mezclas, "que se vea bien visualmente"): each code's total first, then every weight with its hour, and Corregir for
  * managers and the office; then the room's inventory
  */
+/** the shift a weight belongs to, by its room's hours that day (as the units of the report) */
+const consumeShift = (s: State, x: ConsumeEntry): 1 | 2 => shiftAt(shiftsOf(s, x.date, x.dept), x.at)
 function ConsumeWhere({ k }: { k: Kit }) {
-  const { s, date, dept, only, mgr } = k
+  const { s, date, dept, only, mgr, rep } = k
   const who = useWho(), canFix = mgr && who.role !== 'viewer'
   const [fixing, setFixing] = useState<ConsumeEntry | null>(null)
   const room = (dept || only || '') as RoomDept | ''
-  const list = consumesOf(s, date, room || undefined), inv = inventoryOf(s, room || undefined)
+  // each weight in its shift: only the shift chosen, and with both the pounds of each (Eli of the office, 2026-11-06:
+  // "que los pesos tomados puedan ser divididos por turnos, para que sume el total de uso por turnos")
+  const list = consumesOf(s, date, room || undefined).filter((x) => !rep.shift || consumeShift(s, x) === rep.shift), inv = inventoryOf(s, room || undefined)
+  const perShift = (xs: ConsumeEntry[]) => [1, 2].map((n) => { const of = xs.filter((x) => consumeShift(s, x) === n); return { n, lb: of.reduce((t, x) => t + x.lb, 0), k: of.length } })
+  const split = !rep.shift && new Set(list.map((x) => consumeShift(s, x))).size > 1
   if (!list.length && !inv.length) return null
   const lb = (n: number) => (Math.round(n * 100) / 100).toLocaleString('en-US')
   const what = (x: { product: string; prodLot: string; labelDate: string }) => x.product + (x.prodLot ? ' · ' + tr('lote {0}', x.prodLot) : '') + (x.labelDate ? ' · ' + x.labelDate : '')
@@ -1282,22 +1290,27 @@ function ConsumeWhere({ k }: { k: Kit }) {
         return (
           <article key={d} className="wt-rp cons-rp" style={deptVars(d)}>
             <h3>{DEPT_LOOK[d].emoji} {d} <span className="cons-total">{lb(total)} lb</span> <small>· {mine.length === 1 ? tr('1 peso') : tr('{0} pesos', mine.length)}</small></h3>
+            {split && <div className="cons-shifts">{perShift(mine).map((p) => <span key={p.n} className={'cons-shift t' + p.n + (p.k ? '' : ' none')}>{tr('Turno {0}', p.n)}: <b>{lb(p.lb)} lb</b> <small>· {p.k === 1 ? tr('1 peso') : tr('{0} pesos', p.k)}</small></span>)}</div>}
             <div className="cons-codes">{codes.map((c) => <span key={c.code} className="cons-code"><b>{c.code}</b> · {c.list.length === 1 ? tr('1 peso') : tr('{0} pesos', c.list.length)} · <b>{lb(c.lb)} lb</b>{c.list.length > 1 && <small> · {tr('prom. {0} lb', lb(c.lb / c.list.length))}</small>}</span>)}</div>
             <div className="scroll"><table className="wt-rp-tbl cons-tbl">
-              <thead><tr><th>{tr('Hora')}</th><th>{tr('Línea')}</th><th>{tr('Código')}</th>{told && <th>{tr('Qué entró')}</th>}<th className="n">{tr('Libras')}</th>{left && <th className="n">{tr('Quedó')}</th>}<th>{tr('Anotó')}</th>{canFix && <th></th>}</tr></thead>
+              <thead><tr>{split && <th>{tr('Turno')}</th>}<th>{tr('Hora')}</th><th>{tr('Línea')}</th><th>{tr('Código')}</th>{told && <th>{tr('Qué entró')}</th>}<th className="n">{tr('Libras')}</th>{left && <th className="n">{tr('Quedó')}</th>}<th>{tr('Anotó')}</th>{canFix && <th></th>}</tr></thead>
               <tbody>{codes.map((c) => [...c.list.map((x) => (
                 <tr key={x.id}>
-                  <td>{fmtTime(x.at)}</td><td>{lineNameOf(s, x.lineId, x.line)}</td><td><b>{x.code}</b>{x.lot && <small> · {tr('lote {0}', x.lot)}</small>}</td>
+                  {split && <td>{consumeShift(s, x)}</td>}<td>{fmtTime(x.at)}</td><td>{lineNameOf(s, x.lineId, x.line)}</td><td><b>{x.code}</b>{x.lot && <small> · {tr('lote {0}', x.lot)}</small>}</td>
                   {told && <td>{what(x)}</td>}<td className="n"><b>{lb(x.lb)}</b></td>
                   {left && <td className={'n ' + (x.left == null ? 'muted' : x.left > 0 ? 'amber' : 'ok')}>{x.left == null ? tr('sin decir') : x.left > 0 ? lb(x.left) + ' lb' : tr('todo')}</td>}
                   <td><small>{x.by}</small></td>
                   {canFix && <td><button type="button" className="btn sm soft" onClick={() => setFixing(x)}>{tr('Corregir')}</button></td>}
                 </tr>
               )), <tr key={'t:' + c.code} className="cons-sum">
-                <td colSpan={3}>{tr('Total {0}', c.code)}{c.lots.length > 0 && <small> · {c.lots.length === 1 ? tr('lote {0}', c.lots[0]) : tr('lotes {0}', c.lots.join(', '))}</small>}</td>
+                <td colSpan={split ? 4 : 3}>{tr('Total {0}', c.code)}{c.lots.length > 0 && <small> · {c.lots.length === 1 ? tr('lote {0}', c.lots[0]) : tr('lotes {0}', c.lots.join(', '))}</small>}</td>
                 {told && <td></td>}<td className="n">{lb(c.lb)}</td>{left && <td></td>}
                 <td colSpan={canFix ? 2 : 1}><small>{c.list.length === 1 ? tr('1 peso') : tr('{0} pesos', c.list.length)}{c.list.length > 1 ? ' · ' + tr('prom. {0} lb', lb(c.lb / c.list.length)) : ''}</small></td>
-              </tr>])}</tbody>
+              </tr>, ...(split ? perShift(c.list).filter((p) => p.k).map((p) => <tr key={'t:' + c.code + ':' + p.n} className="cons-sum cons-sub">
+                <td colSpan={4}>{tr('{0} · Turno {1}', c.code, p.n)}</td>
+                {told && <td></td>}<td className="n">{lb(p.lb)}</td>{left && <td></td>}
+                <td colSpan={canFix ? 2 : 1}><small>{p.k === 1 ? tr('1 peso') : tr('{0} pesos', p.k)}</small></td>
+              </tr>) : [])])}</tbody>
             </table></div>
           </article>
         )

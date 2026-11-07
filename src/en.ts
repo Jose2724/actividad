@@ -4155,4 +4155,6 @@ export const EN: Record<string, string> = {
   "· a este ritmo, al cambio de turno ({0}) llevarían unas {1}: faltarían {2}": "· at this pace, at the shift change ({0}) they would have about {1}: {2} short",
   "Teclado con letras": "Letters keyboard",
   "Teclado de números": "Number keyboard",
+  "Turno 1 (lb)": "Shift 1 (lb)",
+  "Turno 2 (lb)": "Shift 2 (lb)",
 }
